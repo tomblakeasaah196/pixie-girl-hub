@@ -160,6 +160,10 @@ CREATE TABLE {{BUSINESS}}.pos_transactions (
   -- says "this row was created while offline and synced later")
   was_offline           BOOLEAN     NOT NULL DEFAULT false,
   offline_synced_at     TIMESTAMPTZ,
+  -- Idempotency key (Amendment A-4). Client generates a UUID per
+  -- intended transaction; if the network drops and the client retries,
+  -- the unique index ensures we don't double-charge.
+  client_idempotency_key TEXT,
   -- Audit
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -176,6 +180,10 @@ CREATE INDEX idx_{{BUSINESS}}_pos_transactions_terminal_day
 CREATE INDEX idx_{{BUSINESS}}_pos_transactions_offline_unsynced
   ON {{BUSINESS}}.pos_transactions (created_at)
   WHERE was_offline = true AND offline_synced_at IS NULL;
+-- A-4: idempotency uniqueness — only enforced when client supplies a key
+CREATE UNIQUE INDEX idx_{{BUSINESS}}_pos_transactions_idempotency
+  ON {{BUSINESS}}.pos_transactions (terminal_id, client_idempotency_key)
+  WHERE client_idempotency_key IS NOT NULL;
 
 -- Wire deferred FKs on sales_orders → pos_terminals/pos_sessions
 ALTER TABLE {{BUSINESS}}.sales_orders
@@ -194,7 +202,7 @@ CREATE TABLE {{BUSINESS}}.pos_payment_splits (
   -- Mirror of sales_order_payments
   sales_order_payment_id UUID       REFERENCES {{BUSINESS}}.sales_order_payments (payment_id) ON DELETE SET NULL,
   method                TEXT        NOT NULL
-                        CHECK (method IN ('cash','paystack_card','paystack_transfer','strive_connect',
+                        CHECK (method IN ('cash','paystack_card','paystack_transfer','opay',
                                           'nomba_terminal','bank_transfer','points','wallet','voucher')),
   amount_ngn            NUMERIC(14,2) NOT NULL CHECK (amount_ngn > 0),
   -- For card / transfer

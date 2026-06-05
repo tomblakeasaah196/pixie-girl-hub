@@ -191,20 +191,46 @@ CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_sales_order_recompute_paid()
 RETURNS TRIGGER
 LANGUAGE plpgsql AS $$
 DECLARE
-  v_order_id UUID;
-  v_paid     NUMERIC(14,2);
+  v_order_id        UUID;
+  v_paid            NUMERIC(14,2);
+  v_total           NUMERIC(14,2);
+  v_required_dep    NUMERIC(14,2);
+  v_last_pay        TIMESTAMPTZ;
+  v_now             TIMESTAMPTZ := now();
 BEGIN
   v_order_id := COALESCE(NEW.order_id, OLD.order_id);
 
-  SELECT COALESCE(SUM(amount_ngn),0)
-    INTO v_paid
+  -- Sum captured/authorised payments
+  SELECT COALESCE(SUM(amount_ngn),0), MAX(recorded_at)
+    INTO v_paid, v_last_pay
     FROM {{BUSINESS}}.sales_order_payments
    WHERE order_id = v_order_id
      AND status IN ('captured','authorised');
 
+  -- Read order totals & policy
+  SELECT total_ngn, required_deposit_ngn
+    INTO v_total, v_required_dep
+    FROM {{BUSINESS}}.sales_orders
+   WHERE order_id = v_order_id;
+
+  -- B-2: Update paid amount + the three timestamp flags. Once set
+  -- (NOT NULL), each timestamp is sticky — we don't re-clear them on
+  -- a refund (refunds get their own flow via cancellation_requests).
   UPDATE {{BUSINESS}}.sales_orders
-     SET amount_paid_ngn = v_paid,
-         updated_at = now()
+     SET amount_paid_ngn  = v_paid,
+         last_payment_at  = COALESCE(v_last_pay, last_payment_at),
+         deposit_met_at   = COALESCE(
+           deposit_met_at,
+           CASE WHEN payment_model = 'deposit_triggered'
+                  AND v_required_dep IS NOT NULL
+                  AND v_paid >= v_required_dep
+                THEN v_now ELSE NULL END
+         ),
+         fully_paid_at    = COALESCE(
+           fully_paid_at,
+           CASE WHEN v_paid >= v_total THEN v_now ELSE NULL END
+         ),
+         updated_at       = v_now
    WHERE order_id = v_order_id;
 
   RETURN COALESCE(NEW, OLD);
@@ -214,6 +240,42 @@ $$;
 CREATE TRIGGER trg_{{BUSINESS}}_sales_order_payment_recompute
   AFTER INSERT OR UPDATE OR DELETE ON {{BUSINESS}}.sales_order_payments
   FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_sales_order_recompute_paid();
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ B-2: MANUAL-PAYMENT GUARD                                          ║
+-- ║ Staff cannot record a manual bank-transfer payment unless the      ║
+-- ║ business_config toggle is ON AND a bank_transaction_id is supplied.║
+-- ║ Enforces V2.2 §6.2 separation of duties.                           ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_validate_manual_payment()
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_toggle BOOLEAN;
+BEGIN
+  -- Only inspect manual / staff-recorded bank transfers
+  IF NEW.payment_path = 'staff_recorded' OR NEW.method = 'bank_transfer' THEN
+    SELECT allow_staff_recorded_manual_payments
+      INTO v_toggle
+      FROM shared.business_config
+     WHERE business_key = '{{BUSINESS}}';
+
+    IF v_toggle IS NOT TRUE THEN
+      RAISE EXCEPTION 'Staff-recorded manual payments are disabled in business_config. Toggle on once Finance is hired.';
+    END IF;
+
+    IF NEW.manual_bank_transaction_id IS NULL OR NEW.manual_bank_transaction_id = '' THEN
+      RAISE EXCEPTION 'manual_bank_transaction_id is mandatory for staff-recorded payments (V2.2 §6.2)';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_{{BUSINESS}}_validate_manual_payment
+  BEFORE INSERT OR UPDATE ON {{BUSINESS}}.sales_order_payments
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_validate_manual_payment();
 
 -- ╔════════════════════════════════════════════════════════════════════╗
 -- ║ SALES ORDER: append state history on status change                 ║
@@ -398,6 +460,43 @@ BEGIN
   RETURN v_result;
 END;
 $$;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ KPI WEIGHTS MUST SUM TO 100 (Amendment A-3)                        ║
+-- ║ V2.2 §6.11 — "Weighted Performance KPIs: 40 / 25 / 20 / 15".       ║
+-- ║ Without this trigger, admin could add a 5th KPI and silently push  ║
+-- ║ the sum to 110. The performance review math would then be wrong   ║
+-- ║ in subtle, undetectable ways. Trigger blocks the write.            ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_kpi_weights_sum_to_100()
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_total NUMERIC(8,2);
+BEGIN
+  -- Compute total weight across ACTIVE KPIs after this change
+  SELECT COALESCE(SUM(weight_pct), 0)
+    INTO v_total
+    FROM {{BUSINESS}}.performance_kpi_definitions
+   WHERE is_active = true;
+
+  -- On INSERT/UPDATE the new row may already be in the table (AFTER trigger
+  -- timing) so we don't add it here. On DELETE the row is gone.
+  -- We only enforce when not in the middle of an active-deactivate flip.
+  IF v_total <> 100.00 THEN
+    RAISE EXCEPTION
+      'KPI weights must sum to exactly 100.00 across active KPIs (currently %); add/remove/edit weights together as a set',
+      v_total;
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER trg_{{BUSINESS}}_kpi_weights_sum
+  AFTER INSERT OR UPDATE OR DELETE ON {{BUSINESS}}.performance_kpi_definitions
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_kpi_weights_sum_to_100();
 
 -- ============================================================
 -- All triggers and helpers above are no-table-add statements.

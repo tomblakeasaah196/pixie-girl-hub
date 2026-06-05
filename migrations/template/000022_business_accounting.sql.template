@@ -259,7 +259,7 @@ CREATE TABLE {{BUSINESS}}.bank_statements (
   total_debits          NUMERIC(14,2) NOT NULL DEFAULT 0,
   -- Import context
   source                TEXT        NOT NULL DEFAULT 'manual'
-                        CHECK (source IN ('manual','paystack_settlement','strive_connect','nomba','bank_csv','open_banking','pdf_ocr')),
+                        CHECK (source IN ('manual','paystack_settlement','opay_settlement','nomba','bank_csv','open_banking','pdf_ocr')),
   source_document_id    UUID        REFERENCES shared.documents (document_id) ON DELETE SET NULL,
   imported_by           UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
   imported_at           TIMESTAMPTZ NOT NULL DEFAULT now(),

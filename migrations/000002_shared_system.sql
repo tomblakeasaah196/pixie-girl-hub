@@ -85,6 +85,31 @@ CREATE TABLE shared.business_config (
     "refresh_hour_utc": 2,
     "manual_override_allowed": true
   }'::jsonb,
+  -- B-9 (V2.2 §6.25): per-gateway fee schedule. Pricing engine grosses up
+  -- net targets through these fees; Accounting books each gateway's fees
+  -- to its dedicated 551x sub-account. Editable in Business Setup.
+  payment_gateway_fees  JSONB       NOT NULL DEFAULT '{
+    "paystack": { "currency": "NGN", "pct": 0.015, "fixed": 0,    "cap_ngn": 2000 },
+    "opay":     { "currency": "NGN", "pct": 0.015, "fixed": 0,    "cap_ngn": 2000 },
+    "nomba":    { "currency": "NGN", "pct": 0.005, "fixed": 0,    "cap_ngn": 500 },
+    "stripe":   { "currency": "INTL", "pct": 0.034, "fixed_usd": 0.30, "cap": null }
+  }'::jsonb,
+  -- B-2 (V2.2 §6.2): installment payment model defaults & abandonment.
+  -- payment_model on each product/variant chooses 'layaway' or
+  -- 'deposit_triggered'. These business-level fields are the policy that
+  -- the product fallback uses when not overridden per-variant.
+  installment_settings  JSONB       NOT NULL DEFAULT '{
+    "default_deposit_pct_for_deposit_triggered": 50,
+    "layaway_abandonment_days": 60,
+    "layaway_reminder_cadence_days": 7,
+    "min_partial_payment_ngn": 1000,
+    "auto_cancel_after_no_payment": true
+  }'::jsonb,
+  -- B-2 — separation of duties toggle. OFF at launch (every payment must
+  -- come through a gateway). Once a Finance hire is made, CEO flips this
+  -- ON to permit manual-bank-transfer entries (which then require a
+  -- mandatory bank_transaction_id on the payment record).
+  allow_staff_recorded_manual_payments BOOLEAN NOT NULL DEFAULT false,
   is_active             BOOLEAN     NOT NULL DEFAULT true,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -199,7 +224,7 @@ CREATE TABLE shared.bank_accounts (
   currency              TEXT        NOT NULL DEFAULT 'NGN' REFERENCES shared.currencies (currency_code),
   is_primary            BOOLEAN     NOT NULL DEFAULT false,
   paystack_recipient_code TEXT,
-  strive_connect_account_id TEXT,
+  opay_account_id TEXT,
   is_active             BOOLEAN     NOT NULL DEFAULT true,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -215,7 +240,7 @@ CREATE INDEX idx_bank_accounts_business ON shared.bank_accounts (business) WHERE
 CREATE TABLE shared.webhook_log (
   webhook_id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   source                TEXT        NOT NULL,
-  -- Sources: paystack | strive_connect | nomba | chowdeck | gigl | dhl
+  -- Sources: paystack | opay | nomba | chowdeck | gigl | dhl
   --          whatsapp | instagram | facebook | tiktok | youtube
   --          google_ads | meta_ads | woocommerce
   event_type            TEXT        NOT NULL,

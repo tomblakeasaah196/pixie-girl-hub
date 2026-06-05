@@ -1,0 +1,172 @@
+-- ============================================================
+-- TEMPLATE 000038 — Per-business field-level privacy (C-2)
+-- Pixie Girl Hub · JBS Praxis · Conformance pass V2.2
+--
+-- Spec mandate (V2.2 §3):
+--   "Hidden Fields: factory cost, product origin, and salary figures
+--    are invisible to roles that must not see them, even inside a
+--    module they can otherwise open."
+--
+-- Restricted views — base tables omit cost/salary/factory columns.
+-- App queries the *_public view for users without sensitive-data perms.
+--
+-- Roles created:
+--   hub_full       — sees everything (CEO + Finance + Production)
+--   hub_basic      — sees only the *_public views (Sales, CRM, Operations)
+--   hub_payroll    — full access to payroll tables, basic elsewhere
+-- ============================================================
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ ROLES                                                              ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hub_full') THEN
+    CREATE ROLE hub_full NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hub_basic') THEN
+    CREATE ROLE hub_basic NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hub_payroll') THEN
+    CREATE ROLE hub_payroll NOLOGIN;
+  END IF;
+END;
+$$;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ PRODUCTS — public view                                             ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE VIEW {{BUSINESS}}.view_products_public AS
+  SELECT
+    product_id, product_code, category_id, name, slug,
+    short_description, long_description, texture_type, lace_type,
+    hair_length_inches, density, cap_size, primary_colour, hair_origin,
+    care_instructions, product_type, is_custom,
+    is_visible_storefront, visible_on_channels, brand_name,
+    meta_title, meta_description, track_stock, taxable, vat_rate,
+    payment_model, required_deposit_pct, search_keywords,
+    is_deleted, created_at, updated_at, published_at
+  FROM {{BUSINESS}}.products;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ PRODUCT VARIANTS — hide cost_price_ngn, min_price_ngn, wholesale   ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE VIEW {{BUSINESS}}.view_product_variants_public AS
+  SELECT
+    variant_id, product_id, sku, barcode,
+    price_storefront_ngn, price_pos_ngn,
+    payment_model_override, required_deposit_pct_override,
+    reorder_point, reorder_quantity, display_order,
+    cost_last_refreshed_at,
+    created_at, updated_at
+    -- HIDDEN: cost_price_ngn, min_price_ngn, price_wholesale_ngn,
+    --         price_partner_ngn, compare_at_price_ngn
+  FROM {{BUSINESS}}.product_variants;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ GRN LINES — hide unit_cost                                         ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE VIEW {{BUSINESS}}.view_grn_lines_public AS
+  SELECT
+    line_id, grn_id, po_line_id, variant_id,
+    qty_expected, qty_received, qty_rejected,
+    inspection_result, rejection_reason,
+    display_order, notes
+    -- HIDDEN: unit_cost_ngn
+  FROM {{BUSINESS}}.grn_lines;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ INBOUND SHIPMENT LINES — hide cost                                 ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE VIEW {{BUSINESS}}.view_inbound_shipment_lines_public AS
+  SELECT
+    line_id, shipment_id, po_line_id, variant_id,
+    qty_expected, qty_received, qty_rejected,
+    unit_weight_g, notes
+    -- HIDDEN: unit_cost, unit_cost_currency, unit_cost_ngn, fx_rate_used
+  FROM {{BUSINESS}}.inbound_shipment_lines;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ PAYSLIPS — only payslip id + period + status (no money fields)     ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE VIEW {{BUSINESS}}.view_payslips_summary AS
+  SELECT
+    payslip_id, payslip_number, payroll_run_id, user_id, staff_profile_id,
+    job_title_snapshot, department_snapshot
+    -- HIDDEN: bank_account_snapshot, base_salary_ngn, allowances_ngn,
+    --         commission_ngn, bonus_ngn, overtime_ngn, reimbursements_ngn,
+    --         gross_pay_ngn, paye_ngn, pension_employee_ngn, pension_employer_ngn,
+    --         nhf_ngn, loan_repayment_ngn, advance_recovery_ngn,
+    --         other_deductions_ngn, total_deductions_ngn, net_pay_ngn
+  FROM {{BUSINESS}}.payslips;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ PRODUCTION RUNS — hide factory_cost                                ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE VIEW {{BUSINESS}}.view_production_runs_public AS
+  SELECT
+    run_id, run_number, po_id, inbound_shipment_id, supplier_id,
+    title, status,
+    units_planned, units_produced, units_passed_qc,
+    units_rejected, units_received
+    -- HIDDEN: total_factory_cost_ngn, total_freight_ngn, total_customs_ngn,
+    --         total_3pl_lagos_ngn, total_styling_ngn, total_packaging_ngn,
+    --         per_unit_cost_ngn, total_landed_cost_ngn
+  FROM {{BUSINESS}}.production_runs;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ GRANT MATRIX                                                       ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+GRANT USAGE ON SCHEMA {{BUSINESS}} TO hub_full;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {{BUSINESS}} TO hub_full;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA {{BUSINESS}} TO hub_full;
+ALTER DEFAULT PRIVILEGES IN SCHEMA {{BUSINESS}}
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hub_full;
+
+GRANT USAGE ON SCHEMA {{BUSINESS}} TO hub_basic;
+GRANT SELECT ON {{BUSINESS}}.view_products_public TO hub_basic;
+GRANT SELECT ON {{BUSINESS}}.view_product_variants_public TO hub_basic;
+GRANT SELECT ON {{BUSINESS}}.view_grn_lines_public TO hub_basic;
+GRANT SELECT ON {{BUSINESS}}.view_inbound_shipment_lines_public TO hub_basic;
+GRANT SELECT ON {{BUSINESS}}.view_payslips_summary TO hub_basic;
+GRANT SELECT ON {{BUSINESS}}.view_production_runs_public TO hub_basic;
+
+DO $$
+DECLARE
+  v_table_name TEXT;
+  v_sensitive TEXT[] := ARRAY[
+    'products','product_variants','grn_lines',
+    'inbound_shipment_lines','payslips','production_runs'
+  ];
+BEGIN
+  FOR v_table_name IN
+    SELECT table_name FROM information_schema.tables
+     WHERE table_schema = '{{BUSINESS}}' AND table_type = 'BASE TABLE'
+       AND table_name <> ALL(v_sensitive)
+     ORDER BY table_name
+  LOOP
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON {{BUSINESS}}.%I TO hub_basic', v_table_name);
+  END LOOP;
+END;
+$$;
+
+GRANT USAGE ON SCHEMA {{BUSINESS}} TO hub_payroll;
+GRANT SELECT, INSERT, UPDATE, DELETE ON {{BUSINESS}}.payslips TO hub_payroll;
+GRANT SELECT, INSERT, UPDATE, DELETE ON {{BUSINESS}}.payroll_runs TO hub_payroll;
+GRANT SELECT ON {{BUSINESS}}.view_products_public TO hub_payroll;
+GRANT SELECT ON {{BUSINESS}}.view_product_variants_public TO hub_payroll;
+
+-- ============================================================
+-- After this migration:
+--   • 6 restricted views per brand
+--   • 3 DB roles created
+--   • Grants wired so base sensitive tables hidden from hub_basic
+-- ============================================================

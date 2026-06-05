@@ -11,6 +11,125 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-04 — V2.2 conformance pass
+
+**Source:** `Final_PixieGirl_Hub_Product_Description_v2_2__3_.html`
+(authoritative V2.2, full module-by-module audit)
+
+A complete conformance pass against the final V2.2 spec, organised into
+three buckets. Three architectural decisions were locked in first:
+RLS = full (Option A); E-signature = full workflow tables;
+Cash Request = shared table with `business` discriminator.
+
+### Bucket A — cheap spec mismatches
+
+- **A-1** `template/000035` — loyalty tier thresholds corrected to V2.2
+  values (0 / 500 / 2,000 / 5,000 lifetime points). Were 20× too high.
+- **A-2 / A-9** `000008`, `000015` — stylist tier dictionary
+  `shared.stylist_tier_keys` seeded Certified → Pro → Elite; comment on
+  `stylist_partners.current_tier_key` updated.
+- **A-3** `template/000034` — `fn_kpi_weights_sum_to_100` CONSTRAINT
+  TRIGGER (DEFERRABLE) blocks any active-KPI weight set that doesn't
+  total exactly 100. Live-tested: rejects a 5th KPI pushing the sum to 110.
+- **A-4** `template/000020` — POS `client_idempotency_key` + partial
+  UNIQUE index `(terminal_id, client_idempotency_key)` to stop
+  double-charge on network retry.
+- **A-5** `000010` — `shared.customer_wishlists` (contact_id, business,
+  soft-FK variant_id, snapshots, lifecycle) + GRANT to `hub_storefront`.
+- **A-6 / C-4** `000002`, `template/000019/000020/000022` — all
+  `strive_connect` references replaced with `opay` (Strive Connect is
+  not in V2.2).
+- **A-7** `template/000035` — Payment Processing Fees split into 9
+  per-gateway × per-currency COA sub-accounts (5510–5518).
+- **A-8** — verified cancellation defaults already correct (3 hr free /
+  50% custom non-refundable); no change.
+
+### Bucket B — missing spec features
+
+- **B-1** `000100_shared_cash_request.sql` — **NEW Module 6.32 Cash
+  Request & Disbursement.** Four shared tables (cash_requests +
+  state_history + documents + settlements), 8-state status pill, mandatory
+  `bank_transaction_id` at disbursement (CHECK), append-only state log via
+  trigger, CEO-threshold config in business_config. Live-tested the full
+  4-stage workflow PXG-CR-0001: pending_finance → pending_ceo → approved →
+  disbursed (correctly blocked without bank_transaction_id, succeeded with).
+- **B-2** `000002`, `template/000016/000019/000034` — installment payment
+  model. `payment_model` ('layaway' | 'deposit_triggered' |
+  'full_payment_only') on products + variant overrides; sales_orders
+  lifecycle fields (required_deposit_ngn, deposit_met_at, fully_paid_at,
+  abandoned_at, last_payment_at); sales_order_payments manual-transfer +
+  idempotency fields; `fn_sales_order_recompute_paid` rewritten to set the
+  sticky timestamps; `fn_validate_manual_payment` guard. Live-tested the
+  3-stage manual-payment gate.
+- **B-9** `000002` — `payment_gateway_fees` JSONB in business_config
+  (Paystack/Opay 1.5% capped ₦2k, Nomba 0.5%, Stripe 3.4%+$0.30 uncapped).
+- **B-3** `template/000036` — **Streak Stars.** earn_rules, tiers, ledger
+  (append-only), customer_streak_state (trigger-maintained). Tier ladder
+  Starlet → Rising Star → Shining Star → Supernova → Galaxy
+  (100/200/400/700★ → 10/15/20/25% lifetime discount). Live-tested
+  auto-promotion 50★ → 110★ (Rising Star) → 810★ (Galaxy 25%).
+- **B-4** `template/000036` — **Hair Quiz** ("Find your style"): quizzes,
+  questions, responses; links to a star-award rule + CRM lead capture.
+  Seeded a 5-question starter quiz.
+- **B-7** `template/000036` — storefront analytics: sessions, page_views,
+  funnel_events (view → ATC → checkout → complete).
+- **B-5** `template/000037` — **UGC pipeline + self-hosted video.**
+  media_assets (canonical self-hosted store) + ugc_ingestion_queue
+  (IG/TikTok capture → FFmpeg → moderation). `product_videos` migrated off
+  the embed model: source CHECK now only `direct_upload` / `ugc_ingested`,
+  `media_asset_id` NOT NULL FK, embed_url/external_ref deprecated.
+- **B-6** `template/000019` — Public Order Form: sales_channel CHECK
+  extended with public_form / facebook / tiktok / intercompany.
+- **B-8** `template/000037` — Curated Delivery Letter + Install QR Hub:
+  delivery_letter_templates (+ default seed with 7 layout blocks) and
+  delivery_letter_renders (QR reuses public_tracking_token).
+- **B-10** `000101_shared_esignature.sql` — **full e-signature workflow.**
+  signature_requests + signers (exactly-one-of user/contact/external CHECK)
+  + tamper-evident audit_events (append-only, hash-chained). documents gains
+  signing_state + frozen_at + a frozen-doc lock trigger.
+
+### Bucket C — architectural
+
+- **C-1** `000200_shared_rls.sql` — **Row-Level Security (Option A).**
+  `shared.current_business()` / `shared.current_user_id()` GUC helpers;
+  generator enables RLS + a `brand_isolation` policy on every shared table
+  with a `business` column (**63 policies**); custom dual-visibility policy
+  for intercompany (seller_brand OR buyer_brand); `pixie_app` role
+  (no BYPASSRLS). Live-tested: CEO/no-GUC sees both brands; per-brand
+  context sees only its own rows.
+- **C-2** `template/000038` — field-level privacy: 6 restricted views per
+  brand hiding cost_price / factory cost / salary; roles hub_full /
+  hub_basic / hub_payroll with a grant matrix that denies hub_basic the
+  base sensitive tables.
+- **C-3** `000202_shared_soft_fk_reconciliation.sql` — soft_fk_registry +
+  reconciliation_runs + findings + 2 helper functions; 8 critical
+  cross-schema soft-FK pairs registered for the nightly orphan sweep.
+
+### Net schema delta
+
+| Layer | Before | After |
+|---|---|---|
+| shared base tables | 107 | 119 |
+| pixiegirl base tables | 159 | 173 |
+| faitlynhair base tables | 159 | 173 |
+| **total base tables** | **425** | **465** |
+| restricted views / brand | 0 | 6 |
+| shared RLS policies | 0 | 63 |
+| soft-FK registrations | 0 | 8 |
+
+### App-layer follow-ups (TODO, documented not coded)
+
+- `withBrand(brand, fn)` helper in `src/config/database.js` that runs
+  `SET LOCAL app.current_business` per transaction.
+- Cron `src/jobs/schedulers/soft-fk-reconciliation.js` to call
+  `fn_soft_fk_reconciliation_start/finish`.
+- Cron for layaway abandonment + reminders (reads the B-2 partial index).
+- The signing UX (signature pad, PDF sealing) + UGC FFmpeg worker.
+- Set `pixie_app` LOGIN + password out-of-band; point the app's DB user
+  at it so RLS actually engages (superuser bypasses RLS).
+
+---
+
 ## 2026-05-26 — V2.2 alignment
 
 **Source:** `PixieGirl_Hub_Product_Description_V2__2_.html`
@@ -52,24 +171,24 @@ V2.2 added five concrete refinements over V2.1:
 
 ### Files edited in place
 
-| File                          | What changed                                                                                                                                                                                                                                                                                                                                            | Why                                                                                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `000003_shared_people.sql`    | `staff_profiles`: added probation*\*, annual_leave*_, public*holiday*_, special*event_days*_, non*solicit*_, dismissal_triggers_log                                                                                                                                                                                                                     | Module 6.11 — Faitlyn HR fields                                                                                              |
-| `000003_shared_people.sql`    | `staff_profiles`: added 2 partial indexes (probation ending, non-solicit active)                                                                                                                                                                                                                                                                        | Common HR queries from spec                                                                                                  |
-| `000003_shared_people.sql`    | `leave_requests`: extended `leave_type` CHECK to include `special_event_in_lieu`, `public_holiday`, `bereavement`                                                                                                                                                                                                                                       | Module 6.11 leave types                                                                                                      |
-| `000003_shared_people.sql`    | `org_positions`: added `reports_to_position_id` (solid-line FK), `is_deputy` flag, `deputy_capacities[]`, `approval_threshold_ngn`                                                                                                                                                                                                                      | Module 6.27 — deputy pattern + thresholds                                                                                    |
-| `000003_shared_people.sql`    | **NEW table** `org_position_dotted_lines`                                                                                                                                                                                                                                                                                                               | Module 6.27 — dotted-line reporting (info-only, never used for approval routing)                                             |
-| `000003_shared_people.sql`    | `workflow_definitions` comment: expanded JSON shape to document amount thresholds, deputy fallback, dotted-line non-routing                                                                                                                                                                                                                             | Module 6.27 — clarification for engineers                                                                                    |
-| `000012_shared_ai.sql`        | `ai_action_catalogue`: **removed inline `embedding vector(1536)` column**, added `title`, `entity_scope` (pxg/flh/both/any), `is_write` boolean; dropped `idx_ai_actions_embedding` (moves to new table)                                                                                                                                                | V2.2 §8.1 (embeddings in dedicated table) + §8.3 (entity_scope, is_write)                                                    |
-| `000012_shared_ai.sql`        | `ai_knowledge_chunks`: **removed inline `embedding vector(1536) NOT NULL`**; added `required_permissions[]`, `sensitivity`, `contains_field_tags[]`, `content_hash`; widened source_type CHECK to include `action_catalogue` and `action_example`                                                                                                       | V2.2 §8.4 (permission-scoped retrieval BEFORE similarity ranking) + §8.1 (dedicated embeddings table)                        |
-| `000012_shared_ai.sql`        | **NEW table** `shared.ai_embeddings` (the dedicated embeddings store) — soft FKs by `(source_table, source_id, source_sub_key)`, columns for `embedding_model`, `embedding_version`, `embedding_dim`, retained `source_text`, denormalised `business` + `required_permissions[]` + `sensitivity` for filter-before-rank, `is_stale` flag for migrations | V2.2 §8.1 ("a future move off vector(1536) becomes a controlled migration, with no data loss and no core-schema disruption") |
-| `000012_shared_ai.sql`        | **NEW table** `shared.ai_vendor_credentials` — encrypted multi-vendor API key store; cost tables (per-1k input/output tokens, per-audio-minute); per-vendor monthly caps                                                                                                                                                                                | V2.2 §8.1 ("three vendor keys, stored encrypted, CEO-controlled, AI Control meters per-vendor usage")                        |
-| `000012_shared_ai.sql`        | `ai_usage_ledger`: added `audio_seconds` column; clarified `provider` semantics                                                                                                                                                                                                                                                                         | V2.2 §8.1 (Groq Whisper bills per minute, needs separate tracking)                                                           |
-| `000012_shared_ai.sql`        | `ai_usage_daily`: added `vendor` to the unique key; added `audio_seconds` aggregate                                                                                                                                                                                                                                                                     | Per-vendor live spend meter on AI Control dashboard                                                                          |
-| `000014_shared_triggers.sql`  | `fn_ai_usage_rollup()` updated to include `vendor` and `audio_seconds` in the daily aggregate                                                                                                                                                                                                                                                           | Matches the schema change above                                                                                              |
-| `000015_shared_seed_data.sql` | Changed `praxis_voice` default_provider from `self_whisper` to `groq`, default_model unchanged                                                                                                                                                                                                                                                          | V2.2 §8.1 (Groq Whisper API replaces self-hosted)                                                                            |
-| `000015_shared_seed_data.sql` | Added 3 new feature flags: `insights_weekly_report`, `insights_service_match`, `embeddings`                                                                                                                                                                                                                                                             | Module 6.30 weekly report auto-gen; service-job anti-pocketing; embeddings as a costed feature                               |
-| `000015_shared_seed_data.sql` | Seeded `shared.ai_vendor_credentials` with the 3 launch vendors and current public per-token pricing                                                                                                                                                                                                                                                    | Bootstrap the multi-vendor metering                                                                                          |
+| File | What changed | Why |
+|---|---|---|
+| `000003_shared_people.sql` | `staff_profiles`: added probation_*, annual_leave_*, public_holiday_*, special_event_days_*, non_solicit_*, dismissal_triggers_log | Module 6.11 — Faitlyn HR fields |
+| `000003_shared_people.sql` | `staff_profiles`: added 2 partial indexes (probation ending, non-solicit active) | Common HR queries from spec |
+| `000003_shared_people.sql` | `leave_requests`: extended `leave_type` CHECK to include `special_event_in_lieu`, `public_holiday`, `bereavement` | Module 6.11 leave types |
+| `000003_shared_people.sql` | `org_positions`: added `reports_to_position_id` (solid-line FK), `is_deputy` flag, `deputy_capacities[]`, `approval_threshold_ngn` | Module 6.27 — deputy pattern + thresholds |
+| `000003_shared_people.sql` | **NEW table** `org_position_dotted_lines` | Module 6.27 — dotted-line reporting (info-only, never used for approval routing) |
+| `000003_shared_people.sql` | `workflow_definitions` comment: expanded JSON shape to document amount thresholds, deputy fallback, dotted-line non-routing | Module 6.27 — clarification for engineers |
+| `000012_shared_ai.sql` | `ai_action_catalogue`: **removed inline `embedding vector(1536)` column**, added `title`, `entity_scope` (pxg/flh/both/any), `is_write` boolean; dropped `idx_ai_actions_embedding` (moves to new table) | V2.2 §8.1 (embeddings in dedicated table) + §8.3 (entity_scope, is_write) |
+| `000012_shared_ai.sql` | `ai_knowledge_chunks`: **removed inline `embedding vector(1536) NOT NULL`**; added `required_permissions[]`, `sensitivity`, `contains_field_tags[]`, `content_hash`; widened source_type CHECK to include `action_catalogue` and `action_example` | V2.2 §8.4 (permission-scoped retrieval BEFORE similarity ranking) + §8.1 (dedicated embeddings table) |
+| `000012_shared_ai.sql` | **NEW table** `shared.ai_embeddings` (the dedicated embeddings store) — soft FKs by `(source_table, source_id, source_sub_key)`, columns for `embedding_model`, `embedding_version`, `embedding_dim`, retained `source_text`, denormalised `business` + `required_permissions[]` + `sensitivity` for filter-before-rank, `is_stale` flag for migrations | V2.2 §8.1 ("a future move off vector(1536) becomes a controlled migration, with no data loss and no core-schema disruption") |
+| `000012_shared_ai.sql` | **NEW table** `shared.ai_vendor_credentials` — encrypted multi-vendor API key store; cost tables (per-1k input/output tokens, per-audio-minute); per-vendor monthly caps | V2.2 §8.1 ("three vendor keys, stored encrypted, CEO-controlled, AI Control meters per-vendor usage") |
+| `000012_shared_ai.sql` | `ai_usage_ledger`: added `audio_seconds` column; clarified `provider` semantics | V2.2 §8.1 (Groq Whisper bills per minute, needs separate tracking) |
+| `000012_shared_ai.sql` | `ai_usage_daily`: added `vendor` to the unique key; added `audio_seconds` aggregate | Per-vendor live spend meter on AI Control dashboard |
+| `000014_shared_triggers.sql` | `fn_ai_usage_rollup()` updated to include `vendor` and `audio_seconds` in the daily aggregate | Matches the schema change above |
+| `000015_shared_seed_data.sql` | Changed `praxis_voice` default_provider from `self_whisper` to `groq`, default_model unchanged | V2.2 §8.1 (Groq Whisper API replaces self-hosted) |
+| `000015_shared_seed_data.sql` | Added 3 new feature flags: `insights_weekly_report`, `insights_service_match`, `embeddings` | Module 6.30 weekly report auto-gen; service-job anti-pocketing; embeddings as a costed feature |
+| `000015_shared_seed_data.sql` | Seeded `shared.ai_vendor_credentials` with the 3 launch vendors and current public per-token pricing | Bootstrap the multi-vendor metering |
 
 ### Schema-wide impact summary
 
@@ -103,7 +222,6 @@ These are planned for the per-business template build, not patches.
 
 All 16 shared migrations apply cleanly with `ON_ERROR_STOP=1` against
 PostgreSQL 16 + pgvector 0.6. End-to-end test confirms:
-
 - Embedding model versioning (two versions side-by-side, stale flag)
 - Permission-scoped retrieval (array containment filter before
   vector similarity)
@@ -117,116 +235,3 @@ PostgreSQL 16 + pgvector 0.6. End-to-end test confirms:
 
 Initial 15-file migration set built. See the per-file headers for
 scope. No prior changelog entries.
-
----
-
-## 2026-05-27 — Per-business templates complete (16-35)
-
-All 20 per-business template files added. Each is substituted with
-`{{BUSINESS}}` → brand-key by `scripts/bootstrapBusiness.js`.
-
-| File   | Tables | Purpose                                                                                                                                                                                                                    |
-| ------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 000016 | 10     | Catalogue (products, variants, categories, collections, images, videos, SEO)                                                                                                                                               |
-| 000017 | 10     | Stock SSOT (locations, movements, levels, reservations, alerts, adjustments, transfers, inbound shipments)                                                                                                                 |
-| 000018 | 11     | CRM (pipelines, stages, deals + history, activities, notes, preferences, measurements, churn, milestones)                                                                                                                  |
-| 000019 | 12     | Sales + sales campaigns (quotations, sales orders, payments, cancellations, campaigns + landing pages)                                                                                                                     |
-| 000020 | 8      | POS (terminals, sessions, transactions, splits, drops, voids, summaries)                                                                                                                                                   |
-| 000021 | 7      | Invoicing (invoices, lines, payments, reminders, credit notes, receipts)                                                                                                                                                   |
-| 000022 | 13     | Accounting (COA, journals, bank rec, fiscal periods, FX reval, tax filings)                                                                                                                                                |
-| 000023 | 7      | Expenses (categories, advances, expenses, lines, receipts, approvals)                                                                                                                                                      |
-| 000024 | 14     | Purchasing (suppliers, RFQs, POs, GRNs, supplier invoices, three-way match)                                                                                                                                                |
-| 000025 | 11     | Production + Service Job Tracker (runs, units, costs, landed cost, service jobs, recipes, reconciliations)                                                                                                                 |
-| 000026 | 9      | Pricing Engine (rules, floors, scenarios, proposals, history, overrides, pass-through layers)                                                                                                                              |
-| 000027 | 13     | Payroll + V2.2 weighted performance appraisal                                                                                                                                                                              |
-| 000028 | 8      | Logistics (couriers, deliveries, attempts, proofs, webhooks, POD)                                                                                                                                                          |
-| 000029 | 6      | Retail Partners (partners, consignment, settlements)                                                                                                                                                                       |
-| 000030 | 6      | Email Campaigns (templates, milestones, campaigns + variants + recipients + events)                                                                                                                                        |
-| 000031 | 6      | Retention Bundles (bundles, maintenance plans, workflow rules + executions)                                                                                                                                                |
-| 000032 | 6      | Dashboards + V2.2 weekly auto-reports                                                                                                                                                                                      |
-| 000033 | —      | Cross-table performance indexes (29)                                                                                                                                                                                       |
-| 000034 | —      | Triggers (stock levels, journal balance, journal immutability, invoice/order payment recompute, state history, production roll-up, service job auto-task, document numbering helper)                                       |
-| 000035 | —      | Per-brand seed: document numbering, COA, fiscal periods, pipeline, service types, KPIs (40/25/20/15), payroll deductions, locations, expense categories, couriers, email templates, dashboard widgets, V2.2 weekly reports |
-
-### Validation
-
-Full apply cycle tested end-to-end on PostgreSQL 16 + pgvector 0.6:
-
-- 104 shared tables apply cleanly with ON_ERROR_STOP=1
-- Both `pixiegirl` and `faitlynhair` schemas provision identically:
-  - 158 tables per brand
-  - 37 document numbering sequences per brand
-  - 87 chart-of-accounts rows
-  - 13 fiscal periods (12 monthly + period 13)
-  - 5 service types with V2.2 cost + turnaround
-  - 4 performance KPIs with weights summing to exactly 100
-  - 7 default pipeline stages
-  - 4 starter couriers, 12 expense categories, 5 email templates,
-    8 dashboard widgets, 2 V2.2 weekly auto-reports
-
-**Total tables across the system: 420 (104 shared + 2 × 158 per brand).**
-
-### V2.2 compliance verified
-
-- ✅ FLH-INV-0001 / PXG-INV-0001 document prefix pattern enforced
-- ✅ Service Job Tracker (§6.24) exists in both brand schemas
-- ✅ Anti-pocketing partial index on completed jobs with no sale linkage
-- ✅ `commission_earned.sale_channel` tracking Instagram/Website/WhatsApp/Walk-in (§6.11)
-- ✅ Weighted performance KPIs at 40/25/20/15 (§6.11)
-- ✅ Saturday 8 PM weekly Sales + Customer auto-reports (§6.30)
-- ✅ Inter-company linkage on sales_orders, invoices, journal_entries, service_jobs
-
----
-
-## 2026-05-27 — Schema Audit amendments (Option A: in-place edits)
-
-Independent audit confirmed 7 of the 7 gaps + 4 implicit risks identified in
-`PixieGirl_Hub_Schema_Audit.md`. All amendments applied in place; no
-forward-only patch migrations. Schema re-validated end-to-end.
-
-### Amendments
-
-| ID    | Severity | Where                                | Change                                                                                                                                                                                                                                                                      |
-| ----- | -------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | High     | `template/000016`                    | Added `{{BUSINESS}}.storefront_content_posts` for blog / FAQ / Wig Care Guide / lookbook / press posts. Multi-type content stream with SEO fields, structured-data extras, linked products, scheduled publishing                                                            |
-| **2** | High     | `template/000016`                    | Added `channel_external_ids JSONB` + `channel_sync_state JSONB` on `product_variants`. GIN index `idx_{{BUSINESS}}_variants_channel_external_ids` for reverse lookup (WooCommerce / Jumia / Amazon bidirectional sync)                                                      |
-| **3** | Medium   | `000015`                             | Added `shared.permission_module_keys` Tier-2 reference table seeded with 36 canonical module keys including the previously-missing `'org_workflow'`                                                                                                                         |
-| **4** | Medium   | `000012`                             | Added `shared.ai_insight_service_match` table (the seventh Tier-1 insight). Closes the gap where the `insights_service_match` feature flag pointed at no table. Supports 4 alert types: `no_sale_linked`, `no_payment_received`, `no_intercompany_match`, `amount_mismatch` |
-| **5** | Low      | —                                    | No change needed. The audit's expected `is_excluded BOOLEAN` already exists as `include_exclude TEXT CHECK (IN ('include','exclude'))` on `sales_campaign_products`. Same semantics; alternative naming. Flagging for backend/frontend awareness.                           |
-| **6** | Low      | `template/000031`                    | Extended `retention_workflow_rules.trigger_type` CHECK with `abandoned_cart`, `subscription_renewal_reminder`, `reorder_reminder`, `win_back`. All 8 V2.2 §6.23 automation types now covered (with the prior `cart_abandoned` and `subscription_renewal` kept as aliases)   |
-| **7** | Low      | `template/000025`, `template/000034` | Added `port_storage` to `cost_components.cost_type` CHECK list. Updated the production-runs roll-up trigger in template 34 to bucket port_storage into `total_customs_ngn`                                                                                                  |
-
-### Implicit risks resolved
-
-| ID             | Where              | Change                                                                                                                                                                                                                                           |
-| -------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Implicit-1** | `template/000027`  | Added `last_auto_scored_at`, `last_auto_score_attempt_at`, `last_auto_score_status`, `last_auto_score_error` to `performance_scores`. Auto-score job staleness now detectable from the DB                                                        |
-| **Implicit-2** | `000010`, `000015` | Added `shared.timeline_event_codes` canonical dictionary table + 23 seeded standard codes. `order_timeline_events.event_code` now FK-references the dictionary (RESTRICT delete). Prevents "Weaving in Progress" vs "Wig Weaving" type fractures |
-| **Implicit-3** | `template/000035`  | Added NSITF row to per-brand `payroll_deductions` seed (1% of payroll, employer obligation per NSITF Act 2010). The CHECK already permitted it; just no seed                                                                                     |
-| **Implicit-4** | `000009`           | Made `intercompany_transactions.min_margin_floor_pct` NOT NULL. Investor-protection floor can no longer silently disappear if `business_config.intercompany_settings` wasn't pre-configured                                                      |
-
-### Validation
-
-Full re-build after amendments:
-
-| Layer            | Before  | After                                                                               |
-| ---------------- | ------- | ----------------------------------------------------------------------------------- |
-| Shared tables    | 104     | **107** (+ai_insight_service_match, +timeline_event_codes, +permission_module_keys) |
-| Per-brand tables | 158     | **159** (+storefront_content_posts)                                                 |
-| **Total**        | **420** | **425**                                                                             |
-
-All migrations apply cleanly with `ON_ERROR_STOP=1`. Both `pixiegirl` and
-`faitlynhair` schemas provision identically. All V2.2 invariants still
-verified.
-
-### Frontend / Backend implications
-
-- **Backend team**: 3 new shared tables and 1 new per-brand table need
-  CRUD endpoints. `permission_module_keys` is now the canonical source of
-  truth for the admin permission matrix UI. `timeline_event_codes` is a
-  Tier-1 admin table — owner can extend the customer-facing timeline
-  vocabulary without code changes.
-- **Frontend team**: New screens needed for (a) Content Posts editor in
-  Storefront Studio, (b) Order Timeline Vocabulary editor in Storefront
-  Studio settings, (c) Service Match Insights inbox under AI Insights,
-  (d) WooCommerce sync status indicator on product variants.

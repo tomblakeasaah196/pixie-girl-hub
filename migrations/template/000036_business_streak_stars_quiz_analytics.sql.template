@@ -1,0 +1,570 @@
+-- ============================================================
+-- TEMPLATE 000036 — Per-business Streak Stars + Hair Quiz + Analytics
+-- Pixie Girl Hub · JBS Praxis · Conformance pass V2.2
+--
+-- B-3: STREAK STARS (V2.2 §6.23) — the gamified loyalty layer.
+--   Per-customer ✨ stars balance; tier-based lifetime discount.
+--   All thresholds + earn rules CEO-configurable (no hardcoding).
+--   Spec defaults: Rising Star (100-199★→10%), Shining Star (200-399★→15%),
+--                  Supernova (400-700★→20%), Galaxy (700★+→25%).
+--   Margin guardrail: discount governed by Pricing engine min-margin floor.
+--
+-- B-4: HAIR QUIZ (V2.2 §6.23) — "Find your style"
+--   Storefront quiz → product recommendations → CRM lead capture + Star award.
+--
+-- B-7: STOREFRONT ANALYTICS — visitor sessions / page views / funnel events
+--   (V2.2 §6.4 part 7 — "all data flows into Dashboards")
+--
+-- Tables (per-brand):
+--   streak_star_earn_rules         — CEO-configurable earn-actions
+--   streak_star_tiers              — CEO-configurable tier ladder
+--   streak_star_ledger             — append-only ★ transactions
+--   customer_streak_state          — current balance + tier (trigger-maintained)
+--   hair_quizzes                   — quiz schemas
+--   hair_quiz_questions            — question bank
+--   hair_quiz_responses            — visitor responses
+--   storefront_sessions            — visitor sessions
+--   storefront_page_views          — per-page hits
+--   storefront_funnel_events       — view→ATC→checkout→complete events
+-- ============================================================
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ STREAK STARS — EARN RULES (B-3)                                    ║
+-- ║ CEO configures via the Retention admin. Each row is one earn       ║
+-- ║ action: rule_key, ★ value, frequency cap. Spec mandates all values ║
+-- ║ are editable; no hardcoded numbers.                                ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.streak_star_earn_rules (
+  rule_id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  rule_key              TEXT        NOT NULL UNIQUE,
+  display_name          TEXT        NOT NULL,
+  description           TEXT,
+  -- Earn-action types match V2.2 §6.23 page
+  action_type           TEXT        NOT NULL
+                        CHECK (action_type IN (
+                          'refer_friend_purchase',  -- friend referral that converts
+                          'money_spent',            -- per-unit currency spent (typically 1★ per ₦1k or per unit USD)
+                          'newsletter_subscribe',
+                          'account_create',
+                          'add_birthday',
+                          'leave_review',
+                          'social_follow',          -- with social_platform metadata
+                          'ugc_upload',             -- styled video/photo passes moderation
+                          'hair_quiz_complete',
+                          'first_order',
+                          'order_milestone',        -- e.g. 5th order
+                          'subscription_renew',
+                          'manual'                  -- CEO adjustment
+                        )),
+  -- Star value
+  star_value            INTEGER     NOT NULL CHECK (star_value > 0),
+  -- For money_spent: how much currency = 1★ (default ₦1000 per ★)
+  unit_currency_per_star NUMERIC(14,2),
+  -- For social_follow: which platform (instagram/tiktok/x)
+  social_platform       TEXT        CHECK (social_platform IN ('instagram','tiktok','x','facebook','youtube',NULL)),
+  -- Frequency caps (anti-abuse)
+  max_awards_per_customer_lifetime INTEGER,
+  max_awards_per_customer_per_year INTEGER,
+  max_awards_per_customer_per_month INTEGER,
+  -- Eligibility filters (JSONB criteria — segment, first-time-only, etc.)
+  eligibility_criteria  JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  -- Tier-level lock: e.g. UGC upload only awards stars for Galaxy aspirants
+  required_minimum_tier_key TEXT,
+  -- Lifecycle
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  display_order         SMALLINT    NOT NULL DEFAULT 0,
+  -- Audit
+  created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  approved_by           UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  approved_at           TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_streak_star_earn_rules_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.streak_star_earn_rules
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX idx_{{BUSINESS}}_streak_earn_rules_active
+  ON {{BUSINESS}}.streak_star_earn_rules (action_type) WHERE is_active = true;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ STREAK STAR TIERS — the ladder (B-3)                               ║
+-- ║ CEO-configurable thresholds + lifetime discount percentages.       ║
+-- ║ Spec defaults seeded in template/000035.                           ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.streak_star_tiers (
+  tier_id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tier_key              TEXT        NOT NULL UNIQUE,
+  display_name          TEXT        NOT NULL,
+  description           TEXT,
+  -- Star range
+  min_stars             INTEGER     NOT NULL CHECK (min_stars >= 0),
+  max_stars             INTEGER,                                 -- NULL = open-ended (top tier)
+  display_order         SMALLINT    NOT NULL,
+  -- Lifetime discount percentage (CEO sets; bounded by pricing-engine min-margin floor)
+  lifetime_discount_pct NUMERIC(5,2) NOT NULL CHECK (lifetime_discount_pct BETWEEN 0 AND 100),
+  -- Stack policy — does the lifetime discount apply on top of sale-campaign discounts?
+  stacks_on_sale_items  BOOLEAN     NOT NULL DEFAULT false,
+  -- Visual / storefront
+  badge_image_url       TEXT,
+  badge_colour_hex      TEXT,
+  -- Audit
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT streak_tier_range_valid CHECK (max_stars IS NULL OR max_stars > min_stars)
+);
+CREATE TRIGGER trg_{{BUSINESS}}_streak_star_tiers_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.streak_star_tiers
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE UNIQUE INDEX idx_{{BUSINESS}}_streak_tier_order
+  ON {{BUSINESS}}.streak_star_tiers (display_order) WHERE is_active = true;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ STREAK STAR LEDGER (B-3) — append-only ★ transactions              ║
+-- ║ Every earn/expire/manual-adjust gets a row. Balance is computed    ║
+-- ║ from the ledger (see customer_streak_state).                       ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.streak_star_ledger (
+  entry_id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Customer (soft FK to shared.contacts; cross-brand customers may exist)
+  contact_id            UUID        NOT NULL REFERENCES shared.contacts (contact_id) ON DELETE RESTRICT,
+  -- Transaction type
+  transaction_type      TEXT        NOT NULL
+                        CHECK (transaction_type IN ('earn','adjust_credit','adjust_debit','expire','manual_revoke')),
+  stars                 INTEGER     NOT NULL,                  -- signed; positive=earn, negative=expire/revoke
+  -- Source of the earn (rule_id or NULL for manual)
+  earn_rule_id          UUID        REFERENCES {{BUSINESS}}.streak_star_earn_rules (rule_id) ON DELETE SET NULL,
+  earn_action_type      TEXT,                                  -- snapshot in case rule is later edited/deleted
+  -- Reference to the source event (order, review, social follow, etc.)
+  reference_type        TEXT,                                  -- 'sales_order','review','social_account','hair_quiz_response','manual'
+  reference_id          UUID,
+  -- Description / note shown to customer
+  description           TEXT,
+  -- Audit
+  awarded_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  occurred_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Sequence-anchored for replay
+  ledger_sequence       BIGSERIAL   UNIQUE
+);
+CREATE INDEX idx_{{BUSINESS}}_streak_ledger_contact
+  ON {{BUSINESS}}.streak_star_ledger (contact_id, occurred_at DESC);
+CREATE INDEX idx_{{BUSINESS}}_streak_ledger_rule
+  ON {{BUSINESS}}.streak_star_ledger (earn_rule_id, occurred_at DESC)
+  WHERE earn_rule_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_streak_ledger_reference
+  ON {{BUSINESS}}.streak_star_ledger (reference_type, reference_id)
+  WHERE reference_id IS NOT NULL;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ CUSTOMER STREAK STATE (B-3) — current balance + current tier       ║
+-- ║ Maintained by trigger on the ledger. Read-fast for storefront.     ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.customer_streak_state (
+  state_id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id            UUID        NOT NULL UNIQUE REFERENCES shared.contacts (contact_id) ON DELETE CASCADE,
+  current_stars         INTEGER     NOT NULL DEFAULT 0,
+  lifetime_earned       INTEGER     NOT NULL DEFAULT 0,
+  current_tier_id       UUID        REFERENCES {{BUSINESS}}.streak_star_tiers (tier_id) ON DELETE SET NULL,
+  -- Snapshot of stars-to-next-tier (helps Insights nudges: "30★ to Supernova")
+  stars_to_next_tier    INTEGER,
+  next_tier_id          UUID        REFERENCES {{BUSINESS}}.streak_star_tiers (tier_id) ON DELETE SET NULL,
+  last_earn_at          TIMESTAMPTZ,
+  last_tier_promotion_at TIMESTAMPTZ,
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_{{BUSINESS}}_customer_streak_state_tier
+  ON {{BUSINESS}}.customer_streak_state (current_tier_id);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ STREAK STATE RECOMPUTE TRIGGER (B-3)                               ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_streak_state_recompute()
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_contact_id    UUID;
+  v_current_stars INTEGER;
+  v_lifetime      INTEGER;
+  v_tier_id       UUID;
+  v_next_tier_id  UUID;
+  v_to_next       INTEGER;
+  v_current_tier_min INTEGER;
+  v_next_tier_min INTEGER;
+  v_old_tier_id   UUID;
+BEGIN
+  v_contact_id := COALESCE(NEW.contact_id, OLD.contact_id);
+
+  -- Read existing tier for promotion detection
+  SELECT current_tier_id INTO v_old_tier_id
+    FROM {{BUSINESS}}.customer_streak_state
+   WHERE contact_id = v_contact_id;
+
+  -- Compute current balance and lifetime earned
+  SELECT
+    COALESCE(SUM(stars), 0),
+    COALESCE(SUM(stars) FILTER (WHERE stars > 0), 0)
+  INTO v_current_stars, v_lifetime
+  FROM {{BUSINESS}}.streak_star_ledger
+  WHERE contact_id = v_contact_id;
+
+  -- Determine current tier (highest tier where min_stars <= current_stars,
+  -- and current_stars < next tier's min_stars OR no next tier)
+  SELECT tier_id, min_stars INTO v_tier_id, v_current_tier_min
+    FROM {{BUSINESS}}.streak_star_tiers
+   WHERE is_active = true AND min_stars <= v_current_stars
+   ORDER BY display_order DESC LIMIT 1;
+
+  -- Determine next tier (lowest tier above current)
+  SELECT tier_id, min_stars INTO v_next_tier_id, v_next_tier_min
+    FROM {{BUSINESS}}.streak_star_tiers
+   WHERE is_active = true AND min_stars > v_current_stars
+   ORDER BY display_order ASC LIMIT 1;
+
+  v_to_next := CASE
+    WHEN v_next_tier_min IS NULL THEN NULL
+    ELSE GREATEST(0, v_next_tier_min - v_current_stars)
+  END;
+
+  INSERT INTO {{BUSINESS}}.customer_streak_state
+    (contact_id, current_stars, lifetime_earned, current_tier_id,
+     next_tier_id, stars_to_next_tier, last_earn_at,
+     last_tier_promotion_at, updated_at)
+  VALUES
+    (v_contact_id, v_current_stars, v_lifetime, v_tier_id,
+     v_next_tier_id, v_to_next, COALESCE(NEW.occurred_at, now()),
+     CASE WHEN v_tier_id IS DISTINCT FROM v_old_tier_id THEN now() ELSE NULL END,
+     now())
+  ON CONFLICT (contact_id) DO UPDATE
+    SET current_stars         = EXCLUDED.current_stars,
+        lifetime_earned       = EXCLUDED.lifetime_earned,
+        current_tier_id       = EXCLUDED.current_tier_id,
+        next_tier_id          = EXCLUDED.next_tier_id,
+        stars_to_next_tier    = EXCLUDED.stars_to_next_tier,
+        last_earn_at          = EXCLUDED.last_earn_at,
+        last_tier_promotion_at = CASE
+          WHEN {{BUSINESS}}.customer_streak_state.current_tier_id IS DISTINCT FROM EXCLUDED.current_tier_id
+            THEN now()
+          ELSE {{BUSINESS}}.customer_streak_state.last_tier_promotion_at
+        END,
+        updated_at            = now();
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+CREATE TRIGGER trg_{{BUSINESS}}_streak_state_recompute
+  AFTER INSERT OR UPDATE OR DELETE ON {{BUSINESS}}.streak_star_ledger
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_streak_state_recompute();
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ HAIR QUIZ (B-4) — "Find your style"                                ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.hair_quizzes (
+  quiz_id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  quiz_key              TEXT        NOT NULL UNIQUE,            -- 'find_your_style'
+  display_name          TEXT        NOT NULL,
+  description           TEXT,
+  -- Storefront placement
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  storefront_url_slug   TEXT,                                   -- '/quiz/find-your-style'
+  -- Star award on completion (links to earn rule)
+  award_stars_rule_id   UUID        REFERENCES {{BUSINESS}}.streak_star_earn_rules (rule_id) ON DELETE SET NULL,
+  -- Whether finishing the quiz captures a CRM lead
+  creates_crm_lead      BOOLEAN     NOT NULL DEFAULT true,
+  -- Stage assignment for created leads
+  default_lead_stage_id UUID,                                   -- soft FK to crm_pipeline_stages
+  -- Visual / display
+  hero_image_url        TEXT,
+  cta_label             TEXT        NOT NULL DEFAULT 'Find your style',
+  completion_message    TEXT,
+  -- Audit
+  created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_hair_quizzes_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.hair_quizzes
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+CREATE TABLE {{BUSINESS}}.hair_quiz_questions (
+  question_id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  quiz_id               UUID        NOT NULL REFERENCES {{BUSINESS}}.hair_quizzes (quiz_id) ON DELETE CASCADE,
+  question_key          TEXT        NOT NULL,
+  question_text         TEXT        NOT NULL,
+  question_type         TEXT        NOT NULL
+                        CHECK (question_type IN ('single_choice','multi_choice','number','text','image_choice')),
+  -- For choice questions: list of options
+  -- [{"value":"oval","label":"Oval","image_url":"..."},
+  --  {"value":"round","label":"Round","image_url":"..."}]
+  options               JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  is_required           BOOLEAN     NOT NULL DEFAULT true,
+  display_order         SMALLINT    NOT NULL,
+  -- Recommendation hints: how this question's answer drives product matching
+  -- (used by the recommender — interpreted server-side)
+  recommendation_weights JSONB      NOT NULL DEFAULT '{}'::jsonb,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (quiz_id, question_key)
+);
+CREATE INDEX idx_{{BUSINESS}}_hair_quiz_questions_order
+  ON {{BUSINESS}}.hair_quiz_questions (quiz_id, display_order);
+
+CREATE TABLE {{BUSINESS}}.hair_quiz_responses (
+  response_id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  quiz_id               UUID        NOT NULL REFERENCES {{BUSINESS}}.hair_quizzes (quiz_id) ON DELETE CASCADE,
+  -- The visitor's session (so anonymous responses can later be merged
+  -- with a contact when they sign up / order)
+  storefront_session_id UUID,                                   -- soft FK to storefront_sessions
+  -- If they create an account / are logged in, link the contact
+  contact_id            UUID        REFERENCES shared.contacts (contact_id) ON DELETE SET NULL,
+  -- Capture details for lead creation
+  visitor_email         CITEXT,
+  visitor_first_name    TEXT,
+  visitor_phone         TEXT,
+  -- Full answer payload
+  -- {"face_shape":"oval","length_preference":"long","occasion":"daily","budget":"500-1000"}
+  answers               JSONB       NOT NULL,
+  -- Recommendations produced (variant_ids sorted by score)
+  recommended_variant_ids UUID[]    NOT NULL DEFAULT '{}',
+  -- Did this response convert?
+  converted_order_id    UUID,                                   -- soft FK to sales_orders
+  -- CRM linkage
+  crm_deal_id           UUID,                                   -- soft FK to crm_deals
+  -- Star award traceability
+  stars_awarded         INTEGER,
+  stars_ledger_entry_id UUID,                                   -- soft FK to streak_star_ledger
+  -- Audit
+  started_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at          TIMESTAMPTZ,
+  -- Tech context
+  ip_address            INET,
+  user_agent            TEXT,
+  -- UTM
+  utm_source            TEXT,
+  utm_medium            TEXT,
+  utm_campaign          TEXT
+);
+CREATE INDEX idx_{{BUSINESS}}_hair_quiz_responses_quiz
+  ON {{BUSINESS}}.hair_quiz_responses (quiz_id, completed_at DESC);
+CREATE INDEX idx_{{BUSINESS}}_hair_quiz_responses_contact
+  ON {{BUSINESS}}.hair_quiz_responses (contact_id) WHERE contact_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_hair_quiz_responses_email
+  ON {{BUSINESS}}.hair_quiz_responses (visitor_email) WHERE visitor_email IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_hair_quiz_responses_converted
+  ON {{BUSINESS}}.hair_quiz_responses (converted_order_id) WHERE converted_order_id IS NOT NULL;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ STOREFRONT ANALYTICS (B-7)                                         ║
+-- ║ "Owned analytics — no third-party trackers." V2.2 §6.4 part 7.    ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.storefront_sessions (
+  session_id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Anonymous visitor ID (browser-side cookie; survives across sessions)
+  visitor_id            TEXT        NOT NULL,
+  -- Logged-in contact (if any) — promoted later if visitor signs in
+  contact_id            UUID        REFERENCES shared.contacts (contact_id) ON DELETE SET NULL,
+  -- Acquisition
+  referrer              TEXT,
+  utm_source            TEXT,
+  utm_medium            TEXT,
+  utm_campaign          TEXT,
+  utm_content           TEXT,
+  utm_term              TEXT,
+  -- Geo / locale
+  country_code          CHAR(2),
+  region                TEXT,
+  city                  TEXT,
+  detected_currency     TEXT        REFERENCES shared.currencies (currency_code),
+  -- Device
+  device_type           TEXT        CHECK (device_type IN ('desktop','mobile','tablet','bot','unknown',NULL)),
+  os                    TEXT,
+  browser               TEXT,
+  user_agent            TEXT,
+  -- Conversion linkage
+  converted_order_id    UUID,                                   -- soft FK to sales_orders
+  conversion_value_ngn  NUMERIC(14,2),
+  -- Timeline
+  started_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ended_at              TIMESTAMPTZ,
+  duration_seconds      INTEGER,
+  page_count            INTEGER     NOT NULL DEFAULT 0,
+  -- Identifying info from cart
+  cart_id               UUID,                                   -- soft FK to shared.carts
+  ip_address            INET
+);
+CREATE INDEX idx_{{BUSINESS}}_storefront_sessions_visitor
+  ON {{BUSINESS}}.storefront_sessions (visitor_id, started_at DESC);
+CREATE INDEX idx_{{BUSINESS}}_storefront_sessions_contact
+  ON {{BUSINESS}}.storefront_sessions (contact_id, started_at DESC)
+  WHERE contact_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_storefront_sessions_utm
+  ON {{BUSINESS}}.storefront_sessions (utm_source, utm_campaign, started_at DESC)
+  WHERE utm_source IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_storefront_sessions_converted
+  ON {{BUSINESS}}.storefront_sessions (converted_order_id) WHERE converted_order_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_storefront_sessions_country_day
+  ON {{BUSINESS}}.storefront_sessions (country_code, started_at);
+
+CREATE TABLE {{BUSINESS}}.storefront_page_views (
+  page_view_id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id            UUID        NOT NULL REFERENCES {{BUSINESS}}.storefront_sessions (session_id) ON DELETE CASCADE,
+  -- What was viewed
+  page_url              TEXT        NOT NULL,
+  page_type             TEXT        NOT NULL
+                        CHECK (page_type IN ('home','category','product','collection','content_post','cart',
+                                             'checkout','order_confirm','account','quiz','search','custom')),
+  -- For product / category pages: the entity
+  product_id            UUID,                                   -- soft FK to products
+  variant_id            UUID,                                   -- soft FK to product_variants
+  category_id           UUID,                                   -- soft FK to product_categories
+  collection_id         UUID,                                   -- soft FK to product_collections
+  content_post_id       UUID,                                   -- soft FK to storefront_content_posts
+  -- Engagement
+  time_on_page_seconds  INTEGER,
+  scroll_depth_pct      SMALLINT    CHECK (scroll_depth_pct BETWEEN 0 AND 100),
+  -- Timestamp
+  viewed_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_{{BUSINESS}}_storefront_page_views_session
+  ON {{BUSINESS}}.storefront_page_views (session_id, viewed_at);
+CREATE INDEX idx_{{BUSINESS}}_storefront_page_views_product
+  ON {{BUSINESS}}.storefront_page_views (product_id, viewed_at)
+  WHERE product_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_storefront_page_views_type_day
+  ON {{BUSINESS}}.storefront_page_views (page_type, viewed_at);
+
+CREATE TABLE {{BUSINESS}}.storefront_funnel_events (
+  event_id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id            UUID        NOT NULL REFERENCES {{BUSINESS}}.storefront_sessions (session_id) ON DELETE CASCADE,
+  event_type            TEXT        NOT NULL
+                        CHECK (event_type IN (
+                          'view_product',
+                          'add_to_cart',
+                          'remove_from_cart',
+                          'view_cart',
+                          'start_checkout',
+                          'submit_address',
+                          'select_payment',
+                          'submit_payment',
+                          'payment_succeeded',
+                          'payment_failed',
+                          'complete_order',
+                          'abandon_checkout',
+                          'add_to_wishlist',
+                          'quiz_started',
+                          'quiz_completed'
+                        )),
+  -- Anchor entities (any may be NULL depending on event_type)
+  variant_id            UUID,                                   -- soft FK
+  cart_id               UUID,                                   -- soft FK
+  order_id              UUID,                                   -- soft FK
+  -- Money snapshot (in NGN; for revenue-side events)
+  value_ngn             NUMERIC(14,2),
+  -- Free-form metadata
+  metadata              JSONB,
+  occurred_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_{{BUSINESS}}_funnel_events_session
+  ON {{BUSINESS}}.storefront_funnel_events (session_id, occurred_at);
+CREATE INDEX idx_{{BUSINESS}}_funnel_events_type_day
+  ON {{BUSINESS}}.storefront_funnel_events (event_type, occurred_at);
+CREATE INDEX idx_{{BUSINESS}}_funnel_events_variant
+  ON {{BUSINESS}}.storefront_funnel_events (variant_id, event_type, occurred_at)
+  WHERE variant_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_funnel_events_order
+  ON {{BUSINESS}}.storefront_funnel_events (order_id) WHERE order_id IS NOT NULL;
+
+-- ============================================================
+-- After 000036: 10 new per-brand tables
+--   B-3: streak_star_earn_rules, streak_star_tiers,
+--        streak_star_ledger, customer_streak_state (4)
+--   B-4: hair_quizzes, hair_quiz_questions, hair_quiz_responses (3)
+--   B-7: storefront_sessions, storefront_page_views,
+--        storefront_funnel_events (3)
+-- ============================================================
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ SEEDS — V2.2 §6.23 defaults                                        ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+-- Streak Star tiers
+INSERT INTO {{BUSINESS}}.streak_star_tiers
+  (tier_key, display_name, description, min_stars, max_stars, display_order,
+   lifetime_discount_pct, stacks_on_sale_items) VALUES
+  ('starlet',      'Starlet',      'No discount yet — just getting started',           0,    99,   1, 0.00,  false),
+  ('rising_star',  'Rising Star',  'Lifetime 10% off — keep earning to level up',     100,  199,  2, 10.00, false),
+  ('shining_star', 'Shining Star', 'Lifetime 15% off',                                 200,  399,  3, 15.00, false),
+  ('supernova',    'Supernova',    'Lifetime 20% off',                                 400,  699,  4, 20.00, false),
+  ('galaxy',       'Galaxy',       'Lifetime 25% off — top of the programme',          700,  NULL, 5, 25.00, false);
+
+-- Streak Star earn rules
+INSERT INTO {{BUSINESS}}.streak_star_earn_rules
+  (rule_key, display_name, description, action_type, star_value,
+   unit_currency_per_star, social_platform,
+   max_awards_per_customer_lifetime, max_awards_per_customer_per_year,
+   display_order, is_active) VALUES
+  ('refer_friend_50',         'Refer a friend who buys',           'Get 50★ when a referred friend places their first order',
+                                       'refer_friend_purchase',    50,  NULL, NULL,        NULL, NULL, 10,  true),
+  ('money_spent_per_1000',    'Money spent (per ₦1,000)',          '1★ per ₦1,000 spent on any paid order',
+                                       'money_spent',              1,   1000, NULL,        NULL, NULL, 20,  true),
+  ('newsletter_subscribe_50', 'Subscribe to newsletter',           '50★ when you opt in to the newsletter',
+                                       'newsletter_subscribe',     50,  NULL, NULL,        1,    NULL, 30,  true),
+  ('create_account_10',       'Create an account',                 '10★ on first account creation',
+                                       'account_create',           10,  NULL, NULL,        1,    NULL, 40,  true),
+  ('add_birthday_20',         'Add your birthday',                 '20★ when you set your birthday on your profile',
+                                       'add_birthday',             20,  NULL, NULL,        1,    NULL, 50,  true),
+  ('leave_review_50',         'Leave a verified review',           '50★ per verified-purchase review',
+                                       'leave_review',             50,  NULL, NULL,        NULL, NULL, 60,  true),
+  ('follow_instagram_20',     'Follow on Instagram',               '20★ for following our Instagram',
+                                       'social_follow',            20,  NULL, 'instagram', 1,    NULL, 70,  true),
+  ('follow_tiktok_20',        'Follow on TikTok',                  '20★ for following our TikTok',
+                                       'social_follow',            20,  NULL, 'tiktok',    1,    NULL, 80,  true),
+  ('follow_x_20',             'Follow on X',                       '20★ for following us on X',
+                                       'social_follow',            20,  NULL, 'x',         1,    NULL, 90,  true),
+  ('ugc_upload_galaxy_boost', 'Upload styled photo / video (UGC)', 'Galaxy-level boost when your UGC passes moderation',
+                                       'ugc_upload',               100, NULL, NULL,        NULL, NULL, 100, true),
+  ('hair_quiz_complete_15',   'Complete the "Find your style" quiz', '15★ on quiz completion — once per customer',
+                                       'hair_quiz_complete',       15,  NULL, NULL,        1,    NULL, 110, true);
+
+-- Hair Quiz starter
+DO $$
+DECLARE
+  v_quiz_id UUID;
+  v_rule_id UUID;
+BEGIN
+  SELECT rule_id INTO v_rule_id
+    FROM {{BUSINESS}}.streak_star_earn_rules
+   WHERE rule_key = 'hair_quiz_complete_15';
+
+  INSERT INTO {{BUSINESS}}.hair_quizzes
+    (quiz_key, display_name, description, storefront_url_slug,
+     award_stars_rule_id, creates_crm_lead, cta_label, completion_message)
+  VALUES
+    ('find_your_style',
+     'Find your style',
+     'Short quiz to recommend wigs by face shape, length, occasion, and budget',
+     '/quiz/find-your-style',
+     v_rule_id, true, 'Find your style',
+     'Great choices! Here are wigs we think you''ll love. You''ve earned 15★ for completing the quiz.')
+  RETURNING quiz_id INTO v_quiz_id;
+
+  INSERT INTO {{BUSINESS}}.hair_quiz_questions
+    (quiz_id, question_key, question_text, question_type, options, is_required, display_order) VALUES
+    (v_quiz_id, 'face_shape', 'What''s your face shape?', 'image_choice',
+       '[{"value":"oval","label":"Oval"},{"value":"round","label":"Round"},{"value":"heart","label":"Heart"},{"value":"square","label":"Square"},{"value":"long","label":"Long"}]'::jsonb, true, 1),
+    (v_quiz_id, 'length_preference', 'How long do you want it?', 'single_choice',
+       '[{"value":"bob","label":"Bob (10-14in)"},{"value":"medium","label":"Medium (16-22in)"},{"value":"long","label":"Long (24-30in)"},{"value":"extra_long","label":"Extra long (32+in)"}]'::jsonb, true, 2),
+    (v_quiz_id, 'occasion', 'What''s the main occasion?', 'single_choice',
+       '[{"value":"daily","label":"Daily wear"},{"value":"work","label":"Work / office"},{"value":"events","label":"Events / nights out"},{"value":"wedding","label":"Wedding / special day"}]'::jsonb, true, 3),
+    (v_quiz_id, 'budget_range', 'What''s your budget?', 'single_choice',
+       '[{"value":"under_200k","label":"Under ₦200,000"},{"value":"200k_500k","label":"₦200,000 - ₦500,000"},{"value":"500k_1m","label":"₦500,000 - ₦1,000,000"},{"value":"over_1m","label":"Over ₦1,000,000"}]'::jsonb, true, 4),
+    (v_quiz_id, 'email', 'Where should we send your matches?', 'text',
+       '[]'::jsonb, true, 5);
+END;
+$$;

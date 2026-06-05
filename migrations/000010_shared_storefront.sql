@@ -357,6 +357,41 @@ CREATE INDEX idx_order_timeline_customer_visible
   WHERE is_customer_visible = true;
 CREATE INDEX idx_order_timeline_code ON shared.order_timeline_events (event_code, occurred_at DESC);
 
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ CUSTOMER WISHLISTS — V2.2 §6.4 page 575 (Amendment A-5)            ║
+-- ║ "Customer Accounts with order history, wishlist, loyalty, ..."     ║
+-- ║ Shared so a contact can wishlist items from either brand. The      ║
+-- ║ variant_id is a soft FK (per-brand) — the storefront resolver      ║
+-- ║ knows which brand schema to query from the `business` column.      ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE shared.customer_wishlists (
+  wishlist_item_id      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id            UUID        NOT NULL REFERENCES shared.contacts (contact_id) ON DELETE CASCADE,
+  business              TEXT        NOT NULL REFERENCES shared.business_config (business_key) ON DELETE CASCADE,
+  -- Soft FK to per-brand product_variants (variant_id resolved via business)
+  variant_id            UUID        NOT NULL,
+  -- Snapshot at the time of adding (for display when variant later disappears)
+  product_name_snapshot TEXT,
+  variant_label_snapshot TEXT,
+  price_at_add_ngn      NUMERIC(14,2),
+  -- Notes & priority (admin extensibility)
+  notes                 TEXT,
+  priority              SMALLINT    NOT NULL DEFAULT 0,
+  -- Lifecycle
+  added_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  notified_back_in_stock_at TIMESTAMPTZ,
+  removed_at            TIMESTAMPTZ,
+  removed_reason        TEXT CHECK (removed_reason IN ('purchased','customer_removed','variant_archived','expired',NULL)),
+  UNIQUE (contact_id, business, variant_id)
+);
+CREATE INDEX idx_customer_wishlists_contact
+  ON shared.customer_wishlists (contact_id, business, added_at DESC)
+  WHERE removed_at IS NULL;
+CREATE INDEX idx_customer_wishlists_variant
+  ON shared.customer_wishlists (business, variant_id)
+  WHERE removed_at IS NULL;
+
 -- Storefront role grants (read public catalogue tables + write own carts)
 GRANT SELECT ON
   shared.storefront_themes,
@@ -367,6 +402,7 @@ GRANT SELECT ON
   shared.order_timeline_events
 TO hub_storefront;
 GRANT SELECT, INSERT, UPDATE, DELETE ON shared.carts, shared.cart_items TO hub_storefront;
+GRANT SELECT, INSERT, UPDATE, DELETE ON shared.customer_wishlists TO hub_storefront;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA shared TO hub_storefront;
 
 -- ============================================================

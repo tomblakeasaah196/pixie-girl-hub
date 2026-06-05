@@ -48,7 +48,7 @@ CREATE TABLE shared.stylist_partners (
   badge_token           TEXT        UNIQUE,                     -- public URL: /verify/badge/{token}
   badge_revoked_at      TIMESTAMPTZ,
   -- Current highest certification tier (denormalised for fast filter)
-  current_tier_key      TEXT,                                   -- 'certified','senior','master'
+  current_tier_key      TEXT,                                   -- 'certified','pro','elite' (V2.2 §6.26)
   current_tier_expires_at TIMESTAMPTZ,
   -- Payout
   payout_currency       TEXT        NOT NULL DEFAULT 'NGN' REFERENCES shared.currencies (currency_code),

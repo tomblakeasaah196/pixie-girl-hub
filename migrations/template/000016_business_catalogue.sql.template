@@ -158,6 +158,17 @@ CREATE TABLE {{BUSINESS}}.products (
   track_stock           BOOLEAN     NOT NULL DEFAULT true,
   taxable               BOOLEAN     NOT NULL DEFAULT true,
   vat_rate              NUMERIC(5,4),                           -- override; NULL = business default
+  -- B-2 (V2.2 §6.2 installments) — payment_model per product. 'layaway'
+  -- = pay any amount, no work begins until fully paid; auto-cancel after
+  -- business_config.installment_settings.layaway_abandonment_days.
+  -- 'deposit_triggered' = X% deposit unlocks fulfillment (typically custom
+  -- orders). Default reflects the product category: stock items default
+  -- to 'layaway', custom items default to 'deposit_triggered'.
+  payment_model         TEXT        NOT NULL DEFAULT 'layaway'
+                        CHECK (payment_model IN ('layaway','deposit_triggered','full_payment_only')),
+  -- For deposit_triggered: minimum deposit percentage. NULL = use the
+  -- business_config.installment_settings.default_deposit_pct_for_deposit_triggered.
+  required_deposit_pct  NUMERIC(5,2) CHECK (required_deposit_pct IS NULL OR (required_deposit_pct BETWEEN 0 AND 100)),
   -- Search / filtering helpers
   search_keywords       TEXT[]      NOT NULL DEFAULT '{}',
   -- Soft-delete (we never hard-delete products with order history)
@@ -234,6 +245,12 @@ CREATE TABLE {{BUSINESS}}.product_variants (
   channel_external_ids  JSONB       NOT NULL DEFAULT '{}'::jsonb,
   -- Sync metadata (last-pushed-at per channel)
   channel_sync_state    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  -- B-2 (V2.2 §6.2 installments) — per-variant override of the product-level
+  -- payment_model. NULL = inherit from product. Useful when one variant of
+  -- a product is in-stock (layaway) but a special-order variant requires
+  -- deposit_triggered. Same CHECK values as products.payment_model.
+  payment_model_override TEXT       CHECK (payment_model_override IN ('layaway','deposit_triggered','full_payment_only',NULL)),
+  required_deposit_pct_override NUMERIC(5,2) CHECK (required_deposit_pct_override IS NULL OR (required_deposit_pct_override BETWEEN 0 AND 100)),
   -- Inventory
   reorder_point         INTEGER     NOT NULL DEFAULT 0,
   reorder_quantity      INTEGER,

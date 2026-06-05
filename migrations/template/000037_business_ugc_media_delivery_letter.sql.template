@@ -1,0 +1,329 @@
+-- ============================================================
+-- TEMPLATE 000037 — UGC ingestion, self-hosted media, delivery letter
+-- Pixie Girl Hub · JBS Praxis · Conformance pass V2.2
+--
+-- B-5: UGC INGESTION PIPELINE (V2.2 §6.4 part 5 line 720)
+--   "the storefront NEVER embeds YouTube or Instagram iframes ... all video
+--    is self-hosted on our own server ... Instagram Graph API webhook →
+--    moderation queue → downloads the actual file ... compresses with FFmpeg
+--    ... saves to our own server storage — no AWS S3, no Cloudinary"
+--
+--   Strategy: keep the existing product_videos table but DROP the embed-only
+--   CHECK + add a media_asset_id FK. Real video bytes live in media_assets;
+--   ingestion staging lives in ugc_ingestion_queue.
+--
+-- B-8: CURATED DELIVERY LETTER + INSTALL QR HUB (V2.2 §6.10)
+--   Auto-generated PDF at packing stage; QR resolves to install hub
+--   via the existing public_tracking_token. Per-brand templates live in
+--   storefront_themes; the PDF generation is app-layer (this migration
+--   just adds the schema affordances).
+--
+-- Tables (per-brand):
+--   media_assets               — canonical store for all media files
+--   ugc_ingestion_queue        — staging for Instagram/TikTok captures
+--   delivery_letter_templates  — per-brand letter templates
+--
+-- Schema changes:
+--   product_videos.source CHECK now accepts only self-hosted sources
+--   product_videos.media_asset_id FK added (NOT NULL after backfill)
+--   documents.document_type adds 'delivery_letter'
+-- ============================================================
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ MEDIA_ASSETS (B-5)                                                 ║
+-- ║ Canonical store for all self-hosted media files. Used by:          ║
+-- ║   • product_videos                                                 ║
+-- ║   • product_images (future migration)                              ║
+-- ║   • UGC submissions                                                ║
+-- ║   • delivery letter inline media                                   ║
+-- ║ The bytes live on our server (STORAGE_LOCAL_ROOT). This table      ║
+-- ║ holds the metadata + processing trail.                             ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.media_assets (
+  asset_id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- File identity
+  asset_kind            TEXT        NOT NULL
+                        CHECK (asset_kind IN ('video','image','audio','document')),
+  -- Storage location (relative path under STORAGE_LOCAL_ROOT)
+  storage_path          TEXT        NOT NULL UNIQUE,
+  mime_type             TEXT        NOT NULL,
+  -- Raw file metrics
+  original_byte_size    BIGINT      NOT NULL,
+  compressed_byte_size  BIGINT,                                 -- after FFmpeg pass
+  width                 INTEGER,
+  height                INTEGER,
+  duration_sec          NUMERIC(10,3),                          -- videos / audio
+  -- Derived assets (relative paths)
+  poster_path           TEXT,                                   -- poster image for video
+  thumbnail_path        TEXT,                                   -- small preview
+  -- Processing state
+  processing_status     TEXT        NOT NULL DEFAULT 'pending'
+                        CHECK (processing_status IN ('pending','processing','ready','failed','quarantined')),
+  ffmpeg_log            TEXT,
+  compressed_at         TIMESTAMPTZ,
+  -- Source of this asset (creator attribution)
+  source_kind           TEXT        NOT NULL
+                        CHECK (source_kind IN (
+                          'direct_upload',                      -- staff uploaded via admin
+                          'ugc_instagram',                      -- captured from IG via webhook
+                          'ugc_tiktok',                         -- captured from TikTok
+                          'ugc_form_submission',                -- customer-uploaded UGC form
+                          'system_generated'                    -- e.g. delivery letter PDF
+                        )),
+  source_external_url   TEXT,                                   -- original IG/TikTok URL (UGC only)
+  source_creator_handle TEXT,                                   -- @username
+  source_creator_contact_id UUID    REFERENCES shared.contacts (contact_id) ON DELETE SET NULL,
+  -- Captioning + alt text
+  caption               TEXT,
+  alt_text              TEXT,
+  -- Lifecycle
+  is_archived           BOOLEAN     NOT NULL DEFAULT false,
+  archived_at           TIMESTAMPTZ,
+  archived_reason       TEXT,
+  -- Audit
+  uploaded_by           UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  uploaded_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_media_assets_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.media_assets
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX idx_{{BUSINESS}}_media_assets_kind
+  ON {{BUSINESS}}.media_assets (asset_kind, uploaded_at DESC)
+  WHERE is_archived = false;
+CREATE INDEX idx_{{BUSINESS}}_media_assets_processing
+  ON {{BUSINESS}}.media_assets (processing_status, uploaded_at)
+  WHERE processing_status IN ('pending','processing','failed');
+CREATE INDEX idx_{{BUSINESS}}_media_assets_creator
+  ON {{BUSINESS}}.media_assets (source_creator_contact_id)
+  WHERE source_creator_contact_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_media_assets_source_kind
+  ON {{BUSINESS}}.media_assets (source_kind, uploaded_at DESC);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ UGC INGESTION QUEUE (B-5)                                          ║
+-- ║ When the IG/TikTok webhook fires (or staff drops in a URL), a row  ║
+-- ║ lands here. The worker:                                            ║
+-- ║   1. Downloads the actual file bytes                               ║
+-- ║   2. Runs FFmpeg (compress + poster)                               ║
+-- ║   3. Creates a media_assets row                                    ║
+-- ║   4. Marks queue row as 'downloaded' or 'failed'                   ║
+-- ║                                                                    ║
+-- ║ Moderation is a separate stage: media_assets stays processing_status║
+-- ║ = 'quarantined' until a human approves.                            ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.ugc_ingestion_queue (
+  ingestion_id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Source
+  source_platform       TEXT        NOT NULL
+                        CHECK (source_platform IN ('instagram','tiktok','x','facebook','direct_url')),
+  source_post_url       TEXT        NOT NULL,
+  source_post_id        TEXT,                                   -- platform-specific ID
+  source_creator_handle TEXT,
+  source_creator_contact_id UUID    REFERENCES shared.contacts (contact_id) ON DELETE SET NULL,
+  source_caption        TEXT,                                   -- original post caption
+  -- Capture trigger
+  capture_method        TEXT        NOT NULL
+                        CHECK (capture_method IN (
+                          'webhook',                            -- IG Graph API webhook fired
+                          'staff_paste',                        -- staff dropped a URL into the admin
+                          'mention_search',                     -- background mention scraper
+                          'tagged_post'                         -- customer tagged the brand
+                        )),
+  -- Processing state
+  processing_status     TEXT        NOT NULL DEFAULT 'queued'
+                        CHECK (processing_status IN (
+                          'queued',
+                          'downloading',
+                          'downloaded',
+                          'transcoding',
+                          'ready_for_moderation',
+                          'failed',
+                          'rejected_at_capture'                 -- e.g. private post
+                        )),
+  download_attempts     INTEGER     NOT NULL DEFAULT 0,
+  last_attempt_at       TIMESTAMPTZ,
+  last_error            TEXT,
+  -- After download
+  media_asset_id        UUID        REFERENCES {{BUSINESS}}.media_assets (asset_id) ON DELETE SET NULL,
+  downloaded_at         TIMESTAMPTZ,
+  -- Moderation
+  moderation_status     TEXT        NOT NULL DEFAULT 'pending'
+                        CHECK (moderation_status IN ('pending','approved','rejected','escalated')),
+  moderated_by          UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  moderated_at          TIMESTAMPTZ,
+  moderation_reason     TEXT,
+  -- Linked product (for "Shop this look" attribution)
+  linked_product_id     UUID,                                   -- soft FK to products
+  linked_variant_id     UUID,                                   -- soft FK to product_variants
+  -- Audit
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Idempotency: don't ingest the same post twice
+  UNIQUE (source_platform, source_post_url)
+);
+CREATE TRIGGER trg_{{BUSINESS}}_ugc_ingestion_queue_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.ugc_ingestion_queue
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX idx_{{BUSINESS}}_ugc_ingestion_queue_processing
+  ON {{BUSINESS}}.ugc_ingestion_queue (processing_status, created_at)
+  WHERE processing_status IN ('queued','downloading','transcoding','failed');
+CREATE INDEX idx_{{BUSINESS}}_ugc_ingestion_queue_moderation
+  ON {{BUSINESS}}.ugc_ingestion_queue (moderation_status, downloaded_at)
+  WHERE moderation_status IN ('pending','escalated');
+CREATE INDEX idx_{{BUSINESS}}_ugc_ingestion_queue_creator
+  ON {{BUSINESS}}.ugc_ingestion_queue (source_creator_contact_id)
+  WHERE source_creator_contact_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_ugc_ingestion_queue_linked_product
+  ON {{BUSINESS}}.ugc_ingestion_queue (linked_product_id) WHERE linked_product_id IS NOT NULL;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ MIGRATE product_videos OFF EMBED MODEL (B-5)                       ║
+-- ║ The existing table had: source IN ('youtube','instagram_reel',     ║
+-- ║ 'tiktok','direct_upload') + embed_url. V2.2 forbids YouTube/IG     ║
+-- ║ embeds. New model: only direct_upload and ugc_ingested; link via   ║
+-- ║ media_asset_id; embed_url becomes legacy.                          ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+ALTER TABLE {{BUSINESS}}.product_videos
+  ADD COLUMN media_asset_id UUID REFERENCES {{BUSINESS}}.media_assets (asset_id) ON DELETE RESTRICT;
+
+-- Replace the CHECK constraint
+ALTER TABLE {{BUSINESS}}.product_videos
+  DROP CONSTRAINT IF EXISTS product_videos_source_check;
+ALTER TABLE {{BUSINESS}}.product_videos
+  ADD CONSTRAINT product_videos_source_check
+  CHECK (source IN ('direct_upload','ugc_ingested'));
+
+-- Mark legacy embed_url as deprecated (nullable; bytes now via media_asset_id)
+ALTER TABLE {{BUSINESS}}.product_videos
+  ALTER COLUMN embed_url DROP NOT NULL;
+ALTER TABLE {{BUSINESS}}.product_videos
+  ALTER COLUMN external_ref DROP NOT NULL;
+
+COMMENT ON COLUMN {{BUSINESS}}.product_videos.embed_url IS 'DEPRECATED (B-5): legacy embed URL. Use media_asset_id → media_assets.storage_path.';
+COMMENT ON COLUMN {{BUSINESS}}.product_videos.external_ref IS 'DEPRECATED (B-5): legacy YouTube/IG external ID. Use media_asset_id.';
+
+-- After backfill (none needed for fresh schema), make media_asset_id NOT NULL:
+-- Note: for an existing populated DB this would be a separate migration.
+-- For a fresh build, no rows exist yet, so we can enforce now.
+ALTER TABLE {{BUSINESS}}.product_videos
+  ALTER COLUMN media_asset_id SET NOT NULL;
+
+CREATE INDEX idx_{{BUSINESS}}_product_videos_media_asset
+  ON {{BUSINESS}}.product_videos (media_asset_id);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ DELIVERY LETTER TEMPLATES (B-8)                                    ║
+-- ║ V2.2 §6.10: "Auto-generated as a PDF at the packing stage ...      ║
+-- ║ stored in Documents with document_type='delivery_letter'."         ║
+-- ║                                                                    ║
+-- ║ Per-brand, per-product-type templates (PXG ships clean wigs in     ║
+-- ║ branded boxes; FLH ships installed/styled work). The template      ║
+-- ║ holds the layout + variable slots; PDF generation is app-layer.    ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.delivery_letter_templates (
+  template_id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_key          TEXT        NOT NULL UNIQUE,
+  display_name          TEXT        NOT NULL,
+  description           TEXT,
+  -- Which product types this template applies to. NULL = applies to all.
+  -- Matches values in products.product_type.
+  applies_to_product_types TEXT[],
+  -- Variable defaults the layout can interpolate
+  default_variables     JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  -- Layout blocks (mirrors document_renderer expectations)
+  -- [{"kind":"hero","image_asset_id":"..."},
+  --  {"kind":"greeting","template":"Hi {{first_name}}..."},
+  --  {"kind":"care_instructions"},
+  --  {"kind":"install_qr","url_pattern":"install.{{domain}}/{{tracking_token}}"},
+  --  {"kind":"review_request","earn_stars":50},
+  --  {"kind":"reorder_cta"}]
+  layout_blocks         JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  -- Branding
+  brand_logo_asset_id   UUID        REFERENCES {{BUSINESS}}.media_assets (asset_id) ON DELETE SET NULL,
+  brand_colour_hex      TEXT,
+  font_family           TEXT,
+  -- Install hub configuration (V2.2 §6.10)
+  -- The Install Hub at install.{{domain}}/{{public_tracking_token}}
+  -- composes UGC video + care guide + stylist directory + review CTA
+  install_hub_enabled   BOOLEAN     NOT NULL DEFAULT true,
+  install_hub_video_asset_id UUID   REFERENCES {{BUSINESS}}.media_assets (asset_id) ON DELETE SET NULL,
+  install_hub_extra_blocks JSONB    NOT NULL DEFAULT '[]'::jsonb,
+  -- Lifecycle
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  is_default            BOOLEAN     NOT NULL DEFAULT false,
+  -- Audit
+  created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_delivery_letter_templates_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.delivery_letter_templates
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+-- Only one default per brand
+CREATE UNIQUE INDEX idx_{{BUSINESS}}_delivery_letter_default
+  ON {{BUSINESS}}.delivery_letter_templates (is_default)
+  WHERE is_default = true AND is_active = true;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ DELIVERY LETTER RENDER LOG (B-8)                                   ║
+-- ║ Each generated PDF — for re-render / audit / debugging.            ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE {{BUSINESS}}.delivery_letter_renders (
+  render_id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id           UUID        NOT NULL REFERENCES {{BUSINESS}}.delivery_letter_templates (template_id) ON DELETE RESTRICT,
+  -- Triggered by which order
+  order_id              UUID        NOT NULL,                   -- soft FK to sales_orders
+  order_number_snapshot TEXT        NOT NULL,
+  public_tracking_token TEXT        NOT NULL,                   -- powers the QR
+  -- Output (links to the documents library)
+  document_id           UUID        REFERENCES shared.documents (document_id) ON DELETE SET NULL,
+  rendered_asset_id     UUID        REFERENCES {{BUSINESS}}.media_assets (asset_id) ON DELETE SET NULL,
+  -- Variables actually used at render time (frozen snapshot)
+  variables_snapshot    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  -- Lifecycle
+  rendered_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  rendered_by           UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL
+);
+CREATE INDEX idx_{{BUSINESS}}_delivery_letter_renders_order
+  ON {{BUSINESS}}.delivery_letter_renders (order_id, rendered_at DESC);
+CREATE INDEX idx_{{BUSINESS}}_delivery_letter_renders_token
+  ON {{BUSINESS}}.delivery_letter_renders (public_tracking_token);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ SEED: default delivery letter template per brand                   ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+INSERT INTO {{BUSINESS}}.delivery_letter_templates
+  (template_key, display_name, description, layout_blocks, install_hub_enabled, is_active, is_default)
+VALUES (
+  'default',
+  'Default delivery letter',
+  'Auto-generated PDF placed in every box at packing stage (V2.2 §6.10).',
+  '[
+    {"kind":"hero","slot":"brand_logo"},
+    {"kind":"greeting","template":"Hi {{first_name}}, welcome to your new look."},
+    {"kind":"order_summary","fields":["order_number","placed_date","items_summary"]},
+    {"kind":"care_instructions","slot":"care_guide_html"},
+    {"kind":"install_qr","label":"Scan to unlock your install hub","url_pattern":"install.{{domain}}/{{public_tracking_token}}"},
+    {"kind":"review_request","label":"Loved it? Leave a review + earn 50★","earn_stars":50},
+    {"kind":"reorder_cta","label":"Shop again with 10% off — use code WELCOME10"}
+  ]'::jsonb,
+  true,
+  true,
+  true
+);
+
+-- ============================================================
+-- After 000037: 4 new per-brand tables
+--   • media_assets
+--   • ugc_ingestion_queue
+--   • delivery_letter_templates
+--   • delivery_letter_renders
+-- + product_videos.embed_url/external_ref deprecated, source CHECK tightened
+-- ============================================================

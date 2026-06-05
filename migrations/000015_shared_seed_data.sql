@@ -335,6 +335,38 @@ INSERT INTO shared.permission_module_keys (module_key, display_name, description
 ON CONFLICT (module_key) DO NOTHING;
 
 -- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ STYLIST TIER NAMES — V2.2 §6.26 canonical dictionary (Amendment   ║
+-- ║ A-2). Free-text current_tier_key in stylist_partners now backed   ║
+-- ║ by this admin-extensible dictionary. Drives the certification    ║
+-- ║ UI dropdown and the storefront badge text.                        ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+
+CREATE TABLE IF NOT EXISTS shared.stylist_tier_keys (
+  tier_key              TEXT        PRIMARY KEY,
+  display_name          TEXT        NOT NULL,
+  description           TEXT,
+  display_order         SMALLINT    NOT NULL,
+  -- Minimum criteria (informational; actual enforcement is in workflow rules)
+  min_completed_jobs    INTEGER,
+  min_avg_rating        NUMERIC(3,2),
+  min_certifications    INTEGER,
+  -- Storefront treatment
+  badge_image_url       TEXT,
+  storefront_visible    BOOLEAN     NOT NULL DEFAULT true,
+  -- Lifecycle
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  is_system_tier        BOOLEAN     NOT NULL DEFAULT false,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO shared.stylist_tier_keys
+  (tier_key, display_name, description, display_order, min_completed_jobs, min_avg_rating, min_certifications, storefront_visible, is_system_tier) VALUES
+  ('certified', 'Certified', 'Foundational tier — passed the Pixie Girl onboarding programme',              1, 0,   NULL,  1, true, true),
+  ('pro',       'Pro',       'Mid tier — proven repeat-client history with consistent quality ratings',     2, 25,  4.20, 2, true, true),
+  ('elite',     'Elite',     'Top tier — highest performance, eligible for VIP customer assignments',       3, 100, 4.60, 3, true, true)
+ON CONFLICT (tier_key) DO NOTHING;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
 -- ║ NOTE on per-brand defaults                                         ║
 -- ║ Loyalty tiers, document numbering sequences, custom field defs,    ║
 -- ║ chart of accounts, pipeline stages, etc. are seeded by the         ║

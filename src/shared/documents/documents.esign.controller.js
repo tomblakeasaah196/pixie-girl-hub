@@ -41,11 +41,9 @@ const getById = async (req, res) =>
     data: await service.getRequest({ brand: req.brand, id: req.params.id }),
   });
 const create = async (req, res) =>
-  res
-    .status(201)
-    .json({
-      data: await service.createRequest({ ...base(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.createRequest({ ...base(req), input: req.body }),
+  });
 const send = async (req, res) =>
   res.json({
     data: await service.sendRequest({ ...base(req), id: req.params.id }),

@@ -8,7 +8,7 @@
 
 const repo = require("./catalogue.repo");
 const events = require("./catalogue.events");
-const documents = require("../documents/documents.service");
+const documents = require("../../shared/documents/documents.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError } = require("../../utils/errors");

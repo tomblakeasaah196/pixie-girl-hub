@@ -78,11 +78,9 @@ const getCreditNote = async (req, res) =>
     }),
   });
 const createCreditNote = async (req, res) =>
-  res
-    .status(201)
-    .json({
-      data: await service.createCreditNote({ ...base(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.createCreditNote({ ...base(req), input: req.body }),
+  });
 const issueCreditNote = async (req, res) =>
   res.json({
     data: await service.issueCreditNote({ ...base(req), id: req.params.cnId }),
@@ -97,11 +95,9 @@ const listReceipts = async (req, res) =>
     }),
   });
 const issueReceipt = async (req, res) =>
-  res
-    .status(201)
-    .json({
-      data: await service.issueReceipt({ ...base(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.issueReceipt({ ...base(req), input: req.body }),
+  });
 
 module.exports = {
   listInvoices,

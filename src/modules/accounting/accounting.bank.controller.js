@@ -15,11 +15,9 @@ const base = (req) => ({
 
 // ── Bank statements ──────────────────────────────────────
 const importStatement = async (req, res) =>
-  res
-    .status(201)
-    .json({
-      data: await service.importStatement({ ...base(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.importStatement({ ...base(req), input: req.body }),
+  });
 async function listStatements(req, res) {
   const { page, page_size } = parsePagination(req.query);
   res.json(
@@ -44,11 +42,9 @@ const getStatement = async (req, res) =>
 
 // ── Reconciliations ──────────────────────────────────────
 const openReconciliation = async (req, res) =>
-  res
-    .status(201)
-    .json({
-      data: await service.openReconciliation({ ...base(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.openReconciliation({ ...base(req), input: req.body }),
+  });
 async function listReconciliations(req, res) {
   const { page, page_size } = parsePagination(req.query);
   res.json(
@@ -71,15 +67,13 @@ const getReconciliation = async (req, res) =>
     }),
   });
 const matchLine = async (req, res) =>
-  res
-    .status(201)
-    .json({
-      data: await service.matchLine({
-        ...base(req),
-        id: req.params.reconId,
-        input: req.body,
-      }),
-    });
+  res.status(201).json({
+    data: await service.matchLine({
+      ...base(req),
+      id: req.params.reconId,
+      input: req.body,
+    }),
+  });
 const completeReconciliation = async (req, res) =>
   res.json({
     data: await service.completeReconciliation({
@@ -90,11 +84,9 @@ const completeReconciliation = async (req, res) =>
 
 // ── Tax filings ──────────────────────────────────────────
 const createFiling = async (req, res) =>
-  res
-    .status(201)
-    .json({
-      data: await service.createFiling({ ...base(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.createFiling({ ...base(req), input: req.body }),
+  });
 async function listFilings(req, res) {
   const { page, page_size } = parsePagination(req.query);
   res.json(

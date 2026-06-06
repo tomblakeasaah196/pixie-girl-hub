@@ -18,7 +18,7 @@ const main = require("./campaigns.service");
 const businessConfig = require("../business_setup/business-config.repo");
 const email = require("../../services/email.service");
 const whatsapp = require("../../services/whatsapp.service");
-const documents = require("../documents/documents.service");
+const documents = require("../../shared/documents/documents.service");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 

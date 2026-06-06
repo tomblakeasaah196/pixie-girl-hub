@@ -1,26 +1,164 @@
 /**
- * Business Setup (V2.2 §6.21)
- * Input validators — Zod schemas wrapped in Express middleware.
+ * Business Setup / Identity (V2.2 Module 18) — Zod validators.
  */
 
 "use strict";
 
 const { z } = require("zod");
 
-const createSchema = z.object({
-  // TODO: define required fields for create
-});
+const rate = z.coerce.number().min(0).max(1);
+const taxRate = z.coerce.number().min(0).max(1);
 
-const updateSchema = createSchema.partial();
+// ── business_config (partial update) ─────────────────────
+const configUpdate = z
+  .object({
+    display_name: z.string().min(1).max(200).optional(),
+    legal_name: z.string().min(1).max(200).optional(),
+    trading_currency: z.string().length(3).optional(),
+    settlement_currency: z.string().length(3).optional(),
+    document_prefix: z.string().min(1).max(10).optional(),
+    storefront_domain: z.string().max(200).nullable().optional(),
+    storefront_enabled: z.boolean().optional(),
+    address: z.string().max(500).optional(),
+    phone: z.string().max(40).optional(),
+    email: z.string().email().optional(),
+    website: z.string().max(200).optional(),
+    tin: z.string().max(40).optional(),
+    cac_number: z.string().max(40).optional(),
+    vat_number: z.string().max(40).optional(),
+    vat_rate: rate.optional(),
+    wht_rate: rate.optional(),
+    fiscal_year_start: z.coerce.number().int().min(1).max(12).optional(),
+    logo_path: z.string().max(500).optional(),
+    accent_colour: z.string().max(20).optional(),
+    mission_statement: z.string().max(2000).optional(),
+    brand_fonts: z.record(z.any()).optional(),
+    payment_methods: z.record(z.any()).optional(),
+    cash_handling_rules: z.record(z.any()).optional(),
+    loyalty_settings: z.record(z.any()).optional(),
+    cancellation_settings: z.record(z.any()).optional(),
+    quantity_discount_rules: z.array(z.any()).optional(),
+    intercompany_settings: z.record(z.any()).optional(),
+    fx_settings: z.record(z.any()).optional(),
+    payment_gateway_fees: z.record(z.any()).optional(),
+    installment_settings: z.record(z.any()).optional(),
+    allow_staff_recorded_manual_payments: z.boolean().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
 
-function validateCreate(req, _res, next) {
-  req.body = createSchema.parse(req.body);
+// ── currencies ───────────────────────────────────────────
+const currencySave = z
+  .object({
+    currency_code: z.string().length(3),
+    display_name: z.string().min(1).max(80).optional(),
+    symbol: z.string().max(8).optional(),
+    decimal_places: z.coerce.number().int().min(0).max(4).optional(),
+    rounding_unit: z.coerce.number().positive().optional(),
+    is_settlement: z.boolean().optional(),
+    is_active: z.boolean().optional(),
+    display_order: z.coerce.number().int().optional(),
+  })
+  .strict();
+const currencyUpdate = currencySave.omit({ currency_code: true }).partial().strict();
+
+// ── currency_rates (FX) ──────────────────────────────────
+const rateSet = z
+  .object({
+    from_currency: z.string().length(3),
+    to_currency: z.string().length(3).optional(),
+    rate: z.coerce.number().positive(),
+    valid_at: z.string().datetime().optional(),
+    source: z.string().max(40).optional(),
+  })
+  .strict();
+
+// ── bank_accounts ────────────────────────────────────────
+const bankCreate = z
+  .object({
+    bank_name: z.string().min(1).max(160),
+    account_name: z.string().min(1).max(200),
+    account_number: z.string().min(1).max(40),
+    sort_code: z.string().max(40).optional(),
+    currency: z.string().length(3).optional(),
+    is_primary: z.boolean().optional(),
+    paystack_recipient_code: z.string().max(120).optional(),
+    opay_account_id: z.string().max(120).optional(),
+  })
+  .strict();
+const bankUpdate = bankCreate.partial().extend({ is_active: z.boolean().optional() }).strict();
+
+// ── tax_rates ────────────────────────────────────────────
+const taxCreate = z
+  .object({
+    tax_name: z.string().min(1).max(60),
+    tax_type: z.enum(["sales", "purchases", "payroll"]),
+    rate: taxRate,
+    applies_to: z.string().min(1).max(40),
+    is_active: z.boolean().optional(),
+    effective_from: z.string().date(),
+    effective_to: z.string().date().optional(),
+  })
+  .strict();
+const taxSupersede = z.object({ effective_to: z.string().date() }).strict();
+
+// ── document_numbering ───────────────────────────────────
+const numberingUpdate = z
+  .object({
+    prefix: z.string().min(1).max(20).optional(),
+    padding: z.coerce.number().int().min(1).max(10).optional(),
+  })
+  .strict();
+
+// ── custom_field_defs ────────────────────────────────────
+const customFieldCreate = z
+  .object({
+    entity_type: z.enum(["product", "contact", "crm_deal", "sales_order", "stylist_partner"]),
+    field_key: z.string().min(1).max(60),
+    field_label: z.string().min(1).max(120),
+    field_type: z.enum(["text", "number", "select", "multiselect", "date", "boolean", "url"]),
+    options: z.array(z.any()).optional(),
+    is_required: z.boolean().optional(),
+    is_searchable: z.boolean().optional(),
+    is_filterable: z.boolean().optional(),
+    visible_to_roles: z.array(z.string()).optional(),
+    display_order: z.coerce.number().int().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
+const customFieldUpdate = customFieldCreate.omit({ entity_type: true, field_key: true }).partial().strict();
+
+// ── pipeline_stage_defs ──────────────────────────────────
+const pipelineStageCreate = z
+  .object({
+    pipeline_type: z.enum(["crm", "delivery", "purchase_order", "production"]),
+    stage_key: z.string().min(1).max(60),
+    stage_label: z.string().min(1).max(120),
+    display_order: z.coerce.number().int().optional(),
+    is_terminal: z.boolean().optional(),
+    is_positive_terminal: z.boolean().optional(),
+    colour: z.string().max(20).optional(),
+  })
+  .strict();
+const pipelineStageUpdate = pipelineStageCreate.omit({ pipeline_type: true, stage_key: true }).partial().strict();
+
+const mw = (schema) => (req, _res, next) => {
+  req.body = schema.parse(req.body ?? {});
   next();
-}
+};
 
-function validateUpdate(req, _res, next) {
-  req.body = updateSchema.parse(req.body);
-  next();
-}
-
-module.exports = { validateCreate, validateUpdate, createSchema, updateSchema };
+module.exports = {
+  validateConfigUpdate: mw(configUpdate),
+  validateCurrencySave: mw(currencySave),
+  validateCurrencyUpdate: mw(currencyUpdate),
+  validateRateSet: mw(rateSet),
+  validateBankCreate: mw(bankCreate),
+  validateBankUpdate: mw(bankUpdate),
+  validateTaxCreate: mw(taxCreate),
+  validateTaxSupersede: mw(taxSupersede),
+  validateNumberingUpdate: mw(numberingUpdate),
+  validateCustomFieldCreate: mw(customFieldCreate),
+  validateCustomFieldUpdate: mw(customFieldUpdate),
+  validatePipelineStageCreate: mw(pipelineStageCreate),
+  validatePipelineStageUpdate: mw(pipelineStageUpdate),
+};

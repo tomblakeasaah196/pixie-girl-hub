@@ -54,12 +54,10 @@ editable. ✅
 
 ## Gaps / dependencies (actionable)
 
-1. **`bank_accounts` (Tier 1 A, shared)** — bank reconciliation references
-   `bank_account_id` as a free UUID; there is no CRUD for the account master
-   yet. Belongs in Identity / Business Setup. **Build before bank-rec UI ships.**
-2. **`tax_rates` (Tier 1 C, shared)** — VAT/WHT/PAYE rate config with
-   effective dates has no CRUD. VAT is currently a constant in sales/invoicing.
-   Belongs in Business Setup. **Recommended.**
+1. ~~**`bank_accounts` (Tier 1 A, shared)**~~ — ✅ CLOSED. Built in Business Setup
+   (`/business-setup/bank-accounts`, masked numbers, single-primary).
+2. ~~**`tax_rates` (Tier 1 C, shared)**~~ — ✅ CLOSED. Built in Business Setup
+   (`/business-setup/tax-rates`, effective-dated with supersede).
 3. **`expense_categories` hard delete** — intentionally omitted; categories are
    FK-referenced by expenses, so deactivation via `is_active` is the correct
    "delete". No action needed.

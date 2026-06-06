@@ -151,6 +151,55 @@ async function deductForSale({
   return m;
 }
 
+/**
+ * Add stock for a goods receipt. Call inside the GRN transaction (pass client).
+ * quantity is the POSITIVE units received; recorded as a positive 'receive'
+ * movement so the SSOT trigger lifts stock_levels.on_hand.
+ */
+async function receiveStock({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  quantity,
+  reference_id,
+  reference_type,
+  unit_cost_ngn,
+  user_id,
+}) {
+  const m = await repo.recordMovement({
+    client,
+    brand,
+    user_id,
+    input: {
+      variant_id,
+      location_id,
+      quantity: Math.abs(quantity),
+      movement_type: "receive",
+      reference_type: reference_type || "goods_received_note",
+      reference_id,
+      unit_cost_ngn,
+    },
+  });
+  events.emit("moved", {
+    brand,
+    variant_id,
+    location_id,
+    movement_type: "receive",
+    quantity: Math.abs(quantity),
+  });
+  await audit({
+    business: brand,
+    user_id,
+    action_key: "stock.movement.receive",
+    target_type: "stock_movement",
+    target_id: m.movement_id,
+    after: { variant_id, quantity: Math.abs(quantity), reference_id },
+    request_id: null,
+  });
+  return m;
+}
+
 async function seedVariant({ brand, variant_id }) {
   const loc = await repo.getDefaultLocation({ brand });
   if (loc)
@@ -552,6 +601,7 @@ module.exports = {
   listMovements,
   recordMovement,
   deductForSale,
+  receiveStock,
   seedVariant,
   listAdjustments,
   getAdjustment,

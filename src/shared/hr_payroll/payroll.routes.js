@@ -33,14 +33,24 @@ router.get("/payslips/:id", P("view"), c.getPayslip);
 
 // ── Commission earned ──────────────────────────────────────
 router.get("/commissions", P("view"), c.listCommissions);
-router.post("/commissions", P("create"), v.commissionAccrue, c.accrueCommission);
+router.post(
+  "/commissions",
+  P("create"),
+  v.commissionAccrue,
+  c.accrueCommission,
+);
 router.post("/commissions/:id/approve", P("approve"), c.approveCommission);
 router.post("/commissions/:id/reverse", P("approve"), c.reverseCommission);
 
 // ── Bonuses awarded ────────────────────────────────────────
 router.get("/bonuses", P("view"), c.listBonuses);
 router.post("/bonuses", P("create"), v.bonusAward, c.awardBonus);
-router.post("/bonuses/:id/decision", P("approve"), v.bonusDecide, c.decideBonus);
+router.post(
+  "/bonuses/:id/decision",
+  P("approve"),
+  v.bonusDecide,
+  c.decideBonus,
+);
 router.post("/bonuses/:id/reverse", P("approve"), c.reverseBonus);
 
 module.exports = router;

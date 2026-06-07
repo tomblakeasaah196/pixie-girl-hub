@@ -6,14 +6,14 @@ the HR admin surface.)
 
 ## Pass 1 — employees + Tier-1 configuration (this delivery)
 
-| Area                  | Routes (`/api/v1/hr/...`)        | Table                          |
-| --------------------- | -------------------------------- | ------------------------------ |
-| Employees             | `/employees`                     | `shared.staff_profiles`        |
-| Commission rules      | `/commission-rules`              | `{brand}.commission_rules`     |
-| Bonus rules           | `/bonus-rules`                   | `{brand}.bonus_rules`          |
-| KPI definitions       | `/kpi-definitions` (+`/weight-summary`) | `{brand}.performance_kpi_definitions` |
-| Performance cycles    | `/performance-cycles`            | `{brand}.performance_cycles`   |
-| Payroll deductions    | `/deductions`                    | `{brand}.payroll_deductions`   |
+| Area               | Routes (`/api/v1/hr/...`)               | Table                                 |
+| ------------------ | --------------------------------------- | ------------------------------------- |
+| Employees          | `/employees`                            | `shared.staff_profiles`               |
+| Commission rules   | `/commission-rules`                     | `{brand}.commission_rules`            |
+| Bonus rules        | `/bonus-rules`                          | `{brand}.bonus_rules`                 |
+| KPI definitions    | `/kpi-definitions` (+`/weight-summary`) | `{brand}.performance_kpi_definitions` |
+| Performance cycles | `/performance-cycles`                   | `{brand}.performance_cycles`          |
+| Payroll deductions | `/deductions`                           | `{brand}.payroll_deductions`          |
 
 Each is full CRUD (`GET` list/detail, `POST`, `PATCH`, `DELETE`) gated on
 `hr_payroll` view/create/edit/delete.
@@ -42,12 +42,12 @@ Each is full CRUD (`GET` list/detail, `POST`, `PATCH`, `DELETE`) gated on
 
 ## Pass 2 — payroll operations (this delivery)
 
-| Area              | Routes (`/api/v1/hr/...`)                         | Table                       |
-| ----------------- | ------------------------------------------------- | --------------------------- |
-| Payroll runs      | `/payroll-runs` + `/:id/{calculate,review,approve,pay,reverse}` | `{brand}.payroll_runs` |
-| Payslips (read)   | `/payslips`                                       | `{brand}.payslips` + `_lines` |
-| Commissions       | `/commissions` + `/:id/{approve,reverse}`         | `{brand}.commission_earned` |
-| Bonuses           | `/bonuses` + `/:id/{decision,reverse}`            | `{brand}.bonuses_awarded`   |
+| Area            | Routes (`/api/v1/hr/...`)                                       | Table                         |
+| --------------- | --------------------------------------------------------------- | ----------------------------- |
+| Payroll runs    | `/payroll-runs` + `/:id/{calculate,review,approve,pay,reverse}` | `{brand}.payroll_runs`        |
+| Payslips (read) | `/payslips`                                                     | `{brand}.payslips` + `_lines` |
+| Commissions     | `/commissions` + `/:id/{approve,reverse}`                       | `{brand}.commission_earned`   |
+| Bonuses         | `/bonuses` + `/:id/{decision,reverse}`                          | `{brand}.bonuses_awarded`     |
 
 - **Run state machine:** `draft → calculated → reviewed → approved → paid`
   (+ `reversed`); transitions are enforced. `calculate` rebuilds every active

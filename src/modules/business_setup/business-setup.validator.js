@@ -60,7 +60,10 @@ const currencySave = z
     display_order: z.coerce.number().int().optional(),
   })
   .strict();
-const currencyUpdate = currencySave.omit({ currency_code: true }).partial().strict();
+const currencyUpdate = currencySave
+  .omit({ currency_code: true })
+  .partial()
+  .strict();
 
 // ── currency_rates (FX) ──────────────────────────────────
 const rateSet = z
@@ -86,7 +89,10 @@ const bankCreate = z
     opay_account_id: z.string().max(120).optional(),
   })
   .strict();
-const bankUpdate = bankCreate.partial().extend({ is_active: z.boolean().optional() }).strict();
+const bankUpdate = bankCreate
+  .partial()
+  .extend({ is_active: z.boolean().optional() })
+  .strict();
 
 // ── tax_rates ────────────────────────────────────────────
 const taxCreate = z
@@ -113,10 +119,24 @@ const numberingUpdate = z
 // ── custom_field_defs ────────────────────────────────────
 const customFieldCreate = z
   .object({
-    entity_type: z.enum(["product", "contact", "crm_deal", "sales_order", "stylist_partner"]),
+    entity_type: z.enum([
+      "product",
+      "contact",
+      "crm_deal",
+      "sales_order",
+      "stylist_partner",
+    ]),
     field_key: z.string().min(1).max(60),
     field_label: z.string().min(1).max(120),
-    field_type: z.enum(["text", "number", "select", "multiselect", "date", "boolean", "url"]),
+    field_type: z.enum([
+      "text",
+      "number",
+      "select",
+      "multiselect",
+      "date",
+      "boolean",
+      "url",
+    ]),
     options: z.array(z.any()).optional(),
     is_required: z.boolean().optional(),
     is_searchable: z.boolean().optional(),
@@ -126,7 +146,10 @@ const customFieldCreate = z
     is_active: z.boolean().optional(),
   })
   .strict();
-const customFieldUpdate = customFieldCreate.omit({ entity_type: true, field_key: true }).partial().strict();
+const customFieldUpdate = customFieldCreate
+  .omit({ entity_type: true, field_key: true })
+  .partial()
+  .strict();
 
 // ── pipeline_stage_defs ──────────────────────────────────
 const pipelineStageCreate = z
@@ -140,7 +163,10 @@ const pipelineStageCreate = z
     colour: z.string().max(20).optional(),
   })
   .strict();
-const pipelineStageUpdate = pipelineStageCreate.omit({ pipeline_type: true, stage_key: true }).partial().strict();
+const pipelineStageUpdate = pipelineStageCreate
+  .omit({ pipeline_type: true, stage_key: true })
+  .partial()
+  .strict();
 
 const mw = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body ?? {});

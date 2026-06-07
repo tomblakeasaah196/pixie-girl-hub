@@ -140,18 +140,16 @@ async function postGrn({ brand, user, request_id, id }) {
           unit_cost_ngn: line.unit_cost_ngn,
           user_id: user?.user_id,
         });
-        // Keep the supplier's last cost fresh for future RFQ/PO pre-fill.
-        if (line.unit_cost_ngn !== null) {
-          await repo.addSupplierProduct({
+        // Keep the supplier's last cost fresh for future RFQ/PO pre-fill —
+        // touch ONLY the cost fields so an existing supplier_products link
+        // (SKU, lead time, MOQ, preferred, notes) is never clobbered.
+        if (line.unit_cost_ngn !== null && line.unit_cost_ngn !== undefined) {
+          await repo.touchSupplierCost({
             client,
             brand,
-            row: {
-              supplier_id: po.supplier_id,
-              variant_id: line.variant_id,
-              last_unit_cost_ngn: line.unit_cost_ngn,
-              last_unit_cost: line.unit_cost_ngn,
-              last_unit_cost_currency: "NGN",
-            },
+            supplier_id: po.supplier_id,
+            variant_id: line.variant_id,
+            unit_cost_ngn: line.unit_cost_ngn,
           });
         }
       }

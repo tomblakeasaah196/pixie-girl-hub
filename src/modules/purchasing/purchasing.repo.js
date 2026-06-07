@@ -287,6 +287,29 @@ async function removeSupplierProduct({ client, brand, link_id }) {
   );
   return rowCount > 0;
 }
+// Refresh ONLY the last-cost fields (used on GRN posting). Must not clobber
+// supplier_sku / lead time / MOQ / preferred / notes on an existing link.
+async function touchSupplierCost({
+  client,
+  brand,
+  supplier_id,
+  variant_id,
+  unit_cost_ngn,
+}) {
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "supplier_products")}
+       (supplier_id, variant_id, last_unit_cost, last_unit_cost_currency, last_unit_cost_ngn, last_purchased_at)
+     VALUES ($1,$2,$3,'NGN',$3, now())
+     ON CONFLICT (supplier_id, variant_id) DO UPDATE SET
+       last_unit_cost = EXCLUDED.last_unit_cost,
+       last_unit_cost_currency = EXCLUDED.last_unit_cost_currency,
+       last_unit_cost_ngn = EXCLUDED.last_unit_cost_ngn,
+       last_purchased_at = now()
+     RETURNING *`,
+    [supplier_id, variant_id, unit_cost_ngn],
+  );
+  return rows[0];
+}
 
 // ── RFQs ─────────────────────────────────────────────────
 async function createRfq({ client, brand, row }) {
@@ -924,6 +947,7 @@ module.exports = {
   clearPrimaryContacts,
   removeSupplierContact,
   addSupplierProduct,
+  touchSupplierCost,
   listSupplierProducts,
   updateSupplierProduct,
   removeSupplierProduct,

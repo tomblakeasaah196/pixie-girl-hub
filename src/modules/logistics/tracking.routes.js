@@ -7,10 +7,12 @@
 "use strict";
 
 const express = require("express");
+const controller = require("./logistics.controller");
+
 const router = express.Router();
 
-router.get("/:token", (req, res) =>
-  res.json({ data: { token: req.params.token, events: [] } }),
-);
+// Public, unauthenticated: resolve a delivery by its tracking token (searched
+// across brands) and return status + state history.
+router.get("/:token", controller.trackPublic);
 
 module.exports = router;

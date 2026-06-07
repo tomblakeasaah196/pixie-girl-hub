@@ -10,12 +10,27 @@ const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 const money = z.number();
 
 const SALE_CHANNELS = [
-  "instagram", "website", "whatsapp", "walk_in", "pos",
-  "facebook", "tiktok", "phone", "event", "partner", "other",
+  "instagram",
+  "website",
+  "whatsapp",
+  "walk_in",
+  "pos",
+  "facebook",
+  "tiktok",
+  "phone",
+  "event",
+  "partner",
+  "other",
 ];
 const BONUS_TYPES = [
-  "customer_rating", "quarterly_performance", "recognition", "milestone",
-  "referral_bonus", "sales_target", "service_quality", "custom",
+  "customer_rating",
+  "quarterly_performance",
+  "recognition",
+  "milestone",
+  "referral_bonus",
+  "sales_target",
+  "service_quality",
+  "custom",
 ];
 
 const runCreateSchema = z.object({
@@ -58,7 +73,10 @@ const bonusDecideSchema = z.object({
 });
 
 function make(schema) {
-  return (req, _res, next) => { req.body = schema.parse(req.body || {}); next(); };
+  return (req, _res, next) => {
+    req.body = schema.parse(req.body || {});
+    next();
+  };
 }
 
 module.exports = {

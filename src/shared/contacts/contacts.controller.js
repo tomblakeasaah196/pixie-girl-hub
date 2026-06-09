@@ -31,6 +31,29 @@ async function list(req, res) {
 async function getById(req, res) {
   res.json({ data: await service.getById({ id: req.params.id }) });
 }
+async function getTimeline(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  const kinds = req.query.kinds
+    ? String(req.query.kinds)
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean)
+    : null;
+  res.json(
+    await service.getTimeline({
+      brand: req.brand,
+      id: req.params.id,
+      kinds,
+      page,
+      page_size,
+    }),
+  );
+}
+async function getSummary(req, res) {
+  res.json({
+    data: await service.getSummary({ brand: req.brand, id: req.params.id }),
+  });
+}
 async function create(req, res) {
   res
     .status(201)
@@ -110,6 +133,8 @@ const deleteAddress = async (req, res) => {
 module.exports = {
   list,
   getById,
+  getTimeline,
+  getSummary,
   create,
   update,
   remove,

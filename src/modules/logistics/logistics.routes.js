@@ -14,6 +14,9 @@ const controller = require("./logistics.controller");
 const validator = require("./logistics.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
+// Side-effect: register sales.order.paid → dispatch delivery (G-2).
+require("./logistics.subscribers");
+
 const router = express.Router();
 const can = (action) => requirePermission("logistics", action);
 

@@ -521,6 +521,37 @@ async function activeDeductionConfigs({ client, brand, as_of }) {
   return byType;
 }
 
+// ── Commission rule resolution (G-3: accrue on sale) ───────────
+/**
+ * Most-specific active commission rule for a rep + channel: prefer a
+ * user-specific rule over a role/any rule, and a channel-specific rule over
+ * an all-channels rule, then highest priority.
+ */
+async function findCommissionRule({ client, brand, user_id, sale_channel }) {
+  const { rows } = await exec(client)(
+    `SELECT * FROM ${t(brand, "commission_rules")}
+      WHERE is_active = true
+        AND (applies_to_user_id = $1 OR applies_to_user_id IS NULL)
+        AND (sales_channel = $2 OR sales_channel IS NULL)
+      ORDER BY (applies_to_user_id IS NOT NULL) DESC,
+               (sales_channel IS NOT NULL) DESC,
+               priority DESC
+      LIMIT 1`,
+    [user_id, sale_channel],
+  );
+  return rows[0] || null;
+}
+
+/** Idempotency guard: has commission already been accrued for this order? */
+async function commissionExistsForOrder({ client, brand, order_id }) {
+  const { rows } = await exec(client)(
+    `SELECT 1 FROM ${t(brand, "commission_earned")}
+      WHERE order_id = $1 AND status <> 'reversed' LIMIT 1`,
+    [order_id],
+  );
+  return rows.length > 0;
+}
+
 module.exports = {
   listActiveStaffForPayroll,
   activeDeductionConfigs,
@@ -538,6 +569,8 @@ module.exports = {
   listCommissions,
   findCommission,
   createCommission,
+  findCommissionRule,
+  commissionExistsForOrder,
   setCommissionStatus,
   payableCommissionByUser,
   markCommissionsPaidForUser,

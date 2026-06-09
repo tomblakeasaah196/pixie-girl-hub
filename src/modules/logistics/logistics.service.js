@@ -179,6 +179,49 @@ async function createDelivery({ brand, user, request_id, input }) {
     return repo.getDelivery({ client, brand, id: delivery.delivery_id });
   });
 }
+/**
+ * G-2: auto-create a delivery for a paid dispatch order. Idempotent per order;
+ * needs a delivery address snapshot and at least one active courier (used as
+ * the default — a real courier is chosen at booking). No-ops for non-dispatch
+ * orders or when prerequisites are missing.
+ */
+async function createForOrder({ brand, order }) {
+  if (!order || order.order_type !== "dispatch") return null;
+  if (!order.delivery_address_snapshot) return null;
+  if (await repo.findDeliveryByOrder({ brand, order_id: order.order_id }))
+    return null;
+  const courier = await repo.getDefaultCourier({ brand });
+  if (!courier) return null;
+
+  const items = (order.lines || [])
+    .filter((l) => l.variant_id)
+    .map((l) => ({
+      source_type: "sales_order_line",
+      variant_id: l.variant_id,
+      description:
+        [l.product_name_snapshot, l.variant_label_snapshot]
+          .filter(Boolean)
+          .join(" — ") ||
+        l.product_name_snapshot ||
+        "Item",
+      quantity: l.quantity,
+    }));
+
+  return createDelivery({
+    brand,
+    user: { user_id: null },
+    request_id: null,
+    input: {
+      courier_id: courier.courier_id,
+      order_id: order.order_id,
+      delivery_type: "sales_order",
+      recipient_contact_id: order.contact_id,
+      delivery_address_snapshot: order.delivery_address_snapshot,
+      items,
+    },
+  });
+}
+
 async function getDelivery({ brand, id }) {
   const delivery = await repo.getDelivery({ client: null, brand, id });
   if (!delivery) throw new NotFoundError("Delivery not found");
@@ -691,6 +734,7 @@ module.exports = {
   listCouriers,
   updateCourier,
   createDelivery,
+  createForOrder,
   getDelivery,
   listDeliveries,
   bookDelivery,

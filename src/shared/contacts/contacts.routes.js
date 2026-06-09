@@ -37,6 +37,10 @@ router.get("/:id", can("view"), c.getById);
 router.patch("/:id", can("edit"), v.validateUpdate, c.update);
 router.delete("/:id", can("delete"), c.remove);
 
+// Contacts 360 — unified cross-module activity feed + header roll-up.
+router.get("/:id/timeline", can("view"), c.getTimeline);
+router.get("/:id/summary", can("view"), c.getSummary);
+
 // Addresses (under a contact)
 router.get("/:id/addresses", can("view"), c.listAddresses);
 router.post(

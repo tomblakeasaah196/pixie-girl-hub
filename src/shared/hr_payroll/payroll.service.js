@@ -24,7 +24,30 @@ const events = require("./hr.events");
 const numbering = require("../../services/numbering.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
+const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, ConflictError } = require("../../utils/errors");
+
+// Map a sales_orders.sales_channel (+ order_type) to the commission_earned
+// sale_channel vocabulary.
+function mapSaleChannel(order) {
+  if (order.order_type === "walk_in") return "walk_in";
+  const m = {
+    pos: "pos",
+    instagram: "instagram",
+    whatsapp: "whatsapp",
+    facebook: "facebook",
+    tiktok: "tiktok",
+    phone: "phone",
+    event: "event",
+    partner: "partner",
+    stylist_routed: "partner",
+    storefront: "website",
+    woocommerce: "website",
+    public_form: "website",
+    subscription: "website",
+  };
+  return m[order.sales_channel] || "other";
+}
 
 function aud(fields) {
   return audit({ ...fields, is_sensitive: true });
@@ -352,6 +375,88 @@ async function accrueCommission({ brand, user, request_id, input }) {
     return earning;
   });
 }
+/**
+ * G-3: accrue commission for a paid sale. Resolves the rep (order.created_by)
+ * and the most-specific active commission rule, computes the amount on the
+ * rule's basis, and records it. Idempotent per order; a no-rep or no-rule
+ * sale simply accrues nothing.
+ */
+async function accrueForOrder({ brand, order }) {
+  if (!order || !order.created_by) return null;
+  return transaction(async (client) => {
+    if (
+      await repo.commissionExistsForOrder({
+        client,
+        brand,
+        order_id: order.order_id,
+      })
+    )
+      return null;
+
+    const sale_channel = mapSaleChannel(order);
+    const rule = await repo.findCommissionRule({
+      client,
+      brand,
+      user_id: order.created_by,
+      sale_channel,
+    });
+    if (!rule || (!rule.rate_pct && !rule.rate_fixed_ngn)) return null;
+
+    const net = money(order.subtotal_ngn).minus(
+      money(order.discount_amount_ngn || 0),
+    );
+    const basis =
+      rule.calculation_basis === "gross_revenue" ? money(order.total_ngn) : net;
+    let amount = money(0);
+    if (rule.rate_pct) amount = amount.plus(basis.times(money(rule.rate_pct)));
+    if (rule.rate_fixed_ngn) amount = amount.plus(money(rule.rate_fixed_ngn));
+    if (rule.min_commission_ngn && amount.lt(money(rule.min_commission_ngn)))
+      amount = money(rule.min_commission_ngn);
+    if (amount.lte(money(0))) return null;
+
+    const earning_number = await numbering.nextNumber(
+      client,
+      brand,
+      "commission",
+      {
+        suffix: "COM",
+      },
+    );
+    const earning = await repo.createCommission({
+      client,
+      brand,
+      earning_number,
+      input: {
+        user_id: order.created_by,
+        order_id: order.order_id,
+        sale_channel,
+        commission_rule_id: rule.rule_id,
+        basis_amount_ngn: toCurrencyString(basis),
+        rate_pct: rule.rate_pct ?? null,
+        rate_fixed_ngn: rule.rate_fixed_ngn ?? null,
+        commission_amount_ngn: toCurrencyString(amount),
+      },
+    });
+    await aud({
+      business: brand,
+      user_id: null,
+      action_key: "hr_payroll.commission.accrue_on_sale",
+      target_type: "commission_earned",
+      target_id: earning.earning_id,
+      after: {
+        order_id: order.order_id,
+        commission_amount_ngn: toCurrencyString(amount),
+      },
+    });
+    events.emit("commission_accrued", {
+      brand,
+      earning_id: earning.earning_id,
+      order_id: order.order_id,
+    });
+    return earning;
+  });
+}
+
 async function setCommissionState({ brand, user, request_id, earning_id, to }) {
   return transaction(async (client) => {
     const earning = await repo.findCommission({ client, brand, earning_id });
@@ -491,6 +596,7 @@ module.exports = {
   getPayslip,
   listCommissions,
   accrueCommission,
+  accrueForOrder,
   approveCommission,
   reverseCommission,
   listBonuses,

@@ -6,6 +6,7 @@
 "use strict";
 
 const repo = require("./contacts.repo");
+const timelineRepo = require("./contacts.timeline.repo");
 const events = require("./contacts.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -41,6 +42,26 @@ async function getById({ id }) {
   const c = await repo.findById({ id });
   if (!c) throw new NotFoundError("Contact");
   return c;
+}
+
+/** Contacts 360: time-sorted activity feed across all modules. */
+async function getTimeline({ brand, id, kinds, page, page_size }) {
+  const c = await repo.findById({ id });
+  if (!c) throw new NotFoundError("Contact");
+  return timelineRepo.timeline({
+    brand,
+    contact_id: id,
+    kinds,
+    page,
+    page_size,
+  });
+}
+
+/** Contacts 360: header roll-up (orders, spend, AR, deals, loyalty). */
+async function getSummary({ brand, id }) {
+  const c = await repo.findById({ id });
+  if (!c) throw new NotFoundError("Contact");
+  return timelineRepo.summary({ brand, contact_id: id });
 }
 async function create({ brand, user, request_id, input }) {
   return transaction(async (client) => {
@@ -241,6 +262,8 @@ async function deleteAddress({ brand, user, request_id, id, address_id }) {
 module.exports = {
   list,
   getById,
+  getTimeline,
+  getSummary,
   create,
   update,
   remove,

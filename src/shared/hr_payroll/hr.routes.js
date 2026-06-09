@@ -14,6 +14,9 @@ const controller = require("./hr.controller");
 const validate = require("./hr.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
+// Side-effect: register sales.order.paid → commission accrual (G-3).
+require("./commission.subscribers");
+
 const router = express.Router();
 const P = (action) => requirePermission("hr_payroll", action);
 

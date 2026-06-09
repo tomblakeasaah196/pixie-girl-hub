@@ -90,6 +90,22 @@ async function getCourier({ client, brand, id }) {
   );
   return rows[0] || null;
 }
+/** First active courier — used as the default for auto-created deliveries. */
+async function getDefaultCourier({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "couriers")} WHERE is_active = true
+      ORDER BY display_order, display_name LIMIT 1`,
+  );
+  return rows[0] || null;
+}
+/** Idempotency: is there already a delivery for this order? */
+async function findDeliveryByOrder({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `SELECT delivery_id FROM ${t(brand, "deliveries")} WHERE order_id = $1 LIMIT 1`,
+    [order_id],
+  );
+  return rows[0] || null;
+}
 async function listCouriers({ client, brand, is_active }) {
   const where = [];
   const params = [];
@@ -480,6 +496,8 @@ module.exports = {
   nextNumber,
   createCourier,
   getCourier,
+  getDefaultCourier,
+  findDeliveryByOrder,
   listCouriers,
   updateCourier,
   createDelivery,

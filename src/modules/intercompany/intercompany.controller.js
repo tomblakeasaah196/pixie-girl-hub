@@ -1,63 +1,53 @@
 /**
- * Inter-Company Transactions (V2.2 §5.1)
- * HTTP controller — translates req/res to service calls. No business logic here.
+ * Inter-Company Transactions (V2.2 §5.1) — HTTP controller.
  */
 
 "use strict";
 
 const service = require("./intercompany.service");
+const { parsePagination } = require("../../utils/pagination");
+
+const base = (req) => ({ user: req.user, request_id: req.request_id });
 
 async function list(req, res) {
-  const result = await service.list({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    filters: req.query,
-    page: parseInt(req.query.page || "1", 10),
-    page_size: Math.min(parseInt(req.query.page_size || "25", 10), 100),
-  });
-  res.json(result);
+  const { page, page_size } = parsePagination(req.query);
+  res.json(
+    await service.list({
+      brand: req.brand,
+      status: req.query.status,
+      page,
+      page_size,
+    }),
+  );
 }
-
 async function getById(req, res) {
-  const item = await service.getById({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    id: req.params.id,
+  res.json({ data: await service.getById({ id: req.params.id }) });
+}
+async function record(req, res) {
+  res
+    .status(201)
+    .json({
+      data: await service.recordTransaction({ ...base(req), input: req.body }),
+    });
+}
+async function match(req, res) {
+  res.json({
+    data: await service.matchTransaction({ ...base(req), id: req.params.id }),
   });
-  res.json({ data: item });
+}
+async function settle(req, res) {
+  res.json({
+    data: await service.settleTransaction({ ...base(req), id: req.params.id }),
+  });
+}
+async function openReconciliation(req, res) {
+  res.status(201).json({
+    data: await service.openReconciliation({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
 }
 
-async function create(req, res) {
-  const created = await service.create({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    input: req.body,
-  });
-  res.status(201).json({ data: created });
-}
-
-async function update(req, res) {
-  const updated = await service.update({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-    patch: req.body,
-  });
-  res.json({ data: updated });
-}
-
-async function archive(req, res) {
-  await service.archive({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-  });
-  res.status(204).end();
-}
-
-module.exports = { list, getById, create, update, archive };
+module.exports = { list, getById, record, match, settle, openReconciliation };

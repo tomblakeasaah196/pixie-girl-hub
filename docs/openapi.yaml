@@ -856,6 +856,32 @@ components:
           { type: array, items: { type: object, additionalProperties: true } }
         matches:
           { type: array, items: { type: object, additionalProperties: true } }
+    AiGovernanceCreate:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        vendor: { type: string }
+        config: { type: object, additionalProperties: true }
+    AiGovernanceUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        config: { type: object, additionalProperties: true }
+    AiGovernanceItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        vendor: { type: string }
+        config: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
 paths:
   /auth/login:
@@ -881,6 +907,116 @@ paths:
           description: Logged in
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  # ── AI Governance (Module 6.31) ───────────────────────────────
+  /ai-governance:
+    get:
+      summary: List AI governance entries
+      tags: [ai_governance]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - {
+            name: page_size,
+            in: query,
+            schema: { type: integer, default: 25, maximum: 100 },
+          }
+        - { name: q, in: query, schema: { type: string } }
+      x-required-permission: "ai_governance.view"
+      x-is-write: false
+      x-entity-scope: brand
+      responses:
+        "200":
+          description: A page of AI governance entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AiGovernanceItem"
+                  meta:
+                    $ref: "#/components/schemas/ListMeta"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a new AI governance entry
+      tags: [ai_governance]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+      x-required-permission: "ai_governance.create"
+      x-is-write: true
+      x-entity-scope: brand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiGovernanceCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/AiGovernanceItem" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+  /ai-governance/{id}:
+    parameters:
+      - $ref: "#/components/parameters/BrandContext"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: Get AI governance entry by ID
+      tags: [ai_governance]
+      x-required-permission: "ai_governance.view"
+      x-is-write: false
+      x-entity-scope: brand
+      responses:
+        "200":
+          description: AI governance item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/AiGovernanceItem" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Update an AI governance entry
+      tags: [ai_governance]
+      x-required-permission: "ai_governance.edit"
+      x-is-write: true
+      x-entity-scope: brand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiGovernanceUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/AiGovernanceItem" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Archive an AI governance entry
+      tags: [ai_governance]
+      x-required-permission: "ai_governance.delete"
+      x-is-write: true
+      x-entity-scope: brand
+      responses:
+        "204": { description: Archived }
 
   # ── Sales Campaigns (Module 6.22) ───────────────────────────────
   /sales-campaigns:

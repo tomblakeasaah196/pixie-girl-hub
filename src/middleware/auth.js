@@ -9,7 +9,7 @@
  *   - req.user.email
  *   - req.user.role_ids           []
  *   - req.user.is_ceo             boolean
- *   - req.user.available_businesses ['pixiegirl','faitlynhair'] | subset
+ *   - req.user.available_businesses ['valid-brand-key'] | subset
  */
 
 "use strict";

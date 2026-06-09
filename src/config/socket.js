@@ -2,12 +2,12 @@
  * Socket.io setup with Redis adapter for horizontal scaling.
  *
  * Rooms (per V2.2 spec real-time needs):
- *   brand:{pixiegirl|faitlynhair}:stock
- *   brand:{pixiegirl|faitlynhair}:deliveries
- *   brand:{pixiegirl|faitlynhair}:service_jobs
- *   brand:{pixiegirl|faitlynhair}:pos_session:{id}
- *   brand:{pixiegirl|faitlynhair}:campaign:{id}
- *   brand:{pixiegirl|faitlynhair}:order_timeline:{token}
+ *   brand:{valid brand key}:stock
+ *   brand:{valid brand key}:deliveries
+ *   brand:{valid brand key}:service_jobs
+ *   brand:{valid brand key}:pos_session:{id}
+ *   brand:{valid brand key}:campaign:{id}
+ *   brand:{valid brand key}:order_timeline:{token}
  *   user:{uuid}:notifications
  *   user:{uuid}:ai_pending
  *   system:ai_usage_meter

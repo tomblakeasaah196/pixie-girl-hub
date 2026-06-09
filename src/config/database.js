@@ -119,7 +119,7 @@ async function transaction(fn) {
  * RLS policies key off this. Must be called before any RLS-protected query.
  *
  * @param {import('pg').PoolClient} client
- * @param {'pixiegirl'|'faitlynhair'} business
+ * @param {'valid-brand-key-1'|'valid-brand-key-2'} business
  * @param {string} userId
  */
 async function setSessionContext(client, business, userId) {

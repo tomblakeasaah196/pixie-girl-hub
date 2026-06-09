@@ -16,7 +16,7 @@ const { query } = require("../../config/database");
  * Resolve a brand by its key. Returns null if not configured.
  * `business_id` is aliased from config_id for callers that expect it.
  *
- * @param {string} businessKey 'pixiegirl' | 'faitlynhair'
+ * @param {string} businessKey 'valid brand key'
  */
 async function findByKey(businessKey) {
   const { rows } = await query(

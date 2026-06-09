@@ -61,11 +61,11 @@ const TEMPLATE_DIR = path.join(__dirname, "..", "migrations", "template");
 async function main() {
   const client = await pool.connect();
   try {
-    console.log(`Bootstrapping ${brand}...`);
+    process.stdout.write(`Bootstrapping ${brand}...`);
 
     // 1. Create schema
     await client.query(`CREATE SCHEMA IF NOT EXISTS ${brand}`);
-    console.log(`  ✓ Schema ${brand} created`);
+    process.stdout.write(`  ✓ Schema ${brand} created`);
 
     // 2. Seed business_config row
     await client.query(
@@ -74,7 +74,7 @@ async function main() {
        ON CONFLICT (business_key) DO NOTHING`,
       [brand, meta.display_name, meta.legal_name, meta.document_prefix],
     );
-    console.log(`  ✓ business_config row inserted`);
+    process.stdout.write(`  ✓ business_config row inserted`);
 
     // 3 & 4. Apply each template
     const files = fs
@@ -87,7 +87,7 @@ async function main() {
         .replace(/{{BUSINESS}}/g, brand);
       try {
         await client.query(sql);
-        console.log(`  ✓ ${file}`);
+        process.stdout.write(`  ✓ ${file}`);
       } catch (err) {
         console.error(`  ✗ ${file}: ${err.message}`);
         throw err;
@@ -99,7 +99,7 @@ async function main() {
       `SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = $1`,
       [brand],
     );
-    console.log(`\nDone. ${brand} now has ${rows[0].n} tables.`);
+    process.stdout.write(`\nDone. ${brand} now has ${rows[0].n} tables.`);
   } finally {
     client.release();
     await pool.end();
@@ -107,6 +107,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Bootstrap failed:", err);
+  process.stderr.write("Bootstrap failed:");
+  process.stderr.write(err.message);
   process.exit(1);
 });

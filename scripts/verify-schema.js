@@ -19,8 +19,8 @@ const pool = new Pool({
 
 const EXPECTED = {
   shared: 107,
-  pixiegirl: 159,
-  faitlynhair: 159,
+  "valid-brand-key-1": 159,
+  "valid-brand-key-2": 159,
 };
 
 async function main() {
@@ -32,12 +32,14 @@ async function main() {
     );
     out[schema] = rows[0].n;
   }
-  console.log("Schema table counts:");
+  process.stdout.write("Schema table counts:");
   let ok = true;
   for (const [schema, expected] of Object.entries(EXPECTED)) {
     const actual = out[schema];
     const status = actual === expected ? "✓" : "✗";
-    console.log(`  ${status} ${schema}: ${actual} (expected ${expected})`);
+    process.stdout.write(
+      `  ${status} ${schema}: ${actual} (expected ${expected})\n`,
+    );
     if (actual !== expected) ok = false;
   }
   await pool.end();

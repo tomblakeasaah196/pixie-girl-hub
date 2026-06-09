@@ -41,7 +41,7 @@ async function brandContextMiddleware(req, _res, next) {
   if (!brand || !VALID_BRANDS.has(brand)) {
     throw new AppError(
       "BRAND_CONTEXT_REQUIRED",
-      "Missing or invalid X-Brand-Context header (expected pixiegirl or faitlynhair)",
+      "Missing or invalid X-Brand-Context header (expected valid brand key)",
       400,
     );
   }

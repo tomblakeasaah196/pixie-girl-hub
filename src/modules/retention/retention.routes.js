@@ -1,11 +1,8 @@
 /**
- * Customer Retention & Loyalty + Streak Stars + Hair Quiz (V2.2 §6.23)
- *
- * Module: retention
- * Permission key: retention
- *
- * Backing tables (per-brand or shared as documented in schema):
- *   loyalty_tiers, loyalty_ledger, customer_loyalty_state, coupons, subscription_plans, subscriptions, bundle_offers, maintenance_plans, maintenance_subscriptions, retention_workflow_rules, retention_workflow_executions, referral_codes, referral_redemptions
+ * Customer Retention & Loyalty + Streak Stars + Hair Quiz (V2.2 §6.23) —
+ * authenticated routes. Mounted at /api/v1/retention. Permission key:
+ * retention. (Public referral + hair-quiz endpoints live in their own
+ * routers under /api/public.)
  */
 
 "use strict";
@@ -15,37 +12,43 @@ const controller = require("./retention.controller");
 const validator = require("./retention.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
+// Side-effect: register order.paid → loyalty + streak earners.
+require("./retention.subscribers");
+
 const router = express.Router();
+const can = (action) => requirePermission("retention", action);
 
-// ── GET /             list ─────────────────────────────────
-router.get("/", requirePermission("retention", "view"), controller.list);
-
-// ── GET /:id          detail ───────────────────────────────
-router.get("/:id", requirePermission("retention", "view"), controller.getById);
-
-// ── POST /            create ───────────────────────────────
+// Loyalty
+router.get("/loyalty/tiers", can("view"), controller.listTiers);
+router.get("/customers/:contactId/loyalty", can("view"), controller.getLoyalty);
 router.post(
-  "/",
-  requirePermission("retention", "create"),
-  validator.validateCreate,
-  controller.create,
+  "/customers/:contactId/loyalty/redeem",
+  can("edit"),
+  validator.validateRedeem,
+  controller.redeemLoyalty,
+);
+router.post(
+  "/customers/:contactId/loyalty/adjust",
+  can("approve"),
+  validator.validateAdjust,
+  controller.adjustLoyalty,
 );
 
-// ── PATCH /:id        update ───────────────────────────────
-router.patch(
-  "/:id",
-  requirePermission("retention", "edit"),
-  validator.validateUpdate,
-  controller.update,
+// Streak Stars
+router.get("/streak/tiers", can("view"), controller.listStreakTiers);
+router.get("/customers/:contactId/streak", can("view"), controller.getStreak);
+router.post(
+  "/customers/:contactId/streak/award",
+  can("approve"),
+  validator.validateAwardStreak,
+  controller.awardStreak,
 );
 
-// ── DELETE /:id       archive/soft-delete ──────────────────
-router.delete(
-  "/:id",
-  requirePermission("retention", "delete"),
-  controller.archive,
+// Referral
+router.get(
+  "/customers/:contactId/referral",
+  can("view"),
+  controller.getReferral,
 );
-
-// TODO: module-specific endpoints (state transitions, sub-resources, etc.)
 
 module.exports = router;

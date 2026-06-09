@@ -67,10 +67,13 @@ router.post(
   controller.reverseJournal,
 );
 
-// Financial reports (trial balance, P&L, balance sheet)
+// Financial reports (trial balance, P&L, balance sheet, cash flow, ageing)
 router.get("/reports/trial-balance", can("view"), controller.trialBalance);
 router.get("/reports/profit-and-loss", can("view"), controller.profitAndLoss);
 router.get("/reports/balance-sheet", can("view"), controller.balanceSheet);
+router.get("/reports/cash-flow", can("view"), controller.cashFlow);
+router.get("/reports/ar-ageing", can("view"), controller.arAgeing);
+router.get("/reports/ap-ageing", can("view"), controller.apAgeing);
 
 // Bank statements
 router.get("/bank-statements", can("view"), bankController.listStatements);

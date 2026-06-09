@@ -206,6 +206,83 @@ async function seedVariant({ brand, variant_id }) {
     await repo.seedLevel({ brand, variant_id, location_id: loc.location_id });
 }
 
+/**
+ * Soft-lock stock for an order (V2.2 §6.2 layaway). Records a 'reserve'
+ * movement; the SSOT trigger lifts stock_levels.reserved (available drops).
+ * Call inside the order transaction (pass client). Positive quantity.
+ */
+async function reserveForOrder({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  quantity,
+  reference_id,
+  user_id,
+}) {
+  const m = await repo.recordMovement({
+    client,
+    brand,
+    user_id,
+    input: {
+      variant_id,
+      location_id,
+      quantity: Math.abs(quantity),
+      movement_type: "reserve",
+      reference_type: "sales_order",
+      reference_id,
+    },
+  });
+  events.emit("moved", {
+    brand,
+    variant_id,
+    location_id,
+    movement_type: "reserve",
+    quantity: Math.abs(quantity),
+  });
+  return m;
+}
+
+/**
+ * Release a previously-held reservation (layaway paid / cancelled /
+ * abandoned). Records a 'release_reserve' movement; the trigger lowers
+ * stock_levels.reserved (available recovers). Call before deductForSale so
+ * the reserved <= on_hand invariant always holds.
+ */
+async function releaseReservation({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  quantity,
+  reference_id,
+  user_id,
+  reason,
+}) {
+  const m = await repo.recordMovement({
+    client,
+    brand,
+    user_id,
+    input: {
+      variant_id,
+      location_id,
+      quantity: Math.abs(quantity),
+      movement_type: "release_reserve",
+      reference_type: "sales_order",
+      reference_id,
+      notes: reason || null,
+    },
+  });
+  events.emit("moved", {
+    brand,
+    variant_id,
+    location_id,
+    movement_type: "release_reserve",
+    quantity: Math.abs(quantity),
+  });
+  return m;
+}
+
 const A = (
   brand,
   user_id,
@@ -602,6 +679,8 @@ module.exports = {
   recordMovement,
   deductForSale,
   receiveStock,
+  reserveForOrder,
+  releaseReservation,
   seedVariant,
   listAdjustments,
   getAdjustment,

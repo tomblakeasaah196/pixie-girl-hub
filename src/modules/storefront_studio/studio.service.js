@@ -1,12 +1,6 @@
 /**
- * Storefront Studio (V2.2 §6.28)
- * Business logic layer. Repos handle SQL; controllers handle HTTP.
- * This file is where:
- *   - Validation beyond shape (cross-field, against DB state)
- *   - Workflow routing (approval / multi-step)
- *   - Domain event emission (for real-time + AI)
- *   - Audit logging
- *   - Transaction orchestration
+ * Storefront Studio (V2.2 §6.28) — business logic. Draft/publish editor for
+ * the brand's storefront theme, pages and navigation.
  */
 
 "use strict";
@@ -15,83 +9,204 @@ const repo = require("./studio.repo");
 const events = require("./studio.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { NotFoundError, AppError } = require("../../utils/errors");
+const { NotFoundError } = require("../../utils/errors");
 
-async function list({ brand, user, scope, filters, page, page_size }) {
-  return repo.findAll({
-    brand,
-    scope,
+const A = (
+  brand,
+  user,
+  action_key,
+  target_type,
+  target_id,
+  after,
+  request_id,
+) =>
+  audit({
+    business: brand,
     user_id: user.user_id,
-    filters,
-    page,
-    page_size,
+    action_key,
+    target_type,
+    target_id,
+    after,
+    request_id,
+  });
+
+// ── Theme ──────────────────────────────────────────────────
+function getThemes({ brand }) {
+  return repo.getThemes({ brand });
+}
+
+async function saveThemeDraft({ brand, user, request_id, tokens }) {
+  return transaction(async (client) => {
+    const existing = await repo.getThemeDraft({ client, brand });
+    const draft = existing
+      ? await repo.updateThemeDraft({ client, brand, tokens })
+      : await repo.insertThemeDraft({
+          client,
+          brand,
+          tokens,
+          created_by: user.user_id,
+        });
+    await A(
+      brand,
+      user,
+      "studio.theme.save_draft",
+      "storefront_theme",
+      draft.theme_id,
+      {},
+      request_id,
+    );
+    events.emit("theme.draft_saved", { brand, theme_id: draft.theme_id });
+    return draft;
   });
 }
 
-async function getById({ brand, user, scope, id }) {
-  const item = await repo.findById({ brand, id, scope, user_id: user.user_id });
-  if (!item) throw new NotFoundError("StorefrontStudio");
-  return item;
+async function publishTheme({ brand, user, request_id }) {
+  return transaction(async (client) => {
+    const published = await repo.publish({
+      client,
+      entity: "theme",
+      brand,
+      published_by: user.user_id,
+    });
+    if (!published) throw new NotFoundError("Theme draft");
+    await A(
+      brand,
+      user,
+      "studio.theme.publish",
+      "storefront_theme",
+      published.theme_id,
+      {},
+      request_id,
+    );
+    events.emit("theme.published", { brand, theme_id: published.theme_id });
+    return published;
+  });
 }
 
-async function create({ brand, user, request_id, input }) {
+// ── Navigation ─────────────────────────────────────────────
+function getNavigation({ brand }) {
+  return repo.getNavigation({ brand });
+}
+
+async function saveNavDraft({ brand, user, request_id, nav }) {
   return transaction(async (client) => {
-    const created = await repo.create({
+    const existing = await repo.getNavDraft({ client, brand });
+    const draft = existing
+      ? await repo.updateNavDraft({ client, brand, nav })
+      : await repo.insertNavDraft({
+          client,
+          brand,
+          nav,
+          created_by: user.user_id,
+        });
+    await A(
+      brand,
+      user,
+      "studio.nav.save_draft",
+      "storefront_navigation",
+      draft.nav_id,
+      {},
+      request_id,
+    );
+    events.emit("nav.draft_saved", { brand, nav_id: draft.nav_id });
+    return draft;
+  });
+}
+
+async function publishNav({ brand, user, request_id }) {
+  return transaction(async (client) => {
+    const published = await repo.publish({
+      client,
+      entity: "navigation",
+      brand,
+      published_by: user.user_id,
+    });
+    if (!published) throw new NotFoundError("Navigation draft");
+    await A(
+      brand,
+      user,
+      "studio.nav.publish",
+      "storefront_navigation",
+      published.nav_id,
+      {},
+      request_id,
+    );
+    events.emit("nav.published", { brand, nav_id: published.nav_id });
+    return published;
+  });
+}
+
+// ── Pages ──────────────────────────────────────────────────
+function listPages({ brand }) {
+  return repo.listPages({ brand });
+}
+
+async function savePageDraft({ brand, user, request_id, page }) {
+  return transaction(async (client) => {
+    const existing = await repo.getPageDraft({
       client,
       brand,
-      user_id: user.user_id,
-      input,
+      page_key: page.page_key,
     });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "storefront_studio.create",
-      target_type: "storefront_studio",
-      target_id: created.id || created[Object.keys(created)[0]],
-      after: created,
+    const draft = existing
+      ? await repo.updatePageDraft({
+          client,
+          brand,
+          page_key: page.page_key,
+          page,
+        })
+      : await repo.insertPageDraft({
+          client,
+          brand,
+          page,
+          created_by: user.user_id,
+        });
+    await A(
+      brand,
+      user,
+      "studio.page.save_draft",
+      "storefront_page",
+      draft.page_id,
+      { page_key: page.page_key },
       request_id,
-    });
-    events.emit("created", { brand, item: created, user_id: user.user_id });
-    return created;
+    );
+    events.emit("page.draft_saved", { brand, page_id: draft.page_id });
+    return draft;
   });
 }
 
-async function update({ brand, user, request_id, id, patch }) {
+async function publishPage({ brand, user, request_id, page_key }) {
   return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("StorefrontStudio");
-    const updated = await repo.update({ client, brand, id, patch });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "storefront_studio.update",
-      target_type: "storefront_studio",
-      target_id: id,
-      before,
-      after: updated,
-      request_id,
+    const published = await repo.publish({
+      client,
+      entity: "page",
+      brand,
+      page_key,
+      published_by: user.user_id,
     });
-    events.emit("updated", { brand, item: updated, user_id: user.user_id });
-    return updated;
+    if (!published) throw new NotFoundError("Page draft");
+    await A(
+      brand,
+      user,
+      "studio.page.publish",
+      "storefront_page",
+      published.page_id,
+      { page_key },
+      request_id,
+    );
+    events.emit("page.published", { brand, page_id: published.page_id });
+    return published;
   });
 }
 
-async function archive({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("StorefrontStudio");
-    await repo.archive({ client, brand, id });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "storefront_studio.archive",
-      target_type: "storefront_studio",
-      target_id: id,
-      before,
-      request_id,
-    });
-    events.emit("archived", { brand, id, user_id: user.user_id });
-  });
-}
-
-module.exports = { list, getById, create, update, archive };
+module.exports = {
+  getThemes,
+  saveThemeDraft,
+  publishTheme,
+  getNavigation,
+  saveNavDraft,
+  publishNav,
+  listPages,
+  savePageDraft,
+  publishPage,
+};

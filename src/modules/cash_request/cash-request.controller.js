@@ -1,6 +1,6 @@
 /**
- * Cash Request & Disbursement (V2.2 §6.32 — NEW MODULE — pending schema)
- * HTTP controller — translates req/res to service calls. No business logic here.
+ * Cash Request & Disbursement (V2.2 §6.32) — HTTP controller.
+ * Translates req/res to service calls. No business logic here.
  */
 
 "use strict";
@@ -20,12 +20,7 @@ async function list(req, res) {
 }
 
 async function getById(req, res) {
-  const item = await service.getById({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    id: req.params.id,
-  });
+  const item = await service.getById({ brand: req.brand, id: req.params.id });
   res.json({ data: item });
 }
 
@@ -39,25 +34,81 @@ async function create(req, res) {
   res.status(201).json({ data: created });
 }
 
-async function update(req, res) {
-  const updated = await service.update({
+async function submit(req, res) {
+  const updated = await service.submit({
     brand: req.brand,
     user: req.user,
     request_id: req.request_id,
     id: req.params.id,
-    patch: req.body,
   });
   res.json({ data: updated });
 }
 
-async function archive(req, res) {
-  await service.archive({
+async function financeDecision(req, res) {
+  const updated = await service.financeDecision({
     brand: req.brand,
     user: req.user,
     request_id: req.request_id,
     id: req.params.id,
+    decision: req.body.decision,
+    notes: req.body.notes,
   });
-  res.status(204).end();
+  res.json({ data: updated });
 }
 
-module.exports = { list, getById, create, update, archive };
+async function ceoDecision(req, res) {
+  const updated = await service.ceoDecision({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+    decision: req.body.decision,
+    notes: req.body.notes,
+  });
+  res.json({ data: updated });
+}
+
+async function disburse(req, res) {
+  const updated = await service.disburse({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+    input: req.body,
+  });
+  res.json({ data: updated });
+}
+
+async function settle(req, res) {
+  const updated = await service.settle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+    input: req.body,
+  });
+  res.json({ data: updated });
+}
+
+async function cancel(req, res) {
+  const updated = await service.cancel({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+    reason: req.body.reason,
+  });
+  res.json({ data: updated });
+}
+
+module.exports = {
+  list,
+  getById,
+  create,
+  submit,
+  financeDecision,
+  ceoDecision,
+  disburse,
+  settle,
+  cancel,
+};

@@ -1,63 +1,90 @@
 /**
- * Storefront Studio (V2.2 §6.28)
- * HTTP controller — translates req/res to service calls. No business logic here.
+ * Storefront Studio (V2.2 §6.28) — HTTP controller. Authenticated; brand
+ * from req.brand (brand-context middleware).
  */
 
 "use strict";
 
 const service = require("./studio.service");
 
-async function list(req, res) {
-  const result = await service.list({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    filters: req.query,
-    page: parseInt(req.query.page || "1", 10),
-    page_size: Math.min(parseInt(req.query.page_size || "25", 10), 100),
+async function getThemes(req, res) {
+  res.json({ data: await service.getThemes({ brand: req.brand }) });
+}
+async function saveThemeDraft(req, res) {
+  res.json({
+    data: await service.saveThemeDraft({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      tokens: req.body.tokens,
+    }),
   });
-  res.json(result);
+}
+async function publishTheme(req, res) {
+  res.json({
+    data: await service.publishTheme({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+    }),
+  });
 }
 
-async function getById(req, res) {
-  const item = await service.getById({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    id: req.params.id,
+async function getNavigation(req, res) {
+  res.json({ data: await service.getNavigation({ brand: req.brand }) });
+}
+async function saveNavDraft(req, res) {
+  res.json({
+    data: await service.saveNavDraft({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      nav: req.body,
+    }),
   });
-  res.json({ data: item });
+}
+async function publishNav(req, res) {
+  res.json({
+    data: await service.publishNav({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+    }),
+  });
 }
 
-async function create(req, res) {
-  const created = await service.create({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    input: req.body,
+async function listPages(req, res) {
+  res.json({ data: await service.listPages({ brand: req.brand }) });
+}
+async function savePageDraft(req, res) {
+  res.json({
+    data: await service.savePageDraft({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      page: req.body,
+    }),
   });
-  res.status(201).json({ data: created });
+}
+async function publishPage(req, res) {
+  res.json({
+    data: await service.publishPage({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      page_key: req.params.pageKey,
+    }),
+  });
 }
 
-async function update(req, res) {
-  const updated = await service.update({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-    patch: req.body,
-  });
-  res.json({ data: updated });
-}
-
-async function archive(req, res) {
-  await service.archive({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-  });
-  res.status(204).end();
-}
-
-module.exports = { list, getById, create, update, archive };
+module.exports = {
+  getThemes,
+  saveThemeDraft,
+  publishTheme,
+  getNavigation,
+  saveNavDraft,
+  publishNav,
+  listPages,
+  savePageDraft,
+  publishPage,
+};

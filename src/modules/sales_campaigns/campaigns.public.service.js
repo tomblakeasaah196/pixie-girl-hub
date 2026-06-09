@@ -15,7 +15,7 @@ const events = require("./campaigns.events");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
-const BRANDS = ["pixiegirl", "faitlynhair"];
+const { BRANDS } = require("../../config/brands");
 
 // Statuses that are publicly visible (the landing page exists for these).
 const PUBLIC_STATUSES = new Set(["scheduled", "live", "paused", "ended"]);

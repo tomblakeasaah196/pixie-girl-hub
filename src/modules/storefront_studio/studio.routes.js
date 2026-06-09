@@ -1,11 +1,10 @@
 /**
- * Storefront Studio (V2.2 §6.28)
+ * Storefront Studio (V2.2 §6.28) — routes. Mounted at /api/v1/storefront-studio.
+ * Permission key: storefront_studio. Draft/publish editor for the brand's
+ * theme, navigation and pages.
  *
- * Module: storefront_studio
- * Permission key: storefront_studio
- *
- * Backing tables (per-brand or shared as documented in schema):
- *   storefront_themes, storefront_pages, storefront_navigation, storefront_revisions
+ * Backing tables (shared): storefront_themes, storefront_pages,
+ * storefront_navigation, storefront_revisions.
  */
 
 "use strict";
@@ -16,44 +15,36 @@ const validator = require("./studio.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
+const can = (action) => requirePermission("storefront_studio", action);
 
-// ── GET /             list ─────────────────────────────────
-router.get(
-  "/",
-  requirePermission("storefront_studio", "view"),
-  controller.list,
+// Theme
+router.get("/theme", can("view"), controller.getThemes);
+router.put(
+  "/theme/draft",
+  can("edit"),
+  validator.validateThemeDraft,
+  controller.saveThemeDraft,
 );
+router.post("/theme/publish", can("approve"), controller.publishTheme);
 
-// ── GET /:id          detail ───────────────────────────────
-router.get(
-  "/:id",
-  requirePermission("storefront_studio", "view"),
-  controller.getById,
+// Navigation
+router.get("/navigation", can("view"), controller.getNavigation);
+router.put(
+  "/navigation/draft",
+  can("edit"),
+  validator.validateNavDraft,
+  controller.saveNavDraft,
 );
+router.post("/navigation/publish", can("approve"), controller.publishNav);
 
-// ── POST /            create ───────────────────────────────
-router.post(
-  "/",
-  requirePermission("storefront_studio", "create"),
-  validator.validateCreate,
-  controller.create,
+// Pages
+router.get("/pages", can("view"), controller.listPages);
+router.put(
+  "/pages/draft",
+  can("edit"),
+  validator.validatePageDraft,
+  controller.savePageDraft,
 );
-
-// ── PATCH /:id        update ───────────────────────────────
-router.patch(
-  "/:id",
-  requirePermission("storefront_studio", "edit"),
-  validator.validateUpdate,
-  controller.update,
-);
-
-// ── DELETE /:id       archive/soft-delete ──────────────────
-router.delete(
-  "/:id",
-  requirePermission("storefront_studio", "delete"),
-  controller.archive,
-);
-
-// TODO: module-specific endpoints (state transitions, sub-resources, etc.)
+router.post("/pages/:pageKey/publish", can("approve"), controller.publishPage);
 
 module.exports = router;

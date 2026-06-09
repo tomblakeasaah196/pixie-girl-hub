@@ -8,7 +8,7 @@
 
 const { query } = require("../../config/database");
 
-const VALID = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID } = require("../../config/brands");
 const t = (brand, tbl) => {
   if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   return `${brand}.${tbl}`;
@@ -27,6 +27,10 @@ const INV_COLS = [
   "wht_amount_ngn",
   "shipping_fee_ngn",
   "total_ngn",
+  "display_currency",
+  "display_subtotal",
+  "display_total",
+  "fx_rate_used",
   "issue_date",
   "due_date",
   "payment_terms",

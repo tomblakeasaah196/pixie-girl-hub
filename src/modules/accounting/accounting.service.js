@@ -116,7 +116,7 @@ async function postEntry({ client, brand, entry, lines, user_id }) {
         brand,
         line: { ...line, entry_id: created.entry_id },
       });
-    const posted = await repo.setEntryStatus({
+    await repo.setEntryStatus({
       client: c,
       brand,
       id: created.entry_id,
@@ -388,6 +388,188 @@ async function balanceSheet({ brand, as_of }) {
   };
 }
 
+// Map each journal source_type to a cash-flow activity bucket.
+const SOURCE_ACTIVITY = {
+  sales: "operating",
+  pos: "operating",
+  invoice: "operating",
+  payment: "operating",
+  purchase: "operating",
+  goods_received: "operating",
+  payroll: "operating",
+  expense: "operating",
+  tax_filing: "operating",
+  refund: "operating",
+  accrual: "operating",
+  fx_revaluation: "operating",
+  manual: "operating",
+  stock_adjustment: "operating",
+  reversal: "operating",
+  closing: "operating",
+  depreciation: "investing",
+  intercompany: "financing",
+  opening_balance: "financing",
+};
+
+function addDaysISO(isoDate, delta) {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Cash Flow statement (V2.2 §6.6) — direct method. Net cash movement per
+ * period grouped into operating / investing / financing by journal
+ * source_type, reconciled against opening and closing cash balances.
+ */
+async function cashFlow({ brand, from, to }) {
+  const rows = await repo.cashFlowByActivity({ brand, from, to });
+  const buckets = { operating: [], investing: [], financing: [] };
+  const totals = {
+    operating: money(0),
+    investing: money(0),
+    financing: money(0),
+  };
+  for (const r of rows) {
+    const activity = SOURCE_ACTIVITY[r.source_type] || "operating";
+    const amt = money(r.cash_delta_ngn);
+    buckets[activity].push({
+      source_type: r.source_type,
+      amount_ngn: toCurrencyString(amt),
+    });
+    totals[activity] = totals[activity].plus(amt);
+  }
+  const netChange = totals.operating
+    .plus(totals.investing)
+    .plus(totals.financing);
+
+  const opening = from
+    ? money(await repo.cashBalanceAsOf({ brand, as_of: addDaysISO(from, -1) }))
+    : money(0);
+  const closing = money(
+    await repo.cashBalanceAsOf({ brand, as_of: to || null }),
+  );
+
+  return {
+    period: { from: from || null, to: to || null },
+    operating: {
+      lines: buckets.operating,
+      total_ngn: toCurrencyString(totals.operating),
+    },
+    investing: {
+      lines: buckets.investing,
+      total_ngn: toCurrencyString(totals.investing),
+    },
+    financing: {
+      lines: buckets.financing,
+      total_ngn: toCurrencyString(totals.financing),
+    },
+    net_change_ngn: toCurrencyString(netChange),
+    opening_cash_ngn: toCurrencyString(opening),
+    closing_cash_ngn: toCurrencyString(closing),
+    reconciled: opening.plus(netChange).minus(closing).abs().lte(money("0.01")),
+  };
+}
+
+const FX_GAIN_ACCOUNT = "4910"; // FX Gain — Realised (revenue)
+const FX_LOSS_ACCOUNT = "5910"; // FX Loss — Realised (expense)
+const CASH_BANK_ACCOUNT = "1100"; // Bank — Operating Account (NGN)
+
+/**
+ * Post a realised FX gain/loss (V2.2 §6.6). `delta_ngn` is the NGN variance
+ * vs the booked rate: positive = we received more NGN than booked (gain),
+ * negative = a loss. No-op for a zero delta. Pass a client to run inside the
+ * caller's transaction.
+ */
+async function postFxGainLoss({
+  client,
+  brand,
+  delta_ngn,
+  reference,
+  description,
+  source_id,
+  user_id,
+}) {
+  const delta = money(delta_ngn);
+  if (delta.abs().lte(money("0.01"))) return null;
+  const amount = toCurrencyString(delta.abs());
+  const lines = delta.gt(0)
+    ? [
+        { account_code: CASH_BANK_ACCOUNT, debit_ngn: amount, description },
+        { account_code: FX_GAIN_ACCOUNT, credit_ngn: amount, description },
+      ]
+    : [
+        { account_code: FX_LOSS_ACCOUNT, debit_ngn: amount, description },
+        { account_code: CASH_BANK_ACCOUNT, credit_ngn: amount, description },
+      ];
+  return postEntry({
+    client,
+    brand,
+    user_id,
+    entry: {
+      source_type: "fx_revaluation",
+      source_table: "sales_order_payments",
+      source_id: source_id || null,
+      reference,
+      description:
+        description || `Realised FX ${delta.gt(0) ? "gain" : "loss"}`,
+    },
+    lines,
+  });
+}
+
+function summariseAgeing(rows, as_of) {
+  const buckets = {
+    b_0_30: money(0),
+    b_31_60: money(0),
+    b_61_90: money(0),
+    b_90_plus: money(0),
+  };
+  let grand = money(0);
+  const parties = rows.map((r) => {
+    buckets.b_0_30 = buckets.b_0_30.plus(money(r.b_0_30));
+    buckets.b_31_60 = buckets.b_31_60.plus(money(r.b_31_60));
+    buckets.b_61_90 = buckets.b_61_90.plus(money(r.b_61_90));
+    buckets.b_90_plus = buckets.b_90_plus.plus(money(r.b_90_plus));
+    grand = grand.plus(money(r.total_ngn));
+    return {
+      party_id: r.party_id,
+      party_name: r.party_name,
+      total_ngn: toCurrencyString(money(r.total_ngn)),
+      current_0_30_ngn: toCurrencyString(money(r.b_0_30)),
+      days_31_60_ngn: toCurrencyString(money(r.b_31_60)),
+      days_61_90_ngn: toCurrencyString(money(r.b_61_90)),
+      days_90_plus_ngn: toCurrencyString(money(r.b_90_plus)),
+    };
+  });
+  return {
+    as_of: as_of || new Date().toISOString().slice(0, 10),
+    parties,
+    totals: {
+      current_0_30_ngn: toCurrencyString(buckets.b_0_30),
+      days_31_60_ngn: toCurrencyString(buckets.b_31_60),
+      days_61_90_ngn: toCurrencyString(buckets.b_61_90),
+      days_90_plus_ngn: toCurrencyString(buckets.b_90_plus),
+      total_ngn: toCurrencyString(grand),
+    },
+  };
+}
+
+/**
+ * AR ageing (V2.2 §6.5/6.6) — open customer balances bucketed by age off the
+ * live balance due.
+ */
+async function receivablesAgeing({ brand, as_of }) {
+  const rows = await repo.receivablesAgeing({ brand, as_of });
+  return summariseAgeing(rows, as_of);
+}
+
+/** AP ageing — open supplier balances bucketed by age. */
+async function payablesAgeing({ brand, as_of }) {
+  const rows = await repo.payablesAgeing({ brand, as_of });
+  return summariseAgeing(rows, as_of);
+}
+
 module.exports = {
   postEntry,
   reverseEntry,
@@ -406,4 +588,8 @@ module.exports = {
   trialBalance,
   profitAndLoss,
   balanceSheet,
+  cashFlow,
+  receivablesAgeing,
+  payablesAgeing,
+  postFxGainLoss,
 };

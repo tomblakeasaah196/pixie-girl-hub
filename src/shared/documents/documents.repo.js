@@ -9,7 +9,7 @@
 
 const { query } = require("../../config/database");
 
-const VALID = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID } = require("../../config/brands");
 const ex = (c) => (c ? c.query.bind(c) : query);
 
 async function nextNumber({ client, brand }) {

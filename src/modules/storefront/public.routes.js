@@ -1,23 +1,38 @@
 /**
- * Public catalogue endpoints (no auth).
- * Storefront product browsing — no JWT required.
+ * Public catalogue + storefront-analytics endpoints (no auth).
+ * Mounted at /api/public/catalogue. Brand from X-Brand-Context / ?brand.
  */
 
 "use strict";
 
 const express = require("express");
+const controller = require("./storefront.controller");
+const validator = require("./storefront.validator");
+
 const router = express.Router();
 
-router.get("/products", (_req, res) => res.json({ data: [] }));
-router.get("/products/:slug", (req, res) =>
-  res.json({ data: { slug: req.params.slug } }),
+// Catalogue reads
+router.get("/products", controller.listProducts);
+router.get("/products/:slug", controller.getProduct);
+router.get("/categories", controller.listCategories);
+router.get("/collections/:slug", controller.getCollection);
+router.get("/content/:type/:slug", controller.getContent);
+
+// Analytics ingestion (B-7)
+router.post(
+  "/analytics/sessions",
+  validator.validateSession,
+  controller.startSession,
 );
-router.get("/categories", (_req, res) => res.json({ data: [] }));
-router.get("/collections/:slug", (req, res) =>
-  res.json({ data: { slug: req.params.slug } }),
+router.post(
+  "/analytics/page-views",
+  validator.validatePageView,
+  controller.recordPageView,
 );
-router.get("/content/:type/:slug", (req, res) =>
-  res.json({ data: req.params }),
+router.post(
+  "/analytics/funnel-events",
+  validator.validateFunnel,
+  controller.recordFunnelEvent,
 );
 
 module.exports = router;

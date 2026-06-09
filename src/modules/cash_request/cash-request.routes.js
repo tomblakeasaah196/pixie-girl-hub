@@ -1,11 +1,12 @@
 /**
- * Cash Request & Disbursement (V2.2 §6.32 — NEW MODULE — pending schema)
+ * Cash Request & Disbursement (V2.2 §6.32). Mounted at /api/v1/cash-requests.
+ * Permission key: expenses (Cash Request is the §6.7 companion flow).
  *
- * Module: cash_request
- * Permission key: expenses
+ * Workflow: create(draft) → submit → finance-decision → [ceo-decision] →
+ * disburse (mandatory bank_transaction_id) → settle (advances). Cancel is
+ * allowed at any pre-disbursement state.
  *
- * Backing tables (per-brand or shared as documented in schema):
- *   cash_requests (PENDING), cash_request_state_history (PENDING)
+ * Backing tables (shared): cash_requests, cash_request_state_history.
  */
 
 "use strict";
@@ -16,36 +17,42 @@ const validator = require("./cash-request.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
+const can = (action) => requirePermission("expenses", action);
 
-// ── GET /             list ─────────────────────────────────
-router.get("/", requirePermission("expenses", "view"), controller.list);
+router.get("/", can("view"), controller.list);
+router.post("/", can("create"), validator.validateCreate, controller.create);
+router.get("/:id", can("view"), controller.getById);
 
-// ── GET /:id          detail ───────────────────────────────
-router.get("/:id", requirePermission("expenses", "view"), controller.getById);
-
-// ── POST /            create ───────────────────────────────
+router.post("/:id/submit", can("edit"), controller.submit);
 router.post(
-  "/",
-  requirePermission("expenses", "create"),
-  validator.validateCreate,
-  controller.create,
+  "/:id/finance-decision",
+  can("approve"),
+  validator.validateDecision,
+  controller.financeDecision,
 );
-
-// ── PATCH /:id        update ───────────────────────────────
-router.patch(
-  "/:id",
-  requirePermission("expenses", "edit"),
-  validator.validateUpdate,
-  controller.update,
+router.post(
+  "/:id/ceo-decision",
+  can("approve"),
+  validator.validateDecision,
+  controller.ceoDecision,
 );
-
-// ── DELETE /:id       archive/soft-delete ──────────────────
-router.delete(
-  "/:id",
-  requirePermission("expenses", "delete"),
-  controller.archive,
+router.post(
+  "/:id/disburse",
+  can("approve"),
+  validator.validateDisburse,
+  controller.disburse,
 );
-
-// TODO: module-specific endpoints (state transitions, sub-resources, etc.)
+router.post(
+  "/:id/settle",
+  can("edit"),
+  validator.validateSettle,
+  controller.settle,
+);
+router.post(
+  "/:id/cancel",
+  can("edit"),
+  validator.validateCancel,
+  controller.cancel,
+);
 
 module.exports = router;

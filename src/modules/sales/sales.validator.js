@@ -44,6 +44,8 @@ const orderCreate = z
     sales_campaign_id: z.string().uuid().optional(),
     campaign_slug: z.string().optional(),
     shipping_fee_ngn: money.optional(),
+    // Override the business-default deposit % for a deposit_triggered order.
+    required_deposit_pct: z.coerce.number().min(0).max(100).optional(),
     utm_source: z.string().max(80).optional(),
     utm_medium: z.string().max(80).optional(),
     utm_campaign: z.string().max(120).optional(),
@@ -69,6 +71,10 @@ const paymentCreate = z
     amount_ngn: z.coerce.number().positive(),
     provider: z.string().max(40).optional(),
     provider_reference: z.string().max(200).optional(),
+    // Foreign-currency settlement (V2.2 §6.6 realised FX gain/loss).
+    paid_currency: z.string().length(3).optional(),
+    paid_amount: z.coerce.number().positive().optional(),
+    fx_rate_used: z.coerce.number().positive().optional(),
     fee_ngn: money.optional(),
     payment_path: z
       .enum([

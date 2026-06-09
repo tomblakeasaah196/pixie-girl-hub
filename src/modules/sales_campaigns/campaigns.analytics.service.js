@@ -16,7 +16,7 @@ const { query, transaction } = require("../../config/database");
 const events = require("./campaigns.events");
 const { logger } = require("../../config/logger");
 
-const VALID_BRANDS = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID_BRANDS } = require("../../config/brands");
 function t(brand, table) {
   if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   return `${brand}.${table}`;

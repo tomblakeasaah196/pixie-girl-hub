@@ -9,7 +9,7 @@
 
 const { query } = require("../../config/database");
 
-const VALID = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID } = require("../../config/brands");
 const t = (b, tbl) => {
   if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
   return `${b}.${tbl}`;
@@ -33,6 +33,8 @@ const ORDER = [
   "shipping_fee_ngn",
   "total_ngn",
   "payment_model",
+  "required_deposit_pct",
+  "required_deposit_ngn",
 ];
 const LINE = [
   "order_id",
@@ -67,6 +69,9 @@ const PAY = [
   "provider",
   "provider_reference",
   "amount_ngn",
+  "paid_currency",
+  "paid_amount",
+  "fx_rate_used",
   "fee_ngn",
   "payment_path",
   "client_idempotency_key",
@@ -207,6 +212,76 @@ async function setStatus({ client, brand, id, status }) {
     [id, status],
   );
   return rows[0] || null;
+}
+
+/**
+ * Deposit-triggered (V2.2 §6.2): stamp the moment accumulated payments first
+ * crossed the required deposit and move the order into production.
+ */
+async function markDepositMet({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET status = 'in_production', deposit_met_at = now()
+      WHERE order_id = $1 AND deposit_met_at IS NULL
+      RETURNING *`,
+    [id],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Layaway orders eligible for auto-cancel: payment_model='layaway', still
+ * awaiting payment, no payment crossed the abandonment window.
+ * `days` comes from business_config.installment_settings.
+ */
+async function listAbandonableLayaway({ brand, days }) {
+  // "No payment for the window": measure from the latest payment if any,
+  // otherwise from order creation.
+  const { rows } = await query(
+    `SELECT so.order_id, so.order_number, so.contact_id,
+            so.total_ngn, so.amount_paid_ngn
+       FROM ${t(brand, "sales_orders")} so
+      WHERE so.payment_model = 'layaway'
+        AND so.status = 'pending_payment'
+        AND COALESCE(
+              (SELECT max(p.captured_at)
+                 FROM ${t(brand, "sales_order_payments")} p
+                WHERE p.order_id = so.order_id),
+              so.created_at
+            ) < now() - ($1 || ' days')::interval`,
+    [String(days)],
+  );
+  return rows;
+}
+
+/**
+ * Layaway orders with an outstanding balance that are due a reminder:
+ * never reminded, or last reminded longer ago than the cadence.
+ */
+async function listLayawayDueForReminder({ brand, cadenceDays }) {
+  const { rows } = await query(
+    `SELECT order_id, order_number, contact_id, total_ngn, amount_paid_ngn,
+            balance_due_ngn, public_tracking_token
+       FROM ${t(brand, "sales_orders")}
+      WHERE payment_model = 'layaway'
+        AND status = 'pending_payment'
+        AND amount_paid_ngn < total_ngn
+        AND (
+          last_reminder_sent_at IS NULL
+          OR last_reminder_sent_at < now() - ($1 || ' days')::interval
+        )`,
+    [String(cadenceDays)],
+  );
+  return rows;
+}
+
+async function markReminderSent({ brand, id }) {
+  await query(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET last_reminder_sent_at = now()
+      WHERE order_id = $1`,
+    [id],
+  );
 }
 const HEADER_COLS = [
   "order_type",
@@ -475,6 +550,10 @@ module.exports = {
   findById,
   listOrders,
   setStatus,
+  markDepositMet,
+  listAbandonableLayaway,
+  listLayawayDueForReminder,
+  markReminderSent,
   addPayment,
   listPayments,
   createQuotation,

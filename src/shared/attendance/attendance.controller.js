@@ -21,11 +21,9 @@ async function getGeofence(req, res) {
   });
 }
 async function createGeofence(req, res) {
-  res
-    .status(201)
-    .json({
-      data: await service.createGeofence({ ...ctx(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.createGeofence({ ...ctx(req), input: req.body }),
+  });
 }
 async function updateGeofence(req, res) {
   res.json({

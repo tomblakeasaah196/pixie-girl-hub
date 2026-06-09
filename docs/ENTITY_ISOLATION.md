@@ -22,7 +22,7 @@ faitlynhair.sales_orders  ←→  faitlynhair.invoices ←→  faitlynhair.journ
 You literally cannot write `SELECT * FROM sales_orders` and accidentally pull both brands. The schema name must be specified, and every query goes through a repo that takes a `brand` parameter, builds `pixiegirl.foo` or `faitlynhair.foo`, and refuses any other value.
 
 ```js
-const VALID_BRANDS = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID_BRANDS } = require("../../config/brands");
 
 function tableFor(brand) {
   if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);

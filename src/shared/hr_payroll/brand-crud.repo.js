@@ -24,7 +24,7 @@
 
 const { query } = require("../../config/database");
 
-const VALID_BRANDS = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID_BRANDS } = require("../../config/brands");
 
 function makeBrandRepo(spec) {
   const {

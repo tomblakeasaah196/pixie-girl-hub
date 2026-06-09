@@ -1,16 +1,17 @@
 /**
- * Public Order Form (V2.2 §6.4 page 575).
- * No-login checkout at pixiegirlglobal.com/order
- * POST /api/public/order-form
+ * Public Order Form (V2.2 §6.4 / §6.21). No-login checkout.
+ * POST /api/public/order-form — upsert contact + raise a public_form order.
+ * Brand from X-Brand-Context header / ?brand (default pixiegirl).
  */
 
 "use strict";
 
 const express = require("express");
+const controller = require("./storefront.controller");
+const validator = require("./storefront.validator");
+
 const router = express.Router();
 
-router.post("/", (_req, res) =>
-  res.status(501).json({ error: { code: "NOT_IMPLEMENTED" } }),
-);
+router.post("/", validator.validateOrderForm, controller.submitOrderForm);
 
 module.exports = router;

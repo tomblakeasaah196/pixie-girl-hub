@@ -9,7 +9,7 @@
 
 const { query } = require("../../config/database");
 
-const VALID = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID } = require("../../config/brands");
 const t = (brand, tbl) => {
   if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   return `${brand}.${tbl}`;
@@ -358,6 +358,131 @@ async function accountActivity({ client, brand, from, to }) {
   return rows;
 }
 
+/**
+ * Cash & cash-equivalent accounts: the seeded cash/petty/bank codes plus any
+ * account linked to a real bank account. Used by the cash-flow statement.
+ */
+const CASH_ACCOUNT_PREDICATE =
+  "(coa.account_code IN ('1000','1010','1100') OR coa.bank_account_id IS NOT NULL)";
+
+/**
+ * Net cash movement grouped by journal source_type over a period (direct
+ * method). Positive = cash in, negative = cash out. Only 'posted' entries.
+ */
+async function cashFlowByActivity({ client, brand, from, to }) {
+  const params = [];
+  const where = ["je.status = 'posted'"];
+  let i = 1;
+  if (from) {
+    where.push(`je.posting_date >= $${i++}`);
+    params.push(from);
+  }
+  if (to) {
+    where.push(`je.posting_date <= $${i++}`);
+    params.push(to);
+  }
+  const { rows } = await ex(client)(
+    `SELECT je.source_type,
+            COALESCE(SUM(
+              CASE WHEN ${CASH_ACCOUNT_PREDICATE}
+                   THEN jl.debit_ngn - jl.credit_ngn ELSE 0 END
+            ), 0) AS cash_delta_ngn
+       FROM ${t(brand, "journal_lines")} jl
+       JOIN ${t(brand, "journal_entries")} je ON je.entry_id = jl.entry_id
+       JOIN ${t(brand, "chart_of_accounts")} coa ON coa.account_id = jl.account_id
+      WHERE ${where.join(" AND ")}
+      GROUP BY je.source_type
+     HAVING COALESCE(SUM(
+              CASE WHEN ${CASH_ACCOUNT_PREDICATE}
+                   THEN jl.debit_ngn - jl.credit_ngn ELSE 0 END
+            ), 0) <> 0
+      ORDER BY je.source_type`,
+    params,
+  );
+  return rows;
+}
+
+/**
+ * Closing balance of all cash & cash-equivalent accounts as of a date
+ * (inclusive). Cash is a debit-normal asset, so balance = debits - credits.
+ */
+async function cashBalanceAsOf({ client, brand, as_of }) {
+  const params = [];
+  const where = ["je.status = 'posted'"];
+  let i = 1;
+  if (as_of) {
+    where.push(`je.posting_date <= $${i++}`);
+    params.push(as_of);
+  }
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(jl.debit_ngn - jl.credit_ngn), 0) AS balance_ngn
+       FROM ${t(brand, "journal_lines")} jl
+       JOIN ${t(brand, "journal_entries")} je ON je.entry_id = jl.entry_id
+       JOIN ${t(brand, "chart_of_accounts")} coa ON coa.account_id = jl.account_id
+      WHERE ${where.join(" AND ")} AND ${CASH_ACCOUNT_PREDICATE}`,
+    params,
+  );
+  return rows[0].balance_ngn;
+}
+
+/**
+ * AR ageing: open customer-invoice balances bucketed by age (from issue
+ * date) per customer. Ages the live balance_due, not the original total.
+ */
+async function receivablesAgeing({ client, brand, as_of }) {
+  const ref = as_of || new Date().toISOString().slice(0, 10);
+  const { rows } = await ex(client)(
+    `SELECT i.contact_id AS party_id,
+            c.display_name AS party_name,
+            COALESCE(SUM(i.balance_due_ngn), 0) AS total_ngn,
+            COALESCE(SUM(CASE WHEN ($1::date - i.issue_date) <= 30
+                              THEN i.balance_due_ngn ELSE 0 END), 0) AS b_0_30,
+            COALESCE(SUM(CASE WHEN ($1::date - i.issue_date) BETWEEN 31 AND 60
+                              THEN i.balance_due_ngn ELSE 0 END), 0) AS b_31_60,
+            COALESCE(SUM(CASE WHEN ($1::date - i.issue_date) BETWEEN 61 AND 90
+                              THEN i.balance_due_ngn ELSE 0 END), 0) AS b_61_90,
+            COALESCE(SUM(CASE WHEN ($1::date - i.issue_date) > 90
+                              THEN i.balance_due_ngn ELSE 0 END), 0) AS b_90_plus
+       FROM ${t(brand, "invoices")} i
+       JOIN shared.contacts c ON c.contact_id = i.contact_id
+      WHERE i.balance_due_ngn > 0
+        AND i.status NOT IN ('draft', 'void', 'paid')
+      GROUP BY i.contact_id, c.display_name
+      ORDER BY total_ngn DESC`,
+    [ref],
+  );
+  return rows;
+}
+
+/**
+ * AP ageing: open supplier-invoice balances bucketed by age (from invoice
+ * date) per supplier.
+ */
+async function payablesAgeing({ client, brand, as_of }) {
+  const ref = as_of || new Date().toISOString().slice(0, 10);
+  const { rows } = await ex(client)(
+    `SELECT si.supplier_id AS party_id,
+            s.display_name AS party_name,
+            COALESCE(SUM(si.balance_due_ngn), 0) AS total_ngn,
+            COALESCE(SUM(CASE WHEN ($1::date - si.invoice_date) <= 30
+                              THEN si.balance_due_ngn ELSE 0 END), 0) AS b_0_30,
+            COALESCE(SUM(CASE WHEN ($1::date - si.invoice_date) BETWEEN 31 AND 60
+                              THEN si.balance_due_ngn ELSE 0 END), 0) AS b_31_60,
+            COALESCE(SUM(CASE WHEN ($1::date - si.invoice_date) BETWEEN 61 AND 90
+                              THEN si.balance_due_ngn ELSE 0 END), 0) AS b_61_90,
+            COALESCE(SUM(CASE WHEN ($1::date - si.invoice_date) > 90
+                              THEN si.balance_due_ngn ELSE 0 END), 0) AS b_90_plus
+       FROM ${t(brand, "supplier_invoices")} si
+       JOIN ${t(brand, "suppliers")} s ON s.supplier_id = si.supplier_id
+      WHERE si.balance_due_ngn > 0
+        AND si.status NOT IN ('void', 'paid')
+      GROUP BY si.supplier_id, s.display_name
+      ORDER BY total_ngn DESC`,
+    [ref],
+  );
+  return rows;
+}
+
 module.exports = {
   listGroups,
   updateGroup,
@@ -379,4 +504,8 @@ module.exports = {
   listEntries,
   setEntryReversed,
   accountActivity,
+  cashFlowByActivity,
+  cashBalanceAsOf,
+  receivablesAgeing,
+  payablesAgeing,
 };

@@ -15,7 +15,7 @@ const { logger } = require("../../config/logger");
 const events = require("../../modules/sales_campaigns/campaigns.events");
 const notifications = require("../../modules/sales_campaigns/campaigns.notifications.service");
 
-const BRANDS = ["pixiegirl", "faitlynhair"];
+const { BRANDS } = require("../../config/brands");
 
 async function runCampaignStateTransitions() {
   for (const brand of BRANDS) {

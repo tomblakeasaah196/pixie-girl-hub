@@ -132,6 +132,28 @@ const balanceSheet = async (req, res) =>
       as_of: req.query.as_of,
     }),
   });
+const cashFlow = async (req, res) =>
+  res.json({
+    data: await service.cashFlow({
+      brand: req.brand,
+      from: req.query.from,
+      to: req.query.to,
+    }),
+  });
+const arAgeing = async (req, res) =>
+  res.json({
+    data: await service.receivablesAgeing({
+      brand: req.brand,
+      as_of: req.query.as_of,
+    }),
+  });
+const apAgeing = async (req, res) =>
+  res.json({
+    data: await service.payablesAgeing({
+      brand: req.brand,
+      as_of: req.query.as_of,
+    }),
+  });
 
 module.exports = {
   listGroups,
@@ -150,4 +172,7 @@ module.exports = {
   trialBalance,
   profitAndLoss,
   balanceSheet,
+  cashFlow,
+  arAgeing,
+  apAgeing,
 };

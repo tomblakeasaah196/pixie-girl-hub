@@ -1,57 +1,87 @@
 # V2.2 Conformance Gaps
 
-This document tracks where the current schema and codebase diverge from the V2.2 Product Description, and what each gap needs.
+**Last verified:** 2026-06-08 (see `VERIFICATION_REPORT.md`).
 
-The gaps are organised into three buckets by risk and effort:
+> **Status change.** The original Bucket A/B/C gaps in this file were all
+> **shipped to migrations** (see `migrations/CHANGELOG.md`). The schema is
+> now essentially fully V2.2-conformant. The live gap class is no longer
+> _schema_ gaps — it is **application-layer wiring lag**: schema (and often
+> routes) are in place, but the service logic that uses them is incomplete.
+> This file now tracks that queue.
 
-## Bucket A — Cheap spec mismatches (≤30 min each)
+---
 
-| ID  | Item                                                                      | Status  |
-| --- | ------------------------------------------------------------------------- | ------- |
-| A-1 | Loyalty seed thresholds — spec 0/500/2k/5k vs current 0/5k/25k/100k       | PENDING |
-| A-2 | Stylist tier names canonical seed: Certified → Pro → Elite                | PENDING |
-| A-3 | KPI weights silently summable to ≠100 — need CHECK trigger                | PENDING |
-| A-4 | POS idempotency key — `client_idempotency_key` + UNIQUE index             | PENDING |
-| A-5 | Wishlist — `shared.customer_wishlists (contact_id, variant_id, added_at)` | PENDING |
-| A-6 | `strive_connect` → `opay` in CHECK constraints (legacy spec drift)        | PENDING |
-| A-7 | Payment Processing Fees per-gateway per-currency GL accounts              | PENDING |
-| A-8 | Cancellation timer defaults verification (3 hrs / 50% custom)             | PENDING |
+## Part 1 — Original gap buckets: SHIPPED ✅
 
-## Bucket B — Missing spec features (real work)
+Per `migrations/CHANGELOG.md`, all of the following landed:
 
-| ID   | Item                                                                           | Effort                             |
-| ---- | ------------------------------------------------------------------------------ | ---------------------------------- |
-| B-1  | **Module 6.32 Cash Request & Disbursement** (entire new module)                | ~150 lines SQL + new module folder |
-| B-2  | **Installment / `payment_model` paradigm** (layaway / deposit-triggered)       | ~80 lines + abandonment cron       |
-| B-3  | **Streak Stars** (Rising/Shining/Supernova/Galaxy + lifetime discount)         | ~120 lines                         |
-| B-4  | **Hair Quiz** (visitor-facing, captures lead + Streak Stars)                   | ~50 lines                          |
-| B-5  | **UGC ingestion pipeline + self-hosted video** (replaces embeds)               | ~100 lines + FFmpeg job            |
-| B-6  | **Public Order Form** (no-login checkout)                                      | ~30 lines + sales_channel CHECK    |
-| B-7  | **Storefront analytics tables** (sessions, page views, funnel events)          | ~60 lines                          |
-| B-8  | **Curated Delivery Letter + Install QR Hub**                                   | ~20 lines + PDF template           |
-| B-9  | **Per-gateway fee config** (Paystack 1.5%/₦2k cap, Opay, Stripe uncapped, ...) | ~20 lines                          |
-| B-10 | **E-signature workflow** (or descope to "stored signed PDF")                   | TBD pending decision               |
+| Bucket               | Items                                                                                                                                                                                                                                                           | Where                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| A (cheap mismatches) | A-1 loyalty thresholds, A-2 stylist tiers, A-3 KPI sum-to-100 CHECK, A-4 POS idempotency key, A-5 wishlist, A-6 strive→opay, A-7 payment-fee accounts (9-way split), A-8 cancellation defaults verified                                                         | `template/000020/000034/000035`, `000008/000010/000015` |
+| B (missing features) | B-1 Cash Request (6.32), B-2 installment `payment_model`, B-3 Streak Stars, B-4 Hair Quiz, B-5 UGC + self-hosted video, B-6 Public Order Form, B-7 storefront analytics, B-8 Curated Delivery Letter + Install Hub, B-9 per-gateway fees, B-10 full e-signature | `000100/000101`, `template/000016/000019/000036/000037` |
+| C (architecture)     | C-1 RLS (Option A, full), C-2 field-level privacy (restricted views), C-3 soft-FK reconciliation, C-4 strive-connect drift removed                                                                                                                              | `000200/000202`, `template/000038`                      |
 
-## Bucket C — Architectural decisions (require CEO/JBS sign-off)
+**Schema is therefore conformant.** What remains is to _use_ it.
 
-| ID  | Item                                                                                            | Options                                                                                   |
-| --- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| C-1 | **RLS** — spec explicitly mandates row-level security. Currently app-only on 107 shared tables. | A: implement full RLS (~2 days) · B: descope language · C: hybrid (high-sensitivity only) |
-| C-2 | **Field-level privacy** — cost/origin/salary hiding. Currently app-only.                        | A: restricted views + column GRANTs · B: document as app-layer choice                     |
-| C-3 | **Soft FKs across schemas** — orphan risk on cross-schema references.                           | A: nightly reconciliation job · B: FK helper function with notify                         |
-| C-4 | **Strive Connect drift** — not in V2.2 spec, but in CHECK constraints.                          | A: rip out · B: keep as deprecated                                                        |
-| C-5 | **Module count** — spec internally inconsistent (23/26/31/32).                                  | We have 32 in `permission_module_keys`; flag to product                                   |
+---
 
-## Plan of attack
+## Part 2 — Live queue: application-layer wiring lag
 
-1. Settle Bucket C decisions first (especially C-1 RLS)
-2. Apply Bucket A in one validated pass
-3. Apply Bucket B in three sub-passes:
-   - Pass 1: finance (B-1, B-2, B-9) — must land together
-   - Pass 2: retention/storefront (B-3, B-4, B-7)
-   - Pass 3: content/customer-facing (B-5, B-6, B-8)
-4. Update docs (this file, CHANGELOG, ADMIN_UI, FRONTEND)
+These have schema (and sometimes routes) but incomplete service logic.
+Ordered roughly by leverage / dependency.
 
-Schema delta when all done: **+~15 new tables**, **+~40 columns on existing tables**, **+~5 new CHECK constraints/triggers**, **+~12 new seeds**.
+### P1 — Finance correctness — ✅ SHIPPED 2026-06-08
 
-See `migrations/CHANGELOG.md` for what's already shipped.
+All six built in one pass (app layer; schema was already in place). New
+migration: `000111_shared_cash_request_threshold` (CEO threshold column).
+
+| ID  | Item                                      | State   | What landed                                                                                                                                                                                                                                                   |
+| --- | ----------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W-1 | **`payment_model` behaviour** (sales 6.2) | ✅ done | Deposit-triggered flips to `in_production` at the deposit threshold + emits `order.deposit_met`; layaway reserves stock on placement and releases on pay/cancel; `layaway-abandonment` + `layaway-reminders` crons implemented (read `installment_settings`). |
+| W-2 | **Invoicing dual-currency** (6.5)         | ✅ done | Auto-invoice carries `display_currency` / `display_subtotal` / `display_total` / `fx_rate_used` from the source order.                                                                                                                                        |
+| W-3 | **Accounting Cash Flow statement** (6.6)  | ✅ done | `GET /accounting/reports/cash-flow` — direct method by source_type into operating/investing/financing, reconciled to opening/closing cash.                                                                                                                    |
+| W-4 | **AR/AP ageing report** (6.6)             | ✅ done | `GET /accounting/reports/ar-ageing` + `/ap-ageing` — 0–30/31–60/61–90/90+ buckets off live `balance_due_ngn`, per customer/supplier.                                                                                                                          |
+| W-5 | **Multi-currency gain/loss** (6.6)        | ✅ done | `accounting.postFxGainLoss` posts realised FX (4910/5910) when a non-NGN sales payment settles at a rate differing from the order's booked rate.                                                                                                              |
+| W-6 | **Cash Request module** (6.32)            | ✅ done | Full draft→submit→finance→[ceo]→disburse→settle (+cancel) over `shared.cash_requests`; threshold routing; mandatory `bank_transaction_id`; GL posting on disburse; auto-creates an Expense for direct spends; state history.                                  |
+
+### P2 — Customer-facing revenue surfaces — ✅ SHIPPED 2026-06-08
+
+Retention, storefront, studio and the install hub are now functional app
+layers over the existing schema.
+
+| ID   | Item                               | State   | What landed                                                                                                                                                                                                                                                                            |
+| ---- | ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W-7  | **Retention module** (6.23)        | ✅ done | Loyalty engine (earn on `order.paid`, redeem, manual adjust, tier recompute), Streak Stars (rule-driven award + caps), referral codes + redemption with referrer reward, Hair Quiz (public fetch/submit + recommender + lead capture + star award). `order.paid` subscriber wires earns. |
+| W-8  | **Storefront module** (6.4)        | ✅ done | Public catalogue read API (products/detail/categories/collections/content), no-login Public Order Form (contact upsert → `public_form` sales order → pay-link token), analytics ingestion (sessions/page-views/funnel-events). _Self-hosted UGC video pipeline still pending (W-13)._    |
+| W-9  | **Storefront Studio** (6.28)       | ✅ done | Theme / navigation / pages draft→publish editor (`/api/v1/storefront-studio`), honouring the one-draft / one-published constraints; publish snapshots to `storefront_revisions` via trigger.                                                                                             |
+| W-10 | **Install Hub composition** (6.10) | ✅ done | `GET /api/public/install-hub/:token` composes the order's items + matching wig-care guides + certified stylists near the delivery city + a pre-filled WhatsApp help link.                                                                                                                |
+
+### P3 — Admin / structural
+
+| ID   | Item                                 | State       | Work                                                                                                                                                                                               |
+| ---- | ------------------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W-11 | **"Add a new business" flow** (6.21) | CLI only    | In-app provisioning endpoint that runs the `bootstrap-business.js` pipeline (create schema → apply templates → seed) + a brand registry. Today a new brand requires a developer to run the script. |
+| W-12 | **Email-signature builder** (6.13)   | not evident | Branded per-staff email signature template (one template, auto-personalised).                                                                                                                      |
+| W-13 | **Catalogue UGC video wiring** (6.4) | embed model | Swap product video editor onto the self-hosted UGC tables. Depends on W-8.                                                                                                                         |
+
+---
+
+## Part 3 — Doc hygiene (cheap, do alongside)
+
+- `SCHEMA.md` + `README.md` still say **35 migrations / 425 tables**.
+  Actual is **51 migration files** (28 shared + 23 templates) after the gap
+  buckets shipped. Re-run `npm run db:verify` and update the counts.
+
+---
+
+## Suggested order of attack
+
+1. ~~**P1 finance (W-1…W-6)**~~ — ✅ SHIPPED 2026-06-08 (see table above).
+2. ~~**P2 customer-facing (W-7…W-10)**~~ — ✅ SHIPPED 2026-06-08 (see table above).
+3. **P3 admin (W-11…W-13)** — W-11 ("add a business") is the one the CEO
+   will ask for; size it as a small provisioning service over the existing
+   bootstrap script. W-13 (catalogue UGC video) finishes the storefront
+   media story begun in W-8.
+
+See `migrations/CHANGELOG.md` for what shipped and `VERIFICATION_REPORT.md`
+for the per-module evidence behind this list.

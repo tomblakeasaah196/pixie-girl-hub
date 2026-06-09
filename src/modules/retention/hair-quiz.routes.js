@@ -1,17 +1,23 @@
 /**
- * Hair Quiz public endpoints (V2.2 §6.23 — "Find your style").
- * GET  /api/public/hair-quiz                — get quiz schema
- * POST /api/public/hair-quiz/submit         — submit answers, get product recs + create CRM lead + award Streak Stars
+ * Hair Quiz public endpoints (V2.2 §6.23 — "Find your style"). No auth.
+ * Brand from X-Brand-Context header or ?brand (default pixiegirl).
+ *   GET  /api/public/hair-quiz          — active quiz + questions
+ *   POST /api/public/hair-quiz/submit   — answers → recs + lead + stars
  */
 
 "use strict";
 
 const express = require("express");
+const controller = require("./retention.controller");
+const validator = require("./retention.validator");
+
 const router = express.Router();
 
-router.get("/", (_req, res) => res.json({ data: { questions: [] } }));
-router.post("/submit", (_req, res) =>
-  res.status(501).json({ error: { code: "NOT_IMPLEMENTED" } }),
+router.get("/", controller.getQuizPublic);
+router.post(
+  "/submit",
+  validator.validateQuizSubmit,
+  controller.submitQuizPublic,
 );
 
 module.exports = router;

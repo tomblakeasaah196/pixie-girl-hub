@@ -22,6 +22,7 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
 
 const PAID_STATES = new Set(["paid", "awaiting_dispatch", "completed"]);
 
@@ -150,6 +151,22 @@ async function createOrder({ brand, user, request_id, input }) {
     const shipping = money(input.shipping_fee_ngn || 0);
     const total = subtotal.minus(discountTotal).plus(taxTotal).plus(shipping);
 
+    // 4b. Payment model + deposit policy (V2.2 §6.2). The order inherits its
+    // model from the first line's variant/product; deposit_triggered orders
+    // snapshot the required deposit so fulfilment can unlock at the threshold.
+    const paymentModel = built[0].ctx.payment_model || "layaway";
+    const settings = (cfg && cfg.installment_settings) || {};
+    let requiredDepositPct = null;
+    let requiredDepositNgn = null;
+    if (paymentModel === "deposit_triggered") {
+      requiredDepositPct = money(
+        input.required_deposit_pct ??
+          settings.default_deposit_pct_for_deposit_triggered ??
+          50,
+      );
+      requiredDepositNgn = total.times(requiredDepositPct).dividedBy(100);
+    }
+
     // 5. Persist.
     const order_number = await repo.nextNumber({
       client,
@@ -176,7 +193,13 @@ async function createOrder({ brand, user, request_id, input }) {
         tax_amount_ngn: toCurrencyString(taxTotal),
         shipping_fee_ngn: toCurrencyString(shipping),
         total_ngn: toCurrencyString(total),
-        payment_model: built[0].ctx.payment_model || "layaway",
+        payment_model: paymentModel,
+        required_deposit_pct:
+          requiredDepositPct !== null ? requiredDepositPct.toFixed(2) : null,
+        required_deposit_ngn:
+          requiredDepositNgn !== null
+            ? toCurrencyString(requiredDepositNgn)
+            : null,
       },
     });
 
@@ -205,6 +228,34 @@ async function createOrder({ brand, user, request_id, input }) {
                   : "fixed",
           },
         });
+      }
+    }
+
+    // 5b. Layaway reserves stock at placement (V2.2 §6.2): the unit is held
+    // but no work begins until paid in full. Best-effort — a reservation
+    // hiccup must not roll back the order (storefront already gates on stock).
+    if (paymentModel === "layaway") {
+      const loc = await stockRepo.getDefaultLocation({ client, brand });
+      if (loc) {
+        for (const lr of lineRows) {
+          if (!lr.variant_id) continue;
+          try {
+            await stockService.reserveForOrder({
+              client,
+              brand,
+              variant_id: lr.variant_id,
+              location_id: loc.location_id,
+              quantity: lr.quantity,
+              reference_id: order.order_id,
+              user_id: user.user_id,
+            });
+          } catch (err) {
+            logger.warn(
+              { err, order_id: order.order_id, variant_id: lr.variant_id },
+              "layaway reservation skipped",
+            );
+          }
+        }
       }
     }
 
@@ -293,6 +344,9 @@ async function addPayment({ brand, user, request_id, id, input }) {
         provider: input.provider,
         provider_reference: input.provider_reference,
         amount_ngn: input.amount_ngn,
+        paid_currency: input.paid_currency || null,
+        paid_amount: input.paid_amount || null,
+        fx_rate_used: input.fx_rate_used || null,
         fee_ngn: input.fee_ngn || 0,
         payment_path: input.payment_path,
         client_idempotency_key: input.client_idempotency_key,
@@ -300,6 +354,32 @@ async function addPayment({ brand, user, request_id, id, input }) {
         captured_at: new Date().toISOString(),
       },
     });
+
+    // Realised FX gain/loss (V2.2 §6.6): if the customer settled in a foreign
+    // currency, the NGN actually received differs from the amount the order
+    // booked at its captured rate. Post the variance to the realised FX
+    // account, atomic with the payment.
+    if (
+      input.paid_currency &&
+      input.paid_currency !== "NGN" &&
+      input.paid_amount &&
+      order.fx_rate_used
+    ) {
+      const accounting = require("../accounting/accounting.service");
+      const bookedNgn = money(input.paid_amount).times(
+        money(order.fx_rate_used),
+      );
+      const deltaNgn = money(input.amount_ngn).minus(bookedNgn);
+      await accounting.postFxGainLoss({
+        client,
+        brand,
+        delta_ngn: toCurrencyString(deltaNgn),
+        reference: order.order_number,
+        description: `Realised FX on ${order.order_number} (${input.paid_currency})`,
+        source_id: order.order_id,
+        user_id: user.user_id,
+      });
+    }
 
     // Trigger recomputed amount_paid_ngn; re-read.
     const updated = await repo.findById({ client, brand, id });
@@ -315,6 +395,25 @@ async function addPayment({ brand, user, request_id, id, input }) {
         request_id,
         order: updated,
       });
+    } else if (
+      updated.payment_model === "deposit_triggered" &&
+      !updated.deposit_met_at &&
+      updated.required_deposit_ngn !== null &&
+      money(updated.amount_paid_ngn).gte(money(updated.required_deposit_ngn))
+    ) {
+      // Deposit cleared (V2.2 §6.2): unlock production now; the balance is
+      // collected before dispatch via the normal full-payment path.
+      const flipped = await repo.markDepositMet({ client, brand, id });
+      if (flipped) {
+        result = flipped;
+        events.emit("order.deposit_met", {
+          brand,
+          order_id: id,
+          contact_id: flipped.contact_id,
+          required_deposit_ngn: flipped.required_deposit_ngn,
+          amount_paid_ngn: flipped.amount_paid_ngn,
+        });
+      }
     }
     await audit({
       business: brand,
@@ -345,6 +444,27 @@ async function markPaid({ client, brand, user, _request_id, order }) {
 
   for (const line of order.lines) {
     if (line.variant_id) {
+      // Layaway held the unit on placement — release the reservation first
+      // so the 'sale' deduction keeps reserved <= on_hand valid.
+      if (order.payment_model === "layaway") {
+        try {
+          await stockService.releaseReservation({
+            client,
+            brand,
+            variant_id: line.variant_id,
+            location_id: loc.location_id,
+            quantity: line.quantity,
+            reference_id: order.order_id,
+            user_id: user.user_id,
+            reason: "layaway paid in full",
+          });
+        } catch (err) {
+          logger.warn(
+            { err, order_id: order.order_id, variant_id: line.variant_id },
+            "layaway release on markPaid skipped",
+          );
+        }
+      }
       await stockService.deductForSale({
         client,
         brand,
@@ -395,6 +515,32 @@ async function cancelOrder({ brand, user, request_id, id }) {
         "Paid orders cannot be cancelled here (use refund)",
         409,
       );
+    // Release any layaway hold so the units return to available stock.
+    if (order.payment_model === "layaway") {
+      const loc = await stockRepo.getDefaultLocation({ client, brand });
+      if (loc) {
+        for (const line of order.lines || []) {
+          if (!line.variant_id) continue;
+          try {
+            await stockService.releaseReservation({
+              client,
+              brand,
+              variant_id: line.variant_id,
+              location_id: loc.location_id,
+              quantity: line.quantity,
+              reference_id: order.order_id,
+              user_id: user.user_id,
+              reason: "order cancelled",
+            });
+          } catch (err) {
+            logger.warn(
+              { err, order_id: id, variant_id: line.variant_id },
+              "layaway release on cancel skipped",
+            );
+          }
+        }
+      }
+    }
     const o = await repo.setStatus({ client, brand, id, status: "cancelled" });
     await audit({
       business: brand,

@@ -8,7 +8,7 @@
  *   3. user.default_business_key                       → falls back to user's home brand
  *
  * After resolution:
- *   req.brand      = 'pixiegirl' | 'faitlynhair'
+ *   req.brand      = 'valid brands'
  *   req.brand_id   = the business_id (uuid)
  *
  * If the resolved brand is NOT in user.available_businesses, 403.
@@ -24,7 +24,7 @@
 const { AppError } = require("../utils/errors");
 const businessConfigRepo = require("../modules/business_setup/business-config.repo");
 
-const VALID_BRANDS = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID_BRANDS } = require("../../config/brands");
 
 async function brandContextMiddleware(req, _res, next) {
   if (!req.user) {

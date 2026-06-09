@@ -8,7 +8,7 @@
 
 const { query } = require("../../config/database");
 
-const VALID_BRANDS = new Set(["pixiegirl", "faitlynhair"]);
+const { VALID_BRANDS } = require("../../config/brands");
 function t(brand, table) {
   if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   return `${brand}.${table}`;

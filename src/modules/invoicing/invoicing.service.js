@@ -56,6 +56,18 @@ async function createFromOrder({ client, brand, order, user_id }) {
       brand,
       type: "invoice",
     });
+    // Multi-currency display (V2.2 §6.5): carry the currency the customer saw
+    // from the source order. NGN orders fall back to a 1:1 NGN display.
+    const displayCurrency = order.display_currency || "NGN";
+    const fxRate = order.fx_rate_used || 1;
+    const totalNgn = money(order.total_ngn);
+    const displayTotal =
+      order.display_total !== null && order.display_total !== undefined
+        ? money(order.display_total)
+        : totalNgn;
+    const displaySubtotal = totalNgn.gt(0)
+      ? displayTotal.times(money(order.subtotal_ngn)).dividedBy(totalNgn)
+      : money(order.subtotal_ngn);
     const inv = await repo.createInvoice({
       client: c,
       brand,
@@ -71,6 +83,10 @@ async function createFromOrder({ client, brand, order, user_id }) {
         wht_amount_ngn: 0,
         shipping_fee_ngn: order.shipping_fee_ngn,
         total_ngn: order.total_ngn,
+        display_currency: displayCurrency,
+        display_subtotal: toCurrencyString(displaySubtotal),
+        display_total: toCurrencyString(displayTotal),
+        fx_rate_used: fxRate,
         issue_date: todayISO(),
         due_date: todayISO(),
         payment_terms: "Due on receipt",

@@ -306,6 +306,331 @@ async function subscribeNewsletter({ brand, input }) {
   return { contact_id: rows[0].contact_id, created: true };
 }
 
+// ── A/B variants ───────────────────────────────────────────
+async function createVariant({ brand, user, request_id, id, input }) {
+  const c = await repo.getCampaign({ brand, id });
+  if (!c) throw new NotFoundError("Campaign");
+  const variant = await repo.createVariant({
+    brand,
+    v: { ...input, campaign_id: id },
+  });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.variant.create",
+    target_type: "email_campaign",
+    target_id: id,
+    request_id,
+  });
+  return variant;
+}
+/** A/B results: per-variant open/click rates + the leading variant. */
+async function getAbTestResults({ brand, id }) {
+  const c = await repo.getCampaign({ brand, id });
+  if (!c) throw new NotFoundError("Campaign");
+  const variants = await repo.listVariants({ brand, campaign_id: id });
+  const metric = c.ab_winner_metric || "open_rate";
+  const scored = variants.map((v) => {
+    const sent = v.total_sent || 0;
+    const open_rate = sent ? (v.total_opened / sent) * 100 : 0;
+    const click_rate = sent ? (v.total_clicked / sent) * 100 : 0;
+    const conv_rate = sent ? (v.conversion_count / sent) * 100 : 0;
+    const score =
+      metric === "click_rate"
+        ? click_rate
+        : metric === "conversion_rate"
+          ? conv_rate
+          : open_rate;
+    return {
+      ...v,
+      open_rate_pct: Number(open_rate.toFixed(2)),
+      click_rate_pct: Number(click_rate.toFixed(2)),
+      conversion_rate_pct: Number(conv_rate.toFixed(2)),
+      _score: score,
+    };
+  });
+  const leader = scored.reduce(
+    (best, v) => (!best || v._score > best._score ? v : best),
+    null,
+  );
+  return {
+    metric,
+    variants: scored.map(({ _score, ...v }) => v),
+    leading_variant_id: leader ? leader.variant_id : null,
+  };
+}
+async function declareWinner({ brand, user, request_id, id, variant_id }) {
+  return transaction(async (client) => {
+    const c = await repo.getCampaign({ client, brand, id });
+    if (!c) throw new NotFoundError("Campaign");
+    await repo.setVariantWinner({ client, brand, campaign_id: id, variant_id });
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "email_campaigns.variant.winner",
+      target_type: "email_campaign",
+      target_id: id,
+      after: { variant_id },
+      request_id,
+    });
+    return { campaign_id: id, ab_winner_variant_id: variant_id };
+  });
+}
+
+// ── Scheduling ─────────────────────────────────────────────
+async function schedule({ brand, user, request_id, id, scheduled_for }) {
+  const c = await repo.getCampaign({ brand, id });
+  if (!c) throw new NotFoundError("Campaign");
+  if (c.status !== "draft" && c.status !== "scheduled")
+    throw new AppError("BAD_STATE", `Campaign is ${c.status}`, 422);
+  const updated = await repo.setSchedule({ brand, id, scheduled_for });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.schedule",
+    target_type: "email_campaign",
+    target_id: id,
+    after: { scheduled_for },
+    request_id,
+  });
+  return updated;
+}
+/** Cron hook: send any scheduled campaigns whose time has arrived. */
+async function runDueScheduled({ brand, user }) {
+  const due = await repo.dueScheduledCampaigns({
+    brand,
+    now: new Date().toISOString(),
+  });
+  const results = [];
+  for (const d of due) {
+    try {
+      const r = await sendCampaign({
+        brand,
+        user,
+        request_id: null,
+        id: d.campaign_id,
+      });
+      results.push({ campaign_id: d.campaign_id, sent: r.sent_this_batch });
+    } catch (err) {
+      logger.error(
+        { err: err.message, campaign_id: d.campaign_id },
+        "email_campaigns: scheduled send failed",
+      );
+    }
+  }
+  return { ran: results.length, results };
+}
+
+// ── Stats ──────────────────────────────────────────────────
+async function getStats({ brand, id }) {
+  const c = await repo.getCampaign({ brand, id });
+  if (!c) throw new NotFoundError("Campaign");
+  const breakdown = await repo.eventBreakdown({ brand, campaign_id: id });
+  const sent = c.total_sent || 0;
+  const pct = (n) => (sent ? Number(((n / sent) * 100).toFixed(2)) : 0);
+  return {
+    campaign_id: id,
+    status: c.status,
+    totals: {
+      sent: c.total_sent,
+      delivered: c.total_delivered,
+      opened: c.total_opened,
+      clicked: c.total_clicked,
+      bounced: c.total_bounced,
+      unsubscribed: c.total_unsubscribed,
+    },
+    rates: {
+      open_rate_pct: pct(c.total_opened),
+      click_rate_pct: pct(c.total_clicked),
+      bounce_rate_pct: pct(c.total_bounced),
+    },
+    conversions: {
+      count: c.conversion_count,
+      revenue_ngn: c.conversion_revenue_ngn,
+    },
+    event_breakdown: breakdown,
+  };
+}
+
+// ── Saved segments (shared.contact_segments) ───────────────
+function listSegments({ brand }) {
+  return repo.listSegments({ brand });
+}
+async function getSegment({ brand, id }) {
+  const s = await repo.getSegment({ brand, id });
+  if (!s) throw new NotFoundError("Segment");
+  return s;
+}
+async function saveSegment({ brand, user, request_id, input }) {
+  const s = await repo.createSegment({
+    brand,
+    s: input,
+    user_id: user.user_id,
+  });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.segment.save",
+    target_type: "contact_segment",
+    target_id: s.segment_id,
+    request_id,
+  });
+  return s;
+}
+async function deleteSegment({ brand, user, request_id, id }) {
+  const ok = await repo.deleteSegment({ brand, id });
+  if (!ok) throw new NotFoundError("Segment");
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.segment.delete",
+    target_type: "contact_segment",
+    target_id: id,
+    request_id,
+  });
+}
+/** Preview the audience a segment resolves to (emailable contacts). */
+async function previewSegment({ brand, id }) {
+  const seg = await repo.getSegment({ brand, id });
+  if (!seg) throw new NotFoundError("Segment");
+  const filter = seg.filter || {};
+  const contacts = await repo.emailableContacts({
+    brand,
+    contact_ids: filter.contact_ids,
+  });
+  await repo.updateSegmentCount({ brand, id, count: contacts.length });
+  return {
+    segment_id: id,
+    count: contacts.length,
+    sample: contacts.slice(0, 20),
+  };
+}
+/** Build a campaign's recipient list from a saved segment. */
+async function buildAudienceFromSegment({
+  brand,
+  user,
+  request_id,
+  id,
+  segment_id,
+}) {
+  const c = await repo.getCampaign({ brand, id });
+  if (!c) throw new NotFoundError("Campaign");
+  const seg = await repo.getSegment({ brand, id: segment_id });
+  if (!seg) throw new NotFoundError("Segment");
+  const filter = seg.filter || {};
+  const added = await repo.addRecipientsFromContacts({
+    brand,
+    campaign_id: id,
+    contact_ids: filter.contact_ids,
+  });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.audience.from_segment",
+    target_type: "email_campaign",
+    target_id: id,
+    after: { segment_id, added },
+    request_id,
+  });
+  return { campaign_id: id, segment_id, recipients_added: added };
+}
+
+// ── Public tracking (pixel open / click / unsubscribe) ─────
+async function handlePixelOpen({ brand, recipient_id, ip, user_agent }) {
+  return transaction(async (client) => {
+    const r = await repo.findRecipient({ client, brand, recipient_id });
+    if (!r) return { ok: true }; // never leak existence on a public pixel
+    await repo.insertEvent({
+      client,
+      brand,
+      ev: {
+        recipient_id,
+        campaign_id: r.campaign_id,
+        event_type: "opened",
+        ip_address: ip,
+        user_agent,
+      },
+    });
+    const bump = await repo.bumpRecipientEngagement({
+      client,
+      brand,
+      recipient_id,
+      kind: "open",
+    });
+    if (bump && bump.was_first)
+      await repo.incCampaignCounter({
+        client,
+        brand,
+        id: r.campaign_id,
+        column: "total_opened",
+      });
+    return { ok: true };
+  });
+}
+async function handleClick({ brand, recipient_id, url, ip, user_agent }) {
+  return transaction(async (client) => {
+    const r = await repo.findRecipient({ client, brand, recipient_id });
+    if (!r) return { redirect: url };
+    await repo.insertEvent({
+      client,
+      brand,
+      ev: {
+        recipient_id,
+        campaign_id: r.campaign_id,
+        event_type: "clicked",
+        click_url: url,
+        ip_address: ip,
+        user_agent,
+      },
+    });
+    const bump = await repo.bumpRecipientEngagement({
+      client,
+      brand,
+      recipient_id,
+      kind: "click",
+    });
+    if (bump && bump.was_first)
+      await repo.incCampaignCounter({
+        client,
+        brand,
+        id: r.campaign_id,
+        column: "total_clicked",
+      });
+    return { redirect: url };
+  });
+}
+async function handleUnsubscribe({ brand, recipient_id }) {
+  return transaction(async (client) => {
+    const r = await repo.findRecipient({ client, brand, recipient_id });
+    if (!r) return { ok: true };
+    if (r.status !== "unsubscribed") {
+      await repo.insertEvent({
+        client,
+        brand,
+        ev: {
+          recipient_id,
+          campaign_id: r.campaign_id,
+          event_type: "unsubscribed",
+        },
+      });
+      await repo.setRecipientStatus({
+        client,
+        brand,
+        recipient_id,
+        status: "unsubscribed",
+        fields: { unsubscribed_at: new Date().toISOString() },
+      });
+      await repo.incCampaignCounter({
+        client,
+        brand,
+        id: r.campaign_id,
+        column: "total_unsubscribed",
+      });
+    }
+    return { ok: true, unsubscribed: true };
+  });
+}
+
 module.exports = {
   listTemplates,
   createTemplate,
@@ -318,4 +643,19 @@ module.exports = {
   setStatus,
   recordEvent,
   subscribeNewsletter,
+  createVariant,
+  getAbTestResults,
+  declareWinner,
+  schedule,
+  runDueScheduled,
+  getStats,
+  listSegments,
+  getSegment,
+  saveSegment,
+  deleteSegment,
+  previewSegment,
+  buildAudienceFromSegment,
+  handlePixelOpen,
+  handleClick,
+  handleUnsubscribe,
 };

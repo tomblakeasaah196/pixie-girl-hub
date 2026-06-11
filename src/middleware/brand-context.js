@@ -15,16 +15,19 @@
  * (CEO has all brands; other roles have one. Cross-brand views go through
  * dedicated endpoints under /api/v1/group/* that bypass this middleware.)
  *
- * Also: each request opens a short DB tx and sets `app.current_business`
- * GUC, so future RLS policies operate transparently. See database.js.
+ * RLS (R-1): the resolved brand + user are bound into the AsyncLocalStorage
+ * request context for the rest of the request, so every `transaction()` opened
+ * downstream sets `app.current_business` / `app.current_user_id` and the RLS
+ * policies in migration 000200 actually filter. See config/database.js.
  */
 
 "use strict";
 
 const { AppError } = require("../utils/errors");
 const businessConfigRepo = require("../modules/business_setup/business-config.repo");
+const requestContext = require("../config/request-context");
 
-const { VALID_BRANDS } = require("../../config/brands");
+const { VALID_BRANDS } = require("../config/brands");
 
 async function brandContextMiddleware(req, _res, next) {
   if (!req.user) {
@@ -64,7 +67,13 @@ async function brandContextMiddleware(req, _res, next) {
   req.brand_id = business.business_id;
   req.brand_config = business;
 
-  return next();
+  // Bind the brand + user for the rest of the request so downstream
+  // transactions set the RLS/audit GUCs automatically (R-1). Wrapping the
+  // next() call keeps the async continuation inside the ALS scope.
+  return requestContext.run(
+    { brand, userId: req.user.user_id || req.user.id || null },
+    () => next(),
+  );
 }
 
 module.exports = { brandContextMiddleware };

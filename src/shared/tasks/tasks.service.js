@@ -1,97 +1,243 @@
 /**
- * Tasks & To-Do (V2.2 §6.19)
- * Business logic layer. Repos handle SQL; controllers handle HTTP.
- * This file is where:
- *   - Validation beyond shape (cross-field, against DB state)
- *   - Workflow routing (approval / multi-step)
- *   - Domain event emission (for real-time + AI)
- *   - Audit logging
- *   - Transaction orchestration
+ * Tasks (V2.2 §6.19) — business logic.
+ *
+ * Personal/assigned task management. Tasks can be standalone or linked to a
+ * source record (reference_type/id) — e.g. a service_job auto-raises a task via
+ * a DB trigger, and that task shows here with a back-reference. Notifies the
+ * assignee when a task is assigned to them.
  */
 
 "use strict";
 
 const repo = require("./tasks.repo");
 const events = require("./tasks.events");
+const notifications = require("../../services/notifications.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { NotFoundError, AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
+const { NotFoundError } = require("../../utils/errors");
 
-async function list({ brand, user, scope, filters, page, page_size }) {
-  return repo.findAll({
-    brand,
-    scope,
-    user_id: user.user_id,
-    filters,
-    page,
-    page_size,
+const A = (
+  brand,
+  user,
+  action_key,
+  target_type,
+  target_id,
+  after,
+  request_id,
+) =>
+  audit({
+    business: brand,
+    user_id: user ? user.user_id : null,
+    action_key,
+    target_type,
+    target_id,
+    after,
+    request_id,
   });
+
+async function notifyAssignee({ brand, task }) {
+  if (!task.assigned_to) return;
+  try {
+    await notifications.notify({
+      user_id: task.assigned_to,
+      business: brand,
+      type: "task_assigned",
+      priority: task.priority === "urgent" ? "high" : "normal",
+      title: "A task was assigned to you",
+      body: task.title,
+      reference_type: "task",
+      reference_id: task.task_id,
+    });
+  } catch (err) {
+    logger.error(
+      { err: err.message, task_id: task.task_id },
+      "tasks: assignee notification failed",
+    );
+  }
 }
 
-async function getById({ brand, user, scope, id }) {
-  const item = await repo.findById({ brand, id, scope, user_id: user.user_id });
-  if (!item) throw new NotFoundError("Tasks");
-  return item;
+const VALID_STATUSES = [
+  "inbox",
+  "today",
+  "this_week",
+  "this_month",
+  "later",
+  "done",
+  "cancelled",
+];
+const VALID_PRIORITIES = ["low", "normal", "high", "urgent"];
+
+function listTasks(args) {
+  return repo.listTasks(args);
 }
 
-async function create({ brand, user, request_id, input }) {
+/** Kanban board: active tasks grouped by status column. */
+async function getBoard({ brand, assigned_to }) {
+  const rows = await repo.boardTasks({ brand, assigned_to });
+  const columns = {};
+  for (const s of VALID_STATUSES) {
+    if (s === "cancelled") continue;
+    columns[s] = [];
+  }
+  for (const t of rows) {
+    if (!columns[t.status]) columns[t.status] = [];
+    columns[t.status].push(t);
+  }
+  return { columns };
+}
+async function getTask({ brand, id }) {
+  const task = await repo.findTask({ brand, id });
+  if (!task) throw new NotFoundError("Task");
+  task.subtasks = await repo.listSubtasks({ task_id: id });
+  return task;
+}
+async function createTask({ brand, user, request_id, input }) {
   return transaction(async (client) => {
-    const created = await repo.create({
+    const task = await repo.createTask({
       client,
+      task: { ...input, business: brand, created_by: user.user_id },
+    });
+    for (const s of input.subtasks || [])
+      await repo.addSubtask({
+        s: {
+          task_id: task.task_id,
+          title: s.title,
+          display_order: s.display_order,
+        },
+      });
+    await A(
       brand,
-      user_id: user.user_id,
-      input,
-    });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "tasks.create",
-      target_type: "tasks",
-      target_id: created.id || created[Object.keys(created)[0]],
-      after: created,
+      user,
+      "tasks.create",
+      "task",
+      task.task_id,
+      { title: task.title },
       request_id,
-    });
-    events.emit("created", { brand, item: created, user_id: user.user_id });
-    return created;
+    );
+    events.emit("task.created", { brand, task_id: task.task_id });
+    await notifyAssignee({ brand, task });
+    return task;
   });
 }
-
-async function update({ brand, user, request_id, id, patch }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("Tasks");
-    const updated = await repo.update({ client, brand, id, patch });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "tasks.update",
-      target_type: "tasks",
-      target_id: id,
-      before,
-      after: updated,
-      request_id,
-    });
-    events.emit("updated", { brand, item: updated, user_id: user.user_id });
-    return updated;
-  });
+async function updateTask({ brand, user, request_id, id, patch }) {
+  const before = await repo.findTask({ brand, id });
+  if (!before) throw new NotFoundError("Task");
+  const task = await repo.updateTask({ brand, id, patch });
+  await A(brand, user, "tasks.update", "task", id, task, request_id);
+  if (patch.assigned_to && patch.assigned_to !== before.assigned_to)
+    await notifyAssignee({ brand, task });
+  return task;
+}
+async function changeStatus({ brand, user, request_id, id, status }) {
+  const before = await repo.findTask({ brand, id });
+  if (!before) throw new NotFoundError("Task");
+  const completed = status === "done";
+  const task = await repo.setStatus({ brand, id, status, completed });
+  await A(brand, user, "tasks.status", "task", id, { status }, request_id);
+  events.emit("task.status_changed", { brand, task_id: id, status });
+  return task;
+}
+async function deleteTask({ brand, user, request_id, id }) {
+  const ok = await repo.softDeleteTask({ brand, id });
+  if (!ok) throw new NotFoundError("Task");
+  await A(brand, user, "tasks.delete", "task", id, null, request_id);
 }
 
-async function archive({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("Tasks");
-    await repo.archive({ client, brand, id });
-    await audit({
+/**
+ * Cross-module hook: another module raises a task programmatically (e.g. an
+ * approval lands on an approver, a campaign needs review). Mirrors the
+ * calendar.createForReference pattern. `created_by` defaults to system (null
+ * not allowed by schema, so callers must pass a user_id).
+ */
+async function createFromModule({ brand, created_by, task }) {
+  const created = await repo.createTask({
+    task: {
+      ...task,
       business: brand,
-      user_id: user.user_id,
-      action_key: "tasks.archive",
-      target_type: "tasks",
-      target_id: id,
-      before,
-      request_id,
-    });
-    events.emit("archived", { brand, id, user_id: user.user_id });
+      created_by,
+      reference_type: task.reference_type,
+      reference_id: task.reference_id,
+    },
   });
+  events.emit("task.created", {
+    brand,
+    task_id: created.task_id,
+    source: task.reference_type,
+  });
+  if (created.assigned_to) await notifyAssignee({ brand, task: created });
+  return created;
 }
 
-module.exports = { list, getById, create, update, archive };
+async function deleteSubtask({ brand, user, request_id, id, subtask_id }) {
+  const task = await repo.findTask({ brand, id });
+  if (!task) throw new NotFoundError("Task");
+  const ok = await repo.deleteSubtask({ subtask_id });
+  if (!ok) throw new NotFoundError("Subtask");
+  await A(
+    brand,
+    user,
+    "tasks.subtask.delete",
+    "task",
+    id,
+    { subtask_id },
+    request_id,
+  );
+}
+
+async function addSubtask({ brand, user, request_id, id, input }) {
+  const task = await repo.findTask({ brand, id });
+  if (!task) throw new NotFoundError("Task");
+  const sub = await repo.addSubtask({
+    s: { task_id: id, title: input.title, display_order: input.display_order },
+  });
+  await A(
+    brand,
+    user,
+    "tasks.subtask.add",
+    "task",
+    id,
+    { subtask_id: sub.subtask_id },
+    request_id,
+  );
+  return sub;
+}
+async function setSubtaskDone({
+  brand,
+  user,
+  request_id,
+  id,
+  subtask_id,
+  is_done,
+}) {
+  const task = await repo.findTask({ brand, id });
+  if (!task) throw new NotFoundError("Task");
+  const sub = await repo.setSubtaskDone({ subtask_id, is_done });
+  if (!sub) throw new NotFoundError("Subtask");
+  await A(
+    brand,
+    user,
+    "tasks.subtask.toggle",
+    "task",
+    id,
+    { subtask_id, is_done },
+    request_id,
+  );
+  return sub;
+}
+
+module.exports = {
+  listTasks,
+  getBoard,
+  getTask,
+  createTask,
+  createFromModule,
+  updateTask,
+  changeStatus,
+  deleteTask,
+  addSubtask,
+  setSubtaskDone,
+  deleteSubtask,
+  VALID_STATUSES,
+  VALID_PRIORITIES,
+};

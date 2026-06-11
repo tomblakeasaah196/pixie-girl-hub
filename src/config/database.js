@@ -17,6 +17,7 @@ const { Pool } = require("pg");
 const { registerType } = require("pgvector/pg");
 const { config } = require("./env");
 const { logger } = require("./logger");
+const requestContext = require("./request-context");
 
 let pool = null;
 
@@ -86,9 +87,49 @@ async function query(text, params = []) {
 }
 
 /**
+ * Set the RLS/audit GUCs on a client *for the current transaction* (R-1).
+ *
+ * Uses `set_config(name, value, is_local := true)` rather than `SET LOCAL name
+ * = $1` because the `SET` command does NOT accept bind parameters — the old
+ * parameterised `SET LOCAL` form would have thrown at runtime (it was never
+ * actually called, which is exactly why RLS was inert). `is_local := true`
+ * scopes the value to the open transaction, so it auto-resets on COMMIT/
+ * ROLLBACK and never leaks across pooled connections.
+ *
+ * Only applies values that are present, so a brandless context (workers,
+ * crons, CEO cross-brand) leaves the GUC unset → RLS treats it as "no filter".
+ *
+ * @param {import('pg').PoolClient} client
+ * @param {{ brand?: string|null, userId?: string|null }} ctx
+ */
+async function applySessionContext(client, ctx) {
+  if (!ctx) return;
+  if (ctx.brand) {
+    await client.query(`SELECT set_config('app.current_business', $1, true)`, [
+      ctx.brand,
+    ]);
+  }
+  if (ctx.userId) {
+    await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [
+      String(ctx.userId),
+    ]);
+  }
+}
+
+/** Back-compat alias (was a broken parameterised `SET LOCAL`). */
+async function setSessionContext(client, business, userId) {
+  await applySessionContext(client, { brand: business, userId });
+}
+
+/**
  * Acquire a client, BEGIN, run callback, COMMIT (or ROLLBACK on throw).
- * Use this for any operation that must be atomic across statements,
- * including setting RLS context via `SET LOCAL app.current_business`.
+ * Use this for any operation that must be atomic across statements.
+ *
+ * RLS/audit context (R-1): immediately after BEGIN this reads the ambient
+ * request context (set by brand-context middleware, or by `brandTransaction`)
+ * and applies `app.current_business` / `app.current_user_id` so the RLS
+ * policies from migration 000200 actually filter. No ambient context → GUCs
+ * stay unset → cross-brand "no filter" (the worker/cron path).
  *
  * @template T
  * @param {(client: import('pg').PoolClient) => Promise<T>} fn
@@ -99,6 +140,10 @@ async function transaction(fn) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await applySessionContext(client, {
+      brand: requestContext.getBrand(),
+      userId: requestContext.getUserId(),
+    });
     const result = await fn(client);
     await client.query("COMMIT");
     return result;
@@ -115,16 +160,20 @@ async function transaction(fn) {
 }
 
 /**
- * Set the current_business GUC on a client (used inside a transaction).
- * RLS policies key off this. Must be called before any RLS-protected query.
+ * Explicit brand-scoped transaction choke point (R-1) for code paths WITHOUT
+ * an ambient request context — e.g. worker/cron handlers that fan out per
+ * brand, or the outbox dispatcher replaying a committed event. Binds the
+ * context for the duration so both the GUC and any nested `transaction()`/
+ * `query()` see the same brand.
  *
- * @param {import('pg').PoolClient} client
- * @param {'valid-brand-key-1'|'valid-brand-key-2'} business
- * @param {string} userId
+ * @template T
+ * @param {string} brand
+ * @param {string|null} userId
+ * @param {(client: import('pg').PoolClient) => Promise<T>} fn
+ * @returns {Promise<T>}
  */
-async function setSessionContext(client, business, userId) {
-  await client.query(`SET LOCAL app.current_business = $1`, [business]);
-  await client.query(`SET LOCAL app.current_user_id = $1`, [userId]);
+async function brandTransaction(brand, userId, fn) {
+  return requestContext.run({ brand, userId }, () => transaction(fn));
 }
 
 async function closeDatabase() {
@@ -139,6 +188,8 @@ module.exports = {
   getPool,
   query,
   transaction,
+  brandTransaction,
   setSessionContext,
+  applySessionContext,
   closeDatabase,
 };

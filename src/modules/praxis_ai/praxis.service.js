@@ -1,97 +1,268 @@
 /**
- * Praxis AI Agent (V2.2 §6.29)
- * Business logic layer. Repos handle SQL; controllers handle HTTP.
- * This file is where:
- *   - Validation beyond shape (cross-field, against DB state)
- *   - Workflow routing (approval / multi-step)
- *   - Domain event emission (for real-time + AI)
- *   - Audit logging
- *   - Transaction orchestration
+ * Praxis AI Agent (V2.2 §6.29) — business logic.
+ *
+ * Conversation + message exchange, and the safety-critical pending-action
+ * gate: Praxis reads freely but every WRITE it proposes is materialised as a
+ * pending action that a human must confirm before it executes. Connections:
+ *   - AI Governance gates every turn (canUseFeature) + records usage.
+ *   - The action catalogue (ai_enabled) is Praxis's allowlist.
+ *   - Live LLM orchestration (intent → action match → draft) is performed by
+ *     the agent runtime in src/ai (vendor-credential dependent); here it is a
+ *     clearly-marked stub so the data + approval flow is complete and testable.
  */
 
 "use strict";
 
 const repo = require("./praxis.repo");
 const events = require("./praxis.events");
+const governance = require("../ai_governance/governance.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
+const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
-async function list({ brand, user, scope, filters, page, page_size }) {
-  return repo.findAll({
-    brand,
-    scope,
+const FEATURE = "praxis_chat";
+
+// ── Conversations ──────────────────────────────────────────
+function listConversations({ user }) {
+  return repo.listConversations({ user_id: user.user_id });
+}
+async function getConversation({ user, id }) {
+  const conv = await repo.findConversation({ id });
+  if (!conv || conv.user_id !== user.user_id)
+    throw new NotFoundError("Conversation");
+  const [messages, pending] = await Promise.all([
+    repo.listMessages({ conversation_id: id }),
+    repo.listPendingActions({ conversation_id: id }),
+  ]);
+  return { ...conv, messages, pending_actions: pending };
+}
+async function createConversation({ user, brand, request_id, input }) {
+  const conv = await repo.createConversation({
+    c: {
+      user_id: user.user_id,
+      business: brand,
+      title: input.title,
+      is_voice_started: input.is_voice_started,
+    },
+  });
+  await audit({
+    business: brand,
     user_id: user.user_id,
-    filters,
-    page,
-    page_size,
+    action_key: "praxis.conversation.create",
+    target_type: "ai_conversation",
+    target_id: conv.conversation_id,
+    request_id,
   });
+  return conv;
+}
+async function archiveConversation({ user, id }) {
+  const ok = await repo.archiveConversation({ id, user_id: user.user_id });
+  if (!ok) throw new NotFoundError("Conversation");
 }
 
-async function getById({ brand, user, scope, id }) {
-  const item = await repo.findById({ brand, id, scope, user_id: user.user_id });
-  if (!item) throw new NotFoundError("PraxisAi");
-  return item;
-}
+/**
+ * Post a user message and get Praxis's reply. The live model call is the agent
+ * runtime's job (src/ai); this returns a graceful placeholder turn while
+ * keeping the conversation + usage flow intact. A real orchestrator would,
+ * for write intents, create an ai_pending_actions row instead of answering.
+ */
+async function postMessage({ user, brand, request_id, id, input }) {
+  const conv = await repo.findConversation({ id });
+  if (!conv || conv.user_id !== user.user_id)
+    throw new NotFoundError("Conversation");
 
-async function create({ brand, user, request_id, input }) {
+  const guard = await governance.canUseFeature({
+    user_id: user.user_id,
+    feature_key: FEATURE,
+    is_ceo: user.is_ceo,
+  });
+  if (!guard.ok)
+    throw new AppError(
+      "AI_UNAVAILABLE",
+      `Praxis is unavailable: ${guard.reason}`,
+      403,
+    );
+
   return transaction(async (client) => {
-    const created = await repo.create({
+    const userMsg = await repo.insertMessage({
       client,
-      brand,
-      user_id: user.user_id,
-      input,
+      m: {
+        conversation_id: id,
+        role: "user",
+        input_mode: input.input_mode || "text",
+        transcribed_text: input.transcribed_text,
+        content: input.content,
+      },
     });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "praxis_ai.create",
-      target_type: "praxis_ai",
-      target_id: created.id || created[Object.keys(created)[0]],
-      after: created,
-      request_id,
-    });
-    events.emit("created", { brand, item: created, user_id: user.user_id });
-    return created;
-  });
-}
+    await repo.touchConversation({ client, id });
 
-async function update({ brand, user, request_id, id, patch }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("PraxisAi");
-    const updated = await repo.update({ client, brand, id, patch });
+    // ── Agent runtime integration point (stubbed) ──
+    // A live orchestrator runs here: retrieve (RAG) → match an ai_enabled
+    // catalogue action → for writes, create a pending action; for reads,
+    // answer. Until vendor credentials + src/ai are wired, reply gracefully.
+    const replyText =
+      "Praxis received your message. Live AI orchestration is not yet " +
+      "connected in this environment; once an AI vendor is configured in AI " +
+      "Control, replies and confirm-to-run actions will appear here.";
+    const assistantMsg = await repo.insertMessage({
+      client,
+      m: { conversation_id: id, role: "assistant", content: replyText },
+    });
+    await repo.touchConversation({ client, id });
+
+    // Best-effort usage row (zero-cost stub turn).
+    try {
+      await governance.recordUsage({
+        usage: {
+          user_id: user.user_id,
+          feature_key: FEATURE,
+          business: brand,
+          conversation_id: id,
+          provider: conv.provider || "stub",
+          model: "stub",
+          call_type: "chat_completion",
+          input_tokens: 0,
+          output_tokens: 0,
+          total_tokens: 0,
+          cost_native: 0,
+          cost_ngn: 0,
+          was_successful: true,
+        },
+      });
+    } catch (err) {
+      logger.error({ err: err.message }, "praxis: usage record failed");
+    }
     await audit({
       business: brand,
       user_id: user.user_id,
-      action_key: "praxis_ai.update",
-      target_type: "praxis_ai",
+      action_key: "praxis.message.post",
+      target_type: "ai_conversation",
       target_id: id,
-      before,
-      after: updated,
       request_id,
     });
-    events.emit("updated", { brand, item: updated, user_id: user.user_id });
-    return updated;
+    return { user_message: userMsg, assistant_message: assistantMsg };
   });
 }
 
-async function archive({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("PraxisAi");
-    await repo.archive({ client, brand, id });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "praxis_ai.archive",
-      target_type: "praxis_ai",
-      target_id: id,
-      before,
-      request_id,
-    });
-    events.emit("archived", { brand, id, user_id: user.user_id });
+// ── Pending actions (human-in-the-loop gate) ───────────────
+function listPendingActions({ user, status }) {
+  return repo.listPendingActions({ user_id: user.user_id, status });
+}
+async function getPendingAction({ user, id }) {
+  const p = await repo.findPendingAction({ id });
+  if (!p || p.proposed_by_user_id !== user.user_id)
+    throw new NotFoundError("Pending action");
+  return p;
+}
+/**
+ * Confirm a proposed action. This flips it to 'confirmed' and emits the event
+ * the agent runtime listens for to execute the underlying catalogued API call;
+ * the runtime then calls markExecuted/markFailed. Execution NEVER happens
+ * without this explicit human confirmation (V2.2 §6.29 safety gate).
+ */
+async function confirmAction({ user, request_id, id }) {
+  const p = await repo.findPendingAction({ id });
+  if (!p || p.proposed_by_user_id !== user.user_id)
+    throw new NotFoundError("Pending action");
+  if (p.status !== "proposed")
+    throw new AppError("BAD_STATE", `Action is ${p.status}, not proposed`, 422);
+  if (new Date(p.expires_at) < new Date()) {
+    await repo.setPendingStatus({ id, status: "expired" });
+    throw new AppError("EXPIRED", "This proposed action has expired", 410);
+  }
+  const updated = await repo.setPendingStatus({
+    id,
+    status: "confirmed",
+    fields: {
+      confirmed_by_user_id: user.user_id,
+      confirmed_at: new Date().toISOString(),
+    },
+  });
+  await audit({
+    business: p.business,
+    user_id: user.user_id,
+    action_key: "praxis.action.confirm",
+    target_type: "ai_pending_action",
+    target_id: id,
+    after: { action_key: p.action_key },
+    request_id,
+  });
+  events.emit("action.confirmed", {
+    pending_id: id,
+    action_key: p.action_key,
+    business: p.business,
+  });
+  return updated;
+}
+async function rejectAction({ user, request_id, id, reason }) {
+  const p = await repo.findPendingAction({ id });
+  if (!p || p.proposed_by_user_id !== user.user_id)
+    throw new NotFoundError("Pending action");
+  if (p.status !== "proposed")
+    throw new AppError("BAD_STATE", `Action is ${p.status}`, 422);
+  const updated = await repo.setPendingStatus({
+    id,
+    status: "rejected",
+    fields: {
+      rejected_at: new Date().toISOString(),
+      rejection_reason: reason || null,
+    },
+  });
+  await audit({
+    business: p.business,
+    user_id: user.user_id,
+    action_key: "praxis.action.reject",
+    target_type: "ai_pending_action",
+    target_id: id,
+    request_id,
+  });
+  return updated;
+}
+/** Called by the agent runtime after it executes a confirmed action. */
+async function markExecuted({ id, execution_result, audit_log_id }) {
+  return repo.setPendingStatus({
+    id,
+    status: "executed",
+    fields: {
+      executed_at: new Date().toISOString(),
+      execution_result: execution_result || null,
+      audit_log_id: audit_log_id || null,
+    },
+  });
+}
+async function markFailed({ id, execution_error }) {
+  return repo.setPendingStatus({
+    id,
+    status: "failed",
+    fields: {
+      executed_at: new Date().toISOString(),
+      execution_error: execution_error || null,
+    },
   });
 }
 
-module.exports = { list, getById, create, update, archive };
+// ── Trace + action catalogue (read) ────────────────────────
+function listRunSteps({ conversation_id }) {
+  return repo.listRunSteps({ conversation_id });
+}
+/** The agent's allowlist: catalogue entries Praxis is permitted to use. */
+function listEnabledActions(args) {
+  return governance.listActions({ ...args, ai_enabled: true });
+}
+
+module.exports = {
+  listConversations,
+  getConversation,
+  createConversation,
+  archiveConversation,
+  postMessage,
+  listPendingActions,
+  getPendingAction,
+  confirmAction,
+  rejectAction,
+  markExecuted,
+  markFailed,
+  listRunSteps,
+  listEnabledActions,
+};

@@ -14,6 +14,7 @@
 
 const repo = require("./sales.repo");
 const events = require("./sales.events");
+const outbox = require("../../shared/outbox/outbox");
 const discount = require("../sales_campaigns/campaigns.discount.service");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
@@ -493,14 +494,24 @@ async function markPaid({ client, brand, user, _request_id, order }) {
     id: order.order_id,
     status: "paid",
   });
-  // Cross-module trigger: Invoicing raises the invoice, Accounting posts revenue.
-  events.emit("order.paid", {
-    brand,
-    order_id: order.order_id,
-    contact_id: order.contact_id,
-    total_ngn: order.total_ngn,
-    tax_amount_ngn: order.tax_amount_ngn,
-    sales_campaign_id: order.sales_campaign_id,
+  // Cross-module fan-out (H-2): enqueue `order.paid` to the transactional
+  // outbox atomically with this transaction. After COMMIT the worker's
+  // dispatcher invokes every registered consumer (accounting GL, invoicing,
+  // commission, logistics dispatch, retention loyalty/stars, notifications)
+  // post-commit, idempotently, with retry. No pre-commit emit — consumers must
+  // never act on an uncommitted order.
+  await outbox.enqueue(client, {
+    business: brand,
+    event_type: "order.paid",
+    payload: {
+      brand,
+      order_id: order.order_id,
+      contact_id: order.contact_id,
+      total_ngn: order.total_ngn,
+      tax_amount_ngn: order.tax_amount_ngn,
+      sales_campaign_id: order.sales_campaign_id,
+    },
+    dedup_key: `order.paid:${order.order_id}`,
   });
   return paid;
 }

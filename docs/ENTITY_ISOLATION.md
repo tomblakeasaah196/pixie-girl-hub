@@ -67,17 +67,37 @@ Some data is genuinely cross-brand and lives in `shared.*`:
 
 Shared tables that hold per-brand data (like `contacts.loyalty_points_by_business`) include a `business` column so cross-brand views can still segment.
 
-## RLS — pending decision
+## RLS — status (corrected 2026-06-11)
 
-V2.2 §3 mandates **row-level security** at the database layer. Currently the shared tables rely on app-layer filtering (the `business` column is set explicitly in queries). RLS will enforce this at the DB level via:
+V2.2 §3 mandates **row-level security** at the database layer. Two facts that
+were previously mis-recorded (see `HUB_VS_PIXIE_DEEP_VERIFICATION.md` R-1):
 
-```sql
-ALTER TABLE shared.contacts ENABLE ROW LEVEL SECURITY;
-CREATE POLICY contacts_brand_isolation ON shared.contacts
-  USING (business = current_setting('app.current_business')::text);
-```
+1. **The policies ARE applied.** Migration `000200_shared_rls.sql` enables RLS
+   on every `shared.*` table with a `business` column (62 tables) with the
+   `brand_isolation` policy `current_business() IS NULL OR business =
+current_business()`. (Per-brand ERP data lives in brand schemas and is
+   isolated by schema, not by this RLS.)
+2. **The plumbing was NOT there.** `transaction()` did not set the GUC, the
+   `withBrand` helper named in the migration never existed, and the old
+   parameterised `SET LOCAL app.current_business = $1` would have thrown
+   (the `SET` command takes no bind params). So `current_business()` was always
+   NULL → the policy let every brand through → RLS was inert (failed open).
 
-The plumbing is ready (`src/config/database.js` sets `app.current_business` per transaction); the policies themselves are pending. See `CONFORMANCE_GAPS.md` for the decision options.
+**Now wired (R-1, 2026-06-11):** the brand + user resolved by
+`middleware/brand-context.js` are bound into an `AsyncLocalStorage` request
+context (`config/request-context.js`); `transaction()` reads it and applies
+`app.current_business` / `app.current_user_id` via
+`set_config(name, value, true)` (parameter-safe, transaction-local). So **every
+request-scoped transaction now filters shared tables to the request's brand**,
+and the WITH CHECK blocks cross-brand writes. `brandTransaction(brand, userId,
+fn)` is the explicit choke point for worker/cron/outbox paths.
+
+**Remaining R-1 step (read side):** one-shot `query()` reads outside a
+transaction still run on a pooled connection with no GUC → RLS treats them as
+"no filter", so those reads stay app-layer-isolated only (same as before — no
+regression). Completing read-side enforcement (wrapping context'd one-shot
+reads, or a request-scoped connection) is a follow-up that needs a staging
+perf check before rollout.
 
 ## What to never, ever do
 

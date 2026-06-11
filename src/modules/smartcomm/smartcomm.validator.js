@@ -25,6 +25,32 @@ const sendToCustomer = z
   })
   .strict();
 
+const channelCreate = z
+  .object({
+    channel_type: z.enum(["group", "direct"]),
+    name: z.string().max(200).optional(),
+    metadata: z.record(z.any()).optional(),
+    member_user_ids: z.array(z.string().uuid()).optional(),
+  })
+  .strict();
+
+const archiveChannel = z.object({ archived: z.boolean().optional() }).strict();
+
+const memberAdd = z
+  .object({
+    user_id: z.string().uuid().optional(),
+    contact_id: z.string().uuid().optional(),
+    role: z.enum(["member", "admin"]).optional(),
+  })
+  .strict();
+
+const attachmentAdd = z
+  .object({
+    document_id: z.string().uuid(),
+    display_name: z.string().max(200).optional(),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -33,4 +59,8 @@ const mk = (schema) => (req, _res, next) => {
 module.exports = {
   validatePostMessage: mk(postMessage),
   validateSendToCustomer: mk(sendToCustomer),
+  validateChannelCreate: mk(channelCreate),
+  validateArchiveChannel: mk(archiveChannel),
+  validateMemberAdd: mk(memberAdd),
+  validateAttachmentAdd: mk(attachmentAdd),
 };

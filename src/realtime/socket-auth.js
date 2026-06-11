@@ -9,7 +9,7 @@
 const jwt = require("jsonwebtoken");
 const { config } = require("../config/env");
 const { logger } = require("../config/logger");
-const staffRepo = require("../modules/hr_payroll/staff.repo");
+const staffRepo = require("../shared/hr_payroll/staff.repo");
 
 async function authenticateSocket(socket, next) {
   try {

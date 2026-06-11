@@ -1,12 +1,11 @@
 /**
- * Calendar & Scheduling (V2.2 §6.18)
- * Business logic layer. Repos handle SQL; controllers handle HTTP.
- * This file is where:
- *   - Validation beyond shape (cross-field, against DB state)
- *   - Workflow routing (approval / multi-step)
- *   - Domain event emission (for real-time + AI)
- *   - Audit logging
- *   - Transaction orchestration
+ * Calendar (V2.2 §6.18) — business logic.
+ *
+ * One shared calendar per business. Events can be standalone or reference
+ * another module's record (service booking, stylist assignment, delivery,
+ * CRM deal) via reference_type/id, so all scheduled work surfaces in one
+ * place. `createForReference` is the hook other modules use to put their
+ * dated records on the calendar.
  */
 
 "use strict";
@@ -15,83 +14,236 @@ const repo = require("./calendar.repo");
 const events = require("./calendar.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { NotFoundError, AppError } = require("../../utils/errors");
+const { NotFoundError } = require("../../utils/errors");
 
-async function list({ brand, user, scope, filters, page, page_size }) {
-  return repo.findAll({
-    brand,
-    scope,
-    user_id: user.user_id,
-    filters,
-    page,
-    page_size,
+const A = (
+  brand,
+  user,
+  action_key,
+  target_type,
+  target_id,
+  after,
+  request_id,
+) =>
+  audit({
+    business: brand,
+    user_id: user ? user.user_id : null,
+    action_key,
+    target_type,
+    target_id,
+    after,
+    request_id,
   });
-}
 
-async function getById({ brand, user, scope, id }) {
-  const item = await repo.findById({ brand, id, scope, user_id: user.user_id });
-  if (!item) throw new NotFoundError("Calendar");
-  return item;
-}
+// PRD §6.18 event vocabulary (schema column is free text; this is the UI list).
+const VALID_EVENT_TYPES = [
+  "meeting",
+  "viewing",
+  "follow_up",
+  "delivery",
+  "task_deadline",
+  "leave",
+  "reminder",
+  "appointment",
+  "service_booking",
+  "production_milestone",
+  "stylist_appointment",
+];
 
-async function create({ brand, user, request_id, input }) {
+function listEvents(args) {
+  return repo.listEvents(args);
+}
+function listForReference({ brand, reference_type, reference_id }) {
+  return repo.listEvents({ brand, reference_type, reference_id });
+}
+async function getEvent({ brand, id }) {
+  const event = await repo.findEvent({ brand, id });
+  if (!event) throw new NotFoundError("Event");
+  const [participants, resources] = await Promise.all([
+    repo.listParticipants({ event_id: id }),
+    repo.listResources({ event_id: id }),
+  ]);
+  return { ...event, participants, resources };
+}
+async function createEvent({ brand, user, request_id, input }) {
   return transaction(async (client) => {
-    const created = await repo.create({
+    const event = await repo.createEvent({
       client,
+      e: { ...input, business: brand, created_by: user.user_id },
+    });
+    for (const p of input.participants || [])
+      await repo.addParticipant({
+        client,
+        p: { ...p, event_id: event.event_id },
+      });
+    for (const r of input.resources || [])
+      await repo.addResource({ client, r: { ...r, event_id: event.event_id } });
+    await A(
       brand,
-      user_id: user.user_id,
-      input,
-    });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "calendar.create",
-      target_type: "calendar",
-      target_id: created.id || created[Object.keys(created)[0]],
-      after: created,
+      user,
+      "calendar.event.create",
+      "calendar_event",
+      event.event_id,
+      { event_type: event.event_type },
       request_id,
-    });
-    events.emit("created", { brand, item: created, user_id: user.user_id });
-    return created;
+    );
+    events.emit("event.created", { brand, event_id: event.event_id });
+    return event;
+  });
+}
+async function updateEvent({ brand, user, request_id, id, patch }) {
+  const before = await repo.findEvent({ brand, id });
+  if (!before) throw new NotFoundError("Event");
+  const updated = await repo.updateEvent({ brand, id, patch });
+  await A(
+    brand,
+    user,
+    "calendar.event.update",
+    "calendar_event",
+    id,
+    updated,
+    request_id,
+  );
+  return updated;
+}
+async function deleteEvent({ brand, user, request_id, id }) {
+  const ok = await repo.softDeleteEvent({ brand, id });
+  if (!ok) throw new NotFoundError("Event");
+  await A(
+    brand,
+    user,
+    "calendar.event.delete",
+    "calendar_event",
+    id,
+    null,
+    request_id,
+  );
+}
+
+async function addParticipant({ brand, user, request_id, id, input }) {
+  const event = await repo.findEvent({ brand, id });
+  if (!event) throw new NotFoundError("Event");
+  const p = await repo.addParticipant({ p: { ...input, event_id: id } });
+  await A(
+    brand,
+    user,
+    "calendar.participant.add",
+    "calendar_event",
+    id,
+    { participant_id: p.participant_id },
+    request_id,
+  );
+  return p;
+}
+async function respondParticipant({
+  brand,
+  user,
+  request_id,
+  id,
+  participant_id,
+  status,
+}) {
+  const event = await repo.findEvent({ brand, id });
+  if (!event) throw new NotFoundError("Event");
+  const p = await repo.respondParticipant({
+    event_id: id,
+    participant_id,
+    status,
+  });
+  if (!p) throw new NotFoundError("Participant");
+  await A(
+    brand,
+    user,
+    "calendar.participant.respond",
+    "calendar_event",
+    id,
+    { participant_id, status },
+    request_id,
+  );
+  return p;
+}
+
+async function removeParticipant({
+  brand,
+  user,
+  request_id,
+  id,
+  participant_id,
+}) {
+  const event = await repo.findEvent({ brand, id });
+  if (!event) throw new NotFoundError("Event");
+  const ok = await repo.removeParticipant({ event_id: id, participant_id });
+  if (!ok) throw new NotFoundError("Participant");
+  await A(
+    brand,
+    user,
+    "calendar.participant.remove",
+    "calendar_event",
+    id,
+    { participant_id },
+    request_id,
+  );
+}
+
+/**
+ * Events starting within `within_minutes` (default 24h) — the reminder cron
+ * reads this to dispatch nudges. Pass event_type='reminder' to limit to
+ * explicit reminder events.
+ */
+function findUpcomingForReminders({
+  brand,
+  within_minutes = 1440,
+  event_type,
+}) {
+  const now = new Date();
+  const to = new Date(now.getTime() + within_minutes * 60 * 1000);
+  return repo.upcoming({
+    brand,
+    from: now.toISOString(),
+    to: to.toISOString(),
+    event_type,
   });
 }
 
-async function update({ brand, user, request_id, id, patch }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("Calendar");
-    const updated = await repo.update({ client, brand, id, patch });
-    await audit({
+/**
+ * Cross-module hook: drop another module's dated record onto the calendar.
+ * Best-effort — callers pass the reference so the event links back.
+ */
+async function createForReference({
+  brand,
+  title,
+  event_type,
+  start_at,
+  end_at,
+  reference_type,
+  reference_id,
+  created_by,
+}) {
+  return repo.createEvent({
+    e: {
       business: brand,
-      user_id: user.user_id,
-      action_key: "calendar.update",
-      target_type: "calendar",
-      target_id: id,
-      before,
-      after: updated,
-      request_id,
-    });
-    events.emit("updated", { brand, item: updated, user_id: user.user_id });
-    return updated;
+      title,
+      event_type,
+      start_at,
+      end_at: end_at || start_at,
+      reference_type,
+      reference_id,
+      created_by: created_by || null,
+    },
   });
 }
 
-async function archive({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("Calendar");
-    await repo.archive({ client, brand, id });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "calendar.archive",
-      target_type: "calendar",
-      target_id: id,
-      before,
-      request_id,
-    });
-    events.emit("archived", { brand, id, user_id: user.user_id });
-  });
-}
-
-module.exports = { list, getById, create, update, archive };
+module.exports = {
+  listEvents,
+  listForReference,
+  getEvent,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+  addParticipant,
+  respondParticipant,
+  removeParticipant,
+  findUpcomingForReminders,
+  createForReference,
+  VALID_EVENT_TYPES,
+};

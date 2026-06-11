@@ -25,8 +25,175 @@ function listChannels(args) {
 async function getChannel({ id }) {
   const channel = await repo.getChannel({ id });
   if (!channel) throw new NotFoundError("Channel");
-  const messages = await repo.listMessages({ channel_id: id });
-  return { ...channel, messages };
+  const [messages, members] = await Promise.all([
+    repo.listMessages({ channel_id: id }),
+    repo.listMembers({ channel_id: id }),
+  ]);
+  return { ...channel, messages, members };
+}
+
+function listMessages({ id, page, page_size }) {
+  return repo.listMessages({ channel_id: id, page, page_size });
+}
+
+/** Create a team channel (group/direct) and seed its members. */
+async function createChannel({ brand, user, request_id, input }) {
+  return transaction(async (client) => {
+    const channel = await repo.createChannel({
+      client,
+      channel: {
+        channel_type: input.channel_type,
+        name: input.name,
+        business: brand,
+        metadata: input.metadata,
+      },
+    });
+    // Creator is an admin member; plus any invited members.
+    await repo.addMember({
+      client,
+      m: {
+        channel_id: channel.channel_id,
+        user_id: user.user_id,
+        role: "admin",
+      },
+    });
+    for (const uid of input.member_user_ids || []) {
+      if (uid !== user.user_id)
+        await repo.addMember({
+          client,
+          m: { channel_id: channel.channel_id, user_id: uid },
+        });
+    }
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "smartcomm.channel.create",
+      target_type: "channel",
+      target_id: channel.channel_id,
+      after: { channel_type: channel.channel_type },
+      request_id,
+    });
+    events.emit("channel.created", { channel_id: channel.channel_id });
+    return channel;
+  });
+}
+
+async function archiveChannel({
+  brand,
+  user,
+  request_id,
+  id,
+  archived = true,
+}) {
+  const channel = await repo.getChannel({ id });
+  if (!channel) throw new NotFoundError("Channel");
+  const updated = await repo.setChannelArchived({ id, archived });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: archived
+      ? "smartcomm.channel.archive"
+      : "smartcomm.channel.unarchive",
+    target_type: "channel",
+    target_id: id,
+    request_id,
+  });
+  return updated;
+}
+
+async function addMember({ brand, user, request_id, id, input }) {
+  const channel = await repo.getChannel({ id });
+  if (!channel) throw new NotFoundError("Channel");
+  const m = await repo.addMember({
+    m: {
+      channel_id: id,
+      user_id: input.user_id,
+      contact_id: input.contact_id,
+      role: input.role,
+    },
+  });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "smartcomm.member.add",
+    target_type: "channel",
+    target_id: id,
+    request_id,
+  });
+  return m;
+}
+async function removeMember({ brand, user, request_id, id, member_id }) {
+  const ok = await repo.removeMember({ channel_id: id, member_id });
+  if (!ok) throw new NotFoundError("Member");
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "smartcomm.member.remove",
+    target_type: "channel",
+    target_id: id,
+    request_id,
+  });
+}
+
+async function deleteMessage({ brand, user, request_id, message_id }) {
+  return transaction(async (client) => {
+    const msg = await repo.getMessage({ client, id: message_id });
+    if (!msg || msg.is_deleted) throw new NotFoundError("Message");
+    // Only the author (or staff with edit perm at the route) may delete.
+    if (msg.sender_user_id && msg.sender_user_id !== user.user_id)
+      throw new AppError(
+        "NOT_AUTHOR",
+        "Only the author can delete this message",
+        403,
+      );
+    await repo.softDeleteMessage({ client, id: message_id });
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "smartcomm.message.delete",
+      target_type: "message",
+      target_id: message_id,
+      request_id,
+    });
+    events.emit("message.deleted", { channel_id: msg.channel_id, message_id });
+  });
+}
+
+async function markRead({ user, id }) {
+  return transaction(async (client) => {
+    const channel = await repo.getChannel({ client, id });
+    if (!channel) throw new NotFoundError("Channel");
+    await repo.markChannelRead({
+      client,
+      channel_id: id,
+      user_id: user.user_id,
+    });
+    return { channel_id: id, read_at: new Date().toISOString() };
+  });
+}
+function getUnreadCount({ user }) {
+  return repo.unreadCountForUser({ user_id: user.user_id });
+}
+
+async function addAttachment({ brand, user, request_id, message_id, input }) {
+  const msg = await repo.getMessage({ id: message_id });
+  if (!msg) throw new NotFoundError("Message");
+  const a = await repo.addAttachment({
+    a: {
+      message_id,
+      document_id: input.document_id,
+      display_name: input.display_name,
+    },
+  });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "smartcomm.attachment.add",
+    target_type: "message",
+    target_id: message_id,
+    request_id,
+  });
+  return a;
 }
 
 /** Post a message into a channel as the acting staff user. */
@@ -192,7 +359,16 @@ async function recordInboundFromCustomer({
 module.exports = {
   listChannels,
   getChannel,
+  listMessages,
+  createChannel,
+  archiveChannel,
+  addMember,
+  removeMember,
   postMessage,
+  deleteMessage,
+  markRead,
+  getUnreadCount,
+  addAttachment,
   sendToCustomer,
   recordInboundFromCustomer,
   findOrCreateCustomerThread,

@@ -1,75 +1,212 @@
 /**
- * Tasks & To-Do (V2.2 §6.19)
- * Repository — parameterised SQL only. No business logic, no HTTP.
+ * Tasks (V2.2 §6.19) — repository.
  *
- * Conventions:
- *   - Every function takes a { client?, brand, ... } options object.
- *   - If `client` is provided, run within that transaction; else use the
- *     pool (via `query`).
- *   - All values bound with $1..$N placeholders. NEVER string-interpolate.
- *   - Schema names are switched by brand: pixiegirl.* or faitlynhair.*.
- *   - For shared tables (audit_log, contacts, etc.), use the `shared.` schema
- *     and filter by `business` column.
+ * SHARED tables (business-scoped): tasks, task_subtasks. Tasks are raised
+ * manually or auto-created by DB triggers (e.g. a new service_job raises a
+ * staff task) and can reference any source record via reference_type/id.
+ * Parameterised SQL only.
  */
 
 "use strict";
 
 const { query } = require("../../config/database");
 
-const { VALID_BRANDS } = require("../../config/brands");
+const ex = (c) => (c ? c.query.bind(c) : query);
 
-function tableFor(brand) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.tasks`;
+// ── Tasks ──────────────────────────────────────────────────
+async function createTask({ client, task }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.tasks
+       (business, title, description, status, priority, assigned_to, due_at,
+        parent_task_id, reference_type, reference_id, created_by)
+     VALUES ($1,$2,$3,COALESCE($4,'inbox'),COALESCE($5,'normal'),$6,$7,$8,$9,$10,$11)
+     RETURNING *`,
+    [
+      task.business,
+      task.title,
+      task.description || null,
+      task.status || null,
+      task.priority || null,
+      task.assigned_to || null,
+      task.due_at || null,
+      task.parent_task_id || null,
+      task.reference_type || null,
+      task.reference_id || null,
+      task.created_by,
+    ],
+  );
+  return rows[0];
 }
-
-async function findAll({
-  client,
+async function listTasks({
   brand,
-  scope,
-  user_id,
-  filters = {},
+  status,
+  assigned_to,
+  priority,
+  reference_type,
+  reference_id,
   page = 1,
-  page_size = 25,
+  page_size = 50,
 }) {
-  // TODO: build dynamic WHERE based on filters + scope ('all' | 'team' | 'own')
+  const where = ["business = $1", "is_deleted = false"];
+  const params = [brand];
+  let i = 2;
+  if (status) {
+    where.push(`status = $${i++}`);
+    params.push(status);
+  }
+  if (assigned_to) {
+    where.push(`assigned_to = $${i++}`);
+    params.push(assigned_to);
+  }
+  if (priority) {
+    where.push(`priority = $${i++}`);
+    params.push(priority);
+  }
+  if (reference_type) {
+    where.push(`reference_type = $${i++}`);
+    params.push(reference_type);
+  }
+  if (reference_id) {
+    where.push(`reference_id = $${i++}`);
+    params.push(reference_id);
+  }
+  const w = `WHERE ${where.join(" AND ")}`;
+  const { rows: c } = await query(
+    `SELECT count(*)::int AS total FROM shared.tasks ${w}`,
+    params,
+  );
   const offset = (page - 1) * page_size;
-  const sql = `
-    SELECT *
-      FROM ${tableFor(brand)}
-     WHERE COALESCE(is_deleted, false) = false
-     ORDER BY created_at DESC
-     LIMIT $1 OFFSET $2
-  `;
-  const exec = client ? client.query.bind(client) : query;
-  const { rows } = await exec(sql, [page_size, offset]);
-  return { data: rows, page, page_size, total: rows.length }; // TODO: real count query
+  const { rows } = await query(
+    `SELECT * FROM shared.tasks ${w}
+      ORDER BY (due_at IS NULL), due_at ASC, created_at DESC
+      LIMIT $${i++} OFFSET $${i}`,
+    [...params, page_size, offset],
+  );
+  return { data: rows, page, page_size, total: c[0].total };
 }
-
-async function findById({ client, brand, id }) {
-  const sql = `SELECT * FROM ${tableFor(brand)} WHERE tasks_id = $1 LIMIT 1`;
-  // NOTE: replace `tasks_id` with the actual PK name for this table
-  const exec = client ? client.query.bind(client) : query;
-  const { rows } = await exec(sql, [id]);
+async function findTask({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.tasks WHERE task_id = $1 AND business = $2 AND is_deleted = false`,
+    [id, brand],
+  );
+  return rows[0] || null;
+}
+async function updateTask({ brand, id, patch }) {
+  const allowed = [
+    "title",
+    "description",
+    "priority",
+    "assigned_to",
+    "due_at",
+    "reference_type",
+    "reference_id",
+  ];
+  const sets = [];
+  const params = [];
+  let i = 1;
+  for (const k of allowed) {
+    if (patch[k] !== undefined) {
+      sets.push(`${k} = $${i++}`);
+      params.push(patch[k]);
+    }
+  }
+  if (!sets.length) return findTask({ brand, id });
+  params.push(id, brand);
+  const { rows } = await query(
+    `UPDATE shared.tasks SET ${sets.join(", ")}, updated_at = now()
+      WHERE task_id = $${i++} AND business = $${i} AND is_deleted = false RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
+}
+async function setStatus({ brand, id, status, completed }) {
+  const { rows } = await query(
+    `UPDATE shared.tasks
+        SET status = $3,
+            completed_at = CASE WHEN $4::boolean THEN now() ELSE NULL END,
+            updated_at = now()
+      WHERE task_id = $1 AND business = $2 AND is_deleted = false RETURNING *`,
+    [id, brand, status, completed === true],
+  );
+  return rows[0] || null;
+}
+async function softDeleteTask({ brand, id }) {
+  const { rows } = await query(
+    `UPDATE shared.tasks SET is_deleted = true, updated_at = now()
+      WHERE task_id = $1 AND business = $2 RETURNING task_id`,
+    [id, brand],
+  );
   return rows[0] || null;
 }
 
-async function create({ client, brand, input, user_id }) {
-  // TODO: build INSERT with parameterised columns from `input`
-  throw new Error("TODO: implement tasks.create");
+// ── Subtasks ───────────────────────────────────────────────
+async function listSubtasks({ task_id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.task_subtasks WHERE task_id = $1 ORDER BY display_order`,
+    [task_id],
+  );
+  return rows;
+}
+async function addSubtask({ s }) {
+  const { rows } = await query(
+    `INSERT INTO shared.task_subtasks (task_id, title, display_order)
+     VALUES ($1,$2,COALESCE($3,0)) RETURNING *`,
+    [
+      s.task_id,
+      s.title,
+      s.display_order === undefined ? null : s.display_order,
+    ],
+  );
+  return rows[0];
+}
+async function setSubtaskDone({ subtask_id, is_done }) {
+  const { rows } = await query(
+    `UPDATE shared.task_subtasks
+        SET is_done = $2, completed_at = CASE WHEN $2::boolean THEN now() ELSE NULL END
+      WHERE subtask_id = $1 RETURNING *`,
+    [subtask_id, is_done === true],
+  );
+  return rows[0] || null;
+}
+async function deleteSubtask({ subtask_id }) {
+  const { rows } = await query(
+    `DELETE FROM shared.task_subtasks WHERE subtask_id = $1 RETURNING subtask_id`,
+    [subtask_id],
+  );
+  return rows[0] || null;
 }
 
-async function update({ client, brand, id, patch }) {
-  // TODO: build UPDATE with parameterised columns from `patch`
-  throw new Error("TODO: implement tasks.update");
+/** All non-done tasks for the board view (optionally scoped to an assignee). */
+async function boardTasks({ brand, assigned_to }) {
+  const where = [
+    "business = $1",
+    "is_deleted = false",
+    "status <> 'cancelled'",
+  ];
+  const params = [brand];
+  let i = 2;
+  if (assigned_to) {
+    where.push(`assigned_to = $${i++}`);
+    params.push(assigned_to);
+  }
+  const { rows } = await query(
+    `SELECT * FROM shared.tasks WHERE ${where.join(" AND ")}
+      ORDER BY (due_at IS NULL), due_at ASC, created_at DESC`,
+    params,
+  );
+  return rows;
 }
 
-async function archive({ client, brand, id }) {
-  const sql = `UPDATE ${tableFor(brand)}
-                  SET is_deleted = true, deleted_at = now()
-                WHERE tasks_id = $1`;
-  const exec = client ? client.query.bind(client) : query;
-  await exec(sql, [id]);
-}
-
-module.exports = { findAll, findById, create, update, archive };
+module.exports = {
+  createTask,
+  listTasks,
+  findTask,
+  updateTask,
+  setStatus,
+  softDeleteTask,
+  listSubtasks,
+  addSubtask,
+  setSubtaskDone,
+  deleteSubtask,
+  boardTasks,
+};

@@ -73,9 +73,39 @@ async function bootstrap() {
   });
 
   // ── Graceful shutdown ──────────────────────────────────
-  const shutdown = async (signal) => {
-    logger.warn({ signal }, "shutdown requested");
-    server.close(() => logger.info("http server closed"));
+  // Order: stop accepting new work → DRAIN in-flight HTTP (await server.close)
+  // → stop workers → socket → redis → db. A force-exit failsafe guards against
+  // a hung keep-alive socket wedging the drain. Re-entrancy guard so a second
+  // signal doesn't re-enter. Crash paths exit non-zero so the supervisor sees
+  // the failure (R-4 / C-1).
+  let isShuttingDown = false;
+  const closeHttp = () =>
+    new Promise((resolve) => {
+      server.close((err) => {
+        if (err) logger.error({ err }, "http server close error");
+        else logger.info("http server closed (drained)");
+        resolve();
+      });
+    });
+
+  const shutdown = async (signal, exitCode = 0) => {
+    if (isShuttingDown) {
+      logger.warn({ signal }, "shutdown already in progress; ignoring");
+      return;
+    }
+    isShuttingDown = true;
+    logger.warn({ signal, exitCode }, "shutdown requested");
+
+    // Failsafe: never let teardown hang the process indefinitely.
+    const forceTimer = setTimeout(() => {
+      logger.fatal("shutdown timed out after 10s — forcing exit");
+      process.exit(exitCode || 1);
+    }, 10_000);
+    forceTimer.unref();
+
+    // Stop taking new connections and wait for in-flight requests to finish
+    // BEFORE tearing down the pool/redis they depend on.
+    await closeHttp();
     await stopWorkers().catch((e) => logger.error(e, "worker stop failed"));
     await closeSocketIo().catch((e) =>
       logger.error(e, "socket.io close failed"),
@@ -84,21 +114,24 @@ async function bootstrap() {
     await closeDatabase().catch((e) =>
       logger.error(e, "database close failed"),
     );
+
+    clearTimeout(forceTimer);
     logger.info("shutdown complete");
-    process.exit(0);
+    process.exit(exitCode);
   };
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM", 0));
+  process.on("SIGINT", () => shutdown("SIGINT", 0));
 
   // ── Crash-safety ───────────────────────────────────────
+  // Exit non-zero so process managers (pm2/systemd/k8s) restart and surface it.
   process.on("uncaughtException", (err) => {
     logger.fatal({ err }, "uncaught exception");
-    shutdown("uncaughtException");
+    shutdown("uncaughtException", 1);
   });
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ reason }, "unhandled rejection");
-    shutdown("unhandledRejection");
+    shutdown("unhandledRejection", 1);
   });
 }
 

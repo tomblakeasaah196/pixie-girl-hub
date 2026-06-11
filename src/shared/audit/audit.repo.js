@@ -1,75 +1,100 @@
 /**
- * Audit log read-access (V2.2 §3 — append-only)
- * Repository — parameterised SQL only. No business logic, no HTTP.
+ * Audit log (V2.2 §3) — read repository.
  *
- * Conventions:
- *   - Every function takes a { client?, brand, ... } options object.
- *   - If `client` is provided, run within that transaction; else use the
- *     pool (via `query`).
- *   - All values bound with $1..$N placeholders. NEVER string-interpolate.
- *   - Schema names are switched by brand: pixiegirl.* or faitlynhair.*.
- *   - For shared tables (audit_log, contacts, etc.), use the `shared.` schema
- *     and filter by `business` column.
+ * Read-only over shared.audit_log (writes happen via the audit() middleware).
+ * Scoped to the active business; supports filtering by actor, module, action,
+ * affected record, sensitivity, and date range. Parameterised SQL only.
  */
 
 "use strict";
 
 const { query } = require("../../config/database");
 
-const { VALID_BRANDS } = require("../../config/brands");
-
-function tableFor(brand) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.audit_log`;
-}
-
-async function findAll({
-  client,
+async function list({
   brand,
-  scope,
   user_id,
-  filters = {},
+  module,
+  action,
+  table_name,
+  record_id,
+  is_sensitive,
+  from,
+  to,
   page = 1,
-  page_size = 25,
+  page_size = 50,
 }) {
-  // TODO: build dynamic WHERE based on filters + scope ('all' | 'team' | 'own')
+  const where = ["business = $1"];
+  const params = [brand];
+  let i = 2;
+  if (user_id) {
+    where.push(`user_id = $${i++}`);
+    params.push(user_id);
+  }
+  if (module) {
+    where.push(`module = $${i++}`);
+    params.push(module);
+  }
+  if (action) {
+    where.push(`action = $${i++}`);
+    params.push(action);
+  }
+  if (table_name) {
+    where.push(`table_name = $${i++}`);
+    params.push(table_name);
+  }
+  if (record_id) {
+    where.push(`record_id = $${i++}`);
+    params.push(record_id);
+  }
+  if (is_sensitive !== undefined) {
+    where.push(`is_sensitive = $${i++}`);
+    params.push(is_sensitive);
+  }
+  if (from) {
+    where.push(`occurred_at >= $${i++}`);
+    params.push(from);
+  }
+  if (to) {
+    where.push(`occurred_at <= $${i++}`);
+    params.push(to);
+  }
+  const w = `WHERE ${where.join(" AND ")}`;
+  const { rows: c } = await query(
+    `SELECT count(*)::int AS total FROM shared.audit_log ${w}`,
+    params,
+  );
   const offset = (page - 1) * page_size;
-  const sql = `
-    SELECT *
-      FROM ${tableFor(brand)}
-     WHERE COALESCE(is_deleted, false) = false
-     ORDER BY created_at DESC
-     LIMIT $1 OFFSET $2
-  `;
-  const exec = client ? client.query.bind(client) : query;
-  const { rows } = await exec(sql, [page_size, offset]);
-  return { data: rows, page, page_size, total: rows.length }; // TODO: real count query
+  const { rows } = await query(
+    `SELECT log_id, occurred_at, user_id, user_name, user_email, user_class,
+            business, module, action, table_name, record_id, ip_address,
+            session_id, is_sensitive, metadata
+       FROM shared.audit_log ${w}
+      ORDER BY occurred_at DESC
+      LIMIT $${i++} OFFSET $${i}`,
+    [...params, page_size, offset],
+  );
+  return { data: rows, page, page_size, total: c[0].total };
 }
 
-async function findById({ client, brand, id }) {
-  const sql = `SELECT * FROM ${tableFor(brand)} WHERE audit_log_id = $1 LIMIT 1`;
-  // NOTE: replace `audit_log_id` with the actual PK name for this table
-  const exec = client ? client.query.bind(client) : query;
-  const { rows } = await exec(sql, [id]);
+async function getById({ brand, id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.audit_log WHERE log_id = $1 AND business = $2`,
+    [id, brand],
+  );
   return rows[0] || null;
 }
 
-async function create({ client, brand, input, user_id }) {
-  // TODO: build INSERT with parameterised columns from `input`
-  throw new Error("TODO: implement audit.create");
+/** Full trail for one record (chronological). */
+async function forRecord({ brand, table_name, record_id }) {
+  const { rows } = await query(
+    `SELECT log_id, occurred_at, user_id, user_name, action, before_state,
+            after_state, metadata
+       FROM shared.audit_log
+      WHERE business = $1 AND table_name = $2 AND record_id = $3
+      ORDER BY occurred_at ASC`,
+    [brand, table_name, record_id],
+  );
+  return rows;
 }
 
-async function update({ client, brand, id, patch }) {
-  // TODO: build UPDATE with parameterised columns from `patch`
-  throw new Error("TODO: implement audit.update");
-}
-
-async function archive({ client, brand, id }) {
-  const sql = `UPDATE ${tableFor(brand)}
-                  SET is_deleted = true, deleted_at = now()
-                WHERE audit_log_id = $1`;
-  const exec = client ? client.query.bind(client) : query;
-  await exec(sql, [id]);
-}
-
-module.exports = { findAll, findById, create, update, archive };
+module.exports = { list, getById, forRecord };

@@ -44,6 +44,11 @@ const queueNames = [
 const queues = new Map();
 const workers = [];
 const cronJobs = [];
+let outboxTimer = null;
+
+// How often the worker drains committed outbox rows (H-2). Fast enough that a
+// paid order's GL post lands within seconds of commit.
+const OUTBOX_POLL_MS = 5000;
 
 function getQueue(name) {
   if (!queues.has(name)) throw new Error(`queue ${name} not initialised`);
@@ -122,6 +127,10 @@ async function startWorkers() {
     runCampaignMetricsRollup,
   } = require("./schedulers/campaign-metrics-rollup");
   const { runUgcIngestionSweep } = require("./schedulers/ugc-ingest");
+  const {
+    runScheduledEmailSends,
+  } = require("./schedulers/email-campaign-send");
+  const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart.
@@ -139,6 +148,8 @@ async function startWorkers() {
     runPendingActionExpirySweep,
   );
   scheduleCron("layaway-reminders", "*/30 * * * *", runLayawayReminders);
+  scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
+  scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   scheduleCron("workflow-timeout", "*/10 * * * *", runWorkflowTimeoutSweep);
   scheduleCron(
     "campaign-state-transition",
@@ -150,9 +161,35 @@ async function startWorkers() {
     "*/5 * * * *",
     runCampaignMetricsRollup,
   );
+
+  // ── Transactional outbox dispatcher (H-2) ──────────────
+  // Register the durable event handlers IN THIS PROCESS (the dispatcher runs
+  // here), then poll committed outbox rows. The poller is re-entrancy-guarded
+  // inside dispatchDue and uses SKIP LOCKED, so it is safe alongside a second
+  // instance.
+  const outbox = require("../shared/outbox/outbox");
+  // Register every durable order.paid consumer in THIS process (the dispatcher
+  // runs here). Each registers a named, idempotent handler with the outbox.
+  require("../modules/accounting/accounting.subscribers"); // GL post
+  require("../modules/invoicing/invoicing.subscribers"); // auto-invoice
+  require("../shared/hr_payroll/commission.subscribers"); // commission accrual
+  require("../modules/logistics/logistics.subscribers"); // dispatch delivery
+  require("../modules/retention/retention.subscribers"); // loyalty + streak
+  require("../shared/notifications/notifications.subscribers"); // rep notification
+  outboxTimer = setInterval(() => {
+    outbox
+      .dispatchDue()
+      .catch((err) => logger.error({ err }, "outbox dispatch tick failed"));
+  }, OUTBOX_POLL_MS);
+  outboxTimer.unref();
+  logger.info({ pollMs: OUTBOX_POLL_MS }, "outbox dispatcher started");
 }
 
 async function stopWorkers() {
+  if (outboxTimer) {
+    clearInterval(outboxTimer);
+    outboxTimer = null;
+  }
   for (const { job } of cronJobs) job.stop();
   await Promise.allSettled(workers.map((w) => w.close()));
   await Promise.allSettled([...queues.values()].map((q) => q.close()));

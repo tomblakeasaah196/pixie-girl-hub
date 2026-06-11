@@ -1,55 +1,39 @@
 /**
- * AI Insights & Briefings (V2.2 §6.30)
+ * AI Insights (V2.2 §6.30) — routes. Mounted at /api/v1/insights.
+ * Permission key: ai_insights. Tier-1 proactive insights: a category-keyed
+ * list/get + acknowledge/resolve/dismiss lifecycle, an open-counts summary,
+ * and a manual detector-sweep trigger (also run on a cron).
  *
- * Module: ai_insights
- * Permission key: ai_insights
+ * Categories: stock | margin | invoice | intercompany | attendance |
+ * approval | service_match.
  *
- * Backing tables (per-brand or shared as documented in schema):
- *   ai_insight_stock_alerts, ai_insight_margin_breaches, ai_insight_invoice_alerts, ai_insight_intercompany_alerts, ai_insight_attendance_anomalies, ai_insight_approval_queue_alerts, ai_insight_service_match, ai_briefings
+ * Requiring the subscribers here registers the detector cron connection
+ * (side-effect import).
  */
 
 "use strict";
 
 const express = require("express");
-const controller = require("./insights.controller");
-const validator = require("./insights.validator");
+const c = require("./insights.controller");
+const v = require("./insights.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
+const can = (action) => requirePermission("ai_insights", action);
 
-// ── GET /             list ─────────────────────────────────
-router.get("/", requirePermission("ai_insights", "view"), controller.list);
+// Literal segments before the category param.
+router.get("/summary", can("view"), c.summary);
+router.post("/sweep", can("edit"), c.sweep);
 
-// ── GET /:id          detail ───────────────────────────────
-router.get(
-  "/:id",
-  requirePermission("ai_insights", "view"),
-  controller.getById,
-);
-
-// ── POST /            create ───────────────────────────────
+router.get("/:category", can("view"), c.list);
+router.get("/:category/:id", can("view"), c.getOne);
+router.post("/:category/:id/acknowledge", can("edit"), c.acknowledge);
 router.post(
-  "/",
-  requirePermission("ai_insights", "create"),
-  validator.validateCreate,
-  controller.create,
+  "/:category/:id/resolve",
+  can("edit"),
+  v.validateResolve,
+  c.resolve,
 );
-
-// ── PATCH /:id        update ───────────────────────────────
-router.patch(
-  "/:id",
-  requirePermission("ai_insights", "edit"),
-  validator.validateUpdate,
-  controller.update,
-);
-
-// ── DELETE /:id       archive/soft-delete ──────────────────
-router.delete(
-  "/:id",
-  requirePermission("ai_insights", "delete"),
-  controller.archive,
-);
-
-// TODO: module-specific endpoints (state transitions, sub-resources, etc.)
+router.post("/:category/:id/dismiss", can("edit"), c.dismiss);
 
 module.exports = router;

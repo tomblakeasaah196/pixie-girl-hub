@@ -1,63 +1,153 @@
 /**
- * Wholesale Retail Partners + Consignment
- * HTTP controller — translates req/res to service calls. No business logic here.
+ * Retail Partners (V2.2 §6.29) — HTTP controller.
  */
 
 "use strict";
 
 const service = require("./partners.service");
 
-async function list(req, res) {
-  const result = await service.list({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    filters: req.query,
-    page: parseInt(req.query.page || "1", 10),
-    page_size: Math.min(parseInt(req.query.page_size || "25", 10), 100),
+const base = (req) => ({
+  brand: req.brand,
+  user: req.user,
+  request_id: req.request_id,
+});
+
+// ── Partners ───────────────────────────────────────────────
+async function listPartners(req, res) {
+  res.json({
+    data: await service.listPartners({
+      brand: req.brand,
+      status: req.query.status,
+    }),
   });
-  res.json(result);
+}
+async function getPartner(req, res) {
+  res.json({
+    data: await service.getPartner({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function createPartner(req, res) {
+  res.status(201).json({
+    data: await service.createPartner({ ...base(req), input: req.body }),
+  });
+}
+async function updatePartner(req, res) {
+  res.json({
+    data: await service.updatePartner({
+      ...base(req),
+      id: req.params.id,
+      patch: req.body,
+    }),
+  });
+}
+async function setStatus(req, res) {
+  res.json({
+    data: await service.setStatus({
+      ...base(req),
+      id: req.params.id,
+      status: req.body.status,
+      reason: req.body.reason,
+    }),
+  });
 }
 
-async function getById(req, res) {
-  const item = await service.getById({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    id: req.params.id,
+// ── Locations ──────────────────────────────────────────────
+async function listLocations(req, res) {
+  res.json({
+    data: await service.listLocations({
+      brand: req.brand,
+      partner_id: req.params.id,
+    }),
   });
-  res.json({ data: item });
+}
+async function createLocation(req, res) {
+  res.status(201).json({
+    data: await service.createLocation({
+      ...base(req),
+      partner_id: req.params.id,
+      input: req.body,
+    }),
+  });
 }
 
-async function create(req, res) {
-  const created = await service.create({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    input: req.body,
+// ── Stock + movements ──────────────────────────────────────
+async function listStock(req, res) {
+  res.json({
+    data: await service.listStock({
+      brand: req.brand,
+      partner_id: req.query.partner_id,
+      consignment_location_id: req.query.consignment_location_id,
+    }),
   });
-  res.status(201).json({ data: created });
+}
+async function listMovements(req, res) {
+  res.json({
+    data: await service.listMovements({
+      brand: req.brand,
+      partner_id: req.query.partner_id,
+      consignment_location_id: req.query.consignment_location_id,
+      settled:
+        req.query.settled === undefined
+          ? undefined
+          : req.query.settled === "true",
+    }),
+  });
+}
+async function recordMovement(req, res) {
+  res.status(201).json({
+    data: await service.recordMovement({ ...base(req), input: req.body }),
+  });
 }
 
-async function update(req, res) {
-  const updated = await service.update({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-    patch: req.body,
+// ── Settlements ────────────────────────────────────────────
+async function listSettlements(req, res) {
+  res.json({
+    data: await service.listSettlements({
+      brand: req.brand,
+      partner_id: req.query.partner_id,
+      status: req.query.status,
+    }),
   });
-  res.json({ data: updated });
+}
+async function getSettlement(req, res) {
+  res.json({
+    data: await service.getSettlement({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function generateSettlement(req, res) {
+  res.status(201).json({
+    data: await service.generateSettlement({ ...base(req), input: req.body }),
+  });
+}
+async function approveSettlement(req, res) {
+  res.json({
+    data: await service.approveSettlement({ ...base(req), id: req.params.id }),
+  });
+}
+async function markSettlementPaid(req, res) {
+  res.json({
+    data: await service.markSettlementPaid({
+      ...base(req),
+      id: req.params.id,
+      payment_reference: req.body.payment_reference,
+    }),
+  });
 }
 
-async function archive(req, res) {
-  await service.archive({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-  });
-  res.status(204).end();
-}
-
-module.exports = { list, getById, create, update, archive };
+module.exports = {
+  listPartners,
+  getPartner,
+  createPartner,
+  updatePartner,
+  setStatus,
+  listLocations,
+  createLocation,
+  listStock,
+  listMovements,
+  recordMovement,
+  listSettlements,
+  getSettlement,
+  generateSettlement,
+  approveSettlement,
+  markSettlementPaid,
+};

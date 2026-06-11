@@ -134,3 +134,55 @@ assignment back onto the originating service_job. Both modules validated against
 schema/PRD/admin_ui; strict equality throughout. (Note: the WSL bash mount was
 stale during this build — the file tools, which are authoritative for the host
 workspace, confirmed every write landed complete.)
+
+---
+
+## 6. Service Jobs split + Shared-ops batch — 2026-06-10 (§6.24, §6.18, §6.19, audit, §6.29)
+
+**Service Jobs split into its own module.** service_jobs (service_types + jobs
+lifecycle) was extracted from Production into `src/modules/service_jobs` and is
+now the canonical owner. The `order.deposit_met → open service job` subscriber
+moved with it (`service-jobs.subscribers`), Production was stripped of all
+service-job code (routes/controller/service/repo/validator), and the Stylist
+subscriber was repointed from `production.events service_job.created` to
+`service_jobs.events created`. The DB trigger still auto-raises a staff task on
+job insert.
+
+| Module                      | Connection into system flow                                                                                                                                                                                                                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Service Jobs** (§6.24)    | Owns service_types + service_jobs. `order.deposit_met` → opens a job; job insert → staff task (trigger); `service_jobs.created` → Stylist routing assignment.                                                                                                                                      |
+| **Calendar** (§6.18)        | One shared calendar per business; events reference other modules' dated records (service booking, stylist assignment, delivery, deal) via reference_type/id. `createForReference` hook.                                                                                                            |
+| **Tasks** (§6.19)           | Shared tasks (manual + trigger-raised). Assigning a task **notifies the assignee** via `notifications.notify`. Subtasks, status board, reference back-links.                                                                                                                                       |
+| **Audit** (read API)        | Read-only over `shared.audit_log` (writes via the audit() middleware): list/filter, single entry, and full per-record trail. Business-scoped.                                                                                                                                                      |
+| **Retail Partners** (§6.29) | Consignment wholesale. `dispatch_to_partner` / `recall_to_warehouse` also post the **warehouse** stock movement (`stock.recordMovement` → consignment_out/return). Partner = shared.contact (Contacts 360). Settlement splits proceeds by margin_share_pct; settlement carries an invoice_id hook. |
+
+Mounts: `/api/v1/service-jobs`, `/api/v1/calendar`, `/api/v1/tasks`,
+`/api/v1/audit`, `/api/v1/retail-partners`.
+
+Verified host-authoritative (Grep/Read, not the stale bash mount): no
+non-strict equality, controller/validator/route export parity, all mounts
+present, every cross-module call resolves (`notifications.notify`,
+`stock.recordMovement`, `service_jobs.events`, service-jobs subscriber).
+
+---
+
+## 7. Comms/shared gap-fill — 2026-06-10 (depth pass vs another impl)
+
+Prompted by a comparison against another implementation's function lists, the
+comms-cluster + shared modules were audited against the actual schema and the
+schema-warranted gaps were filled. (Functions in the other impl that our schema
+does NOT back — message reactions, thread assign/resolve — were deliberately
+left out.)
+
+| Module                    | Added (all schema-backed)                                                                                                                                                                                                                                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Smartcomm / Messaging** | Full team surface over the existing tables: `createChannel` (group/direct, creator = admin member), `archiveChannel` (is_archived), `add`/`removeMember` (channel_members), `markRead` + `getUnreadCount` (message_reads + last_read_at), `deleteMessage` (is_deleted, author-only), paginated `listMessages`, `addAttachment` (message_attachments).  |
+| **Email Campaigns**       | A/B `createVariant` + `getAbTestResults` + `declareWinner` (email_campaign_variants); `schedule` + a per-minute `email-campaign-send` cron; `getStats`; saved segments over `shared.contact_segments` (save/list/get/delete/preview/build); **public tracking** `trackOpen` (1×1 pixel) / `trackClick` (302) / `unsubscribe` at `/api/public/email/*`. |
+| **Calendar**              | `listForReference`, `removeParticipant`, `findUpcomingForReminders` (window query for a reminder cron), and an enforced `VALID_EVENT_TYPES` enum.                                                                                                                                                                                                      |
+| **Tasks**                 | `getBoard` (kanban grouped by status), `deleteSubtask`, and `createFromModule` — the programmatic cross-module task hook (mirrors `calendar.createForReference`), so any module can raise an assigned task.                                                                                                                                            |
+
+New public mount: `/api/public/email` (pixel/click/unsubscribe). New cron:
+`email-campaign-send` (every minute → sends due scheduled campaigns).
+
+Verified host-authoritative (Grep): no non-strict equality, handler/validator/
+route parity, mounts + cron registered.

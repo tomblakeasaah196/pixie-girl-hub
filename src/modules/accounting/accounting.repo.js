@@ -268,6 +268,20 @@ async function findEntryById({ client, brand, id }) {
   );
   return { ...rows[0], lines };
 }
+/**
+ * Idempotency lookup (H-3): find an existing journal by its source natural key.
+ * Used by event consumers to skip re-posting under at-least-once delivery.
+ */
+async function findEntryBySource({ client, brand, source_type, source_id }) {
+  if (!source_id) return null;
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "journal_entries")}
+      WHERE source_type = $1 AND source_id = $2
+      LIMIT 1`,
+    [source_type, source_id],
+  );
+  return rows[0] || null;
+}
 async function listEntries({
   client,
   brand,
@@ -501,6 +515,7 @@ module.exports = {
   insertLine,
   setEntryStatus,
   findEntryById,
+  findEntryBySource,
   listEntries,
   setEntryReversed,
   accountActivity,

@@ -103,6 +103,83 @@ async function recordEvent(req, res) {
   });
 }
 
+// A/B variants
+async function createVariant(req, res) {
+  res.status(201).json({
+    data: await service.createVariant({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function getAbTestResults(req, res) {
+  res.json({
+    data: await service.getAbTestResults({
+      brand: req.brand,
+      id: req.params.id,
+    }),
+  });
+}
+async function declareWinner(req, res) {
+  res.json({
+    data: await service.declareWinner({
+      ...base(req),
+      id: req.params.id,
+      variant_id: req.body.variant_id,
+    }),
+  });
+}
+
+// Scheduling + stats
+async function schedule(req, res) {
+  res.json({
+    data: await service.schedule({
+      ...base(req),
+      id: req.params.id,
+      scheduled_for: req.body.scheduled_for,
+    }),
+  });
+}
+async function getStats(req, res) {
+  res.json({
+    data: await service.getStats({ brand: req.brand, id: req.params.id }),
+  });
+}
+
+// Segments
+async function listSegments(req, res) {
+  res.json({ data: await service.listSegments({ brand: req.brand }) });
+}
+async function getSegment(req, res) {
+  res.json({
+    data: await service.getSegment({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function saveSegment(req, res) {
+  res.status(201).json({
+    data: await service.saveSegment({ ...base(req), input: req.body }),
+  });
+}
+async function deleteSegment(req, res) {
+  await service.deleteSegment({ ...base(req), id: req.params.id });
+  res.status(204).end();
+}
+async function previewSegment(req, res) {
+  res.json({
+    data: await service.previewSegment({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function buildAudienceFromSegment(req, res) {
+  res.json({
+    data: await service.buildAudienceFromSegment({
+      ...base(req),
+      id: req.params.id,
+      segment_id: req.body.segment_id,
+    }),
+  });
+}
+
 // Public newsletter
 async function subscribeNewsletter(req, res) {
   res.status(201).json({
@@ -111,6 +188,41 @@ async function subscribeNewsletter(req, res) {
       input: req.body,
     }),
   });
+}
+
+// ── Public tracking ────────────────────────────────────────
+const PIXEL = Buffer.from(
+  "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+  "base64",
+);
+async function trackOpen(req, res) {
+  await service.handlePixelOpen({
+    brand: brandHint(req),
+    recipient_id: req.params.recipient_id,
+    ip: req.ip,
+    user_agent: req.headers["user-agent"],
+  });
+  res.set("Content-Type", "image/gif");
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.end(PIXEL);
+}
+async function trackClick(req, res) {
+  const url = req.query.url;
+  const result = await service.handleClick({
+    brand: brandHint(req),
+    recipient_id: req.params.recipient_id,
+    url,
+    ip: req.ip,
+    user_agent: req.headers["user-agent"],
+  });
+  res.redirect(302, result.redirect || "/");
+}
+async function unsubscribe(req, res) {
+  await service.handleUnsubscribe({
+    brand: brandHint(req),
+    recipient_id: req.params.recipient_id,
+  });
+  res.json({ data: { unsubscribed: true } });
 }
 
 module.exports = {
@@ -125,5 +237,19 @@ module.exports = {
   pauseCampaign,
   cancelCampaign,
   recordEvent,
+  createVariant,
+  getAbTestResults,
+  declareWinner,
+  schedule,
+  getStats,
+  listSegments,
+  getSegment,
+  saveSegment,
+  deleteSegment,
+  previewSegment,
+  buildAudienceFromSegment,
   subscribeNewsletter,
+  trackOpen,
+  trackClick,
+  unsubscribe,
 };

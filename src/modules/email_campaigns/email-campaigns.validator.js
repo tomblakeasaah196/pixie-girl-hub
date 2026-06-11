@@ -75,6 +75,34 @@ const newsletter = z
   })
   .strict();
 
+const variantCreate = z
+  .object({
+    variant_label: z.string().min(1).max(40),
+    template_id: z.string().uuid().optional(),
+    subject_line: z.string().max(300).optional(),
+    from_name: z.string().max(120).optional(),
+    preheader_text: z.string().max(300).optional(),
+    allocation_pct: z.coerce.number().gt(0).max(100),
+  })
+  .strict();
+
+const declareWinner = z.object({ variant_id: z.string().uuid() }).strict();
+const scheduleBody = z
+  .object({ scheduled_for: z.string().datetime() })
+  .strict();
+
+const segmentSave = z
+  .object({
+    name: z.string().min(1).max(160),
+    description: z.string().max(2000).optional(),
+    filter: z.record(z.any()).optional(),
+  })
+  .strict();
+
+const audienceFromSegment = z
+  .object({ segment_id: z.string().uuid() })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -87,4 +115,9 @@ module.exports = {
   validateBuildRecipients: mk(buildRecipients),
   validateEventIngest: mk(eventIngest),
   validateNewsletter: mk(newsletter),
+  validateVariantCreate: mk(variantCreate),
+  validateDeclareWinner: mk(declareWinner),
+  validateSchedule: mk(scheduleBody),
+  validateSegmentSave: mk(segmentSave),
+  validateAudienceFromSegment: mk(audienceFromSegment),
 };

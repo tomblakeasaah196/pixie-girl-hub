@@ -106,6 +106,119 @@ async function listMessages({ channel_id, page = 1, page_size = 50 }) {
   return { data: rows, page, page_size, total: c[0].total };
 }
 
+async function getMessage({ client, id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.messages WHERE message_id = $1`,
+    [id],
+  );
+  return rows[0] || null;
+}
+
+async function softDeleteMessage({ client, id }) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.messages SET is_deleted = true WHERE message_id = $1 RETURNING message_id`,
+    [id],
+  );
+  return rows[0] || null;
+}
+
+async function setChannelArchived({ id, archived }) {
+  const { rows } = await query(
+    `UPDATE shared.message_channels SET is_archived = $2, updated_at = now()
+      WHERE channel_id = $1 RETURNING *`,
+    [id, archived],
+  );
+  return rows[0] || null;
+}
+
+// ── Members ────────────────────────────────────────────────
+async function addMember({ client, m }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.channel_members (channel_id, user_id, contact_id, role)
+     VALUES ($1,$2,$3,COALESCE($4,'member'))
+     ON CONFLICT DO NOTHING
+     RETURNING *`,
+    [m.channel_id, m.user_id || null, m.contact_id || null, m.role || null],
+  );
+  return rows[0] || null;
+}
+async function removeMember({ channel_id, member_id }) {
+  const { rows } = await query(
+    `DELETE FROM shared.channel_members
+      WHERE channel_id = $1 AND member_id = $2 RETURNING member_id`,
+    [channel_id, member_id],
+  );
+  return rows[0] || null;
+}
+async function listMembers({ channel_id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.channel_members WHERE channel_id = $1 ORDER BY joined_at`,
+    [channel_id],
+  );
+  return rows;
+}
+async function findMember({ client, channel_id, user_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.channel_members WHERE channel_id = $1 AND user_id = $2`,
+    [channel_id, user_id],
+  );
+  return rows[0] || null;
+}
+
+// ── Read receipts ──────────────────────────────────────────
+async function markChannelRead({ client, channel_id, user_id }) {
+  // Record per-message receipts for anything unread, then advance the marker.
+  await ex(client)(
+    `INSERT INTO shared.message_reads (message_id, user_id)
+     SELECT m.message_id, $2 FROM shared.messages m
+      WHERE m.channel_id = $1 AND m.is_deleted = false
+        AND NOT EXISTS (
+          SELECT 1 FROM shared.message_reads r
+           WHERE r.message_id = m.message_id AND r.user_id = $2)
+     ON CONFLICT DO NOTHING`,
+    [channel_id, user_id],
+  );
+  await ex(client)(
+    `UPDATE shared.channel_members SET last_read_at = now()
+      WHERE channel_id = $1 AND user_id = $2`,
+    [channel_id, user_id],
+  );
+}
+async function unreadCountForUser({ user_id }) {
+  const { rows } = await query(
+    `SELECT cm.channel_id,
+            count(m.message_id)::int AS unread
+       FROM shared.channel_members cm
+       JOIN shared.messages m
+         ON m.channel_id = cm.channel_id
+        AND m.is_deleted = false
+        AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
+        AND (m.sender_user_id IS DISTINCT FROM cm.user_id)
+      WHERE cm.user_id = $1
+      GROUP BY cm.channel_id`,
+    [user_id],
+  );
+  const total = rows.reduce((s, r) => s + r.unread, 0);
+  return { total, by_channel: rows };
+}
+
+// ── Attachments ────────────────────────────────────────────
+async function addAttachment({ client, a }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.message_attachments (message_id, document_id, display_name)
+     VALUES ($1,$2,$3) RETURNING *`,
+    [a.message_id, a.document_id, a.display_name || null],
+  );
+  return rows[0];
+}
+async function listAttachments({ message_id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.message_attachments WHERE message_id = $1 ORDER BY created_at`,
+    [message_id],
+  );
+  return rows;
+}
+
 /** Look up a contact's reachability for outbound dispatch. */
 async function getContactChannelInfo({ client, contact_id }) {
   const { rows } = await ex(client)(
@@ -123,5 +236,16 @@ module.exports = {
   createChannel,
   insertMessage,
   listMessages,
+  getMessage,
+  softDeleteMessage,
+  setChannelArchived,
+  addMember,
+  removeMember,
+  listMembers,
+  findMember,
+  markChannelRead,
+  unreadCountForUser,
+  addAttachment,
+  listAttachments,
   getContactChannelInfo,
 };

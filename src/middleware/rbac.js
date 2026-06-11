@@ -27,7 +27,7 @@
 "use strict";
 
 const { AppError } = require("../utils/errors");
-const permissionsRepo = require("../modules/org_workflow/permissions.repo");
+const permissionsRepo = require("../shared/org_workflow/permissions.repo");
 
 const VALID_ACTIONS = new Set([
   "view",

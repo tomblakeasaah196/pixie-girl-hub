@@ -1,97 +1,69 @@
 /**
- * Dashboards & Reports (V2.2 §6.20 + §6.30 weekly reports)
- * Business logic layer. Repos handle SQL; controllers handle HTTP.
- * This file is where:
- *   - Validation beyond shape (cross-field, against DB state)
- *   - Workflow routing (approval / multi-step)
- *   - Domain event emission (for real-time + AI)
- *   - Audit logging
- *   - Transaction orchestration
+ * Dashboards (V2.2 §6.20) — business logic.
+ *
+ * Role-based KPI dashboards. The overview composes the live spine (sales +
+ * ops aggregates) with the AI Insights open-counts (the cross-module
+ * connection) and the latest AI briefing. Briefings are produced by the AI
+ * layer; here they are read + marked read.
  */
 
 "use strict";
 
 const repo = require("./dashboards.repo");
-const events = require("./dashboards.events");
-const { audit } = require("../../middleware/audit");
-const { transaction } = require("../../config/database");
-const { NotFoundError, AppError } = require("../../utils/errors");
+const insights = require("../ai_insights/insights.service");
+const { NotFoundError } = require("../../utils/errors");
 
-async function list({ brand, user, scope, filters, page, page_size }) {
-  return repo.findAll({
-    brand,
-    scope,
-    user_id: user.user_id,
-    filters,
-    page,
-    page_size,
-  });
+function defaultRange() {
+  const to = new Date();
+  const from = new Date(to.getTime() - 30 * 24 * 3600 * 1000);
+  return { from: from.toISOString(), to: to.toISOString() };
 }
 
-async function getById({ brand, user, scope, id }) {
-  const item = await repo.findById({ brand, id, scope, user_id: user.user_id });
-  if (!item) throw new NotFoundError("Dashboards");
-  return item;
+async function overview({ brand, user, from, to }) {
+  const range = {
+    from: from || defaultRange().from,
+    to: to || defaultRange().to,
+  };
+  const [sales, ops, insightCounts, briefings] = await Promise.all([
+    repo.salesKpis({ brand, from: range.from, to: range.to }),
+    repo.opsKpis({ brand }),
+    insights.summary({ brand }),
+    repo.listBriefings({ brand, recipient_user_id: user.user_id, limit: 1 }),
+  ]);
+  return {
+    period: range,
+    sales,
+    operations: ops,
+    insights: insightCounts,
+    latest_briefing: briefings[0] || null,
+  };
 }
 
-async function create({ brand, user, request_id, input }) {
-  return transaction(async (client) => {
-    const created = await repo.create({
-      client,
-      brand,
-      user_id: user.user_id,
-      input,
-    });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "dashboards.create",
-      target_type: "dashboards",
-      target_id: created.id || created[Object.keys(created)[0]],
-      after: created,
-      request_id,
-    });
-    events.emit("created", { brand, item: created, user_id: user.user_id });
-    return created;
-  });
+function salesKpis({ brand, from, to }) {
+  return repo.salesKpis({ brand, from, to });
+}
+function opsKpis({ brand }) {
+  return repo.opsKpis({ brand });
+}
+function listBriefings({ brand, user }) {
+  return repo.listBriefings({ brand, recipient_user_id: user.user_id });
+}
+async function getBriefing({ id }) {
+  const b = await repo.getBriefing({ id });
+  if (!b) throw new NotFoundError("Briefing");
+  return b;
+}
+async function markBriefingRead({ id }) {
+  const b = await repo.markBriefingRead({ id });
+  if (!b) throw new NotFoundError("Briefing");
+  return b;
 }
 
-async function update({ brand, user, request_id, id, patch }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("Dashboards");
-    const updated = await repo.update({ client, brand, id, patch });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "dashboards.update",
-      target_type: "dashboards",
-      target_id: id,
-      before,
-      after: updated,
-      request_id,
-    });
-    events.emit("updated", { brand, item: updated, user_id: user.user_id });
-    return updated;
-  });
-}
-
-async function archive({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.findById({ client, brand, id });
-    if (!before) throw new NotFoundError("Dashboards");
-    await repo.archive({ client, brand, id });
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "dashboards.archive",
-      target_type: "dashboards",
-      target_id: id,
-      before,
-      request_id,
-    });
-    events.emit("archived", { brand, id, user_id: user.user_id });
-  });
-}
-
-module.exports = { list, getById, create, update, archive };
+module.exports = {
+  overview,
+  salesKpis,
+  opsKpis,
+  listBriefings,
+  getBriefing,
+  markBriefingRead,
+};

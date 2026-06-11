@@ -1,63 +1,46 @@
 /**
- * Audit log read-access (V2.2 §3 — append-only)
- * HTTP controller — translates req/res to service calls. No business logic here.
+ * Audit log (V2.2 §3) — HTTP controller (read-only).
  */
 
 "use strict";
 
 const service = require("./audit.service");
+const { parsePagination } = require("../../utils/pagination");
 
 async function list(req, res) {
-  const result = await service.list({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    filters: req.query,
-    page: parseInt(req.query.page || "1", 10),
-    page_size: Math.min(parseInt(req.query.page_size || "25", 10), 100),
-  });
-  res.json(result);
+  const { page, page_size } = parsePagination(req.query);
+  res.json(
+    await service.list({
+      brand: req.brand,
+      user_id: req.query.user_id,
+      module: req.query.module,
+      action: req.query.action,
+      table_name: req.query.table_name,
+      record_id: req.query.record_id,
+      is_sensitive:
+        req.query.is_sensitive === undefined
+          ? undefined
+          : req.query.is_sensitive === "true",
+      from: req.query.from,
+      to: req.query.to,
+      page,
+      page_size,
+    }),
+  );
 }
-
 async function getById(req, res) {
-  const item = await service.getById({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    id: req.params.id,
+  res.json({
+    data: await service.getById({ brand: req.brand, id: req.params.id }),
   });
-  res.json({ data: item });
+}
+async function forRecord(req, res) {
+  res.json({
+    data: await service.forRecord({
+      brand: req.brand,
+      table_name: req.params.table_name,
+      record_id: req.params.record_id,
+    }),
+  });
 }
 
-async function create(req, res) {
-  const created = await service.create({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    input: req.body,
-  });
-  res.status(201).json({ data: created });
-}
-
-async function update(req, res) {
-  const updated = await service.update({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-    patch: req.body,
-  });
-  res.json({ data: updated });
-}
-
-async function archive(req, res) {
-  await service.archive({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-  });
-  res.status(204).end();
-}
-
-module.exports = { list, getById, create, update, archive };
+module.exports = { list, getById, forRecord };

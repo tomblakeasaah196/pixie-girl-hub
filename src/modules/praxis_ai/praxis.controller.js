@@ -1,63 +1,99 @@
 /**
- * Praxis AI Agent (V2.2 §6.29)
- * HTTP controller — translates req/res to service calls. No business logic here.
+ * Praxis AI Agent (V2.2 §6.29) — HTTP controller.
  */
 
 "use strict";
 
 const service = require("./praxis.service");
 
-async function list(req, res) {
-  const result = await service.list({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    filters: req.query,
-    page: parseInt(req.query.page || "1", 10),
-    page_size: Math.min(parseInt(req.query.page_size || "25", 10), 100),
-  });
-  res.json(result);
-}
+const base = (req) => ({
+  user: req.user,
+  brand: req.brand,
+  request_id: req.request_id,
+});
 
-async function getById(req, res) {
-  const item = await service.getById({
-    brand: req.brand,
-    user: req.user,
-    scope: req.permission_scope,
-    id: req.params.id,
-  });
-  res.json({ data: item });
+// Conversations
+async function listConversations(req, res) {
+  res.json({ data: await service.listConversations({ user: req.user }) });
 }
-
-async function create(req, res) {
-  const created = await service.create({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    input: req.body,
+async function getConversation(req, res) {
+  res.json({
+    data: await service.getConversation({ user: req.user, id: req.params.id }),
   });
-  res.status(201).json({ data: created });
 }
-
-async function update(req, res) {
-  const updated = await service.update({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-    patch: req.body,
+async function createConversation(req, res) {
+  res.status(201).json({
+    data: await service.createConversation({ ...base(req), input: req.body }),
   });
-  res.json({ data: updated });
 }
-
-async function archive(req, res) {
-  await service.archive({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-  });
+async function archiveConversation(req, res) {
+  await service.archiveConversation({ user: req.user, id: req.params.id });
   res.status(204).end();
 }
+async function postMessage(req, res) {
+  res.status(201).json({
+    data: await service.postMessage({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function listRunSteps(req, res) {
+  res.json({
+    data: await service.listRunSteps({ conversation_id: req.params.id }),
+  });
+}
 
-module.exports = { list, getById, create, update, archive };
+// Pending actions
+async function listPendingActions(req, res) {
+  res.json({
+    data: await service.listPendingActions({
+      user: req.user,
+      status: req.query.status,
+    }),
+  });
+}
+async function getPendingAction(req, res) {
+  res.json({
+    data: await service.getPendingAction({ user: req.user, id: req.params.id }),
+  });
+}
+async function confirmAction(req, res) {
+  res.json({
+    data: await service.confirmAction({ ...base(req), id: req.params.id }),
+  });
+}
+async function rejectAction(req, res) {
+  res.json({
+    data: await service.rejectAction({
+      ...base(req),
+      id: req.params.id,
+      reason: req.body.reason,
+    }),
+  });
+}
+
+// Action catalogue (allowlist)
+async function listActions(req, res) {
+  res.json({
+    data: await service.listEnabledActions({
+      module: req.query.module,
+      category: req.query.category,
+    }),
+  });
+}
+
+module.exports = {
+  listConversations,
+  getConversation,
+  createConversation,
+  archiveConversation,
+  postMessage,
+  listRunSteps,
+  listPendingActions,
+  getPendingAction,
+  confirmAction,
+  rejectAction,
+  listActions,
+};

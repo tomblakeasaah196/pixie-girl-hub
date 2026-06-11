@@ -154,6 +154,14 @@ CREATE INDEX idx_{{BUSINESS}}_consignment_movements_partner_unsettled
   ON {{BUSINESS}}.consignment_movements (partner_id, recorded_at)
   WHERE settlement_id IS NULL;
 
+-- ── Sale-journal idempotency (H-3) ───────────────────────
+-- Exactly one ('sales', order_id) journal per order, so an at-least-once
+-- outbox re-delivery cannot duplicate revenue. Scoped to source_type='sales'
+-- so 'fx_revaluation' (one per foreign payment, same source_id) is unaffected.
+CREATE UNIQUE INDEX journal_entries_sales_src_uidx
+  ON {{BUSINESS}}.journal_entries (source_id)
+  WHERE source_type = 'sales' AND source_id IS NOT NULL;
+
 -- ============================================================
--- No new tables in this file. ~29 cross-module indexes added.
+-- No new tables in this file. ~30 cross-module indexes added.
 -- ============================================================

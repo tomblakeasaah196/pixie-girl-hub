@@ -1,51 +1,51 @@
 /**
- * Praxis AI Agent (V2.2 §6.29)
- *
- * Module: praxis_ai
- * Permission key: praxis_ai
- *
- * Backing tables (per-brand or shared as documented in schema):
- *   ai_conversations, ai_messages, ai_run_steps, ai_pending_actions, action_catalogue
+ * Praxis AI Agent (V2.2 §6.29) — routes. Mounted at /api/v1/praxis.
+ * Permission key: praxis_ai. Conversations + messages, the human-in-the-loop
+ * pending-action confirm gate, run-step trace, and the (ai_enabled) action
+ * allowlist. AI Governance gates each turn; live LLM orchestration is the
+ * agent runtime's job (src/ai).
  */
 
 "use strict";
 
 const express = require("express");
-const controller = require("./praxis.controller");
-const validator = require("./praxis.validator");
+const c = require("./praxis.controller");
+const v = require("./praxis.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
+const can = (action) => requirePermission("praxis_ai", action);
 
-// ── GET /             list ─────────────────────────────────
-router.get("/", requirePermission("praxis_ai", "view"), controller.list);
+// ── Action catalogue (literal before /:id) ─────────────────
+router.get("/actions", can("view"), c.listActions);
 
-// ── GET /:id          detail ───────────────────────────────
-router.get("/:id", requirePermission("praxis_ai", "view"), controller.getById);
-
-// ── POST /            create ───────────────────────────────
+// ── Pending actions (confirm gate) ─────────────────────────
+router.get("/pending-actions", can("view"), c.listPendingActions);
+router.get("/pending-actions/:id", can("view"), c.getPendingAction);
+router.post("/pending-actions/:id/confirm", can("approve"), c.confirmAction);
 router.post(
-  "/",
-  requirePermission("praxis_ai", "create"),
-  validator.validateCreate,
-  controller.create,
+  "/pending-actions/:id/reject",
+  can("approve"),
+  v.validateReason,
+  c.rejectAction,
 );
 
-// ── PATCH /:id        update ───────────────────────────────
-router.patch(
-  "/:id",
-  requirePermission("praxis_ai", "edit"),
-  validator.validateUpdate,
-  controller.update,
+// ── Conversations ──────────────────────────────────────────
+router.get("/conversations", can("view"), c.listConversations);
+router.post(
+  "/conversations",
+  can("create"),
+  v.validateConversationCreate,
+  c.createConversation,
 );
-
-// ── DELETE /:id       archive/soft-delete ──────────────────
-router.delete(
-  "/:id",
-  requirePermission("praxis_ai", "delete"),
-  controller.archive,
+router.get("/conversations/:id", can("view"), c.getConversation);
+router.delete("/conversations/:id", can("delete"), c.archiveConversation);
+router.get("/conversations/:id/steps", can("view"), c.listRunSteps);
+router.post(
+  "/conversations/:id/messages",
+  can("edit"),
+  v.validateMessagePost,
+  c.postMessage,
 );
-
-// TODO: module-specific endpoints (state transitions, sub-resources, etc.)
 
 module.exports = router;

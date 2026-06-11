@@ -1,55 +1,79 @@
 /**
- * AI Control & Governance (V2.2 §6.31)
- *
- * Module: ai_governance
- * Permission key: ai_governance
- *
- * Backing tables (per-brand or shared as documented in schema):
- *   ai_feature_flags, ai_vendor_credentials, ai_access_grants, ai_budget_periods, ai_usage_ledger, ai_usage_daily, ai_knowledge_chunks
+ * AI Governance (V2.2 §6.31) — routes. Mounted at /api/v1/ai-governance.
+ * Permission key: ai_governance. The "AI Control" admin surface: feature
+ * flags, per-user access grants, encrypted vendor credentials, monthly budget
+ * periods, the usage ledger + live spend meter, and the action catalogue.
  */
 
 "use strict";
 
 const express = require("express");
-const controller = require("./governance.controller");
-const validator = require("./governance.validator");
+const c = require("./governance.controller");
+const v = require("./governance.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
+const can = (action) => requirePermission("ai_governance", action);
 
-// ── GET /             list ─────────────────────────────────
-router.get("/", requirePermission("ai_governance", "view"), controller.list);
-
-// ── GET /:id          detail ───────────────────────────────
-router.get(
-  "/:id",
-  requirePermission("ai_governance", "view"),
-  controller.getById,
-);
-
-// ── POST /            create ───────────────────────────────
+// ── Feature flags ──────────────────────────────────────────
+router.get("/flags", can("view"), c.listFlags);
+router.post("/flags", can("create"), v.validateFlagUpsert, c.upsertFlag);
 router.post(
-  "/",
-  requirePermission("ai_governance", "create"),
-  validator.validateCreate,
-  controller.create,
+  "/flags/:feature_key/toggle",
+  can("edit"),
+  v.validateFlagToggle,
+  c.toggleFlag,
 );
 
-// ── PATCH /:id        update ───────────────────────────────
-router.patch(
-  "/:id",
-  requirePermission("ai_governance", "edit"),
-  validator.validateUpdate,
-  controller.update,
-);
-
-// ── DELETE /:id       archive/soft-delete ──────────────────
+// ── Access grants ──────────────────────────────────────────
+router.get("/grants", can("view"), c.listGrants);
+router.post("/grants", can("create"), v.validateGrantCreate, c.grant);
 router.delete(
-  "/:id",
-  requirePermission("ai_governance", "delete"),
-  controller.archive,
+  "/grants/:grant_id",
+  can("delete"),
+  v.validateReason,
+  c.revokeGrant,
 );
 
-// TODO: module-specific endpoints (state transitions, sub-resources, etc.)
+// ── Vendor credentials ─────────────────────────────────────
+router.get("/vendors", can("view"), c.listVendors);
+router.post("/vendors", can("create"), v.validateVendorUpsert, c.upsertVendor);
+router.post(
+  "/vendors/:vendor/rotate",
+  can("edit"),
+  v.validateVendorRotate,
+  c.rotateVendor,
+);
+router.post(
+  "/vendors/:vendor/active",
+  can("edit"),
+  v.validateVendorActive,
+  c.setVendorActive,
+);
+
+// ── Budget periods ─────────────────────────────────────────
+router.get("/budget/active", can("view"), c.activeBudget);
+router.get("/budget", can("view"), c.listBudgets);
+router.post("/budget", can("create"), v.validateBudgetOpen, c.openBudget);
+router.post(
+  "/budget/:period_id/caps",
+  can("edit"),
+  v.validateBudgetCaps,
+  c.setBudgetCaps,
+);
+
+// ── Usage meter ────────────────────────────────────────────
+router.get("/usage", can("view"), c.listUsage);
+router.get("/usage/meter", can("view"), c.spendMeter);
+
+// ── Action catalogue ───────────────────────────────────────
+router.get("/actions", can("view"), c.listActions);
+router.post("/actions", can("create"), v.validateActionUpsert, c.upsertAction);
+router.post(
+  "/actions/:action_key/toggle",
+  can("edit"),
+  v.validateActionToggle,
+  c.toggleAction,
+);
 
 module.exports = router;

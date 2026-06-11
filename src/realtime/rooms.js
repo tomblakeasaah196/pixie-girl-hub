@@ -12,7 +12,7 @@
 
 "use strict";
 
-const { BRANDS } = require("../../config/brands");
+const { BRANDS } = require("../config/brands");
 
 const ROOMS = {
   // Brand-scoped resource streams

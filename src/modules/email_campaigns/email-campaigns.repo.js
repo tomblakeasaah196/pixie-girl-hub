@@ -252,9 +252,175 @@ async function findRecipientByEmail({ brand, campaign_id, email }) {
 async function insertEvent({ client, brand, ev }) {
   await ex(client)(
     `INSERT INTO ${t(brand, "email_campaign_events")}
-       (recipient_id, campaign_id, event_type) VALUES ($1,$2,$3)`,
-    [ev.recipient_id, ev.campaign_id, ev.event_type],
+       (recipient_id, campaign_id, event_type, click_url, bounce_type,
+        bounce_reason, ip_address, user_agent)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [
+      ev.recipient_id,
+      ev.campaign_id,
+      ev.event_type,
+      ev.click_url || null,
+      ev.bounce_type || null,
+      ev.bounce_reason || null,
+      ev.ip_address || null,
+      ev.user_agent || null,
+    ],
   );
+}
+async function findRecipient({ client, brand, recipient_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "email_campaign_recipients")} WHERE recipient_id = $1`,
+    [recipient_id],
+  );
+  return rows[0] || null;
+}
+/** Bump per-recipient engagement (first-touch timestamps + counters). */
+async function bumpRecipientEngagement({ client, brand, recipient_id, kind }) {
+  const col = kind === "open" ? "open_count" : "click_count";
+  const firstCol = kind === "open" ? "first_opened_at" : "first_clicked_at";
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "email_campaign_recipients")}
+        SET ${col} = ${col} + 1,
+            ${firstCol} = COALESCE(${firstCol}, now())
+      WHERE recipient_id = $1
+      RETURNING (${firstCol} = now() AT TIME ZONE 'utc') AS unused, ${col} AS new_count,
+                (${col} = 1) AS was_first`,
+    [recipient_id],
+  );
+  return rows[0] || null;
+}
+
+// ── A/B variants ───────────────────────────────────────────
+async function createVariant({ brand, v }) {
+  const { rows } = await query(
+    `INSERT INTO ${t(brand, "email_campaign_variants")}
+       (campaign_id, variant_label, template_id, subject_line, from_name,
+        preheader_text, allocation_pct)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [
+      v.campaign_id,
+      v.variant_label,
+      v.template_id || null,
+      v.subject_line || null,
+      v.from_name || null,
+      v.preheader_text || null,
+      v.allocation_pct,
+    ],
+  );
+  return rows[0];
+}
+async function listVariants({ brand, campaign_id }) {
+  const { rows } = await query(
+    `SELECT * FROM ${t(brand, "email_campaign_variants")}
+      WHERE campaign_id = $1 ORDER BY variant_label`,
+    [campaign_id],
+  );
+  return rows;
+}
+async function setVariantWinner({ client, brand, campaign_id, variant_id }) {
+  await ex(client)(
+    `UPDATE ${t(brand, "email_campaign_variants")} SET is_winner = (variant_id = $2)
+      WHERE campaign_id = $1`,
+    [campaign_id, variant_id],
+  );
+  await ex(client)(
+    `UPDATE ${t(brand, "email_campaigns")} SET ab_winner_variant_id = $2, updated_at = now()
+      WHERE campaign_id = $1`,
+    [campaign_id, variant_id],
+  );
+}
+
+// ── Scheduling ─────────────────────────────────────────────
+async function setSchedule({ brand, id, scheduled_for }) {
+  const { rows } = await query(
+    `UPDATE ${t(brand, "email_campaigns")}
+        SET status = 'scheduled', scheduled_for = $2, updated_at = now()
+      WHERE campaign_id = $1 RETURNING *`,
+    [id, scheduled_for],
+  );
+  return rows[0] || null;
+}
+async function dueScheduledCampaigns({ brand, now }) {
+  const { rows } = await query(
+    `SELECT campaign_id FROM ${t(brand, "email_campaigns")}
+      WHERE status = 'scheduled' AND scheduled_for IS NOT NULL AND scheduled_for <= $1`,
+    [now],
+  );
+  return rows;
+}
+
+// ── Stats ──────────────────────────────────────────────────
+async function eventBreakdown({ brand, campaign_id }) {
+  const { rows } = await query(
+    `SELECT event_type, count(*)::int AS count
+       FROM ${t(brand, "email_campaign_events")}
+      WHERE campaign_id = $1 GROUP BY event_type`,
+    [campaign_id],
+  );
+  return rows;
+}
+
+// ── Saved segments (shared.contact_segments) ───────────────
+async function listSegments({ brand }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.contact_segments WHERE business = $1 ORDER BY name`,
+    [brand],
+  );
+  return rows;
+}
+async function getSegment({ brand, id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.contact_segments WHERE segment_id = $1 AND business = $2`,
+    [id, brand],
+  );
+  return rows[0] || null;
+}
+async function createSegment({ brand, s, user_id }) {
+  const { rows } = await query(
+    `INSERT INTO shared.contact_segments (business, name, description, filter, created_by)
+     VALUES ($1,$2,$3,COALESCE($4,'{}'::jsonb),$5) RETURNING *`,
+    [
+      brand,
+      s.name,
+      s.description || null,
+      s.filter ? JSON.stringify(s.filter) : null,
+      user_id || null,
+    ],
+  );
+  return rows[0];
+}
+async function updateSegmentCount({ brand, id, count }) {
+  await query(
+    `UPDATE shared.contact_segments
+        SET cached_count = $2, cached_at = now(), updated_at = now()
+      WHERE segment_id = $1 AND business = $3`,
+    [id, count, brand],
+  );
+}
+async function deleteSegment({ brand, id }) {
+  const { rows } = await query(
+    `DELETE FROM shared.contact_segments WHERE segment_id = $1 AND business = $2 RETURNING segment_id`,
+    [id, brand],
+  );
+  return rows[0] || null;
+}
+/** Resolve emailable contacts for an audience (optionally restricted to ids). */
+async function emailableContacts({ brand, contact_ids }) {
+  const params = [brand];
+  let filter = "";
+  if (Array.isArray(contact_ids) && contact_ids.length > 0) {
+    params.push(contact_ids);
+    filter = `AND c.contact_id = ANY($2)`;
+  }
+  const { rows } = await query(
+    `SELECT c.contact_id, c.email, c.display_name
+       FROM shared.contacts c
+      WHERE c.is_deleted = false AND c.email IS NOT NULL
+        AND ($1 = ANY(c.visible_to) OR c.visible_to = '{}')
+        ${filter}`,
+    params,
+  );
+  return rows;
 }
 
 module.exports = {
@@ -273,5 +439,19 @@ module.exports = {
   queuedRecipients,
   setRecipientStatus,
   findRecipientByEmail,
+  findRecipient,
+  bumpRecipientEngagement,
   insertEvent,
+  createVariant,
+  listVariants,
+  setVariantWinner,
+  setSchedule,
+  dueScheduledCampaigns,
+  eventBreakdown,
+  listSegments,
+  getSegment,
+  createSegment,
+  updateSegmentCount,
+  deleteSegment,
+  emailableContacts,
 };

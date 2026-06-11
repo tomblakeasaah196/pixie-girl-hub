@@ -1,26 +1,20 @@
 /**
- * AI Insights & Briefings (V2.2 §6.30)
- * Input validators — Zod schemas wrapped in Express middleware.
+ * AI Insights (V2.2 §6.30) — Zod validators.
  */
 
 "use strict";
 
 const { z } = require("zod");
 
-const createSchema = z.object({
-  // TODO: define required fields for create
-});
+const resolveBody = z
+  .object({ reason: z.string().max(2000).optional() })
+  .strict();
 
-const updateSchema = createSchema.partial();
-
-function validateCreate(req, _res, next) {
-  req.body = createSchema.parse(req.body);
+const mk = (schema) => (req, _res, next) => {
+  req.body = schema.parse(req.body || {});
   next();
-}
+};
 
-function validateUpdate(req, _res, next) {
-  req.body = updateSchema.parse(req.body);
-  next();
-}
-
-module.exports = { validateCreate, validateUpdate, createSchema, updateSchema };
+module.exports = {
+  validateResolve: mk(resolveBody),
+};

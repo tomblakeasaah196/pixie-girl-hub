@@ -1,26 +1,72 @@
 /**
- * Tasks & To-Do (V2.2 §6.19)
- * Input validators — Zod schemas wrapped in Express middleware.
+ * Tasks (V2.2 §6.19) — Zod validators.
  */
 
 "use strict";
 
 const { z } = require("zod");
 
-const createSchema = z.object({
-  // TODO: define required fields for create
+const STATUS = [
+  "inbox",
+  "today",
+  "this_week",
+  "this_month",
+  "later",
+  "done",
+  "cancelled",
+];
+const PRIORITY = ["low", "normal", "high", "urgent"];
+
+const subtask = z.object({
+  title: z.string().min(1).max(300),
+  display_order: z.coerce.number().int().optional(),
 });
 
-const updateSchema = createSchema.partial();
+const taskCreate = z
+  .object({
+    title: z.string().min(1).max(300),
+    description: z.string().max(4000).optional(),
+    status: z.enum(STATUS).optional(),
+    priority: z.enum(PRIORITY).optional(),
+    assigned_to: z.string().uuid().optional(),
+    due_at: z.string().datetime().optional(),
+    parent_task_id: z.string().uuid().optional(),
+    reference_type: z.string().max(40).optional(),
+    reference_id: z.string().uuid().optional(),
+    subtasks: z.array(subtask).optional(),
+  })
+  .strict();
 
-function validateCreate(req, _res, next) {
-  req.body = createSchema.parse(req.body);
+const taskUpdate = z
+  .object({
+    title: z.string().min(1).max(300).optional(),
+    description: z.string().max(4000).optional(),
+    priority: z.enum(PRIORITY).optional(),
+    assigned_to: z.string().uuid().optional(),
+    due_at: z.string().datetime().optional(),
+    reference_type: z.string().max(40).optional(),
+    reference_id: z.string().uuid().optional(),
+  })
+  .strict();
+
+const statusChange = z.object({ status: z.enum(STATUS) }).strict();
+const subtaskAdd = z
+  .object({
+    title: z.string().min(1).max(300),
+    display_order: z.coerce.number().int().optional(),
+  })
+  .strict();
+const subtaskToggle = z.object({ is_done: z.boolean() }).strict();
+
+const mk = (schema) => (req, _res, next) => {
+  req.body = schema.parse(req.body || {});
   next();
-}
+};
 
-function validateUpdate(req, _res, next) {
-  req.body = updateSchema.parse(req.body);
-  next();
-}
-
-module.exports = { validateCreate, validateUpdate, createSchema, updateSchema };
+module.exports = {
+  validateTaskCreate: mk(taskCreate),
+  validateTaskUpdate: mk(taskUpdate),
+  validateStatusChange: mk(statusChange),
+  validateSubtaskAdd: mk(subtaskAdd),
+  validateSubtaskToggle: mk(subtaskToggle),
+};

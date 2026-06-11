@@ -26,11 +26,9 @@ async function listServiceTypes(req, res) {
   });
 }
 async function createServiceType(req, res) {
-  res
-    .status(201)
-    .json({
-      data: await service.createServiceType({ ...base(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.createServiceType({ ...base(req), input: req.body }),
+  });
 }
 async function updateServiceType(req, res) {
   res.json({

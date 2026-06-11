@@ -1,51 +1,42 @@
 /**
- * Calendar & Scheduling (V2.2 §6.18)
- *
- * Module: calendar
- * Permission key: calendar
- *
- * Backing tables (per-brand or shared as documented in schema):
- *   calendar_events, calendar_event_participants, calendar_resources
+ * Calendar (V2.2 §6.18) — routes. Mounted at /api/v1/calendar.
+ * Permission key: calendar. One shared calendar per business; events may
+ * reference other modules' dated records.
  */
 
 "use strict";
 
 const express = require("express");
-const controller = require("./calendar.controller");
-const validator = require("./calendar.validator");
+const c = require("./calendar.controller");
+const v = require("./calendar.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
+const can = (action) => requirePermission("calendar", action);
 
-// ── GET /             list ─────────────────────────────────
-router.get("/", requirePermission("calendar", "view"), controller.list);
+router.get("/", can("view"), c.listEvents);
+router.get("/by-reference", can("view"), c.listForReference);
+router.post("/", can("create"), v.validateEventCreate, c.createEvent);
+router.get("/:id", can("view"), c.getEvent);
+router.patch("/:id", can("edit"), v.validateEventUpdate, c.updateEvent);
+router.delete("/:id", can("delete"), c.deleteEvent);
 
-// ── GET /:id          detail ───────────────────────────────
-router.get("/:id", requirePermission("calendar", "view"), controller.getById);
-
-// ── POST /            create ───────────────────────────────
 router.post(
-  "/",
-  requirePermission("calendar", "create"),
-  validator.validateCreate,
-  controller.create,
+  "/:id/participants",
+  can("edit"),
+  v.validateParticipantAdd,
+  c.addParticipant,
 );
-
-// ── PATCH /:id        update ───────────────────────────────
-router.patch(
-  "/:id",
-  requirePermission("calendar", "edit"),
-  validator.validateUpdate,
-  controller.update,
+router.post(
+  "/:id/participants/:participant_id/respond",
+  can("edit"),
+  v.validateParticipantResponse,
+  c.respondParticipant,
 );
-
-// ── DELETE /:id       archive/soft-delete ──────────────────
 router.delete(
-  "/:id",
-  requirePermission("calendar", "delete"),
-  controller.archive,
+  "/:id/participants/:participant_id",
+  can("edit"),
+  c.removeParticipant,
 );
-
-// TODO: module-specific endpoints (state transitions, sub-resources, etc.)
 
 module.exports = router;

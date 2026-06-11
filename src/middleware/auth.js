@@ -17,7 +17,7 @@
 const jwt = require("jsonwebtoken");
 const { config } = require("../config/env");
 const { AppError } = require("../utils/errors");
-const userRepo = require("../modules/hr_payroll/staff.repo");
+const userRepo = require("../shared/hr_payroll/staff.repo");
 
 async function authMiddleware(req, _res, next) {
   const header = req.headers.authorization;

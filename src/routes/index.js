@@ -75,6 +75,7 @@ const publicHairQuizRouter = require("../modules/retention/hair-quiz.routes");
 const publicCampaignRouter = require("../modules/sales_campaigns/campaigns.public.routes");
 const publicSignRouter = require("../shared/documents/documents.esign.public.routes");
 const publicNewsletterRouter = require("../modules/email_campaigns/newsletter.routes");
+const publicEmailTrackingRouter = require("../modules/email_campaigns/tracking.routes");
 
 // Webhooks
 const webhooksRouter = require("../modules/business_setup/webhooks.routes");
@@ -103,6 +104,7 @@ function mountRoutes(app) {
   publicRouter.use("/sale", publicCampaignRouter);
   publicRouter.use("/sign", publicSignRouter);
   publicRouter.use("/newsletter", publicNewsletterRouter);
+  publicRouter.use("/email", publicEmailTrackingRouter);
   app.use("/api/public", publicRouter);
 
   // ── Webhooks (signed payloads; auth via signature, not JWT) ──

@@ -90,6 +90,14 @@ async function insertMessage({ client, message }) {
   return rows[0];
 }
 
+/** Stamp the provider message id once a queued send completes (H-8). */
+async function setMessageExternalRef({ client, message_id, external_ref }) {
+  await ex(client)(
+    `UPDATE shared.messages SET external_ref = $2 WHERE message_id = $1`,
+    [message_id, external_ref],
+  );
+}
+
 async function listMessages({ channel_id, page = 1, page_size = 50 }) {
   const { rows: c } = await query(
     `SELECT count(*)::int AS total FROM shared.messages
@@ -235,6 +243,7 @@ module.exports = {
   findCustomerThread,
   createChannel,
   insertMessage,
+  setMessageExternalRef,
   listMessages,
   getMessage,
   softDeleteMessage,

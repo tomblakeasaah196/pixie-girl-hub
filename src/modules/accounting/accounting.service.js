@@ -570,6 +570,241 @@ async function payablesAgeing({ brand, as_of }) {
   return summariseAgeing(rows, as_of);
 }
 
+// ── FX Period-End Revaluation (F-9) ──────────────────────
+const UNREALISED_FX_GAIN = "4920"; // Unrealised FX Gain
+const UNREALISED_FX_LOSS = "5920"; // Unrealised FX Loss
+
+/**
+ * Run a period-end FX revaluation. For every FX-denominated account with a
+ * balance in the given period, restate the NGN equivalent at the new_rates and
+ * post a single balanced journal entry.
+ *
+ * @param {Object} input.new_rates  - e.g. { "USD": 1600, "GBP": 2000 }
+ */
+async function runRevaluation({
+  brand,
+  user,
+  request_id,
+  period_id,
+  reval_date,
+  new_rates,
+}) {
+  return transaction(async (client) => {
+    const period = await repo.getPeriod({ client, brand, id: period_id });
+    if (!period) throw new NotFoundError("Fiscal period");
+    if (!["open", "adjusted", "closing"].includes(period.status))
+      throw new AppError(
+        "PERIOD_CLOSED",
+        "Period is not open for posting",
+        409,
+      );
+
+    const accounts = await repo.listFxAccountBalances({
+      client,
+      brand,
+      period_id,
+    });
+    if (accounts.length === 0)
+      throw new AppError(
+        "NO_FX_ACCOUNTS",
+        "No FX-denominated accounts with balances in this period",
+        409,
+      );
+
+    const run = await repo.insertRevalRun({
+      client,
+      brand,
+      run: {
+        fiscal_period_id: period_id,
+        reval_date: reval_date || new Date().toISOString().slice(0, 10),
+        rates_used: new_rates,
+        run_by: user.user_id,
+      },
+    });
+
+    let totalGain = money(0);
+    let totalLoss = money(0);
+    const journalLines = [];
+
+    for (const acc of accounts) {
+      const currency = acc.account_currency;
+      const newRate = new_rates[currency];
+      if (!newRate)
+        throw new AppError(
+          "RATE_MISSING",
+          `No new rate provided for currency ${currency}`,
+          400,
+        );
+
+      const balanceInCurrency = money(acc.closing_balance_in_currency || 0);
+      const oldNgn = money(acc.closing_balance_ngn || 0);
+
+      // old rate: compute from last run or derive from current balance
+      let oldRate;
+      const lastReval = await repo.findLastRevalRate({
+        client,
+        brand,
+        account_id: acc.account_id,
+      });
+      if (lastReval) {
+        oldRate = parseFloat(lastReval.new_rate);
+      } else if (balanceInCurrency.gt(0) && oldNgn.gt(0)) {
+        oldRate = parseFloat(toCurrencyString(oldNgn.div(balanceInCurrency)));
+      } else {
+        oldRate = parseFloat(newRate);
+      }
+
+      const newNgn = balanceInCurrency.times(money(newRate));
+      const delta = newNgn.minus(oldNgn);
+      const deltaStr = toCurrencyString(delta.abs());
+      const impactType = delta.gt(money("0.01"))
+        ? "gain"
+        : delta.lt(money("-0.01"))
+          ? "loss"
+          : "no_change";
+
+      await repo.insertRevalEntry({
+        client,
+        brand,
+        entry: {
+          run_id: run.run_id,
+          account_id: acc.account_id,
+          account_currency: currency,
+          balance_in_currency: toCurrencyString(balanceInCurrency),
+          old_rate: oldRate,
+          new_rate: parseFloat(newRate),
+          old_ngn_equivalent: toCurrencyString(oldNgn),
+          new_ngn_equivalent: toCurrencyString(newNgn),
+          delta_ngn: toCurrencyString(delta),
+        },
+      });
+
+      if (impactType === "gain") {
+        totalGain = totalGain.plus(delta);
+        journalLines.push({
+          account_id: acc.account_id,
+          debit_ngn: deltaStr,
+          description: `FX reval ${currency}→NGN (gain)`,
+        });
+        journalLines.push({
+          account_code: UNREALISED_FX_GAIN,
+          credit_ngn: deltaStr,
+          description: `FX reval ${currency}→NGN (gain)`,
+        });
+      } else if (impactType === "loss") {
+        totalLoss = totalLoss.plus(delta.abs());
+        journalLines.push({
+          account_code: UNREALISED_FX_LOSS,
+          debit_ngn: deltaStr,
+          description: `FX reval ${currency}→NGN (loss)`,
+        });
+        journalLines.push({
+          account_id: acc.account_id,
+          credit_ngn: deltaStr,
+          description: `FX reval ${currency}→NGN (loss)`,
+        });
+      }
+    }
+
+    let journalEntry = null;
+    if (journalLines.length >= 2) {
+      journalEntry = await postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "fx_revaluation",
+          source_table: "fx_revaluation_runs",
+          source_id: run.run_id,
+          posting_date: reval_date || new Date().toISOString().slice(0, 10),
+          description: `Period-end FX revaluation — ${period.period_name}`,
+          reference: `REVAL-${period.fiscal_year}-${String(period.period_number).padStart(2, "0")}`,
+        },
+        lines: journalLines,
+      });
+    }
+
+    const updated = await repo.updateRevalRun({
+      client,
+      brand,
+      id: run.run_id,
+      patch: {
+        total_gain_ngn: toCurrencyString(totalGain),
+        total_loss_ngn: toCurrencyString(totalLoss),
+        journal_entry_id: journalEntry?.entry_id || null,
+        status: journalEntry ? "posted" : "draft",
+        posted_at: journalEntry ? new Date().toISOString() : null,
+      },
+    });
+
+    audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "accounting.fx_revaluation.run",
+      target_type: "fx_revaluation_run",
+      target_id: run.run_id,
+      after: {
+        period_id,
+        total_gain: toCurrencyString(totalGain),
+        total_loss: toCurrencyString(totalLoss),
+      },
+      request_id,
+    });
+
+    return repo.getRevalRun({ client, brand, id: updated.run_id });
+  });
+}
+
+function listRevaluationRuns({ brand, page = 1, page_size = 20 }) {
+  const offset = (page - 1) * page_size;
+  return repo.listRevalRuns({ brand, page, page_size, offset });
+}
+
+async function getRevaluationRun({ brand, id }) {
+  const run = await repo.getRevalRun({ brand, id });
+  if (!run) throw new NotFoundError("FX revaluation run");
+  return run;
+}
+
+async function reverseRevaluation({ brand, user, request_id, id }) {
+  return transaction(async (client) => {
+    const run = await repo.getRevalRun({ client, brand, id });
+    if (!run) throw new NotFoundError("FX revaluation run");
+    if (run.status !== "posted")
+      throw new AppError(
+        "INVALID_STATE",
+        `Cannot reverse a '${run.status}' run`,
+        409,
+      );
+    if (run.journal_entry_id) {
+      await reverseEntry({
+        client,
+        brand,
+        user,
+        id: run.journal_entry_id,
+        reason: "FX revaluation reversal",
+        request_id,
+      });
+    }
+    const updated = await repo.updateRevalRun({
+      client,
+      brand,
+      id,
+      patch: { status: "reversed" },
+    });
+    audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "accounting.fx_revaluation.reverse",
+      target_type: "fx_revaluation_run",
+      target_id: id,
+      after: { status: "reversed" },
+      request_id,
+    });
+    return updated;
+  });
+}
+
 module.exports = {
   postEntry,
   reverseEntry,
@@ -592,4 +827,8 @@ module.exports = {
   receivablesAgeing,
   payablesAgeing,
   postFxGainLoss,
+  runRevaluation,
+  listRevaluationRuns,
+  getRevaluationRun,
+  reverseRevaluation,
 };

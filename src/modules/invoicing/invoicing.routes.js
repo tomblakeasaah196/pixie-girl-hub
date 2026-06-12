@@ -62,4 +62,12 @@ router.post(
   controller.issueReceipt,
 );
 
+// Reminders (F-10)
+router.get("/invoices/:id/reminders", can("view"), controller.listReminders);
+router.delete(
+  "/invoices/:id/reminders/:reminderId",
+  can("edit"),
+  controller.cancelReminder,
+);
+
 module.exports = router;

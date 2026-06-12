@@ -118,6 +118,16 @@ router.post(
   bankController.completeReconciliation,
 );
 
+// FX Revaluation (F-9)
+router.get("/fx-revaluation", can("view"), controller.listRevaluationRuns);
+router.post("/fx-revaluation", can("approve"), controller.runRevaluation);
+router.get("/fx-revaluation/:runId", can("view"), controller.getRevaluationRun);
+router.post(
+  "/fx-revaluation/:runId/reverse",
+  can("approve"),
+  controller.reverseRevaluation,
+);
+
 // Tax filings
 router.get("/tax-filings", can("view"), bankController.listFilings);
 router.post(

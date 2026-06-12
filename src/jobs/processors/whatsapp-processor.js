@@ -31,6 +31,18 @@ module.exports = async function process(job) {
     res && res.data && res.data.messages && res.data.messages[0]
       ? res.data.messages[0].id
       : null;
+  // H-8: stamp the provider ref onto the originating smartcomm message.
+  if (data.smartcomm_message_id && messageId) {
+    try {
+      const smartcommRepo = require("../../modules/smartcomm/smartcomm.repo");
+      await smartcommRepo.setMessageExternalRef({
+        message_id: data.smartcomm_message_id,
+        external_ref: String(messageId),
+      });
+    } catch (e) {
+      logger.warn({ e: e.message }, "whatsapp-send: external_ref stamp failed");
+    }
+  }
   logger.info({ jobId: job.id, to: data.to, messageId }, "whatsapp sent");
   return { messageId };
 };

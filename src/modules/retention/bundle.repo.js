@@ -139,6 +139,15 @@ async function update({ brand, id, patch }) {
   return rows[0] || null;
 }
 
+async function bumpUsage({ client, brand, bundle_id }) {
+  const q = client ? client.query.bind(client) : query;
+  await q(
+    `UPDATE ${t(brand, "bundle_offers")} SET total_used = total_used + 1, updated_at = now()
+      WHERE bundle_id = $1`,
+    [bundle_id],
+  );
+}
+
 async function setActive({ brand, id, is_active }) {
   const { rows } = await query(
     `UPDATE ${t(brand, "bundle_offers")} SET is_active = $2, updated_at = now()
@@ -157,4 +166,5 @@ module.exports = {
   getById,
   update,
   setActive,
+  bumpUsage,
 };

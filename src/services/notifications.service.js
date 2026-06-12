@@ -104,4 +104,41 @@ async function markAllRead({ user_id }) {
   return { marked: rowCount };
 }
 
-module.exports = { notify, list, unreadCount, markRead, markAllRead };
+// ── Notification preferences (F-14) ──────────────────────
+
+async function getPreferences({ user_id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.notification_preferences WHERE user_id = $1 ORDER BY notification_type`,
+    [user_id],
+  );
+  return rows;
+}
+
+async function upsertPreference({ user_id, notification_type, in_app, email_enabled, whatsapp_enabled, sms_enabled, push_enabled }) {
+  const { rows } = await query(
+    `INSERT INTO shared.notification_preferences
+       (user_id, notification_type, in_app, email_enabled, whatsapp_enabled, sms_enabled, push_enabled)
+     VALUES ($1, $2, COALESCE($3, true), COALESCE($4, true), COALESCE($5, false), COALESCE($6, false), COALESCE($7, true))
+     ON CONFLICT (user_id, notification_type) DO UPDATE
+       SET in_app           = COALESCE($3, notification_preferences.in_app),
+           email_enabled    = COALESCE($4, notification_preferences.email_enabled),
+           whatsapp_enabled = COALESCE($5, notification_preferences.whatsapp_enabled),
+           sms_enabled      = COALESCE($6, notification_preferences.sms_enabled),
+           push_enabled     = COALESCE($7, notification_preferences.push_enabled),
+           updated_at       = now()
+     RETURNING *`,
+    [user_id, notification_type, in_app ?? null, email_enabled ?? null, whatsapp_enabled ?? null, sms_enabled ?? null, push_enabled ?? null],
+  );
+  return rows[0];
+}
+
+async function isChannelEnabled({ user_id, notification_type, channel }) {
+  const { rows } = await query(
+    `SELECT ${channel}_enabled AS enabled FROM shared.notification_preferences
+      WHERE user_id = $1 AND notification_type = $2`,
+    [user_id, notification_type],
+  );
+  return rows.length === 0 ? true : rows[0].enabled;
+}
+
+module.exports = { notify, list, unreadCount, markRead, markAllRead, getPreferences, upsertPreference, isChannelEnabled };

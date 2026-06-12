@@ -32,6 +32,8 @@ const ORDER = [
   "tax_amount_ngn",
   "shipping_fee_ngn",
   "total_ngn",
+  "coupon_code",
+  "client_idempotency_key",
   "payment_model",
   "required_deposit_pct",
   "required_deposit_ngn",
@@ -142,6 +144,15 @@ async function insertDiscount({ client, brand, disc }) {
     `INSERT INTO ${t(brand, "sales_order_discounts")} (${f.join(",")}) VALUES (${ph.join(",")})`,
     p,
   );
+}
+async function findByIdempotencyKey({ client, brand, key }) {
+  if (!key) return null;
+  const { rows } = await ex(client)(
+    `SELECT order_id FROM ${t(brand, "sales_orders")}
+      WHERE client_idempotency_key = $1 LIMIT 1`,
+    [key],
+  );
+  return rows[0] ? rows[0].order_id : null;
 }
 async function findById({ client, brand, id }) {
   const { rows } = await ex(client)(
@@ -587,6 +598,7 @@ module.exports = {
   nextNumber,
   variantContext,
   createOrder,
+  findByIdempotencyKey,
   insertLine,
   insertDiscount,
   findById,

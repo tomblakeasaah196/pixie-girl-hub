@@ -43,6 +43,10 @@ const orderCreate = z
     lines: z.array(lineInput).min(1),
     sales_campaign_id: z.string().uuid().optional(),
     campaign_slug: z.string().optional(),
+    coupon_code: z.string().max(60).optional(),
+    redeem_points: z.coerce.number().int().positive().optional(),
+    bundle_id: z.string().uuid().optional(),
+    client_idempotency_key: z.string().max(80).optional(),
     shipping_fee_ngn: money.optional(),
     // Override the business-default deposit % for a deposit_triggered order.
     required_deposit_pct: z.coerce.number().min(0).max(100).optional(),

@@ -29,6 +29,14 @@ const orderFormSchema = z
     utm_source: z.string().max(80).optional(),
     utm_medium: z.string().max(80).optional(),
     utm_campaign: z.string().max(120).optional(),
+    // Discount surfaces — so storefront orders resolve in Sales with the same
+    // campaign/coupon logic as direct/POS orders.
+    coupon_code: z.string().max(60).optional(),
+    sales_campaign_id: z.string().uuid().optional(),
+    campaign_slug: z.string().max(120).optional(),
+    redeem_points: z.coerce.number().int().positive().optional(),
+    bundle_id: z.string().uuid().optional(),
+    client_idempotency_key: z.string().max(80).optional(),
   })
   .strict();
 

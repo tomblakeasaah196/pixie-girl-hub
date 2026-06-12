@@ -114,6 +114,13 @@ const schema = z.object({
   FEATURE_PRAXIS_VOICE_ENABLED: z.coerce.boolean().default(true),
   FEATURE_UGC_INGESTION_ENABLED: z.coerce.boolean().default(true),
   ENABLE_WORKERS: z.coerce.boolean().default(true),
+
+  // H-1 read-side RLS: when true, one-shot reads with an ambient brand context
+  // run inside a minimal transaction so app.current_business is set and RLS
+  // filters them. Adds BEGIN/COMMIT round-trips per read — keep OFF until a
+  // staging perf check confirms acceptable latency. Write paths (transaction())
+  // already set the GUC regardless of this flag.
+  RLS_READ_ENFORCE: z.coerce.boolean().default(false),
 });
 
 let _config = null;

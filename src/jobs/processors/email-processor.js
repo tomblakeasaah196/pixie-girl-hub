@@ -24,9 +24,19 @@ module.exports = async function process(job) {
     return { skipped: true };
   }
   const info = await email.send(job.data);
-  logger.info(
-    { jobId: job.id, to, messageId: info && info.messageId },
-    "email sent",
-  );
-  return { messageId: info && info.messageId };
+  const messageId = info && info.messageId;
+  // H-8: stamp the provider ref onto the originating smartcomm message.
+  if (job.data.smartcomm_message_id && messageId) {
+    try {
+      const smartcommRepo = require("../../modules/smartcomm/smartcomm.repo");
+      await smartcommRepo.setMessageExternalRef({
+        message_id: job.data.smartcomm_message_id,
+        external_ref: String(messageId),
+      });
+    } catch (e) {
+      logger.warn({ e: e.message }, "email-send: external_ref stamp failed");
+    }
+  }
+  logger.info({ jobId: job.id, to, messageId }, "email sent");
+  return { messageId };
 };

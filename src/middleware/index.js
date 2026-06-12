@@ -94,4 +94,21 @@ function applyGlobalMiddleware(app) {
   );
 }
 
-module.exports = { applyGlobalMiddleware };
+/**
+ * Stricter limiter for UNAUTHENTICATED write endpoints (H-10 / D-5): public
+ * order-form checkout, newsletter signup, hair-quiz submit, e-sign submit, etc.
+ * The global limiter is generous; these blunt enumeration/abuse on writes that
+ * create records. Keyed by client IP (trust proxy is set above).
+ */
+const publicWriteLimiter = rateLimit({
+  windowMs: Number(config.PUBLIC_WRITE_RATE_WINDOW_MS) || 15 * 60_000,
+  max: Number(config.PUBLIC_WRITE_RATE_MAX) || 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "TOO_MANY_REQUESTS",
+    message: "Too many submissions — please try again shortly.",
+  },
+});
+
+module.exports = { applyGlobalMiddleware, publicWriteLimiter };

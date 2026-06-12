@@ -157,8 +157,75 @@ async function setStatus({ brand, id, status, fields = {} }) {
   return rows[0] || null;
 }
 
+// ── Billing (W-C) ─────────────────────────────────────────
+async function claimDueForBilling({ client, brand, limit }) {
+  const { rows } = await client.query(
+    `WITH due AS (
+       SELECT subscription_id FROM shared.subscriptions
+        WHERE business = $1 AND status = 'active' AND next_billing_at <= now()
+        ORDER BY next_billing_at
+        FOR UPDATE SKIP LOCKED
+        LIMIT $2
+     )
+     UPDATE shared.subscriptions s SET updated_at = now()
+       FROM due WHERE s.subscription_id = due.subscription_id
+     RETURNING s.*`,
+    [brand, limit],
+  );
+  return rows;
+}
+
+async function insertBillingAttempt({ client, attempt }) {
+  const q = client ? client.query.bind(client) : query;
+  const { rows } = await q(
+    `INSERT INTO shared.subscription_billing_attempts
+       (subscription_id, amount_ngn, paystack_reference, status, failure_message, created_order_id)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [
+      attempt.subscription_id,
+      attempt.amount_ngn,
+      attempt.paystack_reference || null,
+      attempt.status,
+      attempt.failure_message || null,
+      attempt.created_order_id || null,
+    ],
+  );
+  return rows[0];
+}
+
+async function advanceAfterSuccess({ client, id, interval, amount_ngn }) {
+  const q = client ? client.query.bind(client) : query;
+  await q(
+    `UPDATE shared.subscriptions
+        SET next_billing_at = next_billing_at + $2::interval,
+            last_billed_at = now(),
+            total_cycles_billed = total_cycles_billed + 1,
+            total_amount_billed_ngn = total_amount_billed_ngn + $3,
+            failed_attempts_in_row = 0,
+            updated_at = now()
+      WHERE subscription_id = $1`,
+    [id, interval, amount_ngn],
+  );
+}
+
+async function recordBillingFailure({ client, id, set_past_due }) {
+  const q = client ? client.query.bind(client) : query;
+  await q(
+    `UPDATE shared.subscriptions
+        SET failed_attempts_in_row = failed_attempts_in_row + 1,
+            status = CASE WHEN $2 THEN 'past_due' ELSE status END,
+            updated_at = now()
+      WHERE subscription_id = $1`,
+    [id, set_past_due],
+  );
+}
+
 module.exports = {
   createPlan,
+  claimDueForBilling,
+  insertBillingAttempt,
+  advanceAfterSuccess,
+  recordBillingFailure,
   listPlans,
   getPlan,
   updatePlan,

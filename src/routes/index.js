@@ -17,6 +17,7 @@ const express = require("express");
 
 const { authMiddleware } = require("../middleware/auth");
 const { brandContextMiddleware } = require("../middleware/brand-context");
+const { publicWriteLimiter } = require("../middleware");
 
 // Auth & user-management
 const authRouter = require("../shared/hr_payroll/auth.routes");
@@ -64,6 +65,8 @@ const auditRouter = require("../shared/audit/audit.routes");
 const accessRouter = require("../shared/access/access.routes");
 const notificationsRouter = require("../shared/notifications/notifications.routes");
 
+const { cartRouter, wishlistRouter } = require("../modules/storefront/cart.routes");
+
 // Public (storefront-facing, no auth)
 const publicCatalogueRouter = require("../modules/storefront/public.routes");
 const publicTrackingRouter = require("../modules/logistics/tracking.routes");
@@ -98,14 +101,16 @@ function mountRoutes(app) {
   publicRouter.use("/catalogue", publicCatalogueRouter);
   publicRouter.use("/tracking", publicTrackingRouter);
   publicRouter.use("/order-timeline", publicOrderTimelineRouter);
-  publicRouter.use("/order-form", publicOrderFormRouter);
+  // Public WRITE endpoints (H-10): stricter per-IP throttle to blunt abuse on
+  // unauthenticated record-creating routes.
+  publicRouter.use("/order-form", publicWriteLimiter, publicOrderFormRouter);
   publicRouter.use("/install-hub", publicInstallHubRouter);
   publicRouter.use("/stylist-verify", publicStylistVerifyRouter);
-  publicRouter.use("/referral", publicReferralRouter);
-  publicRouter.use("/hair-quiz", publicHairQuizRouter);
+  publicRouter.use("/referral", publicWriteLimiter, publicReferralRouter);
+  publicRouter.use("/hair-quiz", publicWriteLimiter, publicHairQuizRouter);
   publicRouter.use("/sale", publicCampaignRouter);
-  publicRouter.use("/sign", publicSignRouter);
-  publicRouter.use("/newsletter", publicNewsletterRouter);
+  publicRouter.use("/sign", publicWriteLimiter, publicSignRouter);
+  publicRouter.use("/newsletter", publicWriteLimiter, publicNewsletterRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
   app.use("/api/public", publicRouter);
 
@@ -164,6 +169,8 @@ function mountRoutes(app) {
   api.use("/audit", auditRouter);
   api.use("/access", accessRouter);
   api.use("/notifications", notificationsRouter);
+  api.use("/cart", cartRouter);
+  api.use("/wishlist", wishlistRouter);
 
   app.use("/api/v1", api);
 }

@@ -160,6 +160,20 @@ async function seedLevel({ client, brand, variant_id, location_id }) {
   );
 }
 
+// Lock the (variant, location) level row FOR UPDATE so an oversell pre-check is
+// race-safe: concurrent sale deductions on the same level serialize here.
+// Requires a transaction client. Returns null when no level row exists yet.
+async function lockLevel({ client, brand, variant_id, location_id }) {
+  const { rows } = await client.query(
+    `SELECT on_hand, reserved, available
+       FROM ${t(brand, "stock_levels")}
+      WHERE variant_id = $1 AND location_id = $2
+      FOR UPDATE`,
+    [variant_id, location_id],
+  );
+  return rows[0] || null;
+}
+
 // Movements (the only way to change on_hand)
 async function nextMovementNumber({ client, brand }) {
   const { rows } = await ex(client)(
@@ -685,6 +699,7 @@ module.exports = {
   listLevels,
   levelsForVariant,
   seedLevel,
+  lockLevel,
   nextMovementNumber,
   nextDocNumber,
   listMovements,

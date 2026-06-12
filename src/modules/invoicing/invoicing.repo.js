@@ -326,6 +326,85 @@ async function listReceipts({ client, brand, invoice_id }) {
   return rows;
 }
 
+// ── Invoice Reminders (F-10) ─────────────────────────────
+async function insertReminder({ client, brand, reminder }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "invoice_reminders")}
+       (invoice_id, reminder_type, channel, recipient_address, template_key, rendered_body, status, scheduled_for)
+     VALUES ($1,$2,$3,$4,$5,$6,'scheduled',$7) RETURNING *`,
+    [
+      reminder.invoice_id,
+      reminder.reminder_type,
+      reminder.channel,
+      reminder.recipient_address,
+      reminder.template_key || null,
+      reminder.rendered_body || null,
+      reminder.scheduled_for,
+    ],
+  );
+  return rows[0];
+}
+
+async function listReminders({ client, brand, invoice_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "invoice_reminders")} WHERE invoice_id = $1 ORDER BY scheduled_for`,
+    [invoice_id],
+  );
+  return rows;
+}
+
+async function findDueReminders({ client, brand, limit = 50 }) {
+  const { rows } = await ex(client)(
+    `SELECT ir.*, i.contact_id, i.invoice_number, i.due_date, i.balance_due_ngn
+       FROM ${t(brand, "invoice_reminders")} ir
+       JOIN ${t(brand, "invoices")} i ON i.invoice_id = ir.invoice_id
+      WHERE ir.status = 'scheduled'
+        AND ir.scheduled_for <= now()
+        AND i.status NOT IN ('paid','void','refunded')
+      ORDER BY ir.scheduled_for
+      LIMIT $1
+      FOR UPDATE OF ir SKIP LOCKED`,
+    [limit],
+  );
+  return rows;
+}
+
+async function updateReminderStatus({ client, brand, id, status, extra = {} }) {
+  const sets = ["status = $2"];
+  const params = [id, status];
+  let i = 3;
+  if (status === "sent") {
+    sets.push(`sent_at = $${i++}`);
+    params.push(new Date().toISOString());
+  }
+  if (status === "failed") {
+    sets.push(`failure_reason = $${i++}`);
+    params.push(extra.reason || null);
+  }
+  if (extra.provider_reference) {
+    sets.push(`provider_reference = $${i++}`);
+    params.push(extra.provider_reference);
+  }
+  if (extra.provider) {
+    sets.push(`provider = $${i++}`);
+    params.push(extra.provider);
+  }
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "invoice_reminders")} SET ${sets.join(",")} WHERE reminder_id = $1 RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
+}
+
+async function bumpReminderCount({ client, brand, invoice_id }) {
+  await ex(client)(
+    `UPDATE ${t(brand, "invoices")}
+       SET reminders_sent = reminders_sent + 1, last_reminder_sent_at = now()
+      WHERE invoice_id = $1`,
+    [invoice_id],
+  );
+}
+
 module.exports = {
   nextNumber,
   createInvoice,
@@ -342,4 +421,9 @@ module.exports = {
   setCreditNoteStatus,
   createReceipt,
   listReceipts,
+  insertReminder,
+  listReminders,
+  findDueReminders,
+  updateReminderStatus,
+  bumpReminderCount,
 };

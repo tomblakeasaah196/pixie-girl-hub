@@ -261,6 +261,11 @@ async function send({ brand, user, request_id, id, input = {} }) {
     request_id,
   );
   events.emit("invoice.sent", { brand, invoice_id: id });
+  // Schedule payment reminders now that the invoice is live.
+  scheduleRemindersForInvoice({
+    brand,
+    invoice: { ...inv, sent_via: input.sent_via || inv.sent_via },
+  }).catch(() => {});
   return updated;
 }
 async function recordPayment({ brand, user, request_id, id, input }) {
@@ -476,6 +481,125 @@ async function issueCreditNote({ brand, user, request_id, id }) {
   });
 }
 
+// ── Invoice Reminders (F-10) ─────────────────────────────
+
+const REMINDER_SCHEDULE = [
+  { type: "pre_due", dayOffset: -3 },
+  { type: "overdue_first", dayOffset: 1 },
+  { type: "overdue_second", dayOffset: 7 },
+  { type: "overdue_final", dayOffset: 14 },
+];
+
+function addDays(dateStr, days) {
+  const d = new Date(dateStr);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString();
+}
+
+async function scheduleRemindersForInvoice({ client, brand, invoice }) {
+  if (!invoice.due_date || !invoice.contact_id) return;
+  // Resolve recipient contact address
+  const { query } = require("../../config/database");
+  const { rows: contacts } = await (client ? client.query.bind(client) : query)(
+    `SELECT email, phone, display_name FROM shared.contacts WHERE contact_id = $1`,
+    [invoice.contact_id],
+  );
+  const contact = contacts[0];
+  if (!contact) return;
+  const channel = invoice.sent_via === "whatsapp" ? "whatsapp" : "email";
+  const recipientAddress =
+    channel === "whatsapp" ? contact.phone : contact.email;
+  if (!recipientAddress) return;
+
+  for (const sched of REMINDER_SCHEDULE) {
+    const scheduledFor = addDays(invoice.due_date, sched.dayOffset);
+    // Only schedule future reminders
+    if (new Date(scheduledFor) <= new Date()) continue;
+    await repo.insertReminder({
+      client,
+      brand,
+      reminder: {
+        invoice_id: invoice.invoice_id,
+        reminder_type: sched.type,
+        channel,
+        recipient_address: recipientAddress,
+        template_key: `invoice_reminder.${sched.type}`,
+        rendered_body: null,
+        scheduled_for: scheduledFor,
+      },
+    });
+  }
+}
+
+function listReminders({ brand, invoice_id }) {
+  return repo.listReminders({ brand, invoice_id });
+}
+
+async function cancelReminder({
+  brand,
+  user,
+  request_id,
+  invoice_id,
+  reminder_id,
+}) {
+  await getById({ brand, id: invoice_id });
+  const updated = await repo.updateReminderStatus({
+    brand,
+    id: reminder_id,
+    status: "cancelled",
+  });
+  if (!updated) throw new NotFoundError("Reminder");
+  await A(
+    brand,
+    user.user_id,
+    "invoicing.reminder.cancel",
+    "invoice_reminder",
+    reminder_id,
+    null,
+    request_id,
+  );
+  return updated;
+}
+
+async function sendDueReminders({ brand }) {
+  const reminders = await repo.findDueReminders({ brand, limit: 50 });
+  let sent = 0;
+  let failed = 0;
+  for (const r of reminders) {
+    try {
+      const smartcomm = require("../smartcomm/smartcomm.service");
+      await smartcomm.sendToCustomer({
+        brand,
+        contact_id: r.contact_id,
+        channel: r.channel,
+        template_key: r.template_key || "invoice_reminder",
+        variables: {
+          invoice_number: r.invoice_number,
+          due_date: r.due_date,
+          balance_due_ngn: r.balance_due_ngn,
+          reminder_type: r.reminder_type,
+        },
+      });
+      await repo.updateReminderStatus({
+        brand,
+        id: r.reminder_id,
+        status: "sent",
+      });
+      await repo.bumpReminderCount({ brand, invoice_id: r.invoice_id });
+      sent += 1;
+    } catch (err) {
+      await repo.updateReminderStatus({
+        brand,
+        id: r.reminder_id,
+        status: "failed",
+        extra: { reason: err.message?.slice(0, 255) },
+      });
+      failed += 1;
+    }
+  }
+  return { sent, failed };
+}
+
 // ── Receipts ─────────────────────────────────────────────
 function listReceipts({ brand, invoice_id }) {
   return repo.listReceipts({ brand, invoice_id });
@@ -512,4 +636,8 @@ module.exports = {
   issueCreditNote,
   listReceipts,
   issueReceipt,
+  scheduleRemindersForInvoice,
+  listReminders,
+  cancelReminder,
+  sendDueReminders,
 };

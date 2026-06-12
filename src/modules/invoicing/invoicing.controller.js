@@ -99,6 +99,23 @@ const issueReceipt = async (req, res) =>
     data: await service.issueReceipt({ ...base(req), input: req.body }),
   });
 
+// Reminders (F-10)
+const listReminders = async (req, res) =>
+  res.json({
+    data: await service.listReminders({
+      brand: req.brand,
+      invoice_id: req.params.id,
+    }),
+  });
+const cancelReminder = async (req, res) =>
+  res.json({
+    data: await service.cancelReminder({
+      ...base(req),
+      invoice_id: req.params.id,
+      reminder_id: req.params.reminderId,
+    }),
+  });
+
 module.exports = {
   listInvoices,
   getById,
@@ -112,4 +129,6 @@ module.exports = {
   issueCreditNote,
   listReceipts,
   issueReceipt,
+  listReminders,
+  cancelReminder,
 };

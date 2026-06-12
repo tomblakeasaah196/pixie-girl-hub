@@ -69,9 +69,21 @@ function getPool() {
  * Run a one-shot query. For multi-statement work that must share a
  * transaction or set per-connection GUCs (e.g. RLS context), use
  * `transaction()` instead.
+ *
+ * H-1 read-side RLS: `pool.query()` checks out an arbitrary pooled connection
+ * with no `app.current_business` set, so RLS does NOT filter one-shot reads
+ * (write paths via `transaction()` already set the GUC). When
+ * `RLS_READ_ENFORCE` is on AND a brand context is ambient, the read is routed
+ * through a minimal transaction so the local GUC applies and RLS filters it.
+ * No ambient brand (worker/cron/cross-brand) → fast pool path, unchanged.
  */
 async function query(text, params = []) {
   if (!pool) throw new Error("db pool not initialised");
+
+  if (config.RLS_READ_ENFORCE && requestContext.getBrand()) {
+    return queryWithContext(text, params);
+  }
+
   const started = Date.now();
   try {
     const res = await pool.query(text, params);
@@ -83,6 +95,41 @@ async function query(text, params = []) {
   } catch (err) {
     logger.error({ err, sql: text.slice(0, 200) }, "query failed");
     throw err;
+  }
+}
+
+/**
+ * One-shot read on a context-bound connection (H-1 read-side). Wraps the single
+ * statement in a transaction so `set_config(..., is_local := true)` persists for
+ * the SELECT, then commits. Only reached when RLS_READ_ENFORCE is on and a brand
+ * context is ambient.
+ */
+async function queryWithContext(text, params = []) {
+  const client = await pool.connect();
+  const started = Date.now();
+  try {
+    await client.query("BEGIN");
+    await applySessionContext(client, {
+      brand: requestContext.getBrand(),
+      userId: requestContext.getUserId(),
+    });
+    const res = await client.query(text, params);
+    await client.query("COMMIT");
+    const ms = Date.now() - started;
+    if (ms > 500) {
+      logger.warn({ ms, sql: text.slice(0, 200) }, "slow query (rls read)");
+    }
+    return res;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackErr) {
+      logger.error({ rollbackErr }, "rollback failed (rls read)");
+    }
+    logger.error({ err, sql: text.slice(0, 200) }, "query failed (rls read)");
+    throw err;
+  } finally {
+    client.release();
   }
 }
 

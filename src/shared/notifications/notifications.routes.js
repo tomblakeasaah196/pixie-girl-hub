@@ -19,4 +19,8 @@ router.get("/unread-count", controller.unreadCount);
 router.post("/:id/read", controller.markRead);
 router.post("/read-all", controller.markAllRead);
 
+// Preferences (F-14)
+router.get("/preferences", controller.getPreferences);
+router.put("/preferences/:notification_type", controller.upsertPreference);
+
 module.exports = router;

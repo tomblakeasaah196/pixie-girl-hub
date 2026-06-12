@@ -497,6 +497,159 @@ async function payablesAgeing({ client, brand, as_of }) {
   return rows;
 }
 
+// ── FX Revaluation ───────────────────────────────────────
+
+async function listFxAccountBalances({ client, brand, period_id }) {
+  const { rows } = await ex(client)(
+    `SELECT ab.account_id, ab.closing_balance_ngn,
+            ab.closing_balance_currency, ab.closing_balance_in_currency,
+            coa.account_code, coa.account_name, coa.account_currency,
+            ag.normal_balance, ag.group_type
+       FROM ${t(brand, "account_balances")} ab
+       JOIN ${t(brand, "chart_of_accounts")} coa ON coa.account_id = ab.account_id
+       JOIN ${t(brand, "account_groups")} ag ON ag.group_id = coa.group_id
+      WHERE ab.fiscal_period_id = $1
+        AND coa.account_currency IS NOT NULL
+        AND coa.account_currency != 'NGN'
+        AND COALESCE(ab.closing_balance_in_currency, 0) != 0`,
+    [period_id],
+  );
+  return rows;
+}
+
+async function findLastRevalRate({ client, brand, account_id }) {
+  const { rows } = await ex(client)(
+    `SELECT fre.new_rate, fre.account_currency
+       FROM ${t(brand, "fx_revaluation_entries")} fre
+       JOIN ${t(brand, "fx_revaluation_runs")} frr ON frr.run_id = fre.run_id
+      WHERE fre.account_id = $1 AND frr.status = 'posted'
+      ORDER BY frr.reval_date DESC LIMIT 1`,
+    [account_id],
+  );
+  return rows[0] || null;
+}
+
+async function insertRevalRun({ client, brand, run }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "fx_revaluation_runs")}
+       (fiscal_period_id, reval_date, rates_used, total_gain_ngn, total_loss_ngn, run_by)
+     VALUES ($1,$2,$3::jsonb,0,0,$4) RETURNING *`,
+    [
+      run.fiscal_period_id,
+      run.reval_date,
+      JSON.stringify(run.rates_used),
+      run.run_by || null,
+    ],
+  );
+  return rows[0];
+}
+
+async function insertRevalEntry({ client, brand, entry }) {
+  const impactType =
+    parseFloat(entry.delta_ngn) > 0.005
+      ? "gain"
+      : parseFloat(entry.delta_ngn) < -0.005
+        ? "loss"
+        : "no_change";
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "fx_revaluation_entries")}
+       (run_id, account_id, account_currency, balance_in_currency,
+        old_rate, new_rate, old_ngn_equivalent, new_ngn_equivalent, impact_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [
+      entry.run_id,
+      entry.account_id,
+      entry.account_currency,
+      entry.balance_in_currency,
+      entry.old_rate,
+      entry.new_rate,
+      entry.old_ngn_equivalent,
+      entry.new_ngn_equivalent,
+      impactType,
+    ],
+  );
+  return rows[0];
+}
+
+async function updateRevalRun({ client, brand, id, patch }) {
+  const sets = [];
+  const params = [id];
+  let i = 2;
+  if (patch.total_gain_ngn !== undefined) {
+    sets.push(`total_gain_ngn = $${i++}`);
+    params.push(patch.total_gain_ngn);
+  }
+  if (patch.total_loss_ngn !== undefined) {
+    sets.push(`total_loss_ngn = $${i++}`);
+    params.push(patch.total_loss_ngn);
+  }
+  if (patch.journal_entry_id !== undefined) {
+    sets.push(`journal_entry_id = $${i++}`);
+    params.push(patch.journal_entry_id);
+  }
+  if (patch.status !== undefined) {
+    sets.push(`status = $${i++}`);
+    params.push(patch.status);
+  }
+  if (patch.posted_at !== undefined) {
+    sets.push(`posted_at = $${i++}`);
+    params.push(patch.posted_at);
+  }
+  if (!sets.length) return getRevalRun({ client, brand, id });
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "fx_revaluation_runs")} SET ${sets.join(",")} WHERE run_id = $1 RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
+}
+
+async function listRevalRuns({
+  client,
+  brand,
+  page = 1,
+  page_size = 20,
+  offset = 0,
+}) {
+  const { rows: c } = await ex(client)(
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "fx_revaluation_runs")}`,
+  );
+  const { rows } = await ex(client)(
+    `SELECT frr.*, fp.period_name
+       FROM ${t(brand, "fx_revaluation_runs")} frr
+       JOIN ${t(brand, "fiscal_periods")} fp ON fp.period_id = frr.fiscal_period_id
+      ORDER BY frr.reval_date DESC LIMIT $1 OFFSET $2`,
+    [page_size, offset],
+  );
+  return {
+    data: rows,
+    meta: {
+      page,
+      page_size,
+      total: c[0].total,
+      has_more: offset + rows.length < c[0].total,
+    },
+  };
+}
+
+async function getRevalRun({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT frr.*, fp.period_name
+       FROM ${t(brand, "fx_revaluation_runs")} frr
+       JOIN ${t(brand, "fiscal_periods")} fp ON fp.period_id = frr.fiscal_period_id
+      WHERE frr.run_id = $1`,
+    [id],
+  );
+  if (!rows[0]) return null;
+  const { rows: entries } = await ex(client)(
+    `SELECT fre.*, coa.account_code, coa.account_name
+       FROM ${t(brand, "fx_revaluation_entries")} fre
+       JOIN ${t(brand, "chart_of_accounts")} coa ON coa.account_id = fre.account_id
+      WHERE fre.run_id = $1`,
+    [id],
+  );
+  return { ...rows[0], entries };
+}
+
 module.exports = {
   listGroups,
   updateGroup,
@@ -523,4 +676,11 @@ module.exports = {
   cashBalanceAsOf,
   receivablesAgeing,
   payablesAgeing,
+  listFxAccountBalances,
+  findLastRevalRate,
+  insertRevalRun,
+  insertRevalEntry,
+  updateRevalRun,
+  listRevalRuns,
+  getRevalRun,
 };

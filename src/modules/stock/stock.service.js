@@ -117,6 +117,23 @@ async function deductForSale({
   unit_cost_ngn,
   user_id,
 }) {
+  const want = Math.abs(quantity);
+  // Race-safe oversell pre-check: lock the level row, compare against what is
+  // physically on hand. The DB CHECK (on_hand >= 0) is the hard backstop; this
+  // turns it into a clean 409 with the actual count instead of a raw 23514.
+  const level = await repo.lockLevel({ client, brand, variant_id, location_id });
+  const onHand = level ? level.on_hand : 0;
+  if (onHand < want) {
+    throw new AppError(
+      "INSUFFICIENT_STOCK",
+      `Oversell blocked: ${want} requested but only ${onHand} on hand`,
+      409,
+      {
+        user_message: `Only ${onHand} in stock — please reduce the quantity.`,
+        metadata: { variant_id, location_id, requested: want, on_hand: onHand },
+      },
+    );
+  }
   const m = await repo.recordMovement({
     client,
     brand,

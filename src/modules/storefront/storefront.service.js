@@ -91,6 +91,16 @@ async function submitOrderForm({ brand, input, request_id }) {
         utm_source: input.utm_source,
         utm_medium: input.utm_medium,
         utm_campaign: input.utm_campaign,
+        // Resolve discounts in Sales: forward the campaign + coupon so the
+        // storefront order is priced like any other channel (campaign discount,
+        // coupon discount, sales_order_discounts + coupon_redemption all on the
+        // order).
+        sales_campaign_id: input.sales_campaign_id,
+        campaign_slug: input.campaign_slug,
+        coupon_code: input.coupon_code,
+        redeem_points: input.redeem_points,
+        bundle_id: input.bundle_id,
+        client_idempotency_key: input.client_idempotency_key,
       },
     });
 

@@ -11,11 +11,9 @@
 
 const repo = require("./smartcomm.repo");
 const events = require("./smartcomm.events");
-const whatsapp = require("../../services/whatsapp.service");
-const email = require("../../services/email.service");
+const { enqueue } = require("../../jobs/queue-producer");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
 function listChannels(args) {
@@ -267,39 +265,25 @@ async function sendToCustomer({
     throw new NotFoundError("Contact");
   }
 
-  let external_ref = null;
-  try {
-    if (channel === "email") {
-      if (!contact.email) {
-        if (soft) return null;
-        throw new AppError("NO_EMAIL", "Contact has no email", 422);
-      }
-      const r = await email.send({
-        to: contact.email,
-        subject: subject || "A message from us",
-        html: body,
-      });
-      external_ref = (r && (r.messageId || r.id)) || null;
-    } else {
-      const to = contact.whatsapp_number || contact.primary_phone;
-      if (!to) {
-        if (soft) return null;
-        throw new AppError("NO_PHONE", "Contact has no phone/WhatsApp", 422);
-      }
-      const r = await whatsapp.sendText({ to, body });
-      external_ref =
-        (r && (r.id || (r.messages && r.messages[0] && r.messages[0].id))) ||
-        null;
+  // Resolve + validate the destination before recording anything.
+  let to = null;
+  if (channel === "email") {
+    if (!contact.email) {
+      if (soft) return null;
+      throw new AppError("NO_EMAIL", "Contact has no email", 422);
     }
-  } catch (err) {
-    logger.error(
-      { err: err.message, brand, contact_id, channel },
-      "smartcomm: outbound dispatch failed",
-    );
-    if (soft) return null;
-    throw err;
+    to = contact.email;
+  } else {
+    to = contact.whatsapp_number || contact.primary_phone;
+    if (!to) {
+      if (soft) return null;
+      throw new AppError("NO_PHONE", "Contact has no phone/WhatsApp", 422);
+    }
   }
 
+  // Record the message on the customer thread, then enqueue the send on the
+  // durable queue (H-8): a provider hiccup is retried by BullMQ rather than lost
+  // inline, and the processor stamps external_ref on completion.
   const thread = await findOrCreateCustomerThread({
     brand,
     contact_id,
@@ -310,16 +294,31 @@ async function sendToCustomer({
       channel_id: thread.channel_id,
       message_type: "system",
       content: body,
-      external_ref,
     },
   });
+
+  if (channel === "email") {
+    await enqueue("email-send", "customer-email", {
+      to,
+      subject: subject || "A message from us",
+      html: body,
+      smartcomm_message_id: msg.message_id,
+    });
+  } else {
+    await enqueue("whatsapp-send", "customer-whatsapp", {
+      to,
+      body,
+      smartcomm_message_id: msg.message_id,
+    });
+  }
+
   events.emit("customer.message_sent", {
     brand,
     contact_id,
     channel_id: thread.channel_id,
     message_id: msg.message_id,
   });
-  return { channel_id: thread.channel_id, message: msg, external_ref };
+  return { channel_id: thread.channel_id, message: msg, queued: true };
 }
 
 /**

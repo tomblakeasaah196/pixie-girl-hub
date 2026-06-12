@@ -155,6 +155,37 @@ const apAgeing = async (req, res) =>
     }),
   });
 
+// FX Revaluation (F-9)
+async function listRevaluationRuns(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  res.json(
+    await service.listRevaluationRuns({ brand: req.brand, page, page_size }),
+  );
+}
+const getRevaluationRun = async (req, res) =>
+  res.json({
+    data: await service.getRevaluationRun({
+      brand: req.brand,
+      id: req.params.runId,
+    }),
+  });
+const runRevaluation = async (req, res) =>
+  res.status(201).json({
+    data: await service.runRevaluation({
+      ...base(req),
+      period_id: req.body.period_id,
+      reval_date: req.body.reval_date,
+      new_rates: req.body.new_rates,
+    }),
+  });
+const reverseRevaluation = async (req, res) =>
+  res.json({
+    data: await service.reverseRevaluation({
+      ...base(req),
+      id: req.params.runId,
+    }),
+  });
+
 module.exports = {
   listGroups,
   updateGroup,
@@ -175,4 +206,8 @@ module.exports = {
   cashFlow,
   arAgeing,
   apAgeing,
+  listRevaluationRuns,
+  getRevaluationRun,
+  runRevaluation,
+  reverseRevaluation,
 };

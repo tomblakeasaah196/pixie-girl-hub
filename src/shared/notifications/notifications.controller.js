@@ -38,4 +38,14 @@ async function markAllRead(req, res) {
   res.json({ data: await service.markAllRead({ user_id: req.user.user_id }) });
 }
 
-module.exports = { list, unreadCount, markRead, markAllRead };
+async function getPreferences(req, res) {
+  res.json({ data: await service.getPreferences({ user_id: req.user.user_id }) });
+}
+
+async function upsertPreference(req, res) {
+  const { notification_type } = req.params;
+  const pref = await service.upsertPreference({ user_id: req.user.user_id, notification_type, ...req.body });
+  res.json({ data: pref });
+}
+
+module.exports = { list, unreadCount, markRead, markAllRead, getPreferences, upsertPreference };

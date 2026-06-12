@@ -427,6 +427,10 @@ async function checkout({ brand, user, request_id, input }) {
       contact_id: input.customer_contact_id || null,
       sales_campaign_id: input.sales_campaign_id,
       campaign_slug: input.campaign_slug,
+      coupon_code: input.coupon_code,
+      redeem_points: input.redeem_points,
+      bundle_id: input.bundle_id,
+      client_idempotency_key: input.client_idempotency_key,
     },
   });
 

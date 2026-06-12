@@ -21,6 +21,8 @@
  *   twice/day        — Low-stock alerts
  *   every 15m        — Pending action expiry sweep (Praxis)
  *   every 30m        — Layaway gentle payment reminder
+ *   every 30m        — Invoice reminder sweep (F-10)
+ *   daily 03:00      — Soft-FK reconciliation sweep (F-13)
  */
 
 "use strict";
@@ -132,6 +134,11 @@ async function startWorkers() {
   } = require("./schedulers/email-campaign-send");
   const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
   const { runRetentionWorkflows } = require("./schedulers/retention-workflows");
+  const {
+    runSubscriptionBilling,
+  } = require("./schedulers/subscription-billing");
+  const { runInvoiceReminderSweep } = require("./schedulers/invoice-reminders");
+  const { runSoftFkReconciliation } = require("./schedulers/soft-fk-reconciliation");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart.
@@ -152,6 +159,7 @@ async function startWorkers() {
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
+  scheduleCron("subscription-billing", "0 3 * * *", runSubscriptionBilling);
   scheduleCron("workflow-timeout", "*/10 * * * *", runWorkflowTimeoutSweep);
   scheduleCron(
     "campaign-state-transition",
@@ -163,6 +171,8 @@ async function startWorkers() {
     "*/5 * * * *",
     runCampaignMetricsRollup,
   );
+  scheduleCron("invoice-reminders", "*/30 * * * *", runInvoiceReminderSweep);
+  scheduleCron("soft-fk-reconciliation", "0 3 * * *", runSoftFkReconciliation);
 
   // ── Transactional outbox dispatcher (H-2) ──────────────
   // Register the durable event handlers IN THIS PROCESS (the dispatcher runs

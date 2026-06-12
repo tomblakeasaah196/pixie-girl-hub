@@ -16,6 +16,10 @@ const repo = require("./sales.repo");
 const events = require("./sales.events");
 const outbox = require("../../shared/outbox/outbox");
 const discount = require("../sales_campaigns/campaigns.discount.service");
+const couponService = require("../retention/coupon.service");
+const couponRepo = require("../retention/coupon.repo");
+const retentionRepo = require("../retention/retention.repo");
+const bundleRepo = require("../retention/bundle.repo");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const businessConfig = require("../business_setup/business-config.repo");
@@ -37,6 +41,31 @@ function channelPrice(ctx, channel) {
 }
 
 async function createOrder({ brand, user, request_id, input }) {
+  // Idempotency (H-9): a double-submitted public checkout must not create two
+  // orders. Fast path returns the existing order; the partial UNIQUE index is
+  // the race backstop (handled in the catch below).
+  if (input.client_idempotency_key) {
+    const existingId = await repo.findByIdempotencyKey({
+      brand,
+      key: input.client_idempotency_key,
+    });
+    if (existingId) return repo.findById({ brand, id: existingId });
+  }
+  try {
+    return await createOrderTx({ brand, user, request_id, input });
+  } catch (err) {
+    if (err && err.code === "23505" && input.client_idempotency_key) {
+      const existingId = await repo.findByIdempotencyKey({
+        brand,
+        key: input.client_idempotency_key,
+      });
+      if (existingId) return repo.findById({ brand, id: existingId });
+    }
+    throw err;
+  }
+}
+
+async function createOrderTx({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const cfg = await businessConfig.findByKey(brand);
     const defaultVat =
@@ -111,6 +140,190 @@ async function createOrder({ brand, user, request_id, input }) {
       }
     }
 
+    // 3.5 Coupon (F-3) — resolve the coupon IN Sales. Distribute the discount
+    // across taxable lines pre-VAT (tax is computed on the post-coupon price);
+    // a free_shipping coupon zeroes the shipping fee instead. The order's
+    // discount/total reflect it and a coupon_redemption links back to the order
+    // (recorded after the order row exists). The coupon row is locked
+    // FOR UPDATE for this transaction so the usage limit + bump are atomic.
+    const shipping0 = money(input.shipping_fee_ngn || 0);
+    let couponShipping = money(0);
+    let couponLineTotal = money(0);
+    let pointsLineTotal = money(0);
+    let pointsUsed = 0;
+    let couponMeta = null;
+    // Combined coupon+points discount added to each line's discount.
+    const extraShareByIdx = built.map(() => money(0));
+
+    const preNetByIdx = built.map((b) =>
+      b.unit.minus(b.perUnitDiscount).times(b.li.quantity),
+    );
+    const preNet = preNetByIdx.reduce((a, n) => a.plus(n), money(0));
+    // §6.25 floor: each line's headroom above its variant min_price. Order-
+    // level discounts (coupon, points) may only consume this headroom, so a
+    // stacked discount can never sell below floor. Mutated as each is applied.
+    const headroomByIdx = built.map((b, idx) => {
+      if (b.ctx.min_price_ngn === null || b.ctx.min_price_ngn === undefined)
+        return preNetByIdx[idx];
+      const floorNet = money(b.ctx.min_price_ngn).times(b.li.quantity);
+      const hr = preNetByIdx[idx].minus(floorNet);
+      return hr.lt(0) ? money(0) : hr;
+    });
+    const headroomLeft = () =>
+      headroomByIdx.reduce((a, n) => a.plus(n), money(0));
+    // Apply an order-level discount proportionally to remaining headroom; pre-
+    // VAT (the forEach below taxes the post-discount base). Returns the amount
+    // actually applied (capped at available headroom).
+    const applyOrderDiscount = (requested) => {
+      const avail = headroomLeft();
+      const amt = requested.gt(avail) ? avail : requested;
+      if (amt.lte(money(0))) return money(0);
+      let allocated = money(0);
+      built.forEach((b, idx) => {
+        const last = idx === built.length - 1;
+        const share = last
+          ? amt.minus(allocated)
+          : avail.gt(money(0))
+            ? money(
+                toCurrencyString(amt.times(headroomByIdx[idx]).dividedBy(avail)),
+              )
+            : money(0);
+        extraShareByIdx[idx] = extraShareByIdx[idx].plus(share);
+        headroomByIdx[idx] = headroomByIdx[idx].minus(share);
+        allocated = allocated.plus(share);
+      });
+      return amt;
+    };
+
+    // Coupon (F-3)
+    if (input.coupon_code) {
+      const cr = await couponService.validateCoupon({
+        brand,
+        code: input.coupon_code,
+        contact_id: input.contact_id,
+        order_subtotal_ngn: toCurrencyString(preNet),
+        client,
+      });
+      if (!cr.valid)
+        throw new AppError(
+          "COUPON_INVALID",
+          `Coupon not applicable: ${cr.reason}`,
+          409,
+        );
+      couponMeta = cr.coupon;
+      // PD §6.23/§6.25: the CEO sets whether discounts may stack on already-
+      // discounted sale items (floor is always enforced above).
+      const allowStack = !!(
+        cfg &&
+        cfg.loyalty_settings &&
+        cfg.loyalty_settings.allow_stacking_on_sale
+      );
+      if (campaign && !allowStack) {
+        throw new AppError(
+          "COUPON_NOT_STACKABLE",
+          "This coupon can't be combined with the active sale",
+          409,
+        );
+      }
+      if (cr.discount_type === "free_shipping") {
+        couponShipping = shipping0;
+      } else {
+        let amt = money(cr.discount_ngn);
+        if (amt.gt(preNet)) amt = preNet;
+        couponLineTotal = applyOrderDiscount(amt);
+      }
+    }
+
+    // Loyalty points redemption (§6.23.3): "Apply points as a discount at
+    // checkout (e.g., 100 points = ₦1,000 off). The conversion rate is
+    // configurable." 1 point = loyalty_settings.naira_per_point (default ₦10).
+    // Floor-respecting; only the points actually applied are deducted.
+    if (input.redeem_points && input.contact_id) {
+      const pts = Math.floor(Number(input.redeem_points));
+      if (pts > 0) {
+        const state = await retentionRepo.getLoyaltyState({
+          client,
+          brand,
+          contact_id: input.contact_id,
+        });
+        const balance = state ? state.current_balance : 0;
+        if (balance < pts)
+          throw new AppError(
+            "INSUFFICIENT_POINTS",
+            "Not enough points to redeem",
+            409,
+          );
+        const rate = money(
+          (cfg &&
+            cfg.loyalty_settings &&
+            cfg.loyalty_settings.naira_per_point) ||
+            10,
+        );
+        let usePts = pts;
+        let value = rate.times(usePts);
+        const avail = headroomLeft();
+        if (value.gt(avail) && rate.gt(money(0))) {
+          usePts = Math.floor(Number(avail.dividedBy(rate).toString()));
+          value = rate.times(usePts);
+        }
+        if (usePts > 0) {
+          applyOrderDiscount(value);
+          pointsUsed = usePts;
+          pointsLineTotal = value;
+        }
+      }
+    }
+
+    // 3.7 Bundle (F-2 / §6.23.4): if the order carries a bundle_id, verify its
+    // core components are all present in the cart, then apply the bundle
+    // discount on the component subtotal (floor-respecting, shared headroom).
+    let bundleMeta = null;
+    let bundleLineTotal = money(0);
+    if (input.bundle_id) {
+      const bundle = await bundleRepo.getById({ brand, id: input.bundle_id });
+      if (!bundle || !bundle.is_active)
+        throw new AppError("BUNDLE_INVALID", "Bundle not found or inactive", 409);
+      const components = bundle.components || [];
+      const isComponent = (b) =>
+        components.some((c) =>
+          c.variant_id
+            ? b.li.variant_id === c.variant_id
+            : b.ctx.product_id === c.product_id,
+        );
+      for (const comp of components.filter(
+        (c) => c.role === "core" || !c.role,
+      )) {
+        const have = built.reduce((q, b) => {
+          const match = comp.variant_id
+            ? b.li.variant_id === comp.variant_id
+            : b.ctx.product_id === comp.product_id;
+          return match ? q + b.li.quantity : q;
+        }, 0);
+        if (have < (comp.quantity || 1))
+          throw new AppError(
+            "BUNDLE_INCOMPLETE",
+            "Bundle components missing from the order",
+            409,
+          );
+      }
+      const compSubtotal = built.reduce(
+        (s, b, idx) => (isComponent(b) ? s.plus(preNetByIdx[idx]) : s),
+        money(0),
+      );
+      let d = money(0);
+      if (bundle.pricing_model === "fixed_bundle_price") {
+        const price = money(bundle.bundle_price_ngn || 0);
+        d = compSubtotal.gt(price) ? compSubtotal.minus(price) : money(0);
+      } else if (bundle.pricing_model === "pct_off") {
+        d = compSubtotal.times(money(bundle.discount_value || 0));
+      } else if (bundle.pricing_model === "amount_off") {
+        d = money(bundle.discount_value || 0);
+        if (d.gt(compSubtotal)) d = compSubtotal;
+      }
+      bundleMeta = bundle;
+      bundleLineTotal = applyOrderDiscount(d);
+    }
+
     // 4. Totals + VAT.
     let subtotal = money(0),
       discountTotal = money(0),
@@ -119,7 +332,9 @@ async function createOrder({ brand, user, request_id, input }) {
     built.forEach((b, idx) => {
       const qty = b.li.quantity;
       const gross = b.unit.times(qty);
-      const lineDiscount = b.perUnitDiscount.times(qty);
+      const lineDiscount = b.perUnitDiscount
+        .times(qty)
+        .plus(extraShareByIdx[idx]);
       const taxable = b.ctx.taxable !== false;
       const rate = taxable
         ? b.ctx.product_vat !== null
@@ -149,7 +364,7 @@ async function createOrder({ brand, user, request_id, input }) {
         notes: b.li.notes,
       });
     });
-    const shipping = money(input.shipping_fee_ngn || 0);
+    const shipping = shipping0.minus(couponShipping);
     const total = subtotal.minus(discountTotal).plus(taxTotal).plus(shipping);
 
     // 4b. Payment model + deposit policy (V2.2 §6.2). The order inherits its
@@ -194,6 +409,8 @@ async function createOrder({ brand, user, request_id, input }) {
         tax_amount_ngn: toCurrencyString(taxTotal),
         shipping_fee_ngn: toCurrencyString(shipping),
         total_ngn: toCurrencyString(total),
+        coupon_code: input.coupon_code || null,
+        client_idempotency_key: input.client_idempotency_key || null,
         payment_model: paymentModel,
         required_deposit_pct:
           requiredDepositPct !== null ? requiredDepositPct.toFixed(2) : null,
@@ -230,6 +447,100 @@ async function createOrder({ brand, user, request_id, input }) {
           },
         });
       }
+    }
+
+    // 5a. Record the coupon discount IN Sales + log the redemption against this
+    // order (so the coupon resolves end-to-end: order totals, GL, and the
+    // redemption all reference the same order). Usage is bumped under the lock
+    // taken in step 3.5.
+    if (couponMeta) {
+      const couponAmt = couponLineTotal.plus(couponShipping);
+      if (couponAmt.gt(0)) {
+        await repo.insertDiscount({
+          client,
+          brand,
+          disc: {
+            order_id: order.order_id,
+            source: "coupon",
+            source_reference: input.coupon_code,
+            amount_ngn: toCurrencyString(couponAmt),
+            discount_type:
+              couponMeta.discount_type === "percentage"
+                ? "percentage"
+                : couponMeta.discount_type === "free_shipping"
+                  ? "free_shipping"
+                  : "fixed",
+          },
+        });
+        await couponRepo.recordRedemption({
+          client,
+          redemption: {
+            coupon_id: couponMeta.coupon_id,
+            contact_id: input.contact_id,
+            business: brand,
+            reference_type: "sales_order",
+            reference_id: order.order_id,
+            discount_applied: toCurrencyString(couponAmt),
+          },
+        });
+        await couponRepo.bumpUsage({
+          client,
+          coupon_id: couponMeta.coupon_id,
+          discount_ngn: toCurrencyString(couponAmt),
+        });
+      }
+    }
+
+    // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): a
+    // sales_order_discounts row + the negative loyalty-ledger entry, both
+    // referencing this order, so the points discount resolves end-to-end and
+    // the customer's balance is debited atomically with the order.
+    if (pointsUsed > 0 && pointsLineTotal.gt(0)) {
+      await repo.insertDiscount({
+        client,
+        brand,
+        disc: {
+          order_id: order.order_id,
+          source: "loyalty_points",
+          source_reference: `${pointsUsed} pts`,
+          amount_ngn: toCurrencyString(pointsLineTotal),
+          discount_type: "points_redemption",
+        },
+      });
+      await retentionRepo.insertLoyaltyLedger({
+        client,
+        brand,
+        entry: {
+          contact_id: input.contact_id,
+          transaction_type: "redeemed",
+          points: -Math.abs(pointsUsed),
+          reference_type: "sales_order",
+          reference_id: order.order_id,
+          notes: `Redeemed ${pointsUsed} pts on ${order_number}`,
+          created_by: user.user_id,
+        },
+      });
+    }
+
+    // 5a-iii. Record the bundle discount IN Sales + bump bundle usage.
+    if (bundleMeta && bundleLineTotal.gt(0)) {
+      await repo.insertDiscount({
+        client,
+        brand,
+        disc: {
+          order_id: order.order_id,
+          source: "bundle",
+          source_reference: bundleMeta.bundle_code,
+          amount_ngn: toCurrencyString(bundleLineTotal),
+          discount_type:
+            bundleMeta.pricing_model === "pct_off" ? "percentage" : "fixed",
+        },
+      });
+      await bundleRepo.bumpUsage({
+        client,
+        brand,
+        bundle_id: bundleMeta.bundle_id,
+      });
     }
 
     // 5b. Layaway reserves stock at placement (V2.2 §6.2): the unit is held
@@ -514,6 +825,78 @@ async function markPaid({ client, brand, user, _request_id, order }) {
     dedup_key: `order.paid:${order.order_id}`,
   });
   return paid;
+}
+
+/**
+ * Subscription billing charge (W-C / §6.23.5): record a successful recurring
+ * charge as a paid Sales order so subscription revenue resolves in Sales and
+ * posts to the GL. A flat charge (no product lines); the wig fulfilment/
+ * selection is handled separately. Idempotent on client_idempotency_key.
+ */
+async function recordSubscriptionCharge({
+  brand,
+  contact_id,
+  amount_ngn,
+  provider_reference,
+  client_idempotency_key,
+}) {
+  if (client_idempotency_key) {
+    const existingId = await repo.findByIdempotencyKey({
+      brand,
+      key: client_idempotency_key,
+    });
+    if (existingId) return repo.findById({ brand, id: existingId });
+  }
+  const amt = toCurrencyString(money(amount_ngn));
+  return transaction(async (client) => {
+    const order_number = await repo.nextNumber({
+      client,
+      brand,
+      type: "sales_order",
+    });
+    const order = await repo.createOrder({
+      client,
+      brand,
+      order: {
+        order_number,
+        contact_id,
+        sales_channel: "subscription",
+        order_type: "digital",
+        status: "pending_payment",
+        subtotal_ngn: amt,
+        discount_amount_ngn: "0",
+        tax_amount_ngn: "0",
+        shipping_fee_ngn: "0",
+        total_ngn: amt,
+        payment_model: "full_payment_only",
+        client_idempotency_key: client_idempotency_key || null,
+      },
+    });
+    const payment_number = await repo.nextNumber({
+      client,
+      brand,
+      type: "sales_order_payment",
+    });
+    await repo.addPayment({
+      client,
+      brand,
+      payment: {
+        payment_number,
+        order_id: order.order_id,
+        method: "subscription_recurring",
+        provider: "paystack",
+        provider_reference,
+        amount_ngn: amt,
+        payment_path: "gateway",
+        client_idempotency_key: client_idempotency_key || null,
+        status: "captured",
+        captured_at: new Date().toISOString(),
+      },
+    });
+    const full = await repo.findById({ client, brand, id: order.order_id });
+    await markPaid({ client, brand, user: { user_id: null }, order: full });
+    return repo.findById({ client, brand, id: order.order_id });
+  });
 }
 
 async function cancelOrder({ brand, user, request_id, id }) {
@@ -951,6 +1334,7 @@ module.exports = {
   createOrder,
   updateOrder,
   addPayment,
+  recordSubscriptionCharge,
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
   listQuotations,
   getQuotation,

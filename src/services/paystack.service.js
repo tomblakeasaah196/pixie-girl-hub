@@ -35,4 +35,30 @@ async function verifyTransaction(reference) {
   return data;
 }
 
-module.exports = { initializeTransaction, verifyTransaction };
+/**
+ * Charge a previously-authorized card off-session (recurring billing, §6.23.5).
+ * `authorization_code` comes from a prior successful charge on the customer's
+ * card. Amount in kobo. Returns the Paystack response (data.status, data.data).
+ */
+async function chargeAuthorization({
+  authorization_code,
+  email,
+  amount_kobo,
+  reference,
+  metadata,
+}) {
+  const { data } = await client.post("/transaction/charge_authorization", {
+    authorization_code,
+    email,
+    amount: amount_kobo,
+    reference,
+    metadata,
+  });
+  return data;
+}
+
+module.exports = {
+  initializeTransaction,
+  verifyTransaction,
+  chargeAuthorization,
+};

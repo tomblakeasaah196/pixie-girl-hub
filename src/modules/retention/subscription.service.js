@@ -12,7 +12,10 @@
 const repo = require("./subscription.repo");
 const { query, transaction } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
+const { money, toCurrencyString } = require("../../utils/money");
+const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { BRANDS } = require("../../config/brands");
 
 const CYCLE_INTERVAL = {
   monthly: "1 month",
@@ -212,6 +215,116 @@ async function cancel({ brand, user, request_id, id, reason }) {
   return s;
 }
 
+// ── Recurring billing (W-C / §6.23.5) ─────────────────────
+const FAIL_LIMIT = 3;
+
+/**
+ * Charge every due active subscription off-session and resolve the revenue in
+ * Sales. Idempotent per cycle (reference + order idempotency key are keyed on
+ * next_billing_at, so a retry never double-charges). Money-moving — validate on
+ * staging before enabling the cron.
+ */
+async function runDueBilling({ limit = 50 } = {}) {
+  const paystack = require("../../services/paystack.service");
+  const salesService = require("../sales/sales.service");
+  let charged = 0;
+  for (const brand of BRANDS) {
+    let due = [];
+    try {
+      due = await transaction((client) =>
+        repo.claimDueForBilling({ client, brand, limit }),
+      );
+    } catch (err) {
+      logger.error({ err: err.message, brand }, "subscription billing claim failed");
+      continue;
+    }
+    for (const sub of due) {
+      const setPastDue = sub.failed_attempts_in_row + 1 >= FAIL_LIMIT;
+      try {
+        const plan = await repo.getPlan({ brand, id: sub.plan_id });
+        if (!plan) continue;
+        const amount = money(plan.price_ngn);
+        const amountStr = toCurrencyString(amount);
+        const cycleKey = new Date(sub.next_billing_at).getTime();
+        const reference = `sub_${sub.subscription_id}_${cycleKey}`;
+
+        if (!sub.paystack_authorization_code) {
+          await repo.insertBillingAttempt({
+            attempt: {
+              subscription_id: sub.subscription_id,
+              amount_ngn: amountStr,
+              status: "failed_authorization_expired",
+              failure_message: "no saved authorization",
+            },
+          });
+          await repo.recordBillingFailure({ id: sub.subscription_id, set_past_due: setPastDue });
+          continue;
+        }
+
+        const { rows } = await query(
+          `SELECT email FROM shared.contacts WHERE contact_id = $1`,
+          [sub.contact_id],
+        );
+        const email = rows[0] ? rows[0].email : null;
+        const res = await paystack.chargeAuthorization({
+          authorization_code: sub.paystack_authorization_code,
+          email,
+          amount_kobo: Number(amount.times(100).toFixed(0)),
+          reference,
+          metadata: { brand, subscription_id: sub.subscription_id },
+        });
+        const ok = res && res.data && res.data.status === "success";
+
+        if (ok) {
+          const order = await salesService.recordSubscriptionCharge({
+            brand,
+            contact_id: sub.contact_id,
+            amount_ngn: amountStr,
+            provider_reference: res.data.reference || reference,
+            client_idempotency_key: `sub:${reference}`,
+          });
+          await repo.insertBillingAttempt({
+            attempt: {
+              subscription_id: sub.subscription_id,
+              amount_ngn: amountStr,
+              paystack_reference: res.data.reference || reference,
+              status: "success",
+              created_order_id: order.order_id,
+            },
+          });
+          await repo.advanceAfterSuccess({
+            id: sub.subscription_id,
+            interval: CYCLE_INTERVAL[plan.billing_cycle],
+            amount_ngn: amountStr,
+          });
+          charged += 1;
+        } else {
+          await repo.insertBillingAttempt({
+            attempt: {
+              subscription_id: sub.subscription_id,
+              amount_ngn: amountStr,
+              paystack_reference: reference,
+              status: "failed_card_declined",
+              failure_message: (res && res.message) || "charge failed",
+            },
+          });
+          await repo.recordBillingFailure({ id: sub.subscription_id, set_past_due: setPastDue });
+        }
+      } catch (err) {
+        logger.error(
+          { err: err.message, subscription_id: sub.subscription_id },
+          "subscription billing failed",
+        );
+        await repo
+          .recordBillingFailure({ id: sub.subscription_id, set_past_due: setPastDue })
+          .catch(() => {});
+      }
+    }
+  }
+  logger.info({ charged }, "subscription billing run done");
+  return { charged };
+}
+
 module.exports = {
   createPlan,
   listPlans,
@@ -219,6 +332,7 @@ module.exports = {
   updatePlan,
   setPlanActive,
   enrol,
+  runDueBilling,
   listSubscriptions,
   getSubscription,
   pause,

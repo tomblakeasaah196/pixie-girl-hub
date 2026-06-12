@@ -47,7 +47,10 @@ function verifyPaystack(rawBody, headers) {
   if (!secret) return null;
   const sig = headers["x-paystack-signature"];
   if (!sig) return false;
-  const hash = crypto.createHmac("sha512", secret).update(rawBody).digest("hex");
+  const hash = crypto
+    .createHmac("sha512", secret)
+    .update(rawBody)
+    .digest("hex");
   return safeEqual(hash, sig);
 }
 
@@ -59,7 +62,7 @@ const VERIFIERS = {
 function extractExternalId(source, payload) {
   if (source === "paystack") {
     const d = payload && payload.data;
-    if (d && (d.id !== undefined && d.id !== null)) return String(d.id);
+    if (d && d.id !== undefined && d.id !== null) return String(d.id);
     if (d && d.reference) return String(d.reference);
   }
   if (payload && payload.id) return String(payload.id);
@@ -93,7 +96,9 @@ async function receive(source, { rawBody, headers, ip }) {
   try {
     payload = JSON.parse((rawBody && rawBody.toString("utf8")) || "{}");
   } catch {
-    payload = { raw: (rawBody && rawBody.toString("utf8").slice(0, 5000)) || "" };
+    payload = {
+      raw: (rawBody && rawBody.toString("utf8").slice(0, 5000)) || "",
+    };
   }
   const event_type = payload.event || payload.type || null;
   const external_id = extractExternalId(source, payload);
@@ -193,7 +198,10 @@ async function confirmPaystackCharge(log) {
       },
     });
   });
-  logger.info({ brand, order_id, reference }, "paystack charge confirmed via webhook");
+  logger.info(
+    { brand, order_id, reference },
+    "paystack charge confirmed via webhook",
+  );
 }
 
 const DISPATCH = {
@@ -220,7 +228,9 @@ function register() {
   if (registered) return;
   registered = true;
   outbox.register("webhook.received", "webhook-dispatch", onWebhookReceived);
-  logger.info("webhook subscribers registered (outbox webhook.received → dispatch)");
+  logger.info(
+    "webhook subscribers registered (outbox webhook.received → dispatch)",
+  );
 }
 
 register();

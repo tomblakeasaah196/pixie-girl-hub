@@ -67,6 +67,7 @@ const notificationsRouter = require("../shared/notifications/notifications.route
 // Public (storefront-facing, no auth)
 const publicCatalogueRouter = require("../modules/storefront/public.routes");
 const publicTrackingRouter = require("../modules/logistics/tracking.routes");
+const publicOrderTimelineRouter = require("../modules/sales/order-timeline.routes");
 const publicOrderFormRouter = require("../modules/storefront/order-form.routes");
 const publicInstallHubRouter = require("../modules/storefront/install-hub.routes");
 const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.routes");
@@ -96,6 +97,7 @@ function mountRoutes(app) {
   const publicRouter = express.Router();
   publicRouter.use("/catalogue", publicCatalogueRouter);
   publicRouter.use("/tracking", publicTrackingRouter);
+  publicRouter.use("/order-timeline", publicOrderTimelineRouter);
   publicRouter.use("/order-form", publicOrderFormRouter);
   publicRouter.use("/install-hub", publicInstallHubRouter);
   publicRouter.use("/stylist-verify", publicStylistVerifyRouter);

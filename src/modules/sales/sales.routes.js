@@ -7,6 +7,7 @@
 const express = require("express");
 const c = require("./sales.controller");
 const v = require("./sales.validator");
+const timelineController = require("./timeline.controller");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
@@ -16,6 +17,10 @@ router.get("/orders", can("view"), c.listOrders);
 router.post("/orders", can("create"), v.validateOrderCreate, c.createOrder);
 router.get("/orders/:id", can("view"), c.getById);
 router.patch("/orders/:id", can("edit"), v.validateOrderUpdate, c.updateOrder);
+
+// Order timeline (F-5 / §6.23.6) — staff record + view
+router.get("/orders/:id/timeline", can("view"), timelineController.list);
+router.post("/orders/:id/timeline", can("edit"), timelineController.record);
 router.post(
   "/orders/:id/payments",
   can("edit"),

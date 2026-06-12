@@ -10,6 +10,10 @@
 const express = require("express");
 const controller = require("./retention.controller");
 const validator = require("./retention.validator");
+const couponRouter = require("./coupon.routes");
+const bundleRouter = require("./bundle.routes");
+const subscriptionRouter = require("./subscription.routes");
+const workflowRouter = require("./workflow.routes");
 const { requirePermission } = require("../../middleware/rbac");
 
 // Side-effect: register order.paid → loyalty + streak earners.
@@ -17,6 +21,15 @@ require("./retention.subscribers");
 
 const router = express.Router();
 const can = (action) => requirePermission("retention", action);
+
+// Coupon code engine (F-3 / §6.23.2)
+router.use("/coupons", couponRouter);
+// Bundle offers (F-2 / §6.23.4)
+router.use("/bundles", bundleRouter);
+// Wig subscriptions (F-1 / §6.23.5)
+router.use("/subscriptions", subscriptionRouter);
+// Automated retention workflows (F-4 / §6.23)
+router.use("/workflows", workflowRouter);
 
 // Loyalty
 router.get("/loyalty/tiers", can("view"), controller.listTiers);

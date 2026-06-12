@@ -12,7 +12,10 @@ const { query } = require("../../config/database");
  * collision (same source + external_id) returns the existing row's id with
  * duplicate=true and inserts nothing.
  */
-async function insertLog(client, { source, event_type, external_id, payload, signature_valid, source_ip }) {
+async function insertLog(
+  client,
+  { source, event_type, external_id, payload, signature_valid, source_ip },
+) {
   const q = client ? client.query.bind(client) : query;
   const { rows } = await q(
     `INSERT INTO shared.webhook_log
@@ -21,7 +24,14 @@ async function insertLog(client, { source, event_type, external_id, payload, sig
      ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL
        DO NOTHING
      RETURNING webhook_id`,
-    [source, event_type || null, external_id || null, JSON.stringify(payload || {}), signature_valid, source_ip || null],
+    [
+      source,
+      event_type || null,
+      external_id || null,
+      JSON.stringify(payload || {}),
+      signature_valid,
+      source_ip || null,
+    ],
   );
   if (rows[0]) return { webhook_id: rows[0].webhook_id, duplicate: false };
 

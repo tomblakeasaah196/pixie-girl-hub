@@ -143,10 +143,10 @@ post-commit dispatch + idempotent consumers**.
 - **Error handler:** ✅ pixie ahead — **D-2 resolved** (verified: never leaks SQL/stack).
 - **Webhook signature verification:** 🔴 absent (folded into B-1).
 - **Stock oversell under concurrency (NEW — B-4):** `stock_levels` is trigger-maintained
-  from signed `stock_movements` ("never write on_hand directly"). With **0 app-level
+  from signed `stock_movements` ("never write on*hand directly"). With **0 app-level
   FOR UPDATE**, two concurrent `-sale` movements can both pass and drive `on_hand`
-  negative unless the trigger/constraint blocks it. _Action: verify `fn_apply_stock_movement`
-  rejects a movement that would make `on_hand < 0` (or add a CHECK / advisory lock)._
+  negative unless the trigger/constraint blocks it. \_Action: verify `fn_apply_stock_movement`
+  rejects a movement that would make `on_hand < 0` (or add a CHECK / advisory lock).*
 - **Public-route rate limiting (NEW — D-5):** only the global limiter + the campaign
   public route are throttled. Other unauthenticated **write** endpoints (storefront
   order-form checkout, contacts register, e-sign public submit, email/logistics tracking)

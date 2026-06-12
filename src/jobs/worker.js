@@ -131,6 +131,7 @@ async function startWorkers() {
     runScheduledEmailSends,
   } = require("./schedulers/email-campaign-send");
   const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
+  const { runRetentionWorkflows } = require("./schedulers/retention-workflows");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart.
@@ -150,6 +151,7 @@ async function startWorkers() {
   scheduleCron("layaway-reminders", "*/30 * * * *", runLayawayReminders);
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
+  scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
   scheduleCron("workflow-timeout", "*/10 * * * *", runWorkflowTimeoutSweep);
   scheduleCron(
     "campaign-state-transition",
@@ -176,6 +178,8 @@ async function startWorkers() {
   require("../modules/logistics/logistics.subscribers"); // dispatch delivery
   require("../modules/retention/retention.subscribers"); // loyalty + streak
   require("../shared/notifications/notifications.subscribers"); // rep notification
+  require("../modules/sales/timeline.subscribers"); // order.paid → timeline event
+  require("../modules/retention/workflow.subscribers"); // order.paid → workflow trigger
   require("../modules/business_setup/webhooks.service"); // webhook.received → dispatch
   outboxTimer = setInterval(() => {
     outbox

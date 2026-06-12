@@ -363,7 +363,12 @@ async function listPayments({ client, brand, order_id }) {
  * already been recorded on this order? Used by the webhook confirm handler so a
  * re-delivered charge.success never double-records the payment.
  */
-async function paymentExistsByProviderRef({ client, brand, order_id, provider_reference }) {
+async function paymentExistsByProviderRef({
+  client,
+  brand,
+  order_id,
+  provider_reference,
+}) {
   if (!provider_reference) return false;
   const { rows } = await ex(client)(
     `SELECT 1 FROM ${t(brand, "sales_order_payments")}

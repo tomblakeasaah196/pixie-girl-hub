@@ -1,0 +1,374 @@
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Montserrat:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* ═══ RESETS ═══ */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Kill the up/down spinner arrows on every number input, app-wide.
+   Combined with the global wheel-guard in AppShell, this stops figures
+   from changing on their own when the page is scrolled over a focused
+   amount/qty box. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+html,
+
+/* ═══ DESIGN TOKEN DEFAULTS ═══
+   "R G B" triplets consumed by tailwind.config.ts as
+   rgb(var(--token) / alpha). These defaults render the app fully
+   branded before JS runs; providers/ThemeProvider.tsx overwrites
+   them at runtime from GET /api/branding (platform_settings), and
+   sets the --biz-* set from the active business's config. */
+:root {
+  --brand-black: 10 9 8;
+  --brand-charcoal: 26 24 20;
+  --brand-graphite: 42 37 32;
+  --brand-ink: 58 52 46;
+  --brand-cream: 240 234 224;
+  --brand-cloud: 200 194 184;
+  --brand-smoke: 106 101 96;
+  --brand-stone: 158 152 145;
+  --brand-accent: 201 168 108;
+  --brand-accent-dim: 138 106 48;
+  --brand-accent-glow: 217 188 135;
+  --accent2: 139 157 119;
+  --accent2-dim: 111 126 94;
+  --accent2-glow: 168 184 148;
+  --accent3: 183 110 121;
+  --accent3-dim: 149 88 98;
+  --accent3-glow: 208 142 151;
+  --surface-light: 240 234 224;
+  --surface-light-soft: 230 223 211;
+  --surface-light-deep: 217 208 194;
+  --state-success: 139 157 119;
+  --state-warn: 217 167 65;
+  --state-danger: 199 91 91;
+  --state-info: 122 143 168;
+  /* Active business accent (layer-2) — defaults to the platform
+     accent until the ThemeProvider knows the active business. */
+  --biz-accent: 201 168 108;
+  --biz-accent-dim: 138 106 48;
+  --biz-accent-glow: 217 188 135;
+  --font-display: "Cormorant Garamond";
+  --font-body: "Montserrat";
+  --font-mono: "JetBrains Mono";
+}
+
+body {
+  background: rgb(var(--brand-black));
+  color: rgb(var(--brand-cream));
+}
+body {
+  font-family:
+    var(--font-body),
+    -apple-system,
+    sans-serif;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* CRITICAL BRAND RULE:
+   The accent colour is used SPARINGLY — never as fill.
+   Never use pure white (#FFFFFF) as a background — use the light
+   surface token (cream by default). */
+
+/* ═══ SCROLLBAR ═══ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--brand-charcoal));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--brand-smoke));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--brand-stone));
+}
+
+/* Cream-surface scrollbars */
+.surface-light ::-webkit-scrollbar-track {
+  background: rgb(var(--surface-light-soft));
+}
+.surface-light ::-webkit-scrollbar-thumb {
+  background: rgb(var(--brand-cloud));
+}
+
+/* ═══ SELECTION & FOCUS ═══ */
+::selection {
+  background: rgb(var(--brand-accent) / 0.25);
+  color: rgb(var(--brand-cream));
+}
+:focus-visible {
+  outline: 2px solid rgb(var(--brand-accent));
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ═══ HELP CENTER PROSE ═══ */
+.prose-help h3 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: rgb(var(--brand-cream));
+  margin: 1.25rem 0 0.5rem;
+}
+.prose-help h3:first-child {
+  margin-top: 0;
+}
+.prose-help p {
+  margin: 0.5rem 0;
+}
+.prose-help ol,
+.prose-help ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+.prose-help ol {
+  list-style: decimal;
+}
+.prose-help ul {
+  list-style: disc;
+}
+.prose-help li {
+  margin: 0.25rem 0;
+}
+.prose-help strong {
+  color: rgb(var(--brand-cream));
+  font-weight: 600;
+}
+.prose-help a {
+  color: rgb(var(--brand-accent));
+  text-decoration: none;
+}
+.prose-help a:hover {
+  text-decoration: underline;
+}
+
+/* ═══ APP-WIDE ANIMATIONS ═══ */
+@keyframes splash-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 60px rgb(var(--brand-accent) / 0.15);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 80px rgb(var(--brand-accent) / 0.3);
+  }
+}
+@keyframes splash-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes app-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+@keyframes tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes border-trace {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.animate-splash-pulse {
+  animation: splash-pulse 2s ease-in-out infinite;
+}
+.animate-splash-text {
+  opacity: 0;
+  animation: splash-text-in 0.8s 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.animate-app-in {
+  animation: app-in 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.animate-shake {
+  animation: shake 0.4s ease;
+}
+.animate-tile-in {
+  animation: tile-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Stagger helper for grid children */
+.stagger > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 0.18s;
+}
+.stagger > *:nth-child(6) {
+  animation-delay: 0.22s;
+}
+.stagger > *:nth-child(7) {
+  animation-delay: 0.26s;
+}
+.stagger > *:nth-child(8) {
+  animation-delay: 0.3s;
+}
+.stagger > *:nth-child(9) {
+  animation-delay: 0.34s;
+}
+.stagger > *:nth-child(10) {
+  animation-delay: 0.38s;
+}
+.stagger > *:nth-child(11) {
+  animation-delay: 0.42s;
+}
+.stagger > *:nth-child(12) {
+  animation-delay: 0.46s;
+}
+
+/* ═══ HELPERS ═══ */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.btn-shimmer {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
+  transition: left 0.6s;
+}
+.shimmer-trigger:hover .btn-shimmer {
+  left: 100%;
+}
+
+.bg-panel-left {
+  background:
+    radial-gradient(
+      ellipse at 20% 0%,
+      rgb(var(--brand-accent) / 0.04) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 100%,
+      rgb(var(--brand-accent) / 0.03) 0%,
+      transparent 50%
+    ),
+    rgb(var(--brand-black));
+}
+
+.bg-grid-noise {
+  background-image:
+    radial-gradient(
+      ellipse at 10% 0%,
+      rgb(var(--brand-accent) / 0.05) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 90% 100%,
+      rgb(var(--brand-accent) / 0.03) 0%,
+      transparent 50%
+    ),
+    linear-gradient(180deg, rgb(var(--brand-black)) 0%, rgb(var(--brand-charcoal)) 100%);
+}
+
+/* Animated gold border (used sparingly on premium CTAs) */
+.gold-border {
+  background:
+    linear-gradient(rgb(var(--brand-black)), rgb(var(--brand-black))) padding-box,
+    linear-gradient(120deg, rgb(var(--brand-accent-dim)), rgb(var(--brand-accent)), rgb(var(--brand-accent-glow)), rgb(var(--brand-accent)), rgb(var(--brand-accent-dim)))
+      border-box;
+  background-size: 200% 100%;
+  border: 1px solid transparent;
+  animation: border-trace 6s linear infinite;
+}
+
+/* Tap targets: mobile inputs at least 44px high */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea,
+  button {
+    min-height: 44px;
+  }
+}
+
+/* Safe-area for mobile bottom nav */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+}
+.bottom-safe {
+  bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}

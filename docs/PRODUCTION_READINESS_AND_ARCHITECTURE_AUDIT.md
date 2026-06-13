@@ -1,8 +1,8 @@
 # Pixie Girl Hub — Principal-Engineer Production-Readiness & Architecture Audit
 
 **Auditor role:** Incoming Principal/Staff Engineer, independent review
-**Date:** 2026-06-13
-**Subject:** `pixie-girl-hub` backend monorepo (commit `970a3a9`, branch `claude/kind-edison-2h5zbb`)
+**Date:** 2026-06-13 · **Rev. 2** (2026-06-13: multitenancy/provisioning correction + white-label addendum §11)
+**Subject:** `pixie-girl-hub` backend monorepo (originally reviewed at commit `970a3a9`/`claude/kind-edison-2h5zbb`; rev. 2 on `1635f94`/`claude/trusting-sagan-3nd759`)
 **Targets of comparison (intent):** Product Description **v2.2** (pre-final) + **CEO Meeting Minutes** (final decisions). Code is treated as the source of truth for *reality*; the two documents as the source of truth for *intent*.
 **Target hardware (reality of deployment):** `hub.pixiegirlglobal.com` — **8 vCPU / 18 GB RAM / 240 GB SSD / 300 Mbps**, single VPS.
 
@@ -50,6 +50,7 @@ These are real strengths and should be protected during remediation:
 | **Injection resistance** | Brand interpolated into schema names is guarded by `assertBrand`/`VALID.has` + strict identifier regex (`config/brands.js:54,71-81`); dynamic UPDATE builders iterate **hardcoded column allowlists** (`pos.repo.js:20-30`, `accounting.repo.js:28-36`) — **no SQL injection found via brand or column names** | Genuinely safe |
 | **Access matrix** | The spec's Role×Module grants are now **seeded** for all 8 named roles (`000207_shared_access_matrix_seed.sql`) — supersedes the team's older "only owner seeded" finding | Engine + data both present |
 | **Reliability plumbing** | Transactional outbox with `SKIP LOCKED` polling, idempotent `order.paid` consumers, drain-ordered graceful shutdown with force-exit failsafe (`server.js:91-138`) | Thoughtful |
+| **Dynamic business provisioning** | A new entity is *not* a code change: `business-provision.service.js` (CEO-gated `business_setup:create`) regex-validates the key, `CREATE SCHEMA`, seeds `shared.business_config`, applies every `migrations/template/*.template`, verifies the table count, and calls `registerBrand()` so it serves traffic **with no restart**; the live brand registry (`config/brands.js` — `refreshBrands`/`registerBrand`, mutated-in-place Set) replaces the old hardcoded allowlist; `bootstrap-business.js` is the offline twin. Rolls back a half-built schema on failure. | Genuinely strong; the spine of any white-label use (see §11) |
 
 The earlier internal worry that modules were "350-line skeletons" no longer holds — most modules carry 600–1,400 LOC of real logic.
 
@@ -60,7 +61,7 @@ The earlier internal worry that modules were "350-line skeletons" no longer hold
 **Multitenancy = schema-per-tenant, not row-level.** Per-brand data lives in physically separate Postgres schemas `pixiegirl.*` and `faitlynhair.*`; shared/global data lives in `shared.*`. Repos build `"<brand>.<table>"` by string interpolation, guarded by `assertBrand`. This is a deliberate, defensible choice for **two** entities and gives strong isolation **as long as every repo scopes correctly** — but it has three consequences the audit returns to:
 - The spec's literal mandate — *"row-level security on `entity_id`"* — does **not** describe this system. Per-brand tables have no `entity_id` and no RLS; isolation is the schema name, chosen in application code.
 - There is **no working data-layer backstop**. One repo using the wrong brand variable, or a missing scope filter, is a silent cross-company leak with nothing to catch it (see SEC-2).
-- **Operational cost scales by tenant:** adding a third entity = **+~173 tables** and re-running every `migrations/template/*.template` against a new schema; every future schema change is an ×N migration. Fine for 2; plan for it before 3.
+- **Adding an entity is automated, not a code change** (correction to rev. 1): a third entity is provisioned at runtime through `business-provision.service.js` / `bootstrap-business.js` and goes live with no restart via the brand registry (§2). What *does* scale by tenant is **storage and migration fan-out**: each new entity stamps **+~173 tables** from the templates, and every future per-brand schema change is an ×N migration with no central rollout tooling. Fine for 2–3 entities in one DB; the real ceiling is dozens-of-tenants-per-database (addressed by the per-instance-per-client model in §11), not "can we add a third business."
 
 **Process & deploy model (as shipped).** `docker-compose.yml` runs Postgres, Redis, one `api` container (`ENABLE_WORKERS=false`), and one `worker` container — all on the single VPS. There is **no nginx, no TLS terminator, no CDN, no media server, no clustering, and no Postgres tuning** anywhere in the repo. `helmet`'s CSP is disabled with the comment *"storefront has its own CSP via Next.js"* (`middleware/index.js:26`) — confirming the intended frontends live in a **separate, not-yet-existing** Next.js codebase.
 
@@ -360,5 +361,24 @@ CRM ✅ · Sales+installments ✅ (math untested) · POS ✅ · **Storefront/mul
 - AI/RAG: `src/modules/praxis_ai/praxis.orchestrator.js:34-43,137,211-242`; `praxis.service.js:196-229`; `praxis.repo.js:170-183`; `src/services/embeddings.service.js`; `scripts/rag-reembed.js:12`; `migrations/000012_shared_ai.sql`.
 - Perf/memory/infra: `src/services/storage.service.js:36-38`; `src/shared/documents/documents.controller.js:54-62`; `*/*.routes.js` multer (`catalogue:18-21`, `documents:20-23`, `expenses:20-23`); `src/middleware/index.js:46,82-94,103-112`; `src/config/redis.js:5`; `Dockerfile`; `docker-compose.yml`; `src/jobs/worker.js:84`.
 
+## 11. Addendum — white-label / multi-client direction (forward-looking)
+
+*Added in rev. 2 after a post-audit design discussion. This is strategy, not a current-state finding; it does not change the readiness grade.*
+
+The intended commercial model is **instance-per-client**: clone this one codebase, deploy it to a fresh VPS + its own Postgres/Redis per client, and onboard a new client in <1 week with **config, not code**. Assessment:
+
+- **The model is sound and the bones already support it.** Per-deployment single-tenancy gives maximum isolation, clean per-client billing, and lets each instance run few entities — which *neutralises* the schema-per-tenant scaling ceiling flagged in §3 (each client's DB only ever holds their handful of businesses). The dynamic-provisioning capability (§2) means **N businesses per client (1, 3, 4, or a new one added later) is already a runtime action, not an engineering task** — this directly answers the "can a client add a 4th business / can Faith add a 3rd next year" requirement.
+
+- **Draw a hard line: dynamic *data*, not dynamic *logic*.** Make these config/DB-driven (most already are): brand identity (name, logo, colours, fonts, domains), currencies, document prefixes, roles & permissions (already DB-seeded, §2), tax/VAT/WHT bands, deduction rules, categories, pricing rules, feature flags, SMTP, gateway credentials, copy, and storefront theme tokens. **Keep these as parameterized code, never as rows:** the ledger-must-balance / stock-can't-go-negative invariants, the data model, security rules, integrations. Storing business *logic* in DB rows creates the inner-platform effect (a slow, untestable, un-versioned language inside Postgres) — that is the trap to avoid while chasing "hardcode nothing."
+
+- **Three things stand between "possible" and "<1 week":**
+  1. **Industry-fit templates.** The 22 per-brand templates are retail/hair-shaped (catalogue, stock, production, pricing). A pure *service* client gets a pile of irrelevant tables. Needs **template variants or module on/off toggles**, not a fork-per-client.
+  2. **A config/admin UI.** Without it, "little code change" still means an engineer hand-editing seed SQL. The dynamism is wasted until there's a screen to drive it.
+  3. **Fleet tooling.** Provisioning automation (IaC: VPS + Postgres + Redis + migrate + seed), centralised monitoring/backups, and a way to roll one migration across all client instances. Without this, "clone" silently degrades into N diverging forks — at which point the <1-week promise dies.
+
+- **One non-negotiable rule:** "clone" must mean *one shared codebase deployed N times, configured per client* — never `git fork` + edit-per-client. The moment code diverges per client, it's N projects, not a product.
+
+**Net:** the data-layer dynamism is ~70% there and the provisioning spine is real; the deciding work is industry-agnostic templates + an admin UI + fleet ops. Lock the multitenancy decision (per-instance-per-client, as above) **before** building the storefronts, so they're built against the final contract.
+
 ---
-*Prepared as an independent Principal-Engineer review. Findings are evidence-based against the committed code; where intent is cited it is from Product Description v2.2 and the CEO meeting minutes. The strengths in §2 are real — the remediation roadmap is designed to protect them while closing the launch blockers.*
+*Prepared as an independent Principal-Engineer review. Findings are evidence-based against the committed code; where intent is cited it is from Product Description v2.2 and the CEO meeting minutes. The strengths in §2 are real — the remediation roadmap is designed to protect them while closing the launch blockers. Rev. 2 corrects the §3 multitenancy framing, credits dynamic provisioning in §2, and adds the white-label addendum (§11).*

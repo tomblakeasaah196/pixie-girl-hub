@@ -195,6 +195,15 @@ async function confirmReportRun(req, res) {
     }),
   });
 }
+async function generateReportRunPdf(req, res) {
+  res.status(202).json({
+    data: await service.generateReportRunPdf({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.id,
+    }),
+  });
+}
 
 module.exports = {
   overview,
@@ -223,4 +232,5 @@ module.exports = {
   listReportRuns,
   getReportRun,
   confirmReportRun,
+  generateReportRunPdf,
 };

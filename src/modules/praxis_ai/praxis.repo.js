@@ -164,6 +164,24 @@ async function setPendingStatus({ client, id, status, fields = {} }) {
   return rows[0] || null;
 }
 
+// ── RAG retrieval (X-2) ────────────────────────────────────
+// Cosine-nearest active embeddings, scoped to the business and to
+// non-sensitive material. `queryVector` is a pgvector literal string '[..]'.
+async function retrieveContext({ queryVector, business, limit = 6 }) {
+  const { rows } = await query(
+    `SELECT source_table, source_id, source_text,
+            1 - (embedding <=> $1::vector) AS score
+       FROM shared.ai_embeddings
+      WHERE is_active = true
+        AND sensitivity IN ('public','normal')
+        AND (business IS NULL OR business = $2)
+      ORDER BY embedding <=> $1::vector
+      LIMIT $3`,
+    [queryVector, business || null, limit],
+  );
+  return rows;
+}
+
 // ── Run steps (trace) ──────────────────────────────────────
 async function insertRunStep({ client, s }) {
   const { rows } = await ex(client)(
@@ -210,6 +228,7 @@ module.exports = {
   findPendingAction,
   listPendingActions,
   setPendingStatus,
+  retrieveContext,
   insertRunStep,
   listRunSteps,
 };

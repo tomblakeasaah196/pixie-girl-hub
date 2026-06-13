@@ -32,6 +32,13 @@ router.patch(
   validator.validateTerminalUpdate,
   controller.updateTerminal,
 );
+// Push a card charge to the terminal's linked Nomba POS device (D / §6.21).
+router.post(
+  "/terminals/:id/charge",
+  can("edit"),
+  validator.validateTerminalCharge,
+  controller.requestTerminalCharge,
+);
 
 // ── Staff PINs (never returned) ──────────────────────────
 router.post("/pins", can("edit"), validator.validatePinSet, controller.setPin);

@@ -10627,16 +10627,6 @@ paths:
           [{ name: code, in: path, required: true, schema: { type: string } }],
         responses: { "200": { description: Referral validity } },
       }
-  /hair-quiz:
-    post:
-      {
-        summary: "PUBLIC: submit hair quiz → lead/contact (served at /api/public/hair-quiz)",
-        tags: [retention, public],
-        security: [],
-        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
-        responses: { "201": { description: Captured } },
-      }
-
   # ── AI Governance (Module 6.31) — "AI Control" surface ───────────
   # NOTE: supersedes the generic /ai-governance CRUD stub documented earlier.
   /ai-governance/flags:
@@ -11375,3 +11365,1773 @@ paths:
         x-is-write: false,
         responses: { "200": { description: Steps } },
       }
+
+  # ══════════════════════════════════════════════════════════════════
+  # Endpoints added 2026-06-14 (payments §6.21, F-6/F-7/F-8, public links)
+  # ══════════════════════════════════════════════════════════════════
+
+  # ── Payment initiation (C / §6.21) ───────────────────────────────
+  /sales/orders/{id}/payment-link:
+    post:
+      {
+        summary: Create a gateway checkout link for an order (primary→fallback chain),
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "sales.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Checkout link } },
+      }
+
+  # ── Public tokenised pay-link (served at /api/public/pay) ─────────
+  /pay/{token}:
+    get:
+      summary: "PUBLIC: preview what an order owes (served at /api/public/pay/{token})"
+      tags: [sales, public]
+      security: []
+      parameters:
+        [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Outstanding + currency }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: "PUBLIC: generate a checkout link for an order by token"
+      tags: [sales, public]
+      security: []
+      parameters:
+        [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "201": { description: Checkout link }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Payment gateways (B / §6.21 — CEO-managed, secrets write-only) ─
+  /business-setup/payment-gateways:
+    get:
+      {
+        summary: List configured payment gateways (secrets masked),
+        tags: [business_setup],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "business_setup.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Gateways } },
+      }
+    post:
+      {
+        summary: Configure a gateway's credentials + role,
+        tags: [business_setup],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "business_setup.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Configured } },
+      }
+  /business-setup/payment-gateways/{provider}/active:
+    patch:
+      {
+        summary: Activate or deactivate a gateway,
+        tags: [business_setup],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: provider,
+              in: path,
+              required: true,
+              schema: { type: string },
+            },
+          ],
+        x-required-permission: "business_setup.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+  /business-setup/payment-gateways/{provider}/role:
+    patch:
+      {
+        summary: Set a gateway's role (primary/fallback/standalone),
+        tags: [business_setup],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: provider,
+              in: path,
+              required: true,
+              schema: { type: string },
+            },
+          ],
+        x-required-permission: "business_setup.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+  /business-setup/payment-gateways/{provider}:
+    delete:
+      {
+        summary: Remove a gateway configuration,
+        tags: [business_setup],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: provider,
+              in: path,
+              required: true,
+              schema: { type: string },
+            },
+          ],
+        x-required-permission: "business_setup.delete",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "204": { description: Removed } },
+      }
+
+  # ── Nomba POS terminal charge (D / §6.21) ─────────────────────────
+  /pos/terminals/{id}/charge:
+    post:
+      {
+        summary: Push a card charge to a linked Nomba POS terminal,
+        tags: [pos],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "pos.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Charge requested } },
+      }
+
+  # ── Social posting — live metrics refresh ─────────────────────────
+  /social/posts/{id}/metrics/refresh:
+    post:
+      {
+        summary: Pull live engagement metrics for a published post,
+        tags: [social],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "social.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Metrics } },
+      }
+
+  # ── Production landed cost + rework (F-7a/F-7b) ───────────────────
+  /production/runs/{id}/landed-cost:
+    get:
+      {
+        summary: Landed-cost breakdown for a production run,
+        tags: [production],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "production.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Landed cost } },
+      }
+  /production/runs/{id}/landed-cost/recompute:
+    post:
+      {
+        summary: Recompute a run's landed cost from current snapshots,
+        tags: [production],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "production.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Recomputed } },
+      }
+  /production/runs/{id}/rework:
+    get:
+      {
+        summary: List rework events for a run,
+        tags: [production],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "production.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Rework events } },
+      }
+  /production/runs/{id}/units/{unitId}/rework:
+    post:
+      {
+        summary: Record a rework event against a produced unit,
+        tags: [production],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+            {
+              name: unitId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "production.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Recorded } },
+      }
+
+  # ── Service-job chemical recipes + reconciliation (F-7c/d/e) ──────
+  /service-jobs/recipes:
+    get:
+      {
+        summary: List chemical recipes,
+        tags: [service_jobs],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "service_jobs.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Recipes } },
+      }
+    post:
+      {
+        summary: Create a chemical recipe,
+        tags: [service_jobs],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "service_jobs.create",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Created } },
+      }
+  /service-jobs/recipes/{id}:
+    get:
+      {
+        summary: Get a chemical recipe,
+        tags: [service_jobs],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "service_jobs.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Recipe } },
+      }
+    patch:
+      {
+        summary: Update a chemical recipe,
+        tags: [service_jobs],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "service_jobs.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+  /service-jobs/{id}/chemicals:
+    get:
+      {
+        summary: List chemical consumption for a service job,
+        tags: [service_jobs],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "service_jobs.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Consumption } },
+      }
+    post:
+      {
+        summary: Record chemical consumption on a service job,
+        tags: [service_jobs],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "service_jobs.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Recorded } },
+      }
+  /service-jobs/periods/{periodId}/chemical-reconciliation:
+    post:
+      {
+        summary: Run the monthly chemical reconciliation for a period,
+        tags: [service_jobs],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: periodId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "service_jobs.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Reconciled } },
+      }
+  /service-jobs/chemical-reconciliations:
+    get:
+      {
+        summary: List chemical reconciliations,
+        tags: [service_jobs],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "service_jobs.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Reconciliations } },
+      }
+
+  # ── HR appraisal scoring + reviews (F-8) ──────────────────────────
+  /hr/performance-cycles/{cycleId}/scores:
+    get:
+      {
+        summary: List appraisal scores for a cycle,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: cycleId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Scores } },
+      }
+    post:
+      {
+        summary: Record an appraisal score,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: cycleId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Scored } },
+      }
+  /hr/performance-cycles/{cycleId}/reviews:
+    post:
+      {
+        summary: Generate a performance review from a cycle's scores,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: cycleId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Review } },
+      }
+  /hr/performance-reviews:
+    get:
+      {
+        summary: List performance reviews,
+        tags: [hr_payroll],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "hr_payroll.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Reviews } },
+      }
+  /hr/performance-reviews/{id}:
+    get:
+      {
+        summary: Get a performance review,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Review } },
+      }
+    patch:
+      {
+        summary: Edit a performance review's content,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+  /hr/performance-reviews/{id}/advance:
+    post:
+      {
+        summary: Advance a review through its workflow,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Advanced } },
+      }
+  /hr/performance-reviews/{id}/acknowledge:
+    post:
+      {
+        summary: Employee acknowledges a performance review,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Acknowledged } },
+      }
+
+  # ── Staff invitations (admin + public accept) ─────────────────────
+  /staff-invitations:
+    get:
+      {
+        summary: List staff invitations,
+        tags: [hr_payroll],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "hr_payroll.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Invitations } },
+      }
+    post:
+      {
+        summary: Invite a staff member,
+        tags: [hr_payroll],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "hr_payroll.create",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Invited } },
+      }
+  /staff-invitations/{id}/revoke:
+    post:
+      {
+        summary: Revoke a staff invitation,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Revoked } },
+      }
+  /staff-invite:
+    get:
+      summary: "PUBLIC: preview a staff invitation (served at /api/public/staff-invite?token=)"
+      tags: [hr_payroll, public]
+      security: []
+      parameters:
+        [{ name: token, in: query, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Invitation }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /staff-invite/accept:
+    post:
+      summary: "PUBLIC: accept a staff invitation + set credentials"
+      tags: [hr_payroll, public]
+      security: []
+      responses:
+        "200": { description: Accepted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Walk-in capture (public QR + admin QR image) ──────────────────
+  /walk-in:
+    post:
+      summary: "PUBLIC: capture a walk-in customer (served at /api/public/walk-in)"
+      tags: [crm, public]
+      security: []
+      responses:
+        "201": { description: Captured }
+  /walk-in/qr:
+    get:
+      {
+        summary: Walk-in capture QR code image,
+        tags: [crm],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "crm.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: QR image } },
+      }
+
+  # ── Dashboards — report PDF (J-7) ─────────────────────────────────
+  /dashboards/report-runs/{id}/pdf:
+    post:
+      {
+        summary: Render a completed report run to PDF,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.export",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: PDF document } },
+      }
+
+  # ── Accounting — FX revaluation (J-3) ─────────────────────────────
+  /accounting/fx-revaluation:
+    get:
+      {
+        summary: List FX revaluation runs,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Runs } },
+      }
+    post:
+      {
+        summary: Run an FX revaluation (posts unrealised FX),
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Run } },
+      }
+  /accounting/fx-revaluation/{runId}:
+    get:
+      {
+        summary: Get an FX revaluation run,
+        tags: [accounting],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: runId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Run } },
+      }
+
+  # ── Invoicing — reminder log ──────────────────────────────────────
+  /invoicing/invoices/{id}/reminders:
+    get:
+      {
+        summary: List dunning reminders sent for an invoice,
+        tags: [invoicing],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "invoicing.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Reminders } },
+      }
+
+  # ── Notification preferences (F-14) ───────────────────────────────
+  /notifications/preferences:
+    get:
+      summary: My notification channel preferences
+      tags: [notifications]
+      x-entity-scope: user
+      x-is-write: false
+      responses: { "200": { description: Preferences } }
+  /notifications/preferences/{notification_type}:
+    put:
+      summary: Set my preference for one notification type
+      tags: [notifications]
+      parameters:
+        [
+          {
+            name: notification_type,
+            in: path,
+            required: true,
+            schema: { type: string },
+          },
+        ]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "200": { description: Updated } }
+
+  # ── Storefront cart + wishlist (F-6, customer self-serve) ─────────
+  /cart:
+    get:
+      summary: Get (or create) my cart
+      tags: [storefront]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-entity-scope: user
+      x-is-write: false
+      responses: { "200": { description: Cart } }
+    delete:
+      summary: Empty my cart
+      tags: [storefront]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "200": { description: Cleared } }
+  /cart/items:
+    post:
+      summary: Add an item to my cart
+      tags: [storefront]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "201": { description: Added } }
+  /cart/items/{itemId}:
+    put:
+      summary: Update a cart item quantity
+      tags: [storefront]
+      parameters:
+        [
+          { $ref: "#/components/parameters/BrandContext" },
+          {
+            name: itemId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "200": { description: Updated } }
+    delete:
+      summary: Remove a cart item
+      tags: [storefront]
+      parameters:
+        [
+          { $ref: "#/components/parameters/BrandContext" },
+          {
+            name: itemId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "200": { description: Removed } }
+  /cart/apply-coupon:
+    post:
+      summary: Apply a coupon to my cart
+      tags: [storefront]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "200": { description: Applied } }
+  /cart/merge:
+    post:
+      summary: Merge a guest cart into my cart
+      tags: [storefront]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "200": { description: Merged } }
+  /wishlist:
+    get:
+      summary: My wishlist
+      tags: [storefront]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-entity-scope: user
+      x-is-write: false
+      responses: { "200": { description: Wishlist } }
+    post:
+      summary: Add a variant to my wishlist
+      tags: [storefront]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "201": { description: Added } }
+  /wishlist/{variantId}:
+    delete:
+      summary: Remove a variant from my wishlist
+      tags: [storefront]
+      parameters:
+        [
+          { $ref: "#/components/parameters/BrandContext" },
+          {
+            name: variantId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      x-entity-scope: user
+      x-is-write: true
+      responses: { "200": { description: Removed } }
+
+  # ══════════════════════════════════════════════════════════════════
+  # Backfill 2026-06-14 — pre-existing routes previously undocumented
+  # ══════════════════════════════════════════════════════════════════
+
+  # ── Accounting — chart of accounts, periods, journals, reports ────
+  /accounting/accounts:
+    get:
+      {
+        summary: List accounts (chart of accounts),
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Accounts } },
+      }
+    post:
+      {
+        summary: Create an account,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.create",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Created } },
+      }
+  /accounting/accounts/{accountId}:
+    get:
+      {
+        summary: Get an account,
+        tags: [accounting],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: accountId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Account } },
+      }
+    patch:
+      {
+        summary: Update an account,
+        tags: [accounting],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: accountId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "accounting.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+  /accounting/periods:
+    get:
+      {
+        summary: List fiscal periods,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Periods } },
+      }
+    post:
+      {
+        summary: Open a fiscal period,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.create",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Created } },
+      }
+  /accounting/periods/{periodId}/close:
+    post:
+      {
+        summary: Close a fiscal period,
+        tags: [accounting],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: periodId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "accounting.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Closed } },
+      }
+  /accounting/journals:
+    get:
+      {
+        summary: List journal entries,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Journals } },
+      }
+    post:
+      {
+        summary: Post a manual journal entry,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.create",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Posted } },
+      }
+  /accounting/journals/{entryId}:
+    get:
+      {
+        summary: Get a journal entry,
+        tags: [accounting],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: entryId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Journal } },
+      }
+  /accounting/journals/{entryId}/reverse:
+    post:
+      {
+        summary: Reverse a journal entry,
+        tags: [accounting],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: entryId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "accounting.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Reversed } },
+      }
+  /accounting/reports/cash-flow:
+    get:
+      {
+        summary: Cash-flow statement,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Cash flow } },
+      }
+  /accounting/reports/ar-ageing:
+    get:
+      {
+        summary: Accounts-receivable ageing,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: AR ageing } },
+      }
+  /accounting/reports/ap-ageing:
+    get:
+      {
+        summary: Accounts-payable ageing,
+        tags: [accounting],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: AP ageing } },
+      }
+  /accounting/tax-filings/{filingId}:
+    get:
+      {
+        summary: Get a tax filing,
+        tags: [accounting],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: filingId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "accounting.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Filing } },
+      }
+  /accounting/fx-revaluation/{runId}/reverse:
+    post:
+      {
+        summary: Reverse an FX revaluation run,
+        tags: [accounting],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: runId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "accounting.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Reversed } },
+      }
+
+  # ── Dashboards — saved reports, configs, widgets, templates, runs ─
+  /dashboards/saved-reports:
+    get:
+      {
+        summary: List saved reports,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Saved reports } },
+      }
+    post:
+      {
+        summary: Save a report,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Saved } },
+      }
+  /dashboards/saved-reports/{id}:
+    get:
+      {
+        summary: Get a saved report,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Saved report } },
+      }
+    patch:
+      {
+        summary: Update a saved report,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+    delete:
+      {
+        summary: Delete a saved report,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "204": { description: Deleted } },
+      }
+  /dashboards/configs:
+    get:
+      {
+        summary: List dashboard configs,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Configs } },
+      }
+    post:
+      {
+        summary: Create a dashboard config,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Created } },
+      }
+  /dashboards/configs/{id}:
+    get:
+      {
+        summary: Get a dashboard config,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Config } },
+      }
+    patch:
+      {
+        summary: Update a dashboard config,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+    delete:
+      {
+        summary: Delete a dashboard config,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "204": { description: Deleted } },
+      }
+  /dashboards/widgets:
+    get:
+      {
+        summary: List dashboard widgets,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Widgets } },
+      }
+    post:
+      {
+        summary: Create a widget,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.create",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Created } },
+      }
+  /dashboards/widgets/{id}:
+    patch:
+      {
+        summary: Update a widget,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+  /dashboards/report-templates:
+    get:
+      {
+        summary: List report templates,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Templates } },
+      }
+    post:
+      {
+        summary: Create a report template,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.create",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Created } },
+      }
+  /dashboards/report-templates/{id}:
+    get:
+      {
+        summary: Get a report template,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Template } },
+      }
+    patch:
+      {
+        summary: Update a report template,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+  /dashboards/report-runs:
+    get:
+      {
+        summary: List report runs,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Runs } },
+      }
+  /dashboards/report-runs/{id}:
+    get:
+      {
+        summary: Get a report run,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Run } },
+      }
+  /dashboards/report-runs/{id}/confirm:
+    post:
+      {
+        summary: Confirm a report run,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Confirmed } },
+      }
+
+  # ── Business setup — businesses + email signatures ────────────────
+  /business-setup/businesses:
+    get:
+      {
+        summary: List businesses,
+        tags: [business_setup],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "business_setup.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Businesses } },
+      }
+    post:
+      {
+        summary: Provision a new business,
+        tags: [business_setup],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "business_setup.create",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Provisioned } },
+      }
+  /business-setup/email-signature-template:
+    get:
+      {
+        summary: Get the brand email-signature template,
+        tags: [business_setup],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "business_setup.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Template } },
+      }
+    put:
+      {
+        summary: Set the brand email-signature template,
+        tags: [business_setup],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "business_setup.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+  /business-setup/email-signatures:
+    get:
+      {
+        summary: List rendered staff email signatures,
+        tags: [business_setup],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "business_setup.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Signatures } },
+      }
+  /business-setup/email-signatures/{userId}:
+    get:
+      {
+        summary: Get a staff member's email signature,
+        tags: [business_setup],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: userId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "business_setup.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Signature } },
+      }
+    put:
+      {
+        summary: Generate/refresh a staff member's email signature,
+        tags: [business_setup],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: userId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "business_setup.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Generated } },
+      }
+
+  # ── Sales — order timeline ────────────────────────────────────────
+  /sales/orders/{id}/timeline:
+    get:
+      {
+        summary: Order status timeline,
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "sales.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Timeline } },
+      }
+    post:
+      {
+        summary: Append an entry to an order's timeline,
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "sales.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "201": { description: Recorded } },
+      }
+
+  # ── Logistics — delivery letter PDF (X-1) ─────────────────────────
+  /logistics/deliveries/{id}/letter:
+    post:
+      {
+        summary: Render a delivery letter to PDF,
+        tags: [logistics],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "logistics.view",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: PDF document } },
+      }
+
+  # ── Invoicing — cancel a scheduled reminder ───────────────────────
+  /invoicing/invoices/{id}/reminders/{reminderId}:
+    delete:
+      {
+        summary: Cancel a scheduled invoice reminder,
+        tags: [invoicing],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+            {
+              name: reminderId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "invoicing.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "204": { description: Cancelled } },
+      }
+
+  # ── Public storefront — content + analytics ingestion (B-7) ───────
+  /catalogue/content/{type}/{slug}:
+    get:
+      summary: "PUBLIC: storefront content page by type + slug"
+      tags: [storefront, public]
+      security: []
+      parameters:
+        [
+          { name: type, in: path, required: true, schema: { type: string } },
+          { name: slug, in: path, required: true, schema: { type: string } },
+        ]
+      responses:
+        "200": { description: Content }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /catalogue/analytics/sessions:
+    post:
+      summary: "PUBLIC: start a storefront analytics session"
+      tags: [storefront, public]
+      security: []
+      responses: { "201": { description: Session } }
+  /catalogue/analytics/page-views:
+    post:
+      summary: "PUBLIC: record a storefront page view"
+      tags: [storefront, public]
+      security: []
+      responses: { "201": { description: Recorded } }
+  /catalogue/analytics/funnel-events:
+    post:
+      summary: "PUBLIC: record a storefront funnel event"
+      tags: [storefront, public]
+      security: []
+      responses: { "201": { description: Recorded } }
+
+  # ── Public hair quiz (retention) ──────────────────────────────────
+  /hair-quiz:
+    get:
+      summary: "PUBLIC: fetch the published hair quiz"
+      tags: [retention, public]
+      security: []
+      responses: { "200": { description: Quiz } }
+  /hair-quiz/submit:
+    post:
+      summary: "PUBLIC: submit hair-quiz answers (captures a lead)"
+      tags: [retention, public]
+      security: []
+      responses: { "201": { description: Submitted } }
+
+  # ── Public install-hub + order timeline ───────────────────────────
+  /install-hub/{token}:
+    get:
+      summary: "PUBLIC: stylist install-hub payload by token"
+      tags: [storefront, public]
+      security: []
+      parameters:
+        [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Hub }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /order-timeline/{token}:
+    get:
+      summary: "PUBLIC: customer-facing order timeline by token"
+      tags: [sales, public]
+      security: []
+      parameters:
+        [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Timeline }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ══════════════════════════════════════════════════════════════════
+  # Auth (served at /api/v1/auth — issues/refreshes JWTs, no auth) + Webhooks
+  # ══════════════════════════════════════════════════════════════════
+
+  /auth/refresh:
+    post:
+      summary: Exchange a refresh token for a new access token
+      security: []
+      tags: [auth]
+      responses:
+        "200": { description: Refreshed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/logout:
+    post:
+      summary: Revoke the current session/refresh token
+      security: []
+      tags: [auth]
+      responses:
+        "200": { description: Logged out }
+  /auth/forgot-password:
+    post:
+      summary: Request a password-reset email
+      security: []
+      tags: [auth]
+      responses:
+        "202": { description: Reset email queued if the account exists }
+  /auth/reset-password:
+    post:
+      summary: Reset a password using a reset token
+      security: []
+      tags: [auth]
+      responses:
+        "200": { description: Password reset }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+  # ── Webhooks (served at /api/webhooks — signature-authenticated) ──
+  /webhooks/paystack:
+    post:
+      summary: "WEBHOOK: Paystack payment events (HMAC-SHA512 x-paystack-signature)"
+      security: []
+      tags: [webhooks]
+      responses:
+        "200": { description: Acknowledged }
+  /webhooks/opay:
+    post:
+      summary: "WEBHOOK: OPay payment events (HMAC-SHA512)"
+      security: []
+      tags: [webhooks]
+      responses:
+        "200": { description: Acknowledged }
+  /webhooks/stripe:
+    post:
+      summary: "WEBHOOK: Stripe events (constructEvent over raw body, stripe-signature)"
+      security: []
+      tags: [webhooks]
+      responses:
+        "200": { description: Acknowledged }
+  /webhooks/nomba:
+    post:
+      summary: "WEBHOOK: Nomba payment + terminal events (HMAC-SHA256)"
+      security: []
+      tags: [webhooks]
+      responses:
+        "200": { description: Acknowledged }
+  /webhooks/meta/whatsapp:
+    get:
+      summary: "WEBHOOK: Meta WhatsApp subscription verification (hub.challenge)"
+      security: []
+      tags: [webhooks]
+      parameters:
+        [
+          { name: "hub.mode", in: query, schema: { type: string } },
+          { name: "hub.verify_token", in: query, schema: { type: string } },
+          { name: "hub.challenge", in: query, schema: { type: string } },
+        ]
+      responses:
+        "200": { description: Challenge echoed }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: "WEBHOOK: Meta WhatsApp inbound messages + status callbacks"
+      security: []
+      tags: [webhooks]
+      responses:
+        "200": { description: Acknowledged }
+  /webhooks/meta/instagram:
+    get:
+      summary: "WEBHOOK: Meta Instagram subscription verification (hub.challenge)"
+      security: []
+      tags: [webhooks]
+      parameters:
+        [
+          { name: "hub.mode", in: query, schema: { type: string } },
+          { name: "hub.verify_token", in: query, schema: { type: string } },
+          { name: "hub.challenge", in: query, schema: { type: string } },
+        ]
+      responses:
+        "200": { description: Challenge echoed }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: "WEBHOOK: Meta Instagram inbound messages + comment callbacks"
+      security: []
+      tags: [webhooks]
+      responses:
+        "200": { description: Acknowledged }
+  /webhooks/chowdeck:
+    post:
+      summary: "WEBHOOK: Chowdeck delivery status callbacks"
+      security: []
+      tags: [webhooks]
+      responses:
+        "200": { description: Acknowledged }
+  /webhooks/gigl:
+    post:
+      summary: "WEBHOOK: GIGL logistics status callbacks"
+      security: []
+      tags: [webhooks]
+      responses:
+        "200": { description: Acknowledged }

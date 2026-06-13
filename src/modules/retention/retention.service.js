@@ -186,7 +186,7 @@ async function adjustPoints({
 }
 
 // ── Referral ───────────────────────────────────────────────
-function buildCode(contact, brand) {
+function buildCode(contact) {
   const base = (contact.first_name || contact.display_name || "REF")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
@@ -203,7 +203,7 @@ async function getOrCreateReferral({ brand, contact_id, contact }) {
       contact_id,
     });
     if (existing) return existing;
-    let code = buildCode(contact || { display_name: "REF" }, brand);
+    let code = buildCode(contact || { display_name: "REF" });
     // Retry once on the (unlikely) unique collision.
     try {
       return await repo.insertReferral({
@@ -212,7 +212,7 @@ async function getOrCreateReferral({ brand, contact_id, contact }) {
         contact_id,
         referral_code: code,
       });
-    } catch (_e) {
+    } catch {
       code = `${code}${Math.floor(Math.random() * 90 + 10)}`;
       return repo.insertReferral({
         client,

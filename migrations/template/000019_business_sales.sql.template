@@ -369,9 +369,9 @@ CREATE TABLE {{BUSINESS}}.sales_order_payments (
   -- Payment method
   method                TEXT        NOT NULL
                         CHECK (method IN ('paystack_card','paystack_transfer','paystack_ussd',
-                                          'opay','nomba_terminal','bank_transfer',
-                                          'cash','pos_card','pay_on_delivery','wallet','points',
-                                          'subscription_recurring')),
+                                          'opay','nomba_terminal','nomba_online','stripe_card',
+                                          'bank_transfer','cash','pos_card','pay_on_delivery',
+                                          'wallet','points','subscription_recurring')),
   -- Provider reference
   provider              TEXT,                                    -- 'paystack','opay','nomba','manual'
   provider_reference    TEXT,                                    -- transaction ID

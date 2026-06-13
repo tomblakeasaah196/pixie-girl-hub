@@ -1,71 +1,62 @@
 /**
- * AI usage metering + budget enforcement (V2.2 §6.31).
+ * AI usage metering + budget enforcement (V2.2 §6.31) — thin facade.
  *
- * Every AI call MUST go through `meteredCall()`:
- *   - Pre-check: is the feature enabled? are we under the hard cap?
- *   - Make the call
- *   - Post: write to ai_usage_ledger, broadcast new total on system:ai_usage_meter
- *
- * Soft cap → CEO gets a warning notification.
- * Hard cap → AI paused gracefully; Tier-1 deterministic insights keep working.
+ * The canonical guards/ledger live in AI Governance (shared.ai_usage +
+ * ai_budget_periods, with the budget-rollup trigger). This wraps a call:
+ *   pre-check governance.canUseFeature → run callFn → governance.recordUsage.
+ * Hard cap / disabled flag → throws; soft-cap warnings are handled in
+ * governance. Use this for any ad-hoc AI call outside the Praxis orchestrator
+ * (which records usage itself).
  */
 
 "use strict";
 
-const { query } = require("../config/database");
+const governance = require("../modules/ai_governance/governance.service");
 const { AppError } = require("../utils/errors");
 
-async function meteredCall({ feature_key, vendor, model, user_id, callFn }) {
-  // 1. Verify feature flag
-  const { rows: ff } = await query(
-    `SELECT is_enabled FROM shared.ai_feature_flags WHERE feature_key = $1`,
-    [feature_key],
-  );
-  if (!ff[0] || !ff[0].is_enabled) {
+async function meteredCall({
+  feature_key,
+  vendor,
+  model,
+  user_id,
+  business = null,
+  is_ceo = false,
+  callFn,
+}) {
+  const guard = await governance.canUseFeature({
+    user_id,
+    feature_key,
+    is_ceo,
+  });
+  if (!guard.ok)
     throw new AppError(
-      "AI_FEATURE_DISABLED",
-      `Feature ${feature_key} is currently disabled`,
-      503,
+      "AI_UNAVAILABLE",
+      `AI unavailable: ${guard.reason}`,
+      guard.reason === "BUDGET_HARD_CAP" ? 402 : 503,
     );
-  }
 
-  // 2. Check budget
-  const { rows: budget } = await query(
-    `SELECT period_start, period_end, soft_cap_ngn, hard_cap_ngn, current_spend_ngn
-       FROM shared.ai_budget_periods
-      WHERE is_active = true AND CURRENT_DATE BETWEEN period_start AND period_end
-      LIMIT 1`,
-  );
-  if (
-    budget[0] &&
-    Number(budget[0].current_spend_ngn) >= Number(budget[0].hard_cap_ngn)
-  ) {
-    throw new AppError(
-      "AI_BUDGET_EXHAUSTED",
-      "AI budget reached for this period",
-      402,
-    );
-  }
-
-  // 3. Make the call
   const result = await callFn();
 
-  // 4. Record usage
-  await query(
-    `INSERT INTO shared.ai_usage_ledger
-       (user_id, feature_key, vendor, model, input_tokens, output_tokens, cost_ngn, occurred_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, now())`,
-    [
-      user_id,
-      feature_key,
-      vendor,
-      model,
-      result.input_tokens || 0,
-      result.output_tokens || 0,
-      result.cost_ngn || 0,
-    ],
-  );
-
+  try {
+    await governance.recordUsage({
+      usage: {
+        user_id,
+        feature_key,
+        business,
+        provider: vendor,
+        model,
+        call_type: "chat_completion",
+        input_tokens: (result && result.input_tokens) || 0,
+        output_tokens: (result && result.output_tokens) || 0,
+        total_tokens: (result && result.total_tokens) || 0,
+        cost_native: (result && result.cost_ngn) || 0,
+        cost_ngn: (result && result.cost_ngn) || 0,
+        was_successful: true,
+      },
+    });
+  } catch {
+    // metering must never break the call result
+  }
   return result;
 }
 

@@ -65,6 +65,14 @@ const getDelivery = async (req, res) =>
   res.json({
     data: await service.getDelivery({ brand: req.brand, id: req.params.id }),
   });
+const deliveryLetter = async (req, res) =>
+  res.status(201).json({
+    data: await service.deliveryLetterPdf({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.id,
+    }),
+  });
 const createDelivery = async (req, res) =>
   res.status(201).json({
     data: await service.createDelivery({ ...base(req), input: req.body }),
@@ -190,6 +198,7 @@ module.exports = {
   updateCourier,
   listDeliveries,
   getDelivery,
+  deliveryLetter,
   createDelivery,
   bookDelivery,
   advanceDelivery,

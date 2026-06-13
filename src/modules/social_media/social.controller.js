@@ -65,6 +65,11 @@ async function recordMetrics(req, res) {
     }),
   });
 }
+async function refreshMetrics(req, res) {
+  res.json({
+    data: await service.refreshMetrics({ brand: req.brand, id: req.params.id }),
+  });
+}
 async function ingestInboundDM(req, res) {
   res.status(201).json({
     data: await service.ingestInboundDM({ ...base(req), input: req.body }),
@@ -80,5 +85,6 @@ module.exports = {
   createPost,
   publishPost,
   recordMetrics,
+  refreshMetrics,
   ingestInboundDM,
 };

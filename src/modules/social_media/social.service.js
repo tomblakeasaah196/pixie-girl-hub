@@ -12,6 +12,7 @@
 const repo = require("./social.repo");
 const events = require("./social.events");
 const smartcomm = require("../smartcomm/smartcomm.service");
+const publisher = require("../../services/social-publisher.service");
 const { audit } = require("../../middleware/audit");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
@@ -91,29 +92,88 @@ async function createPost({ brand, user, request_id, input }) {
   events.emit("post.created", { brand, post_id: post.post_id });
   return post;
 }
+/**
+ * Publish a post. Two paths:
+ *   - external_post_id supplied → record an already-published post (manual).
+ *   - otherwise → actually publish to the platform via the publisher service,
+ *     marking the row publishing → published (+ external id/url) or failed.
+ */
 async function publishPost({ brand, user, request_id, id, external_post_id }) {
   const p = await repo.getPost({ brand, id });
   if (!p) throw new NotFoundError("Post");
-  const updated = await repo.setPostStatus({
-    brand,
-    id,
-    status: "published",
-    fields: {
-      published_at: new Date().toISOString(),
-      external_post_id: external_post_id || p.external_post_id,
-    },
-  });
-  await A(
-    brand,
-    user,
-    "social.post.publish",
-    "social_post",
-    id,
-    null,
-    request_id,
-  );
-  events.emit("post.published", { brand, post_id: id });
-  return updated;
+
+  if (external_post_id) {
+    const updated = await repo.setPostStatus({
+      brand,
+      id,
+      status: "published",
+      fields: {
+        published_at: new Date().toISOString(),
+        external_post_id,
+      },
+    });
+    await A(
+      brand,
+      user,
+      "social.post.publish",
+      "social_post",
+      id,
+      { manual: true },
+      request_id,
+    );
+    events.emit("post.published", { brand, post_id: id });
+    return updated;
+  }
+
+  if (!publisher.isPlatformConfigured(p.platform))
+    throw new AppError(
+      "SOCIAL_NOT_CONFIGURED",
+      `${p.platform} publishing is not configured`,
+      503,
+    );
+
+  await repo.setPostStatus({ brand, id, status: "publishing" });
+  try {
+    const res = await publisher.publish(p);
+    const updated = await repo.setPostStatus({
+      brand,
+      id,
+      status: "published",
+      fields: {
+        published_at: new Date().toISOString(),
+        external_post_id: res.external_post_id || null,
+        external_url: res.permalink || null,
+        failure_message: null,
+      },
+    });
+    await A(
+      brand,
+      user,
+      "social.post.publish",
+      "social_post",
+      id,
+      { platform: p.platform, external_post_id: res.external_post_id },
+      request_id,
+    );
+    events.emit("post.published", { brand, post_id: id });
+    return updated;
+  } catch (err) {
+    await repo.setPostStatus({
+      brand,
+      id,
+      status: "failed",
+      fields: { failure_message: String((err && err.message) || err) },
+    });
+    if (err instanceof AppError) throw err;
+    throw new AppError(
+      "PUBLISH_FAILED",
+      `Publish to ${p.platform} failed`,
+      502,
+      {
+        metadata: { cause: err.message },
+      },
+    );
+  }
 }
 async function recordMetrics({ brand, id, metric_date, metrics }) {
   const p = await repo.getPost({ brand, id });
@@ -123,6 +183,26 @@ async function recordMetrics({ brand, id, metric_date, metrics }) {
     post_id: id,
     metric_date: metric_date || new Date().toISOString().slice(0, 10),
     m: metrics || {},
+  });
+}
+
+/** Pull live metrics from the platform for a published post and upsert them. */
+async function refreshMetrics({ brand, id }) {
+  const p = await repo.getPost({ brand, id });
+  if (!p) throw new NotFoundError("Post");
+  if (!p.external_post_id)
+    throw new AppError(
+      "NOT_PUBLISHED",
+      "Post has no external id to pull metrics for",
+      409,
+    );
+  const m = await publisher.fetchMetrics(p.platform, p.external_post_id);
+  if (!m) return null;
+  return repo.upsertMetrics({
+    brand,
+    post_id: id,
+    metric_date: new Date().toISOString().slice(0, 10),
+    m,
   });
 }
 
@@ -165,5 +245,6 @@ module.exports = {
   createPost,
   publishPost,
   recordMetrics,
+  refreshMetrics,
   ingestInboundDM,
 };

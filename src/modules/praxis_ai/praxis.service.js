@@ -16,8 +16,10 @@
 const repo = require("./praxis.repo");
 const events = require("./praxis.events");
 const governance = require("../ai_governance/governance.service");
+const orchestrator = require("./praxis.orchestrator");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
+const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
@@ -97,42 +99,68 @@ async function postMessage({ user, brand, request_id, id, input }) {
     });
     await repo.touchConversation({ client, id });
 
-    // ── Agent runtime integration point (stubbed) ──
-    // A live orchestrator runs here: retrieve (RAG) → match an ai_enabled
-    // catalogue action → for writes, create a pending action; for reads,
-    // answer. Until vendor credentials + src/ai are wired, reply gracefully.
-    const replyText =
-      "Praxis received your message. Live AI orchestration is not yet " +
-      "connected in this environment; once an AI vendor is configured in AI " +
-      "Control, replies and confirm-to-run actions will appear here.";
-    const assistantMsg = await repo.insertMessage({
-      client,
-      m: { conversation_id: id, role: "assistant", content: replyText },
-    });
-    await repo.touchConversation({ client, id });
-
-    // Best-effort usage row (zero-cost stub turn).
-    try {
-      await governance.recordUsage({
-        usage: {
-          user_id: user.user_id,
-          feature_key: FEATURE,
-          business: brand,
-          conversation_id: id,
-          provider: conv.provider || "stub",
-          model: "stub",
-          call_type: "chat_completion",
-          input_tokens: 0,
-          output_tokens: 0,
-          total_tokens: 0,
-          cost_native: 0,
-          cost_ngn: 0,
-          was_successful: true,
-        },
-      });
-    } catch (err) {
-      logger.error({ err: err.message }, "praxis: usage record failed");
+    // ── Live orchestrator (X-2) ──
+    // When enabled AND an LLM vendor is configured in AI Control, run the real
+    // turn: RAG retrieve → model (with the ai_enabled action allowlist as
+    // tools) → propose a pending action for writes / answer reads, recording
+    // trace + usage. Otherwise (flag off or no vendor) reply with the graceful
+    // stub so the data + approval flow stays intact.
+    let assistantMsg = null;
+    let pending_action = null;
+    if (config.PRAXIS_ORCHESTRATOR_ENABLED) {
+      try {
+        const result = await orchestrator.orchestrate({
+          client,
+          user,
+          brand,
+          conversation: conv,
+          userMsg,
+        });
+        if (result) {
+          assistantMsg = result.assistant_message;
+          pending_action = result.pending_action || null;
+        }
+      } catch (err) {
+        logger.error(
+          { err: err.message },
+          "praxis orchestrator failed — falling back to stub",
+        );
+      }
     }
+
+    if (!assistantMsg) {
+      const replyText =
+        "Praxis received your message. Live AI orchestration is not yet " +
+        "connected in this environment; once an AI vendor is configured in AI " +
+        "Control, replies and confirm-to-run actions will appear here.";
+      assistantMsg = await repo.insertMessage({
+        client,
+        m: { conversation_id: id, role: "assistant", content: replyText },
+      });
+      await repo.touchConversation({ client, id });
+      try {
+        await governance.recordUsage({
+          usage: {
+            user_id: user.user_id,
+            feature_key: FEATURE,
+            business: brand,
+            conversation_id: id,
+            provider: conv.provider || "stub",
+            model: "stub",
+            call_type: "chat_completion",
+            input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+            cost_native: 0,
+            cost_ngn: 0,
+            was_successful: true,
+          },
+        });
+      } catch (err) {
+        logger.error({ err: err.message }, "praxis: usage record failed");
+      }
+    }
+
     await audit({
       business: brand,
       user_id: user.user_id,
@@ -141,7 +169,11 @@ async function postMessage({ user, brand, request_id, id, input }) {
       target_id: id,
       request_id,
     });
-    return { user_message: userMsg, assistant_message: assistantMsg };
+    return {
+      user_message: userMsg,
+      assistant_message: assistantMsg,
+      pending_action,
+    };
   });
 }
 

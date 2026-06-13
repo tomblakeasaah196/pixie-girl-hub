@@ -1,36 +1,36 @@
 /**
- * Praxis Orchestrator (V2.2 §8.2 — multi-agent architecture).
+ * Praxis Orchestrator (V2.2 §8.2) — thin facade.
  *
- * Pipeline:
- *   1. Input → intent classify
- *   2. RAG retrieve (permission-scoped)
- *   3. Plan (decompose into steps)
- *   4. Per step: match action → fill payload → confirm → execute → verify + log
- *   5. Assemble reply
- *
- * Safety:
- *   - Every WRITE action goes into ai_pending_actions and waits for explicit confirmation
- *   - Low-confidence intent matches halt and ask (no guessing)
- *   - Permission + entity checked server-side per call
+ * The live orchestrator turn (RAG retrieve → LLM with the ai_enabled action
+ * catalogue as tools → propose a pending action for writes / answer reads →
+ * trace + usage) is implemented in modules/praxis_ai/praxis.orchestrator and
+ * driven by praxis.service.postMessage (which gates on governance + the
+ * PRAXIS_ORCHESTRATOR_ENABLED flag, falling back to a graceful stub when no
+ * vendor is configured). This forwards to it so `src/ai` stays a coherent path.
  */
 
 "use strict";
 
-// const catalogue = require('./action-catalogue');
-// const rag = require('./rag-pipeline');
+const praxis = require("../modules/praxis_ai/praxis.service");
 
+/**
+ * Handle one user turn in a conversation. Returns
+ * { user_message, assistant_message, pending_action }.
+ */
 async function handle({
-  user: _user,
-  brand: _brand,
-  message_text: _message,
-  conversation_id: _convId,
+  user,
+  brand,
+  message_text,
+  conversation_id,
+  request_id,
 }) {
-  // 1. Intent classify (LLM call)
-  // 2. RAG retrieve
-  // 3. Plan
-  // 4. Per step: confirm-then-execute
-  // 5. Assemble reply
-  throw new Error("TODO: implement Praxis orchestrator");
+  return praxis.postMessage({
+    user,
+    brand,
+    request_id: request_id || null,
+    id: conversation_id,
+    input: { content: message_text, input_mode: "text" },
+  });
 }
 
 module.exports = { handle };

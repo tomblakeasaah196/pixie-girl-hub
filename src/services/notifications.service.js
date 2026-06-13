@@ -12,6 +12,16 @@ const { ROOMS } = require("../realtime/rooms");
 
 const VALID_PRIORITY = new Set(["low", "normal", "high", "urgent"]);
 
+// Channel → preference column. Whitelist: `channel` is interpolated into SQL in
+// isChannelEnabled, so it must never come from an untrusted source unchecked.
+const CHANNEL_COLUMN = {
+  in_app: "in_app",
+  email: "email_enabled",
+  whatsapp: "whatsapp_enabled",
+  sms: "sms_enabled",
+  push: "push_enabled",
+};
+
 /**
  * Create an in-app notification for a user (+ realtime push). Safe to call
  * from request or worker context; a socket gap is ignored.
@@ -27,6 +37,16 @@ async function notify({
   reference_id,
 }) {
   if (!user_id) return null;
+  // Honour the user's in-app opt-out for this notification type (F-14).
+  // Defaults to enabled when the user has set no preference row.
+  if (type) {
+    const allowed = await isChannelEnabled({
+      user_id,
+      notification_type: type,
+      channel: "in_app",
+    });
+    if (!allowed) return null;
+  }
   const prio = VALID_PRIORITY.has(priority) ? priority : "normal";
   const { rows } = await query(
     `INSERT INTO shared.notifications
@@ -149,8 +169,10 @@ async function upsertPreference({
 }
 
 async function isChannelEnabled({ user_id, notification_type, channel }) {
+  const col = CHANNEL_COLUMN[channel];
+  if (!col) throw new Error(`Unknown notification channel: ${channel}`);
   const { rows } = await query(
-    `SELECT ${channel}_enabled AS enabled FROM shared.notification_preferences
+    `SELECT ${col} AS enabled FROM shared.notification_preferences
       WHERE user_id = $1 AND notification_type = $2`,
     [user_id, notification_type],
   );

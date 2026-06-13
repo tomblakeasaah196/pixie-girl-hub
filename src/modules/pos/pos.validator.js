@@ -132,6 +132,13 @@ const voidTxn = z
   })
   .strict();
 
+const terminalCharge = z
+  .object({
+    order_id: z.string().uuid(),
+    amount_ngn: money.optional(),
+  })
+  .strict();
+
 const mw = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body ?? {});
   next();
@@ -140,6 +147,7 @@ const mw = (schema) => (req, _res, next) => {
 module.exports = {
   validateTerminalCreate: mw(terminalCreate),
   validateTerminalUpdate: mw(terminalUpdate),
+  validateTerminalCharge: mw(terminalCharge),
   validatePinSet: mw(pinSet),
   validatePinVerify: mw(pinVerify),
   validateSessionOpen: mw(sessionOpen),

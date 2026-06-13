@@ -66,6 +66,7 @@
     "qrcode": "^1.5.4",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.16.0",
+    "puppeteer": "^23.10.4",
     "nodemailer": "^6.9.16",
     "@paystack/paystack-sdk": "^1.0.1",
     "stripe": "^17.5.0",

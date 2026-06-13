@@ -35,20 +35,22 @@ router.get("/configs/:id", can("view"), c.getDashboardConfig);
 router.patch("/configs/:id", can("edit"), c.updateDashboardConfig);
 router.delete("/configs/:id", can("edit"), c.deleteDashboardConfig);
 
-// Widgets (admin)
+// Widgets (admin-managed config; "admin" is not a valid RBAC action —
+// requirePermission only accepts view/create/edit/delete/approve/export)
 router.get("/widgets", can("view"), c.listWidgets);
-router.post("/widgets", can("admin"), c.createWidget);
-router.patch("/widgets/:id", can("admin"), c.updateWidget);
+router.post("/widgets", can("create"), c.createWidget);
+router.patch("/widgets/:id", can("edit"), c.updateWidget);
 
 // Report Templates (U-3)
 router.get("/report-templates", can("view"), c.listReportTemplates);
-router.post("/report-templates", can("admin"), c.createReportTemplate);
+router.post("/report-templates", can("create"), c.createReportTemplate);
 router.get("/report-templates/:id", can("view"), c.getReportTemplate);
-router.patch("/report-templates/:id", can("admin"), c.updateReportTemplate);
+router.patch("/report-templates/:id", can("edit"), c.updateReportTemplate);
 
 // Report Runs
 router.get("/report-runs", can("view"), c.listReportRuns);
 router.get("/report-runs/:id", can("view"), c.getReportRun);
 router.post("/report-runs/:id/confirm", can("approve"), c.confirmReportRun);
+router.post("/report-runs/:id/pdf", can("export"), c.generateReportRunPdf);
 
 module.exports = router;

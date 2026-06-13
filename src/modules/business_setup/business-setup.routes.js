@@ -12,6 +12,8 @@
 const express = require("express");
 const controller = require("./business-setup.controller");
 const validator = require("./business-setup.validator");
+const gateways = require("./payment-gateways.controller");
+const gatewayValidator = require("./payment-gateways.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
@@ -156,5 +158,27 @@ router.delete(
   can("delete"),
   controller.deletePipelineStage,
 );
+
+// ── Payment gateways (B / §6.21 — CEO-managed; secrets write-only) ──
+router.get("/payment-gateways", can("view"), gateways.list);
+router.post(
+  "/payment-gateways",
+  can("edit"),
+  gatewayValidator.validateConfigure,
+  gateways.configure,
+);
+router.patch(
+  "/payment-gateways/:provider/active",
+  can("edit"),
+  gatewayValidator.validateSetActive,
+  gateways.setActive,
+);
+router.patch(
+  "/payment-gateways/:provider/role",
+  can("edit"),
+  gatewayValidator.validateSetRole,
+  gateways.setRole,
+);
+router.delete("/payment-gateways/:provider", can("delete"), gateways.remove);
 
 module.exports = router;

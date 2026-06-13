@@ -86,6 +86,83 @@ async function getTerminal({ brand, id }) {
 }
 const listTerminals = ({ brand, is_active }) =>
   repo.listTerminals({ client: null, brand, is_active });
+
+/**
+ * Push a card charge to a physical Nomba POS terminal for an order (D / PD
+ * §6.21 — Nomba is the in-store POS gateway). Resolves the terminal's linked
+ * `nomba_terminal_id` + the brand's Nomba credentials, sends the charge with
+ * metadata { brand, order_id, channel:'pos' }, and returns the reference. The
+ * payment is recorded as method 'nomba_terminal' when Nomba's webhook confirms
+ * (with per-gateway fee capture). Amount defaults to the order's outstanding.
+ */
+async function requestTerminalCharge({
+  brand,
+  user,
+  request_id,
+  terminal_id,
+  order_id,
+  amount_ngn,
+}) {
+  const terminal = await repo.getTerminal({
+    client: null,
+    brand,
+    id: terminal_id,
+  });
+  if (!terminal) throw new NotFoundError("Terminal not found");
+  if (!terminal.nomba_terminal_id)
+    throw new AppError(
+      "NO_NOMBA_TERMINAL",
+      "This terminal has no linked Nomba terminal id",
+      422,
+    );
+
+  const order = await salesService.getById({ brand, id: order_id });
+  const outstanding = money(order.total_ngn).minus(
+    money(order.amount_paid_ngn || 0),
+  );
+  const amt =
+    amount_ngn === null || amount_ngn === undefined
+      ? outstanding
+      : money(amount_ngn);
+  if (amt.lte(0))
+    throw new AppError("NOTHING_DUE", "Order has no outstanding balance", 409);
+  const amountStr = toCurrencyString(amt);
+
+  const gateways = require("../business_setup/payment-gateways.service");
+  const nomba = require("../../services/nomba.service");
+  const creds = await gateways.resolveCredentials({ brand, provider: "nomba" });
+  if (!creds)
+    throw new AppError("NOMBA_NOT_CONFIGURED", "Nomba is not configured", 503);
+
+  const reference =
+    `nomba-${order.order_number}-${Date.now().toString(36)}`.replace(
+      /[^A-Za-z0-9_-]/g,
+      "",
+    );
+  const resp = await nomba.requestTerminalPayment({
+    terminal_id: terminal.nomba_terminal_id,
+    amount_ngn: amountStr,
+    reference,
+    metadata: {
+      brand,
+      order_id,
+      amount_ngn: amountStr,
+      channel: "pos",
+      terminal_id,
+    },
+    creds,
+  });
+  await A(
+    brand,
+    user ? user.user_id : null,
+    "pos.terminal.charge",
+    "pos_terminal",
+    terminal_id,
+    { order_id, amount_ngn: amountStr, reference },
+    request_id,
+  );
+  return { reference, terminal_id, amount_ngn: amountStr, nomba: resp };
+}
 async function updateTerminal({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
     const existing = await repo.getTerminal({ client, brand, id });
@@ -627,6 +704,7 @@ module.exports = {
   createTerminal,
   getTerminal,
   listTerminals,
+  requestTerminalCharge,
   updateTerminal,
   setPin,
   verifyPin,

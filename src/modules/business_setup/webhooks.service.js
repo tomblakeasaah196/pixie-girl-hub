@@ -19,10 +19,13 @@
 const crypto = require("crypto");
 const { config } = require("../../config/env");
 const { VALID_BRANDS } = require("../../config/brands");
-const { transaction } = require("../../config/database");
+const { transaction, query } = require("../../config/database");
 const requestContext = require("../../config/request-context");
 const outbox = require("../../shared/outbox/outbox");
 const paystack = require("../../services/paystack.service");
+const opay = require("../../services/opay.service");
+const nomba = require("../../services/nomba.service");
+const stripe = require("../../services/stripe.service");
 const salesRepo = require("../sales/sales.repo");
 const { money, toCurrencyString } = require("../../utils/money");
 const { logger } = require("../../config/logger");
@@ -54,9 +57,31 @@ function verifyPaystack(rawBody, headers) {
   return safeEqual(hash, sig);
 }
 
+function verifyOpay(rawBody, headers) {
+  return opay.verifyWebhookSignature(rawBody, headers || {});
+}
+function verifyNomba(rawBody, headers) {
+  return nomba.verifyWebhookSignature(rawBody, headers || {});
+}
+// Stripe verifies + parses in one step (constructEvent over the raw body).
+function verifyStripe(rawBody, headers) {
+  if (!config.STRIPE_WEBHOOK_SECRET) return null;
+  const sig = (headers || {})["stripe-signature"];
+  if (!sig) return false;
+  try {
+    stripe.constructWebhookEvent(rawBody, sig);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const VERIFIERS = {
   paystack: verifyPaystack,
-  // opay / nomba / stripe / meta_* : add verifier + secret to enable processing.
+  opay: verifyOpay,
+  nomba: verifyNomba,
+  stripe: verifyStripe,
+  // meta_* handled via the GET challenge + (future) payload verifier.
 };
 
 function extractExternalId(source, payload) {
@@ -64,6 +89,31 @@ function extractExternalId(source, payload) {
     const d = payload && payload.data;
     if (d && d.id !== undefined && d.id !== null) return String(d.id);
     if (d && d.reference) return String(d.reference);
+  }
+  if (source === "opay") {
+    const d = (payload && (payload.payload || payload.data)) || {};
+    return (
+      String(d.reference || d.orderNo || d.transactionId || payload.id || "") ||
+      null
+    );
+  }
+  if (source === "nomba") {
+    const d = (payload && payload.data) || {};
+    const tx = d.transaction || d.order || d;
+    return (
+      String(
+        tx.transactionId ||
+          tx.orderReference ||
+          tx.merchantTxRef ||
+          payload.id ||
+          "",
+      ) || null
+    );
+  }
+  if (source === "stripe") {
+    const obj = payload && payload.data && payload.data.object;
+    if (obj && obj.id) return String(obj.id);
+    if (payload && payload.id) return String(payload.id); // event id
   }
   if (payload && payload.id) return String(payload.id);
   return null;
@@ -163,13 +213,69 @@ async function confirmPaystackCharge(log) {
 
   const brand = data.metadata && data.metadata.brand;
   const order_id = data.metadata && data.metadata.order_id;
+  const amount_ngn = toCurrencyString(money(data.amount).dividedBy(100)); // kobo → NGN
+  await recordGatewayPayment({
+    brand,
+    order_id,
+    reference,
+    amount_ngn,
+    method: mapPaystackChannel(data.channel),
+    provider: "paystack",
+    webhook_id: log.webhook_id,
+  });
+}
+
+/**
+ * Gateway processing fee (NGN) from the brand's configured fee schedule
+ * (business_config.payment_gateway_fees, §6.21/§6.25). NGN gateways:
+ * min(amount*pct + fixed, cap_ngn). Stripe (INTL): amount*pct + fixed_usd×fx.
+ * Returns a decimal string ("0" when no schedule entry).
+ */
+async function gatewayFeeNgn({ brand, provider, amount_ngn, fx_rate }) {
+  let schedule = {};
+  try {
+    const { rows } = await query(
+      `SELECT payment_gateway_fees FROM shared.business_config WHERE business_key = $1`,
+      [brand],
+    );
+    schedule = (rows[0] && rows[0].payment_gateway_fees) || {};
+  } catch {
+    return "0";
+  }
+  const f = schedule[provider];
+  if (!f) return "0";
+  let fee = money(amount_ngn).times(money(f.pct || 0));
+  if (f.fixed) fee = fee.plus(money(f.fixed));
+  if (f.fixed_usd && fx_rate)
+    fee = fee.plus(money(f.fixed_usd).times(money(fx_rate)));
+  if (f.cap_ngn !== null && fee.gt(money(f.cap_ngn))) fee = money(f.cap_ngn);
+  return toCurrencyString(fee);
+}
+
+/**
+ * Shared tail: idempotently record a confirmed gateway payment against the
+ * order under the brand's context, capturing the per-gateway processing fee
+ * (§6.21/§6.6 — books to the gateway's 551x account via net_received) and, for
+ * foreign-currency settlements (Stripe), the paid currency/amount/rate so the
+ * realised-FX posting in addPayment fires. `amount_ngn` is a decimal string.
+ */
+async function recordGatewayPayment({
+  brand,
+  order_id,
+  reference,
+  amount_ngn,
+  method,
+  provider,
+  webhook_id,
+  paid_currency = null,
+  paid_amount = null,
+  fx_rate_used = null,
+}) {
   if (!brand || !VALID_BRANDS.has(brand) || !order_id) {
     throw new Error(
-      `paystack ${reference}: missing/invalid metadata.brand/order_id — manual review`,
+      `${provider} ${reference}: missing/invalid metadata.brand/order_id — manual review`,
     );
   }
-
-  // Idempotency: skip if this gateway reference is already recorded on the order.
   const already = await salesRepo.paymentExistsByProviderRef({
     brand,
     order_id,
@@ -177,35 +283,161 @@ async function confirmPaystackCharge(log) {
   });
   if (already) return;
 
-  const amountNgn = money(data.amount).dividedBy(100); // kobo → NGN
-  const method = mapPaystackChannel(data.channel);
+  const fee_ngn = await gatewayFeeNgn({
+    brand,
+    provider,
+    amount_ngn,
+    fx_rate: fx_rate_used,
+  });
 
-  // Confirm under the real brand's context (RLS/audit GUCs).
   await requestContext.run({ brand, userId: null }, async () => {
     const salesService = require("../sales/sales.service");
     await salesService.addPayment({
       brand,
       user: { user_id: null },
-      request_id: `webhook:${log.webhook_id}`,
+      request_id: `webhook:${webhook_id}`,
       id: order_id,
       input: {
         method,
-        provider: "paystack",
+        provider,
         provider_reference: reference,
-        amount_ngn: toCurrencyString(amountNgn),
+        amount_ngn,
+        fee_ngn,
+        paid_currency,
+        paid_amount,
+        fx_rate_used,
         payment_path: "gateway",
-        client_idempotency_key: `paystack:${reference}`,
+        client_idempotency_key: `${provider}:${reference}`,
       },
     });
   });
   logger.info(
-    { brand, order_id, reference },
-    "paystack charge confirmed via webhook",
+    { brand, order_id, reference, provider, fee_ngn },
+    "gateway charge confirmed via webhook",
   );
+}
+
+const metaOf = (obj) => (obj && obj.metadata) || {};
+
+async function confirmOpayCharge(log) {
+  const evt = log.payload || {};
+  const node = evt.payload || evt.data || evt;
+  const reference = node.reference || node.orderNo;
+  if (!reference) throw new Error("opay webhook missing reference");
+  // Re-verify with OPay — never trust the payload alone.
+  const res = await opay.verifyTransaction(reference);
+  const data = (res && res.data) || {};
+  const status = data.status || node.status;
+  if (status !== "SUCCESS") return;
+  const meta = { ...metaOf(node), ...metaOf(data) };
+  const amount_ngn =
+    meta.amount_ngn !== null
+      ? toCurrencyString(money(meta.amount_ngn))
+      : toCurrencyString(
+          money(
+            data.amount && data.amount.total
+              ? data.amount.total
+              : node.amount || 0,
+          ).dividedBy(100),
+        );
+  await recordGatewayPayment({
+    brand: meta.brand,
+    order_id: meta.order_id,
+    reference,
+    amount_ngn,
+    method: "opay",
+    provider: "opay",
+    webhook_id: log.webhook_id,
+  });
+}
+
+async function confirmNombaCharge(log) {
+  const evt = log.payload || {};
+  const d =
+    (evt.data && (evt.data.transaction || evt.data.order || evt.data)) || {};
+  const reference = d.orderReference || d.merchantTxRef;
+  if (!reference) throw new Error("nomba webhook missing order reference");
+  const res = await nomba.verifyTransaction(reference);
+  const tx = (res && res.data && (res.data.transaction || res.data)) || {};
+  const success = (tx.status || d.status || "").toLowerCase() === "success";
+  if (!success) return;
+  const meta = { ...metaOf(d), ...metaOf(tx) };
+  const amount_ngn =
+    meta.amount_ngn !== null && meta.amount_ngn !== undefined
+      ? toCurrencyString(money(meta.amount_ngn))
+      : toCurrencyString(money(tx.amount || d.amount || 0)); // Nomba is NGN major units
+  // Nomba is POS-first (§6.21). Treat as a terminal payment unless the metadata
+  // explicitly flags an online checkout (hybrid scenario).
+  const method = meta.channel === "online" ? "nomba_online" : "nomba_terminal";
+  await recordGatewayPayment({
+    brand: meta.brand,
+    order_id: meta.order_id,
+    reference,
+    amount_ngn,
+    method,
+    provider: "nomba",
+    webhook_id: log.webhook_id,
+  });
+}
+
+async function confirmStripeCharge(log) {
+  const evt = log.payload || {};
+  // Handle the terminal success events.
+  if (
+    evt.type !== "checkout.session.completed" &&
+    evt.type !== "payment_intent.succeeded"
+  )
+    return;
+  const obj = (evt.data && evt.data.object) || {};
+  // For a session, the payment is captured only when payment_status === 'paid'.
+  if (
+    evt.type === "checkout.session.completed" &&
+    obj.payment_status !== "paid"
+  )
+    return;
+  const reference = obj.id;
+  const meta = metaOf(obj);
+  if (meta.amount_ngn === null)
+    throw new Error(
+      `stripe ${reference}: metadata.amount_ngn required — manual review`,
+    );
+  const amount_ngn = toCurrencyString(money(meta.amount_ngn));
+
+  // Foreign-currency capture (§6.6): a Stripe session presents in its own
+  // currency; record what the customer actually paid + the effective rate so
+  // addPayment can post the realised-FX variance against the order's booked rate.
+  let paid_currency = null;
+  let paid_amount = null;
+  let fx_rate_used = null;
+  const cur = (obj.currency || "").toUpperCase();
+  const minor = obj.amount_total !== null ? obj.amount_total : obj.amount;
+  if (cur && cur !== "NGN" && minor !== null) {
+    // Zero-decimal currencies aside, Stripe amounts are in minor units.
+    paid_currency = cur;
+    paid_amount = toCurrencyString(money(minor).dividedBy(100));
+    if (money(paid_amount).gt(0))
+      fx_rate_used = money(amount_ngn).dividedBy(money(paid_amount)).toFixed(6);
+  }
+
+  await recordGatewayPayment({
+    brand: meta.brand,
+    order_id: meta.order_id,
+    reference,
+    amount_ngn,
+    method: "stripe_card",
+    provider: "stripe",
+    webhook_id: log.webhook_id,
+    paid_currency,
+    paid_amount,
+    fx_rate_used,
+  });
 }
 
 const DISPATCH = {
   paystack: confirmPaystackCharge,
+  opay: confirmOpayCharge,
+  nomba: confirmNombaCharge,
+  stripe: confirmStripeCharge,
 };
 
 async function onWebhookReceived({ webhook_id }) {

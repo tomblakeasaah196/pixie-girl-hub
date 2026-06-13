@@ -67,8 +67,17 @@ const schema = z.object({
 
   // Payment gateways — all optional at boot (loaded per-brand from business_config too)
   PAYSTACK_SECRET_KEY: z.string().optional(),
+  // OPay (Cashier API)
+  OPAY_PUBLIC_KEY: z.string().optional(),
   OPAY_PRIVATE_KEY: z.string().optional(),
-  NOMBA_API_KEY: z.string().optional(),
+  OPAY_MERCHANT_ID: z.string().optional(),
+  OPAY_BASE_URL: z.string().url().default("https://liveapi.opaycheckout.com"),
+  // Nomba (OAuth client-credentials)
+  NOMBA_API_KEY: z.string().optional(), // client secret
+  NOMBA_CLIENT_ID: z.string().optional(),
+  NOMBA_ACCOUNT_ID: z.string().optional(),
+  NOMBA_BASE_URL: z.string().url().default("https://api.nomba.com"),
+  // Stripe
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
@@ -78,6 +87,17 @@ const schema = z.object({
   META_WA_VERIFY_TOKEN: z.string().optional(),
   META_IG_ACCESS_TOKEN: z.string().optional(),
   META_GRAPH_VERIFY_TOKEN: z.string().optional(),
+
+  // Social posting (V2.2 §6.14). Per-platform publish creds; blank → that
+  // platform's publish/metrics calls are skipped with a clear error.
+  META_GRAPH_VERSION: z.string().default("v21.0"),
+  META_IG_USER_ID: z.string().optional(), // IG Business account id (publish target)
+  META_FB_PAGE_ID: z.string().optional(),
+  META_FB_PAGE_TOKEN: z.string().optional(), // page access token (FB + IG publish)
+  TIKTOK_ACCESS_TOKEN: z.string().optional(),
+  TIKTOK_BASE_URL: z.string().url().default("https://open.tiktokapis.com"),
+  YOUTUBE_ACCESS_TOKEN: z.string().optional(), // OAuth token with youtube.upload scope
+  YOUTUBE_BASE_URL: z.string().url().default("https://www.googleapis.com"),
 
   // SMTP
   SMTP_HOST: z.string().optional(),
@@ -108,6 +128,36 @@ const schema = z.object({
   SENTRY_DSN: z.string().optional(),
   ENABLE_REQUEST_LOGGING: z.coerce.boolean().default(true),
   ENABLE_AUDIT_LOG: z.coerce.boolean().default(true),
+
+  // PDF rendering (J-7 / X-1 — headless-Chromium HTML→PDF)
+  PDF_ENABLED: z.coerce.boolean().default(true),
+  // Optional: path to a system Chromium (e.g. /usr/bin/chromium). When unset,
+  // puppeteer uses its bundled Chromium.
+  PUPPETEER_EXECUTABLE_PATH: z.string().optional(),
+  PDF_RENDER_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+
+  // FX rate provider (J-3). No key → the refresh cron no-ops gracefully.
+  FX_PROVIDER: z
+    .enum(["none", "openexchangerates", "exchangerate_host", "fixer"])
+    .default("none"),
+  FX_API_KEY: z.string().optional(),
+  FX_API_BASE_URL: z.string().url().optional(),
+  FX_BASE_CURRENCY: z.string().length(3).default("NGN"),
+  FX_BUFFER_PCT: z.coerce.number().min(0).max(1).default(0),
+
+  // Embeddings / RAG vendor (J-8 / X-2). No key → ai-embed + Praxis RAG skip.
+  EMBEDDINGS_PROVIDER: z
+    .enum(["none", "openai", "deepseek", "voyage"])
+    .default("none"),
+  EMBEDDINGS_API_KEY: z.string().optional(),
+  EMBEDDINGS_API_BASE_URL: z.string().url().optional(),
+  EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),
+  PRAXIS_ORCHESTRATOR_ENABLED: z.coerce.boolean().default(false),
+  // Which ai_vendor_credentials row backs Praxis's chat LLM (creds live in DB /
+  // AI Control, not env). RAG retrieval depth + answer token budget.
+  PRAXIS_LLM_VENDOR: z.string().default("deepseek"),
+  PRAXIS_RAG_TOP_K: z.coerce.number().int().min(0).max(20).default(6),
+  PRAXIS_MAX_TOOLS: z.coerce.number().int().min(1).max(128).default(40),
 
   // Feature flags
   FEATURE_MANUAL_PAYMENTS_ENABLED: z.coerce.boolean().default(false),

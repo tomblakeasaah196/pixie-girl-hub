@@ -728,6 +728,29 @@ async function trackPublic({ token }) {
   throw new NotFoundError("Tracking reference not found");
 }
 
+/**
+ * Render a delivery letter / waybill PDF for a delivery (X-1) and persist it via
+ * the Documents gateway. Generated at packing/dispatch time; the document is
+ * linked to the delivery (reference_type 'delivery').
+ */
+async function deliveryLetterPdf({ brand, user, id }) {
+  const delivery = await repo.getDelivery({ client: null, brand, id });
+  if (!delivery) throw new NotFoundError("Delivery not found");
+  const pdf = require("../../services/pdf.service");
+  const { deliveryLetterHtml } = require("../../services/pdf.templates");
+  const html = deliveryLetterHtml({ brand, delivery });
+  const doc = await pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html,
+    title: `Delivery Letter ${delivery.tracking_number || delivery.delivery_number || id}`,
+    document_type: "delivery_letter",
+    reference_type: "delivery",
+    reference_id: id,
+  });
+  return { document_id: doc.document_id, url: doc.url };
+}
+
 module.exports = {
   createCourier,
   getCourier,
@@ -736,6 +759,7 @@ module.exports = {
   createDelivery,
   createForOrder,
   getDelivery,
+  deliveryLetterPdf,
   listDeliveries,
   bookDelivery,
   advanceDelivery,

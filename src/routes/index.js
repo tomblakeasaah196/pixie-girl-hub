@@ -70,10 +70,21 @@ const {
   wishlistRouter,
 } = require("../modules/storefront/cart.routes");
 
+const {
+  adminRouter: staffInvitationsAdminRouter,
+  publicRouter: staffInvitationsPublicRouter,
+} = require("../shared/hr_payroll/invitations.routes");
+
+const {
+  adminRouter: walkinAdminRouter,
+  publicRouter: walkinPublicRouter,
+} = require("../modules/storefront/walkin.routes");
+
 // Public (storefront-facing, no auth)
 const publicCatalogueRouter = require("../modules/storefront/public.routes");
 const publicTrackingRouter = require("../modules/logistics/tracking.routes");
 const publicOrderTimelineRouter = require("../modules/sales/order-timeline.routes");
+const publicPayLinkRouter = require("../modules/sales/payment-link.public.routes");
 const publicOrderFormRouter = require("../modules/storefront/order-form.routes");
 const publicInstallHubRouter = require("../modules/storefront/install-hub.routes");
 const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.routes");
@@ -114,6 +125,13 @@ function mountRoutes(app) {
   publicRouter.use("/sale", publicCampaignRouter);
   publicRouter.use("/sign", publicWriteLimiter, publicSignRouter);
   publicRouter.use("/newsletter", publicWriteLimiter, publicNewsletterRouter);
+  publicRouter.use(
+    "/staff-invite",
+    publicWriteLimiter,
+    staffInvitationsPublicRouter,
+  );
+  publicRouter.use("/walk-in", publicWriteLimiter, walkinPublicRouter);
+  publicRouter.use("/pay", publicWriteLimiter, publicPayLinkRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
   app.use("/api/public", publicRouter);
 
@@ -144,6 +162,8 @@ function mountRoutes(app) {
   api.use("/stock", stockRouter);
   api.use("/logistics", logisticsRouter);
   api.use("/hr", hrPayrollRouter);
+  api.use("/staff-invitations", staffInvitationsAdminRouter);
+  api.use("/walk-in", walkinAdminRouter);
   api.use("/attendance", attendanceRouter);
   api.use("/contacts", contactsRouter);
   api.use("/documents", documentsRouter);

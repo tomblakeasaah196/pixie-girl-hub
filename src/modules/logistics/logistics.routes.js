@@ -53,6 +53,7 @@ router.post(
   controller.createDelivery,
 );
 router.get("/deliveries/:id", can("view"), controller.getDelivery);
+router.post("/deliveries/:id/letter", can("view"), controller.deliveryLetter);
 router.post(
   "/deliveries/:id/book",
   can("edit"),

@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./sales.service");
+const paymentLink = require("./payment-link.service");
 const { parsePagination } = require("../../utils/pagination");
 
 const base = (req) => ({
@@ -57,6 +58,15 @@ const addPayment = async (req, res) =>
 const cancelOrder = async (req, res) =>
   res.json({
     data: await service.cancelOrder({ ...base(req), id: req.params.id }),
+  });
+const createPaymentLink = async (req, res) =>
+  res.status(201).json({
+    data: await paymentLink.createPaymentLink({
+      brand: req.brand,
+      order_id: req.params.id,
+      amount_ngn: req.body.amount_ngn,
+      currency: req.body.currency,
+    }),
   });
 
 // Quotations
@@ -169,6 +179,7 @@ module.exports = {
   updateOrder,
   addPayment,
   cancelOrder,
+  createPaymentLink,
   listQuotations,
   getQuotation,
   createQuotation,

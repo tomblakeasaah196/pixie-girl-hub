@@ -187,6 +187,57 @@ async function confirmReportRun({ brand, user, id, notes }) {
   return r;
 }
 
+/**
+ * Queue a PDF render of a report run (J-7). Flattens the run + its outputs into
+ * report sections and enqueues the report-generate job; the worker renders it
+ * via headless Chromium and stores it against the run (reference_type
+ * 'report_run'). Returns immediately — the document appears once the job runs.
+ */
+async function generateReportRunPdf({ brand, user, id }) {
+  const { enqueue } = require("../../jobs/queue-producer");
+  const run = await repo.getReportRun({ brand, id });
+  if (!run) throw new NotFoundError("Report run");
+
+  const title = run.template_name || run.report_type || "Report";
+  const sections = [
+    {
+      heading: "Summary",
+      rows: [
+        ["Report", title],
+        [
+          "Period",
+          `${run.period_start || run.period_label || ""} → ${run.period_end || ""}`.trim(),
+        ],
+        ["Status", run.status],
+        ["Generated", run.created_at],
+      ],
+    },
+  ];
+  for (const o of run.outputs || []) {
+    const payload =
+      o.output_json ?? o.data ?? o.payload ?? o.content ?? o.result ?? {};
+    const rows = Object.entries(payload)
+      .filter(([, v]) => v === null || typeof v !== "object")
+      .map(([k, v]) => [k, v == null ? "" : String(v)]);
+    if (rows.length)
+      sections.push({
+        heading: o.output_label || o.section_key || o.label || "Detail",
+        rows,
+      });
+  }
+
+  await enqueue("report-generate", "report.pdf", {
+    brand,
+    title,
+    subtitle: run.template_name ? run.report_type || undefined : undefined,
+    sections,
+    reference_type: "report_run",
+    reference_id: run.run_id,
+    user_id: user ? user.user_id : null,
+  });
+  return { queued: true, run_id: run.run_id };
+}
+
 module.exports = {
   overview,
   salesKpis,
@@ -214,4 +265,5 @@ module.exports = {
   listReportRuns,
   getReportRun,
   confirmReportRun,
+  generateReportRunPdf,
 };

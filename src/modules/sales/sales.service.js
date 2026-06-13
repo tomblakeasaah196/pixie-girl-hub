@@ -31,6 +31,29 @@ const { logger } = require("../../config/logger");
 
 const PAID_STATES = new Set(["paid", "awaiting_dispatch", "completed"]);
 
+// Per-gateway Payment Processing Fees GL accounts (V2.2 §6.6 A-7 / seed 000035).
+// Stripe is split per settlement currency.
+const GATEWAY_FEE_ACCOUNT = {
+  paystack: "5511",
+  opay: "5512",
+  nomba: "5513",
+};
+const STRIPE_FEE_ACCOUNT_BY_CCY = {
+  USD: "5514",
+  GBP: "5515",
+  EUR: "5516",
+  CAD: "5517",
+  GHS: "5518",
+};
+function gatewayFeeAccount(provider, paid_currency) {
+  if (provider === "stripe")
+    return (
+      STRIPE_FEE_ACCOUNT_BY_CCY[(paid_currency || "USD").toUpperCase()] ||
+      "5514"
+    );
+  return GATEWAY_FEE_ACCOUNT[provider] || null;
+}
+
 function channelPrice(ctx, channel) {
   if (channel === "pos") return ctx.price_pos_ngn ?? ctx.price_storefront_ngn;
   if (channel === "wholesale" || channel === "intercompany")
@@ -652,7 +675,7 @@ async function addPayment({ brand, user, request_id, id, input }) {
       brand,
       type: "sales_order_payment",
     });
-    await repo.addPayment({
+    const paymentRow = await repo.addPayment({
       client,
       brand,
       payment: {
@@ -672,6 +695,40 @@ async function addPayment({ brand, user, request_id, id, input }) {
         captured_at: new Date().toISOString(),
       },
     });
+
+    // Per-gateway processing fee (§6.6/§6.21): book the fee to the gateway's
+    // dedicated 551x expense account, contra the same cash account the sale
+    // journal debits — so cash nets to the actual settlement (net_received).
+    const feeNgn = money(input.fee_ngn || 0);
+    const feeAccount = gatewayFeeAccount(input.provider, input.paid_currency);
+    if (feeNgn.gt(0) && feeAccount) {
+      const accounting = require("../accounting/accounting.service");
+      const feeStr = toCurrencyString(feeNgn);
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "payment_fee",
+          source_table: "sales_order_payments",
+          source_id: paymentRow.payment_id,
+          reference: order.order_number,
+          description: `${input.provider} processing fee — ${order.order_number}`,
+        },
+        lines: [
+          {
+            account_code: feeAccount,
+            debit_ngn: feeStr,
+            description: `${input.provider} processing fee`,
+          },
+          {
+            account_code: "1100",
+            credit_ngn: feeStr,
+            description: `${input.provider} fee settled from cash`,
+          },
+        ],
+      });
+    }
 
     // Realised FX gain/loss (V2.2 §6.6): if the customer settled in a foreign
     // currency, the NGN actually received differs from the amount the order

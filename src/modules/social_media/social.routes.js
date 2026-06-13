@@ -40,6 +40,7 @@ router.post(
   v.validateMetrics,
   c.recordMetrics,
 );
+router.post("/posts/:id/metrics/refresh", can("edit"), c.refreshMetrics);
 
 // Inbound DM → Smartcomm (CRM §6.1)
 router.post("/dm/ingest", can("edit"), v.validateDmIngest, c.ingestInboundDM);

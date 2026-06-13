@@ -107,6 +107,9 @@ async function bootstrap() {
     // BEFORE tearing down the pool/redis they depend on.
     await closeHttp();
     await stopWorkers().catch((e) => logger.error(e, "worker stop failed"));
+    await require("./services/pdf.service")
+      .shutdown()
+      .catch((e) => logger.error(e, "pdf browser close failed"));
     await closeSocketIo().catch((e) =>
       logger.error(e, "socket.io close failed"),
     );

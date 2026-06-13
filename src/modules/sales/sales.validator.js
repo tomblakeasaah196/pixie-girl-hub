@@ -178,6 +178,13 @@ const cancellationReview = z
   .object({ notes: z.string().max(1000).optional() })
   .strict();
 
+const paymentLink = z
+  .object({
+    amount_ngn: z.coerce.number().positive().optional(),
+    currency: z.string().length(3).optional(),
+  })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -187,6 +194,7 @@ module.exports = {
   validateOrderCreate: mw(orderCreate),
   validateOrderUpdate: mw(orderUpdate),
   validatePaymentCreate: mw(paymentCreate),
+  validatePaymentLink: mw(paymentLink),
   validateQuotationCreate: mw(quotationCreate),
   validateQuotationSend: mw(quotationSend),
   validateQuotationReject: mw(quotationReject),

@@ -27,6 +27,12 @@ router.post(
   v.validatePaymentCreate,
   c.addPayment,
 );
+router.post(
+  "/orders/:id/payment-link",
+  can("edit"),
+  v.validatePaymentLink,
+  c.createPaymentLink,
+);
 router.post("/orders/:id/cancel", can("edit"), c.cancelOrder);
 
 // Quotations

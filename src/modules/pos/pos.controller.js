@@ -40,6 +40,15 @@ const updateTerminal = async (req, res) =>
       input: req.body,
     }),
   });
+const requestTerminalCharge = async (req, res) =>
+  res.status(201).json({
+    data: await service.requestTerminalCharge({
+      ...base(req),
+      terminal_id: req.params.id,
+      order_id: req.body.order_id,
+      amount_ngn: req.body.amount_ngn,
+    }),
+  });
 
 // ── PINs ─────────────────────────────────────────────────
 const setPin = async (req, res) =>
@@ -145,6 +154,7 @@ module.exports = {
   getTerminal,
   createTerminal,
   updateTerminal,
+  requestTerminalCharge,
   setPin,
   verifyPin,
   listSessions,

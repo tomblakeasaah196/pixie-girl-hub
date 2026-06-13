@@ -5,13 +5,50 @@
 
 "use strict";
 
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const argon2 = require("argon2");
 const { v4: uuidv4 } = require("uuid");
 const { config } = require("../../config/env");
 const { AppError } = require("../../utils/errors");
 const { getClient: getRedis } = require("../../config/redis");
+const { logger } = require("../../config/logger");
+const emailService = require("../../services/email.service");
 const staffRepo = require("./staff.repo");
+
+// ── Password-reset helpers ─────────────────────────────────
+const RESET_PREFIX = "pwreset:";
+const MIN_PASSWORD_LEN = 8;
+const sha256 = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
+const resetTtlSec = () => (config.PASSWORD_RESET_TTL_MIN || 30) * 60;
+const resetLink = (raw) =>
+  `${String(config.APP_URL || "").replace(/\/$/, "")}/reset-password?token=${raw}`;
+
+/**
+ * Revoke every refresh session for a user. Refresh tokens live in redis as
+ * `refresh:{jti}` with the user_id as the value, so we SCAN for those whose
+ * value is this user and delete them. (Internal-tool scale → the keyspace is
+ * small; SCAN keeps this off the hot login/refresh path.) Access tokens are
+ * short-lived (≈15 min) and expire on their own.
+ */
+async function revokeAllSessions(redis, userId) {
+  let cursor = "0";
+  do {
+    const [next, keys] = await redis.scan(
+      cursor,
+      "MATCH",
+      "refresh:*",
+      "COUNT",
+      200,
+    );
+    cursor = next;
+    if (keys.length) {
+      const vals = await redis.mget(keys);
+      const toDel = keys.filter((_, i) => vals[i] === String(userId));
+      if (toDel.length) await redis.del(...toDel);
+    }
+  } while (cursor !== "0");
+}
 
 async function login({ email, password, ip, user_agent }) {
   if (!email || !password)
@@ -133,13 +170,79 @@ async function logout({ refresh_token }) {
   }
 }
 
-async function forgotPassword({ email }) {
-  // TODO: generate token, store in redis with TTL, send reset email
-  // Always returns 200 to avoid leaking which emails exist
+/**
+ * Begin a password reset. Generates a single-use raw token, stores only its
+ * SHA-256 hash in redis (TTL = PASSWORD_RESET_TTL_MIN), and emails the raw token
+ * as a link. ALWAYS resolves without revealing whether the email exists or is
+ * active — the controller returns 200 regardless (no account enumeration).
+ */
+async function forgotPassword({ email: rawEmail }) {
+  if (!rawEmail || typeof rawEmail !== "string") return;
+  const user = await staffRepo.findByEmail(rawEmail.toLowerCase().trim());
+  // Only issue a token for a real, active account — but never disclose that.
+  if (!user || user.status !== "active") return;
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const token_hash = sha256(rawToken);
+  const redis = getRedis();
+  await redis.set(RESET_PREFIX + token_hash, user.user_id, "EX", resetTtlSec());
+
+  try {
+    const link = resetLink(rawToken);
+    const mins = Math.round(resetTtlSec() / 60);
+    await emailService.send({
+      to: user.email,
+      subject: "Reset your Pixie Girl Hub password",
+      html: `<p>Hello${user.display_name ? " " + user.display_name : ""},</p>
+             <p>We received a request to reset your password. This link expires in ${mins} minutes:</p>
+             <p><a href="${link}">Reset your password</a></p>
+             <p>If you didn't request this, you can safely ignore this email — your password will not change.</p>`,
+      text: `Reset your Pixie Girl Hub password (link expires in ${mins} minutes): ${link}`,
+    });
+  } catch (err) {
+    // Best-effort: the token is stored; surfacing the email failure would leak
+    // that the address exists. Log it for ops; the user can retry.
+    logger.error({ err: err.message }, "password reset email send failed");
+  }
 }
 
+/**
+ * Complete a password reset. Verifies the token against its stored hash, sets
+ * the new argon2 password, consumes the token (single-use), and revokes every
+ * existing session so any leaked/old credentials stop working.
+ */
 async function resetPassword({ token, new_password }) {
-  // TODO: verify token from redis, hash new password (argon2), update user, revoke all sessions
+  if (!token || typeof token !== "string")
+    throw new AppError(
+      "INVALID_RESET_TOKEN",
+      "Invalid or expired reset link",
+      400,
+    );
+  if (
+    !new_password ||
+    typeof new_password !== "string" ||
+    new_password.length < MIN_PASSWORD_LEN
+  )
+    throw new AppError(
+      "WEAK_PASSWORD",
+      `Password must be at least ${MIN_PASSWORD_LEN} characters`,
+      422,
+    );
+
+  const redis = getRedis();
+  const key = RESET_PREFIX + sha256(token);
+  const userId = await redis.get(key);
+  if (!userId)
+    throw new AppError(
+      "INVALID_RESET_TOKEN",
+      "Invalid or expired reset link",
+      400,
+    );
+
+  const password_hash = await argon2.hash(new_password);
+  await staffRepo.updatePassword(userId, password_hash);
+  await redis.del(key); // single-use
+  await revokeAllSessions(redis, userId);
 }
 
 module.exports = { login, refresh, logout, forgotPassword, resetPassword };

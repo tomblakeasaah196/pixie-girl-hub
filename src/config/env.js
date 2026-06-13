@@ -171,6 +171,10 @@ const schema = z.object({
   // staging perf check confirms acceptable latency. Write paths (transaction())
   // already set the GUC regardless of this flag.
   RLS_READ_ENFORCE: z.coerce.boolean().default(false),
+
+  // Password-reset link lifetime (minutes). Token is single-use and stored only
+  // as a SHA-256 hash in redis.
+  PASSWORD_RESET_TTL_MIN: z.coerce.number().int().positive().default(30),
 });
 
 let _config = null;

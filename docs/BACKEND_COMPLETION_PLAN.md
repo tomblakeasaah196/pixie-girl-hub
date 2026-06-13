@@ -52,8 +52,10 @@
 - **Acceptance:** isolation test (1.1) passes with enforcement ON; CEO cross-brand views still work.
 - **Size:** M.
 
-### 1.5 Finish authentication: password reset
-- **Why:** `auth.service.js` L136–143 — `forgotPassword`/`resetPassword` are empty TODOs. No account recovery exists.
+### 1.5 Finish authentication: password reset  ✅ DONE 2026-06-13
+- **Shipped:** real `forgotPassword`/`resetPassword` in `auth.service.js`, mirroring the invite-token pattern — single-use raw token, **only its SHA-256 hash stored** (redis, TTL `PASSWORD_RESET_TTL_MIN`=30m), emailed via `email.service`; reset verifies the hash, sets the argon2 password (`staff.repo.updatePassword`, which also lifts a `locked` status), consumes the token, and **revokes all refresh sessions** (redis SCAN — login/refresh/logout untouched). No account enumeration (always 200). Public routes throttled via `publicWriteLimiter`. Covered by `tests/unit/auth/password-reset.test.js` (mocked infra → runs anywhere).
+- **Note:** access tokens are short-lived (~15 min, expire on their own after a reset); refresh tokens are killed immediately.
+- **Why (orig):** `auth.service.js` L136–143 — `forgotPassword`/`resetPassword` are empty TODOs. No account recovery exists.
 - **Do:** Issue a single-use token (store in Redis w/ TTL), send reset email (nodemailer), verify+rotate (argon2), revoke all sessions. Mirror the existing staff-invitation token pattern (`invitations.service.js`).
 - **Acceptance:** request→email→reset→old refresh tokens invalidated; test covers it.
 - **Size:** S.

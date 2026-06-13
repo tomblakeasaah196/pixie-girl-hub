@@ -18,6 +18,7 @@ actual source modules:
 | Payroll | `tests/unit/hr_payroll/payroll.calc.test.js` | Progressive PAYE bands, pension/NHF, relief, net pay, employer-pension-excluded-from-net |
 | Geofence | `tests/unit/attendance/geo.calc.test.js` | Haversine distance + clock-in accept/reject (permission/accuracy/inside/outside) |
 | RBAC vocab | `tests/unit/access/catalog.test.js` | 37 enforced module keys, action + record-scope sets, catalog validators |
+| Password reset | `tests/unit/auth/password-reset.test.js` | Hash-only token storage, no account enumeration, single-use, session revocation |
 | Access, Campaigns | `tests/unit/access/access.test.js`, `tests/unit/sales_campaigns/*` | (pre-existing) |
 
 ### Smoke test (needs a live DB — run on real infra/CI)

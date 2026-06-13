@@ -58,9 +58,27 @@ async function recordSuccessfulLogin(userId, { ip, user_agent }) {
   );
 }
 
+/**
+ * Set a new password hash (used by the password-reset flow). Also clears the
+ * failed-login counter and lifts a 'locked' status back to 'active' — a
+ * successful reset is a legitimate way to recover a locked-out account. Other
+ * statuses (e.g. suspended) are left untouched.
+ */
+async function updatePassword(userId, passwordHash) {
+  await query(
+    `UPDATE shared.users
+        SET password_hash = $2,
+            failed_login_count = 0,
+            status = CASE WHEN status = 'locked' THEN 'active' ELSE status END
+      WHERE user_id = $1`,
+    [userId, passwordHash],
+  );
+}
+
 module.exports = {
   findById,
   findByEmail,
   recordFailedLogin,
   recordSuccessfulLogin,
+  updatePassword,
 };

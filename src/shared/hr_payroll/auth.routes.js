@@ -14,13 +14,16 @@
 
 const express = require("express");
 const controller = require("./auth.controller");
+const { publicWriteLimiter } = require("../../middleware");
 
 const router = express.Router();
 
 router.post("/login", controller.login);
 router.post("/refresh", controller.refresh);
 router.post("/logout", controller.logout);
-router.post("/forgot-password", controller.forgotPassword);
-router.post("/reset-password", controller.resetPassword);
+// Unauthenticated + side-effecting (email send, redis writes) → throttle per IP
+// to blunt account-enumeration probing and email-bombing.
+router.post("/forgot-password", publicWriteLimiter, controller.forgotPassword);
+router.post("/reset-password", publicWriteLimiter, controller.resetPassword);
 
 module.exports = router;

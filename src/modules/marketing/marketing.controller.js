@@ -74,6 +74,15 @@ async function attributionReport(req, res) {
   });
 }
 
+async function pushAdCampaign(req, res) {
+  res.json({
+    data: await service.pushAdCampaign({
+      ...base(req),
+      id: req.params.id,
+    }),
+  });
+}
+
 module.exports = {
   listAdAccounts,
   connectAdAccount,
@@ -84,4 +93,5 @@ module.exports = {
   setAdCampaignStatus,
   recordSpend,
   attributionReport,
+  pushAdCampaign,
 };

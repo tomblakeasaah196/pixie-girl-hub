@@ -133,6 +133,7 @@ async function startWorkers() {
   const {
     runScheduledEmailSends,
   } = require("./schedulers/email-campaign-send");
+  const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
   const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
   const { runRetentionWorkflows } = require("./schedulers/retention-workflows");
   const {
@@ -151,12 +152,36 @@ async function startWorkers() {
   // reaches this worker's crons without a restart.
   scheduleCron("brand-registry-refresh", "*/5 * * * *", refreshBrands);
   scheduleCron("ugc-ingestion", "*/10 * * * *", runUgcIngestionSweep);
-  scheduleCron("daily-ai-briefing", "0 7 * * *", runDailyAiBriefing);
-  scheduleCron("weekly-sales-report", "0 20 * * 6", runWeeklySalesReport);
-  scheduleCron("weekly-customer-report", "0 20 * * 6", runWeeklyCustomerReport);
-  scheduleCron("layaway-abandonment", "0 2 * * *", runLayawayAbandonmentSweep);
-  scheduleCron("fx-rate-refresh", "0 6 * * *", runFxRateRefresh);
-  scheduleCron("low-stock-alerts", "0 8,14 * * *", runLowStockAlerts);
+  scheduleCron(
+    "daily-ai-briefing",
+    config.CRON_DAILY_AI_BRIEFING,
+    runDailyAiBriefing,
+  );
+  scheduleCron(
+    "weekly-sales-report",
+    config.CRON_WEEKLY_SALES_REPORT,
+    runWeeklySalesReport,
+  );
+  scheduleCron(
+    "weekly-customer-report",
+    config.CRON_WEEKLY_CUSTOMER_REPORT,
+    runWeeklyCustomerReport,
+  );
+  scheduleCron(
+    "layaway-abandonment",
+    config.CRON_LAYAWAY_ABANDONMENT_CHECK,
+    runLayawayAbandonmentSweep,
+  );
+  scheduleCron(
+    "fx-rate-refresh",
+    config.CRON_FX_RATE_REFRESH,
+    runFxRateRefresh,
+  );
+  scheduleCron(
+    "low-stock-alerts",
+    config.CRON_LOW_STOCK_ALERTS,
+    runLowStockAlerts,
+  );
   scheduleCron(
     "ai-pending-expiry",
     "*/15 * * * *",
@@ -166,6 +191,8 @@ async function startWorkers() {
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
+  // nightly ad-spend sync (pull metrics from ad networks)
+  scheduleCron("ad-spend-sync", "0 2 * * *", runAdSpendSync);
   scheduleCron("subscription-billing", "0 3 * * *", runSubscriptionBilling);
   scheduleCron("workflow-timeout", "*/10 * * * *", runWorkflowTimeoutSweep);
   scheduleCron(

@@ -72,7 +72,8 @@ const KNOWN_BRANDS = {
 };
 
 function validateKey(key) {
-  if (!key || typeof key !== "string") throw new Error("business key is required");
+  if (!key || typeof key !== "string")
+    throw new Error("business key is required");
   if (!BRAND_KEY_RE.test(key))
     throw new Error(
       "business key must be lowercase, start with a letter, contain only [a-z0-9_], and be 2-63 chars",
@@ -165,7 +166,11 @@ async function bootstrap(opts, pool) {
       `SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = $1`,
       [key],
     );
-    return { business_key: key, tables: rows[0].n, templates: templates.length };
+    return {
+      business_key: key,
+      tables: rows[0].n,
+      templates: templates.length,
+    };
   } catch (err) {
     try {
       await client.query("ROLLBACK");

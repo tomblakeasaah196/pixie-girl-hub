@@ -8,6 +8,7 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const argon2 = require("argon2");
+const { hashOptions } = require("../../utils/password");
 const { v4: uuidv4 } = require("uuid");
 const { config } = require("../../config/env");
 const { AppError } = require("../../utils/errors");
@@ -239,7 +240,7 @@ async function resetPassword({ token, new_password }) {
       400,
     );
 
-  const password_hash = await argon2.hash(new_password);
+  const password_hash = await argon2.hash(new_password, hashOptions);
   await staffRepo.updatePassword(userId, password_hash);
   await redis.del(key); // single-use
   await revokeAllSessions(redis, userId);

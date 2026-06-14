@@ -249,7 +249,10 @@ async function runDueBilling({ limit = 50 } = {}) {
         if (!plan) continue;
         // Wig-maintenance add-on (§6.23.5): bill it on top for opted-in subs.
         let amount = money(plan.price_ngn);
-        if (sub.maintenance_addon && money(plan.maintenance_fee_ngn || 0).gt(0)) {
+        if (
+          sub.maintenance_addon &&
+          money(plan.maintenance_fee_ngn || 0).gt(0)
+        ) {
           amount = amount.plus(money(plan.maintenance_fee_ngn));
         }
         const amountStr = toCurrencyString(amount);

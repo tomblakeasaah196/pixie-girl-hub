@@ -6,9 +6,12 @@
  * caller's `view` permission (CEO bypasses), and a permitted query runs the
  * catalogue entry + summarises. The LLM, permissions repo, and catalogue are
  * mocked — no DB, no network.
+ *
+ * Names referenced inside a jest.mock() factory MUST be prefixed `mock` (jest
+ * hoists the factory above the file, so it can't see normal outer variables).
  */
 
-const entry = {
+const mockEntry = {
   key: "test_q",
   title: "Test query",
   description: "A test query.",
@@ -18,15 +21,18 @@ const entry = {
 };
 
 jest.mock("../../../src/modules/praxis_ai/query-catalogue", () => ({
-  list: () => [entry],
-  get: (k) => (k === "test_q" ? entry : null),
+  list: () => [mockEntry],
+  get: (k) => (k === "test_q" ? mockEntry : null),
 }));
 
-const llm = { chat: jest.fn() };
-jest.mock("../../../src/services/llm.service", () => llm);
+const mockLlm = { chat: jest.fn() };
+jest.mock("../../../src/services/llm.service", () => mockLlm);
 
-const permissionsRepo = { findGrants: jest.fn() };
-jest.mock("../../../src/shared/org_workflow/permissions.repo", () => permissionsRepo);
+const mockPermissionsRepo = { findGrants: jest.fn() };
+jest.mock(
+  "../../../src/shared/org_workflow/permissions.repo",
+  () => mockPermissionsRepo,
+);
 
 jest.mock("../../../src/config/logger", () => ({
   logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn() },
@@ -36,7 +42,10 @@ const agent = require("../../../src/modules/praxis_ai/query-agent");
 
 beforeEach(() => jest.clearAllMocks());
 
-const toolCall = { id: "tc1", function: { name: "query_test_q", arguments: "{}" } };
+const toolCall = {
+  id: "tc1",
+  function: { name: "query_test_q", arguments: "{}" },
+};
 const baseArgs = {
   vendor: { vendor: "x" },
   brand: "pixiegirl",
@@ -63,26 +72,26 @@ describe("tool exposure", () => {
 
 describe("permission gating", () => {
   test("denies a user without the module's view grant — never runs the query", async () => {
-    permissionsRepo.findGrants.mockResolvedValue([]);
+    mockPermissionsRepo.findGrants.mockResolvedValue([]);
     const r = await agent.run({
       ...baseArgs,
       user: { is_ceo: false, role_ids: ["r1"] },
     });
     expect(r.denied).toBe(true);
     expect(r.replyText).toMatch(/permission/i);
-    expect(entry.run).not.toHaveBeenCalled();
-    expect(llm.chat).not.toHaveBeenCalled();
+    expect(mockEntry.run).not.toHaveBeenCalled();
+    expect(mockLlm.chat).not.toHaveBeenCalled();
   });
 
   test("CEO bypasses the permission check", async () => {
-    entry.run.mockResolvedValue({ paid_orders: 5, revenue_ngn: "1000.00" });
-    llm.chat.mockResolvedValue({
+    mockEntry.run.mockResolvedValue({ paid_orders: 5, revenue_ngn: "1000.00" });
+    mockLlm.chat.mockResolvedValue({
       content: "You had 5 paid orders totalling ₦1,000.",
       usage: { total_tokens: 12 },
     });
     const r = await agent.run({ ...baseArgs, user: { is_ceo: true } });
-    expect(permissionsRepo.findGrants).not.toHaveBeenCalled();
-    expect(entry.run).toHaveBeenCalledWith({
+    expect(mockPermissionsRepo.findGrants).not.toHaveBeenCalled();
+    expect(mockEntry.run).toHaveBeenCalledWith({
       brand: "pixiegirl",
       args: {},
       user: { is_ceo: true },
@@ -95,21 +104,21 @@ describe("permission gating", () => {
 
 describe("execution", () => {
   test("a permitted user runs the query and gets the summary", async () => {
-    permissionsRepo.findGrants.mockResolvedValue([{ record_scope: "all" }]);
-    entry.run.mockResolvedValue({ paid_orders: 2 });
-    llm.chat.mockResolvedValue({ content: "2 orders.", usage: {} });
+    mockPermissionsRepo.findGrants.mockResolvedValue([{ record_scope: "all" }]);
+    mockEntry.run.mockResolvedValue({ paid_orders: 2 });
+    mockLlm.chat.mockResolvedValue({ content: "2 orders.", usage: {} });
     const r = await agent.run({
       ...baseArgs,
       user: { is_ceo: false, role_ids: ["r1"] },
     });
-    expect(entry.run).toHaveBeenCalled();
+    expect(mockEntry.run).toHaveBeenCalled();
     expect(r.replyText).toBe("2 orders.");
   });
 
   test("falls back to a data answer if summarisation fails (never throws)", async () => {
-    permissionsRepo.findGrants.mockResolvedValue([{ record_scope: "all" }]);
-    entry.run.mockResolvedValue({ paid_orders: 9 });
-    llm.chat.mockRejectedValue(new Error("model down"));
+    mockPermissionsRepo.findGrants.mockResolvedValue([{ record_scope: "all" }]);
+    mockEntry.run.mockResolvedValue({ paid_orders: 9 });
+    mockLlm.chat.mockRejectedValue(new Error("model down"));
     const r = await agent.run({
       ...baseArgs,
       user: { is_ceo: false, role_ids: ["r1"] },

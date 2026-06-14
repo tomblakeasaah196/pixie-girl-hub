@@ -71,6 +71,7 @@ async function resolveDiscount({
   );
   if (
     campaign.min_order_value_ngn !== null &&
+    campaign.min_order_value_ngn !== undefined &&
     subtotal.lt(money(campaign.min_order_value_ngn))
   ) {
     return notEligible("below_min_order_value");
@@ -86,6 +87,7 @@ async function resolveDiscount({
   }
   if (
     campaign.total_usage_limit !== null &&
+    campaign.total_usage_limit !== undefined &&
     campaign.total_usage_count >= campaign.total_usage_limit
   ) {
     return notEligible("usage_limit_reached");
@@ -105,7 +107,11 @@ async function resolveDiscount({
     if (l.include_exclude === "include") {
       if (l.product_id) includedProducts.add(l.product_id);
       if (l.category_id) includedCategories.add(l.category_id);
-      if (l.product_id && l.campaign_price_ngn !== null)
+      if (
+        l.product_id &&
+        l.campaign_price_ngn !== null &&
+        l.campaign_price_ngn !== undefined
+      )
         priceOverride.set(l.product_id, l.campaign_price_ngn);
     } else {
       if (l.product_id) excludedProducts.add(l.product_id);
@@ -203,7 +209,7 @@ async function resolveDiscount({
         product_id: line.product_id,
         category_id: line.category_id,
       });
-      if (floorRaw !== null) {
+      if (floorRaw !== null && floorRaw !== undefined) {
         const floor = money(floorRaw);
         // Account for any discount already applied (coupon/loyalty) so the
         // COMBINED price never dips below floor.

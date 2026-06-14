@@ -331,7 +331,7 @@ async function confirmOpayCharge(log) {
   if (status !== "SUCCESS") return;
   const meta = { ...metaOf(node), ...metaOf(data) };
   const amount_ngn =
-    meta.amount_ngn !== null
+    meta.amount_ngn !== null && meta.amount_ngn !== undefined
       ? toCurrencyString(money(meta.amount_ngn))
       : toCurrencyString(
           money(
@@ -410,7 +410,10 @@ async function confirmStripeCharge(log) {
   let paid_amount = null;
   let fx_rate_used = null;
   const cur = (obj.currency || "").toUpperCase();
-  const minor = obj.amount_total !== null ? obj.amount_total : obj.amount;
+  const minor =
+    obj.amount_total !== null && obj.amount_total !== undefined
+      ? obj.amount_total
+      : obj.amount;
   if (cur && cur !== "NGN" && minor !== null) {
     // Zero-decimal currencies aside, Stripe amounts are in minor units.
     paid_currency = cur;
@@ -474,7 +477,11 @@ register();
  * (recordGatewayPayment dedups on client_idempotency_key + provider reference).
  * Returns the webhook_ids that were enqueued.
  */
-async function enqueueReplay({ source = null, limit = 100, maxRetries = 25 } = {}) {
+async function enqueueReplay({
+  source = null,
+  limit = 100,
+  maxRetries = 25,
+} = {}) {
   const { enqueue } = require("../../jobs/queue-producer");
   const rows = await repo.listReplayable({ source, limit, maxRetries });
   for (const r of rows) {
@@ -487,10 +494,7 @@ async function enqueueReplay({ source = null, limit = 100, maxRetries = 25 } = {
       { jobId: `replay:${r.webhook_id}` },
     );
   }
-  logger.info(
-    { source, count: rows.length },
-    "enqueued webhook replay batch",
-  );
+  logger.info({ source, count: rows.length }, "enqueued webhook replay batch");
   return rows.map((r) => r.webhook_id);
 }
 

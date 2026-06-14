@@ -124,7 +124,10 @@ describe("resetPassword", () => {
     mockRedis.mget.mockResolvedValue(["u1", "u2"]);
     mockStaffRepo.updatePassword.mockResolvedValue();
 
-    await auth.resetPassword({ token: "rawtok", new_password: "newpassword123" });
+    await auth.resetPassword({
+      token: "rawtok",
+      new_password: "newpassword123",
+    });
 
     expect(mockStaffRepo.updatePassword).toHaveBeenCalledWith(
       "u1",

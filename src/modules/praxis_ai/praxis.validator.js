@@ -22,7 +22,12 @@ const messagePost = z
   })
   .strict()
   .refine(
-    (d) => Boolean((d.content && d.content.length) || d.transcribed_text || d.source_audio_url),
+    (d) =>
+      Boolean(
+        (d.content && d.content.length) ||
+        d.transcribed_text ||
+        d.source_audio_url,
+      ),
     { message: "Provide content, transcribed_text, or source_audio_url" },
   );
 

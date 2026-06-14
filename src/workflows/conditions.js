@@ -53,7 +53,10 @@ function evaluateCondition(condition, context = {}) {
     return condition.every((c) => evaluateCondition(c, context));
   }
   const ctx = context || {};
-  const raw = condition.field !== null ? ctx[condition.field] : undefined;
+  const raw =
+    condition.field !== null && condition.field !== undefined
+      ? ctx[condition.field]
+      : undefined;
 
   if (condition.eq !== undefined && raw !== condition.eq) return false;
   if (
@@ -70,10 +73,30 @@ function evaluateCondition(condition, context = {}) {
   );
   if (hasNumeric) {
     const n = toNumber(raw);
-    if (condition.gt !== null && !(n > condition.gt)) return false;
-    if (condition.gte !== null && !(n >= condition.gte)) return false;
-    if (condition.lt !== null && !(n < condition.lt)) return false;
-    if (condition.lte !== null && !(n <= condition.lte)) return false;
+    if (
+      condition.gt !== null &&
+      condition.gt !== undefined &&
+      !(n > condition.gt)
+    )
+      return false;
+    if (
+      condition.gte !== null &&
+      condition.gte !== undefined &&
+      !(n >= condition.gte)
+    )
+      return false;
+    if (
+      condition.lt !== null &&
+      condition.lt !== undefined &&
+      !(n < condition.lt)
+    )
+      return false;
+    if (
+      condition.lte !== null &&
+      condition.lte !== undefined &&
+      !(n <= condition.lte)
+    )
+      return false;
   }
   return true;
 }
@@ -87,24 +110,40 @@ function stageCondition(rawStage) {
   const field = rawStage.threshold_field || "total_ngn";
   const cond = { field };
   let bounded = false;
-  if (rawStage.threshold_ngn_gt !== null) {
+  if (
+    rawStage.threshold_ngn_gt !== null &&
+    rawStage.threshold_ngn_gt !== undefined
+  ) {
     cond.gt = rawStage.threshold_ngn_gt;
     bounded = true;
   }
-  if (rawStage.threshold_ngn_gte !== null) {
+  if (
+    rawStage.threshold_ngn_gte !== null &&
+    rawStage.threshold_ngn_gte !== undefined
+  ) {
     cond.gte = rawStage.threshold_ngn_gte;
     bounded = true;
   }
-  if (rawStage.threshold_ngn_lte !== null) {
+  if (
+    rawStage.threshold_ngn_lte !== null &&
+    rawStage.threshold_ngn_lte !== undefined
+  ) {
     cond.lte = rawStage.threshold_ngn_lte;
     bounded = true;
   }
-  if (rawStage.threshold_ngn_lt !== null) {
+  if (
+    rawStage.threshold_ngn_lt !== null &&
+    rawStage.threshold_ngn_lt !== undefined
+  ) {
     cond.lt = rawStage.threshold_ngn_lt;
     bounded = true;
   }
   // Legacy single bound: "this stage handles amounts up to X".
-  if (!bounded && rawStage.amount_threshold_ngn !== null) {
+  if (
+    !bounded &&
+    rawStage.amount_threshold_ngn !== null &&
+    rawStage.amount_threshold_ngn !== undefined
+  ) {
     cond.lte = rawStage.amount_threshold_ngn;
     bounded = true;
   }

@@ -5,8 +5,8 @@
 
 "use strict";
 
-const catalog = require("../../../src/modules/access/access.catalog");
-const guards = require("../../../src/modules/access/access.guards");
+const catalog = require("../../../src/shared/access/access.catalog");
+const guards = require("../../../src/shared/access/access.guards");
 const {
   PermissionDeniedError,
   ConflictError,

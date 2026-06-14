@@ -49,4 +49,7 @@ router.post(
   c.recordSpend,
 );
 
+// Push local campaign state to the external ad platform (create/update)
+router.post("/ad-campaigns/:id/push", can("edit"), c.pushAdCampaign);
+
 module.exports = router;

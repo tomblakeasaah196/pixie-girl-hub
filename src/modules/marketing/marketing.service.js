@@ -13,6 +13,8 @@ const events = require("./marketing.events");
 const { audit } = require("../../middleware/audit");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError } = require("../../utils/errors");
+const { forPlatform } = require("../../services/ad-connectors");
+const { logger } = require("../../config/logger");
 
 const A = (
   brand,
@@ -175,6 +177,88 @@ async function attributionReport({ brand, from, to }) {
   };
 }
 
+// ── Live push operations ─────────────────────────────────
+async function pushAdCampaign({ brand, user, request_id, id }) {
+  const c = await repo.getCampaignForPush({ brand, id });
+  if (!c) throw new NotFoundError("Ad campaign");
+  const connector = forPlatform(c.platform);
+  // Ensure connector is configured for this platform
+  if (!connector || typeof connector.prepare !== "function") {
+    throw new Error("Ad connector unavailable");
+  }
+  // Prepare account (resolve fresh access token)
+  const prepared = await connector.prepare(c.account);
+
+  // If no external id, create campaign on the platform
+  if (!c.external_campaign_id) {
+    const created = await connector.createCampaign(prepared, c);
+    // Upsert the external id into our db
+    await repo.upsertCampaignFromExternal({
+      brand,
+      ad_account_id: c.ad_account_id,
+      platform: c.platform,
+      c: {
+        external_campaign_id: created.external_campaign_id,
+        name: c.name,
+        status: created.status,
+      },
+    });
+    await A(
+      brand,
+      user,
+      "marketing.ad_campaign.push",
+      "ad_campaign",
+      id,
+      { pushed: true },
+      request_id,
+    );
+    return { pushed: true };
+  }
+
+  // Otherwise ensure status matches
+  if (typeof connector.setStatus === "function") {
+    await connector.setStatus(prepared, c.external_campaign_id, c.status);
+  }
+  if (
+    typeof connector.setBudget === "function" &&
+    c.budget_amount !== null &&
+    c.budget_amount !== undefined
+  ) {
+    await connector.setBudget(prepared, c.external_campaign_id, {
+      amount: c.budget_amount,
+    });
+  }
+  await A(
+    brand,
+    user,
+    "marketing.ad_campaign.push",
+    "ad_campaign",
+    id,
+    { pushed: true },
+    request_id,
+  );
+  return { pushed: true };
+}
+
+function verifyIntegration() {
+  // Warn at boot if any connectors appear unconfigured (app-level creds)
+  try {
+    const { connectors } = require("../../services/ad-connectors");
+    for (const [k, v] of Object.entries(connectors)) {
+      if (!v.isConfigured || !v.isConfigured()) {
+        logger.warn(
+          { platform: k },
+          "ad connector not configured: some functionality will be disabled",
+        );
+      } else {
+        logger.info({ platform: k }, "ad connector configured");
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "ad connector verification failed");
+  }
+}
+
 module.exports = {
   listAdAccounts,
   connectAdAccount,
@@ -185,4 +269,7 @@ module.exports = {
   setAdCampaignStatus,
   recordSpend,
   attributionReport,
+  // live operations
+  pushAdCampaign,
+  verifyIntegration,
 };

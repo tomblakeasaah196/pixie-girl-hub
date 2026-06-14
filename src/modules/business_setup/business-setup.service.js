@@ -80,6 +80,31 @@ async function updateConfig({ brand, user, request_id, input }) {
       request_id,
     );
     events.emit("config.updated", { brand });
+    // Branding tokens may have changed (logo, accent, gradients, fonts).
+    // Emit so every open browser re-fetches /api/public/branding and
+    // re-applies the Layer-B wash without a refresh.
+    if (
+      Object.keys(input).some((k) =>
+        [
+          "accent_colour",
+          "secondary_colour",
+          "logo_path",
+          "logo_alt_path",
+          "favicon_path",
+          "brand_theme",
+          "brand_fonts",
+          "display_name",
+        ].includes(k),
+      )
+    ) {
+      try {
+        require("../platform_settings/platform-settings.service").emitBrandingUpdated(
+          { scope: "business", brand },
+        );
+      } catch (_) {
+        /* socket may not be initialised yet (e.g. seeding) — non-fatal */
+      }
+    }
     return updated;
   });
 }

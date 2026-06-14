@@ -32,9 +32,13 @@ const CONFIG_COLS = [
   "wht_rate",
   "fiscal_year_start",
   "logo_path",
+  "logo_alt_path",
+  "favicon_path",
   "accent_colour",
+  "secondary_colour",
   "mission_statement",
   "brand_fonts",
+  "brand_theme",
   "payment_methods",
   "cash_handling_rules",
   "loyalty_settings",
@@ -49,6 +53,7 @@ const CONFIG_COLS = [
 ];
 const CONFIG_JSONB = new Set([
   "brand_fonts",
+  "brand_theme",
   "payment_methods",
   "cash_handling_rules",
   "loyalty_settings",

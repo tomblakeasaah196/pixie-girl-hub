@@ -20,8 +20,17 @@ const express = require("express");
 const controller = require("./auth.controller");
 const { publicWriteLimiter } = require("../../middleware");
 const { authMiddleware } = require("../../middleware/auth");
+const { brandContextMiddleware } = require("../../middleware/brand-context");
 
 const router = express.Router();
+
+// Self-scoped permissions for the active brand (drives Command Center grid gating).
+router.get(
+  "/me/permissions",
+  authMiddleware,
+  brandContextMiddleware,
+  controller.mePermissions,
+);
 
 router.post("/login", controller.login);
 // PIN login — second, low-friction factor; public like /login.

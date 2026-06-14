@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useBusinesses, useBusinessStore, useActiveBusiness } from "@/stores/business";
+import { useUiStore } from "@/stores/ui";
+import { useQueryClient } from "@tanstack/react-query";
 
 /**
  * Business switcher — logo + name only (canon §3.1). Glass dropdown.
@@ -13,6 +15,8 @@ export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
   const active = useActiveBusiness();
   const businesses = useBusinesses();
   const setActive = useBusinessStore((s) => s.setActive);
+  const setSwitchingToBiz = useUiStore((s) => s.setSwitchingToBiz);
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -57,8 +61,16 @@ export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
             <div
               key={b.key}
               onClick={() => {
-                setActive(b.key);
+                if (b.key === active.key) { setOpen(false); return; }
                 setOpen(false);
+                setSwitchingToBiz(b.key);
+                // Transition: set new entity, invalidate all entity-keyed queries,
+                // then dismiss the overlay after 5-7s (ThemeProvider updates --biz-* immediately).
+                setTimeout(() => {
+                  setActive(b.key);
+                  queryClient.invalidateQueries();
+                }, 400); // slight delay so overlay animates in first
+                setTimeout(() => setSwitchingToBiz(null), 5800);
               }}
               className="flex items-center gap-2.5 p-[9px_10px] rounded-[10px] cursor-pointer hover:bg-text-primary/[0.06]"
             >

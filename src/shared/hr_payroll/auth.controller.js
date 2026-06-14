@@ -13,6 +13,7 @@
 "use strict";
 
 const service = require("./auth.service");
+const permissionsRepo = require("../org_workflow/permissions.repo");
 
 async function login(req, res) {
   const { email, password } = req.body || {};
@@ -109,6 +110,19 @@ async function resetPassword(req, res) {
   res.json({ data: { ok: true } });
 }
 
+/**
+ * GET /auth/me/permissions
+ * Returns the calling user's effective permission grants for the active brand.
+ * CEO gets a synthetic '*' grant. No extra permission required.
+ */
+async function mePermissions(req, res) {
+  if (req.user.is_ceo) {
+    return res.json({ data: [{ module: "*", action: "*", record_scope: "all" }] });
+  }
+  const { rows } = await permissionsRepo.findAllForRoles({ role_ids: req.user.role_ids });
+  res.json({ data: rows });
+}
+
 module.exports = {
   login,
   loginPin,
@@ -119,4 +133,5 @@ module.exports = {
   logout,
   forgotPassword,
   resetPassword,
+  mePermissions,
 };

@@ -20,4 +20,8 @@ function forRecord(args) {
   return repo.forRecord(args);
 }
 
-module.exports = { list, getById, forRecord };
+function myFeed(args) {
+  return repo.myFeed(args);
+}
+
+module.exports = { list, getById, forRecord, myFeed };

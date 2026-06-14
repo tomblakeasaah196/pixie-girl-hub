@@ -50,4 +50,20 @@ async function findHiddenFields({ role_ids, module }) {
   return rows.map((r) => r.field);
 }
 
-module.exports = { findGrants, findHiddenFields };
+/**
+ * All distinct grants a set of roles holds (all modules × actions).
+ * Used by GET /auth/me/permissions to let the frontend gate the app grid.
+ */
+async function findAllForRoles({ role_ids }) {
+  if (!Array.isArray(role_ids) || role_ids.length === 0) return [];
+  const { rows } = await query(
+    `SELECT DISTINCT module, action, record_scope
+       FROM shared.permissions
+      WHERE role_id = ANY($1::uuid[])
+      ORDER BY module, action`,
+    [role_ids],
+  );
+  return rows;
+}
+
+module.exports = { findGrants, findHiddenFields, findAllForRoles };

@@ -145,9 +145,38 @@ function safeJson(s: string): Json {
   }
 }
 
+/** Multipart upload to an authed endpoint. Sends the in-memory access token
+ *  + refresh cookie; unwraps the { data } envelope like the JSON helpers.
+ *  (Kept separate so `request` stays JSON-only.) */
+async function postForm<T>(path: string, form: FormData): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const brand = brandContext();
+  if (brand) headers["X-Brand-Context"] = brand;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: form,
+  });
+  const text = await res.text();
+  const parsed = text ? safeJson(text) : null;
+  if (!res.ok) {
+    const message =
+      (parsed as { error?: { message?: string }; message?: string })?.error
+        ?.message ||
+      (parsed as { message?: string })?.message ||
+      `HTTP ${res.status}`;
+    throw new ApiError(res.status, parsed, message);
+  }
+  return ((parsed as { data?: T })?.data ?? parsed) as T;
+}
+
 export const api = {
   get: <T>(path: string, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "GET", scope }),
+  postForm,
   post: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "POST", body, scope }),
   patch: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>

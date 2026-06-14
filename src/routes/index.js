@@ -14,7 +14,9 @@
 "use strict";
 
 const express = require("express");
+const path = require("path");
 
+const { config } = require("../config/env");
 const { authMiddleware } = require("../middleware/auth");
 const { brandContextMiddleware } = require("../middleware/brand-context");
 const { publicWriteLimiter } = require("../middleware");
@@ -142,6 +144,17 @@ function mountRoutes(app) {
   // Per-IP login greeting ("Welcome from Africa"). Not cached.
   publicRouter.use("/geo-welcome", geoPublicRouter);
   app.use("/api/public", publicRouter);
+
+  // Public branding assets (logos, login background) — served only from
+  // the storage root's `branding/` subfolder so private media (documents,
+  // product files) is never exposed. Cached for a day.
+  app.use(
+    "/media/branding",
+    express.static(path.join(config.STORAGE_LOCAL_ROOT, "branding"), {
+      maxAge: "1d",
+      index: false,
+    }),
+  );
 
   // ── Webhooks (signed payloads; auth via signature, not JWT) ──
   app.use("/api/webhooks", webhooksRouter);

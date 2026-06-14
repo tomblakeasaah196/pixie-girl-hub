@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card } from "@/components/ui/primitives";
+import { ImageUpload } from "@/components/ui/ImageUpload";
 import {
   LOGIN_CONFIG_FALLBACK,
   usePlatformSettings,
@@ -221,6 +222,42 @@ export function LoginEditorPage() {
             );
           })}
         </div>
+      </Card>
+
+      {/* Background */}
+      <Card className="p-5 space-y-4">
+        <div className="micro">Background</div>
+        <div className="flex gap-2">
+          {(["mesh", "image"] as const).map((style) => {
+            const on = (cfg.background?.style ?? "mesh") === style;
+            return (
+              <button
+                key={style}
+                onClick={() =>
+                  patch({ background: { ...cfg.background, style } })
+                }
+                className={cn(
+                  "px-4 py-2 rounded-xl border text-[12.5px] font-semibold capitalize transition-all",
+                  on
+                    ? "border-accent/45 text-accent-glow bg-accent/[0.08]"
+                    : "hairline text-text-muted hover:text-text-primary",
+                )}
+              >
+                {style === "mesh" ? "Brand mesh" : "Image"}
+              </button>
+            );
+          })}
+        </div>
+        {(cfg.background?.style ?? "mesh") === "image" && (
+          <ImageUpload
+            label="Login background image"
+            value={cfg.background?.image_url ?? null}
+            onChange={(url) =>
+              patch({ background: { ...cfg.background, image_url: url } })
+            }
+            hint="A dark scrim is applied automatically to keep text legible. Large landscape image recommended."
+          />
+        )}
       </Card>
 
       {/* Quotes */}

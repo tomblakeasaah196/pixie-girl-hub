@@ -84,8 +84,21 @@ export function LoginPage() {
 
   if (splash) return <BootSplash />;
 
+  const bg = cfg.background ?? {};
+  const showImage = bg.style === "image" && !!bg.image_url;
+
   return (
     <div className="auth-scroll fixed inset-0 z-0">
+      {/* Optional DB-driven background image with a legibility scrim. */}
+      {showImage && (
+        <div className="fixed inset-0 pointer-events-none">
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${bg.image_url})` }}
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgb(var(--bg)/0.78),rgb(var(--bg)/0.62)_40%,rgb(var(--bg)/0.9))]" />
+        </div>
+      )}
       {/* Ambient particles over the global mesh background. */}
       {t.particles !== false && (
         <div className="fixed inset-0 pointer-events-none">

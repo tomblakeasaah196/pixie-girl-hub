@@ -9,10 +9,23 @@
 
 "use strict";
 
+const crypto = require("crypto");
 const repo = require("./platform-settings.repo");
+const storage = require("../../services/storage.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { logger } = require("../../config/logger");
+const { AppError } = require("../../utils/errors");
+
+// Branding images (logos, login background) are public assets served from
+// a dedicated /media/branding prefix. SVG is excluded — it can carry script
+// and these files are reachable unauthenticated.
+const IMAGE_EXT = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
 
 // Sensible fallbacks used when the platform_settings row carries no
 // region_messages (e.g. a fresh DB before migration 000209 seeds it).
@@ -144,11 +157,43 @@ async function getGeoWelcome({ ip }) {
   };
 }
 
+/**
+ * Store an uploaded branding image (logo / favicon / login background) and
+ * return its public URL. Validated to a small raster allow-list and written
+ * under the public `branding/` prefix. Admin-gated at the route.
+ */
+async function uploadBrandingImage({ file, user }) {
+  if (!file || !file.buffer)
+    throw new AppError("NO_FILE", "An image file is required", 422);
+  const ext = IMAGE_EXT[file.mimetype];
+  if (!ext)
+    throw new AppError(
+      "UNSUPPORTED_IMAGE",
+      "Image must be PNG, JPEG, WEBP or GIF",
+      422,
+    );
+  const key = `branding/${crypto.randomBytes(16).toString("hex")}.${ext}`;
+  const stored = await storage.put(file.buffer, {
+    key,
+    contentType: file.mimetype,
+  });
+  await audit({
+    business: "*",
+    user_id: user?.user_id,
+    action_key: "platform_settings.upload_image",
+    target_type: "branding_image",
+    target_id: stored.key,
+    metadata: { size: stored.size, content_type: file.mimetype },
+  });
+  return { url: stored.public_url };
+}
+
 module.exports = {
   getPlatformSettings,
   updatePlatformSettings,
   listFonts,
   getPublicBranding,
   getGeoWelcome,
+  uploadBrandingImage,
   emitBrandingUpdated,
 };

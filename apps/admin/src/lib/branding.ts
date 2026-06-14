@@ -277,6 +277,19 @@ export function useLoginConfig(): LoginConfig {
   };
 }
 
+// ── Branding image upload (logos, favicon, login background) ──
+// POSTs to /platform-settings/upload-image and returns the stored public
+// URL, which the caller then saves onto the relevant settings field.
+export async function uploadBrandingImage(file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const { url } = await api.postForm<{ url: string }>(
+    "/platform-settings/upload-image",
+    form,
+  );
+  return url;
+}
+
 // ── Local-only helpers ────────────────────────────────────
 const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
 

@@ -30,10 +30,16 @@ const getGeoWelcome = async (req, res) => {
   res.json({ data: await service.getGeoWelcome({ ip: req.ip }) });
 };
 
+const uploadImage = async (req, res) =>
+  res.json({
+    data: await service.uploadBrandingImage({ file: req.file, user: req.user }),
+  });
+
 module.exports = {
   getSettings,
   updateSettings,
   listFonts,
   getPublicBranding,
   getGeoWelcome,
+  uploadImage,
 };

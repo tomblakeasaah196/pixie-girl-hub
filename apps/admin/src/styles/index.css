@@ -1,0 +1,162 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════
+   DESIGN TOKENS — "Maroon Noir" (client-approved canon §2).
+   "R G B" triplets consumed by Tailwind as rgb(var(--token) / alpha).
+   Layer A (--bg/--panel/--text/--accent…) = platform skin (white-label).
+   Layer B (--biz-*) = active business; tints chip/ambient/medallions only.
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  --bg: 15 8 9;            /* #0F0809 near-black, maroon pinch */
+  --panel: 26 15 17;       /* #1A0F11 maroon-charcoal glass */
+  --panel-2: 39 22 25;
+  --panel-alpha: 0.55;
+  --text: 244 233 217;     /* #F4E9D9 warm cream */
+  --text-muted: 179 164 155;
+  --text-faint: 128 112 107;
+  --border-c: 244 233 217; /* cream hairline (use low alpha) */
+  --border-alpha: 0.08;
+  --accent: 168 29 29;     /* #A81D1D working red (legible on black) */
+  --accent-deep: 105 9 9;  /* #690909 Pixie anchor (filled buttons) */
+  --accent-glow: 216 92 87;
+  --sage: 127 160 106;
+  --rose: 233 122 126;
+  --info: 110 134 168;
+  --success: 127 160 106;
+  --warn: 201 162 75;
+  --danger: 229 84 78;
+
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body: "Montserrat", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius: 18px;
+  --blur: 22px;
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 18px 44px rgb(0 0 0 / 0.6);
+  --mesh-op: 1;
+
+  /* Layer B — Pixie Girl (deep red + cream). Hex (used in gradients). */
+  --biz-1: #a81d1d;
+  --biz-2: #690909;
+  --biz-accent: #690909;
+
+  --side-w: 264px;
+  --side-c: 78px;
+}
+
+[data-theme="light"] {
+  --bg: 251 250 249;       /* near-white */
+  --panel: 255 255 255;
+  --panel-alpha: 0.74;
+  --panel-2: 244 241 238;
+  --text: 26 16 17;
+  --text-muted: 107 94 92;
+  --text-faint: 155 142 138;
+  --border-c: 26 16 17;
+  --border-alpha: 0.1;
+  --accent: 105 9 9;       /* pure #690909 — great on white */
+  --accent-deep: 105 9 9;
+  --accent-glow: 140 20 20;
+  --rose: 201 90 96;
+  --sage: 94 126 80;
+  --info: 24 120 185;      /* Pixie intl blue #1878B9 */
+  --success: 94 126 80;
+  --warn: 185 138 46;
+  --danger: 199 54 47;
+  --mesh-op: 0.36;
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 16px 40px rgb(80 20 20 / 0.1);
+}
+
+[data-density="compact"] {
+  --row-h: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: rgb(var(--text));
+  background: rgb(var(--bg));
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Living brand-colour mesh behind the glass (canon §2.5). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--mesh-op);
+  background:
+    radial-gradient(34% 34% at 10% 6%, color-mix(in srgb, var(--biz-1) 50%, transparent), transparent 70%),
+    radial-gradient(30% 30% at 88% 4%, color-mix(in srgb, rgb(var(--accent)) 20%, transparent), transparent 70%),
+    radial-gradient(44% 44% at 90% 92%, color-mix(in srgb, var(--biz-2) 32%, transparent), transparent 72%),
+    radial-gradient(40% 40% at 2% 96%, color-mix(in srgb, var(--biz-accent) 24%, transparent), transparent 72%);
+  filter: blur(34px) saturate(120%);
+  animation: drift 26s ease-in-out infinite alternate;
+}
+@keyframes drift {
+  to {
+    transform: translate(2%, -2%) scale(1.07);
+  }
+}
+
+::selection {
+  background: rgb(var(--accent) / 0.25);
+}
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--text-faint) / 0.45);
+  border-radius: 6px;
+}
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@layer components {
+  /* Frosted glass surface — the system's primary material. */
+  .glass {
+    background: rgb(var(--panel) / var(--panel-alpha));
+    backdrop-filter: blur(var(--blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
+    border: 1px solid rgb(var(--border-c) / var(--border-alpha));
+  }
+  /* Heavier glass for dropdowns / menus / palette / drawers. */
+  .dropglass {
+    background: rgb(var(--panel) / 0.92);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid rgb(var(--border-c) / var(--border-alpha));
+    box-shadow: var(--glass-shadow);
+  }
+  .hairline {
+    border-color: rgb(var(--border-c) / var(--border-alpha));
+  }
+  .micro {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: rgb(var(--text-faint));
+    font-weight: 700;
+  }
+}

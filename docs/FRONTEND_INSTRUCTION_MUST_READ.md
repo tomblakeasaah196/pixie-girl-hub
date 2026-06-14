@@ -12,16 +12,21 @@ Field/endpoint truth still comes from the **migration SQL** then **`docs/openapi
 
 ---
 
-## 0. THE 10-QUESTION GATE (MANDATORY before building any module)
+## 0. THE QUESTION GATE (MANDATORY before building any module)
 
-**Before writing a single line of a frontend module, the AI MUST ask the user exactly 10 questions** covering **preference, engineering, and backend connection**, referencing hub-system where relevant. Rules:
+**Before writing a single line of a frontend module, the AI MUST first (a) read the module's frontend guide, (b) search the backend codebase for that module and surface flaws, then (c) ask the user a batch of questions** covering **preference, engineering, and backend connection**, referencing hub-system where relevant.
 
-- Each question has **three options: A, B, C**, and the AI marks **one as "(Recommended)"** with a one-line reason.
-- Cover, across the 10: (1) which module/screens & scope, (2) primary user role & permissions, (3) the exact API endpoints/contract + entity-scope header, (4) list vs board vs detail layout, (5) create/edit pattern (Drawer vs Modal vs page), (6) real-time needs (Socket.io rooms), (7) state-machine / workflow gating, (8) money/multi-currency display, (9) empty/loading/error/permission states & mobile behaviour, (10) how it mirrors or simplifies the hub-system equivalent.
-- **Only skip the gate if the user explicitly cancels it or asks for more/fewer questions.** Otherwise, ask, wait for answers, then build.
-- The resulting build **must respect this canon** (§1–§9). Answers tune the module; they never override the design system, the palette, the shell, or the non-negotiables.
+**Step (a) — the frontend guide.** `docs/Frontend_Engineering_Guide_v2.2.md` is **THE per-module frontend guide** (screens, tables, components, states, rules, audit findings). Always open the matching module section first, alongside `docs/FRONTEND_SCREEN_REQUIREMENTS.md`. This file (the canon) governs look/feel/shell; the guide governs the module's screens.
 
-A new chat building a module starts **here**: read this file → ask the 10 questions → confer with hub-system + the migration/OpenAPI → build to canon.
+**Step (b) — search the backend & find flaws (do not skip).** Before asking, inspect the real backend for the module: its `src/modules/<module>/` (routes/validator/controller/service/repo), the relevant `migrations/**` (and `template/*.template`), `docs/openapi.yaml`, and the audit (`docs/PRODUCTION_READINESS_AND_ARCHITECTURE_AUDIT.md`). **Actively look for flaws/gaps the frontend must not paper over** — missing endpoints, columns the guide assumes but the schema lacks, unenforced permissions/field-privacy, broken/absent idempotency, schema-vs-doc drift, naming mismatches. **Fold every finding into the questions** so the user decides explicitly (build behind a flag, block on backend, work around, etc.). The frontend must never silently assume a backend capability exists.
+
+**Step (c) — the questions.**
+- Ask **10 questions by default**, and **up to 15** when the module genuinely needs it to capture all necessary information and preference and **reduce assumptions to the absolute minimum**. Fewer than 10 only if the user cancels. Err toward asking more rather than guessing.
+- Each question has **three options A, B, C**, with **one marked "(Recommended)"** and a one-line reason.
+- Cover, across the set: (1) module/screens & scope, (2) primary role & permissions, (3) exact API endpoints/contract + entity-scope header + **any backend flaw found in step (b)**, (4) list vs board vs detail layout, (5) create/edit pattern (Drawer/Modal/page), (6) real-time needs (Socket.io rooms), (7) state-machine / workflow gating, (8) money/multi-currency display, (9) empty/loading/error/permission states & mobile behaviour, (10) how it mirrors or simplifies the hub-system equivalent — plus extras (11–15) for backend gaps, custom fields, bulk actions, exports, or anything that would otherwise be an assumption.
+- **Only skip the gate if the user explicitly cancels it.** The build must respect this canon (§1–§9); answers tune the module, never override the design system, palette, shell, or non-negotiables.
+
+A new chat building a module starts **here**: read this canon → read the module's frontend guide → **search the backend & list flaws** → ask the 10–15 questions → confer with hub-system → build to canon.
 
 ---
 
@@ -79,7 +84,7 @@ Left: **module title + description** (e.g. "Hub · Your command center"; "Sales 
 Hero: **"Good {morning/afternoon/evening}, {name}"** (dynamic), big serif **"What would you like to craft today?"**, dynamic sub-line, and a **live clock card** (HH:MM / weekday date / active business chip). Then the **App Grid** (top-10, **drag-to-reorder**, hover **pin/unpin**, **"More"** expands the rest grouped with pin-to-top; Dashboard anchored). Then **Recent activity** below the grid.
 
 ### 3.4 Global floating elements
-- **App-Menu pill** (bottom-center): appears on **every app except the Command Center**; returns there so the user can launch another app. (Hidden on mobile — the bottom nav covers it.)
+- **App-Menu pill** (bottom-center): appears on **every app except the Command Center**; returns there so the user can launch another app. It must **blend into our system** — glassmorphism + the deep-red/brand gradient (not a loud cream pill); label simply **"Back"**; **slim and fine** (≈75% of a normal button's height). It is **draggable/displaceable** (pointer-drag, clamped on-screen, offset persisted) so it never obstructs a module — mirror hub-system's `AppMenuFab` drag engineering, simplified. (Hidden on mobile — the bottom nav covers it.)
 - **Floating launcher** (bottom-right): fans out to **Praxis AI · Messages · Help**. **Hover to expand on desktop; tap on mobile.** Carries the unread badge.
 - **⌘K command palette**: glass modal, searches apps + quick actions + records; arrow/enter nav; Esc closes.
 - **Mobile bottom nav**: Home · Search · Apps · Praxis. Sidebar becomes a drawer behind a scrim.

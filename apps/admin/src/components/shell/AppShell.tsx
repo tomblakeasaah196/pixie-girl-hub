@@ -9,6 +9,7 @@ import { AppMenuFab } from "./AppMenuFab";
 import { FloatingLauncher } from "./FloatingLauncher";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { CommandPalette } from "@/components/search/CommandPalette";
+import { BusinessSwitchOverlay } from "./BusinessSwitchOverlay";
 
 /** The authenticated shell (canon §3): sidebar + sticky top bar + content,
  *  plus the global floating layer (App-Menu pill, launcher, mobile nav, ⌘K). */
@@ -46,6 +47,7 @@ export function AppShell() {
       <FloatingLauncher />
       <MobileBottomNav />
       {paletteOpen && <CommandPalette />}
+      <BusinessSwitchOverlay />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { BUSINESSES, useBusinessStore, useActiveBusiness } from "@/stores/business";
+import { useBusinesses, useBusinessStore, useActiveBusiness } from "@/stores/business";
 
 /**
  * Business switcher — logo + name only (canon §3.1). Glass dropdown.
@@ -11,6 +11,7 @@ import { BUSINESSES, useBusinessStore, useActiveBusiness } from "@/stores/busine
  */
 export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
   const active = useActiveBusiness();
+  const businesses = useBusinesses();
   const setActive = useBusinessStore((s) => s.setActive);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -52,7 +53,7 @@ export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
 
       {open && (
         <div className={cn("absolute z-[60] mt-1.5 p-1.5 rounded-[14px] dropglass animate-fade-in", collapsed ? "left-[10px] w-[210px]" : "left-[14px] right-[14px]")}>
-          {BUSINESSES.map((b) => (
+          {businesses.map((b) => (
             <div
               key={b.key}
               onClick={() => {

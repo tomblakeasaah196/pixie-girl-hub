@@ -19,7 +19,86 @@ const staffRepo = require("./staff.repo");
 // ── Password-reset helpers ─────────────────────────────────
 const RESET_PREFIX = "pwreset:";
 const MIN_PASSWORD_LEN = 8;
+const PIN_RE = /^\d{6}$/;
 const sha256 = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
+
+/**
+ * Enforce the password policy: ≥8 chars AND at least one uppercase,
+ * one digit and one special (non-alphanumeric) character. Throws
+ * WEAK_PASSWORD (422) on any miss. Shared by resetPassword() and the
+ * create-admin script (kept in lock-step by re-deriving the same rule).
+ */
+function assertStrongPassword(pw) {
+  if (
+    !pw ||
+    typeof pw !== "string" ||
+    pw.length < MIN_PASSWORD_LEN ||
+    !/[A-Z]/.test(pw) ||
+    !/[0-9]/.test(pw) ||
+    !/[^A-Za-z0-9]/.test(pw)
+  ) {
+    throw new AppError(
+      "WEAK_PASSWORD",
+      "Password must be at least 8 characters and include an uppercase letter, a number, and a special character",
+      422,
+    );
+  }
+}
+
+/**
+ * Reject trivially-guessable PINs: all-same-digit (e.g. 000000) and
+ * ascending/descending runs (012345 / 123456 / 543210). The PIN must
+ * already match /^\d{6}$/ before this is called.
+ */
+function isWeakPin(pin) {
+  if (/^(\d)\1{5}$/.test(pin)) return true; // all same digit
+  const seqUp = "0123456789".repeat(2);
+  const seqDown = "9876543210".repeat(2);
+  return seqUp.includes(pin) || seqDown.includes(pin);
+}
+
+/**
+ * Issue an access (15m) + refresh (14d) token pair for a user and store
+ * the refresh jti in redis so it's revocable. Returns the same shape the
+ * login flow returns. Shared by login() and loginPin() so PIN login is
+ * byte-for-byte identical to password login.
+ */
+async function issueTokens(user) {
+  const access_jti = uuidv4();
+  const refresh_jti = uuidv4();
+  const payload = { sub: user.user_id, jti: access_jti, email: user.email };
+
+  const access_token = jwt.sign(payload, config.JWT_SECRET, {
+    expiresIn: config.JWT_ACCESS_EXPIRES_IN,
+  });
+  const refresh_token = jwt.sign(
+    { sub: user.user_id, jti: refresh_jti, type: "refresh" },
+    config.JWT_SECRET,
+    { expiresIn: config.JWT_REFRESH_EXPIRES_IN },
+  );
+
+  const redis = getRedis();
+  await redis.set(
+    `refresh:${refresh_jti}`,
+    user.user_id,
+    "EX",
+    14 * 24 * 60 * 60,
+  );
+
+  return {
+    user: {
+      user_id: user.user_id,
+      email: user.email,
+      display_name: user.display_name,
+      is_ceo: user.is_ceo,
+      available_businesses: user.available_businesses || [],
+      default_business_key: user.default_business_key || null,
+    },
+    access_token,
+    refresh_token,
+    expires_in: 15 * 60,
+  };
+}
 const resetTtlSec = () => (config.PASSWORD_RESET_TTL_MIN || 30) * 60;
 const resetLink = (raw) =>
   `${String(config.APP_URL || "").replace(/\/$/, "")}/reset-password?token=${raw}`;
@@ -76,41 +155,72 @@ async function login({ email, password, ip, user_agent }) {
   }
   await staffRepo.recordSuccessfulLogin(user.user_id, { ip, user_agent });
 
-  const access_jti = uuidv4();
-  const refresh_jti = uuidv4();
-  const payload = { sub: user.user_id, jti: access_jti, email: user.email };
+  return issueTokens(user);
+}
 
-  const access_token = jwt.sign(payload, config.JWT_SECRET, {
-    expiresIn: config.JWT_ACCESS_EXPIRES_IN,
-  });
-  const refresh_token = jwt.sign(
-    { sub: user.user_id, jti: refresh_jti, type: "refresh" },
-    config.JWT_SECRET,
-    { expiresIn: config.JWT_REFRESH_EXPIRES_IN },
-  );
+/**
+ * PIN login — a second, low-friction factor for returning staff on
+ * shared/kiosk devices. Identical token output to login(): same active/
+ * locked checks, same recordable failure counter (locks at 5), same
+ * { user, access_token, refresh_token, expires_in } shape.
+ */
+async function loginPin({ email, pin, ip, user_agent }) {
+  if (!email || !pin || !PIN_RE.test(String(pin)))
+    throw new AppError("INVALID_CREDENTIALS", "Email and 6-digit PIN required", 400);
 
-  // Store refresh jti in redis so it's revocable
-  const redis = getRedis();
-  await redis.set(
-    `refresh:${refresh_jti}`,
-    user.user_id,
-    "EX",
-    14 * 24 * 60 * 60,
-  );
+  const user = await staffRepo.findByEmail(String(email).toLowerCase());
+  // Generic message until the account is confirmed to exist + be active
+  // (no enumeration of which emails have accounts/PINs).
+  if (!user)
+    throw new AppError("INVALID_CREDENTIALS", "Invalid email or PIN", 401);
+  if (user.status === "locked")
+    throw new AppError(
+      "USER_LOCKED",
+      "Account locked. Contact administrator",
+      423,
+    );
+  if (user.status !== "active")
+    throw new AppError("USER_INACTIVE", "Account not active", 401);
+  if (!user.pin_hash)
+    throw new AppError("PIN_NOT_SET", "No PIN set for this account", 400);
 
-  return {
-    user: {
-      user_id: user.user_id,
-      email: user.email,
-      display_name: user.display_name,
-      is_ceo: user.is_ceo,
-      available_businesses: user.available_businesses || [],
-      default_business_key: user.default_business_key || null,
-    },
-    access_token,
-    refresh_token,
-    expires_in: 15 * 60,
-  };
+  const ok = await argon2.verify(user.pin_hash, String(pin));
+  if (!ok) {
+    await staffRepo.recordPinFail(user.user_id);
+    throw new AppError("INVALID_CREDENTIALS", "Invalid email or PIN", 401);
+  }
+  await staffRepo.recordPinSuccess(user.user_id, { ip, user_agent });
+
+  return issueTokens(user);
+}
+
+/**
+ * Set (or replace) the caller's own login PIN. Enforces a 6-digit format
+ * and rejects trivially-guessable values (all-same / sequential).
+ */
+async function setPin({ user_id, pin }) {
+  const value = String(pin ?? "");
+  if (!PIN_RE.test(value))
+    throw new AppError("INVALID_PIN", "PIN must be 6 digits", 422);
+  if (isWeakPin(value))
+    throw new AppError(
+      "WEAK_PIN",
+      "PIN is too easy to guess — avoid repeated or sequential digits",
+      422,
+    );
+  const pin_hash = await argon2.hash(value);
+  await staffRepo.setPin(user_id, pin_hash);
+}
+
+/** Remove the caller's own login PIN. */
+async function removePin({ user_id }) {
+  await staffRepo.clearPin(user_id);
+}
+
+/** Whether the caller currently has a PIN set. */
+async function getPinStatus({ user_id }) {
+  const user = await staffRepo.findById(user_id);
+  return { pin_set: !!(user && user.pin_hash) };
 }
 
 async function refresh({ refresh_token }) {
@@ -218,16 +328,7 @@ async function resetPassword({ token, new_password }) {
       "Invalid or expired reset link",
       400,
     );
-  if (
-    !new_password ||
-    typeof new_password !== "string" ||
-    new_password.length < MIN_PASSWORD_LEN
-  )
-    throw new AppError(
-      "WEAK_PASSWORD",
-      `Password must be at least ${MIN_PASSWORD_LEN} characters`,
-      422,
-    );
+  assertStrongPassword(new_password);
 
   const redis = getRedis();
   const key = RESET_PREFIX + sha256(token);
@@ -245,4 +346,15 @@ async function resetPassword({ token, new_password }) {
   await revokeAllSessions(redis, userId);
 }
 
-module.exports = { login, refresh, logout, forgotPassword, resetPassword };
+module.exports = {
+  login,
+  loginPin,
+  refresh,
+  logout,
+  forgotPassword,
+  resetPassword,
+  setPin,
+  removePin,
+  getPinStatus,
+  assertStrongPassword,
+};

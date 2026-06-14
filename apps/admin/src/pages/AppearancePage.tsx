@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   ExternalLink,
   Info,
   Loader2,
+  LogIn,
   RotateCcw,
   Save,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill } from "@/components/ui/primitives";
+import { ImageUpload } from "@/components/ui/ImageUpload";
 import { useActiveBusiness, useBusinessStore } from "@/stores/business";
 import { useUiStore } from "@/stores/ui";
 import {
@@ -120,6 +124,23 @@ export function AppearancePage() {
       />
       <div className="h-px bg-text-primary/10" />
       <LayerBSection />
+      <div className="h-px bg-text-primary/10" />
+      <Link
+        to="/settings/login"
+        className="glass rounded-[var(--radius)] shadow-glass p-5 flex items-center gap-4 hover:border-accent/40 transition-all group"
+      >
+        <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
+          <LogIn className="w-5 h-5" />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block font-display text-[16px]">Login screen</span>
+          <span className="block text-text-muted text-[13px] mt-0.5">
+            Hero copy, house quotes, the Standard, regional welcomes & toggles —
+            all DB-driven.
+          </span>
+        </span>
+        <ChevronRight className="w-5 h-5 text-text-faint group-hover:text-accent-glow group-hover:translate-x-0.5 transition-all" />
+      </Link>
     </div>
   );
 }
@@ -225,25 +246,22 @@ function LayerASection({
             colSpan={2}
           />
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <Field
-            label="Logo URL (dark backgrounds)"
-            value={draft.logo_dark_url ?? ""}
-            onChange={(v) =>
-              setDraft({ ...draft, logo_dark_url: v || null })
-            }
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <ImageUpload
+            label="Logo (dark backgrounds)"
+            value={draft.logo_dark_url ?? null}
+            onChange={(v) => setDraft({ ...draft, logo_dark_url: v })}
           />
-          <Field
-            label="Logo URL (light backgrounds)"
-            value={draft.logo_light_url ?? ""}
-            onChange={(v) =>
-              setDraft({ ...draft, logo_light_url: v || null })
-            }
+          <ImageUpload
+            label="Logo (light backgrounds)"
+            value={draft.logo_light_url ?? null}
+            onChange={(v) => setDraft({ ...draft, logo_light_url: v })}
           />
-          <Field
-            label="Favicon URL"
-            value={draft.favicon_url ?? ""}
-            onChange={(v) => setDraft({ ...draft, favicon_url: v || null })}
+          <ImageUpload
+            label="Favicon"
+            value={draft.favicon_url ?? null}
+            onChange={(v) => setDraft({ ...draft, favicon_url: v })}
+            aspect="square"
           />
         </div>
       </Card>
@@ -413,11 +431,18 @@ function LayerBSection() {
   const [accent, setAccent] = useState(active.accent);
   const [grad1, setGrad1] = useState(active.grad1);
   const [grad2, setGrad2] = useState(active.grad2);
+  const [website, setWebsite] = useState(row?.website ?? "");
+  const [logoPath, setLogoPath] = useState<string | null>(row?.logo_path ?? null);
   useEffect(() => {
     setAccent(active.accent);
     setGrad1(active.grad1);
     setGrad2(active.grad2);
   }, [active.key, active.accent, active.grad1, active.grad2]);
+  // Identity fields (website / logo) follow the active brand's DB row.
+  useEffect(() => {
+    setWebsite(row?.website ?? "");
+    setLogoPath(row?.logo_path ?? null);
+  }, [active.key, row?.website, row?.logo_path]);
 
   // Live preview the gradient + accent.
   useEffect(() => {
@@ -428,17 +453,27 @@ function LayerBSection() {
   }, [accent, grad1, grad2]);
 
   const dirty =
-    accent !== active.accent || grad1 !== active.grad1 || grad2 !== active.grad2;
+    accent !== active.accent ||
+    grad1 !== active.grad1 ||
+    grad2 !== active.grad2 ||
+    website !== (row?.website ?? "") ||
+    logoPath !== (row?.logo_path ?? null);
 
   const reset = () => {
     setAccent(active.accent);
     setGrad1(active.grad1);
     setGrad2(active.grad2);
+    setWebsite(row?.website ?? "");
+    setLogoPath(row?.logo_path ?? null);
   };
 
   const onSave = () =>
     save.mutate({
       accent_colour: accent,
+      // Layer-B config validates these as optional strings (not nullable);
+      // an empty string clears the value without tripping .strict().
+      website: website.trim(),
+      logo_path: logoPath ?? "",
       brand_theme: {
         ...row?.brand_theme,
         grad1,
@@ -491,6 +526,26 @@ function LayerBSection() {
             {active.name} brand chip
           </div>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <ImageUpload
+            label="Business logo"
+            value={logoPath}
+            onChange={setLogoPath}
+            aspect="square"
+            hint="Shown on the login badge & business switcher."
+          />
+          <Field
+            label="Website"
+            type="url"
+            value={website}
+            placeholder="https://example.com"
+            onChange={setWebsite}
+          />
+        </div>
+        <p className="text-[11px] text-text-faint">
+          A filled website shows a “Visit site” link for this business on the
+          login screen.
+        </p>
       </Card>
 
       <StickyActions

@@ -9,15 +9,24 @@
 "use strict";
 
 const express = require("express");
+const multer = require("multer");
 const controller = require("./platform-settings.controller");
 const validator = require("./platform-settings.validator");
 const { requirePermission } = require("../../middleware/rbac");
+const { config } = require("../../config/env");
 
 const router = express.Router();
 // Appearance is a business-setup concern; we reuse its permission key
 // rather than minting a new module so the existing access matrix
 // already covers it.
 const can = (action) => requirePermission("business_setup", action);
+
+// In-memory upload (handed straight to storage.service). Capped at 8MB —
+// branding images (logos, login backgrounds) should be far smaller.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: Math.min(8, config.MEDIA_MAX_FILE_SIZE_MB || 8) * 1024 * 1024 },
+});
 
 // GET /api/v1/platform-settings — the singleton (full payload incl. theme).
 router.get("/", can("view"), controller.getSettings);
@@ -32,5 +41,14 @@ router.patch(
 
 // GET /api/v1/platform-settings/fonts — the curated picker catalogue.
 router.get("/fonts", can("view"), controller.listFonts);
+
+// POST /api/v1/platform-settings/upload-image — admin uploads a branding
+// image (logo / favicon / login background); returns its public URL.
+router.post(
+  "/upload-image",
+  can("edit"),
+  upload.single("file"),
+  controller.uploadImage,
+);
 
 module.exports = router;

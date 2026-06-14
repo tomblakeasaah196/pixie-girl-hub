@@ -923,6 +923,70 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /auth/login-pin:
+    post:
+      summary: Login with email + 6-digit PIN
+      security: []
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, pin]
+              properties:
+                email:
+                  type: string
+                  format: email
+                pin:
+                  type: string
+                  pattern: "^[0-9]{6}$"
+      responses:
+        "200":
+          description: Logged in (same payload as /auth/login)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/pin:
+    get:
+      summary: Whether the authenticated user has a login PIN set
+      tags: [auth]
+      responses:
+        "200":
+          description: "{ data: { pin_set: boolean } }"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      summary: Set or replace the authenticated user's 6-digit login PIN
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin:
+                  type: string
+                  pattern: "^[0-9]{6}$"
+      responses:
+        "200":
+          description: "{ data: { ok: true } }"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      summary: Remove the authenticated user's login PIN
+      tags: [auth]
+      responses:
+        "200":
+          description: "{ data: { ok: true } }"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   # ── AI Governance (Module 6.31) ───────────────────────────────
   /ai-governance:
     get:
@@ -13051,6 +13115,18 @@ paths:
       responses:
         "200": { description: Password reset }
         "400": { $ref: "#/components/responses/ValidationError" }
+
+  # ── Public login-page feeds (served under /api/public — no auth) ──
+  /geo-welcome:
+    get:
+      summary: "PUBLIC: per-IP continent welcome for the login page (served at /api/public/geo-welcome)"
+      security: []
+      tags: [public]
+      responses:
+        "200":
+          description: >
+            Always 200. { data: { location: { city, country, country_code,
+            continent_code } | null, welcome: string, note: string } }
 
   # ── Webhooks (served at /api/webhooks — signature-authenticated) ──
   /webhooks/paystack:

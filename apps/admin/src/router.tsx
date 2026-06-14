@@ -1,24 +1,41 @@
 import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
+import { RequireAuth } from "@/components/auth/RequireAuth";
 import { CommandCenter } from "@/pages/CommandCenter";
 import { SalesPage } from "@/pages/SalesPage";
 import { AppearancePage } from "@/pages/AppearancePage";
+import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
+import { LoginPage } from "@/pages/LoginPage";
+import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
+import { SelectEntityPage } from "@/pages/SelectEntityPage";
 
 /**
- * Routes mount under the AppShell. "/" is the Command Center (app grid home).
- * Sales + Settings are example built screens; every other module route renders
- * the placeholder until built via the canon's question gate.
+ * Two trees:
+ *  - Public, pre-auth routes (/login, /reset-password) render standalone.
+ *  - Everything else sits behind <RequireAuth/>, which restores the session
+ *    from the refresh cookie before rendering. /select-entity is authed but
+ *    lives OUTSIDE the AppShell (it's a full-screen chooser); the shell and
+ *    its module routes are the authenticated app.
  */
 export const router = createBrowserRouter([
+  { path: "/login", element: <LoginPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   {
-    path: "/",
-    element: <AppShell />,
+    element: <RequireAuth />,
     children: [
-      { index: true, element: <CommandCenter /> },
-      { path: "sales", element: <SalesPage /> },
-      { path: "settings", element: <AppearancePage /> },
-      { path: "*", element: <ModulePlaceholder /> },
+      { path: "/select-entity", element: <SelectEntityPage /> },
+      {
+        path: "/",
+        element: <AppShell />,
+        children: [
+          { index: true, element: <CommandCenter /> },
+          { path: "sales", element: <SalesPage /> },
+          { path: "settings", element: <AppearancePage /> },
+          { path: "settings/login", element: <LoginEditorPage /> },
+          { path: "*", element: <ModulePlaceholder /> },
+        ],
+      },
     ],
   },
 ]);

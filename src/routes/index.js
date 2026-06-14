@@ -14,7 +14,9 @@
 "use strict";
 
 const express = require("express");
+const path = require("path");
 
+const { config } = require("../config/env");
 const { authMiddleware } = require("../middleware/auth");
 const { brandContextMiddleware } = require("../middleware/brand-context");
 const { publicWriteLimiter } = require("../middleware");
@@ -48,6 +50,7 @@ const dashboardsRouter = require("../modules/dashboards/dashboards.routes");
 const businessSetupRouter = require("../modules/business_setup/business-setup.routes");
 const platformSettingsRouter = require("../modules/platform_settings/platform-settings.routes");
 const brandingPublicRouter = require("../modules/platform_settings/branding.public.routes");
+const geoPublicRouter = require("../modules/platform_settings/geo.public.routes");
 const salesCampaignsRouter = require("../modules/sales_campaigns/campaigns.routes");
 const retentionRouter = require("../modules/retention/retention.routes");
 const productionRouter = require("../modules/production/production.routes");
@@ -138,7 +141,20 @@ function mountRoutes(app) {
   // Unauthenticated branding feed — the login page calls this before
   // a token exists so the shell can theme itself.
   publicRouter.use("/branding", brandingPublicRouter);
+  // Per-IP login greeting ("Welcome from Africa"). Not cached.
+  publicRouter.use("/geo-welcome", geoPublicRouter);
   app.use("/api/public", publicRouter);
+
+  // Public branding assets (logos, login background) — served only from
+  // the storage root's `branding/` subfolder so private media (documents,
+  // product files) is never exposed. Cached for a day.
+  app.use(
+    "/media/branding",
+    express.static(path.join(config.STORAGE_LOCAL_ROOT, "branding"), {
+      maxAge: "1d",
+      index: false,
+    }),
+  );
 
   // ── Webhooks (signed payloads; auth via signature, not JWT) ──
   app.use("/api/webhooks", webhooksRouter);

@@ -30,6 +30,7 @@
     "user:create-admin": "node scripts/create-admin.js",
     "db:verify": "node scripts/verify-schema.js",
     "workers:start": "node src/jobs/worker.js",
+    "coverage:frontend": "node scripts/build-frontend-coverage.js",
     "build:action-catalogue": "node scripts/build-action-catalogue.js",
     "rag:reembed": "node scripts/rag-reembed.js"
   },

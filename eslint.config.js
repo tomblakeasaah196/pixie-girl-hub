@@ -21,6 +21,11 @@ module.exports = [
         setInterval: "readonly",
         clearTimeout: "readonly",
         clearInterval: "readonly",
+        // Node 18+ web-platform globals (fetch, AbortController, URL) used
+        // by the geo-welcome lookup and URL allow-listing.
+        fetch: "readonly",
+        AbortController: "readonly",
+        URL: "readonly",
       },
     },
     rules: {

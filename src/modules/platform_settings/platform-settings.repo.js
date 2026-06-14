@@ -22,7 +22,7 @@ async function getPlatformSettings({ client }) {
     `SELECT settings_id, product_name, tagline, company_name,
             logo_dark_url, logo_light_url, favicon_url,
             font_display, font_body, font_mono, font_css_url,
-            theme, updated_at, updated_by
+            theme, login_config, updated_at, updated_by
      FROM shared.platform_settings
      ORDER BY updated_at DESC
      LIMIT 1`,
@@ -61,6 +61,13 @@ async function updatePlatformSettings({ client, patch, user_id }) {
     sets.push(`theme = theme || $${i++}::jsonb`);
     params.push(JSON.stringify(patch.theme));
   }
+  if (patch.login_config !== undefined) {
+    // Same top-level-merge semantics as `theme`: a patch carrying only
+    // `hero` replaces hero wholesale and leaves quotes/standards/etc.
+    // intact, so the editor can save one section at a time.
+    sets.push(`login_config = login_config || $${i++}::jsonb`);
+    params.push(JSON.stringify(patch.login_config));
+  }
   if (sets.length === 0) return getPlatformSettings({ client });
   sets.push(`updated_at = now()`, `updated_by = $${i++}`);
   params.push(user_id || null);
@@ -93,7 +100,8 @@ async function getPublicBranding({ client }) {
   const platform = await getPlatformSettings({ client });
   const { rows: businesses } = await ex(client)(
     `SELECT business_key, display_name, accent_colour, secondary_colour,
-            logo_path, logo_alt_path, favicon_path, brand_theme, brand_fonts
+            logo_path, logo_alt_path, favicon_path, brand_theme, brand_fonts,
+            website
      FROM shared.business_config
      WHERE is_active = true
      ORDER BY display_name ASC`,

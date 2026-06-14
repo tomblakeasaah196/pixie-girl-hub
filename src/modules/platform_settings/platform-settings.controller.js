@@ -24,9 +24,16 @@ const listFonts = async (_req, res) =>
 const getPublicBranding = async (_req, res) =>
   res.json({ data: await service.getPublicBranding() });
 
+const getGeoWelcome = async (req, res) => {
+  // Per-IP and best-effort — never cache, never fail the page.
+  res.set("Cache-Control", "no-store");
+  res.json({ data: await service.getGeoWelcome({ ip: req.ip }) });
+};
+
 module.exports = {
   getSettings,
   updateSettings,
   listFonts,
   getPublicBranding,
+  getGeoWelcome,
 };

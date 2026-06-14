@@ -82,6 +82,65 @@ const fontCssUrl = z
     }
   }, `font_css_url must be an https URL on a trusted host (${FONT_HOST_ALLOWLIST.join(", ")})`);
 
+// ── login_config ─────────────────────────────────────────
+// The login-page content bag (hero / quotes / standards / region
+// messages / toggles / background). Deliberately permissive so the
+// Appearance editor isn't brittle — every section is optional and the
+// objects .passthrough() unknown keys — but each known field is typed
+// so a save can't smuggle in the wrong shape.
+const heroSchema = z
+  .object({
+    eyebrow: z.string().max(80).optional(),
+    headline: z.string().max(200).optional(),
+    subline: z.string().max(400).optional(),
+    cta_label: z.string().max(60).optional(),
+  })
+  .partial()
+  .passthrough();
+
+const quoteSchema = z
+  .object({
+    text: z.string().min(1).max(400),
+    author: z.string().max(120).optional(),
+  })
+  .passthrough();
+
+const standardSchema = z
+  .object({
+    icon: z.string().min(1).max(60),
+    title: z.string().min(1).max(120),
+    body: z.string().min(1).max(400),
+  })
+  .passthrough();
+
+const regionMessageSchema = z
+  .object({
+    welcome: z.string().max(120).optional(),
+    note: z.string().max(400).optional(),
+  })
+  .partial()
+  .passthrough();
+
+const backgroundSchema = z
+  .object({
+    style: z.enum(["mesh", "image"]).optional(),
+    image_url: z.string().url().max(500).nullable().optional(),
+  })
+  .partial()
+  .passthrough();
+
+const loginConfigSchema = z
+  .object({
+    hero: heroSchema.optional(),
+    quotes: z.array(quoteSchema).max(100).optional(),
+    standards: z.array(standardSchema).max(24).optional(),
+    region_messages: z.record(regionMessageSchema).optional(),
+    toggles: z.record(z.boolean()).optional(),
+    background: backgroundSchema.optional(),
+  })
+  .partial()
+  .passthrough();
+
 const settingsUpdate = z
   .object({
     product_name: z.string().min(1).max(80).optional(),
@@ -95,6 +154,7 @@ const settingsUpdate = z
     font_mono: z.string().min(1).max(200).optional(),
     font_css_url: fontCssUrl.nullable().optional(),
     theme: themeSchema.optional(),
+    login_config: loginConfigSchema.optional(),
   })
   .strict();
 

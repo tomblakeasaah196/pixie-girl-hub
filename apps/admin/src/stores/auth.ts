@@ -1,9 +1,21 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import {
+  getAccessToken,
+  refreshAccessToken,
+  setAccessToken,
+} from "@/lib/api";
+import { logout as apiLogout, type AuthUser } from "@/lib/auth-api";
 
 /**
- * Auth/session. The real app keeps the access token in memory and the refresh
- * token in an httpOnly cookie — NEVER localStorage (canon §5). This foundation
- * seeds a demo user; wire `hydrate`/`refreshFromServer` to /auth on integration.
+ * Auth/session (canon §5).
+ *
+ *  - The access token lives in memory only (lib/api.ts) — NEVER persisted.
+ *  - The refresh token is an httpOnly cookie owned by the backend.
+ *  - We DO persist a lightweight, non-sensitive user PROFILE so a reload
+ *    can show the shell instantly while `bootstrap()` silently exchanges
+ *    the refresh cookie for a fresh access token. If that exchange fails,
+ *    the profile is dropped and the guard routes to /login.
  */
 export interface User {
   id: string;
@@ -13,30 +25,94 @@ export interface User {
   /** Resolved permission keys "module:action" — drives permission-aware UI. */
   permissions: string[];
   permittedBusinesses: string[]; // "*" = all
+  // Raw backend fields (kept for entity-selection + brand scoping).
+  isCeo: boolean;
+  availableBusinesses: string[];
+  defaultBusinessKey: string | null;
 }
+
+type SessionStatus = "unknown" | "authed" | "anon";
 
 interface AuthState {
   user: User | null;
-  setUser: (u: User | null) => void;
-  signOut: () => void;
+  status: SessionStatus;
+  setSession: (u: AuthUser) => void;
+  signOut: () => Promise<void>;
+  /** Restore a session on app boot using the refresh cookie. Idempotent. */
+  bootstrap: () => Promise<void>;
   can: (module: string, action: string) => boolean;
 }
 
-const DEMO_USER: User = {
-  id: "u_ceo",
-  name: "Tom-Blake",
-  email: "tomblake@pixiegirlglobal.com",
-  role: "CEO · Owner",
-  permissions: ["*"],
-  permittedBusinesses: ["*"],
-};
+/** Map the backend AuthUser onto the shell's User shape. */
+export function toUser(u: AuthUser): User {
+  return {
+    id: u.user_id,
+    name: u.display_name || u.email.split("@")[0],
+    email: u.email,
+    role: u.is_ceo ? "CEO · Owner" : "Team Member",
+    // Until the permissions module lands, a CEO/super-admin gets "*"
+    // (full access); everyone else relies on server-side enforcement.
+    permissions: u.is_ceo ? ["*"] : [],
+    permittedBusinesses: u.is_ceo ? ["*"] : u.available_businesses,
+    isCeo: u.is_ceo,
+    availableBusinesses: u.available_businesses,
+    defaultBusinessKey: u.default_business_key,
+  };
+}
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  user: DEMO_USER,
-  setUser: (user) => set({ user }),
-  signOut: () => set({ user: null }),
-  can: (module, action) => {
-    const p = get().user?.permissions ?? [];
-    return p.includes("*") || p.includes(`${module}:*`) || p.includes(`${module}:${action}`);
-  },
-}));
+let bootstrapPromise: Promise<void> | null = null;
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      status: "unknown",
+      setSession: (u) => set({ user: toUser(u), status: "authed" }),
+      signOut: async () => {
+        await apiLogout();
+        set({ user: null, status: "anon" });
+      },
+      bootstrap: async () => {
+        if (bootstrapPromise) return bootstrapPromise;
+        bootstrapPromise = (async () => {
+          // Already hold a live access token (e.g. just logged in).
+          if (getAccessToken()) {
+            set({ status: "authed" });
+            return;
+          }
+          // A persisted profile means we were signed in — try to revive
+          // the session from the refresh cookie.
+          if (get().user) {
+            const ok = await refreshAccessToken();
+            if (ok) {
+              set({ status: "authed" });
+              return;
+            }
+            setAccessToken(null);
+            set({ user: null, status: "anon" });
+            return;
+          }
+          set({ status: "anon" });
+        })();
+        try {
+          await bootstrapPromise;
+        } finally {
+          bootstrapPromise = null;
+        }
+      },
+      can: (module, action) => {
+        const p = get().user?.permissions ?? [];
+        return (
+          p.includes("*") ||
+          p.includes(`${module}:*`) ||
+          p.includes(`${module}:${action}`)
+        );
+      },
+    }),
+    {
+      name: "pgh-auth",
+      // Persist ONLY the non-sensitive profile — never the token/status.
+      partialize: (s) => ({ user: s.user }),
+    },
+  ),
+);

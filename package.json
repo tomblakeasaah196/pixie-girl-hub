@@ -28,6 +28,7 @@
     "db:bootstrap:pixiegirl": "node scripts/bootstrap-business.js pixiegirl",
     "db:bootstrap:faitlynhair": "node scripts/bootstrap-business.js faitlynhair",
     "db:seed": "node scripts/seed.js",
+    "user:create-admin": "node scripts/create-admin.js",
     "db:verify": "node scripts/verify-schema.js",
     "db:create-admin": "node scripts/create-admin.js",
     "workers:start": "node src/jobs/worker.js",

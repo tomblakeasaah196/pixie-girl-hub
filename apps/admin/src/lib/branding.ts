@@ -38,6 +38,47 @@ export type ThemeTokens = Partial<
 >;
 export type Theme = Partial<Record<ThemeMode, ThemeTokens>>;
 
+// ── Login page content (DB-driven; canon "little/no hardcoded data") ──
+// Mirrors platform_settings.login_config seeded in migration 000209.
+export interface LoginQuote {
+  text: string;
+  author?: string;
+}
+export interface LoginStandard {
+  /** lucide-react icon name (kebab-case), resolved by the renderer. */
+  icon: string;
+  title: string;
+  body: string;
+}
+export interface LoginRegionMessage {
+  welcome: string;
+  note: string;
+}
+export interface LoginToggles {
+  splash?: boolean;
+  particles?: boolean;
+  quotes?: boolean;
+  standards?: boolean;
+  pin_login?: boolean;
+  website_links?: boolean;
+  geo_welcome?: boolean;
+  business_badges?: boolean;
+}
+export interface LoginConfig {
+  hero?: {
+    eyebrow?: string;
+    headline?: string;
+    subline?: string;
+    cta_label?: string;
+  };
+  quotes?: LoginQuote[];
+  standards?: LoginStandard[];
+  /** Keyed by 2-letter continent code (AF/AS/EU/NA/SA/OC/AN) + "default". */
+  region_messages?: Record<string, LoginRegionMessage>;
+  toggles?: LoginToggles;
+  background?: { style?: "mesh" | "image"; image_url?: string | null };
+}
+
 export interface PlatformBranding {
   product_name: string;
   tagline: string | null;
@@ -50,6 +91,7 @@ export interface PlatformBranding {
   font_mono: string;
   font_css_url: string | null;
   theme: Theme;
+  login_config?: LoginConfig | null;
   updated_at?: string;
 }
 
@@ -68,6 +110,8 @@ export interface BusinessBranding {
     accent_deep?: string;
   } | null;
   brand_fonts: { display?: string; body?: string; mono?: string } | null;
+  /** Public marketing site (shown on the logged-out screen when filled). */
+  website?: string | null;
 }
 
 export interface BrandingPayload {
@@ -137,6 +181,7 @@ export type BusinessConfigPatch = Partial<{
   brand_fonts: BusinessBranding["brand_fonts"];
   mission_statement: string;
   display_name: string;
+  website: string | null;
 }>;
 
 export function useSaveBusinessBranding() {
@@ -148,6 +193,88 @@ export function useSaveBusinessBranding() {
       qc.invalidateQueries({ queryKey: ["branding"] });
     },
   });
+}
+
+// ── Login content — DB-driven, with a graceful built-in fallback so a
+//    cold load (API unreachable) still renders a complete, on-brand
+//    login screen. The DB seed (migration 000209) is the source of truth.
+export const LOGIN_CONFIG_FALLBACK: Required<
+  Pick<LoginConfig, "hero" | "quotes" | "standards" | "toggles" | "background">
+> & { region_messages: Record<string, LoginRegionMessage> } = {
+  hero: {
+    eyebrow: "PIXIE GIRL HUB",
+    headline: "Where beauty becomes an operation.",
+    subline:
+      "One command center for Pixie Girl Global and Faitlyn Hair — sales, stylists, stock, and storefronts, in concert.",
+    cta_label: "Access Hub",
+  },
+  quotes: [
+    { text: "Luxury is in each detail.", author: "Hubert de Givenchy" },
+    { text: "Two brands, one vision — always forward.", author: "Pixie Girl" },
+    {
+      text: "Craft is care made visible.",
+      author: "The House",
+    },
+  ],
+  standards: [
+    {
+      icon: "sparkles",
+      title: "Craftsmanship",
+      body: "Every detail considered, every finish intentional.",
+    },
+    {
+      icon: "heart-handshake",
+      title: "Relationships",
+      body: "Built on trust, sustained by excellence.",
+    },
+    {
+      icon: "gem",
+      title: "Provenance",
+      body: "Curated hair, traceable origins, honest quality.",
+    },
+    {
+      icon: "trending-up",
+      title: "Momentum",
+      body: "Two brands, one vision — always forward.",
+    },
+  ],
+  region_messages: {
+    default: {
+      welcome: "Welcome",
+      note: "Two brands, one vision — always forward.",
+    },
+  },
+  toggles: {
+    splash: true,
+    particles: true,
+    quotes: true,
+    standards: true,
+    pin_login: true,
+    website_links: true,
+    geo_welcome: true,
+    business_badges: true,
+  },
+  background: { style: "mesh", image_url: null },
+};
+
+/** Resolve the login content from the branding payload, layering the
+ *  DB config over the fallback so partial configs never blank the page. */
+export function useLoginConfig(): LoginConfig {
+  const { data } = useBranding();
+  const cfg = data?.platform?.login_config ?? {};
+  return {
+    hero: { ...LOGIN_CONFIG_FALLBACK.hero, ...(cfg.hero ?? {}) },
+    quotes: cfg.quotes?.length ? cfg.quotes : LOGIN_CONFIG_FALLBACK.quotes,
+    standards: cfg.standards?.length
+      ? cfg.standards
+      : LOGIN_CONFIG_FALLBACK.standards,
+    region_messages: {
+      ...LOGIN_CONFIG_FALLBACK.region_messages,
+      ...(cfg.region_messages ?? {}),
+    },
+    toggles: { ...LOGIN_CONFIG_FALLBACK.toggles, ...(cfg.toggles ?? {}) },
+    background: { ...LOGIN_CONFIG_FALLBACK.background, ...(cfg.background ?? {}) },
+  };
 }
 
 // ── Local-only helpers ────────────────────────────────────

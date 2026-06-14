@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   ExternalLink,
   Info,
   Loader2,
+  LogIn,
   RotateCcw,
   Save,
 } from "lucide-react";
@@ -120,6 +123,23 @@ export function AppearancePage() {
       />
       <div className="h-px bg-text-primary/10" />
       <LayerBSection />
+      <div className="h-px bg-text-primary/10" />
+      <Link
+        to="/settings/login"
+        className="glass rounded-[var(--radius)] shadow-glass p-5 flex items-center gap-4 hover:border-accent/40 transition-all group"
+      >
+        <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
+          <LogIn className="w-5 h-5" />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block font-display text-[16px]">Login screen</span>
+          <span className="block text-text-muted text-[13px] mt-0.5">
+            Hero copy, house quotes, the Standard, regional welcomes & toggles —
+            all DB-driven.
+          </span>
+        </span>
+        <ChevronRight className="w-5 h-5 text-text-faint group-hover:text-accent-glow group-hover:translate-x-0.5 transition-all" />
+      </Link>
     </div>
   );
 }

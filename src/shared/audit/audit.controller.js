@@ -43,4 +43,19 @@ async function forRecord(req, res) {
   });
 }
 
-module.exports = { list, getById, forRecord };
+/**
+ * The caller's own audit trail for the last 24 hours.
+ * No extra permission required — every authenticated user can see their own actions.
+ */
+async function myFeed(req, res) {
+  const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const result = await service.myFeed({
+    brand: req.brand,
+    user_id: req.user.user_id,
+    from,
+    limit: 20,
+  });
+  res.json(result);
+}
+
+module.exports = { list, getById, forRecord, myFeed };

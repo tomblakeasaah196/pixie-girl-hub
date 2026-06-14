@@ -15,6 +15,9 @@ const can = (action) => requirePermission("audit", action);
 
 // Literal segments before /:id.
 router.get("/record/:table_name/:record_id", can("view"), c.forRecord);
+// Self-scoped feed: the caller's own actions in the last 24 h. No extra
+// permission required — every authenticated user can see their own trail.
+router.get("/my-feed", c.myFeed);
 router.get("/", can("view"), c.list);
 router.get("/:id", can("view"), c.getById);
 

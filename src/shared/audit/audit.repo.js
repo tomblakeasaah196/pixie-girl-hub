@@ -97,4 +97,26 @@ async function forRecord({ brand, table_name, record_id }) {
   return rows;
 }
 
-module.exports = { list, getById, forRecord };
+/**
+ * Self-scoped feed: the authenticated user's own actions in the last 24 hours,
+ * across all sensitivity levels (they produced these rows). Returns at most
+ * `limit` entries newest-first; strips is_sensitive flag (the actor can see
+ * their own actions, but the sensitivity metadata is irrelevant here).
+ */
+async function myFeed({ brand, user_id, from, limit = 20 }) {
+  const { rows } = await query(
+    `SELECT log_id, occurred_at, module, action, table_name, record_id,
+            metadata
+       FROM shared.audit_log
+      WHERE business = $1
+        AND user_id  = $2
+        AND occurred_at >= $3
+      ORDER BY occurred_at DESC
+      LIMIT $4`,
+    [brand, user_id, from, limit],
+  );
+  const window = rows.length > 0 ? "24h" : "all_time";
+  return { data: rows, window };
+}
+
+module.exports = { list, getById, forRecord, myFeed };

@@ -94,7 +94,9 @@ async function createOrderTx({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const cfg = await businessConfig.findByKey(brand);
     const defaultVat =
-      cfg && cfg.vat_rate !== null ? money(cfg.vat_rate) : money("0.075");
+      cfg && cfg.vat_rate !== null && cfg.vat_rate !== undefined
+        ? money(cfg.vat_rate)
+        : money("0.075");
 
     // 1. Resolve line pricing context + base unit prices.
     const built = [];
@@ -111,7 +113,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
           409,
         );
       const unit = money(
-        li.unit_price_ngn !== null
+        li.unit_price_ngn !== null && li.unit_price_ngn !== undefined
           ? li.unit_price_ngn
           : (channelPrice(ctx, input.sales_channel) ?? 0),
       );
@@ -157,7 +159,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
 
     // 3. Margin-floor clamp (§6.25): never below the variant's min_price.
     for (const b of built) {
-      if (b.ctx.min_price_ngn !== null) {
+      if (b.ctx.min_price_ngn !== null && b.ctx.min_price_ngn !== undefined) {
         const floor = money(b.ctx.min_price_ngn);
         const maxDiscount = b.unit.minus(floor);
         if (b.perUnitDiscount.gt(maxDiscount))
@@ -389,7 +391,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         .plus(extraShareByIdx[idx]);
       const taxable = b.ctx.taxable !== false;
       const rate = taxable
-        ? b.ctx.product_vat !== null
+        ? b.ctx.product_vat !== null && b.ctx.product_vat !== undefined
           ? money(b.ctx.product_vat)
           : defaultVat
         : money(0);
@@ -465,9 +467,11 @@ async function createOrderTx({ brand, user, request_id, input }) {
         client_idempotency_key: input.client_idempotency_key || null,
         payment_model: paymentModel,
         required_deposit_pct:
-          requiredDepositPct !== null ? requiredDepositPct.toFixed(2) : null,
+          requiredDepositPct !== null && requiredDepositPct !== undefined
+            ? requiredDepositPct.toFixed(2)
+            : null,
         required_deposit_ngn:
-          requiredDepositNgn !== null
+          requiredDepositNgn !== null && requiredDepositNgn !== undefined
             ? toCurrencyString(requiredDepositNgn)
             : null,
       },
@@ -797,6 +801,7 @@ async function addPayment({ brand, user, request_id, id, input }) {
       updated.payment_model === "deposit_triggered" &&
       !updated.deposit_met_at &&
       updated.required_deposit_ngn !== null &&
+      updated.required_deposit_ngn !== undefined &&
       money(updated.amount_paid_ngn).gte(money(updated.required_deposit_ngn))
     ) {
       // Deposit cleared (V2.2 §6.2): unlock production now; the balance is
@@ -1058,7 +1063,9 @@ async function buildQuotationLines({
 }) {
   const cfg = await businessConfig.findByKey(brand);
   const defaultVat =
-    cfg && cfg.vat_rate !== null ? money(cfg.vat_rate) : money("0.075");
+    cfg && cfg.vat_rate !== null && cfg.vat_rate !== undefined
+      ? money(cfg.vat_rate)
+      : money("0.075");
   let subtotal = money(0),
     discountTotal = money(0),
     taxTotal = money(0);
@@ -1083,7 +1090,7 @@ async function buildQuotationLines({
     const lineDiscount = money(li.line_discount_ngn || 0);
     const taxable = ctx.taxable !== false;
     const rate = taxable
-      ? ctx.product_vat !== null
+      ? ctx.product_vat !== null && ctx.product_vat !== undefined
         ? money(ctx.product_vat)
         : defaultVat
       : money(0);

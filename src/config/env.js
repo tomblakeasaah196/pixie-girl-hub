@@ -6,7 +6,32 @@
 
 "use strict";
 
+// Load .env as a side-effect of requiring this module. Because every entrypoint
+// (server, standalone worker, CLI scripts) reaches env through `config`, doing
+// it here guarantees process.env is populated before the lazy validateEnv()
+// runs — no entrypoint has to remember to call dotenv first. Idempotent:
+// dotenv won't overwrite vars already set by the shell/host, and a second
+// call from server.js is harmless.
+require("dotenv").config();
+
 const { z } = require("zod");
+
+// Env vars arrive as strings. z.coerce.boolean() is Boolean(str), so the string
+// "false" → true (every non-empty string is truthy) — a classic footgun that
+// silently flips DB_SSL=false, COOKIE_SECURE=false, RLS_READ_ENFORCE=false, etc.
+// to true. zBool parses the usual truthy/falsy spellings explicitly instead.
+const zBool = (def) =>
+  z
+    .preprocess((v) => {
+      if (typeof v === "boolean") return v;
+      if (typeof v === "string") {
+        const s = v.trim().toLowerCase();
+        if (["true", "1", "yes", "on"].includes(s)) return true;
+        if (["false", "0", "no", "off", ""].includes(s)) return false;
+      }
+      return v;
+    }, z.boolean())
+    .default(def);
 
 const schema = z.object({
   // App
@@ -29,7 +54,7 @@ const schema = z.object({
   DB_PASSWORD: z.string(),
   DB_POOL_MIN: z.coerce.number().int().nonnegative().default(2),
   DB_POOL_MAX: z.coerce.number().int().positive().default(20),
-  DB_SSL: z.coerce.boolean().default(false),
+  DB_SSL: zBool(false),
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
 
   // Redis
@@ -43,7 +68,7 @@ const schema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("14d"),
   SESSION_SECRET: z.string().min(32),
-  COOKIE_SECURE: z.coerce.boolean().default(false),
+  COOKIE_SECURE: zBool(false),
   COOKIE_DOMAIN: z.string().default("localhost"),
   ENCRYPTION_KEY: z
     .string()
@@ -51,9 +76,17 @@ const schema = z.object({
       64,
       "ENCRYPTION_KEY must be exactly 32 bytes hex-encoded (64 chars)",
     ),
+  // Password hashing (argon2id). Tunable cost so hashing can be strengthened
+  // without code changes; defaults match argon2's built-in defaults.
+  ARGON2_MEMORY_COST: z.coerce.number().int().positive().default(65536),
+  ARGON2_TIME_COST: z.coerce.number().int().positive().default(3),
 
   // CORS
   CORS_ORIGINS: z.string().default(""),
+
+  // Express `trust proxy`. An integer string → number of hops to trust; a CSV
+  // of keywords/IPs (e.g. "loopback,uniquelocal") → trusted addresses.
+  TRUSTED_PROXIES: z.string().default("1"),
 
   // Storage
   STORAGE_KIND: z.enum(["local", "s3"]).default("local"),
@@ -99,6 +132,29 @@ const schema = z.object({
   YOUTUBE_ACCESS_TOKEN: z.string().optional(), // OAuth token with youtube.upload scope
   YOUTUBE_BASE_URL: z.string().url().default("https://www.googleapis.com"),
 
+  // Paid ads — Google Ads + Meta Marketing (V2.2 §6.15 live sync). App-level
+  // creds only; per-ad-account OAuth tokens are stored AES-encrypted on
+  // shared.ad_accounts. Blank for a network → its pull/push returns a clean 503
+  // and the nightly sync skips it.
+  GOOGLE_ADS_DEVELOPER_TOKEN: z.string().optional(),
+  GOOGLE_ADS_CLIENT_ID: z.string().optional(),
+  GOOGLE_ADS_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID: z.string().optional(), // MCC id, digits only
+  GOOGLE_ADS_API_VERSION: z.string().default("v17"),
+  GOOGLE_ADS_BASE_URL: z
+    .string()
+    .url()
+    .default("https://googleads.googleapis.com"),
+  GOOGLE_OAUTH_TOKEN_URL: z
+    .string()
+    .url()
+    .default("https://oauth2.googleapis.com/token"),
+  // Meta Marketing rides the Graph API (META_GRAPH_VERSION above). Optional
+  // system-user token; per-account tokens are preferred. App secret (optional)
+  // enables appsecret_proof on calls.
+  META_MARKETING_API_KEY: z.string().optional(),
+  META_ADS_APP_SECRET: z.string().optional(),
+
   // SMTP
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
@@ -126,11 +182,11 @@ const schema = z.object({
 
   // Observability
   SENTRY_DSN: z.string().optional(),
-  ENABLE_REQUEST_LOGGING: z.coerce.boolean().default(true),
-  ENABLE_AUDIT_LOG: z.coerce.boolean().default(true),
+  ENABLE_REQUEST_LOGGING: zBool(true),
+  ENABLE_AUDIT_LOG: zBool(true),
 
   // PDF rendering (J-7 / X-1 — headless-Chromium HTML→PDF)
-  PDF_ENABLED: z.coerce.boolean().default(true),
+  PDF_ENABLED: zBool(true),
   // Optional: path to a system Chromium (e.g. /usr/bin/chromium). When unset,
   // puppeteer uses its bundled Chromium.
   PUPPETEER_EXECUTABLE_PATH: z.string().optional(),
@@ -152,7 +208,7 @@ const schema = z.object({
   EMBEDDINGS_API_KEY: z.string().optional(),
   EMBEDDINGS_API_BASE_URL: z.string().url().optional(),
   EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),
-  PRAXIS_ORCHESTRATOR_ENABLED: z.coerce.boolean().default(false),
+  PRAXIS_ORCHESTRATOR_ENABLED: zBool(false),
   // Which ai_vendor_credentials row backs Praxis's chat LLM (creds live in DB /
   // AI Control, not env). RAG retrieval depth + answer token budget.
   PRAXIS_LLM_VENDOR: z.string().default("deepseek"),
@@ -160,21 +216,29 @@ const schema = z.object({
   PRAXIS_MAX_TOOLS: z.coerce.number().int().min(1).max(128).default(40),
 
   // Feature flags
-  FEATURE_MANUAL_PAYMENTS_ENABLED: z.coerce.boolean().default(false),
-  FEATURE_PRAXIS_VOICE_ENABLED: z.coerce.boolean().default(true),
-  FEATURE_UGC_INGESTION_ENABLED: z.coerce.boolean().default(true),
-  ENABLE_WORKERS: z.coerce.boolean().default(true),
+  FEATURE_MANUAL_PAYMENTS_ENABLED: zBool(false),
+  FEATURE_PRAXIS_VOICE_ENABLED: zBool(true),
+  FEATURE_UGC_INGESTION_ENABLED: zBool(true),
+  ENABLE_WORKERS: zBool(true),
 
   // H-1 read-side RLS: when true, one-shot reads with an ambient brand context
   // run inside a minimal transaction so app.current_business is set and RLS
   // filters them. Adds BEGIN/COMMIT round-trips per read — keep OFF until a
   // staging perf check confirms acceptable latency. Write paths (transaction())
   // already set the GUC regardless of this flag.
-  RLS_READ_ENFORCE: z.coerce.boolean().default(false),
+  RLS_READ_ENFORCE: zBool(false),
 
   // Password-reset link lifetime (minutes). Token is single-use and stored only
   // as a SHA-256 hash in redis.
   PASSWORD_RESET_TTL_MIN: z.coerce.number().int().positive().default(30),
+
+  // Per-IP throttle for unauthenticated write endpoints (middleware/index.js).
+  PUBLIC_WRITE_RATE_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60 * 1000),
+  PUBLIC_WRITE_RATE_MAX: z.coerce.number().int().positive().default(20),
 
   // SMS (Twilio) — optional fallback channel for retention workflows. Unset →
   // sms.service no-ops (returns skipped).
@@ -189,13 +253,31 @@ const schema = z.object({
   TRANSCRIPTION_API_BASE_URL: z.string().optional(),
   TRANSCRIPTION_MODEL: z.string().optional(),
   MEDIA_BASE_URL: z.string().optional(),
+
+  // Cron schedules (worker). Overridable; defaults preserve the built-in
+  // cadence. Operational sweeps (queues, reminders) stay literal in worker.js.
+  CRON_DAILY_AI_BRIEFING: z.string().default("0 7 * * *"),
+  CRON_WEEKLY_SALES_REPORT: z.string().default("0 20 * * 6"),
+  CRON_WEEKLY_CUSTOMER_REPORT: z.string().default("0 20 * * 6"),
+  CRON_LAYAWAY_ABANDONMENT_CHECK: z.string().default("0 2 * * *"),
+  CRON_FX_RATE_REFRESH: z.string().default("0 6 * * *"),
+  CRON_LOW_STOCK_ALERTS: z.string().default("0 8,14 * * *"),
 });
 
 let _config = null;
 
 function validateEnv() {
   if (_config) return _config;
-  const parsed = schema.safeParse(process.env);
+  // Treat a present-but-blank var as unset. dotenv assigns "" for a bare key
+  // (e.g. `FX_API_BASE_URL=` in .env); without this, optional .url()/.email()
+  // fields would fail validation on an empty string instead of falling through
+  // to their default/optional. Required fields still error (as "Required").
+  const source = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === "string" && v.trim() === "") continue;
+    source[k] = v;
+  }
+  const parsed = schema.safeParse(source);
   if (!parsed.success) {
     console.error("❌ Invalid environment variables:");
     for (const issue of parsed.error.issues) {
@@ -207,15 +289,17 @@ function validateEnv() {
   return _config;
 }
 
-// Lazy proxy — touching `config.X` before validateEnv() runs will throw,
-// catching bootstrap-order bugs early.
+// Lazy proxy. Accessing `config.X` validates the environment on first touch
+// (process.env is already loaded by dotenv), so `config` is a true drop-in env
+// wrapper usable anywhere — including module-level constants that run at
+// require() time, before bootstrap() reaches its explicit validateEnv() call.
+// validateEnv() is idempotent, so the explicit boot-time call still gives a
+// clean fail-fast with the full list of bad vars.
 const config = new Proxy(
   {},
   {
     get(_, prop) {
-      if (!_config) {
-        throw new Error(`config.${String(prop)} accessed before validateEnv()`);
-      }
+      if (!_config) validateEnv();
       return _config[prop];
     },
   },

@@ -217,7 +217,10 @@ async function runAction({ brand, rule, execution }) {
         points,
         notes: cfg.notes || `Workflow: ${rule.display_name || rule.rule_key}`,
       });
-      return { status: "completed", result_summary: { points_awarded: points } };
+      return {
+        status: "completed",
+        result_summary: { points_awarded: points },
+      };
     }
     case "create_task": {
       const task = await tasksService.createFromModule({

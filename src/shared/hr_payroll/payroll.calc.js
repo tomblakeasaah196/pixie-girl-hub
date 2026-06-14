@@ -39,7 +39,9 @@ function progressiveTax(taxable, bands) {
 }
 
 function rateFrom(config) {
-  return config && config.rate_pct !== null ? Number(config.rate_pct) : 0;
+  return config && config.rate_pct !== null && config.rate_pct !== undefined
+    ? Number(config.rate_pct)
+    : 0;
 }
 
 /**
@@ -57,10 +59,12 @@ function computeDeductions({ gross, pensionableBase, configs = {} }) {
   // PAYE: relief reduces taxable income; pension + NHF are tax-deductible.
   const paye = configs.paye || {};
   const relief =
-    (paye.consolidated_relief_ngn !== null
+    (paye.consolidated_relief_ngn !== null &&
+    paye.consolidated_relief_ngn !== undefined
       ? Number(paye.consolidated_relief_ngn)
       : 0) +
-    (paye.consolidated_relief_pct !== null
+    (paye.consolidated_relief_pct !== null &&
+    paye.consolidated_relief_pct !== undefined
       ? gross * Number(paye.consolidated_relief_pct)
       : 0);
   const taxable = Math.max(0, gross - relief - pension_employee - nhf);

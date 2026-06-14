@@ -44,11 +44,7 @@ module.exports = async function process(job) {
   }
 
   // ── Sweep: re-drive a batch of replayable rows ────────────
-  const {
-    source = null,
-    limit = 100,
-    max_retries: maxRetries = 25,
-  } = data;
+  const { source = null, limit = 100, max_retries: maxRetries = 25 } = data;
   const rows = await repo.listReplayable({ source, limit, maxRetries });
 
   let ok = 0;

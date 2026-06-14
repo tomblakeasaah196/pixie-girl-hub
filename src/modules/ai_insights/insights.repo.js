@@ -255,7 +255,7 @@ async function raiseServiceMatch({ client, r }) {
 // ── Detector source reads (the live spine) ─────────────────
 async function overdueInvoices({ brand, limit = 500 }) {
   const { rows } = await query(
-    `SELECT invoice_id, customer_contact_id, net_due_ngn,
+    `SELECT invoice_id, contact_id AS customer_contact_id, balance_due_ngn AS net_due_ngn,
             (CURRENT_DATE - due_date) AS days_overdue
        FROM ${t(brand, "invoices")}
       WHERE status IN ('sent','viewed','partially_paid')
@@ -280,9 +280,9 @@ async function staleIntercompany({ within_days = 7, limit = 500 }) {
 async function staleApprovals({ within_hours = 48 }) {
   const { rows } = await query(
     `SELECT business, count(*)::int AS pending_count,
-            (EXTRACT(EPOCH FROM (now() - min(updated_at))) / 3600)::int AS oldest_age_hours
+            (EXTRACT(EPOCH FROM (now() - min(stage_entered_at))) / 3600)::int AS oldest_age_hours
        FROM shared.workflow_instances
-      WHERE status = 'pending' AND updated_at < now() - ($1 || ' hours')::interval
+      WHERE status = 'pending' AND stage_entered_at < now() - ($1 || ' hours')::interval
       GROUP BY business`,
     [within_hours],
   );

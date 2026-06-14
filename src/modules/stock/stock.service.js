@@ -645,7 +645,10 @@ async function receiveShipment({ brand, user, request_id, id, input = {} }) {
     const received = new Map((input.lines || []).map((l) => [l.line_id, l]));
     for (const line of sh.lines) {
       const r = received.get(line.line_id) || {};
-      const qty = r.qty_received !== null ? r.qty_received : line.qty_expected;
+      const qty =
+        r.qty_received !== null && r.qty_received !== undefined
+          ? r.qty_received
+          : line.qty_expected;
       await repo.setShipmentLineReceived({
         client,
         brand,

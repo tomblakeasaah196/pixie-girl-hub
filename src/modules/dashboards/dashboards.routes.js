@@ -24,29 +24,64 @@ router.post("/briefings/:id/read", can("view"), c.markBriefingRead);
 
 // Saved Reports (F-12)
 router.get("/saved-reports", can("view"), c.listSavedReports);
-router.post("/saved-reports", can("edit"), v.validateSavedReportCreate, c.createSavedReport);
+router.post(
+  "/saved-reports",
+  can("edit"),
+  v.validateSavedReportCreate,
+  c.createSavedReport,
+);
 router.get("/saved-reports/:id", can("view"), c.getSavedReport);
-router.patch("/saved-reports/:id", can("edit"), v.validateSavedReportUpdate, c.updateSavedReport);
+router.patch(
+  "/saved-reports/:id",
+  can("edit"),
+  v.validateSavedReportUpdate,
+  c.updateSavedReport,
+);
 router.delete("/saved-reports/:id", can("edit"), c.deleteSavedReport);
 
 // Dashboard Configs (F-12)
 router.get("/configs", can("view"), c.listDashboardConfigs);
-router.post("/configs", can("edit"), v.validateDashboardConfigCreate, c.createDashboardConfig);
+router.post(
+  "/configs",
+  can("edit"),
+  v.validateDashboardConfigCreate,
+  c.createDashboardConfig,
+);
 router.get("/configs/:id", can("view"), c.getDashboardConfig);
-router.patch("/configs/:id", can("edit"), v.validateDashboardConfigUpdate, c.updateDashboardConfig);
+router.patch(
+  "/configs/:id",
+  can("edit"),
+  v.validateDashboardConfigUpdate,
+  c.updateDashboardConfig,
+);
 router.delete("/configs/:id", can("edit"), c.deleteDashboardConfig);
 
 // Widgets (admin-managed config; "admin" is not a valid RBAC action —
 // requirePermission only accepts view/create/edit/delete/approve/export)
 router.get("/widgets", can("view"), c.listWidgets);
 router.post("/widgets", can("create"), v.validateWidgetCreate, c.createWidget);
-router.patch("/widgets/:id", can("edit"), v.validateWidgetUpdate, c.updateWidget);
+router.patch(
+  "/widgets/:id",
+  can("edit"),
+  v.validateWidgetUpdate,
+  c.updateWidget,
+);
 
 // Report Templates (U-3)
 router.get("/report-templates", can("view"), c.listReportTemplates);
-router.post("/report-templates", can("create"), v.validateReportTemplateCreate, c.createReportTemplate);
+router.post(
+  "/report-templates",
+  can("create"),
+  v.validateReportTemplateCreate,
+  c.createReportTemplate,
+);
 router.get("/report-templates/:id", can("view"), c.getReportTemplate);
-router.patch("/report-templates/:id", can("edit"), v.validateReportTemplateUpdate, c.updateReportTemplate);
+router.patch(
+  "/report-templates/:id",
+  can("edit"),
+  v.validateReportTemplateUpdate,
+  c.updateReportTemplate,
+);
 
 // Report Runs
 router.get("/report-runs", can("view"), c.listReportRuns);

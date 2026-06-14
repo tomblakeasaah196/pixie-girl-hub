@@ -96,7 +96,10 @@ async function clock({ brand, user, request_id, input, requestMeta = {} }) {
     const geofences = await repo.activeGeofences({ client, brand });
     const decision = geo.evaluateClock({
       point:
-        input.latitude !== null
+        input.latitude !== null &&
+        input.longitude !== null &&
+        input.latitude !== undefined &&
+        input.longitude !== undefined
           ? { latitude: input.latitude, longitude: input.longitude }
           : null,
       accuracy_m: input.accuracy_m,

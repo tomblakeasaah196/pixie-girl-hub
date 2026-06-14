@@ -69,9 +69,7 @@ suite("Entity isolation — RLS on shared tables (§3)", () => {
   });
 
   test("the brand GUC isolates rows for a non-superuser role", async () => {
-    const who = await db.query(
-      `SELECT current_setting('is_superuser') AS su`,
-    );
+    const who = await db.query(`SELECT current_setting('is_superuser') AS su`);
     if (who.rows[0].su !== "on") {
       // Can't provision a role without superuser/CREATEROLE. Fall back to
       // asserting the policy machinery exists; the real role-based proof needs
@@ -80,7 +78,7 @@ suite("Entity isolation — RLS on shared tables (§3)", () => {
         `SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'shared'`,
       );
       expect(pol.rows[0].n).toBeGreaterThan(0);
-      // eslint-disable-next-line no-console
+      /// eslint-disable-next-line no-console
       console.warn(
         "entity-isolation: connection is not superuser; asserted policies exist but skipped the role-based filtering proof.",
       );
@@ -110,7 +108,9 @@ suite("Entity isolation — RLS on shared tables (§3)", () => {
     );
     await db.query(`GRANT USAGE ON SCHEMA shared TO ${ROLE}`);
     await db.query(`GRANT SELECT ON ${TBL} TO ${ROLE}`);
-    await db.query(`GRANT EXECUTE ON FUNCTION shared.current_business() TO ${ROLE}`);
+    await db.query(
+      `GRANT EXECUTE ON FUNCTION shared.current_business() TO ${ROLE}`,
+    );
 
     const client = new Client({
       host: config.DB_HOST,
@@ -127,7 +127,9 @@ suite("Entity isolation — RLS on shared tables (§3)", () => {
 
       // Brand context set → only that brand's row is visible.
       await client.query("BEGIN");
-      await client.query(`SELECT set_config('app.current_business','faitlynhair',true)`);
+      await client.query(
+        `SELECT set_config('app.current_business','faitlynhair',true)`,
+      );
       const scoped = await client.query(`SELECT business, secret FROM ${TBL}`);
       await client.query("COMMIT");
 

@@ -238,7 +238,8 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
       if (qr.replyText) replyText = qr.replyText;
       const fu = qr.usage || {};
       if (fu.total_tokens) {
-        usage.prompt_tokens = (usage.prompt_tokens || 0) + (fu.prompt_tokens || 0);
+        usage.prompt_tokens =
+          (usage.prompt_tokens || 0) + (fu.prompt_tokens || 0);
         usage.completion_tokens =
           (usage.completion_tokens || 0) + (fu.completion_tokens || 0);
         usage.total_tokens = (usage.total_tokens || 0) + (fu.total_tokens || 0);
@@ -259,41 +260,44 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
     } else {
       const action = byName.get(toolCall.function.name);
       if (action) {
-      const human_summary =
-        replyText || `Proposed: ${action.title || action.action_key}`;
-      pending = await repo.createPendingAction({
-        client,
-        p: {
-          conversation_id: convId,
-          message_id: userMsg.message_id,
-          proposed_by_user_id: user.user_id,
-          action_id: action.action_id,
-          action_key: action.action_key,
-          business: brand,
-          method: action.method,
-          route: action.route,
-          payload: args,
-          human_summary,
-          confidence:
-            action.min_confidence !== null ? action.min_confidence : 0.8,
-        },
-      });
-      replyText =
-        human_summary +
-        "\n\nThis is a proposed action — confirm it to run, or reject it.";
-      await repo.insertRunStep({
-        client,
-        s: {
-          conversation_id: convId,
-          message_id: userMsg.message_id,
-          agent: "orchestrator",
-          step_number: ++step,
-          step_type: "match_action",
-          output: { action_key: action.action_key },
-          matched_action_id: action.action_id,
-          status: "completed",
-        },
-      });
+        const human_summary =
+          replyText || `Proposed: ${action.title || action.action_key}`;
+        pending = await repo.createPendingAction({
+          client,
+          p: {
+            conversation_id: convId,
+            message_id: userMsg.message_id,
+            proposed_by_user_id: user.user_id,
+            action_id: action.action_id,
+            action_key: action.action_key,
+            business: brand,
+            method: action.method,
+            route: action.route,
+            payload: args,
+            human_summary,
+            confidence:
+              action.min_confidence !== null &&
+              action.min_confidence !== undefined
+                ? action.min_confidence
+                : 0.8,
+          },
+        });
+        replyText =
+          human_summary +
+          "\n\nThis is a proposed action — confirm it to run, or reject it.";
+        await repo.insertRunStep({
+          client,
+          s: {
+            conversation_id: convId,
+            message_id: userMsg.message_id,
+            agent: "orchestrator",
+            step_number: ++step,
+            step_type: "match_action",
+            output: { action_key: action.action_key },
+            matched_action_id: action.action_id,
+            status: "completed",
+          },
+        });
       }
     }
   }

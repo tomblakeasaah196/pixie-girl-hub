@@ -94,8 +94,12 @@ async function provisionBusiness({ input, user, request_id }) {
         input.document_prefix,
         input.trading_currency || null,
         input.settlement_currency || null,
-        input.vat_rate !== null ? input.vat_rate : null,
-        input.wht_rate !== null ? input.wht_rate : null,
+        input.vat_rate !== null && input.vat_rate !== undefined
+          ? input.vat_rate
+          : null,
+        input.wht_rate !== null && input.wht_rate !== undefined
+          ? input.wht_rate
+          : null,
       ],
     );
 

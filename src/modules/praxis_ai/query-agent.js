@@ -58,7 +58,15 @@ async function hasView(user, module) {
  * Run a query tool the model selected, then summarise the live result.
  * @returns {Promise<{replyText:string|null, usage:object, queryKey?:string, denied?:boolean, error?:boolean}>}
  */
-async function run({ vendor, user, brand, messages, completion, toolCall, args }) {
+async function run({
+  vendor,
+  user,
+  brand,
+  messages,
+  completion,
+  toolCall,
+  args,
+}) {
   const entry = entryForTool(toolCall.function.name);
   if (!entry) return { replyText: null, usage: {} };
 

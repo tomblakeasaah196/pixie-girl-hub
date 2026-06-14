@@ -13,7 +13,7 @@
 const crypto = require("crypto");
 const { withTransaction } = require("../../config/database");
 const repo = require("./documents.esign.repo");
-const audit = require("../../utils/audit");
+const { audit } = require("../../middleware/audit");
 const {
   NotFoundError,
   ValidationError,
@@ -100,14 +100,13 @@ async function createRequest({ brand, user, request_id, input }) {
     await appendEvent(client, request.request_id, "request_created", {
       metadata: { created_by: user?.user_id, signer_count: signers.length },
     });
-    await audit.log({
-      client,
-      brand,
+    await audit({
+      business: brand,
       user_id: user?.user_id,
       request_id,
-      action: "signature_request.create",
-      entity_type: "signature_request",
-      entity_id: request.request_id,
+      action_key: "signature_request.create",
+      target_type: "signature_request",
+      target_id: request.request_id,
       metadata: { request_type: request.request_type, signers: signers.length },
     });
     return { ...request, signers };
@@ -141,14 +140,13 @@ async function sendRequest({ brand, user, request_id, id }) {
     await appendEvent(client, id, "request_sent", {
       metadata: { activated: activate.length },
     });
-    await audit.log({
-      client,
-      brand,
+    await audit({
+      business: brand,
       user_id: user?.user_id,
       request_id,
-      action: "signature_request.send",
-      entity_type: "signature_request",
-      entity_id: id,
+      action_key: "signature_request.send",
+      target_type: "signature_request",
+      target_id: id,
     });
     return repo.getRequest({ client, brand, id });
   });
@@ -322,14 +320,13 @@ async function cancelRequest({ brand, user, request_id, id }) {
     await appendEvent(client, id, "cancelled", {
       metadata: { by: user?.user_id },
     });
-    await audit.log({
-      client,
-      brand,
+    await audit({
+      business: brand,
       user_id: user?.user_id,
       request_id,
-      action: "signature_request.cancel",
-      entity_type: "signature_request",
-      entity_id: id,
+      action_key: "signature_request.cancel",
+      target_type: "signature_request",
+      target_id: id,
     });
     return repo.getRequest({ client, brand, id });
   });
@@ -352,14 +349,13 @@ async function voidRequest({ brand, user, request_id, id, reason }) {
     await appendEvent(client, id, "voided", {
       metadata: { by: user?.user_id, reason },
     });
-    await audit.log({
-      client,
-      brand,
+    await audit({
+      business: brand,
       user_id: user?.user_id,
       request_id,
-      action: "signature_request.void",
-      entity_type: "signature_request",
-      entity_id: id,
+      action_key: "signature_request.void",
+      target_type: "signature_request",
+      target_id: id,
       metadata: { reason },
     });
     return repo.getRequest({ client, brand, id });

@@ -8,6 +8,7 @@
 
 const { query } = require("../../config/database");
 const { t } = require("../../config/brands");
+const crypto = require("../../services/encryption.service");
 
 // ── Ad accounts ────────────────────────────────────────────
 async function createAdAccount({ brand, account }) {
@@ -56,7 +57,9 @@ async function createAdCampaign({ brand, c }) {
       c.name,
       c.objective || null,
       c.status,
-      c.budget_amount !== null ? c.budget_amount : null,
+      c.budget_amount !== null && c.budget_amount !== undefined
+        ? c.budget_amount
+        : null,
       c.budget_currency || null,
     ],
   );
@@ -186,6 +189,123 @@ async function salesByUtmCampaign({ brand, from, to }) {
   return rows;
 }
 
+// ── Live integration: tokens, external-campaign upsert, sync ───────────────
+const enc = (v) => (v ? crypto.encrypt(v) : null);
+const dec = (v) => (v ? crypto.decrypt(v) : null);
+
+/** INTERNAL: account row with decrypted OAuth tokens. Never return over HTTP. */
+async function getAccountInternal({ brand, id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.ad_accounts WHERE ad_account_id = $1 AND business = $2`,
+    [id, brand],
+  );
+  const a = rows[0];
+  if (!a) return null;
+  a.access_token = dec(a.access_token_enc);
+  a.refresh_token = dec(a.refresh_token_enc);
+  return a;
+}
+
+/** INTERNAL: every active account (all businesses) for the nightly sync. */
+async function listActiveAccountsForSync() {
+  const { rows } = await query(
+    `SELECT * FROM shared.ad_accounts WHERE is_active = true`,
+  );
+  return rows.map((a) => ({
+    ...a,
+    access_token: dec(a.access_token_enc),
+    refresh_token: dec(a.refresh_token_enc),
+  }));
+}
+
+/** Store (encrypted) OAuth tokens against an account; COALESCE keeps the other. */
+async function updateAccountTokens({ brand, id, access_token, refresh_token }) {
+  const { rows } = await query(
+    `UPDATE shared.ad_accounts
+        SET access_token_enc  = COALESCE($3, access_token_enc),
+            refresh_token_enc = COALESCE($4, refresh_token_enc),
+            updated_at = now()
+      WHERE ad_account_id = $1 AND business = $2
+      RETURNING ad_account_id`,
+    [id, brand, enc(access_token), enc(refresh_token)],
+  );
+  return rows[0] || null;
+}
+
+async function setAccountSynced({ id }) {
+  await query(
+    `UPDATE shared.ad_accounts SET last_sync_at = now() WHERE ad_account_id = $1`,
+    [id],
+  );
+}
+
+/** Upsert a campaign pulled from the platform; returns its internal id. */
+async function upsertCampaignFromExternal({
+  brand,
+  ad_account_id,
+  platform,
+  c,
+}) {
+  const { rows } = await query(
+    `INSERT INTO shared.ad_campaigns
+       (business, ad_account_id, platform, external_campaign_id, name,
+        objective, status, budget_amount, budget_currency, budget_type,
+        start_date, end_date, external_created_at, last_external_sync_at)
+     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'active'),$8,$9,$10,$11,$12,$13, now())
+     ON CONFLICT (ad_account_id, external_campaign_id) DO UPDATE
+       SET name = EXCLUDED.name,
+           objective = COALESCE(EXCLUDED.objective, shared.ad_campaigns.objective),
+           status = EXCLUDED.status,
+           budget_amount = EXCLUDED.budget_amount,
+           budget_currency = EXCLUDED.budget_currency,
+           budget_type = EXCLUDED.budget_type,
+           start_date = EXCLUDED.start_date,
+           end_date = EXCLUDED.end_date,
+           last_external_sync_at = now()
+     RETURNING ad_campaign_id`,
+    [
+      brand,
+      ad_account_id,
+      platform,
+      c.external_campaign_id,
+      c.name,
+      c.objective || null,
+      c.status,
+      c.budget_amount !== undefined ? c.budget_amount : null,
+      c.budget_currency || null,
+      c.budget_type || null,
+      c.start_date || null,
+      c.end_date || null,
+      c.external_created_at || null,
+    ],
+  );
+  return rows[0].ad_campaign_id;
+}
+
+/** INTERNAL: campaign joined to its account (decrypted tokens) for push ops. */
+async function getCampaignForPush({ brand, id }) {
+  const { rows } = await query(
+    `SELECT c.*, a.external_account_id, a.currency AS account_currency,
+            a.access_token_enc, a.refresh_token_enc
+       FROM shared.ad_campaigns c
+       JOIN shared.ad_accounts a ON a.ad_account_id = c.ad_account_id
+      WHERE c.ad_campaign_id = $1 AND c.business = $2`,
+    [id, brand],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  r.account = {
+    ad_account_id: r.ad_account_id,
+    external_account_id: r.external_account_id,
+    currency: r.account_currency,
+    access_token: dec(r.access_token_enc),
+    refresh_token: dec(r.refresh_token_enc),
+  };
+  delete r.access_token_enc;
+  delete r.refresh_token_enc;
+  return r;
+}
+
 module.exports = {
   createAdAccount,
   listAdAccounts,
@@ -197,4 +317,11 @@ module.exports = {
   recordSpend,
   adSpendSummary,
   salesByUtmCampaign,
+  // live integration
+  getAccountInternal,
+  listActiveAccountsForSync,
+  updateAccountTokens,
+  setAccountSynced,
+  upsertCampaignFromExternal,
+  getCampaignForPush,
 };

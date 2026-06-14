@@ -109,7 +109,9 @@ describe("buildPayslip", () => {
     // total withheld = PAYE + employee pension + NHF (NOT employer pension)
     expect(slip.total_deductions_ngn).toBe(39949);
     expect(slip.net_pay_ngn).toBe(220051);
-    expect(slip.gross_pay_ngn - slip.total_deductions_ngn).toBe(slip.net_pay_ngn);
+    expect(slip.gross_pay_ngn - slip.total_deductions_ngn).toBe(
+      slip.net_pay_ngn,
+    );
   });
 
   test("payslip lines never include employer pension and skip zero amounts", () => {
@@ -120,7 +122,11 @@ describe("buildPayslip", () => {
         pension_employee: { rate_pct: 0.08 },
         pension_employer: { rate_pct: 0.1 },
         nhf: { rate_pct: 0 },
-        paye: { consolidated_relief_ngn: 0, consolidated_relief_pct: 0.2, bands: BANDS },
+        paye: {
+          consolidated_relief_ngn: 0,
+          consolidated_relief_pct: 0.2,
+          bands: BANDS,
+        },
       },
     });
     const types = slip.lines.map((l) => l.line_type);

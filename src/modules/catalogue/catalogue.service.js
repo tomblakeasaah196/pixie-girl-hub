@@ -545,7 +545,7 @@ async function attachVideoFromMedia({ brand, user, request_id, id, input }) {
       title: input.title || null,
       caption: input.caption || asset.caption || null,
       duration_seconds:
-        asset.duration_sec !== null
+        asset.duration_sec !== null && asset.duration_sec !== undefined
           ? Math.round(Number(asset.duration_sec))
           : null,
       display_order: input.display_order,

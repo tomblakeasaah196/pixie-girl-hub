@@ -106,6 +106,7 @@ router.post(
   controller.createPo,
 );
 router.get("/purchase-orders/:poId", can("view"), controller.getPo);
+router.post("/purchase-orders/:poId/pdf", can("view"), controller.poPdf);
 router.post("/purchase-orders/:poId/submit", can("edit"), controller.submitPo);
 router.post(
   "/purchase-orders/:poId/approve",

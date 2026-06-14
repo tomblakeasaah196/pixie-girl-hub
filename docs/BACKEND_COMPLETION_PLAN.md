@@ -71,6 +71,17 @@
 
 ## TIER 2 — Finish partially-built features (spec conformance)
 
+> **STATUS — Tier 2 complete (2026-06-13), pending CI verification.**
+> - **2.1 ✅** logistics `delivery.status` → timeline (packed/in_transit/out_for_delivery/delivered), guarded, in `timeline.subscribers`.
+> - **2.2 ✅** `buy_x_get_y` + `tiered_qty` discount logic (`bundle.service.quantityBundleDiscount`, wired into `createOrder`); algorithm + unit test verified.
+> - **2.3 ✅** wig-maintenance add-on (`maintenance_fee_ngn`/`maintenance_addon`, migration `000208`, billed per cycle).
+> - **2.4 ✅** `award_points` / `create_task` / `send_sms` workflow actions (+ env-gated Twilio `sms.service`). More *triggers* remain incremental.
+> - **2.5 ✅** `variant.created` + `order.deposit_met` moved to the transactional outbox (fixes a pre-commit ordering risk); consumers registered in the worker.
+> - **2.6 ✅ already done** — verifiers + confirmers for paystack/opay/nomba/stripe and the replay processor (+30-min sweep) were already implemented; the "logged-not-processed" note was stale. No new code.
+> - **2.7 ◑** public contact paths already dedupe by phone; the DB-unique backstop ships as a deliberate post-dedup script (`scripts/dedup/contacts-unique.sql`) rather than an auto-migration that could fail on existing data. Smartcomm thread dedup deferred (low-harm).
+>
+> Caveat: authored without execution in this environment — run `npm run test:unit` + the integration suites in CI.
+
 ### 2.1 Order-timeline stage wiring + notifications (§6.23.6 — F-5 remainder)
 Only `payment_received` auto-records (via outbox). Wire the owning modules to call `timeline.record()` for `order_confirmed`, `packed_for_dispatch`, `in_production`, `ready`, `out_for_delivery`, `delivered`, etc., and fire the stage notifications. **Size: M.**
 
@@ -96,6 +107,13 @@ Contact phone/email uniqueness (needs a dedupe migration accounting for cross-br
 
 ## TIER 3 — AI completeness (§6.29 / §8.2)
 
+> **STATUS — Tier 3 complete (2026-06-13), pending CI verification.**
+> - **3.1 ✅** Query Agent: `query-catalogue.js` (allowlisted, parameterised, brand-scoped reads — reuses verified dashboards reads, never free-form SQL) + `query-agent.js` (exposes them as `query_*` tools, gates each on `view` for its RBAC module with CEO bypass, executes + summarises). Wired into the orchestrator + system prompt. Unit test: `tests/unit/praxis_ai/query-agent.test.js`.
+> - **3.2 ✅** RAG corpus builder: `scripts/rag-reembed.js` now ingests `ai_knowledge_chunks` (PD/SOPs/training) + the AI-enabled action catalogue into `ai_embeddings` via the verified ai-embed processor (re-runnable for model migrations). The pipeline existed but **nothing populated the corpus** — now it does. Still needs a provider key (`EMBEDDINGS_PROVIDER` + `EMBEDDINGS_API_KEY`) — env/ops, then `npm run rag:reembed`.
+> - **3.3 ✅** Voice path: env-gated `transcription.service.js` (OpenAI-compatible Whisper, SSRF-guarded to the app's own media origin) wired into `praxis.service` (audio URL → transcript before orchestration); validator accepts `source_audio_url`. No-ops until `TRANSCRIPTION_PROVIDER` is set.
+>
+> Caveats: authored without execution here — run `npm run test:unit` + integration suites in CI. 3.2/3.3 are env-gated (need provider keys). The Query Agent ships with 2 reads (sales + operations); add more by appending to `query-catalogue.js`.
+
 ### 3.1 Praxis Query Agent — live, scoped data queries
 Today reads are answered **only from RAG-embedded documents**; the spec's Query Agent runs "a parameterised, permission-scoped query… and summarises." Build a safe query layer (allowlisted, parameterised, user-permission-scoped — never free-form SQL) so "what did we sell today?" reads `sales_orders`, not SOPs. **Size: M–L.**
 
@@ -108,6 +126,13 @@ Today reads are answered **only from RAG-embedded documents**; the spec's Query 
 ---
 
 ## TIER 4 — Production-readiness polish
+
+> **STATUS — Tier 4 done (2026-06-13), pending CI/staging verification.**
+> - **4.1 ✅** `scripts/check-integrations.js` (`npm run check:integrations`) — a safe, read-only readiness report (env + maxmind file + puppeteer; **no network calls**) covering SMTP, Meta WA/IG, Twilio, GeoIP→currency, FX, embeddings, transcription, Praxis LLM, PDF, couriers, Sentry. Notes that payment gateways are DB-configured per business. Actually *setting* the keys is staging/ops.
+> - **4.2 ✅** PDF engine adopted for **all five** document consumers, each `fetch → template → renderAndStore → Documents`: invoice (`POST /invoicing/invoices/:id/pdf`), payslip (`/hr/payslips/:id/pdf`), POS/sales receipt (`/sales/orders/:id/receipt`), purchase order (`/purchasing/purchase-orders/:poId/pdf`), and customer/supplier statement (`/accounting/reports/statement/:contactId/pdf`, with a running-balance journal query). **Templates refactored** into editable `src/services/templates/*.html` files (one per report) rendered by a single-pass placeholder engine — markup separated from logic. Loose `!=`/`==` removed (eqeqeq) — verified the renderer (raw blocks not re-scanned, numeric scalars survive) with a unit-style check.
+> - **4.3 ✅** Hardening verified solid (helmet, CORS, compression, webhook raw-body HMAC capture, request logging, global `/api/` + public-write rate limits, leak-safe error handler). Fix: normalised the 429 body to the app's `{ error: { code, message } }` envelope. **Load check** (autocannon/k6 against storefront read endpoints) is a staging step.
+>
+> Caveat: authored without execution here. PDF rendering needs Puppeteer/Chromium on the host; integration keys are env/ops.
 
 ### 4.1 Wire & validate external credentials (staging)
 Paystack (live), Meta/Instagram Graph, Twilio/WhatsApp, SMTP, **maxmind GeoIP DB** (for the §6.4 IP→currency feature), FX provider, LLM vendor. Each path no-ops until configured — validate each actually works once configured. **Size: M.**

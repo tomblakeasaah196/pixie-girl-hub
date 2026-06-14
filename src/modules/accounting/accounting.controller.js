@@ -154,6 +154,17 @@ const apAgeing = async (req, res) =>
       as_of: req.query.as_of,
     }),
   });
+const statementPdf = async (req, res) =>
+  res.status(201).json({
+    data: await service.statementPdf({
+      brand: req.brand,
+      user: req.user,
+      contact_id: req.params.contactId,
+      from: req.query.from,
+      to: req.query.to,
+      party_type: req.query.party_type,
+    }),
+  });
 
 // FX Revaluation (F-9)
 async function listRevaluationRuns(req, res) {
@@ -206,6 +217,7 @@ module.exports = {
   cashFlow,
   arAgeing,
   apAgeing,
+  statementPdf,
   listRevaluationRuns,
   getRevaluationRun,
   runRevaluation,

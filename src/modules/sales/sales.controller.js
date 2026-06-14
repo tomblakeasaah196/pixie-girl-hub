@@ -35,6 +35,14 @@ const getById = async (req, res) =>
   res.json({
     data: await service.getById({ brand: req.brand, id: req.params.id }),
   });
+const receiptPdf = async (req, res) =>
+  res.status(201).json({
+    data: await service.receiptPdf({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.id,
+    }),
+  });
 const createOrder = async (req, res) =>
   res.status(201).json({
     data: await service.createOrder({ ...base(req), input: req.body }),
@@ -175,6 +183,7 @@ const rejectCancellation = async (req, res) =>
 module.exports = {
   listOrders,
   getById,
+  receiptPdf,
   createOrder,
   updateOrder,
   addPayment,

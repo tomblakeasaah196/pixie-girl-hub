@@ -71,6 +71,15 @@ async function getPayslip(req, res) {
     }),
   });
 }
+async function payslipPdf(req, res) {
+  res.status(201).json({
+    data: await service.payslipPdf({
+      brand: req.brand,
+      user: req.user,
+      payslip_id: req.params.id,
+    }),
+  });
+}
 
 // commissions
 async function listCommissions(req, res) {
@@ -136,6 +145,7 @@ module.exports = {
   reverseRun,
   listPayslips,
   getPayslip,
+  payslipPdf,
   listCommissions,
   accrueCommission,
   approveCommission,

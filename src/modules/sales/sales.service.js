@@ -20,6 +20,8 @@ const couponService = require("../retention/coupon.service");
 const couponRepo = require("../retention/coupon.repo");
 const retentionRepo = require("../retention/retention.repo");
 const bundleRepo = require("../retention/bundle.repo");
+const bundleService = require("../retention/bundle.service");
+const pdf = require("../../services/pdf.service");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const businessConfig = require("../business_setup/business-config.repo");
@@ -348,6 +350,27 @@ async function createOrderTx({ brand, user, request_id, input }) {
       } else if (bundle.pricing_model === "amount_off") {
         d = money(bundle.discount_value || 0);
         if (d.gt(compSubtotal)) d = compSubtotal;
+      } else if (
+        bundle.pricing_model === "buy_x_get_y" ||
+        bundle.pricing_model === "tiered_qty"
+      ) {
+        // Quantity-based models need per-line context (F-2 remainder).
+        const componentLines = built
+          .map((b, idx) => ({ b, idx }))
+          .filter(({ b }) => isComponent(b))
+          .map(({ b, idx }) => ({
+            quantity: b.li.quantity,
+            unit_price_ngn:
+              b.li.quantity > 0
+                ? money(preNetByIdx[idx]).div(b.li.quantity)
+                : money(0),
+          }));
+        d = bundleService.quantityBundleDiscount({
+          pricing_model: bundle.pricing_model,
+          bundle,
+          lines: componentLines,
+          component_subtotal_ngn: compSubtotal,
+        });
       }
       bundleMeta = bundle;
       bundleLineTotal = applyOrderDiscount(d);
@@ -787,6 +810,20 @@ async function addPayment({ brand, user, request_id, id, input }) {
           contact_id: flipped.contact_id,
           required_deposit_ngn: flipped.required_deposit_ngn,
           amount_paid_ngn: flipped.amount_paid_ngn,
+        });
+        // Durable + post-commit (H-2): Service Jobs opens a styling job for the
+        // committed order. Keeps the in-process emit for realtime.
+        await outbox.enqueue(client, {
+          business: brand,
+          event_type: "order.deposit_met",
+          payload: {
+            brand,
+            order_id: id,
+            contact_id: flipped.contact_id,
+            required_deposit_ngn: flipped.required_deposit_ngn,
+            amount_paid_ngn: flipped.amount_paid_ngn,
+          },
+          dedup_key: `order.deposit_met:${id}`,
         });
       }
     }
@@ -1391,9 +1428,26 @@ async function reviewCancellation({
   });
 }
 
+/** Render a paid order to a receipt PDF and persist it via Documents (4.2). */
+async function receiptPdf({ brand, user, id }) {
+  const order = await getById({ brand, id });
+  if (!order) throw new NotFoundError("Order");
+  const { receiptHtml } = require("../../services/pdf.templates");
+  return pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html: receiptHtml({ brand, order }),
+    title: `Receipt ${order.order_number || order.order_id || id}`,
+    document_type: "receipt",
+    reference_type: "sales_order",
+    reference_id: order.order_id || id,
+  });
+}
+
 module.exports = {
   listOrders,
   getById,
+  receiptPdf,
   createOrder,
   updateOrder,
   addPayment,

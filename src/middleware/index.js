@@ -87,8 +87,10 @@ function applyGlobalMiddleware(app) {
       standardHeaders: true,
       legacyHeaders: false,
       message: {
-        error: "TOO_MANY_REQUESTS",
-        message: "Slow down — try again in a minute.",
+        error: {
+          code: "TOO_MANY_REQUESTS",
+          message: "Slow down — try again in a minute.",
+        },
       },
     }),
   );
@@ -106,8 +108,10 @@ const publicWriteLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "TOO_MANY_REQUESTS",
-    message: "Too many submissions — please try again shortly.",
+    error: {
+      code: "TOO_MANY_REQUESTS",
+      message: "Too many submissions — please try again shortly.",
+    },
   },
 });
 

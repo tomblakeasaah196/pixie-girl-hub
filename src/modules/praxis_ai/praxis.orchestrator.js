@@ -24,6 +24,7 @@ const repo = require("./praxis.repo");
 const governance = require("../ai_governance/governance.service");
 const embeddings = require("../../services/embeddings.service");
 const llm = require("../../services/llm.service");
+const queryAgent = require("./query-agent");
 const { money, toCurrencyString } = require("../../utils/money");
 const { logger } = require("../../config/logger");
 const { config } = require("../../config/env");
@@ -65,6 +66,7 @@ function systemPrompt({ brand, contextChunks }) {
   return [
     `You are Praxis, the AI operations assistant for the ${brand} business in Pixie Girl Hub.`,
     "Answer read/lookup questions directly and concisely using the knowledge below.",
+    "For questions about CURRENT business data (sales, revenue, orders, stock, operations, KPIs), call the matching `query_*` tool to fetch LIVE figures — never guess or invent numbers.",
     "For any action that CHANGES data (create/update/delete/approve/send), DO NOT claim it is done — instead call the matching tool with precise arguments. A human must confirm before it runs.",
     "Never invent IDs or amounts. If you lack a required value, ask for it.",
     "",
@@ -136,6 +138,9 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
     .map((m) => ({ role: m.role, content: m.content || "" }));
   const actions = await governance.listActions({ ai_enabled: true });
   const { tools, byName } = buildTools(actions);
+  // §8.2 Query Agent: expose the read-only query catalogue as tools too, so the
+  // model can answer questions about LIVE data (not just embedded docs).
+  const allTools = [...tools, ...queryAgent.tools()];
   const messages = [
     { role: "system", content: systemPrompt({ brand, contextChunks }) },
     ...history,
@@ -145,7 +150,7 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
   let completion;
   const tLlm = Date.now();
   try {
-    completion = await llm.chat({ vendor, messages, tools });
+    completion = await llm.chat({ vendor, messages, tools: allTools });
   } catch (err) {
     logger.error({ err: err.message }, "praxis: LLM call failed");
     await repo.insertRunStep({
@@ -187,7 +192,7 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
   }
 
   const usage = completion.usage || {};
-  const costNgn = computeCost(vendor, usage);
+  let costNgn = computeCost(vendor, usage);
   await repo.insertRunStep({
     client,
     s: {
@@ -210,7 +215,6 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
 
   const toolCall = completion.tool_calls[0];
   if (toolCall && toolCall.function) {
-    const action = byName.get(toolCall.function.name);
     let args = {};
     try {
       args =
@@ -220,7 +224,41 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
     } catch {
       args = {};
     }
-    if (action) {
+    if (queryAgent.isQueryTool(toolCall.function.name)) {
+      // §8.2 Query Agent — permission-scoped live-data read + summary (no write).
+      const qr = await queryAgent.run({
+        vendor,
+        user,
+        brand,
+        messages,
+        completion,
+        toolCall,
+        args,
+      });
+      if (qr.replyText) replyText = qr.replyText;
+      const fu = qr.usage || {};
+      if (fu.total_tokens) {
+        usage.prompt_tokens = (usage.prompt_tokens || 0) + (fu.prompt_tokens || 0);
+        usage.completion_tokens =
+          (usage.completion_tokens || 0) + (fu.completion_tokens || 0);
+        usage.total_tokens = (usage.total_tokens || 0) + (fu.total_tokens || 0);
+        costNgn = computeCost(vendor, usage);
+      }
+      await repo.insertRunStep({
+        client,
+        s: {
+          conversation_id: convId,
+          message_id: userMsg.message_id,
+          agent: "orchestrator",
+          step_number: ++step,
+          step_type: "call_action",
+          output: { query: qr.queryKey || null, denied: qr.denied || false },
+          status: "completed",
+        },
+      });
+    } else {
+      const action = byName.get(toolCall.function.name);
+      if (action) {
       const human_summary =
         replyText || `Proposed: ${action.title || action.action_key}`;
       pending = await repo.createPendingAction({
@@ -256,6 +294,7 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
           status: "completed",
         },
       });
+      }
     }
   }
 

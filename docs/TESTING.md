@@ -19,6 +19,8 @@ actual source modules:
 | Geofence | `tests/unit/attendance/geo.calc.test.js` | Haversine distance + clock-in accept/reject (permission/accuracy/inside/outside) |
 | RBAC vocab | `tests/unit/access/catalog.test.js` | 37 enforced module keys, action + record-scope sets, catalog validators |
 | Password reset | `tests/unit/auth/password-reset.test.js` | Hash-only token storage, no account enumeration, single-use, session revocation |
+| Bundles | `tests/unit/retention/bundle.test.js` | buy_x_get_y (cheapest-unit grouping) + tiered_qty discount math, subtotal cap |
+| Praxis Query Agent | `tests/unit/praxis_ai/query-agent.test.js` | Read-tool exposure, `view`-permission gating (CEO bypass), execute + summarise |
 | Access, Campaigns | `tests/unit/access/access.test.js`, `tests/unit/sales_campaigns/*` | (pre-existing) |
 
 ### Smoke test (needs a live DB — run on real infra/CI)

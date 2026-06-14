@@ -163,6 +163,87 @@ async function priceBundle({ brand, bundle_id, component_subtotal_ngn }) {
   }
 }
 
+/**
+ * Discount for the quantity-based bundle models that need per-line context
+ * (PURE — unit-testable, no DB):
+ *   buy_x_get_y — for every (buy_quantity + get_quantity) eligible units, the
+ *                 CHEAPEST get_quantity of them get get_discount_pct off (so the
+ *                 customer keeps paying full price for the dearer items).
+ *   tiered_qty  — the highest qty tier whose min_quantity ≤ total eligible units
+ *                 sets the discount on the component subtotal.
+ *
+ * Percentages accept either a fraction (0.5) or a whole percent (50).
+ *
+ * @param {object} a
+ * @param {string} a.pricing_model
+ * @param {object} a.bundle   bundle row (buy_quantity/get_quantity/get_discount_pct/qty_tiers)
+ * @param {Array}  a.lines    component lines: [{ quantity, unit_price_ngn }]
+ * @param {Decimal|string|number} a.component_subtotal_ngn
+ * @returns {import('decimal.js')} discount (>= 0, capped at the subtotal)
+ */
+function asFraction(v) {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n) || n <= 0) return money(0);
+  return money(n > 1 ? n / 100 : n);
+}
+
+function quantityBundleDiscount({
+  pricing_model,
+  bundle = {},
+  lines = [],
+  component_subtotal_ngn = 0,
+}) {
+  const sub = money(component_subtotal_ngn || 0);
+  let discount = money(0);
+
+  if (pricing_model === "buy_x_get_y") {
+    const buy = Math.max(0, parseInt(bundle.buy_quantity, 10) || 0);
+    const get = Math.max(0, parseInt(bundle.get_quantity, 10) || 0);
+    const pct = asFraction(bundle.get_discount_pct);
+    if (buy > 0 && get > 0 && pct.gt(0)) {
+      const units = [];
+      for (const l of lines) {
+        const q = Math.max(0, parseInt(l.quantity, 10) || 0);
+        const unit = money(l.unit_price_ngn || 0);
+        for (let i = 0; i < q; i++) units.push(unit);
+      }
+      const groupSize = buy + get;
+      const discountedCount = Math.floor(units.length / groupSize) * get;
+      if (discountedCount > 0) {
+        units.sort((x, y) => (x.lt(y) ? -1 : x.gt(y) ? 1 : 0)); // cheapest first
+        for (let i = 0; i < discountedCount; i++) {
+          discount = discount.plus(units[i].times(pct));
+        }
+      }
+    }
+  } else if (pricing_model === "tiered_qty") {
+    const tiers = Array.isArray(bundle.qty_tiers) ? bundle.qty_tiers : [];
+    const totalQty = lines.reduce(
+      (q, l) => q + Math.max(0, parseInt(l.quantity, 10) || 0),
+      0,
+    );
+    let best = null;
+    for (const row of tiers) {
+      const minQ = parseInt(row.min_quantity ?? row.min_qty, 10) || 0;
+      if (totalQty >= minQ && (!best || minQ > best.min))
+        best = { min: minQ, row };
+    }
+    if (best) {
+      const r = best.row;
+      const pctRaw = r.discount_pct ?? r.discount_value_pct;
+      const amtRaw = r.discount_amount_ngn ?? r.discount_value;
+      if (pctRaw !== undefined && pctRaw !== null)
+        discount = sub.times(asFraction(pctRaw));
+      else if (amtRaw !== undefined && amtRaw !== null)
+        discount = money(amtRaw);
+    }
+  }
+
+  if (discount.gt(sub)) discount = sub;
+  if (discount.lt(0)) discount = money(0);
+  return discount;
+}
+
 module.exports = {
   createBundle,
   listBundles,
@@ -172,4 +253,5 @@ module.exports = {
   addComponent,
   removeComponent,
   priceBundle,
+  quantityBundleDiscount,
 };

@@ -175,6 +175,20 @@ const schema = z.object({
   // Password-reset link lifetime (minutes). Token is single-use and stored only
   // as a SHA-256 hash in redis.
   PASSWORD_RESET_TTL_MIN: z.coerce.number().int().positive().default(30),
+
+  // SMS (Twilio) — optional fallback channel for retention workflows. Unset →
+  // sms.service no-ops (returns skipped).
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM: z.string().optional(),
+
+  // Speech-to-text (Whisper) for Praxis voice input. Unset → transcription
+  // no-ops. MEDIA_BASE_URL bounds which audio origins may be fetched (SSRF).
+  TRANSCRIPTION_PROVIDER: z.string().default("none"),
+  TRANSCRIPTION_API_KEY: z.string().optional(),
+  TRANSCRIPTION_API_BASE_URL: z.string().optional(),
+  TRANSCRIPTION_MODEL: z.string().optional(),
+  MEDIA_BASE_URL: z.string().optional(),
 });
 
 let _config = null;

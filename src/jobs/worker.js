@@ -203,6 +203,8 @@ async function startWorkers() {
   require("../shared/notifications/notifications.subscribers"); // rep notification
   require("../modules/sales/timeline.subscribers"); // order.paid → timeline event
   require("../modules/retention/workflow.subscribers"); // order.paid → workflow trigger
+  require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
+  require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met → service job
   require("../modules/business_setup/webhooks.service"); // webhook.received → dispatch
   outboxTimer = setInterval(() => {
     outbox

@@ -21,6 +21,7 @@ const PLAN_COLS = [
   "benefits",
   "is_active",
   "display_order",
+  "maintenance_fee_ngn",
 ];
 
 // ── Plans ─────────────────────────────────────────────────
@@ -92,8 +93,9 @@ async function createSubscription({ client, brand, sub }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.subscriptions
        (contact_id, business, plan_id, status, paystack_authorization_code,
-        paystack_customer_code, next_billing_at, preferences, default_delivery_address_id)
-     VALUES ($1,$2,$3,'active',$4,$5,$6,COALESCE($7,'{}')::jsonb,$8) RETURNING *`,
+        paystack_customer_code, next_billing_at, preferences, default_delivery_address_id,
+        maintenance_addon)
+     VALUES ($1,$2,$3,'active',$4,$5,$6,COALESCE($7,'{}')::jsonb,$8,COALESCE($9,false)) RETURNING *`,
     [
       sub.contact_id,
       brand,
@@ -103,6 +105,7 @@ async function createSubscription({ client, brand, sub }) {
       sub.next_billing_at,
       sub.preferences ? JSON.stringify(sub.preferences) : null,
       sub.default_delivery_address_id || null,
+      sub.maintenance_addon === true,
     ],
   );
   return rows[0];

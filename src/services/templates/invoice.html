@@ -1,0 +1,16 @@
+<h1>Invoice {{invoice_number}}</h1>
+<div class="meta">{{brand}} · Status: {{status}}</div>
+<table style="margin-top:10px;">
+  <tr><td>Bill to</td><td class="right">{{bill_to}}</td></tr>
+  <tr><td>Issue date</td><td class="right">{{issue_date}}</td></tr>
+  <tr><td>Due date</td><td class="right">{{due_date}}</td></tr>
+</table>
+<h2>Lines</h2>
+<table>
+  <tr><th>Description</th><th class="right">Qty</th><th class="right">Unit</th><th class="right">Amount</th></tr>
+  {{{rows}}}
+</table>
+<table class="totals" style="margin-top:8px;">
+  {{{totals}}}
+</table>
+<p class="muted" style="margin-top:16px;">Thank you for your business — Pixie Girl Hub</p>

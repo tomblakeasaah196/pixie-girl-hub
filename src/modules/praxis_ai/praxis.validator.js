@@ -15,11 +15,16 @@ const conversationCreate = z
 
 const messagePost = z
   .object({
-    content: z.string().min(1).max(8000),
+    content: z.string().max(8000).optional(),
     input_mode: z.enum(["text", "voice"]).optional(),
     transcribed_text: z.string().max(8000).optional(),
+    source_audio_url: z.string().url().max(2000).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (d) => Boolean((d.content && d.content.length) || d.transcribed_text || d.source_audio_url),
+    { message: "Provide content, transcribed_text, or source_audio_url" },
+  );
 
 const reasonBody = z
   .object({ reason: z.string().max(1000).optional() })

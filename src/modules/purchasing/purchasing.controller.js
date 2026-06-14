@@ -176,6 +176,14 @@ const getPo = async (req, res) =>
   res.json({
     data: await service.getPo({ brand: req.brand, id: req.params.poId }),
   });
+const poPdf = async (req, res) =>
+  res.status(201).json({
+    data: await service.poPdf({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.poId,
+    }),
+  });
 const createPo = async (req, res) =>
   res
     .status(201)
@@ -319,6 +327,7 @@ module.exports = {
   awardQuote,
   listPos,
   getPo,
+  poPdf,
   createPo,
   submitPo,
   approvePo,

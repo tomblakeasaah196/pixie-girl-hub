@@ -57,6 +57,14 @@ const voidInvoice = async (req, res) =>
   res.json({
     data: await service.voidInvoice({ ...base(req), id: req.params.id }),
   });
+const invoicePdf = async (req, res) =>
+  res.status(201).json({
+    data: await service.invoicePdf({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.id,
+    }),
+  });
 
 // Credit notes
 async function listCreditNotes(req, res) {
@@ -123,6 +131,7 @@ module.exports = {
   sendInvoice,
   recordPayment,
   voidInvoice,
+  invoicePdf,
   listCreditNotes,
   getCreditNote,
   createCreditNote,

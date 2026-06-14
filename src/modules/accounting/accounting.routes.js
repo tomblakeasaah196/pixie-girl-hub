@@ -74,6 +74,11 @@ router.get("/reports/balance-sheet", can("view"), controller.balanceSheet);
 router.get("/reports/cash-flow", can("view"), controller.cashFlow);
 router.get("/reports/ar-ageing", can("view"), controller.arAgeing);
 router.get("/reports/ap-ageing", can("view"), controller.apAgeing);
+router.post(
+  "/reports/statement/:contactId/pdf",
+  can("view"),
+  controller.statementPdf,
+);
 
 // Bank statements
 router.get("/bank-statements", can("view"), bankController.listStatements);

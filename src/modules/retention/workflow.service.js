@@ -15,8 +15,11 @@
 
 const repo = require("./workflow.repo");
 const couponService = require("./coupon.service");
+const retentionService = require("./retention.service");
+const tasksService = require("../../shared/tasks/tasks.service");
 const email = require("../../services/email.service");
 const whatsapp = require("../../services/whatsapp.service");
+const sms = require("../../services/sms.service");
 const notifications = require("../../services/notifications.service");
 const { query, transaction } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
@@ -200,8 +203,55 @@ async function runAction({ brand, rule, execution }) {
       });
       return { status: "completed", result_summary: { notified: cfg.user_id } };
     }
+    case "award_points": {
+      if (!execution.contact_id)
+        return { status: "suppressed", failure_reason: "no contact" };
+      const points = parseInt(cfg.points, 10) || 0;
+      if (points <= 0)
+        return { status: "suppressed", failure_reason: "no points configured" };
+      await retentionService.adjustPoints({
+        brand,
+        user: { user_id: null },
+        request_id: `workflow:${execution.execution_id}`,
+        contact_id: execution.contact_id,
+        points,
+        notes: cfg.notes || `Workflow: ${rule.display_name || rule.rule_key}`,
+      });
+      return { status: "completed", result_summary: { points_awarded: points } };
+    }
+    case "create_task": {
+      const task = await tasksService.createFromModule({
+        brand,
+        created_by: null,
+        task: {
+          title: cfg.title || rule.display_name || "Follow-up",
+          description: cfg.description || cfg.body || "",
+          assigned_to: cfg.user_id || cfg.assigned_to || null,
+          priority: cfg.priority || "normal",
+          due_at: cfg.due_at || null,
+          reference_type: "contact",
+          reference_id: execution.contact_id || null,
+        },
+      });
+      return {
+        status: "completed",
+        result_summary: { task_id: task.task_id },
+        generated_records: { task_id: task.task_id },
+      };
+    }
+    case "send_sms": {
+      if (!contact || !contact.phone)
+        return { status: "suppressed", failure_reason: "no contact phone" };
+      const res = await sms.send({ to: contact.phone, body: cfg.body || "" });
+      if (res && res.skipped)
+        return {
+          status: "suppressed",
+          failure_reason: "SMS provider not configured",
+        };
+      return { status: "completed", result_summary: { sms_sent: true } };
+    }
     default:
-      // award_points / create_task / send_sms / assign_to_user / add_to_segment / custom
+      // assign_to_user / add_to_segment / custom — incremental
       return {
         status: "failed",
         failure_reason: `action ${rule.action_type} not yet supported`,

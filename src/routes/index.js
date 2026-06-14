@@ -46,6 +46,8 @@ const calendarRouter = require("../shared/calendar/calendar.routes");
 const tasksRouter = require("../shared/tasks/tasks.routes");
 const dashboardsRouter = require("../modules/dashboards/dashboards.routes");
 const businessSetupRouter = require("../modules/business_setup/business-setup.routes");
+const platformSettingsRouter = require("../modules/platform_settings/platform-settings.routes");
+const brandingPublicRouter = require("../modules/platform_settings/branding.public.routes");
 const salesCampaignsRouter = require("../modules/sales_campaigns/campaigns.routes");
 const retentionRouter = require("../modules/retention/retention.routes");
 const productionRouter = require("../modules/production/production.routes");
@@ -133,6 +135,9 @@ function mountRoutes(app) {
   publicRouter.use("/walk-in", publicWriteLimiter, walkinPublicRouter);
   publicRouter.use("/pay", publicWriteLimiter, publicPayLinkRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
+  // Unauthenticated branding feed — the login page calls this before
+  // a token exists so the shell can theme itself.
+  publicRouter.use("/branding", brandingPublicRouter);
   app.use("/api/public", publicRouter);
 
   // ── Webhooks (signed payloads; auth via signature, not JWT) ──
@@ -175,6 +180,7 @@ function mountRoutes(app) {
   api.use("/tasks", tasksRouter);
   api.use("/dashboards", dashboardsRouter);
   api.use("/business-setup", businessSetupRouter);
+  api.use("/platform-settings", platformSettingsRouter);
   api.use("/sales-campaigns", salesCampaignsRouter);
   api.use("/retention", retentionRouter);
   api.use("/production", productionRouter);

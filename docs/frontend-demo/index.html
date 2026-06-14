@@ -11,42 +11,46 @@
   Two-layer theming: Layer A platform (--c-*/--accent) · Layer B business (--biz-*).
 -->
 <style>
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Montserrat:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Cormorant+Garamond:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Montserrat:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
 /* ════════ LAYER A — PLATFORM (dark = black + burgundy, very dark) ════════ */
 :root{
-  --bg:13 8 10;                /* near-black, faint burgundy warmth */
-  --panel:32 18 22;            /* burgundy-charcoal glass */
-  --panel-2:48 27 32;
+  /* ══ App = "Maroon Noir": near-black w/ a pinch of maroon, deep-red accent ══ */
+  --bg:15 8 9;                 /* #0F0809 near-black, faint maroon warmth */
+  --panel:26 15 17;            /* #1A0F11 maroon-charcoal glass */
+  --panel-2:39 22 25;          /* #271619 */
   --panel-alpha:.5;
-  --text:245 239 238;
-  --text-muted:172 152 152;
-  --text-faint:120 100 102;
-  --border-c:255 238 238; --border-alpha:.08;
-  --accent:201 168 108;        /* antique gold — used SPARINGLY */
-  --accent-glow:223 192 140;
-  --sage:139 157 119; --rose:189 116 127; --info:138 150 178;
-  --success:139 157 119; --warn:217 167 65; --danger:206 96 96;
-  --font-display:"Cormorant Garamond",Georgia,serif;
+  --text:244 233 217;          /* #F4E9D9 warm cream (Pixie beige) */
+  --text-muted:179 164 155;
+  --text-faint:128 112 107;
+  --border-c:244 233 217; --border-alpha:.08;   /* cream hairline */
+  --accent:168 29 29;          /* #A81D1D working red — legible on black */
+  --accent-deep:105 9 9;       /* #690909 brand anchor — filled buttons */
+  --accent-glow:216 92 87;     /* #D85C57 focus / hover bloom */
+  --sage:127 160 106; --rose:233 122 126; --info:110 134 168;
+  --success:127 160 106; --warn:201 162 75; --danger:229 84 78;
+  --font-display:"Playfair Display",Georgia,serif;
   --font-body:"Montserrat",system-ui,sans-serif;
   --font-mono:"JetBrains Mono",monospace;
   --radius:18px; --blur:22px; --row-h:54px; --pad:18px;
   --ease:cubic-bezier(.16,1,.3,1); --dur:.3s;
   --mesh-op:1;
-  --glass-shadow:inset 0 1px 0 rgb(255 255 255/.05), 0 18px 44px rgb(0 0 0/.55);
-  /* ════════ LAYER B — BUSINESS (Pixie Girl: navy+gold) ════════ */
-  --biz-1:#16224d; --biz-2:#c9963b; --biz-accent:#c9a86c;
+  --glass-shadow:inset 0 1px 0 rgb(255 255 255/.05), 0 18px 44px rgb(0 0 0/.6);
+  /* ════════ LAYER B — BUSINESS (Pixie Girl: deep red + cream) ════════ */
+  --biz-1:#a81d1d; --biz-2:#690909; --biz-accent:#690909;
 }
-[data-theme="light"]{          /* TRUE WHITE */
-  --bg:246 247 250;
+[data-theme="light"]{          /* PURE / NEAR-WHITE — deep red shines */
+  --bg:251 250 249;            /* #FBFAF9 */
   --panel:255 255 255; --panel-alpha:.72;
-  --panel-2:244 246 250;
-  --text:22 22 28; --text-muted:92 94 104; --text-faint:140 142 152;
-  --border-c:18 20 35; --border-alpha:.10;
-  --accent:158 118 64; --accent-glow:201 168 108;
-  --rose:176 86 100; --sage:108 126 90; --info:96 116 156;
-  --mesh-op:.45;
-  --glass-shadow:inset 0 1px 0 rgb(255 255 255/.9), 0 16px 40px rgb(30 30 50/.10);
+  --panel-2:244 241 238;
+  --text:26 16 17; --text-muted:107 94 92; --text-faint:155 142 138;
+  --border-c:26 16 17; --border-alpha:.10;
+  --accent:105 9 9;            /* pure #690909 — high contrast on white */
+  --accent-deep:105 9 9; --accent-glow:140 20 20;
+  --rose:201 90 96; --sage:94 126 80; --info:24 120 185;  /* #1878B9 their intl blue */
+  --success:94 126 80; --warn:185 138 46; --danger:199 54 47;
+  --mesh-op:.38;
+  --glass-shadow:inset 0 1px 0 rgb(255 255 255/.9), 0 16px 40px rgb(80 20 20/.1);
 }
 [data-density="compact"]{ --row-h:44px; --pad:14px; }
 @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
@@ -121,8 +125,8 @@ svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke
 .btn:hover{background:rgb(var(--text)/.09)}.btn:active{transform:translateY(1px)}
 .btn.sm{height:33px;padding:0 12px;font-size:12px;border-radius:10px}
 .btn.ghost{background:transparent;border-color:transparent;color:rgb(var(--text-muted))}.btn.ghost:hover{background:rgb(var(--text)/.06);color:rgb(var(--text))}
-.btn.primary{background:rgb(var(--accent)/.14);border-color:rgb(var(--accent)/.5);color:rgb(var(--accent-glow))}
-.btn.primary:hover{background:rgb(var(--accent)/.22);box-shadow:0 0 24px rgb(var(--accent)/.18)}
+.btn.primary{background:rgb(var(--accent-deep));border-color:rgb(var(--accent-deep));color:#F4E9D9}
+.btn.primary:hover{background:rgb(var(--accent));box-shadow:0 8px 26px rgb(var(--accent-deep)/.5)}
 .btn .shim{position:absolute;inset:0;left:-100%;background:linear-gradient(90deg,transparent,rgb(255 255 255/.12),transparent);transition:left .6s}
 .btn:hover .shim{left:100%}
 
@@ -169,7 +173,7 @@ svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:26px}
 .kpi{border-radius:var(--radius);padding:17px 18px;border-left:3px solid rgb(var(--accent));box-shadow:var(--glass-shadow);animation:tilein .5s var(--ease) backwards}
 .kpi .lbl{display:flex;align-items:center;gap:7px}
-.kpi .val{font-family:var(--font-display);font-weight:300;font-size:30px;color:rgb(var(--accent-glow));margin-top:10px;font-variant-numeric:tabular-nums}
+.kpi .val{font-family:var(--font-display);font-weight:500;font-size:30px;color:rgb(var(--text));margin-top:10px;font-variant-numeric:tabular-nums}
 .kpi .foot{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
 .kpi .delta{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
 .delta.up{color:rgb(var(--success))}.delta.down{color:rgb(var(--danger))}
@@ -292,6 +296,7 @@ select.inp{cursor:pointer}
     <div class="spacer"></div>
     <div class="entity" id="entity" title="Switch business"></div>
     <div class="ai-meter"><svg viewBox="0 0 24 24" style="width:14px"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg>AI <b>₦42,180</b></div>
+    <button class="icon-btn" id="themeToggle" aria-label="Toggle light or dark" title="Light / dark"></button>
     <button class="icon-btn dot-badge" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg></button>
     <button class="icon-btn" id="settingsBtn" aria-label="Appearance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 2h-4l-.5 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 005 12a7 7 0 00.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2L10 22h4l.5-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0019 12z"/></svg></button>
     <div class="avatar" title="Faith — CEO">F</div>
@@ -365,8 +370,8 @@ select.inp{cursor:pointer}
     <div class="field"><label>Theme preset</label><div class="presets" id="presets"></div></div>
     <div class="field"><label>App name</label><input class="inp" id="setAppName" value="Pixie Girl Hub"></div>
     <div class="field"><label>App accent <span class="hint">· used sparingly, never as a fill</span></label><div class="swatches" id="appSwatches"></div></div>
-    <div class="row2"><div class="field"><label>Display font</label><select class="inp" id="setDisplay"><option value='"Cormorant Garamond",serif'>Cormorant Garamond</option><option value='"Playfair Display",serif'>Playfair Display</option><option value='"Marcellus",serif'>Marcellus</option><option value='"DM Serif Display",serif'>DM Serif Display</option></select></div><div class="field"><label>Corner radius</label><input type="range" id="setRadius" min="6" max="26" value="18" style="width:100%;margin-top:11px;accent-color:rgb(var(--accent))"></div></div>
-    <div class="row2"><div class="field"><label>Mode</label><div class="seg"><div class="opt on" onclick="setTheme('dark',this)">Dark</div><div class="opt" onclick="setTheme('light',this)">Light</div></div></div><div class="field"><label>Density</label><div class="seg"><div class="opt on" onclick="setDensity('comfortable',this)">Comfortable</div><div class="opt" onclick="setDensity('compact',this)">Compact</div></div></div></div>
+    <div class="row2"><div class="field"><label>Display font</label><select class="inp" id="setDisplay"><option value='"Playfair Display",serif'>Playfair Display</option><option value='"Cormorant Garamond",serif'>Cormorant Garamond</option><option value='"Fraunces",serif'>Fraunces</option></select></div><div class="field"><label>Corner radius</label><input type="range" id="setRadius" min="6" max="26" value="18" style="width:100%;margin-top:11px;accent-color:rgb(var(--accent))"></div></div>
+    <div class="row2"><div class="field"><label>Mode</label><div class="seg"><div class="opt on" data-mode="dark" onclick="applyMode('dark')">Dark</div><div class="opt" data-mode="light" onclick="applyMode('light')">Light</div></div></div><div class="field"><label>Density</label><div class="seg"><div class="opt on" onclick="setDensity('comfortable',this)">Comfortable</div><div class="opt" onclick="setDensity('compact',this)">Compact</div></div></div></div>
     <hr style="border:0;border-top:1px solid rgb(var(--border-c)/var(--border-alpha));margin:24px 0">
     <div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span class="pill blue">Layer B</span><b class="serif" style="font-size:17px;font-weight:500">Brand Appearance — each business</b></div>
     <p style="font-size:12px;color:rgb(var(--text-muted));margin-bottom:16px">From <code>business_config</code> per brand. In the Hub it tints the brand chip + ambient gradient; in the storefront it themes the whole site.</p>
@@ -451,7 +456,7 @@ function showView(v){
 $$(".nav-item[data-view]").forEach(n=>n.onclick=()=>showView(n.dataset.view));
 
 /* Business switcher */
-const BRANDS={PXG:{name:"Pixie Girl",g1:"#16224d",g2:"#c9963b",accent:"#c9a86c",letter:"P"},FLH:{name:"Faitlyn",g1:"#690909",g2:"#e0b25a",accent:"#b76e79",letter:"F"},ALL:{name:"Group",g1:"#1b2233",g2:"#8fa8d9",accent:"#8fa8d9",letter:"G"}};
+const BRANDS={PXG:{name:"Pixie Girl",g1:"#a81d1d",g2:"#690909",accent:"#690909",letter:"P"},FLH:{name:"Faitlyn",g1:"#7f703d",g2:"#d5b8a4",accent:"#7f703d",letter:"F"},ALL:{name:"Group",g1:"#3a2428",g2:"#8a7d72",accent:"#8a7d72",letter:"G"}};
 let cur="PXG";
 function applyBrand(k){const b=BRANDS[k];cur=k;setVar("--biz-1",b.g1);setVar("--biz-2",b.g2);setVar("--biz-accent",b.accent);$("#appLogo").textContent=b.letter;$("#drawerBrand").textContent=b.letter;$$("#entity .eopt").forEach(o=>o.classList.toggle("on",o.dataset.k===k));}
 function buildEntity(){$("#entity").innerHTML=Object.values(BRANDS).map(b=>`<button class="eopt ${b.key===cur?'on':''}" data-k="${Object.keys(BRANDS).find(x=>BRANDS[x]===b)}">${Object.keys(BRANDS).find(x=>BRANDS[x]===b)}</button>`).join("");$$("#entity .eopt").forEach(o=>o.onclick=()=>{applyBrand(o.dataset.k);toast(`Switched to ${BRANDS[o.dataset.k].name} — re-scoped, chrome unchanged`);});}
@@ -473,17 +478,26 @@ function toggleSidebar(){$("#shell").classList.toggle("collapsed");}
 $("#setAppName").oninput=e=>{const v=e.target.value||"ERP Hub";$("#appNameSide").innerHTML=v+'<small>Hub · ERP</small>';};
 $("#setDisplay").onchange=e=>setVar("--font-display",e.target.value);
 $("#setRadius").oninput=e=>setVar("--radius",e.target.value+"px");
-function setTheme(t,el){root.dataset.theme=t;if(el){el.parentElement.querySelectorAll(".opt").forEach(o=>o.classList.remove("on"));el.classList.add("on");}}
+const SUN='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M18.4 5.6l1.4-1.4M4.2 19.8l1.4-1.4"/></svg>';
+const MOON='<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>';
+function refreshMode(){const m=root.dataset.theme;const t=$("#themeToggle");if(t)t.innerHTML=(m==="dark"?SUN:MOON);$$('#appearanceDrawer [data-mode]').forEach(o=>o.classList.toggle("on",o.dataset.mode===m));}
+function applyMode(m){root.dataset.theme=m;refreshMode();}
 function setDensity(d,el){root.dataset.density=d;el.parentElement.querySelectorAll(".opt").forEach(o=>o.classList.remove("on"));el.classList.add("on");}
-const PRESETS=[["Midnight Luxury","Warm black · antique gold","dark","#c9a86c",["#0a0908","#c9a86c","#8b9d77"]],["Porcelain","Gallery white · ink","light","#9c6b3c",["#ffffff","#9c6b3c","#6f7e5e"]],["Noir Émeraude","Green-black · emerald","dark","#2f9e78",["#0b1210","#2f9e78","#c9a86c"]],["Royal Indigo","Midnight blue · champagne","dark","#8fa8d9",["#0b0e16","#8fa8d9","#c9a86c"]]];
-function buildPresets(){$("#presets").innerHTML=PRESETS.map((p,i)=>`<button class="preset" data-i="${i}"><div class="bar">${p[4].map(c=>`<i style="background:${c}"></i>`).join("")}</div><div class="pn">${p[0]}</div><div class="pd">${p[1]}</div></button>`).join("");$$("#presets .preset").forEach(el=>el.onclick=()=>{const p=PRESETS[el.dataset.i];root.dataset.theme=p[2];setVar("--accent",hexTri(p[3]));setVar("--accent-glow",hexTri(p[3]));toast(`Preset · ${p[0]}`);});}
-["#c9a86c","#9c6b3c","#2f9e78","#8fa8d9","#b76e79","#c77e4f"].forEach(c=>{const s=document.createElement("div");s.className="sw";s.style.background=c;s.onclick=()=>{setVar("--accent",hexTri(c));setVar("--accent-glow",hexTri(c));$$("#appSwatches .sw").forEach(x=>x.classList.remove("on"));s.classList.add("on");};$("#appSwatches").appendChild(s);});
-["#c9a86c","#b76e79","#8fa8d9","#690909","#16224d","#8b9d77"].forEach(c=>{const s=document.createElement("div");s.className="sw";s.style.background=c;s.onclick=()=>{setVar("--biz-accent",c);BRANDS[cur].accent=c;$$("#brandSwatches .sw").forEach(x=>x.classList.remove("on"));s.classList.add("on");applyBrand(cur);toast("Brand accent updated");};$("#brandSwatches").appendChild(s);});
-function resetAll(){root.dataset.theme="dark";setVar("--accent","201 168 108");setVar("--accent-glow","223 192 140");setVar("--radius","18px");setVar("--font-display",'"Cormorant Garamond",serif');$("#setRadius").value=18;$("#setDisplay").value='"Cormorant Garamond",serif';toast("Reset to platform defaults");}
+const PRESETS=[
+ ["Maroon Noir","Black · deep red · cream","dark","#a81d1d","#690909",["#0f0809","#690909","#f4e9d9"]],
+ ["Porcelain White","White · deep red · ink","light","#690909","#690909",["#ffffff","#690909","#1a1011"]],
+ ["Onyx Ruby","Neutral black · ruby","dark","#b11e1e","#9b1818",["#0c0b0d","#b11e1e","#fff9f3"]],
+ ["Oxblood Luxe","Oxblood · red · bronze","dark","#690909","#690909",["#140b0c","#690909","#7f703d"]],
+];
+function buildPresets(){$("#presets").innerHTML=PRESETS.map((p,i)=>`<button class="preset" data-i="${i}"><div class="bar">${p[5].map(c=>`<i style="background:${c}"></i>`).join("")}</div><div class="pn">${p[0]}</div><div class="pd">${p[1]}</div></button>`).join("");$$("#presets .preset").forEach(el=>el.onclick=()=>{const p=PRESETS[el.dataset.i];root.dataset.theme=p[2];setVar("--accent",hexTri(p[3]));setVar("--accent-glow",hexTri(p[3]));setVar("--accent-deep",hexTri(p[4]));refreshMode();toast(`Preset · ${p[0]}`);});}
+["#690909","#a81d1d","#b11e1e","#7f703d","#1878b9","#121212"].forEach(c=>{const s=document.createElement("div");s.className="sw";s.style.background=c;s.onclick=()=>{setVar("--accent",hexTri(c));setVar("--accent-glow",hexTri(c));setVar("--accent-deep",hexTri(c));$$("#appSwatches .sw").forEach(x=>x.classList.remove("on"));s.classList.add("on");};$("#appSwatches").appendChild(s);});
+["#690909","#7f703d","#d5b8a4","#e97a7e","#a81d1d","#8a7d72"].forEach(c=>{const s=document.createElement("div");s.className="sw";s.style.background=c;s.onclick=()=>{setVar("--biz-accent",c);BRANDS[cur].accent=c;$$("#brandSwatches .sw").forEach(x=>x.classList.remove("on"));s.classList.add("on");applyBrand(cur);toast("Brand accent updated");};$("#brandSwatches").appendChild(s);});
+function resetAll(){root.dataset.theme="dark";setVar("--accent","168 29 29");setVar("--accent-deep","105 9 9");setVar("--accent-glow","216 92 87");setVar("--radius","18px");setVar("--font-display",'"Playfair Display",serif');$("#setRadius").value=18;$("#setDisplay").value='"Playfair Display",serif';refreshMode();toast("Reset to Maroon Noir defaults");}
 function toast(m){const t=document.createElement("div");t.className="toast";t.innerHTML=`<svg viewBox="0 0 24 24" style="width:15px;stroke:rgb(var(--accent))"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>${m}`;$("#toasts").appendChild(t);setTimeout(()=>{t.style.opacity=0;t.style.transition="opacity .3s";setTimeout(()=>t.remove(),300);},2600);}
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeAll();});
 
-buildEntity();applyBrand("PXG");buildApps();buildPresets();render();
+$("#themeToggle").onclick=()=>applyMode(root.dataset.theme==="dark"?"light":"dark");
+buildEntity();applyBrand("PXG");buildApps();buildPresets();render();refreshMode();
 </script>
 </body>
 </html>

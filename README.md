@@ -7,6 +7,19 @@ This is the backend monorepo for the Pixie Girl Hub — a multi-entity ERP/CRM/E
 
 ---
 
+## ⚠️ Building any frontend? Read the canon first (MUST READ)
+
+The frontend look, feel, shell, and interaction are **client-approved and locked**. Before writing **any** frontend code (human or AI):
+
+1. **`docs/FRONTEND_INSTRUCTION_MUST_READ.md`** — the **frontend SSOT / design canon** (palette, two-layer theming, shell, components, the mandatory **10-question gate** before any module). When it comes to styling, this file is final.
+2. **`docs/frontend-demo/index.html`** — the **approved visual reference build** the canon describes (open in a browser).
+3. **`client folder for hub-system/`** (on `main`) — the **engineering we clone and simplify**. Always confer with it.
+4. **`docs/Frontend_Engineering_Guide_v2.2.md`** + **`docs/FRONTEND_SCREEN_REQUIREMENTS.md`** — per-module UI detail; **`docs/openapi.yaml`** + the migrations are field/endpoint truth.
+
+A new chat building a module starts at the canon → asks the 10 questions → confers with hub-system + the migration/OpenAPI → builds to canon.
+
+---
+
 ## Quick start
 
 ```bash

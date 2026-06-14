@@ -264,7 +264,9 @@ export function LoginPage() {
         {/* The Pixie Standard (DB-driven). */}
         {t.standards !== false && (cfg.standards?.length ?? 0) > 0 && (
           <div className="mt-14">
-            <div className="micro mb-6">The {productName.split(" ")[0]} Standard</div>
+            <div className="micro mb-6">
+              The {productName.split(" ")[0]} Standard
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {cfg.standards!.map((s, i) => {
                 const Icon = loginIcon(s.icon);
@@ -289,30 +291,48 @@ export function LoginPage() {
         )}
 
         {/* Website links — only the brands whose `website` column is filled. */}
-        {t.website_links !== false &&
-          businesses.some((b) => b.website) && (
-            <div className="mt-14 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12.5px]">
-              <span className="text-text-faint">Explore our houses:</span>
-              {businesses
-                .filter((b) => b.website)
-                .map((b) => (
-                  <a
-                    key={b.business_key}
-                    href={b.website!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 font-semibold text-text-muted hover:text-accent-glow transition-colors"
-                  >
-                    {b.display_name}
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                ))}
-            </div>
-          )}
+        {t.website_links !== false && businesses.some((b) => b.website) && (
+          <div className="mt-14 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12.5px]">
+            <span className="text-text-faint">Explore our houses:</span>
+            {businesses
+              .filter((b) => b.website)
+              .map((b) => (
+                <a
+                  key={b.business_key}
+                  href={b.website!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 font-semibold text-text-muted hover:text-accent-glow transition-colors"
+                >
+                  {b.display_name}
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              ))}
+          </div>
+        )}
 
-        <footer className="mt-16 text-[11px] text-text-faint">
-          © {new Date().getFullYear()} {platform?.company_name ?? productName}.
-          All rights reserved.
+        <footer className="mt-16 flex flex-col items-center justify-center gap-2 text-[11px] text-text-faint">
+          <div>
+            © {new Date().getFullYear()} {platform?.company_name ?? productName}
+            . All rights reserved.
+          </div>
+
+          <div className="tracking-wide">
+            Architected by{" "}
+            <a
+              href="https://jbspraxis.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="relative inline-block font-semibold text-text-muted transition-all duration-300
+                         animate-[pulse_4s_ease-in-out_infinite] hover:animate-none
+                         hover:text-accent-glow hover:drop-shadow-md
+                         after:content-[''] after:absolute after:-bottom-0.5 after:left-1/2 after:-translate-x-1/2
+                         after:w-0 after:h-[1px] after:bg-accent-glow after:transition-all after:duration-300
+                         hover:after:w-full"
+            >
+              JBS Praxis LLC
+            </a>
+          </div>
         </footer>
       </main>
 

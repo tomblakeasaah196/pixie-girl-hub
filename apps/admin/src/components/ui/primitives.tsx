@@ -1,4 +1,9 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { cn } from "@/lib/cn";
 import { money as fmtMoney } from "@/lib/format";
 
@@ -88,7 +93,13 @@ export function Pill({ tone = "neutral", children, dot = true }: { tone?: Tone; 
 }
 
 /* ── Skeleton ── */
-export function Skeleton({ className }: { className?: string }) {
+export function Skeleton({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
     <div
       className={cn("rounded-md animate-shimmer", className)}
@@ -97,6 +108,7 @@ export function Skeleton({ className }: { className?: string }) {
         background:
           "linear-gradient(90deg, rgb(var(--text)/.05) 25%, rgb(var(--text)/.1) 37%, rgb(var(--text)/.05) 63%)",
         backgroundSize: "400% 100%",
+        ...style,
       }}
     />
   );

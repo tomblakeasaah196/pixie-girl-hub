@@ -50,11 +50,9 @@ import { AppGrid } from "@/components/hub/AppGrid";
 import {
   Card,
   KpiTile,
-  MoneyText,
   Skeleton,
   EmptyState,
   Pill,
-  Button,
 } from "@/components/ui/primitives";
 import {
   useDashboardOverview,
@@ -174,12 +172,16 @@ function KpiStrip({
 
   // CEO / Manager → revenue / outstanding / pending
   // Cashier / Staff → pending orders / deliveries / a lighter metric
-  const tiles = isCeo
+  const tiles: {
+    label: string;
+    value: string;
+    delta?: { up: boolean; text: string };
+    tone: "accent" | "warn";
+  }[] = isCeo
     ? [
         {
           label: "Revenue MTD",
           value: money(parseFloat(d?.sales.revenue_ngn ?? "0"), "NGN"),
-          delta: undefined as { up: boolean; text: string } | undefined,
           tone: "accent" as const,
         },
         {
@@ -207,7 +209,7 @@ function KpiStrip({
         {
           label: "Pending orders",
           value: String(d?.sales.pending_orders ?? 0),
-          tone: d?.sales.pending_orders ?? 0 > 0 ? ("warn" as const) : ("accent" as const),
+          tone: (d?.sales.pending_orders ?? 0) > 0 ? ("warn" as const) : ("accent" as const),
         },
       ];
 

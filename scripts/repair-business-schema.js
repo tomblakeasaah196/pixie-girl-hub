@@ -74,6 +74,7 @@ async function repairBusiness(business) {
 
   const client = await pool.connect();
   try {
+    await client.query(`CREATE SCHEMA IF NOT EXISTS ${business}`);
     await client.query("BEGIN");
 
     const existingTables = await getExistingTables(client, business);

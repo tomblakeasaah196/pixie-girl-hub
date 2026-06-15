@@ -3,6 +3,9 @@ import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { CommandCenter } from "@/pages/CommandCenter";
 import { SalesPage } from "@/pages/SalesPage";
+import { CataloguePage } from "@/pages/catalogue/CataloguePage";
+import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
+import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -64,6 +67,12 @@ export const router = createBrowserRouter(
             { index: true, element: <CommandCenter /> },
             { path: "sales", element: <SalesPage /> },
 
+            // Catalogue — base/styled product model, categories, collections,
+            // bundles. Detail/create live on their own routes.
+            { path: "catalogue", element: <CataloguePage /> },
+            { path: "catalogue/base/:id", element: <BaseProductPage /> },
+            { path: "catalogue/styled/:id", element: <StyledProductPage /> },
+
             // Settings — landing + sub-pages.
             { path: "settings", element: <SettingsHome /> },
             { path: "settings/appearance", element: <AppearancePage /> },
@@ -105,8 +114,6 @@ export const router = createBrowserRouter(
       ],
     },
   ],
-  // Data-router future flags live here; v7_startTransition is opted into
-  // on <RouterProvider> (see App.tsx) since it's a provider-level flag.
   {
     future: {
       v7_relativeSplatPath: true,

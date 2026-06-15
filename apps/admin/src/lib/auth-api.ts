@@ -83,6 +83,8 @@ export async function fetchMyPermissions(): Promise<PermGrant[]> {
 }
 
 // ── Device-local "PIN set up here" flag ───────────────────
+// Describes THIS browser only (never a credential): whether a PIN was set
+// up on this device, so the login screen can default to the Quick-PIN pad.
 const PIN_ENABLED_KEY = "pgh-pin-enabled";
 
 export function isPinEnabledLocally(): boolean {

@@ -56,6 +56,9 @@ async function initSocketIo(httpServer) {
   const { registerWorkflowRealtime } = require("../realtime/workflow-realtime");
   registerWorkflowRealtime();
 
+  const { registerStockRealtime } = require("../realtime/stock-realtime");
+  registerStockRealtime();
+
   logger.info("socket.io initialised with redis adapter");
   return io;
 }

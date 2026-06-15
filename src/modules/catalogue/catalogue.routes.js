@@ -12,6 +12,8 @@ const c = require("./catalogue.controller");
 const v = require("./catalogue.validator");
 const vault = require("./cost_vault.controller");
 const vaultV = require("./cost_vault.validator");
+const styled = require("./styled.controller");
+const styledV = require("./styled.validator");
 const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
 
@@ -91,6 +93,9 @@ router.put(
   vaultV.validateCostSet,
   vault.setCost,
 );
+// Self access check — any catalogue user; returns only a boolean so the UI
+// can decide whether to render the cost section (no data leak).
+router.get("/cost-vault/access", can("view"), vault.myAccess);
 // Vault access grants — OWNER ONLY (enforced in the service via is_ceo).
 router.get("/cost-vault/grants", can("view"), vault.listGrants);
 router.post(
@@ -105,6 +110,40 @@ router.delete(
   vaultV.validateGrantRevoke,
   vault.revokeAccess,
 );
+
+// ── Styled products (P0-6) — storefront skins over a base ─
+router.get("/styled-products", can("view"), styled.list);
+// AI draft (P0-8: only ever creates a DRAFT; gated by the products_ai_drafting
+// feature in the service). Literal segment declared before :id.
+router.post(
+  "/styled-products/ai-draft",
+  can("create"),
+  styledV.validateAiDraft,
+  styled.aiDraft,
+);
+router.post(
+  "/styled-products",
+  can("create"),
+  styledV.validateStyledCreate,
+  styled.create,
+);
+router.get("/styled-products/:id", can("view"), styled.getOne);
+router.patch(
+  "/styled-products/:id",
+  can("edit"),
+  styledV.validateStyledUpdate,
+  styled.update,
+);
+// Promote draft → live, and the reverse — both gated by catalogue.publish
+// (the "Ops can publish" rule; Sales/Marketing edit drafts but can't publish).
+router.post("/styled-products/:id/publish", can("publish"), styled.publish);
+router.post(
+  "/styled-products/:id/unpublish",
+  can("publish"),
+  styledV.validateUnpublish,
+  styled.unpublish,
+);
+router.delete("/styled-products/:id", can("delete"), styled.remove);
 
 // Collections (+ rules + members)
 router.get("/collections", can("view"), c.listCollections);

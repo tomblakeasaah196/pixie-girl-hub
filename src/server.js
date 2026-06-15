@@ -19,6 +19,7 @@ require("express-async-errors");
 
 const http = require("http");
 const express = require("express");
+const path = require("path");
 
 const { config, validateEnv } = require("./config/env");
 const { logger } = require("./config/logger");
@@ -53,6 +54,40 @@ async function bootstrap() {
   const app = express();
   applyGlobalMiddleware(app);
   mountRoutes(app);
+
+  // ── ERP frontend (Vite + React build) ────────────────────
+  // The ERP frontend is served from the SAME origin as the
+  // API (app.orikaliving.com). The Vite apps/admin calls the API at the
+  // relative path `/api`, so frontend and backend are same-origin in
+  // production — no CORS between them.
+  //
+  // Build step (run in apps/admin/ before deploy):  npm run build
+  // → outputs to apps/admin/dist
+  //
+  // Order matters:
+  //   - this block sits AFTER `/api` routes, so API calls are never
+  //     shadowed by the static handler or the SPA fallback;
+  //   - the SPA fallback returns index.html for any non-API GET that
+  //     isn't a real file, so React Router owns apps/admin-side routing;
+  //   - the JSON 404 below now only fires for unmatched /api/* routes.
+  const clientDist = path.join(__dirname, "apps/admin", "dist");
+
+  app.use(express.static(clientDist));
+
+  app.get("*", (req, res, next) => {
+    // Never let the SPA fallback answer an API request — an unknown
+    // /api route must still return the JSON 404 below, not index.html.
+    if (req.path.startsWith("/api") || req.path === "/api") {
+      return next();
+    }
+    res.sendFile(path.join(clientDist, "index.html"), (err) => {
+      // If the build is missing (client/dist not built yet) fall
+      // through to the 404 rather than crashing the request.
+      if (err) next();
+    });
+  });
+
+  // JSON 404 for unknown API routes and global error handler
   app.use(notFoundHandler);
   app.use(errorHandler);
 

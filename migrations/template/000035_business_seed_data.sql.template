@@ -72,6 +72,8 @@ BEGIN
     ('{{BUSINESS}}', 'cash_request',                  v_prefix || '-CR',   4, 1),
     ('{{BUSINESS}}', 'crm_deal',                      v_prefix || '-DEAL', 4, 1),
     ('{{BUSINESS}}', 'production_run',                v_prefix || '-RUN',  4, 1),
+    -- P0-6 (V2.2 §6.4) — Styled products (storefront skins over a base)
+    ('{{BUSINESS}}', 'styled_product',                v_prefix || '-STY',  4, 1),
     ('{{BUSINESS}}', 'funding_source',                v_prefix || '-FND',  4, 1),
     ('{{BUSINESS}}', 'service_job',                   v_prefix || '-JOB',  4, 1),
     ('{{BUSINESS}}', 'payroll_run',                   v_prefix || '-PAY',  4, 1),

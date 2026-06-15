@@ -59,6 +59,11 @@ const productCreate = z
       .optional(),
     required_deposit_pct: z.coerce.number().min(0).max(100).optional(),
     search_keywords: z.array(z.string()).optional(),
+    // Pre-order / production timeline (P0-7). When the base is out of stock
+    // and pre-order is enabled, styled listings show production-framed copy.
+    preorder_enabled: z.boolean().optional(),
+    expected_ready_date: z.string().date().nullable().optional(),
+    production_lead_days: z.coerce.number().int().min(0).max(365).nullable().optional(),
   })
   .strict();
 

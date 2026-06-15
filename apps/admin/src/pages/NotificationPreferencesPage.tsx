@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { BellRing } from "lucide-react";
 import { Card } from "@/components/ui/primitives";
 import { ErrorState, Toggle } from "@/components/ui/controls";
@@ -28,6 +29,7 @@ const CATEGORY_LABEL: Record<(typeof CATEGORIES)[number], string> = {
 };
 
 export function NotificationPreferencesPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Notifications" }]);
   const query = useNotificationPrefs();
   const upsert = useUpsertNotificationPref();
 

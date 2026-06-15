@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { KeyRound, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
@@ -19,6 +20,7 @@ import {
  */
 
 export function IntegrationSecretsPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Integration Secrets" }]);
   const query = useIntegrationSecrets();
   const setSecret = useSetSecret();
   const del = useDeleteSecret();

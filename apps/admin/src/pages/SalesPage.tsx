@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { Plus, ShoppingBag, Send } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -31,6 +32,7 @@ const ORDERS: Order[] = [
 const AVATARS = ["#8b9d77", "#7a8fa8", "#b76e79", "#9c7ad9", "#5aa0a8"];
 
 export function SalesPage() {
+  useBreadcrumbs([{ label: "Sales" }]);
   const [selected, setSelected] = useState<Order | null>(null);
 
   const columns: Column<Order>[] = [

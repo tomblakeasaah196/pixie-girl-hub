@@ -1,6 +1,7 @@
 import { useLocation } from "react-router-dom";
 import { Wrench } from "lucide-react";
 import { MODULES } from "@/lib/modules";
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 
 /**
  * Generic module screen scaffold. Each real module replaces this with its
@@ -12,6 +13,7 @@ export function ModulePlaceholder() {
   const mod = MODULES.find((m) => pathname.startsWith(m.route));
   const Icon = mod?.icon ?? Wrench;
   const label = mod?.label ?? pathname.replace("/", "");
+  useBreadcrumbs([{ label }]);
 
   return (
     <div className="text-center py-16 px-5">

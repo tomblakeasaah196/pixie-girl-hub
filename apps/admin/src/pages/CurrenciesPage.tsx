@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { Coins, Loader2, Plus, RefreshCw } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
@@ -21,6 +22,7 @@ import {
  * (per-platform) and the FX rate ledger with a manual-override form.
  */
 export function CurrenciesPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Currencies & FX" }]);
   const active = useActiveBusiness();
 
   return (

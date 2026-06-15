@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -99,6 +100,7 @@ const PRESETS: ReadonlyArray<{
 ] as const;
 
 export function AppearancePage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Appearance" }]);
   const branding = useBranding();
   const platform = usePlatformSettings(true);
   const fonts = useFontCatalog();

@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { ExternalLink, Plus, Scale, Trash2 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
@@ -36,6 +37,7 @@ const POLICY_TYPES = [
  * the storefront chooses to expose it.
  */
 export function BusinessPoliciesPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Business Policies" }]);
   const biz = useActiveBusiness();
   const q = useBusinessPolicies();
   const del = useDeletePolicy();

@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { FileSignature, Plus, Star, Trash2 } from "lucide-react";
 import { Button, Card, Pill, EmptyState } from "@/components/ui/primitives";
@@ -35,6 +36,7 @@ const DOC_TYPES = [
  * {{line_items}}, {{total}} are substituted at render.
  */
 export function DocumentTemplatesPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Document Templates" }]);
   const biz = useActiveBusiness();
   const q = useDocumentTemplates();
   const setDefault = useSetDefaultTemplate();

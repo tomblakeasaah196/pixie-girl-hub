@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import {
   Plus,
   GitBranch,
@@ -1736,6 +1737,9 @@ function PendingTab({ canAct }: { canAct: boolean }) {
 export function OrgWorkflowPage() {
   const { can, user } = useAuthStore();
   const [tab, setTab] = useState<Tab>("org");
+
+  const tabLabels: Record<Tab, string> = { org: "Org Chart", permissions: "Permissions", workflows: "Workflows", pending: "Pending" };
+  useBreadcrumbs([{ label: "Org & Workflow", href: "/org-workflow" }, { label: tabLabels[tab] }]);
 
   const { data: pendingMeta } = useQuery({
     queryKey: ["pending-approvals-count"],

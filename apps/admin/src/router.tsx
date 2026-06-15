@@ -30,8 +30,15 @@ import { NotificationPreferencesPage } from "@/pages/NotificationPreferencesPage
 import { ScheduledReportsPage } from "@/pages/ScheduledReportsPage";
 import { IntegrationSecretsPage } from "@/pages/IntegrationSecretsPage";
 import { BusinessPoliciesPage } from "@/pages/BusinessPoliciesPage";
-// Deep-link module placeholders
+// IAM & Security (full module)
 import { IamSecurityPage } from "@/pages/IamSecurityPage";
+import { IamUsersPage } from "@/pages/IamUsersPage";
+import { IamAuditPage } from "@/pages/IamAuditPage";
+import { IamSecurityEventsPage } from "@/pages/IamSecurityEventsPage";
+import { IamSessionsPage } from "@/pages/IamSessionsPage";
+import { IamAccessReviewsPage } from "@/pages/IamAccessReviewsPage";
+import { IamMfaPage } from "@/pages/IamMfaPage";
+// Other module placeholders
 import { HelpCenterPage } from "@/pages/HelpCenterPage";
 
 /**
@@ -60,9 +67,8 @@ export const router = createBrowserRouter(
             { index: true, element: <CommandCenter /> },
             { path: "sales", element: <SalesPage /> },
 
-            // Catalogue — base→styled product model, categories, collections,
-            // bundles. Detail/create live on their own routes (card grid →
-            // full-page detail).
+            // Catalogue — base/styled product model, categories, collections,
+            // bundles. Detail/create live on their own routes.
             { path: "catalogue", element: <CataloguePage /> },
             { path: "catalogue/base/:id", element: <BaseProductPage /> },
             { path: "catalogue/styled/:id", element: <StyledProductPage /> },
@@ -90,8 +96,16 @@ export const router = createBrowserRouter(
             // Org & Workflow (roles / approvals / permission matrix).
             { path: "org-workflow", element: <OrgWorkflowPage /> },
 
-            // New module placeholders.
+            // IAM & Security — landing + sub-pages.
             { path: "iam-security", element: <IamSecurityPage /> },
+            { path: "iam-security/users", element: <IamUsersPage /> },
+            { path: "iam-security/audit", element: <IamAuditPage /> },
+            { path: "iam-security/events", element: <IamSecurityEventsPage /> },
+            { path: "iam-security/sessions", element: <IamSessionsPage /> },
+            { path: "iam-security/reviews", element: <IamAccessReviewsPage /> },
+            { path: "iam-security/mfa", element: <IamMfaPage /> },
+
+            // Help Center.
             { path: "help", element: <HelpCenterPage /> },
 
             { path: "*", element: <ModulePlaceholder /> },
@@ -100,8 +114,6 @@ export const router = createBrowserRouter(
       ],
     },
   ],
-  // Data-router future flags live here; v7_startTransition is opted into
-  // on <RouterProvider> (see App.tsx) since it's a provider-level flag.
   {
     future: {
       v7_relativeSplatPath: true,

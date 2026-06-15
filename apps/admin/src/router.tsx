@@ -27,8 +27,15 @@ import { NotificationPreferencesPage } from "@/pages/NotificationPreferencesPage
 import { ScheduledReportsPage } from "@/pages/ScheduledReportsPage";
 import { IntegrationSecretsPage } from "@/pages/IntegrationSecretsPage";
 import { BusinessPoliciesPage } from "@/pages/BusinessPoliciesPage";
-// Deep-link module placeholders
+// IAM & Security (full module)
 import { IamSecurityPage } from "@/pages/IamSecurityPage";
+import { IamUsersPage } from "@/pages/IamUsersPage";
+import { IamAuditPage } from "@/pages/IamAuditPage";
+import { IamSecurityEventsPage } from "@/pages/IamSecurityEventsPage";
+import { IamSessionsPage } from "@/pages/IamSessionsPage";
+import { IamAccessReviewsPage } from "@/pages/IamAccessReviewsPage";
+import { IamMfaPage } from "@/pages/IamMfaPage";
+// Other module placeholders
 import { HelpCenterPage } from "@/pages/HelpCenterPage";
 
 /**
@@ -80,8 +87,14 @@ export const router = createBrowserRouter(
             // Org & Workflow (roles / approvals / permission matrix).
             { path: "org-workflow", element: <OrgWorkflowPage /> },
 
-            // IAM & Security.
+            // IAM & Security — landing + sub-pages.
             { path: "iam-security", element: <IamSecurityPage /> },
+            { path: "iam-security/users", element: <IamUsersPage /> },
+            { path: "iam-security/audit", element: <IamAuditPage /> },
+            { path: "iam-security/events", element: <IamSecurityEventsPage /> },
+            { path: "iam-security/sessions", element: <IamSessionsPage /> },
+            { path: "iam-security/reviews", element: <IamAccessReviewsPage /> },
+            { path: "iam-security/mfa", element: <IamMfaPage /> },
 
             // Help Center.
             { path: "help", element: <HelpCenterPage /> },

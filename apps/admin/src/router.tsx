@@ -31,6 +31,14 @@ import { BusinessPoliciesPage } from "@/pages/BusinessPoliciesPage";
 import { IamSecurityPage } from "@/pages/IamSecurityPage";
 import { HelpCenterPage } from "@/pages/HelpCenterPage";
 
+/**
+ * Two trees:
+ *  - Public, pre-auth routes (/login, /reset-password) render standalone.
+ *  - Everything else sits behind <RequireAuth/>, which restores the session
+ *    from the refresh cookie before rendering. /select-entity is authed but
+ *    lives OUTSIDE the AppShell (it's a full-screen chooser); the shell and
+ *    its module routes are the authenticated app.
+ */
 export const router = createBrowserRouter(
   [
     { path: "/login", element: <LoginPage /> },
@@ -83,6 +91,7 @@ export const router = createBrowserRouter(
   ],
   {
     future: {
+      v7_startTransition: true,
       v7_relativeSplatPath: true,
     },
   },

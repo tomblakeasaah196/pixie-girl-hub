@@ -17,6 +17,7 @@
     "test:unit": "jest tests/unit",
     "test:integration": "jest tests/integration",
     "smoke": "node scripts/smoke-test.js",
+    "icons:generate": "node scripts/generate-app-icons.mjs",
     "check:integrations": "node scripts/check-integrations.js",
     "lint": "eslint src/ --ext .js",
     "lint:fix": "eslint src/ --ext .js --fix",

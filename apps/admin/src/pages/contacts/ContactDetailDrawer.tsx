@@ -11,9 +11,11 @@ import {
   Trash2,
   CheckCircle,
   Clock,
+  PenLine,
 } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button, Pill, Skeleton, MoneyText, type Tone } from "@/components/ui/primitives";
+import { StaticMapImage } from "@/components/ui/AddressAutocomplete";
 import {
   useContact,
   useContactSummary,
@@ -26,6 +28,9 @@ import {
 } from "./hooks";
 import { ContactFormModal } from "./ContactFormModal";
 import { AddressFormModal } from "./AddressFormModal";
+import { LogActivityModal } from "./LogActivityModal";
+import { LoyaltyTab } from "./LoyaltyTab";
+import { TagPicker } from "./TagPicker";
 import type { Contact, Deal, TimelineEvent, PriorityLevel, ContactType } from "./types";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -183,33 +188,54 @@ function TimelineIcon({ type }: { type: string }) {
   return <Clock className="w-3.5 h-3.5" />;
 }
 
-function TimelineTab({ contactId }: { contactId: string }) {
+function TimelineTab({ contactId, contactName }: { contactId: string; contactName: string }) {
   const [activeTab, setActiveTab] = useState<"commercial" | "engagement" | "internal">(
     "commercial",
   );
+  const [showLogActivity, setShowLogActivity] = useState(false);
 
   const { data, isLoading } = useContactTimeline(contactId, { category: activeTab, page_size: 20 });
   const events: TimelineEvent[] = data?.data ?? [];
 
   return (
     <div>
-      {/* Sub-tabs */}
-      <div className="flex gap-1 mb-4 p-1 rounded-[12px] bg-text-primary/[0.04] border hairline">
-        {TIMELINE_TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={[
-              "flex-1 py-1.5 rounded-[9px] text-[12px] font-semibold transition-all",
-              activeTab === t.key
-                ? "bg-accent-deep text-[#F4E9D9]"
-                : "text-text-muted hover:text-text-primary",
-            ].join(" ")}
+      {/* Sub-tabs + Log Activity */}
+      <div className="flex items-center gap-2 mb-4">
+        <div className="flex-1 flex gap-1 p-1 rounded-[12px] bg-text-primary/[0.04] border hairline">
+            {TIMELINE_TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={[
+                "flex-1 py-1.5 rounded-[9px] text-[12px] font-semibold transition-all",
+                activeTab === t.key
+                  ? "bg-accent-deep text-[#F4E9D9]"
+                  : "text-text-muted hover:text-text-primary",
+              ].join(" ")}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {activeTab === "engagement" && (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<PenLine className="w-3.5 h-3.5" />}
+            onClick={() => setShowLogActivity(true)}
           >
-            {t.label}
-          </button>
-        ))}
+            Log
+          </Button>
+        )}
       </div>
+
+      {showLogActivity && (
+        <LogActivityModal
+          contactId={contactId}
+          contactName={contactName}
+          onClose={() => setShowLogActivity(false)}
+        />
+      )}
 
       {isLoading && (
         <div className="flex flex-col gap-3">
@@ -358,6 +384,14 @@ function AddressesTab({ contactId }: { contactId: string }) {
                   <div className="text-[11px] text-text-faint mt-0.5">
                     Landmark: {addr.landmark}
                   </div>
+                )}
+                {/* Mini map preview */}
+                {addr.latitude != null && addr.longitude != null && (
+                  <StaticMapImage
+                    lat={addr.latitude}
+                    lng={addr.longitude}
+                    label={addr.city}
+                  />
                 )}
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -540,7 +574,7 @@ function PrefRow({
 
 // ── Overview tab ─────────────────────────────────────────────────────────
 
-function OverviewTab({ contact }: { contact: Contact }) {
+function OverviewTab({ contact }: { contact: Contact; }) {
   const rows: [string, string | null][] = [
     ["Display name", contact.display_name],
     ["First name", contact.first_name],
@@ -615,6 +649,11 @@ function OverviewTab({ contact }: { contact: Contact }) {
         ))}
       </div>
 
+      {/* Tags */}
+      <div className="mt-4">
+        <TagPicker contactId={contact.contact_id} />
+      </div>
+
       {/* Notes */}
       {contact.notes && (
         <div className="mt-4 p-3 rounded-[11px] bg-text-primary/[0.04] border hairline">
@@ -634,6 +673,7 @@ const TABS = [
   { key: "deals", label: "Deals" },
   { key: "addresses", label: "Addresses" },
   { key: "preferences", label: "Preferences" },
+  { key: "loyalty", label: "Loyalty" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -759,10 +799,21 @@ export function ContactDetailDrawer({ contactId, onClose }: Props) {
 
           {/* Tab content */}
           {tab === "overview" && <OverviewTab contact={contact} />}
-          {tab === "timeline" && <TimelineTab contactId={contact.contact_id} />}
+          {tab === "timeline" && (
+            <TimelineTab
+              contactId={contact.contact_id}
+              contactName={contact.display_name}
+            />
+          )}
           {tab === "deals" && <DealsTab contactId={contact.contact_id} />}
           {tab === "addresses" && <AddressesTab contactId={contact.contact_id} />}
           {tab === "preferences" && <PreferencesTab contactId={contact.contact_id} />}
+          {tab === "loyalty" && (
+            <LoyaltyTab
+              contactId={contact.contact_id}
+              contactName={contact.display_name}
+            />
+          )}
         </>
       )}
 

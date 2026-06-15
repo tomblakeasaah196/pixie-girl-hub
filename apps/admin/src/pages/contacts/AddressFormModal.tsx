@@ -4,8 +4,10 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { Toggle } from "@/components/ui/controls";
+import { AddressAutocomplete, type PlaceAddress } from "@/components/ui/AddressAutocomplete";
 import { useCreateAddress } from "./hooks";
 import type { AddressType, AddressCreateInput } from "./types";
+import { DIAL_CODES } from "./ContactFormModal";
 
 const NG_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue",
@@ -29,23 +31,43 @@ export function AddressFormModal({ contactId, onClose }: Props) {
   const [line2, setLine2] = useState("");
   const [area, setArea] = useState("");
   const [city, setCity] = useState("");
-  const [state, setState] = useState("Lagos");
-  const [country] = useState("Nigeria");
-  const [countryCode] = useState("NG");
+  const [stateVal, setStateVal] = useState("Lagos");
+  const [country, setCountry] = useState("Nigeria");
+  const [countryCode, setCountryCode] = useState("NG");
   const [postalCode, setPostalCode] = useState("");
   const [landmark, setLandmark] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [mapsUrl, setMapsUrl] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState("");
+
+  const handlePlaceSelected = (place: PlaceAddress) => {
+    setLine1(place.line1);
+    setLine2(place.line2);
+    setArea(place.area);
+    setCity(place.city);
+    // For Nigerian states, match to our list; otherwise use raw
+    const matchedState = NG_STATES.find(
+      (s) => s.toLowerCase() === place.state.toLowerCase()
+    );
+    setStateVal(matchedState ?? place.state);
+    setCountry(place.country || "Nigeria");
+    setCountryCode(place.country_code || "NG");
+    setPostalCode(place.postal_code);
+    setMapsUrl(place.google_maps_url);
+    setLatitude(place.latitude);
+    setLongitude(place.longitude);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!line1.trim() || !city.trim() || !state) {
-      setError("Address line 1, city, and state are required.");
+    if (!line1.trim() || !city.trim()) {
+      setError("Address line 1 and city are required.");
       return;
     }
 
@@ -55,7 +77,7 @@ export function AddressFormModal({ contactId, onClose }: Props) {
       ...(line2.trim() ? { line2: line2.trim() } : {}),
       ...(area.trim() ? { area: area.trim() } : {}),
       city: city.trim(),
-      state,
+      state: stateVal,
       country,
       country_code: countryCode,
       ...(postalCode.trim() ? { postal_code: postalCode.trim() } : {}),
@@ -63,6 +85,8 @@ export function AddressFormModal({ contactId, onClose }: Props) {
       ...(recipientName.trim() ? { recipient_name: recipientName.trim() } : {}),
       ...(recipientPhone.trim() ? { recipient_phone: recipientPhone.trim() } : {}),
       ...(mapsUrl.trim() ? { google_maps_url: mapsUrl.trim() } : {}),
+      ...(latitude != null ? { latitude } : {}),
+      ...(longitude != null ? { longitude } : {}),
       is_default: isDefault,
     };
 
@@ -73,6 +97,9 @@ export function AddressFormModal({ contactId, onClose }: Props) {
       setError(err instanceof Error ? err.message : "Failed to save address.");
     }
   };
+
+  // Derive the 2-letter country code for autocomplete bias
+  const autocompleteCountry = countryCode.length === 2 ? countryCode : "NG";
 
   return (
     <Modal
@@ -138,14 +165,36 @@ export function AddressFormModal({ contactId, onClose }: Props) {
           </Field>
         </FormSection>
 
-        {/* Street */}
-        <FormSection title="Street">
-          <Field label="Address line 1 *">
-            <TextInput
-              autoFocus
+        {/* Country selection drives autocomplete bias */}
+        <FormSection>
+          <Field label="Country" hint="Select first — autocomplete adapts to this country">
+            <select
+              value={countryCode}
+              onChange={(e) => {
+                const d = DIAL_CODES.find((c) => c.code === e.target.value);
+                setCountryCode(e.target.value);
+                if (d) setCountry(d.label);
+              }}
+              className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
+            >
+              {DIAL_CODES.filter((d) => d.code !== "OTHER").map((d) => (
+                <option key={d.code} value={d.code}>
+                  {d.flag} {d.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </FormSection>
+
+        {/* Google Maps autocomplete for line1 */}
+        <FormSection title="Street Address">
+          <Field label="Address line 1 *" hint="Type to search — autocomplete populates all fields">
+            <AddressAutocomplete
               value={line1}
-              onChange={(e) => setLine1(e.target.value)}
-              placeholder="House no / Street name"
+              onChange={setLine1}
+              onPlaceSelected={handlePlaceSelected}
+              countryCode={autocompleteCountry}
+              placeholder={`e.g. 14 Broad Street${countryCode === "NG" ? ", Lagos" : ""}`}
             />
           </Field>
           <Field label="Address line 2">
@@ -172,29 +221,35 @@ export function AddressFormModal({ contactId, onClose }: Props) {
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="State *">
-              <select
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                {NG_STATES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-                <option value="Other">Other</option>
-              </select>
+            <Field label="State / Province">
+              {countryCode === "NG" ? (
+                <select
+                  value={stateVal}
+                  onChange={(e) => setStateVal(e.target.value)}
+                  className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
+                >
+                  {NG_STATES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                  <option value="Other">Other</option>
+                </select>
+              ) : (
+                <TextInput
+                  value={stateVal}
+                  onChange={(e) => setStateVal(e.target.value)}
+                  placeholder="e.g. London"
+                />
+              )}
             </Field>
             <Field label="Postal code">
               <TextInput
                 value={postalCode}
                 onChange={(e) => setPostalCode(e.target.value)}
-                placeholder="e.g. 101001"
+                placeholder={countryCode === "NG" ? "e.g. 101001" : "e.g. SW1A 1AA"}
               />
             </Field>
           </div>
-          <Field label="Landmark">
+          <Field label="Landmark" hint="Nigerian addresses often need a landmark for delivery drivers">
             <TextInput
               value={landmark}
               onChange={(e) => setLandmark(e.target.value)}
@@ -203,8 +258,17 @@ export function AddressFormModal({ contactId, onClose }: Props) {
           </Field>
         </FormSection>
 
+        {/* Coordinates (auto-filled from Places, editable) */}
+        {(latitude != null || longitude != null) && (
+          <div className="mb-4 px-3 py-2 rounded-[10px] bg-success/[0.08] border border-success/20">
+            <p className="text-[11px] text-success/90">
+              📍 Coordinates captured: {latitude?.toFixed(5)}, {longitude?.toFixed(5)} — ready for delivery APIs
+            </p>
+          </div>
+        )}
+
         {/* Recipient */}
-        <FormSection title="Recipient (if different)">
+        <FormSection title="Recipient (if different from contact)">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Recipient name">
               <TextInput
@@ -221,17 +285,6 @@ export function AddressFormModal({ contactId, onClose }: Props) {
               />
             </Field>
           </div>
-        </FormSection>
-
-        {/* Google Maps */}
-        <FormSection>
-          <Field label="Google Maps URL" hint="Paste from Google Maps → Share → Copy link">
-            <TextInput
-              value={mapsUrl}
-              onChange={(e) => setMapsUrl(e.target.value)}
-              placeholder="https://maps.google.com/…"
-            />
-          </Field>
         </FormSection>
 
         {/* Default toggle */}

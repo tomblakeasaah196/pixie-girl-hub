@@ -5,6 +5,7 @@ import type {
   ContactSummary,
   TimelineEvent,
   ContactSegment,
+  ContactTag,
   Pipeline,
   PipelineStage,
   Deal,
@@ -189,3 +190,51 @@ export const addMeasurement = (contactId: string, input: Partial<CustomerMeasure
 
 export const listChurnScores = (contactId: string) =>
   api.get<ChurnScore[]>(`${CRM}/customers/${contactId}/churn`);
+
+// ── Tags ──────────────────────────────────────────────────────────────────
+
+export const listContactTags = (contactId: string) =>
+  api.get<ContactTag[]>(`${C}/${contactId}/tags`);
+
+export const listAllTags = () =>
+  api.get<ContactTag[]>(`${C}/tags`);
+
+export const addContactTag = (
+  contactId: string,
+  tag: { tag_name: string; colour?: string },
+) => api.post<ContactTag>(`${C}/${contactId}/tags`, tag);
+
+export const removeContactTag = (contactId: string, tagId: string) =>
+  api.delete<void>(`${C}/${contactId}/tags/${tagId}`);
+
+export const updateTag = (
+  tagId: string,
+  input: { tag_name?: string; colour?: string },
+) => api.patch<ContactTag>(`${C}/tags/${tagId}`, input);
+
+export const deleteTag = (tagId: string) =>
+  api.delete<void>(`${C}/tags/${tagId}`);
+
+export const mergeTags = (sourceTagId: string, targetTagId: string) =>
+  api.post<void>(`${C}/tags/merge`, { source_tag_id: sourceTagId, target_tag_id: targetTagId });
+
+// ── Contact-level activities (no deal required) ───────────────────────────
+
+export const logContactActivity = (
+  contactId: string,
+  input: {
+    activity_type: string;
+    direction?: string;
+    subject?: string;
+    body?: string;
+    outcome?: string;
+    performed_at?: string;
+    duration_minutes?: number;
+    scheduled_at?: string;
+  },
+) => api.post<CrmActivity>(`${CRM}/contacts/${contactId}/activities`, input);
+
+// ── Milestones (cross-contact birthdays & anniversaries) ─────────────────
+
+export const listUpcomingMilestones = (params: { days?: number } = {}) =>
+  api.get<import("./types").Milestone[]>(`${C}/milestones${qs(params)}`);

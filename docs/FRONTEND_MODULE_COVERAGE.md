@@ -45,4 +45,4 @@
 | 37 | Intercompany Reconciliation | System | `/intercompany` | Accounting, Purchasing, Stock | ⬜ To-do | CEO/ALL aggregation; inter-brand settlement. |
 | 38 | AI Control & Governance | System | `/ai-control` | Praxis AI, Settings | ⬜ To-do | Action catalogue, guardrails (6.31). |
 
-_Last generated: 2026-06-14._
+_Last generated: 2026-06-15._

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Plus, Sparkles, MessageCircle, HelpCircle, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
+import { useUnreadCount } from "@/hooks/useCommandCenter";
 
 /**
  * Floating launcher (canon §3.4) — fans to Praxis · Messages · Help.
@@ -12,6 +13,8 @@ export function FloatingLauncher() {
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const { data } = useUnreadCount();
+  const unread = data?.unread ?? 0;
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -60,7 +63,11 @@ export function FloatingLauncher() {
         )}
       >
         {open ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
-        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1.5 rounded-[10px] bg-danger text-white text-[10px] font-bold grid place-items-center border-2 border-bg">3</span>
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1.5 rounded-[10px] bg-danger text-white text-[10px] font-bold grid place-items-center border-2 border-bg">
+            {unread > 99 ? "99+" : unread}
+          </span>
+        )}
       </button>
     </div>
   );

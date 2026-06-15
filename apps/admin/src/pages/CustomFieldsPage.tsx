@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { Check, ListPlus, Loader2, Plus } from "lucide-react";
 import {
@@ -71,6 +72,7 @@ function Dot({ on }: { on: boolean }) {
 }
 
 export function CustomFieldsPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Custom Fields" }]);
   const active = useActiveBusiness();
   const [entity, setEntity] = useState<Entity>("product");
   const q = useCustomFields(entity);

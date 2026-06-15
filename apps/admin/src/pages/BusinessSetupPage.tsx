@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, Eye, EyeOff, FileSignature, Loader2, Palette, Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -39,6 +40,7 @@ const TABS: { key: Tab; label: string }[] = [
  * endpoint exists); the value still never leaves the page in cleartext.
  */
 export function BusinessSetupPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Business Setup" }]);
   const biz = useActiveBusiness();
   const cfg = useBusinessConfig();
   const save = useSaveBusinessConfig();

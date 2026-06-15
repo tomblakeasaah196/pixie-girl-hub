@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { CalendarClock, Plus, Trash2 } from "lucide-react";
 import { Button, Card, Pill, type Tone } from "@/components/ui/primitives";
@@ -36,6 +37,7 @@ const CADENCE_TONE: Record<Cadence, Tone> = {
 };
 
 export function ScheduledReportsPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Scheduled Reports" }]);
   const query = useScheduledReports();
   const create = useCreateReport();
   const update = useUpdateReport();

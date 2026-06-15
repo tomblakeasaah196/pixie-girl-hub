@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { GitBranch, Loader2, Plus, Trash2 } from "lucide-react";
 import {
@@ -60,6 +61,7 @@ function ColorInput({
 }
 
 export function PipelineStagesPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Pipeline Stages" }]);
   const active = useActiveBusiness();
   const [pipeline, setPipeline] = useState<Pipeline>("crm");
   const q = usePipelineStages(pipeline);

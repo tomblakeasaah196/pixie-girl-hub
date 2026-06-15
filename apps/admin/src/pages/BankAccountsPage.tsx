@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useEffect, useState } from "react";
 import { Landmark, Loader2, Plus, Star } from "lucide-react";
 import { Button, Card, MaskedField, Pill } from "@/components/ui/primitives";
@@ -19,6 +20,7 @@ import {
  * links and a primary flag. Add via Drawer; click a row to edit.
  */
 export function BankAccountsPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Bank Accounts" }]);
   const active = useActiveBusiness();
   const query = useBankAccounts();
   const update = useUpdateBankAccount();

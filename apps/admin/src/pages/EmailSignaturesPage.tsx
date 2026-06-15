@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useEffect, useMemo, useState } from "react";
 import { Mail } from "lucide-react";
 import { Card, EmptyState } from "@/components/ui/primitives";
@@ -38,6 +39,7 @@ const STARTER = `<table style="font-family: Arial, sans-serif; color: #1a1011;">
 </table>`;
 
 export function EmailSignaturesPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Email Signatures" }]);
   const query = useSignatureTemplate();
   const save = useSaveSignatureTemplate();
 

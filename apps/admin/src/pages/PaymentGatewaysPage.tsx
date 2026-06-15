@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useEffect, useState } from "react";
 import { CheckCircle2, KeyRound, Loader2, Plug } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
@@ -41,6 +42,7 @@ interface GatewayFee {
 }
 
 export function PaymentGatewaysPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Payment Gateways" }]);
   const active = useActiveBusiness();
   const query = usePaymentGateways();
 

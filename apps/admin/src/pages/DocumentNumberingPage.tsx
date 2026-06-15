@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { Hash, Loader2 } from "lucide-react";
 import {
@@ -22,6 +23,7 @@ function sample(prefix: string, padding: number, next: number) {
 }
 
 export function DocumentNumberingPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Document Numbering" }]);
   const q = useDocSequences();
   const update = useUpdateDocSequence();
   const active = useActiveBusiness();

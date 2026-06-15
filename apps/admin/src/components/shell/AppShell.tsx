@@ -5,6 +5,7 @@ import { useUiStore } from "@/stores/ui";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
+import { BreadcrumbStrip } from "./BreadcrumbStrip";
 import { AppMenuFab } from "./AppMenuFab";
 import { FloatingLauncher } from "./FloatingLauncher";
 import { MobileBottomNav } from "./MobileBottomNav";
@@ -38,6 +39,7 @@ export function AppShell() {
         )}
       >
         <TopBar />
+        <BreadcrumbStrip />
         <div className="p-[26px_34px_120px] max-md:p-[20px_16px_96px]">
           <Outlet />
         </div>

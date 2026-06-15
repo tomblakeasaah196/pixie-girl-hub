@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useMemo, useState } from "react";
 import { Info, Loader2, Percent, Plus } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
@@ -36,6 +37,7 @@ type ModuleKey = (typeof MODULE_OPTIONS)[number];
 const MODULE_SELECT = MODULE_OPTIONS.map((m) => ({ value: m, label: m }));
 
 export function TaxRatesPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Tax Rates" }]);
   const active = useActiveBusiness();
   const query = useTaxRates();
   const [adding, setAdding] = useState(false);

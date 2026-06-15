@@ -72,8 +72,8 @@ const VAR_COLS = [
   "price_wholesale_ngn",
   "price_partner_ngn",
   "compare_at_price_ngn",
-  "cost_price_ngn",
-  "min_price_ngn",
+  // cost_price_ngn / min_price_ngn DEPRECATED (P0-1) — true cost lives
+  // encrypted in product_variant_cost_vault, never written here.
   "min_margin_pct",
   "weight_g",
   "channel_external_ids",

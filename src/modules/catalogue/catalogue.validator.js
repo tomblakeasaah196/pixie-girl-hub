@@ -76,8 +76,8 @@ const variantCreate = z
     price_wholesale_ngn: money.optional(),
     price_partner_ngn: money.optional(),
     compare_at_price_ngn: money.optional(),
-    cost_price_ngn: money.optional(),
-    min_price_ngn: money.optional(),
+    // cost_price_ngn / min_price_ngn are DEPRECATED here (P0-1): true cost
+    // is write-only via the encrypted cost vault, never as plaintext.
     min_margin_pct: z.coerce.number().min(0).max(100).optional(),
     weight_g: z.coerce.number().int().min(0).optional(),
     channel_external_ids: z.record(z.any()).optional(),

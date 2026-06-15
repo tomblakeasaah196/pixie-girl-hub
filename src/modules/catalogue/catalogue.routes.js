@@ -10,6 +10,8 @@ const express = require("express");
 const multer = require("multer");
 const c = require("./catalogue.controller");
 const v = require("./catalogue.validator");
+const vault = require("./cost_vault.controller");
+const vaultV = require("./cost_vault.validator");
 const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
 
@@ -72,6 +74,36 @@ router.delete(
   "/products/:id/variants/:variantId",
   can("delete"),
   c.removeVariant,
+);
+
+// ── Cost Vault (P0-1) ────────────────────────────────────
+// Read/write a variant's TRUE cost + supplier. Service enforces vault
+// access (owner is_ceo or a live shared.cost_vault_grants row); every
+// access is audited as sensitive. Cost is AES-256-GCM encrypted at rest.
+router.get(
+  "/products/:id/variants/:variantId/cost",
+  can("view"),
+  vault.getCost,
+);
+router.put(
+  "/products/:id/variants/:variantId/cost",
+  can("edit"),
+  vaultV.validateCostSet,
+  vault.setCost,
+);
+// Vault access grants — OWNER ONLY (enforced in the service via is_ceo).
+router.get("/cost-vault/grants", can("view"), vault.listGrants);
+router.post(
+  "/cost-vault/grants",
+  can("view"),
+  vaultV.validateGrantCreate,
+  vault.grantAccess,
+);
+router.delete(
+  "/cost-vault/grants/:userId",
+  can("view"),
+  vaultV.validateGrantRevoke,
+  vault.revokeAccess,
 );
 
 // Collections (+ rules + members)

@@ -64,7 +64,11 @@ async function listProducts(req, res) {
 }
 async function getProduct(req, res) {
   res.json({
-    data: await service.getProduct({ brand: req.brand, id: req.params.id }),
+    data: await service.getProduct({
+      brand: req.brand,
+      id: req.params.id,
+      user: req.user,
+    }),
   });
 }
 async function createProduct(req, res) {
@@ -89,7 +93,11 @@ async function deleteProduct(req, res) {
 // Variants
 async function listVariants(req, res) {
   res.json({
-    data: await service.listVariants({ brand: req.brand, id: req.params.id }),
+    data: await service.listVariants({
+      brand: req.brand,
+      id: req.params.id,
+      user: req.user,
+    }),
   });
 }
 async function addVariant(req, res) {

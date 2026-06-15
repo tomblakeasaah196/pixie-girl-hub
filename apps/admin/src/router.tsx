@@ -38,6 +38,9 @@ import { HelpCenterPage } from "@/pages/HelpCenterPage";
  *    from the refresh cookie before rendering. /select-entity is authed but
  *    lives OUTSIDE the AppShell (it's a full-screen chooser); the shell and
  *    its module routes are the authenticated app.
+ *
+ * `/settings` is the landing (card grid); each sub-page is a focused tile.
+ * Audit and IAM live in /iam-security; help in /help.
  */
 export const router = createBrowserRouter(
   [
@@ -89,9 +92,10 @@ export const router = createBrowserRouter(
       ],
     },
   ],
+  // Data-router future flags live here; v7_startTransition is opted into
+  // on <RouterProvider> (see App.tsx) since it's a provider-level flag.
   {
     future: {
-      v7_startTransition: true,
       v7_relativeSplatPath: true,
     },
   },

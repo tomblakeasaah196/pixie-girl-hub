@@ -72,6 +72,24 @@ export async function removePin(): Promise<void> {
   await api.delete("/auth/pin");
 }
 
+// ── Device-local "PIN set up here" flag ───────────────────
+// Describes THIS browser only (never a credential): whether a PIN was set
+// up on this device, so the login screen can default to the Quick-PIN pad.
+const PIN_ENABLED_KEY = "pgh-pin-enabled";
+
+export function isPinEnabledLocally(): boolean {
+  return (
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem(PIN_ENABLED_KEY) === "1"
+  );
+}
+
+export function setPinEnabledLocally(enabled: boolean): void {
+  if (typeof localStorage === "undefined") return;
+  if (enabled) localStorage.setItem(PIN_ENABLED_KEY, "1");
+  else localStorage.removeItem(PIN_ENABLED_KEY);
+}
+
 // ── Geo welcome (public, per-IP, no cache) ────────────────
 export interface GeoWelcome {
   location: {

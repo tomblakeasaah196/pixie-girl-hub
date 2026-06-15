@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Receipt, CheckCircle, XCircle } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
-import { Button, Card, Pill, MoneyText, Skeleton } from "@/components/ui/primitives";
+import { Button, Card, Pill, MoneyText } from "@/components/ui/primitives";
 import { useAuthStore } from "@/stores/auth";
 import { useExpense, useExpenseMutations } from "./hooks";
 import { EXPENSE_STATUS_META } from "./constants";

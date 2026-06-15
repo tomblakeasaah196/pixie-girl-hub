@@ -121,10 +121,24 @@ const regionMessageSchema = z
   .partial()
   .passthrough();
 
+// Image URLs can be absolute (https://cdn.example.com/...) when a CDN is
+// configured, or relative (/media/branding/...) when using local storage.
+// z.string().url() rejects relative paths, so we allow either form.
+const imageUrl = z
+  .string()
+  .max(2000)
+  .refine(
+    (v) => {
+      if (v.startsWith("/media/")) return true;
+      try { new URL(v); return true; } catch { return false; }
+    },
+    "must be an https URL or a /media/ relative path",
+  );
+
 const backgroundSchema = z
   .object({
     style: z.enum(["mesh", "image"]).optional(),
-    image_url: z.string().url().max(500).nullable().optional(),
+    image_url: imageUrl.nullable().optional(),
   })
   .partial()
   .passthrough();
@@ -146,9 +160,9 @@ const settingsUpdate = z
     product_name: z.string().min(1).max(80).optional(),
     tagline: z.string().max(200).nullable().optional(),
     company_name: z.string().max(200).nullable().optional(),
-    logo_dark_url: z.string().max(500).nullable().optional(),
-    logo_light_url: z.string().max(500).nullable().optional(),
-    favicon_url: z.string().max(500).nullable().optional(),
+    logo_dark_url: imageUrl.nullable().optional(),
+    logo_light_url: imageUrl.nullable().optional(),
+    favicon_url: imageUrl.nullable().optional(),
     font_display: z.string().min(1).max(200).optional(),
     font_body: z.string().min(1).max(200).optional(),
     font_mono: z.string().min(1).max(200).optional(),

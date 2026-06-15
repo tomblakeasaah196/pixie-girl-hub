@@ -110,6 +110,7 @@ async function enrol({ brand, user, request_id, input }) {
         next_billing_at,
         preferences: input.preferences,
         default_delivery_address_id: input.default_delivery_address_id,
+        maintenance_addon: input.maintenance_addon === true,
       },
     }),
   );
@@ -246,7 +247,14 @@ async function runDueBilling({ limit = 50 } = {}) {
       try {
         const plan = await repo.getPlan({ brand, id: sub.plan_id });
         if (!plan) continue;
-        const amount = money(plan.price_ngn);
+        // Wig-maintenance add-on (§6.23.5): bill it on top for opted-in subs.
+        let amount = money(plan.price_ngn);
+        if (
+          sub.maintenance_addon &&
+          money(plan.maintenance_fee_ngn || 0).gt(0)
+        ) {
+          amount = amount.plus(money(plan.maintenance_fee_ngn));
+        }
         const amountStr = toCurrencyString(amount);
         const cycleKey = new Date(sub.next_billing_at).getTime();
         const reference = `sub_${sub.subscription_id}_${cycleKey}`;

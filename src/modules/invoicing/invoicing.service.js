@@ -14,6 +14,7 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const pdf = require("../../services/pdf.service");
 
 const A = (
   brand,
@@ -622,6 +623,26 @@ async function issueReceipt({ brand, user, request_id, input }) {
   return receipt;
 }
 
+/**
+ * Render an invoice to PDF and persist it via the Documents gateway (§6.5 /
+ * 4.2). Returns the stored document (document_id + url). Read-permission gated
+ * by the route; degrades to a 503 if PDF rendering is disabled.
+ */
+async function invoicePdf({ brand, user, id }) {
+  const invoice = await getById({ brand, id });
+  if (!invoice) throw new NotFoundError("Invoice");
+  const { invoiceHtml } = require("../../services/pdf.templates");
+  return pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html: invoiceHtml({ brand, invoice }),
+    title: `Invoice ${invoice.invoice_number || invoice.invoice_id || id}`,
+    document_type: "invoice",
+    reference_type: "invoice",
+    reference_id: invoice.invoice_id || id,
+  });
+}
+
 module.exports = {
   createFromOrder,
   createManual,
@@ -640,4 +661,5 @@ module.exports = {
   listReminders,
   cancelReminder,
   sendDueReminders,
+  invoicePdf,
 };

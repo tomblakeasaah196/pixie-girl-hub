@@ -82,6 +82,24 @@ export async function fetchMyPermissions(): Promise<PermGrant[]> {
   return api.get<PermGrant[]>("/auth/me/permissions");
 }
 
+// ── Device-local "PIN set up here" flag ───────────────────
+// Describes THIS browser only (never a credential): whether a PIN was set
+// up on this device, so the login screen can default to the Quick-PIN pad.
+const PIN_ENABLED_KEY = "pgh-pin-enabled";
+
+export function isPinEnabledLocally(): boolean {
+  return (
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem(PIN_ENABLED_KEY) === "1"
+  );
+}
+
+export function setPinEnabledLocally(enabled: boolean): void {
+  if (typeof localStorage === "undefined") return;
+  if (enabled) localStorage.setItem(PIN_ENABLED_KEY, "1");
+  else localStorage.removeItem(PIN_ENABLED_KEY);
+}
+
 // ── Geo welcome (public, per-IP, no cache) ────────────────
 export interface GeoWelcome {
   location: {
@@ -93,6 +111,12 @@ export interface GeoWelcome {
   welcome: string;
   note: string;
 }
-export async function getGeoWelcome(): Promise<GeoWelcome> {
-  return api.get<GeoWelcome>("/geo-welcome", "public");
+export async function getGeoWelcome(
+  params?: Record<string, string>,
+): Promise<GeoWelcome> {
+  const qs = params ? new URLSearchParams(params).toString() : "";
+  return api.get<GeoWelcome>(
+    `/geo-welcome${qs ? `?${qs}` : ""}`,
+    "public",
+  );
 }

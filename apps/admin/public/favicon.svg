@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Pixie Girl Hub">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2a0f15"/>
+      <stop offset="1" stop-color="#0f0809"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="16" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f6d9c9"/>
+      <stop offset="1" stop-color="#e0607a"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <!-- Four-point sparkle: the Pixie Hub "craftsmanship" mark -->
+  <path fill="url(#mark)"
+        d="M32 12c1.8 8.4 5.6 12.2 14 14-8.4 1.8-12.2 5.6-14 14-1.8-8.4-5.6-12.2-14-14 8.4-1.8 12.2-5.6 14-14z"/>
+  <circle cx="48" cy="20" r="2.6" fill="#f6d9c9"/>
+  <circle cx="18" cy="46" r="1.8" fill="#e0607a"/>
+</svg>

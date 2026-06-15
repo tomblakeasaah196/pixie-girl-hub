@@ -20,14 +20,27 @@ describe("permission catalog", () => {
   test("enumerates the enforced module keys without duplicates", () => {
     expect(new Set(MODULES).size).toBe(MODULES.length);
     // The matrix seed (000207) grants against exactly these keys.
-    ["accounting", "crm", "sales", "stock", "hr_payroll", "settings", "intercompany"].forEach(
-      (k) => expect(MODULES).toContain(k),
-    );
+    [
+      "accounting",
+      "crm",
+      "sales",
+      "stock",
+      "hr_payroll",
+      "settings",
+      "intercompany",
+    ].forEach((k) => expect(MODULES).toContain(k));
     expect(MODULES.length).toBeGreaterThanOrEqual(37);
   });
 
   test("action vocabulary matches the middleware and the permissions schema", () => {
-    expect(ACTIONS).toEqual(["view", "create", "edit", "delete", "approve", "export"]);
+    expect(ACTIONS).toEqual([
+      "view",
+      "create",
+      "edit",
+      "delete",
+      "approve",
+      "export",
+    ]);
     expect(RECORD_SCOPES).toEqual(["all", "own", "team"]);
   });
 

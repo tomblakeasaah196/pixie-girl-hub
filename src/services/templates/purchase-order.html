@@ -1,0 +1,33 @@
+<h1>Purchase Order {{po_number}}</h1>
+<div class="meta">{{brand}} · Status: {{status}}</div>
+<table style="margin-top: 10px">
+  <tr>
+    <td>Supplier</td>
+    <td class="right">{{supplier}}</td>
+  </tr>
+  <tr>
+    <td>Order date</td>
+    <td class="right">{{order_date}}</td>
+  </tr>
+  <tr>
+    <td>Expected</td>
+    <td class="right">{{expected_date}}</td>
+  </tr>
+  <tr>
+    <td>Currency</td>
+    <td class="right">{{currency}}</td>
+  </tr>
+</table>
+<h2>Lines</h2>
+<table>
+  <tr>
+    <th>Item</th>
+    <th class="right">Qty</th>
+    <th class="right">Unit</th>
+    <th class="right">Amount</th>
+  </tr>
+  {{{rows}}}
+</table>
+<table class="totals" style="margin-top: 8px">
+  {{{totals}}}
+</table>

@@ -2,7 +2,7 @@
 const { utcToZonedTime, zonedTimeToUtc, format } = require("date-fns-tz");
 const { config } = require("../config/env");
 
-const TZ = config.TZ || "Africa/Lagos";
+const TZ = config.TZ;
 
 function nowInTz() {
   return utcToZonedTime(new Date(), TZ);

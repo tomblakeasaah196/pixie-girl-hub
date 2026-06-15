@@ -580,10 +580,16 @@ async function upsertAttributeValue({ client, brand, product_id, input }) {
       product_id,
       input.field_id,
       input.value_text ?? null,
-      input.value_number ?? null,
+      input.value_number !== null && input.value_number !== undefined
+        ? input.value_number
+        : null,
       input.value_date ?? null,
-      input.value_boolean ?? null,
-      input.value_json !== null ? JSON.stringify(input.value_json) : null,
+      input.value_boolean !== null && input.value_boolean !== undefined
+        ? input.value_boolean
+        : null,
+      input.value_json !== null && input.value_json !== undefined
+        ? JSON.stringify(input.value_json)
+        : null,
     ],
   );
   return rows[0];

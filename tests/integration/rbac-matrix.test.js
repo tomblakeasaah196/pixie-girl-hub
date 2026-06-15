@@ -81,7 +81,14 @@ suite("Access Matrix (§3) is seeded and enforces the spec", () => {
   test("Finance (future seat) gets full Accounting, including approve", async () => {
     const rows = await grants("finance", "accounting");
     const actions = rows.map((r) => r.action).sort();
-    expect(actions).toEqual(["approve", "create", "delete", "edit", "export", "view"]);
+    expect(actions).toEqual([
+      "approve",
+      "create",
+      "delete",
+      "edit",
+      "export",
+      "view",
+    ]);
     expect(rows.every((r) => r.record_scope === "all")).toBe(true);
   });
 

@@ -154,7 +154,11 @@ async function setPendingStatus({ client, id, status, fields = {} }) {
   let i = 3;
   for (const [k, v] of Object.entries(fields)) {
     sets.push(`${k} = $${i++}`);
-    params.push(k === "execution_result" && v !== null ? JSON.stringify(v) : v);
+    params.push(
+      k === "execution_result" && v !== null && v !== undefined
+        ? JSON.stringify(v)
+        : v,
+    );
   }
   const { rows } = await ex(client)(
     `UPDATE shared.ai_pending_actions SET ${sets.join(", ")}

@@ -74,25 +74,44 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     loadFontStylesheet(p.font_css_url);
   }, [branding.data]);
 
+  // Layer-A document title + PWA name — reflect the dynamic product
+  // name (canon: app name is DB-driven). Falls back to the static
+  // title baked into index.html when branding hasn't loaded.
+  useEffect(() => {
+    const name = branding.data?.platform?.product_name;
+    if (name) document.title = name;
+  }, [branding.data]);
+
   // Layer-A favicon — swaps to whichever mode is active so a brand
-  // can ship a cream mark for dark and a deep mark for light.
+  // can ship a cream mark for dark and a deep mark for light. Prefers
+  // a dedicated favicon when set, else the mode logo. Leaves the static
+  // /favicon.svg (linked in index.html) in place when nothing is set,
+  // so there's always an icon and never a 404.
   useEffect(() => {
     const p = branding.data?.platform;
     if (!p) return;
     const url =
-      (theme === "dark" ? p.logo_dark_url : p.logo_light_url) ??
       p.favicon_url ??
+      (theme === "dark" ? p.logo_dark_url : p.logo_light_url) ??
       null;
     if (!url) return;
-    const link =
-      (document.querySelector('link[rel="icon"]') as HTMLLinkElement | null) ??
-      (() => {
-        const el = document.createElement("link");
-        el.rel = "icon";
+    const ensure = (rel: string): HTMLLinkElement => {
+      let el = document.querySelector(
+        `link[rel="${rel}"]`,
+      ) as HTMLLinkElement | null;
+      if (!el) {
+        el = document.createElement("link");
+        el.rel = rel;
         document.head.appendChild(el);
-        return el;
-      })();
-    link.href = url;
+      }
+      return el;
+    };
+    const icon = ensure("icon");
+    // The branding asset is a raster URL; drop the SVG type from the
+    // static default so the browser doesn't mis-sniff it.
+    icon.removeAttribute("type");
+    icon.href = url;
+    ensure("apple-touch-icon").href = url;
   }, [theme, branding.data]);
 
   // Layer-B accent: gradient + accent for the active business chip /

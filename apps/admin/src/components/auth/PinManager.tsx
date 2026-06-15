@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Hash, Loader2, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { checkPin } from "@/lib/password";
-import { getPinStatus, removePin, setPin } from "@/lib/auth-api";
+import {
+  getPinStatus,
+  removePin,
+  setPin,
+  setPinEnabledLocally,
+} from "@/lib/auth-api";
 
 /**
  * Quick-login PIN management (canon §3.1 account menu). Set, change, or
@@ -32,7 +37,11 @@ export function PinManager({
     setDone(null);
     setHasPin(null);
     getPinStatus()
-      .then((s) => setHasPin(s.pin_set))
+      .then((s) => {
+        setHasPin(s.pin_set);
+        // Keep the device-local default in sync with the server truth.
+        setPinEnabledLocally(s.pin_set);
+      })
       .catch(() => setHasPin(false));
   }, [open]);
 
@@ -56,6 +65,7 @@ export function PinManager({
       await setPin(pin);
       setDone("set");
       setHasPin(true);
+      setPinEnabledLocally(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save PIN.");
     } finally {
@@ -70,6 +80,7 @@ export function PinManager({
       await removePin();
       setDone("removed");
       setHasPin(false);
+      setPinEnabledLocally(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not remove PIN.");
     } finally {

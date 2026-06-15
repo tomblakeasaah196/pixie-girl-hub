@@ -231,7 +231,9 @@ async function updateServiceJob({ client, brand, id, patch }) {
   for (const k of allowed) {
     if (patch[k] !== undefined) {
       const v =
-        (k === "specification" || k === "recipe_override") && patch[k] !== null
+        (k === "specification" || k === "recipe_override") &&
+        patch[k] !== null &&
+        patch[k] !== undefined
           ? JSON.stringify(patch[k])
           : patch[k];
       sets.push(`${k} = $${i++}`);

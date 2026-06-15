@@ -17,6 +17,7 @@ const repo = require("./praxis.repo");
 const events = require("./praxis.events");
 const governance = require("../ai_governance/governance.service");
 const orchestrator = require("./praxis.orchestrator");
+const transcription = require("../../services/transcription.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
@@ -86,6 +87,16 @@ async function postMessage({ user, brand, request_id, id, input }) {
       403,
     );
 
+  // Voice input (§6.29): transcribe the audio to text up front — outside the DB
+  // transaction, since it's a network call — when the client sent a trusted
+  // audio URL but no transcript. No-ops to null when STT isn't configured.
+  let transcribed_text = input.transcribed_text || null;
+  if (!transcribed_text && input.source_audio_url) {
+    transcribed_text = await transcription.transcribe({
+      audioUrl: input.source_audio_url,
+    });
+  }
+
   return transaction(async (client) => {
     const userMsg = await repo.insertMessage({
       client,
@@ -93,7 +104,8 @@ async function postMessage({ user, brand, request_id, id, input }) {
         conversation_id: id,
         role: "user",
         input_mode: input.input_mode || "text",
-        transcribed_text: input.transcribed_text,
+        transcribed_text,
+        source_audio_url: input.source_audio_url || null,
         content: input.content,
       },
     });

@@ -14,6 +14,7 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const argon2 = require("argon2");
+const { hashOptions } = require("../../utils/password");
 const repo = require("./stylist.repo");
 const events = require("./stylist.events");
 const { audit } = require("../../middleware/audit");
@@ -78,7 +79,10 @@ async function createPartner({ brand, user, request_id, input }) {
       p: { ...input, partner_code: code("PXS") },
     });
     if (input.login_email && input.login_password) {
-      const password_hash = await argon2.hash(input.login_password);
+      const password_hash = await argon2.hash(
+        input.login_password,
+        hashOptions,
+      );
       await repo.createCredential({
         client,
         c: {

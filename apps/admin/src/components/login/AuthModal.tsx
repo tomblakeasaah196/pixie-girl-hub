@@ -17,6 +17,7 @@ import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api";
 import {
   forgotPassword,
+  isPinEnabledLocally,
   loginWithPassword,
   loginWithPin,
   type AuthUser,
@@ -29,6 +30,23 @@ type Tab = "password" | "pin";
 type View = "signin" | "forgot";
 
 const LAST_EMAIL_KEY = "pgh-last-email";
+const REMEMBERED_KEY = "pgh-remembered-account";
+
+/** Device-local remembered account that powers the quick-PIN screen. It
+ *  only describes THIS browser (email + display name for the greeting) —
+ *  never a credential. */
+type RememberedAccount = { email: string; display_name: string };
+
+function getRemembered(): RememberedAccount | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(REMEMBERED_KEY);
+    const acct = raw ? (JSON.parse(raw) as RememberedAccount) : null;
+    return acct?.email ? acct : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The glass sign-in modal. Two ways in — password and a 6-digit quick PIN —
@@ -58,6 +76,9 @@ export function AuthModal({
     typeof localStorage !== "undefined"
       ? localStorage.getItem(LAST_EMAIL_KEY) ?? ""
       : "";
+  const [remembered, setRemembered] = useState<RememberedAccount | null>(
+    getRemembered,
+  );
   const [email, setEmail] = useState(lastEmail);
   const [password, setPassword] = useState("");
   const [pin, setPin] = useState("");
@@ -79,7 +100,9 @@ export function AuthModal({
     setForgotDone(false);
     setPassword("");
     setPin("");
-    setTab(pinEnabled && lastEmail ? "pin" : "password");
+    // Default to the PIN pad only when a PIN was actually set up on this
+    // device for the remembered account; otherwise start on password.
+    setTab(pinEnabled && remembered && isPinEnabledLocally() ? "pin" : "password");
     const t = setTimeout(() => emailRef.current?.focus(), 60);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,6 +128,12 @@ export function AuthModal({
     setSession(user);
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(LAST_EMAIL_KEY, user.email);
+      // Remember this device's account so the quick-PIN screen can greet
+      // them and sign in without re-typing the email.
+      localStorage.setItem(
+        REMEMBERED_KEY,
+        JSON.stringify({ email: user.email, display_name: user.display_name }),
+      );
       // "Keep me signed in" off → drop the persisted profile so a reload
       // requires a fresh sign-in (the refresh cookie alone won't revive it).
       if (!remember) localStorage.removeItem("pgh-auth");
@@ -145,16 +174,31 @@ export function AuthModal({
 
   const submitPin = async (value: string) => {
     if (loading) return;
+    const acctEmail = remembered?.email;
+    if (!acctEmail) return;
     setError(null);
     setLoading(true);
     try {
-      finish(await loginWithPin(email.trim().toLowerCase(), value));
+      finish(await loginWithPin(acctEmail, value));
     } catch (err) {
       setError(messageFor(err, "Invalid PIN."));
       setPin("");
       shake();
       setLoading(false);
     }
+  };
+
+  // "Not you?" — forget this device's account and fall back to the full
+  // email + password form.
+  const useDifferentAccount = () => {
+    if (typeof localStorage !== "undefined")
+      localStorage.removeItem(REMEMBERED_KEY);
+    setRemembered(null);
+    setEmail("");
+    setPin("");
+    setError(null);
+    setTab("password");
+    setTimeout(() => emailRef.current?.focus(), 60);
   };
 
   const submitForgot = async (e: React.FormEvent) => {
@@ -203,10 +247,14 @@ export function AuthModal({
             <div className="mb-6">
               <div className="micro mb-2">{productName}</div>
               <h2 className="font-display text-[26px] leading-tight">
-                Welcome back
+                {tab === "pin" && remembered?.display_name
+                  ? `Welcome back, ${remembered.display_name.split(" ")[0]}`
+                  : "Welcome back"}
               </h2>
               <p className="text-text-muted text-[13px] mt-1">
-                Sign in to your command center.
+                {tab === "pin"
+                  ? "Enter your Quick PIN to continue."
+                  : "Sign in to your command center."}
               </p>
             </div>
 
@@ -333,49 +381,87 @@ export function AuthModal({
                   <span className="cta-sheen" />
                 </button>
               </form>
-            ) : (
+            ) : remembered ? (
               <div className="space-y-3.5">
-                <label className="block">
-                  <span className="micro mb-1.5 block">Email</span>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
-                    <input
-                      type="email"
-                      autoComplete="username"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@company.com"
-                      className={inputCls}
-                    />
+                {/* The remembered account — no email retyping. */}
+                <div className="flex items-center gap-3 rounded-xl border border-line/50 bg-text-primary/[0.04] px-3 py-2.5">
+                  <span className="grid place-items-center w-9 h-9 rounded-full bg-accent-deep/90 text-[#F4E9D9] text-[13px] font-semibold uppercase shrink-0">
+                    {(remembered.display_name || remembered.email)
+                      .trim()
+                      .charAt(0)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-text-primary truncate">
+                      {remembered.display_name || remembered.email}
+                    </div>
+                    <div className="text-[11.5px] text-text-faint truncate">
+                      {remembered.email}
+                    </div>
                   </div>
-                </label>
+                </div>
                 <label className="block">
                   <span className="micro mb-1.5 block">6-digit PIN</span>
                   <input
                     type="password"
                     inputMode="numeric"
                     autoComplete="one-time-code"
+                    autoFocus
                     maxLength={6}
                     value={pin}
                     disabled={loading}
                     onChange={(e) => {
                       const next = e.target.value.replace(/\D/g, "").slice(0, 6);
                       setPin(next);
-                      if (next.length === 6 && email.trim()) submitPin(next);
+                      if (next.length === 6) submitPin(next);
                     }}
                     placeholder="••••••"
                     className="w-full bg-text-primary/[0.04] border border-line/60 rounded-xl py-3.5 text-center text-3xl font-mono tracking-[0.5em] text-text-primary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/60 transition-all disabled:opacity-60"
                   />
-                  <p className="text-[11px] text-text-faint mt-2">
-                    Set a Quick PIN from your account menu after your first
-                    sign-in.
-                  </p>
                 </label>
                 {loading && (
                   <div className="flex items-center justify-center gap-2 text-text-muted text-[12.5px]">
                     <Loader2 className="w-4 h-4 animate-spin" /> Verifying…
                   </div>
                 )}
+                <div className="flex items-center justify-between pt-0.5">
+                  <button
+                    type="button"
+                    onClick={useDifferentAccount}
+                    className="text-[12.5px] font-semibold text-text-muted hover:text-text-primary transition-colors"
+                  >
+                    Not you?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab("password");
+                      setEmail(remembered.email);
+                      setError(null);
+                    }}
+                    className="text-[12.5px] font-semibold text-accent-glow hover:underline"
+                  >
+                    Use password instead
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // No remembered account on this device — PIN needs to know who
+              // you are, so sign in with a password once to enable it.
+              <div className="space-y-4 text-center py-2">
+                <p className="text-text-muted text-[13px]">
+                  Sign in with your password once on this device to enable
+                  Quick PIN.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab("password");
+                    setError(null);
+                  }}
+                  className="w-full h-11 rounded-xl bg-accent-deep text-[#F4E9D9] font-semibold text-[13px] tracking-widest uppercase hover:bg-accent transition-all"
+                >
+                  Use password
+                </button>
               </div>
             )}
           </>

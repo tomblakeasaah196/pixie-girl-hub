@@ -15,6 +15,7 @@
 
 const crypto = require("crypto");
 const argon2 = require("argon2");
+const { hashOptions } = require("../../utils/password");
 const repo = require("./invitations.repo");
 const events = require("./hr.events");
 const email = require("../../services/email.service");
@@ -144,7 +145,7 @@ async function getByToken({ token }) {
 async function acceptInvitation({ token, password, display_name }) {
   if (!token) throw new NotFoundError("Invitation");
   const token_hash = sha256(token);
-  const password_hash = await argon2.hash(password);
+  const password_hash = await argon2.hash(password, hashOptions);
 
   return transaction(async (client) => {
     const invite = await repo.getByTokenHash({ client, token_hash });

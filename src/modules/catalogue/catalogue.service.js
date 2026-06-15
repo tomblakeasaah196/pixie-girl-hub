@@ -8,6 +8,7 @@
 
 const repo = require("./catalogue.repo");
 const events = require("./catalogue.events");
+const outbox = require("../../shared/outbox/outbox");
 const documents = require("../../shared/documents/documents.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -177,12 +178,26 @@ async function addVariant({ brand, user, request_id, id, input }) {
       v,
       request_id,
     );
-    // SSOT hook → Stock seeds a stock_levels row for this variant.
+    // SSOT hook → Stock seeds a stock_levels row for this variant. Durable +
+    // POST-COMMIT via the outbox (H-2): the variant row is committed before the
+    // seed runs, removing the prior pre-commit ordering risk. The in-process
+    // emit stays for soft realtime fan-out.
     events.emit("variant.created", {
       brand,
       product_id: id,
       variant_id: v.variant_id,
       reorder_point: v.reorder_point,
+    });
+    await outbox.enqueue(client, {
+      business: brand,
+      event_type: "variant.created",
+      payload: {
+        brand,
+        product_id: id,
+        variant_id: v.variant_id,
+        reorder_point: v.reorder_point,
+      },
+      dedup_key: `variant.created:${v.variant_id}`,
     });
     return v;
   });
@@ -530,7 +545,7 @@ async function attachVideoFromMedia({ brand, user, request_id, id, input }) {
       title: input.title || null,
       caption: input.caption || asset.caption || null,
       duration_seconds:
-        asset.duration_sec !== null
+        asset.duration_sec !== null && asset.duration_sec !== undefined
           ? Math.round(Number(asset.duration_sec))
           : null,
       display_order: input.display_order,

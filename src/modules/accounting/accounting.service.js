@@ -17,6 +17,7 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const pdf = require("../../services/pdf.service");
 
 async function resolveAccountId({ client, brand, line }) {
   if (line.account_id) return line.account_id;
@@ -805,10 +806,54 @@ async function reverseRevaluation({ brand, user, request_id, id }) {
   });
 }
 
+/**
+ * Customer/supplier statement → PDF (§6.6 / 4.2). Pulls posted journal lines for
+ * the contact over [from, to], computes a running balance (decimal.js), and
+ * persists the rendered statement via Documents.
+ */
+async function statementPdf({ brand, user, contact_id, from, to, party_type }) {
+  const raw = await repo.contactStatement({ brand, contact_id, from, to });
+  let running = money(0);
+  const entries = raw.map((e) => {
+    running = running
+      .plus(money(e.debit_ngn || 0))
+      .minus(money(e.credit_ngn || 0));
+    return {
+      date: e.date,
+      description: e.description,
+      debit_ngn: e.debit_ngn,
+      credit_ngn: e.credit_ngn,
+      balance_ngn: toCurrencyString(running),
+    };
+  });
+  const party_name = await repo.contactName({ contact_id });
+  const { statementHtml } = require("../../services/pdf.templates");
+  return pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html: statementHtml({
+      brand,
+      statement: {
+        party_type: party_type === "supplier" ? "supplier" : "customer",
+        party_name,
+        from,
+        to,
+        entries,
+        closing_balance_ngn: toCurrencyString(running),
+      },
+    }),
+    title: `Statement ${party_name || contact_id}`,
+    document_type: "statement",
+    reference_type: "contact",
+    reference_id: contact_id,
+  });
+}
+
 module.exports = {
   postEntry,
   reverseEntry,
   createManualJournal,
+  statementPdf,
   listGroups,
   updateGroup,
   listAccounts,

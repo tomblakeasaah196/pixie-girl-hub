@@ -74,10 +74,17 @@ async function setReady({ client, brand, asset_id, fields }) {
     [
       asset_id,
       fields.storage_path || null,
-      fields.compressed_byte_size !== null ? fields.compressed_byte_size : null,
-      fields.width !== null ? fields.width : null,
-      fields.height !== null ? fields.height : null,
-      fields.duration_sec !== null ? fields.duration_sec : null,
+      fields.compressed_byte_size !== null &&
+      fields.compressed_byte_size !== undefined
+        ? fields.compressed_byte_size
+        : null,
+      fields.width !== null && fields.width !== undefined ? fields.width : null,
+      fields.height !== null && fields.height !== undefined
+        ? fields.height
+        : null,
+      fields.duration_sec !== null && fields.duration_sec !== undefined
+        ? fields.duration_sec
+        : null,
       fields.poster_path || null,
       fields.thumbnail_path || null,
       fields.ffmpeg_log || null,

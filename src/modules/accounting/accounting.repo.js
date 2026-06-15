@@ -650,6 +650,41 @@ async function getRevalRun({ client, brand, id }) {
   return { ...rows[0], entries };
 }
 
+/** Display name for a contact (statement header). */
+async function contactName({ contact_id }) {
+  const { rows } = await query(
+    `SELECT display_name FROM shared.contacts WHERE contact_id = $1`,
+    [contact_id],
+  );
+  return rows[0] ? rows[0].display_name : null;
+}
+
+/** Posted journal lines for one contact over a period (customer/supplier statement). */
+async function contactStatement({ client, brand, contact_id, from, to }) {
+  const params = [contact_id];
+  const where = ["jl.contact_id = $1", "je.status = 'posted'"];
+  let i = 2;
+  if (from) {
+    where.push(`je.posting_date >= $${i++}`);
+    params.push(from);
+  }
+  if (to) {
+    where.push(`je.posting_date <= $${i++}`);
+    params.push(to);
+  }
+  const { rows } = await ex(client)(
+    `SELECT je.posting_date AS date,
+            COALESCE(NULLIF(jl.description, ''), je.description) AS description,
+            jl.debit_ngn, jl.credit_ngn
+       FROM ${t(brand, "journal_lines")} jl
+       JOIN ${t(brand, "journal_entries")} je ON je.entry_id = jl.entry_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY je.posting_date, je.entry_number`,
+    params,
+  );
+  return rows;
+}
+
 module.exports = {
   listGroups,
   updateGroup,
@@ -672,6 +707,8 @@ module.exports = {
   listEntries,
   setEntryReversed,
   accountActivity,
+  contactStatement,
+  contactName,
   cashFlowByActivity,
   cashBalanceAsOf,
   receivablesAgeing,

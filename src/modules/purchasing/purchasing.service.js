@@ -18,6 +18,7 @@ const {
   ConflictError,
   ValidationError,
 } = require("../../utils/errors");
+const pdf = require("../../services/pdf.service");
 
 const PO_TABLE = "purchase_orders";
 const A = (
@@ -694,6 +695,21 @@ async function cancelPo({ brand, user, request_id, id, reason }) {
   });
 }
 
+/** Render a purchase order to PDF and persist it via Documents (§6.8 / 4.2). */
+async function poPdf({ brand, user, id }) {
+  const po = await getPo({ brand, id });
+  const { purchaseOrderHtml } = require("../../services/pdf.templates");
+  return pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html: purchaseOrderHtml({ brand, po }),
+    title: `Purchase Order ${po.po_number || po.po_id || id}`,
+    document_type: "purchase_order",
+    reference_type: "purchase_order",
+    reference_id: po.po_id || id,
+  });
+}
+
 module.exports = {
   createSupplier,
   getSupplier,
@@ -714,6 +730,7 @@ module.exports = {
   awardQuote,
   createPo,
   getPo,
+  poPdf,
   listPos,
   submitPo,
   approvePo,

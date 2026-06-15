@@ -73,7 +73,11 @@ async function markProcessed(id, { error_message = null } = {}) {
  * can't loop forever (pass 0/null to ignore the cap). Uses the partial index
  * idx_webhook_log_unprocessed (source, processed, received_at) WHERE processed = false.
  */
-async function listReplayable({ source = null, limit = 100, maxRetries = 25 } = {}) {
+async function listReplayable({
+  source = null,
+  limit = 100,
+  maxRetries = 25,
+} = {}) {
   const { rows } = await query(
     `SELECT webhook_id, source, retry_count, received_at, error_message
        FROM shared.webhook_log

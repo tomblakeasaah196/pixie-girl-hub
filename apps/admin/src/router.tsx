@@ -19,25 +19,34 @@ import { SelectEntityPage } from "@/pages/SelectEntityPage";
  *    lives OUTSIDE the AppShell (it's a full-screen chooser); the shell and
  *    its module routes are the authenticated app.
  */
-export const router = createBrowserRouter([
-  { path: "/login", element: <LoginPage /> },
-  { path: "/reset-password", element: <ResetPasswordPage /> },
+export const router = createBrowserRouter(
+  [
+    { path: "/login", element: <LoginPage /> },
+    { path: "/reset-password", element: <ResetPasswordPage /> },
+    {
+      element: <RequireAuth />,
+      children: [
+        { path: "/select-entity", element: <SelectEntityPage /> },
+        {
+          path: "/",
+          element: <AppShell />,
+          children: [
+            { index: true, element: <CommandCenter /> },
+            { path: "sales", element: <SalesPage /> },
+            { path: "settings", element: <AppearancePage /> },
+            { path: "settings/login", element: <LoginEditorPage /> },
+            { path: "org-workflow", element: <OrgWorkflowPage /> },
+            { path: "*", element: <ModulePlaceholder /> },
+          ],
+        },
+      ],
+    },
+  ],
+  // Data-router future flags live here; v7_startTransition is opted into
+  // on <RouterProvider> (see App.tsx) since it's a provider-level flag.
   {
-    element: <RequireAuth />,
-    children: [
-      { path: "/select-entity", element: <SelectEntityPage /> },
-      {
-        path: "/",
-        element: <AppShell />,
-        children: [
-          { index: true, element: <CommandCenter /> },
-          { path: "sales", element: <SalesPage /> },
-          { path: "settings", element: <AppearancePage /> },
-          { path: "settings/login", element: <LoginEditorPage /> },
-          { path: "org-workflow", element: <OrgWorkflowPage /> },
-          { path: "*", element: <ModulePlaceholder /> },
-        ],
-      },
-    ],
+    future: {
+      v7_relativeSplatPath: true,
+    },
   },
-]);
+);

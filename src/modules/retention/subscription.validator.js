@@ -21,6 +21,9 @@ const planCreateSchema = z
     benefits: z.record(z.any()).optional(),
     is_active: z.boolean().optional(),
     display_order: z.coerce.number().int().optional(),
+    // Wig-maintenance add-on (§6.23.5): optional recurring fee billed on top of
+    // price_ngn for subscribers who opt in.
+    maintenance_fee_ngn: z.coerce.number().min(0).optional(),
   })
   .strict();
 
@@ -34,6 +37,7 @@ const enrolSchema = z
     paystack_customer_code: z.string().max(120).optional(),
     preferences: z.record(z.any()).optional(),
     default_delivery_address_id: z.string().uuid().optional(),
+    maintenance_addon: z.boolean().optional(), // opt into the wig-maintenance add-on
   })
   .strict();
 

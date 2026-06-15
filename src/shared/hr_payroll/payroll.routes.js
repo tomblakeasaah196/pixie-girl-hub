@@ -30,6 +30,7 @@ router.post("/payroll-runs/:id/reverse", P("approve"), c.reverseRun);
 // ── Payslips (read-only) ───────────────────────────────────
 router.get("/payslips", P("view"), c.listPayslips);
 router.get("/payslips/:id", P("view"), c.getPayslip);
+router.post("/payslips/:id/pdf", P("view"), c.payslipPdf);
 
 // ── Commission earned ──────────────────────────────────────
 router.get("/commissions", P("view"), c.listCommissions);

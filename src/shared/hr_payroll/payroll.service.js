@@ -20,6 +20,7 @@
 
 const repo = require("./payroll.repo");
 const calc = require("./payroll.calc");
+const pdf = require("../../services/pdf.service");
 const events = require("./hr.events");
 const numbering = require("../../services/numbering.service");
 const { audit } = require("../../middleware/audit");
@@ -583,6 +584,21 @@ async function reverseBonus({ brand, user, request_id, bonus_id }) {
   });
 }
 
+/** Render a payslip to PDF and persist it via Documents (§6.11 / 4.2). */
+async function payslipPdf({ brand, user, payslip_id }) {
+  const payslip = await getPayslip({ brand, payslip_id });
+  const { payslipHtml } = require("../../services/pdf.templates");
+  return pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html: payslipHtml({ brand, payslip }),
+    title: `Payslip ${payslip.payslip_number || payslip.payslip_id || payslip_id}`,
+    document_type: "payslip",
+    reference_type: "payslip",
+    reference_id: payslip.payslip_id || payslip_id,
+  });
+}
+
 module.exports = {
   listRuns,
   getRun,
@@ -594,6 +610,7 @@ module.exports = {
   reverseRun,
   listPayslips,
   getPayslip,
+  payslipPdf,
   listCommissions,
   accrueCommission,
   accrueForOrder,

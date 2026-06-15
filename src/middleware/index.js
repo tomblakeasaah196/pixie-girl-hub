@@ -17,8 +17,13 @@ const { logger } = require("../config/logger");
 const { requestIdMiddleware } = require("./request-id");
 
 function applyGlobalMiddleware(app) {
-  // Behind a proxy (nginx, etc.) — trust X-Forwarded-* headers
-  app.set("trust proxy", 1);
+  // Behind a proxy (nginx, etc.) — trust X-Forwarded-* headers. An integer
+  // string → hop count; a CSV of keywords/IPs → trusted addresses.
+  const trustProxy = config.TRUSTED_PROXIES;
+  app.set(
+    "trust proxy",
+    /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy,
+  );
 
   // Security headers
   app.use(
@@ -87,8 +92,10 @@ function applyGlobalMiddleware(app) {
       standardHeaders: true,
       legacyHeaders: false,
       message: {
-        error: "TOO_MANY_REQUESTS",
-        message: "Slow down — try again in a minute.",
+        error: {
+          code: "TOO_MANY_REQUESTS",
+          message: "Slow down — try again in a minute.",
+        },
       },
     }),
   );
@@ -101,13 +108,15 @@ function applyGlobalMiddleware(app) {
  * create records. Keyed by client IP (trust proxy is set above).
  */
 const publicWriteLimiter = rateLimit({
-  windowMs: Number(config.PUBLIC_WRITE_RATE_WINDOW_MS) || 15 * 60_000,
-  max: Number(config.PUBLIC_WRITE_RATE_MAX) || 20,
+  windowMs: config.PUBLIC_WRITE_RATE_WINDOW_MS,
+  max: config.PUBLIC_WRITE_RATE_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "TOO_MANY_REQUESTS",
-    message: "Too many submissions — please try again shortly.",
+    error: {
+      code: "TOO_MANY_REQUESTS",
+      message: "Too many submissions — please try again shortly.",
+    },
   },
 });
 

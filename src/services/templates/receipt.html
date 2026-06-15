@@ -1,0 +1,16 @@
+<h1>Receipt</h1>
+<div class="meta">{{brand}} · Order {{order_number}} · {{date}}</div>
+<table>
+  <tr>
+    <th>Item</th>
+    <th class="right">Qty</th>
+    <th class="right">Amount</th>
+  </tr>
+  {{{rows}}}
+</table>
+<table class="totals" style="margin-top: 8px">
+  {{{totals}}}
+</table>
+<p class="muted" style="margin-top: 14px">
+  Paid via {{payment_method}}. Thank you!
+</p>

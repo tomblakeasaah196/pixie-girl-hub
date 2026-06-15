@@ -24,6 +24,7 @@ router.post(
   controller.createInvoice,
 );
 router.get("/invoices/:id", can("view"), controller.getById);
+router.post("/invoices/:id/pdf", can("view"), controller.invoicePdf);
 router.post(
   "/invoices/:id/send",
   can("edit"),

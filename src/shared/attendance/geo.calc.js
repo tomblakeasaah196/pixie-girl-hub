@@ -58,7 +58,11 @@ function evaluateClock({
       rejection_reason: "permission_denied",
     };
   }
-  if (accuracy_m !== null && Number(accuracy_m) > maxAccuracyM) {
+  if (
+    accuracy_m !== null &&
+    accuracy_m !== undefined &&
+    Number(accuracy_m) > maxAccuracyM
+  ) {
     return {
       accepted: false,
       matched_geofence_id: null,

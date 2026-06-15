@@ -20,6 +20,8 @@ const couponService = require("../retention/coupon.service");
 const couponRepo = require("../retention/coupon.repo");
 const retentionRepo = require("../retention/retention.repo");
 const bundleRepo = require("../retention/bundle.repo");
+const bundleService = require("../retention/bundle.service");
+const pdf = require("../../services/pdf.service");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const businessConfig = require("../business_setup/business-config.repo");
@@ -92,7 +94,9 @@ async function createOrderTx({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const cfg = await businessConfig.findByKey(brand);
     const defaultVat =
-      cfg && cfg.vat_rate !== null ? money(cfg.vat_rate) : money("0.075");
+      cfg && cfg.vat_rate !== null && cfg.vat_rate !== undefined
+        ? money(cfg.vat_rate)
+        : money("0.075");
 
     // 1. Resolve line pricing context + base unit prices.
     const built = [];
@@ -109,7 +113,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
           409,
         );
       const unit = money(
-        li.unit_price_ngn !== null
+        li.unit_price_ngn !== null && li.unit_price_ngn !== undefined
           ? li.unit_price_ngn
           : (channelPrice(ctx, input.sales_channel) ?? 0),
       );
@@ -155,7 +159,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
 
     // 3. Margin-floor clamp (§6.25): never below the variant's min_price.
     for (const b of built) {
-      if (b.ctx.min_price_ngn !== null) {
+      if (b.ctx.min_price_ngn !== null && b.ctx.min_price_ngn !== undefined) {
         const floor = money(b.ctx.min_price_ngn);
         const maxDiscount = b.unit.minus(floor);
         if (b.perUnitDiscount.gt(maxDiscount))
@@ -348,6 +352,27 @@ async function createOrderTx({ brand, user, request_id, input }) {
       } else if (bundle.pricing_model === "amount_off") {
         d = money(bundle.discount_value || 0);
         if (d.gt(compSubtotal)) d = compSubtotal;
+      } else if (
+        bundle.pricing_model === "buy_x_get_y" ||
+        bundle.pricing_model === "tiered_qty"
+      ) {
+        // Quantity-based models need per-line context (F-2 remainder).
+        const componentLines = built
+          .map((b, idx) => ({ b, idx }))
+          .filter(({ b }) => isComponent(b))
+          .map(({ b, idx }) => ({
+            quantity: b.li.quantity,
+            unit_price_ngn:
+              b.li.quantity > 0
+                ? money(preNetByIdx[idx]).div(b.li.quantity)
+                : money(0),
+          }));
+        d = bundleService.quantityBundleDiscount({
+          pricing_model: bundle.pricing_model,
+          bundle,
+          lines: componentLines,
+          component_subtotal_ngn: compSubtotal,
+        });
       }
       bundleMeta = bundle;
       bundleLineTotal = applyOrderDiscount(d);
@@ -366,7 +391,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         .plus(extraShareByIdx[idx]);
       const taxable = b.ctx.taxable !== false;
       const rate = taxable
-        ? b.ctx.product_vat !== null
+        ? b.ctx.product_vat !== null && b.ctx.product_vat !== undefined
           ? money(b.ctx.product_vat)
           : defaultVat
         : money(0);
@@ -442,9 +467,11 @@ async function createOrderTx({ brand, user, request_id, input }) {
         client_idempotency_key: input.client_idempotency_key || null,
         payment_model: paymentModel,
         required_deposit_pct:
-          requiredDepositPct !== null ? requiredDepositPct.toFixed(2) : null,
+          requiredDepositPct !== null && requiredDepositPct !== undefined
+            ? requiredDepositPct.toFixed(2)
+            : null,
         required_deposit_ngn:
-          requiredDepositNgn !== null
+          requiredDepositNgn !== null && requiredDepositNgn !== undefined
             ? toCurrencyString(requiredDepositNgn)
             : null,
       },
@@ -774,6 +801,7 @@ async function addPayment({ brand, user, request_id, id, input }) {
       updated.payment_model === "deposit_triggered" &&
       !updated.deposit_met_at &&
       updated.required_deposit_ngn !== null &&
+      updated.required_deposit_ngn !== undefined &&
       money(updated.amount_paid_ngn).gte(money(updated.required_deposit_ngn))
     ) {
       // Deposit cleared (V2.2 §6.2): unlock production now; the balance is
@@ -787,6 +815,20 @@ async function addPayment({ brand, user, request_id, id, input }) {
           contact_id: flipped.contact_id,
           required_deposit_ngn: flipped.required_deposit_ngn,
           amount_paid_ngn: flipped.amount_paid_ngn,
+        });
+        // Durable + post-commit (H-2): Service Jobs opens a styling job for the
+        // committed order. Keeps the in-process emit for realtime.
+        await outbox.enqueue(client, {
+          business: brand,
+          event_type: "order.deposit_met",
+          payload: {
+            brand,
+            order_id: id,
+            contact_id: flipped.contact_id,
+            required_deposit_ngn: flipped.required_deposit_ngn,
+            amount_paid_ngn: flipped.amount_paid_ngn,
+          },
+          dedup_key: `order.deposit_met:${id}`,
         });
       }
     }
@@ -1021,7 +1063,9 @@ async function buildQuotationLines({
 }) {
   const cfg = await businessConfig.findByKey(brand);
   const defaultVat =
-    cfg && cfg.vat_rate !== null ? money(cfg.vat_rate) : money("0.075");
+    cfg && cfg.vat_rate !== null && cfg.vat_rate !== undefined
+      ? money(cfg.vat_rate)
+      : money("0.075");
   let subtotal = money(0),
     discountTotal = money(0),
     taxTotal = money(0);
@@ -1046,7 +1090,7 @@ async function buildQuotationLines({
     const lineDiscount = money(li.line_discount_ngn || 0);
     const taxable = ctx.taxable !== false;
     const rate = taxable
-      ? ctx.product_vat !== null
+      ? ctx.product_vat !== null && ctx.product_vat !== undefined
         ? money(ctx.product_vat)
         : defaultVat
       : money(0);
@@ -1391,9 +1435,26 @@ async function reviewCancellation({
   });
 }
 
+/** Render a paid order to a receipt PDF and persist it via Documents (4.2). */
+async function receiptPdf({ brand, user, id }) {
+  const order = await getById({ brand, id });
+  if (!order) throw new NotFoundError("Order");
+  const { receiptHtml } = require("../../services/pdf.templates");
+  return pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html: receiptHtml({ brand, order }),
+    title: `Receipt ${order.order_number || order.order_id || id}`,
+    document_type: "receipt",
+    reference_type: "sales_order",
+    reference_id: order.order_id || id,
+  });
+}
+
 module.exports = {
   listOrders,
   getById,
+  receiptPdf,
   createOrder,
   updateOrder,
   addPayment,

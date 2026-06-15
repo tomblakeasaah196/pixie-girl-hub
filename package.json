@@ -17,6 +17,8 @@
     "test:unit": "jest tests/unit",
     "test:integration": "jest tests/integration",
     "smoke": "node scripts/smoke-test.js",
+    "icons:generate": "node scripts/generate-app-icons.mjs",
+    "check:integrations": "node scripts/check-integrations.js",
     "lint": "eslint src/ --ext .js",
     "lint:fix": "eslint src/ --ext .js --fix",
     "format": "prettier --write 'src/**/*.js'",
@@ -29,7 +31,9 @@
     "db:seed": "node scripts/seed.js",
     "user:create-admin": "node scripts/create-admin.js",
     "db:verify": "node scripts/verify-schema.js",
+    "db:create-admin": "node scripts/create-admin.js",
     "workers:start": "node src/jobs/worker.js",
+    "coverage:frontend": "node scripts/build-frontend-coverage.js",
     "build:action-catalogue": "node scripts/build-action-catalogue.js",
     "rag:reembed": "node scripts/rag-reembed.js"
   },

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, ExternalLink, Moon, Quote, Sun } from "lucide-react";
-import { useBranding, useLoginConfig } from "@/lib/branding";
+import { useBranding, useLoginConfig, readableAccent } from "@/lib/branding";
 import { getGeoWelcome } from "@/lib/auth-api";
 import { loginIcon } from "@/lib/login-icons";
 import { useUiStore } from "@/stores/ui";
@@ -57,9 +57,23 @@ export function LoginPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   // Region welcome (server-side IP lookup → DB region copy + fallback).
+  // Dev-only preview: localhost is loopback, so the greeting is generic.
+  // Add ?geo=EU (continent) or ?ip=8.8.8.8 to the login URL to preview a
+  // region without deploying — forwarded only in dev; the backend ignores
+  // these in production.
+  const geoPreview = useMemo(() => {
+    if (!import.meta.env.DEV) return undefined;
+    const sp = new URLSearchParams(window.location.search);
+    const params: Record<string, string> = {};
+    for (const k of ["geo", "ip", "country"]) {
+      const v = sp.get(k);
+      if (v) params[k] = v;
+    }
+    return Object.keys(params).length ? params : undefined;
+  }, []);
   const geo = useQuery({
-    queryKey: ["geo-welcome"],
-    queryFn: getGeoWelcome,
+    queryKey: ["geo-welcome", geoPreview],
+    queryFn: () => getGeoWelcome(geoPreview),
     enabled: t.geo_welcome !== false,
     staleTime: 10 * 60_000,
     retry: false,
@@ -193,15 +207,18 @@ export function LoginPage() {
             style={{ animationDelay: "240ms" }}
           >
             {businesses.map((b) => {
-              const accent = b.accent_colour || "#690909";
+              const raw = b.accent_colour || "#690909";
+              // Keep the brand hue but guarantee it's legible on the
+              // current backdrop (a deep navy/maroon is invisible on black).
+              const accent = readableAccent(raw, theme === "dark");
               return (
                 <span
                   key={b.business_key}
                   className="inline-flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full border text-[12px] font-semibold uppercase tracking-wide"
                   style={{
                     color: accent,
-                    borderColor: `${accent}55`,
-                    backgroundColor: `${accent}14`,
+                    borderColor: `${accent}66`,
+                    backgroundColor: `${accent}1f`,
                   }}
                 >
                   {b.logo_path ? (
@@ -264,7 +281,9 @@ export function LoginPage() {
         {/* The Pixie Standard (DB-driven). */}
         {t.standards !== false && (cfg.standards?.length ?? 0) > 0 && (
           <div className="mt-14">
-            <div className="micro mb-6">The {productName.split(" ")[0]} Standard</div>
+            <div className="micro mb-6">
+              The {productName.split(" ")[0]} Standard
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {cfg.standards!.map((s, i) => {
                 const Icon = loginIcon(s.icon);
@@ -289,30 +308,48 @@ export function LoginPage() {
         )}
 
         {/* Website links — only the brands whose `website` column is filled. */}
-        {t.website_links !== false &&
-          businesses.some((b) => b.website) && (
-            <div className="mt-14 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12.5px]">
-              <span className="text-text-faint">Explore our houses:</span>
-              {businesses
-                .filter((b) => b.website)
-                .map((b) => (
-                  <a
-                    key={b.business_key}
-                    href={b.website!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 font-semibold text-text-muted hover:text-accent-glow transition-colors"
-                  >
-                    {b.display_name}
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                ))}
-            </div>
-          )}
+        {t.website_links !== false && businesses.some((b) => b.website) && (
+          <div className="mt-14 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12.5px]">
+            <span className="text-text-faint">Explore our houses:</span>
+            {businesses
+              .filter((b) => b.website)
+              .map((b) => (
+                <a
+                  key={b.business_key}
+                  href={b.website!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 font-semibold text-text-muted hover:text-accent-glow transition-colors"
+                >
+                  {b.display_name}
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              ))}
+          </div>
+        )}
 
-        <footer className="mt-16 text-[11px] text-text-faint">
-          © {new Date().getFullYear()} {platform?.company_name ?? productName}.
-          All rights reserved.
+        <footer className="mt-16 flex flex-col items-center justify-center gap-2 text-[11px] text-text-faint">
+          <div>
+            © {new Date().getFullYear()} {platform?.company_name ?? productName}
+            . All rights reserved.
+          </div>
+
+          <div className="tracking-wide">
+            Architected by{" "}
+            <a
+              href="https://jbspraxis.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="relative inline-block font-semibold text-text-muted transition-all duration-300
+                         animate-[pulse_4s_ease-in-out_infinite] hover:animate-none
+                         hover:text-accent-glow hover:drop-shadow-md
+                         after:content-[''] after:absolute after:-bottom-0.5 after:left-1/2 after:-translate-x-1/2
+                         after:w-0 after:h-[1px] after:bg-accent-glow after:transition-all after:duration-300
+                         hover:after:w-full"
+            >
+              JBS Praxis LLC
+            </a>
+          </div>
         </footer>
       </main>
 

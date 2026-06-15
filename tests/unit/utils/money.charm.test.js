@@ -46,7 +46,9 @@ describe("grossUpForGatewayFee", () => {
   });
 
   test("rejects a fee pct >= 100%", () => {
-    expect(() => grossUpForGatewayFee("100", { pct: "1", fixed: "0" })).toThrow();
+    expect(() =>
+      grossUpForGatewayFee("100", { pct: "1", fixed: "0" }),
+    ).toThrow();
   });
 });
 

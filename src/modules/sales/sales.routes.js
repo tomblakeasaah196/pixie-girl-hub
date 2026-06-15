@@ -16,6 +16,7 @@ const can = (a) => requirePermission("sales", a);
 router.get("/orders", can("view"), c.listOrders);
 router.post("/orders", can("create"), v.validateOrderCreate, c.createOrder);
 router.get("/orders/:id", can("view"), c.getById);
+router.post("/orders/:id/receipt", can("view"), c.receiptPdf);
 router.patch("/orders/:id", can("edit"), v.validateOrderUpdate, c.updateOrder);
 
 // Order timeline (F-5 / §6.23.6) — staff record + view

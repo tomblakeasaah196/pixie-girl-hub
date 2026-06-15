@@ -50,10 +50,19 @@ describe("nearestGeofence", () => {
 });
 
 describe("evaluateClock", () => {
-  const fence = { geofence_id: "hq", latitude: 6.5244, longitude: 3.3792, radius_m: 100 };
+  const fence = {
+    geofence_id: "hq",
+    latitude: 6.5244,
+    longitude: 3.3792,
+    radius_m: 100,
+  };
 
   test("missing location → permission_denied", () => {
-    const r = evaluateClock({ point: null, accuracy_m: 10, geofences: [fence] });
+    const r = evaluateClock({
+      point: null,
+      accuracy_m: 10,
+      geofences: [fence],
+    });
     expect(r.accepted).toBe(false);
     expect(r.rejection_reason).toBe("permission_denied");
   });

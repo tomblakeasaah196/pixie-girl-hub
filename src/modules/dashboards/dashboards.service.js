@@ -218,7 +218,7 @@ async function generateReportRunPdf({ brand, user, id }) {
       o.output_json ?? o.data ?? o.payload ?? o.content ?? o.result ?? {};
     const rows = Object.entries(payload)
       .filter(([, v]) => v === null || typeof v !== "object")
-      .map(([k, v]) => [k, v == null ? "" : String(v)]);
+      .map(([k, v]) => [k, v === null || v === undefined ? "" : String(v)]);
     if (rows.length)
       sections.push({
         heading: o.output_label || o.section_key || o.label || "Detail",

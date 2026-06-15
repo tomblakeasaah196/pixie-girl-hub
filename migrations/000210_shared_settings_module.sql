@@ -169,7 +169,54 @@ CREATE TRIGGER trg_integration_secrets_updated_at
   FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
 
 
--- ── 6. RBAC grants for the `settings` module key ────────────
+-- ── 6. shared.business_policies ─────────────────────────────
+-- Business / legal policies (Privacy, Refund, Quality Management
+-- Statement, Terms, Cookie, Shipping, etc.). SETTINGS owns the
+-- content + editing here (single source of truth). STOREFRONT STUDIO
+-- reads `is_published = true` rows to decide which ones appear on the
+-- public website and where (footer link, dedicated page, etc.) — it
+-- does NOT duplicate or own the content.
+--
+-- `slug` becomes the public URL path under /policies/{slug} when
+-- Studio chooses to surface the policy. UNIQUE per (business, slug)
+-- so we never get a clashing public URL. Versioned: every save bumps
+-- the version, and the renderer reads the latest published row.
+CREATE TABLE IF NOT EXISTS shared.business_policies (
+  policy_id       UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  business        TEXT         NOT NULL REFERENCES shared.business_config (business_key) ON DELETE CASCADE,
+  slug            TEXT         NOT NULL,
+  title           TEXT         NOT NULL,
+  -- 'privacy', 'refund', 'qms', 'terms', 'cookie', 'shipping', 'returns'
+  -- — kept TEXT (not enum) so a new policy type doesn't need a migration.
+  policy_type     TEXT         NOT NULL,
+  body_html       TEXT         NOT NULL DEFAULT '',
+  -- Plain-text summary surfaced by search / SmartComm answers; optional.
+  summary         TEXT,
+  version         INT          NOT NULL DEFAULT 1,
+  status          TEXT         NOT NULL DEFAULT 'draft'
+                  CHECK (status IN ('draft','published','archived')),
+  -- True when the admin has flipped the policy live. Studio reads this
+  -- to know which policies are eligible for the public website.
+  is_published    BOOLEAN      NOT NULL DEFAULT false,
+  -- The public URL Studio will link to once it chooses to show the
+  -- policy. Resolved as /policies/{slug}.
+  public_url      TEXT,
+  effective_from  DATE,
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_by      UUID         REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  UNIQUE (business, slug)
+);
+CREATE INDEX IF NOT EXISTS ix_business_policies_lookup
+  ON shared.business_policies (business, policy_type, is_published);
+
+DROP TRIGGER IF EXISTS trg_business_policies_updated_at ON shared.business_policies;
+CREATE TRIGGER trg_business_policies_updated_at
+  BEFORE UPDATE ON shared.business_policies
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+
+-- ── 7. RBAC grants for the `settings` module key ────────────
 -- The new /api/v1/settings/* routes gate on the `settings` module
 -- (already a valid module key per shared.permissions). Mirror the
 -- business_setup policy: owner/admin full, accountant create/edit,

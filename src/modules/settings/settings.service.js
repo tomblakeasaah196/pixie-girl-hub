@@ -137,6 +137,46 @@ async function deleteSecret({ brand, user, request_id, id }) {
   });
 }
 
+// ── business_policies ────────────────────────────────────
+// Settings owns content + editing here. Studio reads `is_published`
+// rows separately to decide what shows on the public website.
+const listPolicies = ({ brand, policy_type, status }) =>
+  repo.listPolicies({ client: null, brand, policy_type, status });
+
+async function createPolicy({ brand, user, request_id, input }) {
+  return transaction(async (client) => {
+    const row = await repo.createPolicy({ client, brand, row: input, user_id: user?.user_id });
+    await A(brand, user?.user_id, "settings.policy.create", "business_policy", row.policy_id, { slug: row.slug, policy_type: row.policy_type }, request_id);
+    emitSettingsUpdated({ tile: "policies", brand });
+    return row;
+  });
+}
+async function updatePolicy({ brand, user, request_id, id, input }) {
+  return transaction(async (client) => {
+    const existing = await repo.getPolicy({ client, brand, id });
+    if (!existing) throw new NotFoundError("Policy not found");
+    // Bump version on body change so the renderer always reads the
+    // latest published copy and an audit reviewer can diff revisions.
+    const patch = { ...input };
+    if (patch.body_html !== undefined && patch.body_html !== existing.body_html) {
+      patch.version = (existing.version || 1) + 1;
+    }
+    const row = await repo.updatePolicy({ client, brand, id, patch, user_id: user?.user_id });
+    await A(brand, user?.user_id, "settings.policy.update", "business_policy", id, { fields: Object.keys(input), is_published: row.is_published }, request_id);
+    emitSettingsUpdated({ tile: "policies", brand });
+    return row;
+  });
+}
+async function deletePolicy({ brand, user, request_id, id }) {
+  return transaction(async (client) => {
+    const ok = await repo.deletePolicy({ client, brand, id });
+    if (!ok) throw new NotFoundError("Policy not found");
+    await A(brand, user?.user_id, "settings.policy.delete", "business_policy", id, {}, request_id);
+    emitSettingsUpdated({ tile: "policies", brand });
+    return { deleted: true };
+  });
+}
+
 module.exports = {
   listTemplates,
   createTemplate,
@@ -152,4 +192,8 @@ module.exports = {
   listSecrets,
   setSecret,
   deleteSecret,
+  listPolicies,
+  createPolicy,
+  updatePolicy,
+  deletePolicy,
 };

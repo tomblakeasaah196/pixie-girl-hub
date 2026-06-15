@@ -253,6 +253,82 @@ async function deleteSecret({ client, brand, id }) {
   return rowCount > 0;
 }
 
+// ── business_policies ────────────────────────────────────
+// Settings owns the content + editing. Storefront Studio reads
+// is_published rows to surface them on the public website.
+async function listPolicies({ client, brand, policy_type, status }) {
+  const where = ["business = $1"];
+  const params = [brand];
+  let i = 2;
+  if (policy_type) {
+    where.push(`policy_type = $${i++}`);
+    params.push(policy_type);
+  }
+  if (status) {
+    where.push(`status = $${i++}`);
+    params.push(status);
+  }
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.business_policies
+     WHERE ${where.join(" AND ")}
+     ORDER BY policy_type ASC, version DESC`,
+    params,
+  );
+  return rows;
+}
+async function getPolicy({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.business_policies WHERE policy_id = $1 AND business = $2`,
+    [id, brand],
+  );
+  return rows[0] || null;
+}
+async function createPolicy({ client, brand, row, user_id }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.business_policies
+       (business, slug, title, policy_type, body_html, summary,
+        version, status, is_published, public_url, effective_from, updated_by)
+     VALUES ($1,$2,$3,$4,COALESCE($5,''),$6,COALESCE($7,1),
+             COALESCE($8,'draft'),COALESCE($9,false),$10,$11,$12)
+     RETURNING *`,
+    [
+      brand, row.slug, row.title, row.policy_type,
+      row.body_html, row.summary || null,
+      row.version, row.status,
+      row.is_published, row.public_url || null,
+      row.effective_from || null, user_id || null,
+    ],
+  );
+  return rows[0];
+}
+async function updatePolicy({ client, brand, id, patch, user_id }) {
+  const sets = [];
+  const params = [id, brand];
+  let i = 3;
+  for (const col of ["slug", "title", "policy_type", "body_html", "summary",
+                     "version", "status", "is_published", "public_url", "effective_from"]) {
+    if (patch[col] === undefined) continue;
+    sets.push(`${col} = $${i++}`);
+    params.push(patch[col]);
+  }
+  if (sets.length === 0) return getPolicy({ client, brand, id });
+  sets.push(`updated_by = $${i++}`);
+  params.push(user_id || null);
+  const { rows } = await ex(client)(
+    `UPDATE shared.business_policies SET ${sets.join(", ")}
+     WHERE policy_id = $1 AND business = $2 RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
+}
+async function deletePolicy({ client, brand, id }) {
+  const { rowCount } = await ex(client)(
+    `DELETE FROM shared.business_policies WHERE policy_id = $1 AND business = $2`,
+    [id, brand],
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   listTemplates,
   getTemplate,
@@ -270,4 +346,9 @@ module.exports = {
   listSecrets,
   upsertSecret,
   deleteSecret,
+  listPolicies,
+  getPolicy,
+  createPolicy,
+  updatePolicy,
+  deletePolicy,
 };

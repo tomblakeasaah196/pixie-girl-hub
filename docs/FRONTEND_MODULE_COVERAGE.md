@@ -1,6 +1,6 @@
 # Pixie Girl Hub — Frontend Module Coverage
 
-**Weighted coverage: 13%** &nbsp;·&nbsp; ✅ Done **4** · 🟡 Partial **2** · ⬜ To-do **32** · Total **38**
+**Weighted coverage: 14%** &nbsp;·&nbsp; ✅ Done **5** · 🟡 Partial **1** · ⬜ To-do **34** · Total **40**
 
 > Weighted = (Done + ½·Partial) / Total. Edit `docs/frontend-modules.json` and run `node scripts/build-frontend-coverage.js` to update (or `--set key=done`). The `.xlsx` has a Yes/Partial/No dropdown and a live coverage formula.
 
@@ -40,9 +40,11 @@
 | 32 | Calendar & Scheduling | Communication | `/calendar` | Tasks, HR, CRM | ⬜ To-do | Shared scheduling. |
 | 33 | Tasks & To-Do | Communication | `/tasks` | Calendar, CRM | ⬜ To-do | Assignable tasks across modules. |
 | 34 | Notifications & Feed | Communication | `/notifications` | App Shell, Messaging, Praxis AI | ⬜ To-do | Top-bar bell; realtime feed (6.30). |
-| 35 | Settings (Business Setup · Appearance · Login · Security) | System | `/settings` | Org, App Shell, Login | 🟡 Partial | Appearance + Login editor built; business/security/custom-fields/numbering/roles to build. |
+| 35 | Settings (Business Setup · Money · Operations · Comms · Integrations) | System | `/settings` | Org, IAM, Help Center, Storefront Studio, App Shell, Login | ✅ Done | Full module: landing grid + Business Setup, Currencies/FX, Tax, Doc Numbering, Custom Fields, Pipelines, Gateways, Bank Accounts, Email Signatures, Document Templates, Notifications, Scheduled Reports, API Keys/Secrets, Businesses. Audit→IAM; Roles→Org; Policies→Studio. |
 | 36 | Storefront Studio | System | `/storefront-studio` | E-Commerce, Catalogue, Logistics | ⬜ To-do | Timeline vocabulary, delivery-letter templates. |
 | 37 | Intercompany Reconciliation | System | `/intercompany` | Accounting, Purchasing, Stock | ⬜ To-do | CEO/ALL aggregation; inter-brand settlement. |
 | 38 | AI Control & Governance | System | `/ai-control` | Praxis AI, Settings | ⬜ To-do | Action catalogue, guardrails (6.31). |
+| 39 | IAM & Security | System | `/iam-security` | Settings, Org, Login | ⬜ To-do | Audit log (moved here from Settings), security events, sessions, access reviews. Scope TBD; placeholder landing built. |
+| 40 | Help Center | System | `/help` | Settings, App Shell | ⬜ To-do | DB-driven guides & FAQs (mirrors hub-system help-editor). Placeholder landing built. |
 
-_Last generated: 2026-06-14._
+_Last generated: 2026-06-15._

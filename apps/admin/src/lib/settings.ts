@@ -623,6 +623,60 @@ export function useSetSecret() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["integration-secrets", brand] }),
   });
 }
+// ════════════════════════════════════════════════════════════
+// Business policies — Settings owns content + editing here.
+// Storefront Studio chooses which appear on the public website.
+// ════════════════════════════════════════════════════════════
+export interface BusinessPolicy {
+  policy_id: string;
+  business: string;
+  slug: string;
+  title: string;
+  policy_type: string;
+  body_html: string;
+  summary: string | null;
+  version: number;
+  status: "draft" | "published" | "archived";
+  is_published: boolean;
+  public_url: string | null;
+  effective_from: string | null;
+  updated_at: string;
+}
+export function useBusinessPolicies(policyType?: string) {
+  const brand = useBrand();
+  const q = policyType ? `?policy_type=${policyType}` : "";
+  return useQuery<BusinessPolicy[]>({
+    queryKey: ["policies", brand, policyType ?? "all"],
+    queryFn: () => api.get<BusinessPolicy[]>(`/settings/policies${q}`),
+  });
+}
+export function useCreatePolicy() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (row: Partial<BusinessPolicy>) =>
+      api.post("/settings/policies", row),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["policies", brand] }),
+  });
+}
+export function useUpdatePolicy() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<BusinessPolicy> }) =>
+      api.patch(`/settings/policies/${id}`, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["policies", brand] }),
+  });
+}
+export function useDeletePolicy() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/settings/policies/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["policies", brand] }),
+  });
+}
+
 export function useDeleteSecret() {
   const qc = useQueryClient();
   const brand = useBrand();

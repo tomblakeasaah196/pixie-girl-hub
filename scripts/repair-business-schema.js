@@ -26,12 +26,18 @@
 const fs = require("fs/promises");
 const path = require("path");
 const { Pool } = require("pg");
-
-const { config } = require("../src/config/env");
+require("dotenv").config();
 
 const TEMPLATE_DIR = path.join(__dirname, "..", "migrations", "template");
 
-const pool = new Pool({ connectionString: config.DATABASE_URL });
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT) || 5432,
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
+});
 
 async function getExistingBrands() {
   const { rows } = await pool.query(

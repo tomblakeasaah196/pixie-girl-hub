@@ -83,6 +83,12 @@ export interface GeoWelcome {
   welcome: string;
   note: string;
 }
-export async function getGeoWelcome(): Promise<GeoWelcome> {
-  return api.get<GeoWelcome>("/geo-welcome", "public");
+export async function getGeoWelcome(
+  params?: Record<string, string>,
+): Promise<GeoWelcome> {
+  const qs = params ? new URLSearchParams(params).toString() : "";
+  return api.get<GeoWelcome>(
+    `/geo-welcome${qs ? `?${qs}` : ""}`,
+    "public",
+  );
 }

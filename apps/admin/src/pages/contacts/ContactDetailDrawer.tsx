@@ -1,0 +1,777 @@
+import { useState } from "react";
+import {
+  MessageCircle,
+  Pencil,
+  Phone,
+  Mail,
+  Package,
+  Activity,
+  ExternalLink,
+  Plus,
+  Trash2,
+  CheckCircle,
+  Clock,
+} from "lucide-react";
+import { Drawer } from "@/components/ui/Drawer";
+import { Button, Pill, Skeleton, MoneyText, type Tone } from "@/components/ui/primitives";
+import {
+  useContact,
+  useContactSummary,
+  useContactTimeline,
+  useAddresses,
+  useDeals,
+  usePreferences,
+  useMeasurements,
+  useDeleteAddress,
+} from "./hooks";
+import { ContactFormModal } from "./ContactFormModal";
+import { AddressFormModal } from "./AddressFormModal";
+import type { Contact, Deal, TimelineEvent, PriorityLevel, ContactType } from "./types";
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+const TYPE_LABELS: Record<ContactType, string> = {
+  customer: "Customer",
+  supplier: "Supplier",
+  staff: "Staff",
+  retail_partner: "Retail",
+  stylist_partner: "Stylist",
+};
+
+const PRIORITY_TONE: Record<PriorityLevel, Tone> = {
+  vip: "accent",
+  regular: "neutral",
+  new: "info",
+};
+
+const RISK_TONE: Record<string, Tone> = {
+  low: "success",
+  medium: "warn",
+  high: "danger",
+  critical: "danger",
+};
+
+const DEAL_STATUS_TONE: Record<string, Tone> = {
+  open: "info",
+  won: "success",
+  lost: "danger",
+  on_hold: "warn",
+  cancelled: "neutral",
+};
+
+const AVATAR_COLORS = [
+  "#8b9d77", "#7a8fa8", "#b76e79", "#9c7ad9", "#5aa0a8",
+];
+
+function bigInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function relativeTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-NG", { day: "numeric", month: "short" });
+}
+
+// ── Message button ────────────────────────────────────────────────────────
+
+function MessageButton({ contact }: { contact: Contact }) {
+  const hasWhatsApp = !!contact.whatsapp_number;
+  const hasPhone = !!contact.primary_phone;
+  const hasEmail = !!contact.email;
+
+  const handleMessage = () => {
+    if (hasWhatsApp) {
+      const num = contact.whatsapp_number!.replace(/\D/g, "");
+      window.open(`https://wa.me/${num}`, "_blank");
+    } else if (hasPhone) {
+      window.location.href = `tel:${contact.primary_phone}`;
+    } else if (hasEmail) {
+      window.location.href = `mailto:${contact.email}`;
+    }
+  };
+
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      icon={<MessageCircle className="w-3.5 h-3.5" />}
+      onClick={handleMessage}
+      disabled={!hasWhatsApp && !hasPhone && !hasEmail}
+    >
+      Message
+    </Button>
+  );
+}
+
+// ── KPI strip ────────────────────────────────────────────────────────────
+
+function SummaryStrip({ contactId }: { contactId: string }) {
+  const { data: summary, isLoading } = useContactSummary(contactId);
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-[52px] rounded-[11px]" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!summary) return null;
+
+  const tiles = [
+    {
+      label: "Lifetime value",
+      value: <MoneyText ngn={parseFloat(summary.lifetime_value_ngn || "0")} />,
+    },
+    { label: "Orders", value: summary.total_orders },
+    {
+      label: "Last activity",
+      value: summary.last_activity_at ? relativeTime(summary.last_activity_at) : "—",
+    },
+    {
+      label: "Churn risk",
+      value: summary.churn_risk_band ? (
+        <Pill tone={RISK_TONE[summary.churn_risk_band]} dot={false}>
+          {summary.churn_risk_band}
+        </Pill>
+      ) : (
+        "—"
+      ),
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+      {tiles.map((t) => (
+        <div
+          key={t.label}
+          className="p-2.5 rounded-[11px] bg-text-primary/[0.04] border hairline"
+        >
+          <div className="micro mb-1">{t.label}</div>
+          <div className="font-display text-base text-text-primary tabular-nums">{t.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Timeline tab ─────────────────────────────────────────────────────────
+
+const TIMELINE_TABS = [
+  { key: "commercial", label: "Commercial" },
+  { key: "engagement", label: "Engagement" },
+  { key: "internal", label: "Internal" },
+] as const;
+
+function TimelineIcon({ type }: { type: string }) {
+  if (type.includes("order") || type.includes("payment")) return <Package className="w-3.5 h-3.5" />;
+  if (type.includes("deal") || type.includes("activity")) return <Activity className="w-3.5 h-3.5" />;
+  if (type.includes("tag") || type.includes("segment")) return <CheckCircle className="w-3.5 h-3.5" />;
+  return <Clock className="w-3.5 h-3.5" />;
+}
+
+function TimelineTab({ contactId }: { contactId: string }) {
+  const [activeTab, setActiveTab] = useState<"commercial" | "engagement" | "internal">(
+    "commercial",
+  );
+
+  const { data, isLoading } = useContactTimeline(contactId, { category: activeTab, page_size: 20 });
+  const events: TimelineEvent[] = data?.data ?? [];
+
+  return (
+    <div>
+      {/* Sub-tabs */}
+      <div className="flex gap-1 mb-4 p-1 rounded-[12px] bg-text-primary/[0.04] border hairline">
+        {TIMELINE_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={[
+              "flex-1 py-1.5 rounded-[9px] text-[12px] font-semibold transition-all",
+              activeTab === t.key
+                ? "bg-accent-deep text-[#F4E9D9]"
+                : "text-text-muted hover:text-text-primary",
+            ].join(" ")}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading && (
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-[56px] rounded-[10px]" />
+          ))}
+        </div>
+      )}
+
+      {!isLoading && events.length === 0 && (
+        <div className="py-8 text-center text-text-faint text-[13px]">
+          No {activeTab} activity yet
+        </div>
+      )}
+
+      {!isLoading && events.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {events.map((ev) => (
+            <div
+              key={ev.event_id}
+              className="flex items-start gap-3 p-3 rounded-[10px] bg-text-primary/[0.03] border hairline"
+            >
+              <span className="w-7 h-7 rounded-full grid place-items-center bg-text-primary/[0.07] text-text-muted flex-shrink-0 mt-0.5">
+                <TimelineIcon type={ev.event_type} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] text-text-primary font-medium">{ev.title}</div>
+                {ev.detail && (
+                  <div className="text-[11px] text-text-muted mt-0.5">{ev.detail}</div>
+                )}
+                <div className="text-[10.5px] text-text-faint mt-1">
+                  {relativeTime(ev.event_at)}
+                  {ev.created_by_name && ` · ${ev.created_by_name}`}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Deals tab ─────────────────────────────────────────────────────────────
+
+function DealsTab({ contactId }: { contactId: string }) {
+  const { data, isLoading } = useDeals({ contact_id: contactId, page_size: 10 });
+  const deals: Deal[] = data?.data ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-[66px] rounded-[11px]" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!deals.length) {
+    return (
+      <div className="py-8 text-center">
+        <div className="text-text-faint text-[13px]">No deals yet</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {deals.map((d) => (
+        <div
+          key={d.deal_id}
+          className="p-3 rounded-[11px] bg-text-primary/[0.03] border hairline"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-text-primary truncate">{d.title}</div>
+              <div className="text-[11px] text-text-faint mt-0.5">
+                {d.deal_number}
+                {d.current_stage_name ? ` · ${d.current_stage_name}` : ""}
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <Pill tone={DEAL_STATUS_TONE[d.status] ?? "neutral"}>{d.status}</Pill>
+              {d.expected_value_ngn && (
+                <span className="text-[12px] font-mono text-text-muted">
+                  <MoneyText ngn={parseFloat(d.expected_value_ngn)} />
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Addresses tab ────────────────────────────────────────────────────────
+
+function AddressesTab({ contactId }: { contactId: string }) {
+  const { data: addresses = [], isLoading } = useAddresses(contactId);
+  const deleteAddr = useDeleteAddress(contactId);
+  const [showAdd, setShowAdd] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Skeleton key={i} className="h-[80px] rounded-[11px]" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-col gap-2">
+        {addresses.map((addr) => (
+          <div
+            key={addr.address_id}
+            className="p-3 rounded-[11px] bg-text-primary/[0.03] border hairline relative group"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="micro">{addr.address_type}</span>
+                  {addr.is_default && (
+                    <Pill tone="accent" dot={false}>
+                      Default
+                    </Pill>
+                  )}
+                  {addr.is_verified && (
+                    <span className="text-success">
+                      <CheckCircle className="w-3 h-3" />
+                    </span>
+                  )}
+                </div>
+                <div className="text-[13px] text-text-primary">{addr.line1}</div>
+                {addr.line2 && (
+                  <div className="text-[12px] text-text-muted">{addr.line2}</div>
+                )}
+                <div className="text-[12px] text-text-muted">
+                  {[addr.area, addr.city, addr.state].filter(Boolean).join(", ")}
+                </div>
+                {addr.landmark && (
+                  <div className="text-[11px] text-text-faint mt-0.5">
+                    Landmark: {addr.landmark}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {addr.google_maps_url && (
+                  <a
+                    href={addr.google_maps_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-7 h-7 grid place-items-center rounded-[8px] text-text-faint hover:text-text-primary hover:bg-text-primary/[0.08] transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                <button
+                  onClick={() => deleteAddr.mutate(addr.address_id)}
+                  className="w-7 h-7 grid place-items-center rounded-[8px] text-text-faint hover:text-danger hover:bg-danger/[0.1] transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {!addresses.length && (
+          <div className="py-6 text-center text-text-faint text-[13px]">No addresses saved</div>
+        )}
+      </div>
+
+      <Button
+        variant="secondary"
+        size="sm"
+        icon={<Plus className="w-3.5 h-3.5" />}
+        className="mt-3 w-full justify-center"
+        onClick={() => setShowAdd(true)}
+      >
+        Add Address
+      </Button>
+
+      {showAdd && (
+        <AddressFormModal
+          contactId={contactId}
+          onClose={() => setShowAdd(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Preferences tab ──────────────────────────────────────────────────────
+
+function PreferencesTab({ contactId }: { contactId: string }) {
+  const { data: prefs, isLoading } = usePreferences(contactId);
+  const { data: measurements = [] } = useMeasurements(contactId);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-[100px] rounded-[11px]" />
+        <Skeleton className="h-[80px] rounded-[11px]" />
+      </div>
+    );
+  }
+
+  const latestMeasurement = measurements[0];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Wig preferences */}
+      <div>
+        <div className="micro mb-3">Wig Preferences</div>
+        {prefs ? (
+          <div className="grid grid-cols-1 gap-2">
+            {prefs.preferred_textures.length > 0 && (
+              <PrefRow label="Textures" values={prefs.preferred_textures} />
+            )}
+            {prefs.preferred_lace_types.length > 0 && (
+              <PrefRow label="Lace Types" values={prefs.preferred_lace_types} />
+            )}
+            {prefs.preferred_colours.length > 0 && (
+              <PrefRow label="Colours" values={prefs.preferred_colours} />
+            )}
+            {prefs.preferred_densities.length > 0 && (
+              <PrefRow label="Densities" values={prefs.preferred_densities} />
+            )}
+            {prefs.avoid_textures.length > 0 && (
+              <PrefRow label="Avoid textures" values={prefs.avoid_textures} tone="danger" />
+            )}
+            {prefs.avoid_colours.length > 0 && (
+              <PrefRow label="Avoid colours" values={prefs.avoid_colours} tone="danger" />
+            )}
+            {(prefs.budget_min_ngn || prefs.budget_max_ngn) && (
+              <div className="p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
+                <div className="micro mb-1">Budget</div>
+                <div className="text-[13px] text-text-primary font-mono">
+                  {prefs.budget_min_ngn && <MoneyText ngn={parseFloat(prefs.budget_min_ngn)} />}
+                  {prefs.budget_min_ngn && prefs.budget_max_ngn && " – "}
+                  {prefs.budget_max_ngn && <MoneyText ngn={parseFloat(prefs.budget_max_ngn)} />}
+                </div>
+              </div>
+            )}
+            {prefs.styling_sensitivities && (
+              <div className="p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
+                <div className="micro mb-1">Sensitivities</div>
+                <div className="text-[12px] text-text-muted">{prefs.styling_sensitivities}</div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="py-4 text-center text-text-faint text-[13px]">
+            No preferences recorded yet
+          </div>
+        )}
+      </div>
+
+      {/* Head measurements */}
+      <div>
+        <div className="micro mb-3">Head Measurements</div>
+        {latestMeasurement ? (
+          <div className="p-3 rounded-[11px] bg-text-primary/[0.03] border hairline">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ["Circumference", latestMeasurement.circumference_cm],
+                ["Ear to ear", latestMeasurement.ear_to_ear_cm],
+                ["Forehead to nape", latestMeasurement.forehead_to_nape_cm],
+                ["Temple to temple", latestMeasurement.temple_to_temple_cm],
+                ["Nape width", latestMeasurement.nape_width_cm],
+              ]
+                .filter(([, v]) => v != null)
+                .map(([label, value]) => (
+                  <div key={label as string}>
+                    <div className="micro">{label as string}</div>
+                    <div className="text-[13px] text-text-primary font-mono">{value} cm</div>
+                  </div>
+                ))}
+            </div>
+            {latestMeasurement.measured_at && (
+              <div className="text-[10.5px] text-text-faint mt-2">
+                Measured{" "}
+                {new Date(latestMeasurement.measured_at).toLocaleDateString("en-NG", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="py-4 text-center text-text-faint text-[13px]">
+            No measurements recorded yet
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PrefRow({
+  label,
+  values,
+  tone = "neutral",
+}: {
+  label: string;
+  values: string[];
+  tone?: Tone;
+}) {
+  return (
+    <div className="p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
+      <div className="micro mb-1.5">{label}</div>
+      <div className="flex flex-wrap gap-1">
+        {values.map((v) => (
+          <Pill key={v} tone={tone} dot={false}>
+            {v}
+          </Pill>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Overview tab ─────────────────────────────────────────────────────────
+
+function OverviewTab({ contact }: { contact: Contact }) {
+  const rows: [string, string | null][] = [
+    ["Display name", contact.display_name],
+    ["First name", contact.first_name],
+    ["Last name", contact.last_name],
+    ["Company", contact.company_name],
+    ["Gender", contact.gender],
+    [
+      "Birthday",
+      contact.date_of_birth
+        ? new Date(contact.date_of_birth).toLocaleDateString("en-NG", {
+            day: "numeric",
+            month: "long",
+            year: contact.date_of_birth.startsWith("1900") ? undefined : "numeric",
+          })
+        : null,
+    ],
+    ["WhatsApp", contact.whatsapp_number],
+    ["Email", contact.email],
+    ["Country code", contact.country_code],
+    ["TIN", contact.tin],
+    ["CAC number", contact.cac_number],
+    ["Source", contact.source],
+  ].filter(([, v]) => v != null) as [string, string][];
+
+  return (
+    <div>
+      {/* Contact actions */}
+      <div className="flex gap-2 mb-4">
+        {contact.whatsapp_number && (
+          <a
+            href={`https://wa.me/${contact.whatsapp_number.replace(/\D/g, "")}`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 h-[33px] px-3 rounded-[10px] bg-[#25D366]/10 border border-[#25D366]/30 text-[12px] font-semibold text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            WhatsApp
+          </a>
+        )}
+        {contact.primary_phone && (
+          <a
+            href={`tel:${contact.primary_phone}`}
+            className="flex items-center gap-1.5 h-[33px] px-3 rounded-[10px] bg-text-primary/[0.04] border hairline text-[12px] font-semibold text-text-muted hover:text-text-primary hover:bg-text-primary/[0.09] transition-colors"
+          >
+            <Phone className="w-3.5 h-3.5" />
+            {contact.primary_phone}
+          </a>
+        )}
+        {contact.email && (
+          <a
+            href={`mailto:${contact.email}`}
+            className="flex items-center gap-1.5 h-[33px] px-3 rounded-[10px] bg-text-primary/[0.04] border hairline text-[12px] font-semibold text-text-muted hover:text-text-primary hover:bg-text-primary/[0.09] transition-colors"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            Email
+          </a>
+        )}
+      </div>
+
+      {/* Field grid */}
+      <div className="grid grid-cols-1 gap-2">
+        {rows.map(([label, value]) => (
+          <div
+            key={label}
+            className="flex items-center justify-between py-2 border-b hairline last:border-0"
+          >
+            <span className="micro">{label}</span>
+            <span className="text-[13px] text-text-primary text-right max-w-[60%] truncate">
+              {value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Notes */}
+      {contact.notes && (
+        <div className="mt-4 p-3 rounded-[11px] bg-text-primary/[0.04] border hairline">
+          <div className="micro mb-1">Notes</div>
+          <p className="text-[13px] text-text-muted leading-relaxed">{contact.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Drawer ──────────────────────────────────────────────────────────
+
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "timeline", label: "Timeline" },
+  { key: "deals", label: "Deals" },
+  { key: "addresses", label: "Addresses" },
+  { key: "preferences", label: "Preferences" },
+] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
+interface Props {
+  contactId: string | null;
+  onClose: () => void;
+}
+
+export function ContactDetailDrawer({ contactId, onClose }: Props) {
+  const [tab, setTab] = useState<TabKey>("overview");
+  const [showEdit, setShowEdit] = useState(false);
+  const { data: contact, isLoading } = useContact(contactId);
+
+  const colorIdx = contact
+    ? Math.abs(
+        contact.display_name
+          .split("")
+          .reduce((acc, ch) => acc + ch.charCodeAt(0), 0),
+      ) % AVATAR_COLORS.length
+    : 0;
+
+  const headerLeading = contact ? (
+    <div
+      className="w-10 h-10 rounded-full grid place-items-center text-sm font-semibold text-white font-display flex-shrink-0"
+      style={{ background: AVATAR_COLORS[colorIdx] }}
+    >
+      {bigInitials(contact.display_name)}
+    </div>
+  ) : undefined;
+
+  return (
+    <Drawer
+      open={!!contactId}
+      onClose={onClose}
+      wide
+      leading={headerLeading}
+      title={
+        isLoading ? (
+          <Skeleton className="w-32 h-5 rounded-md" />
+        ) : (
+          <span className="flex items-center gap-2">
+            {contact?.display_name ?? ""}
+            {contact && (
+              <Pill tone={PRIORITY_TONE[contact.priority_level]} dot={false}>
+                {contact.priority_level}
+              </Pill>
+            )}
+          </span>
+        )
+      }
+      subtitle={
+        contact ? (
+          <span className="flex items-center gap-1.5">
+            {contact.contact_type.map((t) => TYPE_LABELS[t] ?? t).join(" · ")}
+            {contact.source && (
+              <>
+                <span className="text-text-faint">·</span>
+                <span className="capitalize">{contact.source.replace(/_/g, " ")}</span>
+              </>
+            )}
+          </span>
+        ) : undefined
+      }
+      footer={
+        contact ? (
+          <>
+            <MessageButton contact={contact} />
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<Pencil className="w-3.5 h-3.5" />}
+              onClick={() => setShowEdit(true)}
+            >
+              Edit
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
+      {isLoading && (
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-5 w-24 rounded" />
+          <div className="grid grid-cols-4 gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-[52px] rounded-[11px]" />
+            ))}
+          </div>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-[32px] rounded" />
+          ))}
+        </div>
+      )}
+
+      {!isLoading && !contact && (
+        <div className="py-10 text-center text-text-faint text-[13px]">
+          Contact not found
+        </div>
+      )}
+
+      {contact && (
+        <>
+          {/* Summary strip */}
+          <SummaryStrip contactId={contact.contact_id} />
+
+          {/* Tab bar */}
+          <div className="flex gap-0.5 mb-4 -mx-1 px-1 overflow-x-auto no-scrollbar">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={[
+                  "flex-shrink-0 px-3 py-1.5 rounded-[9px] text-[12px] font-semibold transition-all whitespace-nowrap",
+                  tab === t.key
+                    ? "bg-accent-deep text-[#F4E9D9]"
+                    : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                ].join(" ")}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          {tab === "overview" && <OverviewTab contact={contact} />}
+          {tab === "timeline" && <TimelineTab contactId={contact.contact_id} />}
+          {tab === "deals" && <DealsTab contactId={contact.contact_id} />}
+          {tab === "addresses" && <AddressesTab contactId={contact.contact_id} />}
+          {tab === "preferences" && <PreferencesTab contactId={contact.contact_id} />}
+        </>
+      )}
+
+      {showEdit && contact && (
+        <ContactFormModal
+          contact={contact}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
+    </Drawer>
+  );
+}

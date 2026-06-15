@@ -1,0 +1,20 @@
+{
+  "name": "Pixie Girl Hub",
+  "short_name": "Pixie Hub",
+  "description": "One command center for Pixie Girl Global and Faitlyn Hair.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f0809",
+  "theme_color": "#0f0809",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

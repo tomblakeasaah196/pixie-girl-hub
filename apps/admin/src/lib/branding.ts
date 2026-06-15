@@ -290,6 +290,35 @@ export async function uploadBrandingImage(file: File): Promise<string> {
   return url;
 }
 
+// ── Logo upload + icon generation ─────────────────────────
+// Uploads a master logo with purpose=logo; the backend makes the
+// background transparent and generates the favicon.ico + PWA icon set.
+// Returns the cleaned display-logo URL plus the derived favicon and a
+// transparency note the UI surfaces.
+export interface LogoUploadResult {
+  url: string;
+  favicon_url: string;
+  icons: {
+    favicon: string;
+    favicon64: string;
+    icon192: string;
+    icon512: string;
+    maskable512: string;
+    apple: string;
+  };
+  transparency: { hadAlpha: boolean; keyed: boolean; warning: string | null };
+}
+
+export async function uploadBrandingLogo(file: File): Promise<LogoUploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("purpose", "logo");
+  return api.postForm<LogoUploadResult>(
+    "/platform-settings/upload-image",
+    form,
+  );
+}
+
 // ── Local-only helpers ────────────────────────────────────
 const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
 
@@ -311,6 +340,62 @@ export function tripletToHex(triplet: string): string {
       .toString(16)
       .padStart(2, "0");
   return `#${toHex(m[1])}${toHex(m[2])}${toHex(m[3])}`;
+}
+
+// ── Contrast-safe brand colour ────────────────────────────
+// A brand accent (e.g. a deep navy or maroon) can be illegible on the
+// dark login backdrop — or a pale brand colour on a light theme. These
+// helpers keep the brand hue but nudge lightness until it clears a WCAG
+// legibility threshold against the active background.
+
+function parseHex(hex: string): [number, number, number] | null {
+  if (!HEX_RE.test(hex)) return null;
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+const chToHex = (n: number) =>
+  Math.min(255, Math.max(0, Math.round(n)))
+    .toString(16)
+    .padStart(2, "0");
+
+/** WCAG relative luminance of an sRGB colour (0..1). */
+function relativeLuminance(r: number, g: number, b: number): number {
+  const lin = (c: number) => {
+    const cs = c / 255;
+    return cs <= 0.03928 ? cs / 12.92 : ((cs + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrastRatio(l1: number, l2: number): number {
+  const [hi, lo] = l1 >= l2 ? [l1, l2] : [l2, l1];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * Return a readable variant of `hex` for the given theme: keeps the hue but
+ * blends toward cream (dark bg) or near-black (light bg) until it clears a
+ * ~4.5:1 contrast ratio. Already-legible colours are returned unchanged.
+ */
+export function readableAccent(hex: string, dark: boolean, min = 4.5): string {
+  const rgb = parseHex(hex);
+  if (!rgb) return hex;
+  // Approximate the login/app background luminance per theme.
+  const bgL = dark ? 0.02 : 0.94;
+  const target = dark ? [244, 233, 217] : [15, 8, 9]; // cream / near-black
+  let [r, g, b] = rgb;
+  for (let i = 0; i < 16; i += 1) {
+    if (contrastRatio(relativeLuminance(r, g, b), bgL) >= min) break;
+    r += (target[0] - r) * 0.16;
+    g += (target[1] - g) * 0.16;
+    b += (target[2] - b) * 0.16;
+  }
+  return `#${chToHex(r)}${chToHex(g)}${chToHex(b)}`;
 }
 
 // ── Trusted font CSS hosts — mirrors the backend allow-list so the

@@ -63,3 +63,6 @@ backups/
 # Misc
 .cache/
 tmp/
+
+# Claude Code
+.claude/

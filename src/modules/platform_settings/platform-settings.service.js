@@ -12,6 +12,7 @@
 const crypto = require("crypto");
 const repo = require("./platform-settings.repo");
 const storage = require("../../services/storage.service");
+const iconPipeline = require("../../services/icon-pipeline.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { logger } = require("../../config/logger");
@@ -130,39 +131,120 @@ async function getPublicBranding() {
 }
 
 /**
+ * Dynamic PWA manifest — built from platform_settings so the installed app
+ * carries the live product name, theme colour, and icons. The login-page
+ * shell links this at /api/public/manifest.webmanifest.
+ *
+ * Icons: the logo-upload pipeline stores favicon.ico + icon-192/512 +
+ * maskable as siblings under one hashed folder, so when favicon_url points
+ * at one of those we derive the PNG entries from it. The static
+ * /favicon.svg is always included as a scalable fallback.
+ */
+async function getWebManifest() {
+  const p = await repo.getPlatformSettings({ client: null });
+  const name = p?.product_name || "Pixie Girl Hub";
+  const themeColour =
+    rgbToHex(p?.theme?.dark?.bg) ?? rgbToHex(p?.theme?.light?.bg) ?? "#0f0809";
+
+  const icons = [
+    { src: "/favicon.svg", type: "image/svg+xml", sizes: "any", purpose: "any" },
+  ];
+  const favicon = p?.favicon_url || null;
+  // Derive the generated PNG siblings when the favicon came from the pipeline.
+  const m = favicon && /^(.*)\/favicon\.ico$/.exec(favicon);
+  if (m) {
+    const base = m[1];
+    icons.push(
+      { src: `${base}/icon-192.png`, type: "image/png", sizes: "192x192", purpose: "any" },
+      { src: `${base}/icon-512.png`, type: "image/png", sizes: "512x512", purpose: "any" },
+      { src: `${base}/maskable-512.png`, type: "image/png", sizes: "512x512", purpose: "maskable" },
+    );
+  }
+
+  return {
+    name,
+    short_name: name.length > 12 ? name.split(" ")[0] : name,
+    description:
+      p?.tagline || "One command center for Pixie Girl Global and Faitlyn Hair.",
+    id: "/",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    orientation: "portrait-primary",
+    background_color: themeColour,
+    theme_color: themeColour,
+    icons,
+  };
+}
+
+/** "R G B" triplet (as stored in theme tokens) → #rrggbb, or null. */
+function rgbToHex(triplet) {
+  if (typeof triplet !== "string") return null;
+  const m = /^(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})$/.exec(triplet.trim());
+  if (!m) return null;
+  const h = (n) => Math.min(255, Number(n)).toString(16).padStart(2, "0");
+  return `#${h(m[1])}${h(m[2])}${h(m[3])}`;
+}
+
+/**
  * Per-IP geo welcome for the login page. Resolves the client's continent
  * and returns the matching region message from login_config.region_messages
  * (falling back to the `default` entry, then to GEO_DEFAULT). Always
  * resolves with a 200-shaped payload; never throws.
+ *
+ * `override` is a development-only preview hook (the controller only ever
+ * populates it when NODE_ENV !== "production") so the geo greeting can be
+ * exercised from localhost, where the real client IP is loopback:
+ *   • { continent: "EU", country? }  → forces that region's copy, no lookup.
+ *   • { ip: "8.8.8.8" }              → does a real lookup of that address.
  */
-async function getGeoWelcome({ ip }) {
+async function getGeoWelcome({ ip, override } = {}) {
   const settings = await repo.getPlatformSettings({ client: null });
   const regions = settings?.login_config?.region_messages || {};
   const fallback = regions.default || GEO_DEFAULT;
-
-  if (isPrivateOrLocalIp(ip)) {
-    return { location: null, welcome: fallback.welcome, note: fallback.note };
-  }
-
-  const location = await lookupGeo(ip);
-  if (!location) {
-    return { location: null, welcome: fallback.welcome, note: fallback.note };
-  }
-
-  const msg = regions[location.continent_code] || fallback;
-  return {
-    location,
-    welcome: msg.welcome || fallback.welcome,
-    note: msg.note || fallback.note,
+  const pick = (loc) => {
+    const msg = (loc && regions[loc.continent_code]) || fallback;
+    return {
+      location: loc,
+      welcome: msg.welcome || fallback.welcome,
+      note: msg.note || fallback.note,
+    };
   };
+
+  // Dev preview: force a continent's copy without any network lookup.
+  if (override?.continent) {
+    return pick({
+      city: override.city || null,
+      country: override.country || null,
+      country_code: null,
+      continent_code: override.continent,
+    });
+  }
+
+  // Dev preview: real lookup of a supplied public IP (bypasses the
+  // loopback short-circuit). Otherwise honour the loopback skip.
+  const lookupIp = override?.ip || ip;
+  if (!override?.ip && isPrivateOrLocalIp(ip)) {
+    return pick(null);
+  }
+
+  const location = await lookupGeo(lookupIp);
+  return pick(location);
 }
 
 /**
  * Store an uploaded branding image (logo / favicon / login background) and
  * return its public URL. Validated to a small raster allow-list and written
  * under the public `branding/` prefix. Admin-gated at the route.
+ *
+ * When `purpose === "logo"` the image is run through the icon pipeline:
+ * the background is made transparent (alpha-aware; best-effort key-out for
+ * opaque sources, with a surfaced warning) and a full favicon + PWA icon
+ * set is generated and stored alongside. The response then also carries
+ * `favicon_url`, `icons`, and `transparency` so the UI can auto-fill the
+ * favicon field and warn the admin.
  */
-async function uploadBrandingImage({ file, user }) {
+async function uploadBrandingImage({ file, user, purpose }) {
   if (!file || !file.buffer)
     throw new AppError("NO_FILE", "An image file is required", 422);
   const ext = IMAGE_EXT[file.mimetype];
@@ -172,6 +254,9 @@ async function uploadBrandingImage({ file, user }) {
       "Image must be PNG, JPEG, WEBP or GIF",
       422,
     );
+
+  if (purpose === "logo") return uploadBrandingLogo({ file, user });
+
   const key = `branding/${crypto.randomBytes(16).toString("hex")}.${ext}`;
   const stored = await storage.put(file.buffer, {
     key,
@@ -188,12 +273,80 @@ async function uploadBrandingImage({ file, user }) {
   return { url: stored.public_url };
 }
 
+/**
+ * Logo upload + icon generation. Produces a transparent display logo plus
+ * favicon.ico / favicon-64 / PWA (192, 512, maskable) / apple-touch icons,
+ * all written under one hashed folder so they're easy to evict together.
+ */
+async function uploadBrandingLogo({ file, user }) {
+  let set;
+  try {
+    set = await iconPipeline.generateIconSet(file.buffer, { allowKeyOut: true });
+  } catch (err) {
+    logger.error({ err }, "icon pipeline failed");
+    throw new AppError(
+      "IMAGE_PROCESSING_FAILED",
+      "Could not process that image. Try a different file.",
+      422,
+    );
+  }
+
+  const dir = `branding/${crypto.randomBytes(16).toString("hex")}`;
+  const png = "image/png";
+  const assets = [
+    ["logo", `${dir}/logo.png`, set.logo, png],
+    ["favicon", `${dir}/favicon.ico`, set.faviconIco, "image/x-icon"],
+    ["favicon64", `${dir}/favicon-64.png`, set.favicon64, png],
+    ["icon192", `${dir}/icon-192.png`, set.icon192, png],
+    ["icon512", `${dir}/icon-512.png`, set.icon512, png],
+    ["maskable512", `${dir}/maskable-512.png`, set.maskable512, png],
+    ["apple180", `${dir}/apple-touch-icon.png`, set.apple180, png],
+  ];
+
+  const urls = {};
+  let totalSize = 0;
+  for (const [name, key, buffer, contentType] of assets) {
+    const stored = await storage.put(buffer, { key, contentType });
+    urls[name] = stored.public_url;
+    totalSize += stored.size;
+  }
+
+  await audit({
+    business: "*",
+    user_id: user?.user_id,
+    action_key: "platform_settings.upload_logo",
+    target_type: "branding_image",
+    target_id: dir,
+    metadata: {
+      size: totalSize,
+      source_content_type: file.mimetype,
+      transparency: set.transparency,
+    },
+  });
+
+  return {
+    url: urls.logo,
+    favicon_url: urls.favicon,
+    icons: {
+      favicon: urls.favicon,
+      favicon64: urls.favicon64,
+      icon192: urls.icon192,
+      icon512: urls.icon512,
+      maskable512: urls.maskable512,
+      apple: urls.apple180,
+    },
+    transparency: set.transparency,
+  };
+}
+
 module.exports = {
   getPlatformSettings,
   updatePlatformSettings,
   listFonts,
   getPublicBranding,
+  getWebManifest,
   getGeoWelcome,
   uploadBrandingImage,
+  uploadBrandingLogo,
   emitBrandingUpdated,
 };

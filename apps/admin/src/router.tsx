@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/auth/RequireAuth";
@@ -6,6 +7,8 @@ import { SalesPage } from "@/pages/SalesPage";
 import { CataloguePage } from "@/pages/catalogue/CataloguePage";
 import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
 import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
+
+const CashExpensesHome = lazy(() => import("@/pages/cash-expenses/CashExpensesHome"));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -66,6 +69,8 @@ export const router = createBrowserRouter(
           children: [
             { index: true, element: <CommandCenter /> },
             { path: "sales", element: <SalesPage /> },
+            { path: "expenses", element: <Suspense fallback={null}><CashExpensesHome defaultTab="expenses" /></Suspense> },
+            { path: "cash-requests", element: <Suspense fallback={null}><CashExpensesHome defaultTab="my-requests" /></Suspense> },
 
             // Catalogue — base/styled product model, categories, collections,
             // bundles. Detail/create live on their own routes.

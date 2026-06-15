@@ -14,13 +14,6 @@ export interface OrgUnit {
   updated_at: string;
 }
 
-export interface OrgUnitsResponse {
-  data: OrgUnit[];
-  page: number;
-  page_size: number;
-  total: number;
-}
-
 // ── Org Positions ──────────────────────────────────────────────────────────
 
 export interface OrgPosition {
@@ -129,7 +122,7 @@ export const orgApi = {
   listUnits: (params?: { include_inactive?: boolean; q?: string }) => {
     const entries = Object.entries(params ?? {}).filter(([, v]) => v !== undefined) as [string, string][];
     const qs = entries.length ? "?" + new URLSearchParams(entries).toString() : "";
-    return api.get<OrgUnitsResponse>(`/org${qs}`);
+    return api.get<OrgUnit[]>(`/org${qs}`);
   },
   getUnit: (id: string) => api.get<OrgUnit>(`/org/${id}`),
   createUnit: (body: Partial<OrgUnit>) => api.post<OrgUnit>("/org", body),
@@ -156,7 +149,7 @@ export const orgApi = {
   // Workflow definitions
   listDefinitions: (include_inactive?: boolean) => {
     const qs = include_inactive ? "?include_inactive=true" : "";
-    return api.get<{ data: WorkflowDefinition[] }>(`/org/workflows${qs}`);
+    return api.get<WorkflowDefinition[]>(`/org/workflows${qs}`);
   },
   getDefinition: (id: string) => api.get<WorkflowDefinition>(`/org/workflows/${id}`),
   createDefinition: (body: {
@@ -170,10 +163,10 @@ export const orgApi = {
     api.patch<WorkflowDefinition>(`/org/workflows/${id}`, { is_active }),
 
   // Approvals queue
+  // Backend returns { data, meta } but api.get auto-unwraps { data } → array.
+  // We type accordingly and re-fetch the full envelope when meta is needed.
   listPending: (page = 1) =>
-    api.get<{ data: WorkflowInstance[]; meta: { page: number; page_size: number; total: number; has_more: boolean } }>(
-      `/org/approvals/pending?page=${page}`,
-    ),
+    api.get<WorkflowInstance[]>(`/org/approvals/pending?page=${page}`),
   getInstance: (id: string) => api.get<WorkflowInstance>(`/org/approvals/${id}`),
   act: (id: string, action: "approve" | "reject" | "request_changes", notes?: string) =>
     api.post<WorkflowInstance>(`/org/approvals/${id}/act`, { action, notes }),

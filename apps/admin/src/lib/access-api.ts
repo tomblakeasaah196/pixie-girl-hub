@@ -69,10 +69,10 @@ export const accessApi = {
   updateRole: (id: string, body: { role_name?: string; description?: string | null }) =>
     api.patch<Role>(`/access/roles/${id}`, body),
   deleteRole: (id: string) => api.delete<void>(`/access/roles/${id}`),
-  getRolePermissions: (id: string) => api.get<{ data: Permission[] }>(`/access/roles/${id}/permissions`),
+  getRolePermissions: (id: string) => api.get<Permission[]>(`/access/roles/${id}/permissions`),
   // Backend uses PUT to replace the entire permission matrix atomically.
   setRolePermissions: (
     id: string,
     grants: Array<{ module: string; action: string; record_scope?: string; hidden_fields?: string[] }>,
-  ) => api.put<{ data: Permission[] }>(`/access/roles/${id}/permissions`, { grants }),
+  ) => api.put<Permission[]>(`/access/roles/${id}/permissions`, { grants }),
 };

@@ -5,10 +5,8 @@ import {
   Plus,
   ClipboardCheck,
   Banknote,
-  Clock,
   AlertTriangle,
   Lock,
-  Download,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -16,11 +14,10 @@ import { Button, Card, EmptyState, KpiTile, Pill, Skeleton } from "@/components/
 import { MoneyText } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
-import { money, moneyCompact } from "@/lib/format";
+import { moneyCompact } from "@/lib/format";
 import {
   useCashRequests,
   useCashRequestKpis,
-  useCashRequestMutations,
   useExpenses,
 } from "./hooks";
 import { CR_STATUS_META, CR_STATUS_TABS, EXPENSE_STATUS_META, EXPENSE_STATUS_TABS, URGENCY_META } from "./constants";
@@ -36,7 +33,6 @@ type Tab = "my-requests" | "approval-queue" | "all-requests" | "expenses";
 export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
   useBreadcrumbs([{ label: "Cash & Expenses" }]);
   const can = useAuthStore((s) => s.can);
-  const user = useAuthStore((s) => s.user);
 
   const [tab, setTab] = useState<Tab>(defaultTab ?? "my-requests");
   const [crStatusFilter, setCrStatusFilter] = useState("");
@@ -119,9 +115,7 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
       {tab === "approval-queue" && (
         <ApprovalQueueTab
           page={crPage}
-          onPage={setCrPage}
           onSelect={setSelectedCr}
-          userId={user?.id}
         />
       )}
       {tab === "all-requests" && (
@@ -376,14 +370,10 @@ function MyRequestsTab({
 
 function ApprovalQueueTab({
   page,
-  onPage,
   onSelect,
-  userId,
 }: {
   page: number;
-  onPage: (p: number) => void;
   onSelect: (cr: CashRequest) => void;
-  userId?: string;
 }) {
   const pending = useCashRequests({ status: "pending_finance", page });
   const pendingCeo = useCashRequests({ status: "pending_ceo", page });
@@ -394,7 +384,6 @@ function ApprovalQueueTab({
   ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
   const isLoading = pending.isLoading || pendingCeo.isLoading;
-  const total = (pending.data?.total ?? 0) + (pendingCeo.data?.total ?? 0);
 
   const cols: Column<CashRequest>[] = [
     { key: "no", header: "Request #", width: "130px", render: (r) => <span className="font-mono text-xs">{r.request_number}</span> },

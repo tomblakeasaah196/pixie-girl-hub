@@ -2,23 +2,21 @@ import { useState } from "react";
 import {
   Banknote,
   FileText,
-  Clock,
   CheckCircle,
   XCircle,
   ArrowLeft,
   Send,
-  AlertTriangle,
   CreditCard,
 } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button, Card, Pill, MoneyText, MaskedField, Skeleton } from "@/components/ui/primitives";
 import { Timeline } from "@/components/ui/Timeline";
-import { FormSection, Field, TextInput } from "@/components/ui/Form";
+import { Field, TextInput } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
 import { useCashRequest, useCashRequestHistory, useCashRequestMutations } from "./hooks";
 import { CR_STATUS_META, URGENCY_META, RECIPIENT_TYPE_LABELS } from "./constants";
-import type { CashRequest, CashRequestStatus, Decision, StateHistoryEntry } from "./types";
+import type { CashRequest, CashRequestStatus, Decision } from "./types";
 
 interface Props {
   request: CashRequest;
@@ -28,7 +26,6 @@ interface Props {
 
 export default function CashRequestDetailDrawer({ request: initial, onClose, onSettle }: Props) {
   const can = useAuthStore((s) => s.can);
-  const user = useAuthStore((s) => s.user);
   const { data: cr } = useCashRequest(initial.cash_request_id);
   const { data: history, isLoading: historyLoading } = useCashRequestHistory(initial.cash_request_id);
   const mutations = useCashRequestMutations();

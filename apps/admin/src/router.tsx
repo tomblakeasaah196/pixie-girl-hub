@@ -18,24 +18,35 @@ import { SelectEntityPage } from "@/pages/SelectEntityPage";
  *    lives OUTSIDE the AppShell (it's a full-screen chooser); the shell and
  *    its module routes are the authenticated app.
  */
-export const router = createBrowserRouter([
-  { path: "/login", element: <LoginPage /> },
-  { path: "/reset-password", element: <ResetPasswordPage /> },
+export const router = createBrowserRouter(
+  [
+    { path: "/login", element: <LoginPage /> },
+    { path: "/reset-password", element: <ResetPasswordPage /> },
+    {
+      element: <RequireAuth />,
+      children: [
+        { path: "/select-entity", element: <SelectEntityPage /> },
+        {
+          path: "/",
+          element: <AppShell />,
+          children: [
+            { index: true, element: <CommandCenter /> },
+            { path: "sales", element: <SalesPage /> },
+            { path: "settings", element: <AppearancePage /> },
+            { path: "settings/login", element: <LoginEditorPage /> },
+            { path: "*", element: <ModulePlaceholder /> },
+          ],
+        },
+      ],
+    },
+  ],
+  // Opt in to the v7 behaviours now so the console stays clean and the
+  // eventual upgrade is a no-op. startTransition wraps router state
+  // updates; relativeSplatPath fixes splat-relative resolution.
   {
-    element: <RequireAuth />,
-    children: [
-      { path: "/select-entity", element: <SelectEntityPage /> },
-      {
-        path: "/",
-        element: <AppShell />,
-        children: [
-          { index: true, element: <CommandCenter /> },
-          { path: "sales", element: <SalesPage /> },
-          { path: "settings", element: <AppearancePage /> },
-          { path: "settings/login", element: <LoginEditorPage /> },
-          { path: "*", element: <ModulePlaceholder /> },
-        ],
-      },
-    ],
+    future: {
+      v7_startTransition: true,
+      v7_relativeSplatPath: true,
+    },
   },
-]);
+);

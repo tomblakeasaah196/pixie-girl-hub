@@ -251,17 +251,36 @@ function LayerASection({
             label="Logo (dark backgrounds)"
             value={draft.logo_dark_url ?? null}
             onChange={(v) => setDraft({ ...draft, logo_dark_url: v })}
+            generateIcons
+            hint="Upload a transparent PNG/WEBP. Generates the favicon + app icons."
+            onIcons={(r) =>
+              setDraft((d) => ({
+                ...d,
+                logo_dark_url: r.url,
+                favicon_url: d.favicon_url ?? r.favicon_url,
+              }))
+            }
           />
           <ImageUpload
             label="Logo (light backgrounds)"
             value={draft.logo_light_url ?? null}
             onChange={(v) => setDraft({ ...draft, logo_light_url: v })}
+            generateIcons
+            hint="Upload a transparent PNG/WEBP. Generates the favicon + app icons."
+            onIcons={(r) =>
+              setDraft((d) => ({
+                ...d,
+                logo_light_url: r.url,
+                favicon_url: d.favicon_url ?? r.favicon_url,
+              }))
+            }
           />
           <ImageUpload
             label="Favicon"
             value={draft.favicon_url ?? null}
             onChange={(v) => setDraft({ ...draft, favicon_url: v })}
             aspect="square"
+            hint="Auto-filled from your logo. Override here if you want a distinct mark."
           />
         </div>
       </Card>
@@ -433,16 +452,20 @@ function LayerBSection() {
   const [grad2, setGrad2] = useState(active.grad2);
   const [website, setWebsite] = useState(row?.website ?? "");
   const [logoPath, setLogoPath] = useState<string | null>(row?.logo_path ?? null);
+  const [faviconPath, setFaviconPath] = useState<string | null>(
+    row?.favicon_path ?? null,
+  );
   useEffect(() => {
     setAccent(active.accent);
     setGrad1(active.grad1);
     setGrad2(active.grad2);
   }, [active.key, active.accent, active.grad1, active.grad2]);
-  // Identity fields (website / logo) follow the active brand's DB row.
+  // Identity fields (website / logo / favicon) follow the active brand's row.
   useEffect(() => {
     setWebsite(row?.website ?? "");
     setLogoPath(row?.logo_path ?? null);
-  }, [active.key, row?.website, row?.logo_path]);
+    setFaviconPath(row?.favicon_path ?? null);
+  }, [active.key, row?.website, row?.logo_path, row?.favicon_path]);
 
   // Live preview the gradient + accent.
   useEffect(() => {
@@ -457,7 +480,8 @@ function LayerBSection() {
     grad1 !== active.grad1 ||
     grad2 !== active.grad2 ||
     website !== (row?.website ?? "") ||
-    logoPath !== (row?.logo_path ?? null);
+    logoPath !== (row?.logo_path ?? null) ||
+    faviconPath !== (row?.favicon_path ?? null);
 
   const reset = () => {
     setAccent(active.accent);
@@ -465,6 +489,7 @@ function LayerBSection() {
     setGrad2(active.grad2);
     setWebsite(row?.website ?? "");
     setLogoPath(row?.logo_path ?? null);
+    setFaviconPath(row?.favicon_path ?? null);
   };
 
   const onSave = () =>
@@ -474,6 +499,7 @@ function LayerBSection() {
       // an empty string clears the value without tripping .strict().
       website: website.trim(),
       logo_path: logoPath ?? "",
+      favicon_path: faviconPath ?? "",
       brand_theme: {
         ...row?.brand_theme,
         grad1,
@@ -532,7 +558,12 @@ function LayerBSection() {
             value={logoPath}
             onChange={setLogoPath}
             aspect="square"
-            hint="Shown on the login badge & business switcher."
+            generateIcons
+            hint="Shown on the login badge & switcher. Upload a transparent PNG/WEBP — generates this brand's favicon + app icons automatically."
+            onIcons={(r) => {
+              setLogoPath(r.url);
+              setFaviconPath(r.favicon_url);
+            }}
           />
           <Field
             label="Website"

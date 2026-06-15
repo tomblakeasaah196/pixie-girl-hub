@@ -1,0 +1,256 @@
+/**
+ * Styled products (V2.2 §6.4 P0-6) — repository. Parameterised SQL only.
+ *
+ * A styled product is a storefront skin over exactly one base product
+ * (the row in `products`, which is the only stock-bearing record). This
+ * layer also resolves base availability (for the OOS / pre-order cascade)
+ * by reading stock_levels for the base's variants.
+ */
+
+"use strict";
+
+const { query } = require("../../config/database");
+const { VALID } = require("../../config/brands");
+
+const t = (b, tbl) => {
+  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
+  return `${b}.${tbl}`;
+};
+const ex = (c) => (c ? c.query.bind(c) : query);
+
+const STYLED_COLS = [
+  "base_product_id",
+  "base_variant_id",
+  "name",
+  "slug",
+  "short_description",
+  "long_description",
+  "style_addon_price_ngn",
+  "category_id",
+  "visible_on_channels",
+  "meta_title",
+  "meta_description",
+  "search_keywords",
+];
+
+function insert(cols, src, extra = {}) {
+  const f = [];
+  const ph = [];
+  const p = [];
+  let i = 1;
+  for (const c of cols) {
+    if (src[c] === undefined) continue;
+    f.push(c);
+    ph.push(`$${i}`);
+    p.push(src[c]);
+    i++;
+  }
+  for (const [c, v] of Object.entries(extra)) {
+    f.push(c);
+    ph.push(`$${i}`);
+    p.push(v);
+    i++;
+  }
+  return { f, ph, p };
+}
+function setClause(cols, src, start = 1) {
+  const f = [];
+  const p = [];
+  let i = start;
+  for (const c of cols) {
+    if (src[c] === undefined) continue;
+    f.push(`${c} = $${i}`);
+    p.push(src[c]);
+    i++;
+  }
+  return { f, p, next: i };
+}
+
+async function nextCode({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT ${t(brand, "fn_next_document_number")}($1) AS num`,
+    ["styled_product"],
+  );
+  return rows[0].num;
+}
+
+async function list({ client, brand, filters = {}, page = 1, page_size = 25, offset = 0 }) {
+  const where = ["s.is_deleted = false"];
+  const params = [];
+  let i = 1;
+  if (filters.base_product_id) {
+    where.push(`s.base_product_id = $${i++}`);
+    params.push(filters.base_product_id);
+  }
+  if (filters.status) {
+    where.push(`s.status = $${i++}`);
+    params.push(filters.status);
+  }
+  if (filters.category_id) {
+    where.push(`s.category_id = $${i++}`);
+    params.push(filters.category_id);
+  }
+  if (filters.q) {
+    where.push(`(s.name ILIKE $${i} OR s.styled_code ILIKE $${i} OR s.slug ILIKE $${i})`);
+    params.push(`%${filters.q}%`);
+    i++;
+  }
+  const w = `WHERE ${where.join(" AND ")}`;
+  const run = ex(client);
+  const { rows: c } = await run(
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "styled_products")} s ${w}`,
+    params,
+  );
+  const { rows } = await run(
+    `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code
+       FROM ${t(brand, "styled_products")} s
+       JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+       ${w}
+      ORDER BY s.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+    [...params, page_size, offset],
+  );
+  return {
+    data: rows,
+    meta: {
+      page,
+      page_size,
+      total: c[0].total,
+      has_more: offset + rows.length < c[0].total,
+    },
+  };
+}
+
+async function getById({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
+            b.preorder_enabled, b.expected_ready_date, b.production_lead_days
+       FROM ${t(brand, "styled_products")} s
+       JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+      WHERE s.styled_id = $1 AND s.is_deleted = false`,
+    [id],
+  );
+  return rows[0] || null;
+}
+
+async function baseProduct({ client, brand, base_product_id }) {
+  const { rows } = await ex(client)(
+    `SELECT product_id, name, product_code, is_deleted, track_stock,
+            preorder_enabled, expected_ready_date, production_lead_days
+       FROM ${t(brand, "products")} WHERE product_id = $1`,
+    [base_product_id],
+  );
+  return rows[0] || null;
+}
+
+async function create({ client, brand, row }) {
+  // styled_code is generated server-side (not a client-supplied column),
+  // so it lives in the extras here, never in STYLED_COLS.
+  const { f, ph, p } = insert(STYLED_COLS, row, {
+    styled_code: row.styled_code,
+    created_by: row.created_by ?? null,
+  });
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "styled_products")} (${f.join(",")}) VALUES (${ph.join(",")}) RETURNING *`,
+    p,
+  );
+  return rows[0];
+}
+
+async function update({ client, brand, id, patch }) {
+  const { f, p, next } = setClause(STYLED_COLS, patch);
+  if (!f.length) return getById({ client, brand, id });
+  p.push(id);
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_products")} SET ${f.join(",")}
+      WHERE styled_id = $${next} AND is_deleted = false RETURNING *`,
+    p,
+  );
+  return rows[0] || null;
+}
+
+async function setStatus({ client, brand, id, status, fields = {} }) {
+  const sets = ["status = $2"];
+  const params = [id, status];
+  let i = 3;
+  for (const [k, v] of Object.entries(fields)) {
+    sets.push(`${k} = $${i++}`);
+    params.push(v);
+  }
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_products")} SET ${sets.join(", ")}
+      WHERE styled_id = $1 AND is_deleted = false RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
+}
+
+async function softDelete({ client, brand, id }) {
+  const { rowCount } = await ex(client)(
+    `UPDATE ${t(brand, "styled_products")}
+        SET is_deleted = true, deleted_at = now(), is_visible_storefront = false
+      WHERE styled_id = $1 AND is_deleted = false`,
+    [id],
+  );
+  return rowCount > 0;
+}
+
+/**
+ * Total available units for the base behind a styled product. When the
+ * styled row pins a base_variant_id we sum just that variant; otherwise we
+ * sum every active variant of the base. This is the number that drives the
+ * out-of-stock / pre-order cascade.
+ */
+async function baseAvailability({ client, brand, base_product_id, base_variant_id }) {
+  if (base_variant_id) {
+    const { rows } = await ex(client)(
+      `SELECT COALESCE(SUM(available), 0)::int AS available
+         FROM ${t(brand, "stock_levels")} WHERE variant_id = $1`,
+      [base_variant_id],
+    );
+    return rows[0].available;
+  }
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(sl.available), 0)::int AS available
+       FROM ${t(brand, "stock_levels")} sl
+       JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+      WHERE pv.product_id = $1 AND pv.is_active = true`,
+    [base_product_id],
+  );
+  return rows[0].available;
+}
+
+/**
+ * Storefront selling price of the base behind a styled product: the pinned
+ * base variant's price, else the base's default (then first) active variant.
+ * The styling add-on is layered on top in the service.
+ */
+async function basePrice({ client, brand, base_product_id, base_variant_id }) {
+  if (base_variant_id) {
+    const { rows } = await ex(client)(
+      `SELECT price_storefront_ngn FROM ${t(brand, "product_variants")} WHERE variant_id = $1`,
+      [base_variant_id],
+    );
+    return rows[0] ? rows[0].price_storefront_ngn : null;
+  }
+  const { rows } = await ex(client)(
+    `SELECT price_storefront_ngn FROM ${t(brand, "product_variants")}
+      WHERE product_id = $1 AND is_active = true
+      ORDER BY is_default DESC, display_order ASC
+      LIMIT 1`,
+    [base_product_id],
+  );
+  return rows[0] ? rows[0].price_storefront_ngn : null;
+}
+
+module.exports = {
+  nextCode,
+  list,
+  getById,
+  baseProduct,
+  basePrice,
+  create,
+  update,
+  setStatus,
+  softDelete,
+  baseAvailability,
+};

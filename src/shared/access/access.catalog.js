@@ -32,6 +32,7 @@ const MODULES = [
   "email_campaigns",
   "expenses",
   "hr_payroll",
+  "iam",
   "intercompany",
   "invoicing",
   "logistics",

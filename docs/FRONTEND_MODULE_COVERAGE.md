@@ -1,6 +1,6 @@
 # Pixie Girl Hub — Frontend Module Coverage
 
-**Weighted coverage: 14%** &nbsp;·&nbsp; ✅ Done **5** · 🟡 Partial **1** · ⬜ To-do **34** · Total **40**
+**Weighted coverage: 16%** &nbsp;·&nbsp; ✅ Done **6** · 🟡 Partial **1** · ⬜ To-do **33** · Total **40**
 
 > Weighted = (Done + ½·Partial) / Total. Edit `docs/frontend-modules.json` and run `node scripts/build-frontend-coverage.js` to update (or `--set key=done`). The `.xlsx` has a Yes/Partial/No dropdown and a live coverage formula.
 
@@ -44,7 +44,7 @@
 | 36 | Storefront Studio | System | `/storefront-studio` | E-Commerce, Catalogue, Logistics | ⬜ To-do | Timeline vocabulary, delivery-letter templates. |
 | 37 | Intercompany Reconciliation | System | `/intercompany` | Accounting, Purchasing, Stock | ⬜ To-do | CEO/ALL aggregation; inter-brand settlement. |
 | 38 | AI Control & Governance | System | `/ai-control` | Praxis AI, Settings | ⬜ To-do | Action catalogue, guardrails (6.31). |
-| 39 | IAM & Security | System | `/iam-security` | Settings, Org, Login | ⬜ To-do | Audit log (moved here from Settings), security events, sessions, access reviews. Scope TBD; placeholder landing built. |
+| 39 | IAM & Security | System | `/iam-security` | Settings, Org, Login | ✅ Done | Full module: Dashboard (health cards + security events feed), Users & Access (provisioning staff + external, invite, deactivate, admin reset), Audit Log (filter + CSV/Excel export), Security Events (filtered audit lens), Sessions & Devices (admin + self-service revoke), Access Reviews (periodic attestation, approve/revoke/flag, export), MFA/TOTP (self-service enrollment). Roles deep-link to Org & Workflow. New iam permission key. |
 | 40 | Help Center | System | `/help` | Settings, App Shell | ⬜ To-do | DB-driven guides & FAQs (mirrors hub-system help-editor). Placeholder landing built. |
 
 _Last generated: 2026-06-15._

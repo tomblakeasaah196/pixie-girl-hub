@@ -24,6 +24,13 @@ const listFonts = async (_req, res) =>
 const getPublicBranding = async (_req, res) =>
   res.json({ data: await service.getPublicBranding() });
 
+const getWebManifest = async (_req, res) => {
+  const manifest = await service.getWebManifest();
+  res.set("Cache-Control", "public, max-age=300");
+  res.type("application/manifest+json");
+  res.send(JSON.stringify(manifest));
+};
+
 const getGeoWelcome = async (req, res) => {
   // Per-IP and best-effort — never cache, never fail the page.
   res.set("Cache-Control", "no-store");
@@ -32,7 +39,11 @@ const getGeoWelcome = async (req, res) => {
 
 const uploadImage = async (req, res) =>
   res.json({
-    data: await service.uploadBrandingImage({ file: req.file, user: req.user }),
+    data: await service.uploadBrandingImage({
+      file: req.file,
+      user: req.user,
+      purpose: req.body?.purpose,
+    }),
   });
 
 module.exports = {
@@ -40,6 +51,7 @@ module.exports = {
   updateSettings,
   listFonts,
   getPublicBranding,
+  getWebManifest,
   getGeoWelcome,
   uploadImage,
 };

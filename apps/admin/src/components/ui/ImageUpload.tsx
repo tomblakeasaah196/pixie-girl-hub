@@ -1,13 +1,22 @@
 import { useRef, useState } from "react";
 import { ImageUp, Link2, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { uploadBrandingImage } from "@/lib/branding";
+import {
+  uploadBrandingImage,
+  uploadBrandingLogo,
+  type LogoUploadResult,
+} from "@/lib/branding";
 
 /**
  * Dual image field: upload a file (→ /media/branding/…) OR paste a URL.
  * Used for platform logos/favicon, the login background, and per-business
  * logos. Shows a live preview and keeps the existing URL-paste workflow so
  * externally hosted assets still work.
+ *
+ * Set `generateIcons` for master-logo fields: the upload then runs the
+ * backend icon pipeline (transparent background + favicon/PWA set). The
+ * derived assets are handed back via `onIcons` and any transparency caveat
+ * is surfaced inline.
  */
 export function ImageUpload({
   label,
@@ -15,23 +24,36 @@ export function ImageUpload({
   onChange,
   hint,
   aspect = "video",
+  generateIcons = false,
+  onIcons,
 }: {
   label: string;
   value: string | null;
   onChange: (url: string | null) => void;
   hint?: string;
   aspect?: "video" | "square";
+  generateIcons?: boolean;
+  onIcons?: (result: LogoUploadResult) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   const pick = async (file: File | undefined) => {
     if (!file) return;
     setBusy(true);
     setError(null);
+    setNote(null);
     try {
-      onChange(await uploadBrandingImage(file));
+      if (generateIcons) {
+        const result = await uploadBrandingLogo(file);
+        onChange(result.url);
+        onIcons?.(result);
+        if (result.transparency.warning) setNote(result.transparency.warning);
+      } else {
+        onChange(await uploadBrandingImage(file));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -97,14 +119,14 @@ export function ImageUpload({
               className="w-full bg-text-primary/[0.04] hairline border rounded-[9px] pl-8 pr-2 py-1.5 text-[12px] focus:outline-none focus:border-accent/50"
             />
           </div>
-          {(error || hint) && (
+          {(error || note || hint) && (
             <p
               className={cn(
                 "text-[11px]",
-                error ? "text-danger" : "text-text-faint",
+                error ? "text-danger" : note ? "text-warn" : "text-text-faint",
               )}
             >
-              {error ?? hint}
+              {error ?? note ?? hint}
             </p>
           )}
         </div>

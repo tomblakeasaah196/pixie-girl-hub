@@ -290,6 +290,35 @@ export async function uploadBrandingImage(file: File): Promise<string> {
   return url;
 }
 
+// ── Logo upload + icon generation ─────────────────────────
+// Uploads a master logo with purpose=logo; the backend makes the
+// background transparent and generates the favicon.ico + PWA icon set.
+// Returns the cleaned display-logo URL plus the derived favicon and a
+// transparency note the UI surfaces.
+export interface LogoUploadResult {
+  url: string;
+  favicon_url: string;
+  icons: {
+    favicon: string;
+    favicon64: string;
+    icon192: string;
+    icon512: string;
+    maskable512: string;
+    apple: string;
+  };
+  transparency: { hadAlpha: boolean; keyed: boolean; warning: string | null };
+}
+
+export async function uploadBrandingLogo(file: File): Promise<LogoUploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("purpose", "logo");
+  return api.postForm<LogoUploadResult>(
+    "/platform-settings/upload-image",
+    form,
+  );
+}
+
 // ── Local-only helpers ────────────────────────────────────
 const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
 

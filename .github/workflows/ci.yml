@@ -55,9 +55,9 @@ jobs:
         # on the VPS will hold your deploy job open until GitHub kills it
         # at 6h, wasting a deploy slot and leaving PM2 in a partial state.
         with:
-          host: ${{ secrets.PROD_SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           # command_timeout controls how long appleboy waits for the
           # remote script to finish before it disconnects. Match this
           # to the job-level timeout above.

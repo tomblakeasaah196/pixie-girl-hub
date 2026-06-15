@@ -70,6 +70,7 @@ const retailPartnersRouter = require("../modules/retail_partners/partners.routes
 const cashRequestRouter = require("../modules/cash_request/cash-request.routes");
 const auditRouter = require("../shared/audit/audit.routes");
 const accessRouter = require("../shared/access/access.routes");
+const iamRouter = require("../shared/iam/iam.routes");
 const notificationsRouter = require("../shared/notifications/notifications.routes");
 
 const {
@@ -218,6 +219,7 @@ function mountRoutes(app) {
   api.use("/cash-request", cashRequestRouter);
   api.use("/audit", auditRouter);
   api.use("/access", accessRouter);
+  api.use("/iam", iamRouter);
   api.use("/notifications", notificationsRouter);
   api.use("/cart", cartRouter);
   api.use("/wishlist", wishlistRouter);

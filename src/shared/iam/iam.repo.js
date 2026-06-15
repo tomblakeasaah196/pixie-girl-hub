@@ -24,7 +24,7 @@ async function getSecurityStats(business) {
   const failedLoginsQ = query(
     `SELECT COUNT(*)::int AS count
        FROM shared.audit_log
-      WHERE action_key = 'login'
+      WHERE action = 'login'
         AND metadata->>'success' = 'false'
         AND occurred_at >= now() - interval '24 hours'
         AND business = $1`,
@@ -34,9 +34,13 @@ async function getSecurityStats(business) {
   // Inactive accounts (last login > 90 days or never logged in)
   const inactiveQ = query(
     `SELECT COUNT(*)::int AS count
-       FROM shared.users
-      WHERE status = 'active'
-        AND (last_login_at IS NULL OR last_login_at < now() - interval '90 days')`,
+       FROM shared.users u
+      WHERE u.status = 'active'
+        AND NOT EXISTS (
+          SELECT 1 FROM shared.audit_log a
+           WHERE a.user_id = u.user_id AND a.action = 'login'
+             AND a.occurred_at >= now() - interval '90 days'
+        )`,
   );
 
   // Locked accounts
@@ -64,10 +68,10 @@ async function getSecurityStats(business) {
   // Recent security events (last 20)
   const recentEventsQ = query(
     `SELECT log_id, occurred_at, user_id, user_name, user_email,
-            action_key, target_type, target_id, metadata, ip_address
+            action, table_name, record_id, metadata, ip_address
        FROM shared.audit_log
       WHERE business = $1
-        AND action_key IN (
+        AND action IN (
           'login','logout','permission_change','password_change',
           'secret_rotation','provision_login','deactivate_login',
           'invite_sent','account_created','admin_reset_password',
@@ -148,7 +152,9 @@ async function listUsers({ business, search, status, page = 1, limit = 25 }) {
             COALESCE(u.display_name, c.display_name) AS display_name,
             u.profile_type, u.external_label, u.status,
             COALESCE(u.totp_enabled, false) AS totp_enabled,
-            u.last_login_at, u.failed_login_count, u.is_ceo,
+            (SELECT max(a.occurred_at) FROM shared.audit_log a
+              WHERE a.user_id = u.user_id AND a.action = 'login') AS last_login_at,
+            u.failed_login_count, u.is_ceo,
             u.permitted_businesses, u.default_business_key,
             sp.profile_id,
             r.role_name,
@@ -180,7 +186,9 @@ async function getUserDetail(userId) {
             u.profile_type, u.external_label, u.status,
             COALESCE(u.totp_enabled, false) AS totp_enabled,
             u.totp_verified_at,
-            u.last_login_at, u.failed_login_count, u.is_ceo,
+            (SELECT max(a.occurred_at) FROM shared.audit_log a
+              WHERE a.user_id = u.user_id AND a.action = 'login') AS last_login_at,
+            u.failed_login_count, u.is_ceo,
             u.permitted_businesses, u.default_business_key,
             u.force_password_reset, u.created_at,
             sp.profile_id, sp.employee_number, sp.job_title,
@@ -664,7 +672,7 @@ async function queryAuditLog({
     i++;
   }
   if (action) {
-    where.push(`a.action_key = $${i}`);
+    where.push(`a.action = $${i}`);
     params.push(action);
     i++;
   }
@@ -690,7 +698,7 @@ async function queryAuditLog({
   }
   if (search) {
     where.push(
-      `(a.user_name ILIKE $${i} OR a.user_email ILIKE $${i} OR a.action_key ILIKE $${i})`,
+      `(a.user_name ILIKE $${i} OR a.user_email ILIKE $${i} OR a.action ILIKE $${i})`,
     );
     params.push(`%${search}%`);
     i++;
@@ -706,8 +714,8 @@ async function queryAuditLog({
   const offset = (page - 1) * limit;
   const dataQ = query(
     `SELECT a.log_id, a.occurred_at, a.user_id, a.user_name, a.user_email,
-            a.user_class, a.business, a.module, a.action_key,
-            a.target_type, a.target_id,
+            a.user_class, a.business, a.module, a.action,
+            a.table_name, a.record_id,
             a.ip_address, a.session_id, a.is_sensitive, a.metadata
        FROM shared.audit_log a
        ${w}
@@ -735,10 +743,10 @@ async function getAuditEntry(logId) {
 
 async function getRecordTrail(tableName, recordId) {
   const { rows } = await query(
-    `SELECT log_id, occurred_at, user_id, user_name, action_key,
+    `SELECT log_id, occurred_at, user_id, user_name, action,
             before_state, after_state, metadata
        FROM shared.audit_log
-      WHERE target_type = $1 AND target_id = $2
+      WHERE table_name = $1 AND record_id = $2
       ORDER BY occurred_at ASC`,
     [tableName, recordId],
   );
@@ -765,7 +773,7 @@ async function exportAuditLog({
     i++;
   }
   if (action) {
-    where.push(`a.action_key = $${i}`);
+    where.push(`a.action = $${i}`);
     params.push(action);
     i++;
   }
@@ -791,7 +799,7 @@ async function exportAuditLog({
   }
   if (search) {
     where.push(
-      `(a.user_name ILIKE $${i} OR a.user_email ILIKE $${i} OR a.action_key ILIKE $${i})`,
+      `(a.user_name ILIKE $${i} OR a.user_email ILIKE $${i} OR a.action ILIKE $${i})`,
     );
     params.push(`%${search}%`);
     i++;
@@ -800,8 +808,8 @@ async function exportAuditLog({
   const w = `WHERE ${where.join(" AND ")}`;
   const { rows } = await query(
     `SELECT a.log_id, a.occurred_at, a.user_id, a.user_name, a.user_email,
-            a.user_class, a.business, a.module, a.action_key,
-            a.target_type, a.target_id,
+            a.user_class, a.business, a.module, a.action,
+            a.table_name, a.record_id,
             a.before_state, a.after_state,
             a.ip_address, a.user_agent, a.session_id,
             a.is_sensitive, a.metadata

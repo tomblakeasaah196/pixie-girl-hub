@@ -93,6 +93,9 @@ router.put(
   vaultV.validateCostSet,
   vault.setCost,
 );
+// Self access check — any catalogue user; returns only a boolean so the UI
+// can decide whether to render the cost section (no data leak).
+router.get("/cost-vault/access", can("view"), vault.myAccess);
 // Vault access grants — OWNER ONLY (enforced in the service via is_ceo).
 router.get("/cost-vault/grants", can("view"), vault.listGrants);
 router.post(

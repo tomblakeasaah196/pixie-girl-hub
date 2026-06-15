@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, ExternalLink, Moon, Quote, Sun } from "lucide-react";
-import { useBranding, useLoginConfig } from "@/lib/branding";
+import { useBranding, useLoginConfig, readableAccent } from "@/lib/branding";
 import { getGeoWelcome } from "@/lib/auth-api";
 import { loginIcon } from "@/lib/login-icons";
 import { useUiStore } from "@/stores/ui";
@@ -193,15 +193,18 @@ export function LoginPage() {
             style={{ animationDelay: "240ms" }}
           >
             {businesses.map((b) => {
-              const accent = b.accent_colour || "#690909";
+              const raw = b.accent_colour || "#690909";
+              // Keep the brand hue but guarantee it's legible on the
+              // current backdrop (a deep navy/maroon is invisible on black).
+              const accent = readableAccent(raw, theme === "dark");
               return (
                 <span
                   key={b.business_key}
                   className="inline-flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full border text-[12px] font-semibold uppercase tracking-wide"
                   style={{
                     color: accent,
-                    borderColor: `${accent}55`,
-                    backgroundColor: `${accent}14`,
+                    borderColor: `${accent}66`,
+                    backgroundColor: `${accent}1f`,
                   }}
                 >
                   {b.logo_path ? (

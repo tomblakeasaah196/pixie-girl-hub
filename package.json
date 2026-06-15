@@ -28,6 +28,7 @@
     "db:migrate:shared": "node scripts/migrate-shared.js",
     "db:bootstrap:pixiegirl": "node scripts/bootstrap-business.js pixiegirl",
     "db:bootstrap:faitlynhair": "node scripts/bootstrap-business.js faitlynhair",
+    "db:repair": "node scripts/repair-business-schema.js --all",
     "db:seed": "node scripts/seed.js",
     "user:create-admin": "node scripts/create-admin.js",
     "db:verify": "node scripts/verify-schema.js",

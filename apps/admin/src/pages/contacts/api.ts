@@ -159,6 +159,7 @@ export const addActivity = (
     outcome?: string;
     performed_at?: string;
     duration_minutes?: number;
+    scheduled_at?: string;
   },
 ) => api.post<CrmActivity>(`${CRM}/deals/${dealId}/activities`, input);
 

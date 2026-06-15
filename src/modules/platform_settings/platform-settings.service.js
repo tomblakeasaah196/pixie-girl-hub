@@ -10,6 +10,7 @@
 "use strict";
 
 const crypto = require("crypto");
+const sharp = require("sharp");
 const repo = require("./platform-settings.repo");
 const storage = require("../../services/storage.service");
 const iconPipeline = require("../../services/icon-pipeline.service");
@@ -244,6 +245,33 @@ async function getGeoWelcome({ ip, override } = {}) {
  * `favicon_url`, `icons`, and `transparency` so the UI can auto-fill the
  * favicon field and warn the admin.
  */
+// Max dimension for branding images (keeps retina quality, trims excess).
+const MAX_DIM = 2048;
+const WEBP_QUALITY = 85;
+
+async function compressBrandingImage(buffer, mimetype) {
+  const img = sharp(buffer);
+  const meta = await img.metadata();
+  const needsResize =
+    (meta.width && meta.width > MAX_DIM) ||
+    (meta.height && meta.height > MAX_DIM);
+  const pipeline = needsResize
+    ? img.resize(MAX_DIM, MAX_DIM, { fit: "inside", withoutEnlargement: true })
+    : img;
+
+  // GIFs may be animated — keep them as-is (sharp can't compress animated GIFs
+  // without losing frames), just resize if oversized.
+  if (mimetype === "image/gif") {
+    return { buffer: await pipeline.toBuffer(), ext: "gif", mime: "image/gif" };
+  }
+  // Everything else → high-quality WEBP (typically 60-80% smaller than PNG,
+  // 30-50% smaller than JPEG at equivalent perceptual quality).
+  const out = await pipeline
+    .webp({ quality: WEBP_QUALITY, effort: 4 })
+    .toBuffer();
+  return { buffer: out, ext: "webp", mime: "image/webp" };
+}
+
 async function uploadBrandingImage({ file, user, purpose }) {
   if (!file || !file.buffer)
     throw new AppError("NO_FILE", "An image file is required", 422);
@@ -257,10 +285,11 @@ async function uploadBrandingImage({ file, user, purpose }) {
 
   if (purpose === "logo") return uploadBrandingLogo({ file, user });
 
-  const key = `branding/${crypto.randomBytes(16).toString("hex")}.${ext}`;
-  const stored = await storage.put(file.buffer, {
+  const compressed = await compressBrandingImage(file.buffer, file.mimetype);
+  const key = `branding/${crypto.randomBytes(16).toString("hex")}.${compressed.ext}`;
+  const stored = await storage.put(compressed.buffer, {
     key,
-    contentType: file.mimetype,
+    contentType: compressed.mime,
   });
   await audit({
     business: "*",

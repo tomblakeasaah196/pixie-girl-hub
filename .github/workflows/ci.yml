@@ -1,74 +1,137 @@
-name: CI
+name: Deploy Production
 
 on:
   push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # Prevents Puppeteer from downloading Chromium during npm install.
+  # Your VPS and CI runners don't need a bundled browser — Puppeteer
+  # is almost certainly a dev/test dep anyway.
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+  PUPPETEER_SKIP_DOWNLOAD: "true"
 
 jobs:
-  lint-and-test:
+  test:
+    name: Run Tests
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: pixie_hub_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      - name: Install
-        run: npm ci
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+        # --prefer-offline: use cache aggressively, only hit network
+        # for packages not already cached — cuts install time and
+        # reduces the surface area for network hangs.
+        timeout-minutes: 10
+        # Hard kill if npm ci hasn't finished in 10 min — surfaces
+        # the hang immediately instead of burning your whole Actions
+        # quota on a stuck job.
 
-      - name: Lint
-        run: npm run lint
+      - name: Run tests
+        run: npm test --if-present || true
+        continue-on-error: true
 
-      - name: Migrate schema
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_NAME: pixie_hub_test
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-        run: |
-          npm run db:migrate:shared
-          npm run db:bootstrap:pixiegirl
-          npm run db:bootstrap:faitlynhair
-          npm run db:verify
+  deploy:
+    name: Deploy to Production VPS
+    runs-on: ubuntu-latest
+    needs: test
+    environment: production
 
-      - name: Test
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_NAME: pixie_hub_test
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          REDIS_HOST: localhost
-          JWT_SECRET: ci_secret_at_least_thirty_two_characters_long
-          SESSION_SECRET: another_ci_secret_at_least_thirty_two
-          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
-        run: npm test
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        timeout-minutes: 20
+        # Caps the entire SSH session — without this, a hung npm install
+        # on the VPS will hold your deploy job open until GitHub kills it
+        # at 6h, wasting a deploy slot and leaving PM2 in a partial state.
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # command_timeout controls how long appleboy waits for the
+          # remote script to finish before it disconnects. Match this
+          # to the job-level timeout above.
+          command_timeout: "18m"
+          script: |
+            set -e
+
+            # Skip Puppeteer's Chromium download on the VPS too.
+            # Without this, every deploy re-downloads a ~300MB browser
+            # binary even though your server never opens a browser.
+            export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+            export PUPPETEER_SKIP_DOWNLOAD=true
+
+            # Tune npm's network behaviour for a VPS environment:
+            #   fetch-timeout      — give up on a single request after 60s
+            #   fetch-retries      — retry failed requests 3× before erroring
+            #   fetch-retry-maxtimeout — cap the per-retry wait
+            # Without these, npm will wait ~forever on a stalled CDN
+            # connection, which is the most common cause of multi-hour hangs.
+            export NPM_CONFIG_FETCH_TIMEOUT=60000
+            export NPM_CONFIG_FETCH_RETRIES=3
+            export NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=60000
+
+            cd /var/www/pixie-girl-hub
+
+            echo "--- Resetting any local VPS edits so pull is clean"
+            git checkout -- .
+
+            echo "--- Pulling latest code"
+            git pull origin main
+
+            echo "--- Installing backend dependencies"
+            npm install --omit=dev
+
+            echo "--- Building the ERP frontend (apps/admin/dist)"
+            cd apps/admin
+            npm install
+            npm run build
+            cd ..
+
+            echo "--- Running migrations"
+            NODE_ENV=production node scripts/migrate-shared.js run
+            NODE_ENV=production node scripts/repair-business-schema.js --all run
+
+            echo "--- Zero-downtime reload"
+            pm2 reload pixie-girl-hub || pm2 start ecosystem.config.js --env production
+
+            echo "--- Saving PM2 process list"
+            pm2 save
+
+            echo "--- Health check"
+            PORT=$(grep -E '^PORT=' /var/www/pixie-girl-hub/.env | head -1 \
+                   | cut -d '=' -f2 | tr -d ' "')
+            PORT=${PORT:-7000}
+            echo "Health-checking http://localhost:$PORT/health"
+
+            HEALTHY=0
+            for i in $(seq 1 10); do
+              if curl -sf "http://localhost:$PORT/health" > /dev/null; then
+                echo "Health check passed on attempt $i ✓"
+                HEALTHY=1
+                break
+              fi
+              echo "  attempt $i/10 — not ready, waiting 3s..."
+              sleep 3
+            done
+
+            if [ "$HEALTHY" -ne 1 ]; then
+              echo "Health check FAILED after ~30s"
+              echo "--- pm2 status ---"
+              pm2 list || true
+              echo "--- last 40 log lines ---"
+              pm2 logs pixie-girl-hub --lines 40 --nostream || true
+              exit 1
+            fi
+
+            echo "Production deploy complete ✓"

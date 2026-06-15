@@ -97,7 +97,9 @@ async function repairBusiness(business) {
         await client.query(`SAVEPOINT repair_${applied}`);
         await client.query(sql);
         await client.query(`RELEASE SAVEPOINT repair_${applied}`);
-        console.log(`  APPLY ${file}${sentinel ? ` (created ${sentinel}…)` : ""}`);
+        console.log(
+          `  APPLY ${file}${sentinel ? ` (created ${sentinel}…)` : ""}`,
+        );
         applied++;
       } catch (err) {
         await client.query(`ROLLBACK TO SAVEPOINT repair_${applied}`);
@@ -118,7 +120,9 @@ async function repairBusiness(business) {
 async function main() {
   const args = process.argv.slice(2);
   if (args.length === 0) {
-    console.error("Usage: node scripts/repair-business-schema.js <business_key> [...]");
+    console.error(
+      "Usage: node scripts/repair-business-schema.js <business_key> [...]",
+    );
     console.error("       node scripts/repair-business-schema.js --all");
     process.exit(1);
   }
@@ -126,7 +130,9 @@ async function main() {
   let businesses;
   if (args.includes("--all")) {
     businesses = await getExistingBrands();
-    console.log(`Repairing all ${businesses.length} brands: ${businesses.join(", ")}`);
+    console.log(
+      `Repairing all ${businesses.length} brands: ${businesses.join(", ")}`,
+    );
   } else {
     businesses = args.filter((a) => !a.startsWith("--"));
   }

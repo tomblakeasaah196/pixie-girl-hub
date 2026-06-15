@@ -148,7 +148,12 @@ async function getWebManifest() {
     rgbToHex(p?.theme?.dark?.bg) ?? rgbToHex(p?.theme?.light?.bg) ?? "#0f0809";
 
   const icons = [
-    { src: "/favicon.svg", type: "image/svg+xml", sizes: "any", purpose: "any" },
+    {
+      src: "/favicon.svg",
+      type: "image/svg+xml",
+      sizes: "any",
+      purpose: "any",
+    },
   ];
   const favicon = p?.favicon_url || null;
   // Derive the generated PNG siblings when the favicon came from the pipeline.
@@ -156,9 +161,24 @@ async function getWebManifest() {
   if (m) {
     const base = m[1];
     icons.push(
-      { src: `${base}/icon-192.png`, type: "image/png", sizes: "192x192", purpose: "any" },
-      { src: `${base}/icon-512.png`, type: "image/png", sizes: "512x512", purpose: "any" },
-      { src: `${base}/maskable-512.png`, type: "image/png", sizes: "512x512", purpose: "maskable" },
+      {
+        src: `${base}/icon-192.png`,
+        type: "image/png",
+        sizes: "192x192",
+        purpose: "any",
+      },
+      {
+        src: `${base}/icon-512.png`,
+        type: "image/png",
+        sizes: "512x512",
+        purpose: "any",
+      },
+      {
+        src: `${base}/maskable-512.png`,
+        type: "image/png",
+        sizes: "512x512",
+        purpose: "maskable",
+      },
     );
   }
 
@@ -166,7 +186,8 @@ async function getWebManifest() {
     name,
     short_name: name.length > 12 ? name.split(" ")[0] : name,
     description:
-      p?.tagline || "One command center for Pixie Girl Global and Faitlyn Hair.",
+      p?.tagline ||
+      "One command center for Pixie Girl Global and Faitlyn Hair.",
     id: "/",
     start_url: "/",
     scope: "/",
@@ -310,7 +331,9 @@ async function uploadBrandingImage({ file, user, purpose }) {
 async function uploadBrandingLogo({ file, user }) {
   let set;
   try {
-    set = await iconPipeline.generateIconSet(file.buffer, { allowKeyOut: true });
+    set = await iconPipeline.generateIconSet(file.buffer, {
+      allowKeyOut: true,
+    });
   } catch (err) {
     logger.error({ err }, "icon pipeline failed");
     throw new AppError(

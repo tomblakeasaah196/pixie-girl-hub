@@ -14,7 +14,7 @@
  *   shared.permissions(role_id, module, action, record_scope, allowed)
  *     where:
  *       module       = 'sales' (matches shared.permission_module_keys)
- *       action       = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export'
+ *       action       = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'publish'
  *       record_scope = 'all' | 'own' | 'team'
  *
  * The scope ('own' / 'team') is enforced inside the repository layer,
@@ -36,6 +36,9 @@ const VALID_ACTIONS = new Set([
   "delete",
   "approve",
   "export",
+  // 'publish' (P0-6 styled workflow): promote a Styled product DRAFT → LIVE.
+  // Granted to owner/admin/manager in 000103_shared_catalogue_permissions.
+  "publish",
 ]);
 
 function requirePermission(moduleKey, action) {

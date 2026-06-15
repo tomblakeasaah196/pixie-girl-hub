@@ -12,6 +12,8 @@ const c = require("./catalogue.controller");
 const v = require("./catalogue.validator");
 const vault = require("./cost_vault.controller");
 const vaultV = require("./cost_vault.validator");
+const styled = require("./styled.controller");
+const styledV = require("./styled.validator");
 const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
 
@@ -105,6 +107,32 @@ router.delete(
   vaultV.validateGrantRevoke,
   vault.revokeAccess,
 );
+
+// ── Styled products (P0-6) — storefront skins over a base ─
+router.get("/styled-products", can("view"), styled.list);
+router.post(
+  "/styled-products",
+  can("create"),
+  styledV.validateStyledCreate,
+  styled.create,
+);
+router.get("/styled-products/:id", can("view"), styled.getOne);
+router.patch(
+  "/styled-products/:id",
+  can("edit"),
+  styledV.validateStyledUpdate,
+  styled.update,
+);
+// Promote draft → live, and the reverse — both gated by catalogue.publish
+// (the "Ops can publish" rule; Sales/Marketing edit drafts but can't publish).
+router.post("/styled-products/:id/publish", can("publish"), styled.publish);
+router.post(
+  "/styled-products/:id/unpublish",
+  can("publish"),
+  styledV.validateUnpublish,
+  styled.unpublish,
+);
+router.delete("/styled-products/:id", can("delete"), styled.remove);
 
 // Collections (+ rules + members)
 router.get("/collections", can("view"), c.listCollections);

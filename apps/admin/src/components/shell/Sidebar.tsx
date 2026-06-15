@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronDown, ChevronUp, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useUiStore } from "@/stores/ui";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
+import { useBranding } from "@/lib/branding";
 import { MODULE_BY_KEY, GROUP_ORDER, GROUP_LABELS, type ModuleGroup } from "@/lib/modules";
 import { useNavStore, moreKeys } from "@/stores/nav";
 import { BusinessSwitcher } from "./BusinessSwitcher";
@@ -18,6 +19,14 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUiStore();
   const isDesktop = useIsDesktop();
   const collapsed = isDesktop && sidebarCollapsed;
+  const { data: branding } = useBranding();
+  const platform = branding?.platform;
+  const productName = platform?.product_name ?? "Pixie Girl Hub";
+  const tagline = platform?.tagline ?? "Group ERP";
+  const logoUrl = platform?.logo_dark_url;
+  const words = productName.split(" ");
+  const tail = words.length > 1 ? words.pop()! : "";
+  const head = words.join(" ");
   const location = useLocation();
   const top = useNavStore((s) => s.top);
   const more = moreKeys(top);
@@ -78,11 +87,17 @@ export function Sidebar() {
       >
         {/* brand */}
         <Link to="/" className="flex items-center gap-3 p-[18px] border-b hairline shrink-0 group">
-          <span className="w-10 h-10 rounded-full grid place-items-center font-display text-[19px] text-accent-glow border border-accent/45 bg-accent/[0.08] group-hover:shadow-glow transition-shadow shrink-0">P</span>
+          {logoUrl ? (
+            <img src={logoUrl} alt={productName} className="w-10 h-10 rounded-full object-cover shrink-0" />
+          ) : (
+            <span className="w-10 h-10 rounded-full grid place-items-center font-display text-[19px] text-accent-glow border border-accent/45 bg-accent/[0.08] group-hover:shadow-glow transition-shadow shrink-0">
+              {productName.charAt(0)}
+            </span>
+          )}
           {!collapsed && (
             <span className="font-display text-[19px] tracking-wide leading-tight">
-              Pixie Girl <span className="text-accent-glow">Hub</span>
-              <span className="block font-body text-[8.5px] tracking-[0.22em] uppercase text-text-faint font-semibold mt-0.5">Group ERP</span>
+              {head}{tail && <> <span className="text-accent-glow">{tail}</span></>}
+              {tagline && <span className="block font-body text-[8.5px] tracking-[0.22em] uppercase text-text-faint font-semibold mt-0.5">{tagline}</span>}
             </span>
           )}
           {!isDesktop && (

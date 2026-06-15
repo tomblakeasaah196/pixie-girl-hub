@@ -11,6 +11,39 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-15 — Products: Base/Styled, Cost Vault, pre-order, AI drafting
+
+**Source:** V2.2 §6.4/§6.24 audit gaps P0-6 (3-tier Base→Styled catalogue),
+P0-7 (pre-order / production timeline), P0-1 (cost field-privacy), plus the
+owner's "only Faith sees true cost & supplier" requirement.
+
+**Phase 1 — data model (this entry):**
+
+- **P0-6** `template/000016` — **NEW `styled_products`** table: a
+  storefront-facing "Styled" skin over exactly one base product (`products`,
+  which stays the only stock-bearing record). Many styled per base; no stock
+  of its own; final price = base + `style_addon_price_ngn`; lifecycle
+  `draft→live→archived` with AI-draft provenance columns. Added nullable
+  `product_images.styled_id` so a styled skin can carry its own gallery.
+- **P0-1** `template/000016` — **NEW `product_variant_cost_vault`**: true
+  landed cost + supplier identity, AES-256-GCM encrypted at the app layer
+  (`encryption.service`). `products.cost_price_ngn`/`min_price_ngn` are now
+  DEPRECATED (left NULL; redacted regardless). `template/000038` — vault
+  added to the `hub_basic` sensitive-table exclusion list.
+- **P0-1** `000117_shared_cost_vault_grants.sql` (**NEW**) — owner-controlled
+  per-USER vault access list, modelled on `ai_access_grants`. Visibility is
+  nobody-by-default except the owner (is_ceo); only the owner writes it.
+- **P0-7** `template/000016` — `products` gains `preorder_enabled`,
+  `expected_ready_date`, `production_lead_days` for the production-framed
+  out-of-stock fallback ("In production · ready ~{date}").
+- `000015` — seeded AI feature flag `products_ai_drafting` (draft-only).
+- `000103` — catalogue `publish` action (owner/admin/manager) for the
+  styled draft→live workflow.
+
+Existing dev brand schemas (pixiegirl, faitlynhair) must be re-bootstrapped
+(`npm run db:reset` then bootstrap) to pick up the new per-brand tables;
+`000117` applies to the shared schema via `db:migrate:shared`.
+
 ## 2026-06-04 — V2.2 conformance pass
 
 **Source:** `Final_PixieGirl_Hub_Product_Description_v2_2__3_.html`

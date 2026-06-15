@@ -146,6 +146,22 @@ const createTaxRate = async (req, res) =>
   res.status(201).json({
     data: await service.createTaxRate({ ...base(req), input: req.body }),
   });
+const updateTaxRate = async (req, res) =>
+  res.json({
+    data: await service.updateTaxRate({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+const listEffectiveTaxes = async (req, res) =>
+  res.json({
+    data: await service.listEffectiveTaxes({
+      brand: req.brand,
+      tax_type: req.query.tax_type,
+      module: req.query.module,
+    }),
+  });
 const supersedeTaxRate = async (req, res) =>
   res.json({
     data: await service.supersedeTaxRate({
@@ -245,6 +261,8 @@ module.exports = {
   updateBankAccount,
   listTaxRates,
   createTaxRate,
+  updateTaxRate,
+  listEffectiveTaxes,
   supersedeTaxRate,
   listNumbering,
   updateNumbering,

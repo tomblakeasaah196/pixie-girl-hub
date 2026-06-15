@@ -108,6 +108,17 @@ const taxCreate = z
     is_active: z.boolean().optional(),
     effective_from: z.string().date(),
     effective_to: z.string().date().optional(),
+    excluded_modules: z.array(z.string().min(1).max(40)).optional(),
+  })
+  .strict();
+// Toggle active / set the module-exclusion set / nudge the rate.
+const taxUpdate = z
+  .object({
+    is_active: z.boolean().optional(),
+    rate: taxRate.optional(),
+    applies_to: z.string().min(1).max(40).optional(),
+    tax_name: z.string().min(1).max(60).optional(),
+    excluded_modules: z.array(z.string().min(1).max(40)).optional(),
   })
   .strict();
 const taxSupersede = z.object({ effective_to: z.string().date() }).strict();
@@ -219,6 +230,7 @@ module.exports = {
   validateBankCreate: mw(bankCreate),
   validateBankUpdate: mw(bankUpdate),
   validateTaxCreate: mw(taxCreate),
+  validateTaxUpdate: mw(taxUpdate),
   validateTaxSupersede: mw(taxSupersede),
   validateNumberingUpdate: mw(numberingUpdate),
   validateCustomFieldCreate: mw(customFieldCreate),

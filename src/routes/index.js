@@ -49,6 +49,7 @@ const tasksRouter = require("../shared/tasks/tasks.routes");
 const dashboardsRouter = require("../modules/dashboards/dashboards.routes");
 const businessSetupRouter = require("../modules/business_setup/business-setup.routes");
 const platformSettingsRouter = require("../modules/platform_settings/platform-settings.routes");
+const settingsRouter = require("../modules/settings/settings.routes");
 const brandingPublicRouter = require("../modules/platform_settings/branding.public.routes");
 const geoPublicRouter = require("../modules/platform_settings/geo.public.routes");
 const manifestPublicRouter = require("../modules/platform_settings/manifest.public.routes");
@@ -199,6 +200,7 @@ function mountRoutes(app) {
   api.use("/tasks", tasksRouter);
   api.use("/dashboards", dashboardsRouter);
   api.use("/business-setup", businessSetupRouter);
+  api.use("/settings", settingsRouter);
   api.use("/platform-settings", platformSettingsRouter);
   api.use("/sales-campaigns", salesCampaignsRouter);
   api.use("/retention", retentionRouter);

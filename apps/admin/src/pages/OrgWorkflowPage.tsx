@@ -15,7 +15,6 @@ import {
   ToggleLeft,
   ToggleRight,
   AlertTriangle,
-  Users2,
   RefreshCw,
   CheckCircle2,
   XCircle,
@@ -456,7 +455,7 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
               <div className="glass rounded-[var(--radius)] shadow-glass p-4 mb-4 min-h-[220px]">
                 {posLoading
                   ? <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[90px] rounded-xl" />)}</div>
-                  : <OrgGraph positions={unitPositions} allPositions={allPositions} onSelectPosition={(p) => setSelectedPositionId(p.position_id)} selectedId={selectedPositionId} />
+                  : <OrgGraph positions={unitPositions} onSelectPosition={(p) => setSelectedPositionId(p.position_id)} selectedId={selectedPositionId} />
                 }
               </div>
 
@@ -1559,7 +1558,7 @@ function ApprovalDrawer({
           detail: inst.requires_ceo ? "Requires CEO" : inst.stage_timeout_at ? `Deadline: ${new Date(inst.stage_timeout_at).toLocaleString()}` : "",
         }]
       : [{
-          state: inst.status === "approved" ? "done" : "error" as const,
+          state: "done" as const,
           title: inst.status === "approved" ? "Approved" : inst.status === "rejected" ? "Rejected" : "Cancelled",
           detail: inst.completed_at ? new Date(inst.completed_at).toLocaleString() : "",
         }]),

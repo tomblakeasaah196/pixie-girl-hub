@@ -102,11 +102,20 @@ router.patch(
 
 // ── Tax rates (Tier-1 C; effective-dated) ────────────────
 router.get("/tax-rates", can("view"), controller.listTaxRates);
+// Resolver other modules call: which taxes apply to {module} now.
+router.get("/tax-rates/effective", can("view"), controller.listEffectiveTaxes);
 router.post(
   "/tax-rates",
   can("create"),
   validator.validateTaxCreate,
   controller.createTaxRate,
+);
+// Toggle on/off system-wide + set per-module exclusions, adjust rate.
+router.patch(
+  "/tax-rates/:id",
+  can("edit"),
+  validator.validateTaxUpdate,
+  controller.updateTaxRate,
 );
 router.post(
   "/tax-rates/:id/supersede",

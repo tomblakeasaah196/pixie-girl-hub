@@ -32,6 +32,17 @@ const A = (
     request_id,
   });
 
+// Broadcast a settings change so every open browser invalidates the
+// relevant query and refetches. Non-fatal if sockets aren't up yet
+// (e.g. during seeding / tests).
+function emitSettingsUpdated(payload) {
+  try {
+    require("../../config/socket").getIo().emit("settings:updated", payload);
+  } catch (_) {
+    /* socket not initialised — non-fatal */
+  }
+}
+
 // Mask all but the last 4 digits of a bank account number for API responses.
 function maskAccount(row) {
   if (!row) return row;
@@ -246,6 +257,30 @@ async function createTaxRate({ brand, user, request_id, input }) {
     return row;
   });
 }
+async function updateTaxRate({ brand, user, request_id, id, input }) {
+  return transaction(async (client) => {
+    const existing = await repo.getTaxRate({ client, brand, id });
+    if (!existing) throw new NotFoundError("Tax rate not found");
+    const row = await repo.updateTaxRate({ client, brand, id, patch: input });
+    await A(
+      brand,
+      user?.user_id,
+      "business_setup.tax_rate.update",
+      "tax_rate",
+      id,
+      { fields: Object.keys(input), is_active: row.is_active },
+      request_id,
+    );
+    // Taxes are consumed system-wide; tell open sessions the tax matrix
+    // changed so cached resolvers refetch.
+    emitSettingsUpdated({ tile: "tax-rates", brand });
+    return row;
+  });
+}
+// Read-only resolver other modules call to know which taxes apply.
+async function listEffectiveTaxes({ brand, tax_type, module }) {
+  return repo.listEffectiveTaxes({ client: null, brand, tax_type, module });
+}
 async function supersedeTaxRate({ brand, user, request_id, id, effective_to }) {
   return transaction(async (client) => {
     const existing = await repo.getTaxRate({ client, brand, id });
@@ -407,6 +442,8 @@ module.exports = {
   updateBankAccount,
   listTaxRates,
   createTaxRate,
+  updateTaxRate,
+  listEffectiveTaxes,
   supersedeTaxRate,
   listNumbering,
   updateNumbering,

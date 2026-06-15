@@ -5,7 +5,7 @@ import {
   refreshAccessToken,
   setAccessToken,
 } from "@/lib/api";
-import { logout as apiLogout, type AuthUser } from "@/lib/auth-api";
+import { logout as apiLogout, fetchMyPermissions, type AuthUser } from "@/lib/auth-api";
 
 /**
  * Auth/session (canon §5).
@@ -40,6 +40,8 @@ interface AuthState {
   signOut: () => Promise<void>;
   /** Restore a session on app boot using the refresh cookie. Idempotent. */
   bootstrap: () => Promise<void>;
+  /** Fetch resolved permission grants from /auth/me/permissions and store them. */
+  loadPermissions: () => Promise<void>;
   can: (module: string, action: string) => boolean;
 }
 
@@ -67,10 +69,31 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       status: "unknown",
-      setSession: (u) => set({ user: toUser(u), status: "authed" }),
+      setSession: (u) => {
+        set({ user: toUser(u), status: "authed" });
+        // Fire-and-forget: load real permission grants after login.
+        get().loadPermissions().catch(() => { /* non-fatal */ });
+      },
       signOut: async () => {
         await apiLogout();
         set({ user: null, status: "anon" });
+      },
+      loadPermissions: async () => {
+        const user = get().user;
+        if (!user) return;
+        // CEO already has ["*"] — no need to fetch.
+        if (user.isCeo) return;
+        try {
+          const grants = await fetchMyPermissions();
+          // CEO synthetic grant from backend: [{module:"*",action:"*"}]
+          const isSuperGrant = grants.some((g) => g.module === "*");
+          const permissions = isSuperGrant
+            ? ["*"]
+            : grants.map((g) => `${g.module}:${g.action}`);
+          set({ user: { ...user, permissions } });
+        } catch {
+          // Non-fatal: keep whatever permissions the user already has.
+        }
       },
       bootstrap: async () => {
         if (bootstrapPromise) return bootstrapPromise;
@@ -86,6 +109,8 @@ export const useAuthStore = create<AuthState>()(
             const ok = await refreshAccessToken();
             if (ok) {
               set({ status: "authed" });
+              // Reload permissions after session revival.
+              get().loadPermissions().catch(() => { /* non-fatal */ });
               return;
             }
             setAccessToken(null);

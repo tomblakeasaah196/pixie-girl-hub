@@ -6,6 +6,7 @@ import { SalesPage } from "@/pages/SalesPage";
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
+import { OrgWorkflowPage } from "@/pages/OrgWorkflowPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { SelectEntityPage } from "@/pages/SelectEntityPage";
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
           { path: "sales", element: <SalesPage /> },
           { path: "settings", element: <AppearancePage /> },
           { path: "settings/login", element: <LoginEditorPage /> },
+          { path: "org-workflow", element: <OrgWorkflowPage /> },
           { path: "*", element: <ModulePlaceholder /> },
         ],
       },

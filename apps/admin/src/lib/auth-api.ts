@@ -72,6 +72,16 @@ export async function removePin(): Promise<void> {
   await api.delete("/auth/pin");
 }
 
+// ── Resolved permissions (authed, all roles union) ────────
+export interface PermGrant {
+  module: string;
+  action: string;
+  record_scope: string;
+}
+export async function fetchMyPermissions(): Promise<PermGrant[]> {
+  return api.get<PermGrant[]>("/auth/me/permissions");
+}
+
 // ── Geo welcome (public, per-IP, no cache) ────────────────
 export interface GeoWelcome {
   location: {

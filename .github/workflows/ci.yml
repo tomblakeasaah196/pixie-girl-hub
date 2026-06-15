@@ -96,7 +96,7 @@ jobs:
             cd apps/admin
             npm install
             npm run build
-            cd ..
+            cd ../..
 
             echo "--- Running migrations"
             NODE_ENV=production node scripts/migrate-shared.js run

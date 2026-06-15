@@ -57,9 +57,23 @@ export function LoginPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   // Region welcome (server-side IP lookup → DB region copy + fallback).
+  // Dev-only preview: localhost is loopback, so the greeting is generic.
+  // Add ?geo=EU (continent) or ?ip=8.8.8.8 to the login URL to preview a
+  // region without deploying — forwarded only in dev; the backend ignores
+  // these in production.
+  const geoPreview = useMemo(() => {
+    if (!import.meta.env.DEV) return undefined;
+    const sp = new URLSearchParams(window.location.search);
+    const params: Record<string, string> = {};
+    for (const k of ["geo", "ip", "country"]) {
+      const v = sp.get(k);
+      if (v) params[k] = v;
+    }
+    return Object.keys(params).length ? params : undefined;
+  }, []);
   const geo = useQuery({
-    queryKey: ["geo-welcome"],
-    queryFn: getGeoWelcome,
+    queryKey: ["geo-welcome", geoPreview],
+    queryFn: () => getGeoWelcome(geoPreview),
     enabled: t.geo_welcome !== false,
     staleTime: 10 * 60_000,
     retry: false,

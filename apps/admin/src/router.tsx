@@ -7,6 +7,8 @@ import { SalesPage } from "@/pages/SalesPage";
 import { ContactsPage } from "@/pages/contacts/ContactsPage";
 import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
 import { ContactTagsPage } from "@/pages/ContactTagsPage";
+import { CrmPage } from "@/pages/crm/CrmPage";
+import { DealDetailPage } from "@/pages/crm/deals/DealDetailPage";
 import { CataloguePage } from "@/pages/catalogue/CataloguePage";
 import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
 import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
@@ -74,7 +76,8 @@ export const router = createBrowserRouter(
             { path: "sales", element: <SalesPage /> },
             { path: "contacts", element: <ContactsPage /> },
             { path: "contacts/milestones", element: <MilestonesPage /> },
-            { path: "crm", element: <ContactsPage /> },
+            { path: "crm", element: <CrmPage /> },
+            { path: "crm/deals/:id", element: <DealDetailPage /> },
             { path: "expenses", element: <Suspense fallback={null}><CashExpensesHome defaultTab="expenses" /></Suspense> },
             { path: "cash-requests", element: <Suspense fallback={null}><CashExpensesHome defaultTab="my-requests" /></Suspense> },
 

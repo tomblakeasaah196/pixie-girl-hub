@@ -58,6 +58,10 @@ const PROD_COLS = [
   "payment_model",
   "required_deposit_pct",
   "search_keywords",
+  // Pre-order / production timeline (P0-7).
+  "preorder_enabled",
+  "expected_ready_date",
+  "production_lead_days",
 ];
 const VAR_COLS = [
   "sku",

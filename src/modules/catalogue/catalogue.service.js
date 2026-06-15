@@ -11,6 +11,7 @@ const vault = require("./cost_vault.service");
 const events = require("./catalogue.events");
 const outbox = require("../../shared/outbox/outbox");
 const documents = require("../../shared/documents/documents.service");
+const { compressImage } = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -402,14 +403,24 @@ async function listImages({ brand, id }) {
 async function addImage({ brand, user, request_id, id, file, meta }) {
   const product = await repo.findProductById({ brand, id });
   if (!product) throw new NotFoundError("Product");
+  // Server-side ceiling mirroring the client guard (10 MB) — large/video
+  // assets belong on the media route + FFmpeg queue, not the image path.
+  if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
+    throw new AppError("IMAGE_TOO_LARGE", "Image exceeds the 10 MB limit", 413, {
+      user_message: "Images must be 10 MB or smaller.",
+    });
+  }
+  // Re-encode oversized/heavy images to high-quality, smaller bytes before
+  // they hit storage — keeps galleries crisp without bloating the CDN.
+  const shrunk = await compressImage(file.buffer, file.mimetype);
   return transaction(async (client) => {
     const doc = await documents.store({
       client,
       brand,
       user_id: user.user_id,
-      buffer: file.buffer,
+      buffer: shrunk.buffer,
       filename: file.originalname,
-      mime_type: file.mimetype,
+      mime_type: shrunk.mime_type,
       document_type: "product_image",
       title: meta.alt_text || file.originalname,
       reference_type: "product",

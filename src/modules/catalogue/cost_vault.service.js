@@ -139,6 +139,13 @@ async function setCost({ brand, user, request_id, variant_id, input }) {
   return { variant_id, cost_last_refreshed_at: row.cost_last_refreshed_at };
 }
 
+// ── Self access check (any authed catalogue user) ────────
+// Lets the UI decide whether to render the cost-vault section without
+// leaking anything — returns only a boolean, never cost/supplier data.
+async function myAccess({ brand, user }) {
+  return { can_see: await canSeeCost({ user, brand }) };
+}
+
 // ── Grants (owner-only, audited) ─────────────────────────
 async function listGrants({ brand, user }) {
   requireOwner(user);
@@ -196,6 +203,7 @@ module.exports = {
   canSeeCost,
   redactVariant,
   redactVariants,
+  myAccess,
   getCost,
   setCost,
   listGrants,

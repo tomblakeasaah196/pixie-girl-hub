@@ -144,7 +144,11 @@ DECLARE
   v_table_name TEXT;
   v_sensitive TEXT[] := ARRAY[
     'products','product_variants','grn_lines',
-    'inbound_shipment_lines','payslips','production_runs'
+    'inbound_shipment_lines','payslips','production_runs',
+    -- P0-1 cost vault: encrypted true cost + supplier. Never granted to
+    -- hub_basic at the DB layer, and never exposed by the app to anyone
+    -- without a live shared.cost_vault_grants row (owner is_ceo aside).
+    'product_variant_cost_vault'
   ];
 BEGIN
   FOR v_table_name IN

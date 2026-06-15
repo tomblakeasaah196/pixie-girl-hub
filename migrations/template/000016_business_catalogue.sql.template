@@ -15,8 +15,10 @@
 --   product_collections         — curated or rule-based product groups
 --   product_collection_rules    — auto-population rules
 --   product_collection_members  — explicit membership (curated)
---   products                    — master product (wig-aware fields)
---   product_variants            — SKU-level, channel-priced
+--   products                    — master product = the BASE register (wig-aware)
+--   product_variants            — SKU-level, channel-priced (stock lives here)
+--   styled_products             — storefront "Styled" skins over a base (P0-6)
+--   product_variant_cost_vault  — encrypted true cost + supplier (P0-1)
 --   product_images              — gallery, ordered
 --   product_videos              — YouTube/Reels embed
 --   product_attribute_values    — extensible attributes (per custom_field_defs)
@@ -171,6 +173,20 @@ CREATE TABLE {{BUSINESS}}.products (
   required_deposit_pct  NUMERIC(5,2) CHECK (required_deposit_pct IS NULL OR (required_deposit_pct BETWEEN 0 AND 100)),
   -- Search / filtering helpers
   search_keywords       TEXT[]      NOT NULL DEFAULT '{}',
+  -- ── Pre-order / production timeline (V2.2 §6.4 P0-7) ─────
+  -- When this base's stock hits zero we do NOT block the sale; the
+  -- styled products linked to it fall back to a pre-order state that
+  -- shows a PRODUCTION-framed delivery window. The goods are made in
+  -- our own factory, so customer-facing copy references production
+  -- ("In production · ready ~{date}"), never a generic "ships" date.
+  -- The pre-order state auto-reverts to in-stock on goods receipt.
+  preorder_enabled      BOOLEAN     NOT NULL DEFAULT false,
+  -- The date the next production batch is expected ready (drives the
+  -- committed copy). NULL = no committed date yet → fall back to lead.
+  expected_ready_date   DATE,
+  -- Typical production lead time in days when no explicit date is set;
+  -- the storefront then shows "made to order · ~N days".
+  production_lead_days  SMALLINT    CHECK (production_lead_days IS NULL OR production_lead_days >= 0),
   -- Soft-delete (we never hard-delete products with order history)
   is_deleted            BOOLEAN     NOT NULL DEFAULT false,
   -- Audit
@@ -280,6 +296,109 @@ CREATE INDEX idx_{{BUSINESS}}_variants_reorder
 CREATE INDEX idx_{{BUSINESS}}_variants_channel_external_ids
   ON {{BUSINESS}}.product_variants USING GIN (channel_external_ids jsonb_path_ops);
 
+-- ── styled_products (V2.2 §6.4 P0-6 — the "Styled" layer) ─
+-- A Styled product is a STOREFRONT-FACING marketing skin over exactly
+-- one base product (the row in `products` — the China wholesale item and
+-- the ONLY place stock lives). Many styled names can point at one base.
+-- A styled product carries NO stock of its own: selling it resolves to
+-- the base and draws the base down, so when the base hits zero every
+-- styled name on it goes out-of-stock (or into pre-order) at once.
+-- Final price = base selling price + style_addon_price_ngn (styling is
+-- an add-on). Lifecycle: AI/human DRAFT → LIVE → ARCHIVED; a draft is
+-- storefront-invisible until an Ops user publishes it.
+CREATE TABLE {{BUSINESS}}.styled_products (
+  styled_id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- The base this styling sits on. RESTRICT so a base is never deleted
+  -- out from under a styled row (soft-delete the base instead).
+  base_product_id       UUID        NOT NULL REFERENCES {{BUSINESS}}.products (product_id) ON DELETE RESTRICT,
+  -- Optional: pin the styling to ONE base variant (e.g. only the 18" 1B).
+  -- NULL = applies across all variants of the base.
+  base_variant_id       UUID        REFERENCES {{BUSINESS}}.product_variants (variant_id) ON DELETE SET NULL,
+  styled_code           TEXT        NOT NULL UNIQUE,            -- '{{BUSINESS}}'-STY-{seq}
+  name                  TEXT        NOT NULL,                   -- marketing name
+  slug                  TEXT        NOT NULL UNIQUE,
+  short_description     TEXT,
+  long_description      TEXT,
+  -- Styling add-on on top of the base selling price. NULL/0 = at base.
+  style_addon_price_ngn NUMERIC(14,2) CHECK (style_addon_price_ngn IS NULL OR style_addon_price_ngn >= 0),
+  category_id           UUID        REFERENCES {{BUSINESS}}.product_categories (category_id) ON DELETE SET NULL,
+  -- ── Lifecycle ──────────────────────────────────────────
+  -- is_visible_storefront is the published flag; drafts are invisible
+  -- until published. status mirrors the human workflow.
+  status                TEXT        NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft','live','archived')),
+  is_visible_storefront BOOLEAN     NOT NULL DEFAULT false,
+  visible_on_channels   TEXT[]      NOT NULL DEFAULT '{storefront}',
+  -- ── AI-draft provenance (P0-8: AI may only ever create a DRAFT that
+  -- a human reviews and publishes; it never publishes by itself). These
+  -- are NULL on manually-created rows.
+  ai_drafted            BOOLEAN     NOT NULL DEFAULT false,
+  ai_model              TEXT,
+  ai_confidence         NUMERIC(3,2) CHECK (ai_confidence IS NULL OR (ai_confidence BETWEEN 0 AND 1)),
+  ai_drafted_at         TIMESTAMPTZ,
+  ai_drafted_by         UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  -- SEO
+  meta_title            TEXT,
+  meta_description      TEXT,
+  search_keywords       TEXT[]      NOT NULL DEFAULT '{}',
+  -- Audit / lifecycle
+  is_deleted            BOOLEAN     NOT NULL DEFAULT false,
+  created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  published_by          UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  published_at          TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at            TIMESTAMPTZ
+);
+CREATE TRIGGER trg_{{BUSINESS}}_styled_products_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.styled_products
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX idx_{{BUSINESS}}_styled_base
+  ON {{BUSINESS}}.styled_products (base_product_id) WHERE is_deleted = false;
+CREATE INDEX idx_{{BUSINESS}}_styled_status
+  ON {{BUSINESS}}.styled_products (status) WHERE is_deleted = false;
+CREATE INDEX idx_{{BUSINESS}}_styled_live
+  ON {{BUSINESS}}.styled_products (category_id, published_at DESC)
+  WHERE is_deleted = false AND status = 'live' AND is_visible_storefront = true;
+CREATE INDEX idx_{{BUSINESS}}_styled_name_trgm
+  ON {{BUSINESS}}.styled_products USING GIN (name gin_trgm_ops);
+
+-- ── product_variant_cost_vault (V2.2 §6.24 P0-1 — "Cost Vault") ──
+-- The TRUE landed cost and the supplier identity behind a variant are
+-- the owner's most sensitive numbers. They live HERE, AES-256-GCM
+-- encrypted at the app layer (src/services/encryption.service) — so a
+-- DB dump never reveals cost — and are visible ONLY to the owner
+-- (is_ceo) or a user the owner has explicitly granted via
+-- shared.cost_vault_grants. The API redacts these for everyone else;
+-- they never travel to the browser. The operational WHOLESALE price
+-- (product_variants.price_wholesale_ngn) is a SEPARATE, non-secret
+-- number ops/sales/PO use and is NOT in the vault.
+-- NOTE: product_variants.cost_price_ngn / min_price_ngn are DEPRECATED
+-- in favour of this table and must be left NULL; the redaction layer
+-- strips them regardless so legacy rows can never leak.
+-- supplier_id is a SOFT FK (suppliers is created later, in template
+-- 000024) — reconciled like other cross-module links.
+CREATE TABLE {{BUSINESS}}.product_variant_cost_vault (
+  variant_id            UUID        PRIMARY KEY REFERENCES {{BUSINESS}}.product_variants (variant_id) ON DELETE CASCADE,
+  -- AES-256-GCM ciphertext (base64) of the true NGN cost. Never a
+  -- plaintext numeric.
+  cost_ngn_enc          TEXT,
+  -- AES-256-GCM ciphertext of the native-currency cost as JSON
+  -- {"amount":..,"currency":".."} when bought in USD/CNY etc.
+  cost_native_enc       TEXT,
+  -- The real supplier behind this variant (others see only the
+  -- anonymised suppliers.supplier_code). Soft FK → {{BUSINESS}}.suppliers.
+  supplier_id           UUID,
+  cost_source           TEXT        CHECK (cost_source IN ('manual','production','grn','import')),
+  cost_last_refreshed_at TIMESTAMPTZ,
+  updated_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_cost_vault_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.product_variant_cost_vault
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
 -- ── product_collection_members ───────────────────────────
 -- Explicit membership (mode='manual') and a materialised cache for
 -- mode='rule' collections — the rule engine refreshes this rather
@@ -312,6 +431,9 @@ CREATE TABLE {{BUSINESS}}.product_images (
   -- NULL variant_id = image belongs to the product (main gallery).
   -- Non-NULL = variant-specific (e.g. colour-specific photo).
   variant_id            UUID        REFERENCES {{BUSINESS}}.product_variants (variant_id) ON DELETE CASCADE,
+  -- Non-NULL = this image belongs to a STYLED product's own gallery
+  -- (a styled skin can present different photos than its base).
+  styled_id             UUID        REFERENCES {{BUSINESS}}.styled_products (styled_id) ON DELETE CASCADE,
   -- Storage references
   file_path             TEXT        NOT NULL,                  -- S3 key
   webp_path             TEXT,                                  -- generated WebP key
@@ -334,6 +456,8 @@ CREATE INDEX idx_{{BUSINESS}}_product_images_product
   ON {{BUSINESS}}.product_images (product_id, display_order);
 CREATE INDEX idx_{{BUSINESS}}_product_images_variant
   ON {{BUSINESS}}.product_images (variant_id) WHERE variant_id IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_product_images_styled
+  ON {{BUSINESS}}.product_images (styled_id, display_order) WHERE styled_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_{{BUSINESS}}_product_images_primary
   ON {{BUSINESS}}.product_images (product_id) WHERE is_primary = true;
 
@@ -517,5 +641,6 @@ CREATE INDEX idx_{{BUSINESS}}_content_posts_linked_products
 -- SELECT table_name FROM information_schema.tables
 -- WHERE table_schema = '{{BUSINESS}}'
 -- ORDER BY table_name;
--- Expected (after this file): 11 catalogue tables (10 product_* + 1 content)
+-- Expected (after this file): 13 catalogue tables (10 product_* +
+-- styled_products + product_variant_cost_vault + 1 content)
 -- ============================================================

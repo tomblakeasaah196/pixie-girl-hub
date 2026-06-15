@@ -16,6 +16,7 @@
 "use strict";
 
 const dashboardsRepo = require("../dashboards/dashboards.repo");
+const cashRequestRepo = require("../cash_request/cash-request.repo");
 
 const str = (v) => (typeof v === "string" && v ? v : null);
 
@@ -54,6 +55,41 @@ const QUERIES = [
     module: "dashboards",
     parameters: { type: "object", properties: {} },
     run: ({ brand }) => dashboardsRepo.opsKpis({ brand }),
+  },
+  {
+    key: "cash_requests_pending",
+    title: "Pending cash requests",
+    description:
+      "Cash requests awaiting approval (pending_finance or pending_ceo) for the current brand, ordered by submission date.",
+    module: "expenses",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          description: "Filter by specific status (optional). One of: pending_finance, pending_ceo, approved, disbursed, settled.",
+        },
+      },
+    },
+    run: ({ brand, args }) =>
+      cashRequestRepo.findAll({
+        brand,
+        scope: "all",
+        user_id: null,
+        filters: { status: str(args.status) || "pending_finance" },
+        page: 1,
+        page_size: 20,
+      }),
+  },
+  {
+    key: "cash_request_kpis",
+    title: "Cash request KPIs",
+    description:
+      "Summary KPIs for cash requests: pending count, unsettled advances, disbursed this month.",
+    module: "expenses",
+    parameters: { type: "object", properties: {} },
+    run: ({ brand }) =>
+      cashRequestRepo.kpis({ brand, scope: "all", user_id: null }),
   },
 ];
 

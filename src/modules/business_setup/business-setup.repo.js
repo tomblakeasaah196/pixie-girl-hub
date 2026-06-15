@@ -288,8 +288,8 @@ async function getTaxRate({ client, brand, id }) {
 }
 async function createTaxRate({ client, brand, row }) {
   const { rows } = await ex(client)(
-    `INSERT INTO shared.tax_rates (business, tax_name, tax_type, rate, applies_to, is_active, effective_from, effective_to)
-     VALUES ($1,$2,$3,$4,$5,COALESCE($6,true),$7,$8) RETURNING *`,
+    `INSERT INTO shared.tax_rates (business, tax_name, tax_type, rate, applies_to, is_active, effective_from, effective_to, excluded_modules)
+     VALUES ($1,$2,$3,$4,$5,COALESCE($6,true),$7,$8,COALESCE($9,'{}')) RETURNING *`,
     [
       brand,
       row.tax_name,
@@ -299,9 +299,59 @@ async function createTaxRate({ client, brand, row }) {
       row.is_active,
       row.effective_from,
       row.effective_to || null,
+      row.excluded_modules || null,
     ],
   );
   return rows[0];
+}
+// Toggle a tax on/off system-wide or adjust which modules it's excluded
+// from. Only the supplied fields change. `excluded_modules` replaces the
+// whole array (the UI sends the full desired set).
+async function updateTaxRate({ client, brand, id, patch }) {
+  const sets = [];
+  const params = [id, brand];
+  let i = 3;
+  for (const col of ["is_active", "rate", "applies_to", "tax_name"]) {
+    if (patch[col] === undefined) continue;
+    sets.push(`${col} = $${i++}`);
+    params.push(patch[col]);
+  }
+  if (patch.excluded_modules !== undefined) {
+    sets.push(`excluded_modules = $${i++}`);
+    params.push(patch.excluded_modules);
+  }
+  if (sets.length === 0) return getTaxRate({ client, brand, id });
+  const { rows } = await ex(client)(
+    `UPDATE shared.tax_rates SET ${sets.join(", ")} WHERE tax_id = $1 AND business = $2 RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
+}
+// The system-wide resolver every other module calls: "what taxes apply
+// to {module} for {tax_type} right now?". Honours is_active, the
+// effective-date window, and excluded_modules.
+async function listEffectiveTaxes({ client, brand, tax_type, module }) {
+  const where = [
+    "business = $1",
+    "is_active = true",
+    "effective_from <= CURRENT_DATE",
+    "(effective_to IS NULL OR effective_to >= CURRENT_DATE)",
+  ];
+  const params = [brand];
+  let i = 2;
+  if (tax_type) {
+    where.push(`tax_type = $${i++}`);
+    params.push(tax_type);
+  }
+  if (module) {
+    where.push(`NOT ($${i++} = ANY(excluded_modules))`);
+    params.push(module);
+  }
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.tax_rates WHERE ${where.join(" AND ")} ORDER BY tax_name`,
+    params,
+  );
+  return rows;
 }
 async function supersedeTaxRate({ client, brand, id, effective_to }) {
   const { rows } = await ex(client)(
@@ -478,7 +528,9 @@ module.exports = {
   listTaxRates,
   getTaxRate,
   createTaxRate,
+  updateTaxRate,
   supersedeTaxRate,
+  listEffectiveTaxes,
   listNumbering,
   getNumbering,
   updateNumbering,

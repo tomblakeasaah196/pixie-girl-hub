@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -82,6 +83,7 @@ function Field({
 }
 
 export function LoginEditorPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Login Editor" }]);
   const platform = usePlatformSettings(true);
   const save = useSavePlatformSettings();
 

@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useState } from "react";
 import { Building2, Loader2, Plus } from "lucide-react";
 import {
@@ -19,6 +20,7 @@ import { Button, Card, Pill } from "@/components/ui/primitives";
 const KEY_RE = /^[a-z][a-z0-9_]+$/;
 
 export function BusinessesPage() {
+  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Businesses" }]);
   const q = useBusinesses();
   const [adding, setAdding] = useState(false);
 

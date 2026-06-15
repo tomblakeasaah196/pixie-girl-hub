@@ -1,3 +1,4 @@
+import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ShieldCheck, ScrollText, KeyRound, Users, Activity } from "lucide-react";
 import { Card } from "@/components/ui/primitives";
 
@@ -17,6 +18,7 @@ const PLANNED = [
 ];
 
 export function IamSecurityPage() {
+  useBreadcrumbs([{ label: "IAM & Security" }]);
   return (
     <div className="max-w-[900px]">
       <div className="flex items-center gap-3 mb-2">

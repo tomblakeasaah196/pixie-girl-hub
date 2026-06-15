@@ -48,6 +48,22 @@ const setSecret = async (req, res) =>
 const deleteSecret = async (req, res) =>
   res.json({ data: await service.deleteSecret({ ...base(req), id: req.params.id }) });
 
+// ── business_policies ────────────────────────────────────
+const listPolicies = async (req, res) =>
+  res.json({
+    data: await service.listPolicies({
+      brand: req.brand,
+      policy_type: req.query.policy_type,
+      status: req.query.status,
+    }),
+  });
+const createPolicy = async (req, res) =>
+  res.status(201).json({ data: await service.createPolicy({ ...base(req), input: req.body }) });
+const updatePolicy = async (req, res) =>
+  res.json({ data: await service.updatePolicy({ ...base(req), id: req.params.id, input: req.body }) });
+const deletePolicy = async (req, res) =>
+  res.json({ data: await service.deletePolicy({ ...base(req), id: req.params.id }) });
+
 module.exports = {
   listTemplates,
   createTemplate,
@@ -63,4 +79,8 @@ module.exports = {
   listSecrets,
   setSecret,
   deleteSecret,
+  listPolicies,
+  createPolicy,
+  updatePolicy,
+  deletePolicy,
 };

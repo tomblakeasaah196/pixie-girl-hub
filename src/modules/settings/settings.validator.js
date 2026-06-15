@@ -64,6 +64,24 @@ const secretSet = z
   })
   .strict();
 
+// ── business_policies ────────────────────────────────────
+const slugRegex = /^[a-z][a-z0-9-]*$/;
+const policyCreate = z
+  .object({
+    slug: z.string().regex(slugRegex, "lowercase letters / digits / hyphens").max(80),
+    title: z.string().min(1).max(200),
+    policy_type: z.string().min(1).max(40),
+    body_html: z.string().max(200_000).optional(),
+    summary: z.string().max(2000).nullable().optional(),
+    version: z.coerce.number().int().min(1).optional(),
+    status: z.enum(["draft", "published", "archived"]).optional(),
+    is_published: z.boolean().optional(),
+    public_url: z.string().max(500).nullable().optional(),
+    effective_from: z.string().date().nullable().optional(),
+  })
+  .strict();
+const policyUpdate = policyCreate.partial().strict();
+
 module.exports = {
   validateTemplateCreate: mw(templateCreate),
   validateTemplateUpdate: mw(templateUpdate),
@@ -71,4 +89,6 @@ module.exports = {
   validateReportCreate: mw(reportCreate),
   validateReportUpdate: mw(reportUpdate),
   validateSecretSet: mw(secretSet),
+  validatePolicyCreate: mw(policyCreate),
+  validatePolicyUpdate: mw(policyUpdate),
 };

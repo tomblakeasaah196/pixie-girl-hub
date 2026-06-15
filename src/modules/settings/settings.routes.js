@@ -42,4 +42,12 @@ router.get("/integration-secrets", can("view"), controller.listSecrets);
 router.put("/integration-secrets", can("edit"), validator.validateSecretSet, controller.setSecret);
 router.delete("/integration-secrets/:id", can("delete"), controller.deleteSecret);
 
+// ── business_policies ────────────────────────────────────
+// Settings owns content. Storefront Studio chooses which ones go to the
+// public website (read-side), but content lives here.
+router.get("/policies", can("view"), controller.listPolicies);
+router.post("/policies", can("create"), validator.validatePolicyCreate, controller.createPolicy);
+router.patch("/policies/:id", can("edit"), validator.validatePolicyUpdate, controller.updatePolicy);
+router.delete("/policies/:id", can("delete"), controller.deletePolicy);
+
 module.exports = router;

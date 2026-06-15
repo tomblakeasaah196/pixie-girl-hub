@@ -24,6 +24,7 @@ import {
   Settings,
   FolderArchive,
   ShieldCheck,
+  HelpCircle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -76,8 +77,10 @@ export const MODULES: AppModule[] = [
   { key: "marketing", label: "Marketing", description: "Email & ads", group: "grow", route: "/marketing", icon: Mail },
   { key: "praxis", label: "Praxis AI", description: "Your agent", group: "grow", route: "/praxis", icon: Sparkles },
   { key: "settings", label: "Settings", description: "Configure the hub", group: "system", route: "/settings", icon: Settings },
+  { key: "iam_security", label: "IAM & Security", description: "Audit, access & sessions", group: "system", route: "/iam-security", icon: ShieldCheck },
   { key: "documents", label: "Documents", description: "Filing cabinet", group: "system", route: "/documents", icon: FolderArchive },
   { key: "aicontrol", label: "AI Control", description: "Governance", group: "system", route: "/ai-control", icon: ShieldCheck },
+  { key: "help_center", label: "Help Center", description: "Guides & FAQs", group: "system", route: "/help", icon: HelpCircle },
 ];
 
 export const MODULE_BY_KEY: Record<string, AppModule> = Object.fromEntries(

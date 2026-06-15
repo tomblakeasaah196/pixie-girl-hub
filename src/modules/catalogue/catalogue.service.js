@@ -7,6 +7,7 @@
 "use strict";
 
 const repo = require("./catalogue.repo");
+const vault = require("./cost_vault.service");
 const events = require("./catalogue.events");
 const outbox = require("../../shared/outbox/outbox");
 const documents = require("../../shared/documents/documents.service");
@@ -95,11 +96,14 @@ function listProducts({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
   return repo.findAllProducts({ brand, filters, page, page_size, offset });
 }
-async function getProduct({ brand, id }) {
+async function getProduct({ brand, id, user }) {
   const p = await repo.findProductById({ brand, id });
   if (!p) throw new NotFoundError("Product");
   const variants = await repo.listVariants({ brand, product_id: id });
-  return { ...p, variants };
+  // Cost columns are stripped unless the caller holds vault access; a
+  // missing/undefined user fails closed (no cost). See cost_vault.service.
+  const visible = await vault.canSeeCost({ user, brand });
+  return { ...p, variants: vault.redactVariants(variants, visible) };
 }
 async function createProduct({ brand, user, request_id, input }) {
   return transaction(async (client) => {
@@ -155,12 +159,15 @@ async function deleteProduct({ brand, user, request_id, id }) {
 }
 
 // ── Variants ─────────────────────────────────────────────
-async function listVariants({ brand, id }) {
-  await getProduct({ brand, id });
-  return repo.listVariants({ brand, product_id: id });
+async function listVariants({ brand, id, user }) {
+  const exists = await repo.findProductById({ brand, id });
+  if (!exists) throw new NotFoundError("Product");
+  const variants = await repo.listVariants({ brand, product_id: id });
+  const visible = await vault.canSeeCost({ user, brand });
+  return vault.redactVariants(variants, visible);
 }
 async function addVariant({ brand, user, request_id, id, input }) {
-  return transaction(async (client) => {
+  const created = await transaction(async (client) => {
     const product = await repo.findProductById({ client, brand, id });
     if (!product) throw new NotFoundError("Product");
     const v = await repo.createVariant({
@@ -201,6 +208,8 @@ async function addVariant({ brand, user, request_id, id, input }) {
     });
     return v;
   });
+  const visible = await vault.canSeeCost({ user, brand });
+  return vault.redactVariant(created, visible);
 }
 async function updateVariant({
   brand,
@@ -229,7 +238,8 @@ async function updateVariant({
     before,
   );
   events.emit("variant.updated", { brand, product_id: id, variant_id });
-  return v;
+  const visible = await vault.canSeeCost({ user, brand });
+  return vault.redactVariant(v, visible);
 }
 async function removeVariant({ brand, user, request_id, id, variant_id }) {
   const ok = await repo.deactivateVariant({

@@ -7,6 +7,7 @@ import {
   useDroppable,
   useDraggable,
   type DragEndEvent,
+  type DragStartEvent,
   DragOverlay,
 } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
@@ -153,7 +154,7 @@ export function KanbanView({ columns, isLoading, onAddDeal }: KanbanViewProps) {
     <>
       <DndContext
         sensors={sensors}
-        onDragStart={(e) => setActiveDealId(e.active.id as string)}
+        onDragStart={(e: DragStartEvent) => setActiveDealId(e.active.id as string)}
         onDragEnd={onDragEnd}
         onDragCancel={() => setActiveDealId(null)}
       >

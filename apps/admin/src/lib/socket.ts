@@ -27,7 +27,7 @@ export function getSocket(): Socket {
     autoConnect: true,
     transports: ["websocket", "polling"],
     withCredentials: true,
-    auth: (cb) => cb({ token: getAccessToken() ?? "" }),
+    auth: (cb: (data: Record<string, string>) => void) => cb({ token: getAccessToken() ?? "" }),
   });
   return socket;
 }

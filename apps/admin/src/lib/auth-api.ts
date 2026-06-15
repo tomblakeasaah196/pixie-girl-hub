@@ -72,6 +72,16 @@ export async function removePin(): Promise<void> {
   await api.delete("/auth/pin");
 }
 
+// ── Resolved permissions (authed, all roles union) ────────
+export interface PermGrant {
+  module: string;
+  action: string;
+  record_scope: string;
+}
+export async function fetchMyPermissions(): Promise<PermGrant[]> {
+  return api.get<PermGrant[]>("/auth/me/permissions");
+}
+
 // ── Device-local "PIN set up here" flag ───────────────────
 // Describes THIS browser only (never a credential): whether a PIN was set
 // up on this device, so the login screen can default to the Quick-PIN pad.

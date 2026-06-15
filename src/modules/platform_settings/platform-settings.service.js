@@ -191,27 +191,45 @@ function rgbToHex(triplet) {
  * and returns the matching region message from login_config.region_messages
  * (falling back to the `default` entry, then to GEO_DEFAULT). Always
  * resolves with a 200-shaped payload; never throws.
+ *
+ * `override` is a development-only preview hook (the controller only ever
+ * populates it when NODE_ENV !== "production") so the geo greeting can be
+ * exercised from localhost, where the real client IP is loopback:
+ *   • { continent: "EU", country? }  → forces that region's copy, no lookup.
+ *   • { ip: "8.8.8.8" }              → does a real lookup of that address.
  */
-async function getGeoWelcome({ ip }) {
+async function getGeoWelcome({ ip, override } = {}) {
   const settings = await repo.getPlatformSettings({ client: null });
   const regions = settings?.login_config?.region_messages || {};
   const fallback = regions.default || GEO_DEFAULT;
-
-  if (isPrivateOrLocalIp(ip)) {
-    return { location: null, welcome: fallback.welcome, note: fallback.note };
-  }
-
-  const location = await lookupGeo(ip);
-  if (!location) {
-    return { location: null, welcome: fallback.welcome, note: fallback.note };
-  }
-
-  const msg = regions[location.continent_code] || fallback;
-  return {
-    location,
-    welcome: msg.welcome || fallback.welcome,
-    note: msg.note || fallback.note,
+  const pick = (loc) => {
+    const msg = (loc && regions[loc.continent_code]) || fallback;
+    return {
+      location: loc,
+      welcome: msg.welcome || fallback.welcome,
+      note: msg.note || fallback.note,
+    };
   };
+
+  // Dev preview: force a continent's copy without any network lookup.
+  if (override?.continent) {
+    return pick({
+      city: override.city || null,
+      country: override.country || null,
+      country_code: null,
+      continent_code: override.continent,
+    });
+  }
+
+  // Dev preview: real lookup of a supplied public IP (bypasses the
+  // loopback short-circuit). Otherwise honour the loopback skip.
+  const lookupIp = override?.ip || ip;
+  if (!override?.ip && isPrivateOrLocalIp(ip)) {
+    return pick(null);
+  }
+
+  const location = await lookupGeo(lookupIp);
+  return pick(location);
 }
 
 /**

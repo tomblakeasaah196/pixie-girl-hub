@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, ExternalLink, Moon, Quote, Sun } from "lucide-react";
-import { useBranding, useLoginConfig } from "@/lib/branding";
+import { useBranding, useLoginConfig, readableAccent } from "@/lib/branding";
 import { getGeoWelcome } from "@/lib/auth-api";
 import { loginIcon } from "@/lib/login-icons";
 import { useUiStore } from "@/stores/ui";
@@ -57,9 +57,23 @@ export function LoginPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   // Region welcome (server-side IP lookup → DB region copy + fallback).
+  // Dev-only preview: localhost is loopback, so the greeting is generic.
+  // Add ?geo=EU (continent) or ?ip=8.8.8.8 to the login URL to preview a
+  // region without deploying — forwarded only in dev; the backend ignores
+  // these in production.
+  const geoPreview = useMemo(() => {
+    if (!import.meta.env.DEV) return undefined;
+    const sp = new URLSearchParams(window.location.search);
+    const params: Record<string, string> = {};
+    for (const k of ["geo", "ip", "country"]) {
+      const v = sp.get(k);
+      if (v) params[k] = v;
+    }
+    return Object.keys(params).length ? params : undefined;
+  }, []);
   const geo = useQuery({
-    queryKey: ["geo-welcome"],
-    queryFn: getGeoWelcome,
+    queryKey: ["geo-welcome", geoPreview],
+    queryFn: () => getGeoWelcome(geoPreview),
     enabled: t.geo_welcome !== false,
     staleTime: 10 * 60_000,
     retry: false,
@@ -193,15 +207,18 @@ export function LoginPage() {
             style={{ animationDelay: "240ms" }}
           >
             {businesses.map((b) => {
-              const accent = b.accent_colour || "#690909";
+              const raw = b.accent_colour || "#690909";
+              // Keep the brand hue but guarantee it's legible on the
+              // current backdrop (a deep navy/maroon is invisible on black).
+              const accent = readableAccent(raw, theme === "dark");
               return (
                 <span
                   key={b.business_key}
                   className="inline-flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full border text-[12px] font-semibold uppercase tracking-wide"
                   style={{
                     color: accent,
-                    borderColor: `${accent}55`,
-                    backgroundColor: `${accent}14`,
+                    borderColor: `${accent}66`,
+                    backgroundColor: `${accent}1f`,
                   }}
                 >
                   {b.logo_path ? (

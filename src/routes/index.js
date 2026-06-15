@@ -52,6 +52,7 @@ const platformSettingsRouter = require("../modules/platform_settings/platform-se
 const settingsRouter = require("../modules/settings/settings.routes");
 const brandingPublicRouter = require("../modules/platform_settings/branding.public.routes");
 const geoPublicRouter = require("../modules/platform_settings/geo.public.routes");
+const manifestPublicRouter = require("../modules/platform_settings/manifest.public.routes");
 const salesCampaignsRouter = require("../modules/sales_campaigns/campaigns.routes");
 const retentionRouter = require("../modules/retention/retention.routes");
 const productionRouter = require("../modules/production/production.routes");
@@ -144,6 +145,8 @@ function mountRoutes(app) {
   publicRouter.use("/branding", brandingPublicRouter);
   // Per-IP login greeting ("Welcome from Africa"). Not cached.
   publicRouter.use("/geo-welcome", geoPublicRouter);
+  // Dynamic PWA manifest (live product name + icons).
+  publicRouter.use("/manifest.webmanifest", manifestPublicRouter);
   app.use("/api/public", publicRouter);
 
   // Public branding assets (logos, login background) — served only from

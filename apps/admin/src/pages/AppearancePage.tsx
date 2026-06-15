@@ -251,17 +251,36 @@ function LayerASection({
             label="Logo (dark backgrounds)"
             value={draft.logo_dark_url ?? null}
             onChange={(v) => setDraft({ ...draft, logo_dark_url: v })}
+            generateIcons
+            hint="Upload a transparent PNG/WEBP. Generates the favicon + app icons."
+            onIcons={(r) =>
+              setDraft((d) => ({
+                ...d,
+                logo_dark_url: r.url,
+                favicon_url: d.favicon_url ?? r.favicon_url,
+              }))
+            }
           />
           <ImageUpload
             label="Logo (light backgrounds)"
             value={draft.logo_light_url ?? null}
             onChange={(v) => setDraft({ ...draft, logo_light_url: v })}
+            generateIcons
+            hint="Upload a transparent PNG/WEBP. Generates the favicon + app icons."
+            onIcons={(r) =>
+              setDraft((d) => ({
+                ...d,
+                logo_light_url: r.url,
+                favicon_url: d.favicon_url ?? r.favicon_url,
+              }))
+            }
           />
           <ImageUpload
             label="Favicon"
             value={draft.favicon_url ?? null}
             onChange={(v) => setDraft({ ...draft, favicon_url: v })}
             aspect="square"
+            hint="Auto-filled from your logo. Override here if you want a distinct mark."
           />
         </div>
       </Card>

@@ -12,7 +12,10 @@
          swaps these to the live branding (logo / favicon) once it loads. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Dynamic manifest (live product name + icons). Falls back to the
+         static /manifest.webmanifest shipped in public/ if the API is
+         unavailable at build/host time. -->
+    <link rel="manifest" href="/api/public/manifest.webmanifest" />
     <title>Pixie Girl Hub</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

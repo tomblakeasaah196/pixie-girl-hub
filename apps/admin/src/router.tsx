@@ -40,12 +40,10 @@ export const router = createBrowserRouter(
       ],
     },
   ],
-  // Opt in to the v7 behaviours now so the console stays clean and the
-  // eventual upgrade is a no-op. startTransition wraps router state
-  // updates; relativeSplatPath fixes splat-relative resolution.
+  // Data-router future flags live here; v7_startTransition is opted into
+  // on <RouterProvider> (see App.tsx) since it's a provider-level flag.
   {
     future: {
-      v7_startTransition: true,
       v7_relativeSplatPath: true,
     },
   },

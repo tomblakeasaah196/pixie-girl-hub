@@ -1,3 +1,4 @@
+/// <reference types="@types/google.maps" />
 import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { MapPin, Loader2 } from "lucide-react";

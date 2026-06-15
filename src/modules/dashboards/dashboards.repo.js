@@ -31,7 +31,7 @@ async function salesKpis({ brand, from, to }) {
         count(*) FILTER (WHERE status = 'pending_payment')::int AS pending_orders,
         COALESCE(SUM(balance_due_ngn) FILTER (WHERE status = 'pending_payment'),0) AS outstanding_ngn
        FROM ${t(brand, "sales_orders")}
-      WHERE COALESCE(is_deleted,false) = false ${range}`,
+      WHERE true ${range}`,
     params,
   );
   return rows[0];

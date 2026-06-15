@@ -110,6 +110,14 @@ router.delete(
 
 // ── Styled products (P0-6) — storefront skins over a base ─
 router.get("/styled-products", can("view"), styled.list);
+// AI draft (P0-8: only ever creates a DRAFT; gated by the products_ai_drafting
+// feature in the service). Literal segment declared before :id.
+router.post(
+  "/styled-products/ai-draft",
+  can("create"),
+  styledV.validateAiDraft,
+  styled.aiDraft,
+);
 router.post(
   "/styled-products",
   can("create"),

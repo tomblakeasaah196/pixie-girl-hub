@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./styled.service");
+const productAi = require("./product_ai.service");
 const { parsePagination } = require("../../utils/pagination");
 
 const base = (req) => ({
@@ -73,4 +74,20 @@ async function remove(req, res) {
   res.status(204).end();
 }
 
-module.exports = { list, getOne, create, update, publish, unpublish, remove };
+// AI drafts a Styled product over a base — saved as a DRAFT for review.
+async function aiDraft(req, res) {
+  res.status(201).json({
+    data: await productAi.draftStyled({ ...base(req), input: req.body }),
+  });
+}
+
+module.exports = {
+  list,
+  getOne,
+  create,
+  update,
+  publish,
+  unpublish,
+  remove,
+  aiDraft,
+};

@@ -37,6 +37,16 @@ const unpublish = z
   .object({ archive: z.boolean().optional() })
   .strict();
 
+const aiDraft = z
+  .object({
+    base_product_id: z.string().uuid(),
+    instructions: z.string().max(1000).optional(),
+    tone: z.string().max(60).optional(),
+    category_id: z.string().uuid().optional(),
+    vendor: z.string().max(40).optional(),
+  })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -46,5 +56,6 @@ module.exports = {
   validateStyledCreate: mw(styledCreate),
   validateStyledUpdate: mw(styledUpdate),
   validateUnpublish: mw(unpublish),
+  validateAiDraft: mw(aiDraft),
   styledCreate,
 };

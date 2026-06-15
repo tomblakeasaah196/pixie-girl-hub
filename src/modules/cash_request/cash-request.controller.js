@@ -101,6 +101,44 @@ async function cancel(req, res) {
   res.json({ data: updated });
 }
 
+async function addDocument(req, res) {
+  const doc = await service.addDocument({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+    document_id: req.body.document_id,
+    document_role: req.body.document_role,
+    notes: req.body.notes,
+  });
+  res.status(201).json({ data: doc });
+}
+
+async function listDocuments(req, res) {
+  const docs = await service.listDocuments({
+    brand: req.brand,
+    id: req.params.id,
+  });
+  res.json({ data: docs });
+}
+
+async function getHistory(req, res) {
+  const history = await service.getHistory({
+    brand: req.brand,
+    id: req.params.id,
+  });
+  res.json({ data: history });
+}
+
+async function kpis(req, res) {
+  const data = await service.kpis({
+    brand: req.brand,
+    user: req.user,
+    scope: req.permission_scope,
+  });
+  res.json({ data });
+}
+
 module.exports = {
   list,
   getById,
@@ -111,4 +149,8 @@ module.exports = {
   disburse,
   settle,
   cancel,
+  addDocument,
+  listDocuments,
+  getHistory,
+  kpis,
 };

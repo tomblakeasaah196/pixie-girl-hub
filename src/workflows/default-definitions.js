@@ -214,6 +214,41 @@ const DEFINITIONS = {
       ],
     },
   },
+
+  // ── Cash Request (§6.32) — Finance validates, CEO approves above threshold ─
+  "cash_request:submit": {
+    name: "Cash Request Approval",
+    description:
+      "Finance validates all cash requests. Requests at or above the CEO threshold (default ₦100k from business_config) additionally require CEO approval. When no Finance role is assigned, the CEO handles all stages.",
+    trigger_module: "cash_request",
+    trigger_action: "submit",
+    definition: {
+      trigger: { module: "cash_request", action: "submit" },
+      stages: [
+        {
+          order: 1,
+          name: "Finance validation",
+          approvers: [
+            { type: "role", value: "finance" },
+            { type: "role", value: "ceo" },
+          ],
+          timeout_hours: 24,
+          on_timeout: "escalate",
+          fallback_to_deputy: true,
+        },
+        {
+          order: 2,
+          name: "CEO approval (≥ threshold)",
+          approvers: [{ type: "role", value: "ceo" }],
+          threshold_field: "amount_requested_ngn",
+          threshold_ngn_gte: 100000,
+          timeout_hours: 48,
+          on_timeout: "escalate",
+          fallback_to_deputy: false,
+        },
+      ],
+    },
+  },
 };
 
 function specKey(triggerModule, triggerAction) {

@@ -101,6 +101,7 @@ async function transition({
     id: cr.cash_request_id,
     status: to_status,
     user_id: user.user_id,
+    submitted_by: cr.submitted_by,
   });
   return updated;
 }
@@ -509,6 +510,36 @@ async function cancel({ brand, user, request_id, id, reason }) {
   });
 }
 
+// ── Documents ─────────────────────────────────────────────
+async function addDocument({ brand, user, request_id, id, document_id, document_role, notes }) {
+  const cr = await load({ brand, id });
+  const doc = await repo.insertDocument({
+    cash_request_id: cr.cash_request_id,
+    document_id,
+    document_role: document_role || "other",
+    uploaded_by: user.user_id,
+    notes,
+  });
+  await A(brand, user, "cash_request.document.add", cr.cash_request_id, { document_id, document_role }, request_id);
+  return doc;
+}
+
+async function listDocuments({ brand, id }) {
+  await load({ brand, id });
+  return repo.listDocuments({ brand, cash_request_id: id });
+}
+
+// ── History timeline ──────────────────────────────────────
+async function getHistory({ brand, id }) {
+  await load({ brand, id });
+  return repo.getHistory({ cash_request_id: id });
+}
+
+// ── KPIs ──────────────────────────────────────────────────
+function kpis({ brand, user, scope }) {
+  return repo.kpis({ brand, scope, user_id: user.user_id });
+}
+
 module.exports = {
   list,
   getById,
@@ -519,4 +550,8 @@ module.exports = {
   disburse,
   settle,
   cancel,
+  addDocument,
+  listDocuments,
+  getHistory,
+  kpis,
 };

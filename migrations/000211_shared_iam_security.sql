@@ -17,7 +17,11 @@ ALTER TABLE shared.users
 -- One row per active refresh-token. Inserted on login/refresh,
 -- deleted on logout/revoke. Redis remains the auth gate; this
 -- table provides the admin-visible session list with device info.
-CREATE TABLE IF NOT EXISTS shared.user_sessions (
+--
+-- DROP + CREATE instead of IF NOT EXISTS so a partial previous run
+-- (table without all columns) doesn't leave a broken schema.
+DROP TABLE IF EXISTS shared.user_sessions;
+CREATE TABLE shared.user_sessions (
   session_id    TEXT        PRIMARY KEY,
   user_id       UUID        NOT NULL REFERENCES shared.users(user_id),
   ip_address    INET,
@@ -28,9 +32,9 @@ CREATE TABLE IF NOT EXISTS shared.user_sessions (
   expires_at    TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_sessions_user
+CREATE INDEX idx_user_sessions_user
   ON shared.user_sessions (user_id, last_seen_at DESC);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_expires
+CREATE INDEX idx_user_sessions_expires
   ON shared.user_sessions (expires_at);
 
 -- ── Standalone users (external auditor / contractor) ────────
@@ -43,7 +47,9 @@ ALTER TABLE shared.users
   ADD COLUMN IF NOT EXISTS external_label TEXT;
 
 -- ── Access review attestation ───────────────────────────────
-CREATE TABLE IF NOT EXISTS shared.access_reviews (
+DROP TABLE IF EXISTS shared.access_review_entries;
+DROP TABLE IF EXISTS shared.access_reviews;
+CREATE TABLE shared.access_reviews (
   review_id     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   business      TEXT        NOT NULL,
   title         TEXT        NOT NULL,
@@ -60,7 +66,7 @@ CREATE TABLE IF NOT EXISTS shared.access_reviews (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS shared.access_review_entries (
+CREATE TABLE shared.access_review_entries (
   entry_id      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   review_id     UUID        NOT NULL REFERENCES shared.access_reviews(review_id)
                             ON DELETE CASCADE,
@@ -78,7 +84,7 @@ CREATE TABLE IF NOT EXISTS shared.access_review_entries (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_access_review_entries_review
+CREATE INDEX idx_access_review_entries_review
   ON shared.access_review_entries (review_id);
 
 -- ── IAM permission key ──────────────────────────────────────

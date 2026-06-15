@@ -70,7 +70,7 @@ async function bootstrap() {
   //   - the SPA fallback returns index.html for any non-API GET that
   //     isn't a real file, so React Router owns apps/admin-side routing;
   //   - the JSON 404 below now only fires for unmatched /api/* routes.
-  const clientDist = path.join(__dirname, "apps/admin", "dist");
+  const clientDist = path.join(__dirname, "..", "apps/admin", "dist");
 
   app.use(express.static(clientDist));
 

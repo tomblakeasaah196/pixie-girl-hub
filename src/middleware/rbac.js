@@ -36,6 +36,7 @@ const VALID_ACTIONS = new Set([
   "delete",
   "approve",
   "export",
+  "publish",
 ]);
 
 function requirePermission(moduleKey, action) {

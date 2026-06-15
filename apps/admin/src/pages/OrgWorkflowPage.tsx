@@ -341,7 +341,7 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
     queryKey: ["org-units"],
     queryFn: () => orgApi.listUnits({ include_inactive: false }),
   });
-  const units = unitsResp?.data ?? [];
+  const units = Array.isArray(unitsResp) ? unitsResp : [];
 
   const { data: allPositions = [], isLoading: posLoading } = useQuery({
     queryKey: ["org-positions"],
@@ -605,8 +605,8 @@ function RoleEditorDrawer({
     queryKey: ["role-detail", roleId],
     queryFn: async () => {
       const r = await accessApi.getRole(roleId);
-      const { data: perms } = await accessApi.getRolePermissions(roleId);
-      return { ...r, permissions: perms };
+      const perms = await accessApi.getRolePermissions(roleId);
+      return { ...r, permissions: Array.isArray(perms) ? perms : [] };
     },
   });
 
@@ -894,8 +894,8 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
     queryFn: async () => {
       const results = await Promise.all(
         roles.map(async (r) => {
-          const { data: perms } = await accessApi.getRolePermissions(r.role_id);
-          return { role_id: r.role_id, perms };
+          const perms = await accessApi.getRolePermissions(r.role_id);
+          return { role_id: r.role_id, perms: Array.isArray(perms) ? perms : [] };
         }),
       );
       return new Map(results.map((r) => [r.role_id, r.perms]));
@@ -1405,7 +1405,7 @@ function WorkflowsTab({ canEdit }: { canEdit: boolean }) {
     queryFn: () => orgApi.listDefinitions(showInactive),
   });
 
-  const definitions = data?.data ?? [];
+  const definitions = Array.isArray(data) ? data : [];
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) => orgApi.setDefinitionActive(id, active),
@@ -1652,7 +1652,7 @@ function PendingTab({ canAct }: { canAct: boolean }) {
     refetchInterval: 60_000,
   });
 
-  const instances = data?.data ?? [];
+  const instances = Array.isArray(data) ? data : [];
 
   const statusTone: Record<string, Tone> = { pending: "warn", approved: "success", rejected: "danger", cancelled: "neutral" };
 
@@ -1698,7 +1698,7 @@ function PendingTab({ canAct }: { canAct: boolean }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div className="micro">{data?.meta.total ?? 0} pending approval{data?.meta.total !== 1 ? "s" : ""}</div>
+        <div className="micro">{instances.length} pending approval{instances.length !== 1 ? "s" : ""}</div>
         <Button size="sm" icon={<RefreshCw className="w-3.5 h-3.5" />} onClick={() => refetch()}>Refresh</Button>
       </div>
 
@@ -1742,7 +1742,7 @@ export function OrgWorkflowPage() {
     queryKey: ["pending-approvals-count"],
     queryFn: async () => {
       const res = await orgApi.listPending();
-      return res.meta.total;
+      return Array.isArray(res) ? res.length : 0;
     },
     refetchInterval: 60_000,
     enabled: can("org_workflow", "view"),

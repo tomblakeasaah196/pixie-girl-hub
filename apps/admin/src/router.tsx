@@ -4,6 +4,9 @@ import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { CommandCenter } from "@/pages/CommandCenter";
 import { SalesPage } from "@/pages/SalesPage";
+import { ContactsPage } from "@/pages/contacts/ContactsPage";
+import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
+import { ContactTagsPage } from "@/pages/ContactTagsPage";
 import { CataloguePage } from "@/pages/catalogue/CataloguePage";
 import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
 import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
@@ -69,6 +72,9 @@ export const router = createBrowserRouter(
           children: [
             { index: true, element: <CommandCenter /> },
             { path: "sales", element: <SalesPage /> },
+            { path: "contacts", element: <ContactsPage /> },
+            { path: "contacts/milestones", element: <MilestonesPage /> },
+            { path: "crm", element: <ContactsPage /> },
             { path: "expenses", element: <Suspense fallback={null}><CashExpensesHome defaultTab="expenses" /></Suspense> },
             { path: "cash-requests", element: <Suspense fallback={null}><CashExpensesHome defaultTab="my-requests" /></Suspense> },
 
@@ -97,6 +103,7 @@ export const router = createBrowserRouter(
             { path: "settings/scheduled-reports", element: <ScheduledReportsPage /> },
             { path: "settings/integration-secrets", element: <IntegrationSecretsPage /> },
             { path: "settings/policies", element: <BusinessPoliciesPage /> },
+            { path: "settings/contact-tags", element: <ContactTagsPage /> },
 
             // Org & Workflow (roles / approvals / permission matrix).
             { path: "org-workflow", element: <OrgWorkflowPage /> },

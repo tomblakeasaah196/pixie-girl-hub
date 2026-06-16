@@ -61,7 +61,11 @@ function registerSalesReminder() {
         await service.sendToCustomer({
           brand,
           contact_id,
-          channel: "whatsapp",
+          // Let the outbound channel policy decide. Default seed is
+          // 'whatsapp' for layaway_reminder because the recovery rate
+          // justifies the ₦11 per send — but the CEO can flip it in
+          // Business Setup → Channel Policy without a code change.
+          event_key: "layaway_reminder",
           body,
           soft: true,
         });

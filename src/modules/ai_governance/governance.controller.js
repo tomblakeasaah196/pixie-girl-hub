@@ -155,6 +155,20 @@ async function toggleAction(req, res) {
   });
 }
 
+async function getBrandVoice(req, res) {
+  res.json(await service.getBrandVoice({ brand: req.brand }));
+}
+async function upsertBrandVoice(req, res) {
+  res.json({
+    data: await service.upsertBrandVoice({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
+    }),
+  });
+}
+
 module.exports = {
   listFlags,
   upsertFlag,
@@ -175,4 +189,6 @@ module.exports = {
   listActions,
   upsertAction,
   toggleAction,
+  getBrandVoice,
+  upsertBrandVoice,
 };

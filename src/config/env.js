@@ -254,11 +254,10 @@ const schema = z.object({
     .default(15 * 60 * 1000),
   PUBLIC_WRITE_RATE_MAX: z.coerce.number().int().positive().default(20),
 
-  // SMS (Twilio) — optional fallback channel for retention workflows. Unset →
-  // sms.service no-ops (returns skipped).
-  TWILIO_ACCOUNT_SID: z.string().optional(),
-  TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_FROM: z.string().optional(),
+  // SMS support was retired in PR 2 — every retention workflow runs on
+  // email + WhatsApp + Instagram via the outbound channel policy. The
+  // Twilio env vars previously lived here; leaving the slot for future
+  // SMS-OTP-only reintroduction (Termii etc.) if ever needed.
 
   // Speech-to-text (Whisper) for Praxis voice input. Unset → transcription
   // no-ops. MEDIA_BASE_URL bounds which audio origins may be fetched (SSRF).

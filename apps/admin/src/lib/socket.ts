@@ -43,4 +43,29 @@ export function getSocket(): Socket {
 export const rooms = {
   stock: (brand: string) => `brand:${brand}:stock`,
   notifications: (userId: string) => `user:${userId}:notifications`,
+  userMessages: (userId: string) => `user:${userId}:messages`,
+  channel: (channelId: string) => `channel:${channelId}`,
+  channelTyping: (channelId: string) => `channel:${channelId}:typing`,
+  brandSmartcomm: (brand: string) => `brand:${brand}:smartcomm`,
 };
+
+/** Join a Socket.io room (idempotent on the server). */
+export function joinRoom(room: string) {
+  const s = getSocket();
+  if (!s.connected) {
+    s.once("connect", () => s.emit("join", { room }));
+  } else {
+    s.emit("join", { room });
+  }
+}
+
+export function leaveRoom(room: string) {
+  const s = getSocket();
+  if (s.connected) s.emit("leave", { room });
+}
+
+/** Smartcomm — ping the server we're typing in a channel. */
+export function emitTyping(channelId: string) {
+  const s = getSocket();
+  if (s.connected) s.emit("typing", { channel_id: channelId });
+}

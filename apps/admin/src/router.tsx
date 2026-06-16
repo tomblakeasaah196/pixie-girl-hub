@@ -9,6 +9,9 @@ import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
 import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
 
 const CashExpensesHome = lazy(() => import("@/pages/cash-expenses/CashExpensesHome"));
+const ProductionPage = lazy(() => import("@/pages/production/ProductionPage").then((m) => ({ default: m.ProductionPage })));
+const PricingPage = lazy(() => import("@/pages/pricing/PricingPage").then((m) => ({ default: m.PricingPage })));
+const PurchasingPage = lazy(() => import("@/pages/purchasing/PurchasingPage").then((m) => ({ default: m.PurchasingPage })));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -77,6 +80,13 @@ export const router = createBrowserRouter(
             { path: "catalogue", element: <CataloguePage /> },
             { path: "catalogue/base/:id", element: <BaseProductPage /> },
             { path: "catalogue/styled/:id", element: <StyledProductPage /> },
+
+            // Production (China factory account + production runs)
+            { path: "production", element: <Suspense fallback={null}><ProductionPage /></Suspense> },
+            // Pricing Engine
+            { path: "pricing", element: <Suspense fallback={null}><PricingPage /></Suspense> },
+            // Purchasing (PO lifecycle + GRN + invoices)
+            { path: "purchasing", element: <Suspense fallback={null}><PurchasingPage /></Suspense> },
 
             // Settings — landing + sub-pages.
             { path: "settings", element: <SettingsHome /> },

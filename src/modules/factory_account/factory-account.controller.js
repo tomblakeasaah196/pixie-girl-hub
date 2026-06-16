@@ -59,7 +59,7 @@ async function listLedger(req, res, next) {
       limit,
       offset,
     });
-    res.json({ data: result.entries, meta: { total: result.total, limit, offset } });
+    res.json({ data: { entries: result.entries, total: result.total } });
   } catch (err) { next(err); }
 }
 
@@ -102,7 +102,7 @@ async function listShipments(req, res, next) {
       limit,
       offset,
     });
-    res.json({ data: result.shipments, meta: { total: result.total, limit, offset } });
+    res.json({ data: { shipments: result.shipments, total: result.total } });
   } catch (err) { next(err); }
 }
 

@@ -25,7 +25,7 @@ async function createAccount({ client, brand, data }) {
 
 async function getAccount({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT fa.*, s.supplier_name, s.country
+    `SELECT fa.*, s.display_name AS supplier_name, s.country_of_origin AS country
      FROM ${t(brand, "factory_accounts")} fa
      JOIN ${t(brand, "suppliers")} s ON s.supplier_id = fa.supplier_id
      WHERE fa.account_id = $1`,
@@ -36,7 +36,7 @@ async function getAccount({ client, brand, id }) {
 
 async function listAccounts({ client, brand }) {
   const { rows } = await ex(client)(
-    `SELECT fa.*, s.supplier_name, s.country
+    `SELECT fa.*, s.display_name AS supplier_name, s.country_of_origin AS country
      FROM ${t(brand, "factory_accounts")} fa
      JOIN ${t(brand, "suppliers")} s ON s.supplier_id = fa.supplier_id
      ORDER BY fa.account_name`,
@@ -168,7 +168,7 @@ async function addShipmentItems({ client, brand, shipment_id, items }) {
 
 async function getShipment({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT fs.*, fa.account_name, fa.base_currency, s.supplier_name
+    `SELECT fs.*, fa.account_name, fa.base_currency, s.display_name AS supplier_name
      FROM ${t(brand, "factory_shipments")} fs
      JOIN ${t(brand, "factory_accounts")} fa ON fa.account_id = fs.account_id
      JOIN ${t(brand, "suppliers")} s ON s.supplier_id = fs.supplier_id
@@ -191,7 +191,7 @@ async function listShipments({ client, brand, account_id, status, limit = 50, of
   if (status) { conditions.push(`fs.status = $${idx++}`); params.push(status); }
 
   const { rows } = await ex(client)(
-    `SELECT fs.*, fa.account_name, s.supplier_name
+    `SELECT fs.*, fa.account_name, s.display_name AS supplier_name
      FROM ${t(brand, "factory_shipments")} fs
      JOIN ${t(brand, "factory_accounts")} fa ON fa.account_id = fs.account_id
      JOIN ${t(brand, "suppliers")} s ON s.supplier_id = fs.supplier_id

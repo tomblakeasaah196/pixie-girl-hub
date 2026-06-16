@@ -403,8 +403,8 @@ function RunsTab({
       align: "right",
       width: "140px",
       render: (r) =>
-        r.total_cost_ngn != null ? (
-          <MoneyText ngn={r.total_cost_ngn} className="text-[13px]" />
+        r.total_landed_cost_ngn != null ? (
+          <MoneyText ngn={r.total_landed_cost_ngn} className="text-[13px]" />
         ) : (
           <span className="text-text-faint text-xs">—</span>
         ),
@@ -505,10 +505,10 @@ function RunDetailDrawer({
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          {current.total_cost_ngn != null && (
+          {current.total_landed_cost_ngn != null && (
             <div>
               <div className="micro mb-1">Total Cost</div>
-              <MoneyText ngn={current.total_cost_ngn} className="text-[22px]" />
+              <MoneyText ngn={current.total_landed_cost_ngn} className="text-[22px]" />
             </div>
           )}
           {current.per_unit_cost_ngn != null && (

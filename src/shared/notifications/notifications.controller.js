@@ -14,6 +14,7 @@ async function list(req, res) {
     await service.list({
       user_id: req.user.user_id,
       only_unread: req.query.unread === "true",
+      business: req.query.business || req.brand || null,
       page,
       page_size,
     }),
@@ -22,7 +23,12 @@ async function list(req, res) {
 
 async function unreadCount(req, res) {
   res.json({
-    data: { unread: await service.unreadCount({ user_id: req.user.user_id }) },
+    data: {
+      unread: await service.unreadCount({
+        user_id: req.user.user_id,
+        business: req.query.business || req.brand || null,
+      }),
+    },
   });
 }
 
@@ -35,7 +41,31 @@ async function markRead(req, res) {
 }
 
 async function markAllRead(req, res) {
-  res.json({ data: await service.markAllRead({ user_id: req.user.user_id }) });
+  res.json({
+    data: await service.markAllRead({
+      user_id: req.user.user_id,
+      business: req.body?.business || req.brand || null,
+    }),
+  });
+}
+
+async function deleteOne(req, res) {
+  res.json({
+    data: await service.deleteOne({
+      user_id: req.user.user_id,
+      id: req.params.id,
+    }),
+  });
+}
+
+async function bulkDelete(req, res) {
+  const ids = req.body?.ids;
+  if (!Array.isArray(ids)) {
+    return res.status(400).json({ error: { message: "ids must be an array" } });
+  }
+  res.json({
+    data: await service.bulkDelete({ user_id: req.user.user_id, ids }),
+  });
 }
 
 async function getPreferences(req, res) {
@@ -59,6 +89,8 @@ module.exports = {
   unreadCount,
   markRead,
   markAllRead,
+  deleteOne,
+  bulkDelete,
   getPreferences,
   upsertPreference,
 };

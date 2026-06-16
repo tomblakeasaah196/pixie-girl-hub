@@ -21,7 +21,7 @@
  * MoneyText, tokens only, mobile-first.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -67,6 +67,12 @@ import {
   type AppNotification,
 } from "@/hooks/useCommandCenter";
 import { money } from "@/lib/format";
+import {
+  requestPushPermission,
+  hasPushBeenPrompted,
+  markPushPrompted,
+  ensurePushSubscription,
+} from "@/lib/push";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -493,6 +499,76 @@ function NotificationsFeed({
   );
 }
 
+// ── Push permission banner ────────────────────────────────────────────────────
+
+function PushBanner() {
+  const [show, setShow] = useState(false);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    // Show only once, only if the user hasn't been prompted and hasn't granted yet.
+    if (
+      !hasPushBeenPrompted() &&
+      typeof Notification !== "undefined" &&
+      Notification.permission === "default" &&
+      "serviceWorker" in navigator &&
+      "PushManager" in window
+    ) {
+      setShow(true);
+    }
+  }, []);
+
+  if (!show || done) return null;
+
+  async function handleEnable() {
+    markPushPrompted();
+    const perm = await requestPushPermission();
+    if (perm === "granted") await ensurePushSubscription();
+    setDone(true);
+    setShow(false);
+  }
+
+  function handleDismiss() {
+    markPushPrompted();
+    setShow(false);
+  }
+
+  return (
+    <div className="glass rounded-[14px] px-5 py-4 mb-6 flex items-center gap-4 border border-accent/20 animate-[slide-up_0.22s_ease-out]">
+      <div className="w-9 h-9 rounded-xl bg-accent/10 grid place-items-center shrink-0">
+        <Bell className="w-4.5 h-4.5 text-accent" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[13.5px] font-semibold text-text-primary">Stay in the loop with push notifications</p>
+        <p className="text-[12px] text-text-muted mt-0.5">
+          Get alerts for approvals, payments, and more — even when the app is closed.
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={handleDismiss}
+          className="text-[12px] text-text-faint hover:text-text-muted transition-colors px-3 py-1.5 rounded-lg hover:bg-text-primary/[0.05]"
+        >
+          Not now
+        </button>
+        <button
+          onClick={handleEnable}
+          className="h-9 px-4 rounded-xl bg-accent-deep text-[#F4E9D9] text-[12.5px] font-semibold hover:bg-accent transition-colors"
+        >
+          Enable
+        </button>
+      </div>
+      <button
+        onClick={handleDismiss}
+        aria-label="Dismiss"
+        className="shrink-0 p-1 rounded-lg text-text-faint hover:text-text-primary transition-colors"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function CommandCenter() {
@@ -516,6 +592,9 @@ export function CommandCenter() {
 
   return (
     <div>
+      {/* ── Push permission banner (first-login) ──────────────────────── */}
+      <PushBanner />
+
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="flex gap-6 items-start flex-wrap mb-6">
         <div className="flex-1 min-w-[280px]">

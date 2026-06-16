@@ -3,12 +3,10 @@
  * for the relevant staff user. Driven by the transactional outbox (H-2): runs
  * post-commit with at-least-once delivery. Best-effort — failures are logged
  * and swallowed so the source flow and the row's other consumers are never
- * blocked. Per-handler progress tracking (outbox) means a retry of a co-handler
- * does not re-fire this notification.
+ * blocked.
  *
- * Targets a user only where the event carries a clear user_id (e.g. the
- * salesperson who closed a sale). Role-based routing (approvals → approver) is
- * a later extension once org_workflow resolution is wired in.
+ * action_url is included so the notification deep-links directly to the
+ * relevant record in the admin frontend.
  */
 
 "use strict";
@@ -32,6 +30,7 @@ async function notifyRepOnSale({ brand, order_id }) {
       body: `${order.order_number} is fully paid (₦${order.total_ngn}).`,
       reference_type: "sales_order",
       reference_id: order_id,
+      action_url: `/sales?order=${order_id}`,
     });
   } catch (err) {
     logger.error(

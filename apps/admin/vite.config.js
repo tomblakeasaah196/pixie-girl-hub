@@ -1,4 +1,3 @@
-var _a, _b;
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
@@ -9,28 +8,22 @@ import { fileURLToPath, URL } from "node:url";
 // development. Override the target with VITE_API_PROXY_TARGET if the
 // backend runs elsewhere.
 export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
-  },
-  server: {
-    port: 5173,
-    host: true,
-    proxy: {
-      "/api": {
-        target:
-          (_a = process.env.VITE_API_PROXY_TARGET) !== null && _a !== void 0
-            ? _a
-            : "http://localhost:7000",
-        changeOrigin: true,
-      },
-      "/media": {
-        target:
-          (_b = process.env.VITE_API_PROXY_TARGET) !== null && _b !== void 0
-            ? _b
-            : "http://localhost:7000",
-        changeOrigin: true,
-      },
+    plugins: [react()],
+    resolve: {
+        alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
     },
-  },
+    server: {
+        port: 5173,
+        host: true,
+        proxy: {
+            "/api": {
+                target: process.env.VITE_API_PROXY_TARGET ?? "http://localhost:7000",
+                changeOrigin: true,
+            },
+            "/media": {
+                target: process.env.VITE_API_PROXY_TARGET ?? "http://localhost:7000",
+                changeOrigin: true,
+            },
+        },
+    },
 });

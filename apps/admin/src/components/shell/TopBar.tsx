@@ -1,10 +1,10 @@
-import { Menu, Search, Bell, Sun, Moon } from "lucide-react";
+import { Menu, Search, Sun, Moon } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useUiStore } from "@/stores/ui";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { MODULES } from "@/lib/modules";
-import { IconButton } from "@/components/ui/primitives";
 import { ClockWidget } from "./ClockWidget";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 /** Sticky top bar (canon §3.2): module title+desc · clock-in · ⌘K search · bell · theme. */
 export function TopBar() {
@@ -19,9 +19,13 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-30 flex items-center gap-3.5 p-[12px_30px] glass border-b max-md:p-[10px_16px]">
       {!isDesktop && (
-        <IconButton onClick={() => setMobileSidebarOpen(true)} aria-label="Menu">
+        <button
+          onClick={() => setMobileSidebarOpen(true)}
+          aria-label="Menu"
+          className="grid place-items-center w-[38px] h-[38px] rounded-[11px] bg-text-primary/[0.05] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all"
+        >
           <Menu className="w-[18px]" />
-        </IconButton>
+        </button>
       )}
       <div className="min-w-0">
         <h1 className="font-display text-[21px] font-medium leading-tight truncate max-md:text-lg">{title}</h1>
@@ -38,12 +42,14 @@ export function TopBar() {
           <kbd className="ml-auto font-mono text-[10px] border border-line rounded-md px-1.5 py-px max-md:hidden">⌘K</kbd>
         </button>
         <ClockWidget compact={!isDesktop} />
-        <IconButton dot aria-label="Notifications">
-          <Bell className="w-[18px]" />
-        </IconButton>
-        <IconButton onClick={toggleTheme} aria-label="Toggle theme">
+        <NotificationBell />
+        <button
+          onClick={toggleTheme}
+          aria-label="Toggle theme"
+          className="grid place-items-center w-[38px] h-[38px] rounded-[11px] bg-text-primary/[0.05] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all"
+        >
           {theme === "dark" ? <Sun className="w-[18px]" /> : <Moon className="w-[18px]" />}
-        </IconButton>
+        </button>
       </div>
     </header>
   );

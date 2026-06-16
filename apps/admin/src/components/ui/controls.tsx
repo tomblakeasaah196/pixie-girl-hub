@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { AlertTriangle, Lock, RefreshCw, X } from "lucide-react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
+import { AlertTriangle, ChevronDown, Lock, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Modal } from "./Modal";
 
@@ -110,7 +110,8 @@ export function Toggle({
   );
 }
 
-/* ── Select ── */
+/* ── Select ── custom listbox so dark-mode glass styles actually render
+   (native <select>/<option> ignore CSS in most browsers) */
 export function Select<T extends string>({
   value,
   onChange,
@@ -124,22 +125,74 @@ export function Select<T extends string>({
   className?: string;
   disabled?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (disabled) return;
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((o) => !o); }
+    if (e.key === "Escape") setOpen(false);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const idx = options.findIndex((o) => o.value === value);
+      const next = options[Math.min(idx + 1, options.length - 1)];
+      if (next) onChange(next.value);
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const idx = options.findIndex((o) => o.value === value);
+      const prev = options[Math.max(idx - 1, 0)];
+      if (prev) onChange(prev.value);
+    }
+  };
+
   return (
-    <select
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value as T)}
-      className={cn(
-        "w-full h-[42px] px-[11px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 disabled:opacity-50",
-        className,
+    <div ref={containerRef} className={cn("relative", className)}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        onKeyDown={handleKey}
+        className="w-full h-[42px] px-[11px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus-visible:border-accent/50 disabled:opacity-50 flex items-center justify-between gap-2 text-left transition-colors"
+      >
+        <span className="truncate text-[13px]">{selected?.label ?? ""}</span>
+        <ChevronDown
+          className={cn(
+            "w-4 h-4 shrink-0 text-text-faint transition-transform duration-150",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div className="select-dropdown-list absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] overflow-hidden py-1">
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => { onChange(o.value); setOpen(false); }}
+              className={cn(
+                "w-full px-[11px] py-[9px] text-[13px] text-left transition-colors hover:bg-text-primary/[0.06]",
+                o.value === value ? "text-accent-glow font-semibold" : "text-text-primary",
+              )}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       )}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value} className="bg-panel text-text-primary">
-          {o.label}
-        </option>
-      ))}
-    </select>
+    </div>
   );
 }
 

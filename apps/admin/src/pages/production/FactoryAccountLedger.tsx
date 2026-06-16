@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, CheckSquare, AlertTriangle, Globe } from "lucide-react";
 import { Button, Card, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
@@ -29,13 +30,10 @@ function cny(n: number) {
   return `¥${n.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function FactoryAccountLedger({
-  account,
-  lang,
-}: {
-  account: FactoryAccount;
-  lang: "en" | "zh";
-}) {
+export function FactoryAccountLedger({ account }: { account: FactoryAccount }) {
+  const { t, i18n } = useTranslation("factory");
+  const isZh = i18n.language === "zh";
+
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -71,7 +69,7 @@ export function FactoryAccountLedger({
       <Card className="p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="micro mb-1">{lang === "zh" ? "当前余额" : "Current Balance"}</div>
+            <div className="micro mb-1">{t("currentBalance")}</div>
             <div
               className={cn(
                 "font-mono text-[32px] font-bold tabular-nums",
@@ -86,7 +84,7 @@ export function FactoryAccountLedger({
             </div>
             {account.credit_alert_threshold != null && (
               <div className="text-[12px] text-text-faint mt-1">
-                {lang === "zh" ? "预警阈值" : "Alert threshold"}:{" "}
+                {t("alertThreshold")}:{" "}
                 <span className="font-mono">{cny(account.credit_alert_threshold)}</span>
               </div>
             )}
@@ -100,7 +98,7 @@ export function FactoryAccountLedger({
                 disabled={reconcile.isPending}
                 onClick={handleReconcile}
               >
-                {lang === "zh" ? `对账 (${selected.size})` : `Reconcile (${selected.size})`}
+                {t("reconcile", { count: selected.size })}
               </Button>
             )}
             <Button
@@ -109,7 +107,7 @@ export function FactoryAccountLedger({
               icon={<Plus className="w-3.5 h-3.5" />}
               onClick={() => setShowAdd(true)}
             >
-              {lang === "zh" ? "添加记录" : "Add Entry"}
+              {t("addEntry")}
             </Button>
           </div>
         </div>
@@ -117,9 +115,7 @@ export function FactoryAccountLedger({
         {isOverThreshold && (
           <div className="mt-3 flex items-center gap-2 text-[12px] text-danger bg-danger/10 border border-danger/25 rounded-xl px-3 py-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            {lang === "zh"
-              ? "余额已超过预警阈值，请及时付款。"
-              : "Balance has exceeded the alert threshold. Please arrange payment."}
+            {t("balanceExceeded")}
           </div>
         )}
       </Card>
@@ -132,25 +128,25 @@ export function FactoryAccountLedger({
               <tr>
                 <th className="micro p-[10px_12px] border-b hairline bg-text-primary/[0.02] w-8" />
                 <th className="micro p-[10px_14px] border-b hairline bg-text-primary/[0.02] text-left">
-                  {lang === "zh" ? "日期" : "Date"}
+                  {t("date")}
                 </th>
                 <th className="micro p-[10px_14px] border-b hairline bg-text-primary/[0.02] text-left">
-                  {lang === "zh" ? "类型" : "Type"}
+                  {t("type")}
                 </th>
                 <th className="micro p-[10px_14px] border-b hairline bg-text-primary/[0.02] text-left">
-                  {lang === "zh" ? "描述" : "Description"}
+                  {t("description")}
                 </th>
                 <th className="micro p-[10px_14px] border-b hairline bg-text-primary/[0.02] text-right">
-                  {lang === "zh" ? "借方" : "Debit"}
+                  {t("debit")}
                 </th>
                 <th className="micro p-[10px_14px] border-b hairline bg-text-primary/[0.02] text-right">
-                  {lang === "zh" ? "贷方" : "Credit"}
+                  {t("credit")}
                 </th>
                 <th className="micro p-[10px_14px] border-b hairline bg-text-primary/[0.02] text-right">
-                  {lang === "zh" ? "余额" : "Balance"}
+                  {t("balance")}
                 </th>
                 <th className="micro p-[10px_14px] border-b hairline bg-text-primary/[0.02] text-center">
-                  {lang === "zh" ? "对账" : "Recon."}
+                  {t("reconCol")}
                 </th>
               </tr>
             </thead>
@@ -196,7 +192,7 @@ export function FactoryAccountLedger({
                       </td>
                       <td className="p-[0_14px] h-[48px] align-middle">
                         <Pill tone={meta.tone} dot={false}>
-                          {lang === "zh" ? meta.labelZh : meta.label}
+                          {isZh ? meta.labelZh : meta.label}
                         </Pill>
                       </td>
                       <td className="p-[0_14px] h-[48px] align-middle text-text-muted truncate max-w-[180px]">
@@ -227,22 +223,18 @@ export function FactoryAccountLedger({
         {!isLoading && entries.length === 0 && (
           <EmptyState
             icon={<Globe className="w-6 h-6" />}
-            title={lang === "zh" ? "暂无记录" : "No ledger entries yet"}
-            message={
-              lang === "zh"
-                ? "订单收费和付款将显示在这里。"
-                : "Order charges and payments will appear here."
-            }
+            title={t("noEntries")}
+            message={t("noEntriesMsg")}
           />
         )}
         {isError && (
           <EmptyState
             icon={<AlertTriangle className="w-6 h-6" />}
-            title="Failed to load"
-            message="Could not load ledger entries."
+            title={t("failedToLoad")}
+            message={t("couldNotLoadEntries")}
             action={
               <Button size="sm" variant="secondary" onClick={() => refetch()}>
-                Retry
+                {t("retry")}
               </Button>
             }
           />
@@ -254,7 +246,6 @@ export function FactoryAccountLedger({
         open={showAdd}
         onClose={() => setShowAdd(false)}
         accountId={account.account_id}
-        lang={lang}
         onAdd={addEntry}
       />
     </div>
@@ -265,15 +256,16 @@ function AddEntryDrawer({
   open,
   onClose,
   accountId: _accountId,
-  lang,
   onAdd,
 }: {
   open: boolean;
   onClose: () => void;
   accountId: string;
-  lang: "en" | "zh";
   onAdd: ReturnType<typeof useAddLedgerEntry>;
 }) {
+  const { t, i18n } = useTranslation("factory");
+  const isZh = i18n.language === "zh";
+
   const [form, setForm] = useState({
     entry_type: "payment" as EntryType,
     direction: "CR" as "DR" | "CR",
@@ -311,7 +303,12 @@ function AddEntryDrawer({
         paid_by: form.paid_by || undefined,
         notes: form.notes || undefined,
       },
-      { onSuccess: () => { onClose(); setForm((p) => ({ ...p, amount_original: "", description: "", notes: "" })); } },
+      {
+        onSuccess: () => {
+          onClose();
+          setForm((p) => ({ ...p, amount_original: "", description: "", notes: "" }));
+        },
+      },
     );
   };
 
@@ -319,30 +316,30 @@ function AddEntryDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      title={lang === "zh" ? "添加账户记录" : "Add Ledger Entry"}
+      title={t("addLedgerEntry")}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            {lang === "zh" ? "取消" : "Cancel"}
+            {t("cancel")}
           </Button>
           <Button
             variant="primary"
             disabled={onAdd.isPending || !form.amount_original}
             onClick={handleSubmit}
           >
-            {onAdd.isPending ? (lang === "zh" ? "保存中…" : "Saving…") : (lang === "zh" ? "保存" : "Save Entry")}
+            {onAdd.isPending ? t("saving") : t("saveEntry")}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label={lang === "zh" ? "类型" : "Entry Type"}>
+        <Field label={t("entryType")}>
           <Select
             value={form.entry_type}
             onChange={handleTypeChange}
             options={ENTRY_TYPES.map((o) => ({
               value: o.value,
-              label: lang === "zh" ? ENTRY_TYPE_META[o.value].labelZh : o.label,
+              label: isZh ? ENTRY_TYPE_META[o.value].labelZh : o.label,
             }))}
           />
         </Field>
@@ -362,21 +359,21 @@ function AddEntryDrawer({
                     : "border-line text-text-muted",
                 )}
               >
-                {d === "DR" ? (lang === "zh" ? "借方" : "Debit") : (lang === "zh" ? "贷方" : "Credit")}
+                {d === "DR" ? t("debit") : t("credit")}
               </button>
             ))}
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={lang === "zh" ? "金额" : "Amount"}>
+          <Field label={t("amount")}>
             <NumberField
               value={form.amount_original}
               onChange={(v) => setField("amount_original", v)}
               placeholder="0.00"
             />
           </Field>
-          <Field label={lang === "zh" ? "货币" : "Currency"}>
+          <Field label={t("currency")}>
             <Select
               value={form.original_currency}
               onChange={(v) => setField("original_currency", v)}
@@ -389,7 +386,7 @@ function AddEntryDrawer({
           </Field>
         </div>
 
-        <Field label={lang === "zh" ? "汇率（转换为CNY）" : "FX Rate to CNY"}>
+        <Field label={t("fxRate")}>
           <NumberField
             value={form.fx_rate_to_base}
             onChange={(v) => setField("fx_rate_to_base", v)}
@@ -397,7 +394,7 @@ function AddEntryDrawer({
           />
         </Field>
 
-        <Field label={lang === "zh" ? "日期" : "Date"}>
+        <Field label={t("date")}>
           <input
             type="date"
             value={form.entry_date}
@@ -406,36 +403,36 @@ function AddEntryDrawer({
           />
         </Field>
 
-        <Field label={lang === "zh" ? "付款方式" : "Payment Method"}>
+        <Field label={t("paymentMethod")}>
           <Select
             value={form.payment_method}
             onChange={(v) => setField("payment_method", v as PaymentMethod | "")}
             options={[
-              { value: "", label: lang === "zh" ? "— 选择 —" : "— Select —" },
+              { value: "", label: t("selectPrompt") },
               ...PAYMENT_METHODS.map((o) => ({
                 value: o.value,
-                label: lang === "zh" ? PAYMENT_METHOD_LABELS[o.value].labelZh : o.label,
+                label: isZh ? PAYMENT_METHOD_LABELS[o.value].labelZh : o.label,
               })),
             ]}
           />
         </Field>
 
-        <Field label={lang === "zh" ? "付款人" : "Paid By"}>
+        <Field label={t("paidBy")}>
           <input
             type="text"
             value={form.paid_by}
             onChange={(e) => setField("paid_by", e.target.value)}
-            placeholder={lang === "zh" ? "付款人姓名" : "Person / entity name"}
+            placeholder={t("paidByPlaceholder")}
             className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
           />
         </Field>
 
-        <Field label={lang === "zh" ? "描述" : "Description"}>
+        <Field label={t("description")}>
           <input
             type="text"
             value={form.description}
             onChange={(e) => setField("description", e.target.value)}
-            placeholder={lang === "zh" ? "备注（选填）" : "Short description (optional)"}
+            placeholder={t("descriptionPlaceholder")}
             className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
           />
         </Field>

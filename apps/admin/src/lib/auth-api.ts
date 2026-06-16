@@ -12,6 +12,7 @@ export interface AuthUser {
   email: string;
   display_name: string;
   is_ceo: boolean;
+  role_names: string[];
   available_businesses: string[];
   default_business_key: string | null;
 }

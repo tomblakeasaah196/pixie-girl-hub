@@ -29,6 +29,8 @@ export interface User {
   isCeo: boolean;
   availableBusinesses: string[];
   defaultBusinessKey: string | null;
+  /** True when the user holds the factory_manager role — triggers Chinese UI default. */
+  isFactoryManager: boolean;
 }
 
 type SessionStatus = "unknown" | "authed" | "anon";
@@ -47,11 +49,16 @@ interface AuthState {
 
 /** Map the backend AuthUser onto the shell's User shape. */
 export function toUser(u: AuthUser): User {
+  const roleNames = u.role_names ?? [];
   return {
     id: u.user_id,
     name: u.display_name || u.email.split("@")[0],
     email: u.email,
-    role: u.is_ceo ? "CEO · Owner" : "Team Member",
+    role: u.is_ceo
+      ? "CEO · Owner"
+      : roleNames.includes("factory_manager")
+        ? "Factory Manager"
+        : "Team Member",
     // Until the permissions module lands, a CEO/super-admin gets "*"
     // (full access); everyone else relies on server-side enforcement.
     permissions: u.is_ceo ? ["*"] : [],
@@ -59,6 +66,7 @@ export function toUser(u: AuthUser): User {
     isCeo: u.is_ceo,
     availableBusinesses: u.available_businesses,
     defaultBusinessKey: u.default_business_key,
+    isFactoryManager: roleNames.includes("factory_manager"),
   };
 }
 

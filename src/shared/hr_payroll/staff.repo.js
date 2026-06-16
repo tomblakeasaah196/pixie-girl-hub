@@ -28,6 +28,10 @@ async function findByEmail(email) {
     `SELECT u.user_id, u.email, u.display_name, u.password_hash, u.pin_hash,
             u.status, u.is_ceo,
             u.default_business_key, u.failed_login_count,
+            COALESCE((SELECT array_agg(r.role_name)
+                        FROM shared.user_roles ur
+                        JOIN shared.roles r ON r.role_id = ur.role_id
+                       WHERE ur.user_id = u.user_id), '{}') AS role_names,
             COALESCE((SELECT array_agg(business_key) FROM shared.user_business_access uba WHERE uba.user_id = u.user_id), '{}') AS available_businesses
        FROM shared.users u
       WHERE u.email = $1

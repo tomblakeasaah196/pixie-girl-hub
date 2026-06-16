@@ -1,4 +1,5 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Factory,
   Ship,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { toggleFactoryLang, autoDefaultFactoryLang } from "@/i18n";
 import {
   Button,
   Card,
@@ -57,13 +59,19 @@ function fmt(d: string) {
 export function ProductionPage() {
   useBreadcrumbs([{ label: "Production" }]);
   const can = useAuthStore((s) => s.can);
+  const user = useAuthStore((s) => s.user);
+  const { t, i18n } = useTranslation("factory");
 
   const [tab, setTab] = useState<MainTab>("overview");
   const [factoryTab, setFactoryTab] = useState<FactoryTab>("ledger");
-  const [lang, setLang] = useState<"en" | "zh">("en");
   const [selectedAccount, setSelectedAccount] = useState<FactoryAccount | null>(null);
   const [selectedRun, setSelectedRun] = useState<ProductionRun | null>(null);
   const [showCreateRun, setShowCreateRun] = useState(false);
+
+  // Auto-default to Chinese for factory_manager users on first visit
+  useEffect(() => {
+    autoDefaultFactoryLang(user?.isFactoryManager ?? false);
+  }, [user?.isFactoryManager]);
 
   if (!can("purchasing", "view")) {
     return (
@@ -94,18 +102,18 @@ export function ProductionPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {/* Language toggle */}
+          {/* Language toggle — always visible so factory managers can check English */}
           <button
-            onClick={() => setLang((l) => (l === "en" ? "zh" : "en"))}
+            onClick={toggleFactoryLang}
             className={cn(
               "flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-semibold border transition-all",
-              lang === "zh"
+              i18n.language === "zh"
                 ? "bg-accent/15 border-accent/30 text-accent-glow"
                 : "border-line text-text-muted hover:text-text-primary",
             )}
           >
             <Globe className="w-3.5 h-3.5" />
-            {lang === "zh" ? "中文" : "EN"}
+            {t("langToggle")}
           </button>
           {tab === "runs" && can("purchasing", "create") && (
             <Button
@@ -147,7 +155,6 @@ export function ProductionPage() {
           onSelectAccount={setSelectedAccount}
           factoryTab={factoryTab}
           onFactoryTab={setFactoryTab}
-          lang={lang}
         />
       )}
       {tab === "runs" && (
@@ -247,14 +254,13 @@ function FactoryTab({
   onSelectAccount,
   factoryTab,
   onFactoryTab,
-  lang,
 }: {
   selectedAccount: FactoryAccount | null;
   onSelectAccount: (a: FactoryAccount) => void;
   factoryTab: FactoryTab;
   onFactoryTab: (t: FactoryTab) => void;
-  lang: "en" | "zh";
 }) {
+  const { t } = useTranslation("factory");
   const { data: accounts, isLoading, isError } = useFactoryAccounts();
 
   if (isLoading) return <Skeleton className="h-32 w-full" />;
@@ -263,12 +269,8 @@ function FactoryTab({
     return (
       <EmptyState
         icon={<Wallet className="w-8 h-8" />}
-        title={lang === "zh" ? "暂无工厂账户" : "No factory accounts"}
-        message={
-          lang === "zh"
-            ? "请先创建工厂账户。"
-            : "Create a factory account to start tracking the China balance."
-        }
+        title={t("noFactoryAccounts")}
+        message={t("noFactoryAccountsMsg")}
       />
     );
   }
@@ -309,34 +311,31 @@ function FactoryTab({
       {/* Sub-tabs */}
       <div className="flex gap-1 p-1 glass rounded-[14px]">
         {([
-          { key: "ledger" as const, label: lang === "zh" ? "账户记录" : "Ledger", icon: <Wallet className="w-3.5 h-3.5" /> },
-          { key: "shipments" as const, label: lang === "zh" ? "发货记录" : "Shipments", icon: <Ship className="w-3.5 h-3.5" /> },
-        ]).map((t) => (
+          { key: "ledger" as const, label: t("ledger"), icon: <Wallet className="w-3.5 h-3.5" /> },
+          { key: "shipments" as const, label: t("shipmentsTab"), icon: <Ship className="w-3.5 h-3.5" /> },
+        ] as const).map((tab) => (
           <button
-            key={t.key}
-            onClick={() => onFactoryTab(t.key)}
+            key={tab.key}
+            onClick={() => onFactoryTab(tab.key)}
             className={cn(
               "flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all",
-              factoryTab === t.key
+              factoryTab === tab.key
                 ? "bg-accent-deep text-[#F4E9D9] shadow-md"
                 : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05]",
             )}
           >
-            {t.icon}
-            {t.label}
+            {tab.icon}
+            {tab.label}
           </button>
         ))}
       </div>
 
       <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-        {factoryTab === "ledger" && (
-          <FactoryAccountLedger account={active} lang={lang} />
-        )}
+        {factoryTab === "ledger" && <FactoryAccountLedger account={active} />}
         {factoryTab === "shipments" && (
           <FactoryShipmentsPanel
             accountId={active.account_id}
             supplierId={active.supplier_id}
-            lang={lang}
           />
         )}
       </Suspense>

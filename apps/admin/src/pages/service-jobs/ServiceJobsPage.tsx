@@ -8,7 +8,7 @@ import {
   MoneyText,
 } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
-import { Select, ErrorState } from "@/components/ui/controls";
+import { ErrorState } from "@/components/ui/controls";
 import { DataTable } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -21,8 +21,8 @@ import {
   useReconciliations,
   useRunReconciliation,
 } from "./hooks";
-import { JOB_STATUS_META, VARIANCE_STATUS_META, SERVICE_KEY_ICON } from "./constants";
-import type { ServiceType, ChemicalReconciliation } from "./types";
+import { VARIANCE_STATUS_META, SERVICE_KEY_ICON } from "./constants";
+import type { ServiceType } from "./types";
 
 // ── Service types management ───────────────────────────────
 
@@ -194,10 +194,10 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
       </div>
 
       {types.length === 0 ? (
-        <EmptyState title="No service types" subtitle="Create your first service type" />
+        <EmptyState icon={<span className="text-3xl">⚙️</span>} title="No service types" message="Create your first service type" />
       ) : (
-        <DataTable
-          data={types}
+        <DataTable<ServiceType>
+          rows={types}
           columns={[
             {
               key: "service_key",
@@ -208,7 +208,7 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
                 </span>
               ),
             },
-            { key: "display_name", header: "Name" },
+            { key: "display_name", header: "Name", render: (t) => t.display_name },
             {
               key: "standard_cost_ngn",
               header: "Std Cost",
@@ -262,7 +262,7 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
           initial={editing}
           onSave={(data) =>
             update.mutate(
-              { id: editing.service_type_id, patch: data },
+              [editing.service_type_id, data],
               { onSuccess: () => setEditing(null) },
             )
           }
@@ -329,8 +329,9 @@ function ReconciliationTab() {
 
       {rows.length === 0 ? (
         <EmptyState
+          icon={<span className="text-3xl">🔬</span>}
           title="No reconciliation data"
-          subtitle="Run a reconciliation to see chemical usage vs purchased"
+          message="Run a reconciliation to see chemical usage vs purchased"
         />
       ) : (
         <div className="overflow-x-auto">
@@ -406,13 +407,13 @@ function KpiStrip() {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <KpiTile label="Pending" value={pending} />
-      <KpiTile label="In Progress" value={inProgress} />
-      <KpiTile label="Completed Today" value={completedToday} />
+      <KpiTile label="Pending" value={String(pending)} />
+      <KpiTile label="In Progress" value={String(inProgress)} />
+      <KpiTile label="Completed Today" value={String(completedToday)} />
       <KpiTile
         label="No Sale (risk)"
-        value={pocketing}
-        tone={pocketing > 0 ? "danger" : "neutral"}
+        value={String(pocketing)}
+        tone={pocketing > 0 ? "warn" : "neutral"}
       />
     </div>
   );

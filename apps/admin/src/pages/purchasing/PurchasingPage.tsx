@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState } from "react";
 import {
   ShoppingCart,
   Building2,
@@ -25,7 +25,7 @@ import {
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Form";
-import { NumberField, Select } from "@/components/ui/controls";
+import { Select } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
 import {
   usePos,
@@ -36,8 +36,6 @@ import {
   useCreateSupplier,
   useGrns,
   useSupplierInvoices,
-  useCreateGrn,
-  usePostGrn,
 } from "./hooks";
 import {
   PO_STATUS_META,
@@ -50,7 +48,7 @@ import {
   DENSITIES,
   CAP_SIZES,
 } from "./constants";
-import type { PurchaseOrder, Supplier, GoodsReceivedNote, SupplierInvoice, PoStatus } from "./types";
+import type { PurchaseOrder, GoodsReceivedNote, SupplierInvoice, PoStatus } from "./types";
 
 type Tab = "overview" | "purchase-orders" | "suppliers" | "grn-invoices";
 type GrnTab = "grns" | "invoices";
@@ -134,7 +132,6 @@ export function PurchasingPage() {
           onSelect={setSelectedPo}
           onCreate={() => setShowCreatePo(true)}
           canCreate={can("purchasing", "create")}
-          canApprove={can("purchasing", "approve")}
         />
       )}
       {tab === "suppliers" && <SuppliersTab canCreate={can("purchasing", "create")} />}
@@ -210,14 +207,12 @@ function PoTab({
   onSelect,
   onCreate,
   canCreate,
-  canApprove,
 }: {
   statusFilter: string;
   onStatusFilter: (v: string) => void;
   onSelect: (p: PurchaseOrder) => void;
   onCreate: () => void;
   canCreate: boolean;
-  canApprove: boolean;
 }) {
   const [page, setPage] = useState(1);
   const { data, isLoading, isError, refetch } = usePos({ status: statusFilter || undefined, page });
@@ -690,7 +685,7 @@ function CreatePoDrawer({ open, onClose }: { open: boolean; onClose: () => void 
                     { key: "manufacturing_location", label: "Origin", options: [{ value: "", label: "— Select —" }, ...MANUFACTURING_LOCATIONS] },
                   ].map(({ key, label, options }) => (
                     <Field key={key} label={label}>
-                      <select value={(line as Record<string, string>)[key]} onChange={(e) => setLineF(i, key, e.target.value)}
+                      <select value={(line as unknown as Record<string, string>)[key]} onChange={(e) => setLineF(i, key, e.target.value)}
                         className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]">
                         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
@@ -836,13 +831,13 @@ function GrnInvoicesTab({ canCreate, canApprove }: { canCreate: boolean; canAppr
           </button>
         ))}
       </div>
-      {subTab === "grns" && <GrnsPanel canCreate={canCreate} />}
-      {subTab === "invoices" && <InvoicesPanel canCreate={canCreate} canApprove={canApprove} />}
+      {subTab === "grns" && <GrnsPanel />}
+      {subTab === "invoices" && <InvoicesPanel />}
     </div>
   );
 }
 
-function GrnsPanel({ canCreate }: { canCreate: boolean }) {
+function GrnsPanel() {
   const { data, isLoading } = useGrns();
   const grns = data?.data ?? [];
 
@@ -869,7 +864,7 @@ function GrnsPanel({ canCreate }: { canCreate: boolean }) {
   );
 }
 
-function InvoicesPanel({ canCreate, canApprove }: { canCreate: boolean; canApprove: boolean }) {
+function InvoicesPanel() {
   const { data, isLoading } = useSupplierInvoices();
   const invoices = data?.data ?? [];
 

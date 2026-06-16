@@ -1,7 +1,6 @@
 import { useState, lazy, Suspense } from "react";
 import {
   Factory,
-  Package,
   Ship,
   TrendingUp,
   Plus,

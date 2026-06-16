@@ -46,7 +46,6 @@ export function usePo(id: string | null) {
 
 export function useCreatePo() {
   const qc = useQueryClient();
-  const brand = useBrand();
   return useMutation({
     mutationFn: api.createPo,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["purchase-orders"] }); },
@@ -88,7 +87,6 @@ export function useGrns(params?: { page?: number }) {
 
 export function useCreateGrn() {
   const qc = useQueryClient();
-  const brand = useBrand();
   return useMutation({
     mutationFn: api.createGrn,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["grns"] }); },
@@ -119,7 +117,6 @@ export function useSupplierInvoices(params?: { page?: number; status?: string })
 
 export function useCreateSupplierInvoice() {
   const qc = useQueryClient();
-  const brand = useBrand();
   return useMutation({
     mutationFn: api.createSupplierInvoice,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["supplier-invoices"] }); },

@@ -83,10 +83,24 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       status: "unknown",
       setSession: (u) => {
-        set({ user: toUser(u), status: "authed" });
-        // NOTE: loadPermissions() is NOT called here — the brand context
-        // (X-Brand-Context) isn't set yet at this point. The caller
-        // (AuthModal) sets the active business first, then calls loadPermissions().
+        const user = toUser(u);
+        set({ user, status: "authed" });
+
+        // Ensure the business context is set immediately after login
+        // so X-Brand-Context is present on the very first API call.
+        const { activeKey, setActive } = useBusinessStore.getState();
+        const defaultKey =
+          user.defaultBusinessKey ?? user.availableBusinesses[0];
+        if (defaultKey && (!activeKey || activeKey !== defaultKey)) {
+          setActive(defaultKey);
+        }
+
+        // Fire-and-forget: load real permission grants after login.
+        get()
+          .loadPermissions()
+          .catch(() => {
+            /* non-fatal */
+          });
       },
       signOut: async () => {
         await apiLogout();

@@ -21,6 +21,7 @@ import {
   ShoppingBag,
   ChevronRight,
   Lock,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -74,6 +75,7 @@ const SECTIONS: Section[] = [
       { key: "custom-fields", label: "Custom Fields", desc: "Per-entity field definitions", icon: LayoutGrid, to: "/settings/custom-fields" },
       { key: "pipeline-stages", label: "Pipeline Stages", desc: "CRM, delivery, PO & production stages", icon: GitBranch, to: "/settings/pipeline-stages" },
       { key: "scheduled-reports", label: "Scheduled Reports", desc: "Automated report delivery", icon: CalendarClock, to: "/settings/scheduled-reports" },
+      { key: "factory-languages", label: "Factory Languages", desc: "Add & manage translations for China factory screens — no code needed", icon: Globe, to: "/settings/factory-languages" },
     ],
   },
   {

@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
-import { autoDefaultFactoryLang, FACTORY_LANGUAGES } from "@/i18n";
+import { autoDefaultFactoryLang } from "@/i18n";
+import { useFactoryLanguages } from "@/i18n/useFactoryLanguages";
 import {
   Button,
   Card,
@@ -61,6 +62,7 @@ export function ProductionPage() {
   const can = useAuthStore((s) => s.can);
   const user = useAuthStore((s) => s.user);
   const { i18n } = useTranslation("factory");
+  const { languages } = useFactoryLanguages();
 
   const [tab, setTab] = useState<MainTab>("overview");
   const [factoryTab, setFactoryTab] = useState<FactoryTab>("ledger");
@@ -102,7 +104,7 @@ export function ProductionPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {/* Language selector — driven by FACTORY_LANGUAGES; auto-expands when new locales are added */}
+          {/* Language selector — driven by DB; new languages appear immediately after saving in Settings */}
           <div className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-semibold border transition-all",
             i18n.language !== "en"
@@ -115,7 +117,7 @@ export function ProductionPage() {
               onChange={(e) => i18n.changeLanguage(e.target.value)}
               className="bg-transparent outline-none cursor-pointer text-inherit font-semibold"
             >
-              {Object.entries(FACTORY_LANGUAGES).map(([code, name]) => (
+              {Object.entries(languages).map(([code, name]) => (
                 <option key={code} value={code} className="bg-[#1a0808] text-foreground">
                   {name}
                 </option>

@@ -18,6 +18,7 @@ const ProductionPage = lazy(() => import("@/pages/production/ProductionPage").th
 const PricingPage = lazy(() => import("@/pages/pricing/PricingPage").then((m) => ({ default: m.PricingPage })));
 const PurchasingPage = lazy(() => import("@/pages/purchasing/PurchasingPage").then((m) => ({ default: m.PurchasingPage })));
 const ServiceJobsPage = lazy(() => import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({ default: m.ServiceJobsPage })));
+const FactoryLanguagePage = lazy(() => import("@/pages/FactoryLanguagePage").then((m) => ({ default: m.FactoryLanguagePage })));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -123,6 +124,7 @@ export const router = createBrowserRouter(
             { path: "settings/integration-secrets", element: <IntegrationSecretsPage /> },
             { path: "settings/policies", element: <BusinessPoliciesPage /> },
             { path: "settings/contact-tags", element: <ContactTagsPage /> },
+            { path: "settings/factory-languages", element: <Suspense fallback={null}><FactoryLanguagePage /></Suspense> },
 
             // Org & Workflow (roles / approvals / permission matrix).
             { path: "org-workflow", element: <OrgWorkflowPage /> },

@@ -161,12 +161,16 @@ function PurchasingOverview() {
   const { data: grns } = useGrns();
   const { data: invoices } = useSupplierInvoices();
 
-  const openPos = pos?.data.filter((p) => !["closed", "cancelled"].includes(p.status)).length ?? 0;
-  const inTransit = pos?.data.filter((p) => p.status === "in_transit").length ?? 0;
-  const pendingGrns = grns?.data.filter((g) => g.status === "draft").length ?? 0;
-  const unpaidTotal = invoices?.data
+  const posData = pos?.data ?? [];
+  const grnsData = grns?.data ?? [];
+  const invoicesData = invoices?.data ?? [];
+
+  const openPos = posData.filter((p) => !["closed", "cancelled"].includes(p.status)).length;
+  const inTransit = posData.filter((p) => p.status === "in_transit").length;
+  const pendingGrns = grnsData.filter((g) => g.status === "draft").length;
+  const unpaidTotal = invoicesData
     .filter((i) => i.payment_status !== "paid")
-    .reduce((sum, i) => sum + parseFloat(i.total_ngn ?? "0"), 0) ?? 0;
+    .reduce((sum, i) => sum + parseFloat(i.total_ngn ?? "0"), 0);
 
   if (isLoading) {
     return (

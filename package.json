@@ -31,6 +31,7 @@
     "db:repair": "node scripts/repair-business-schema.js --all",
     "db:seed": "node scripts/seed.js",
     "user:create-admin": "node scripts/create-admin.js",
+    "seed:factory-manager": "node scripts/seed-factory-manager.js",
     "db:verify": "node scripts/verify-schema.js",
     "db:create-admin": "node scripts/create-admin.js",
     "workers:start": "node src/jobs/worker.js",

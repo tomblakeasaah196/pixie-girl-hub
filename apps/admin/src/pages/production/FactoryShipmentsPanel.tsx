@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, Truck, Package, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { Button, Card, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
@@ -34,12 +35,13 @@ function cny(n: number | null) {
 export function FactoryShipmentsPanel({
   accountId,
   supplierId,
-  lang,
 }: {
   accountId: string;
   supplierId: string;
-  lang: "en" | "zh";
 }) {
+  const { t, i18n } = useTranslation("factory");
+  const isZh = i18n.language === "zh";
+
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<ShipmentStatus | "">("");
@@ -52,7 +54,7 @@ export function FactoryShipmentsPanel({
   const shipments = data?.shipments ?? [];
 
   const filterBtns: Array<{ value: ShipmentStatus | ""; label: string; labelZh: string }> = [
-    { value: "", label: "All", labelZh: "全部" },
+    { value: "", label: "All", labelZh: t("all") },
     ...STATUS_ORDER.map((s) => ({
       value: s,
       label: SHIPMENT_STATUS_META[s].label,
@@ -75,7 +77,7 @@ export function FactoryShipmentsPanel({
                   : "bg-text-primary/[0.04] text-text-muted border-transparent hover:bg-text-primary/[0.08]",
               )}
             >
-              {lang === "zh" ? f.labelZh : f.label}
+              {isZh ? f.labelZh : f.label}
             </button>
           ))}
         </div>
@@ -85,7 +87,7 @@ export function FactoryShipmentsPanel({
           icon={<Plus className="w-3.5 h-3.5" />}
           onClick={() => setShowCreate(true)}
         >
-          {lang === "zh" ? "新建发货单" : "New Shipment"}
+          {t("newShipment")}
         </Button>
       </div>
 
@@ -104,28 +106,24 @@ export function FactoryShipmentsPanel({
       {isError && (
         <EmptyState
           icon={<AlertTriangle className="w-7 h-7" />}
-          title="Failed to load"
-          message="Could not load shipments."
-          action={<Button size="sm" onClick={() => refetch()}>Retry</Button>}
+          title={t("failedToLoad")}
+          message={t("couldNotLoadShipments")}
+          action={<Button size="sm" onClick={() => refetch()}>{t("retry")}</Button>}
         />
       )}
 
       {!isLoading && !isError && shipments.length === 0 && (
         <EmptyState
           icon={<Truck className="w-8 h-8" />}
-          title={lang === "zh" ? "暂无发货记录" : "No shipments yet"}
-          message={
-            lang === "zh"
-              ? "工厂发货后，记录在这里。"
-              : "When the factory dispatches goods, log the shipment here."
-          }
+          title={t("noShipments")}
+          message={t("noShipmentsMsg")}
           action={
             <Button
               variant="primary"
               icon={<Plus className="w-4 h-4" />}
               onClick={() => setShowCreate(true)}
             >
-              {lang === "zh" ? "新建发货单" : "New Shipment"}
+              {t("newShipment")}
             </Button>
           }
         />
@@ -133,7 +131,7 @@ export function FactoryShipmentsPanel({
 
       <div className="grid gap-3">
         {shipments.map((s) => (
-          <ShipmentCard key={s.shipment_id} shipment={s} lang={lang} onSelect={setSelected} />
+          <ShipmentCard key={s.shipment_id} shipment={s} onSelect={setSelected} />
         ))}
       </div>
 
@@ -142,13 +140,11 @@ export function FactoryShipmentsPanel({
         onClose={() => setShowCreate(false)}
         accountId={accountId}
         supplierId={supplierId}
-        lang={lang}
       />
 
       {selected && (
         <ShipmentDetailDrawer
           shipmentId={selected}
-          lang={lang}
           onClose={() => setSelected(null)}
         />
       )}
@@ -158,14 +154,15 @@ export function FactoryShipmentsPanel({
 
 function ShipmentCard({
   shipment,
-  lang,
   onSelect,
 }: {
   shipment: Shipment;
-  lang: "en" | "zh";
   onSelect: (id: string) => void;
 }) {
+  const { t, i18n } = useTranslation("factory");
+  const isZh = i18n.language === "zh";
   const meta = SHIPMENT_STATUS_META[shipment.status];
+
   return (
     <div
       className="glass rounded-[var(--radius)] shadow-glass p-5 cursor-pointer hover:bg-text-primary/[0.02] transition-colors"
@@ -175,7 +172,7 @@ function ShipmentCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="font-mono text-sm font-semibold">{shipment.shipment_ref}</span>
-            <Pill tone={meta.tone}>{lang === "zh" ? meta.labelZh : meta.label}</Pill>
+            <Pill tone={meta.tone}>{isZh ? meta.labelZh : meta.label}</Pill>
           </div>
           <div className="text-[13px] text-text-muted flex items-center gap-2">
             <Truck className="w-3.5 h-3.5 shrink-0" />
@@ -187,7 +184,7 @@ function ShipmentCard({
         </div>
         <div className="text-right shrink-0">
           <div className="text-[12px] text-text-faint">
-            {shipment.items.length} {lang === "zh" ? "件" : "items"}
+            {shipment.items.length} {t("items")}
           </div>
           {shipment.courier_fee_base != null && (
             <div className="font-mono text-sm">{cny(shipment.courier_fee_base)}</div>
@@ -196,10 +193,10 @@ function ShipmentCard({
       </div>
       <div className="mt-3 flex gap-4 text-[12px] text-text-faint">
         <span>
-          {lang === "zh" ? "发货" : "Shipped"}: {fmt(shipment.shipped_at)}
+          {t("shipped")}: {fmt(shipment.shipped_at)}
         </span>
         <span>
-          {lang === "zh" ? "预计到达" : "Est. arrival"}: {fmt(shipment.estimated_arrival)}
+          {t("estimatedArrival")}: {fmt(shipment.estimated_arrival)}
         </span>
       </div>
       {/* Status stepper */}
@@ -228,13 +225,13 @@ function ShipmentCard({
 
 function ShipmentDetailDrawer({
   shipmentId,
-  lang,
   onClose,
 }: {
   shipmentId: string;
-  lang: "en" | "zh";
   onClose: () => void;
 }) {
+  const { t, i18n } = useTranslation("factory");
+  const isZh = i18n.language === "zh";
   const { data: shipment, isLoading } = useShipment(shipmentId);
   const advance = useAdvanceShipment(shipmentId);
   const [showAdvance, setShowAdvance] = useState(false);
@@ -256,59 +253,70 @@ function ShipmentDetailDrawer({
         shipment ? (
           <span className="font-mono">{shipment.shipment_ref}</span>
         ) : (
-          "Shipment"
+          t("shipment")
         )
       }
-      subtitle={meta ? <Pill tone={meta.tone}>{lang === "zh" ? meta.labelZh : meta.label}</Pill> : undefined}
+      subtitle={
+        meta ? <Pill tone={meta.tone}>{isZh ? meta.labelZh : meta.label}</Pill> : undefined
+      }
     >
       {isLoading ? (
         <div className="space-y-4">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full" />
+          ))}
         </div>
       ) : shipment ? (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4 text-[13px]">
             <div>
-              <div className="micro mb-1">{lang === "zh" ? "快递公司" : "Courier"}</div>
+              <div className="micro mb-1">{t("courier")}</div>
               <div className="font-semibold">{shipment.courier}</div>
             </div>
             {shipment.tracking_number && (
               <div>
-                <div className="micro mb-1">{lang === "zh" ? "追踪号" : "Tracking"}</div>
+                <div className="micro mb-1">{t("tracking")}</div>
                 <div className="font-mono text-sm">{shipment.tracking_number}</div>
               </div>
             )}
             <div>
-              <div className="micro mb-1">{lang === "zh" ? "发货日期" : "Shipped"}</div>
+              <div className="micro mb-1">{t("shipped")}</div>
               <div>{fmt(shipment.shipped_at)}</div>
             </div>
             <div>
-              <div className="micro mb-1">{lang === "zh" ? "预计到达" : "Est. Arrival"}</div>
+              <div className="micro mb-1">{t("estimatedArrival")}</div>
               <div>{fmt(shipment.estimated_arrival)}</div>
             </div>
             {shipment.courier_fee_original != null && (
               <div>
-                <div className="micro mb-1">{lang === "zh" ? "运费" : "Shipping Fee"}</div>
+                <div className="micro mb-1">{t("shippingFee")}</div>
                 <div className="font-mono">
                   {shipment.courier_fee_currency}{" "}
-                  {shipment.courier_fee_original.toLocaleString("en", { minimumFractionDigits: 2 })}
+                  {shipment.courier_fee_original.toLocaleString("en", {
+                    minimumFractionDigits: 2,
+                  })}
                 </div>
               </div>
             )}
           </div>
 
           <div>
-            <div className="micro mb-3">{lang === "zh" ? "货物明细" : "Items"}</div>
+            <div className="micro mb-3">{t("itemsLabel")}</div>
             <div className="space-y-2">
               {shipment.items.map((item) => (
-                <div key={item.item_id} className="flex items-center justify-between gap-3 glass rounded-xl p-3 text-[13px]">
+                <div
+                  key={item.item_id}
+                  className="flex items-center justify-between gap-3 glass rounded-xl p-3 text-[13px]"
+                >
                   <div className="flex items-center gap-2">
                     <Package className="w-4 h-4 text-text-faint shrink-0" />
                     <span className="text-text-muted">{item.sku_description ?? "—"}</span>
                   </div>
                   <div className="flex items-center gap-4 shrink-0 font-mono text-xs">
                     <span>×{item.quantity_shipped}</span>
-                    {item.unit_price_base != null && <span>{cny(item.unit_price_base)}/pc</span>}
+                    {item.unit_price_base != null && (
+                      <span>{cny(item.unit_price_base)}/pc</span>
+                    )}
                     {item.total_price_base != null && (
                       <span className="font-semibold">{cny(item.total_price_base)}</span>
                     )}
@@ -324,16 +332,17 @@ function ShipmentDetailDrawer({
                 <Button
                   variant="secondary"
                   icon={<ChevronDown className="w-4 h-4" />}
-                  onClick={() => { setShowAdvance(true); setNextStatus(nextStatuses[0]); }}
+                  onClick={() => {
+                    setShowAdvance(true);
+                    setNextStatus(nextStatuses[0]);
+                  }}
                 >
-                  {lang === "zh" ? "更新状态" : "Advance Status"}
+                  {t("advanceStatus")}
                 </Button>
               ) : (
                 <Card className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-semibold">
-                      {lang === "zh" ? "更新为" : "Advance to"}
-                    </span>
+                    <span className="text-[13px] font-semibold">{t("advanceTo")}</span>
                     <button onClick={() => setShowAdvance(false)}>
                       <ChevronUp className="w-4 h-4 text-text-faint" />
                     </button>
@@ -350,7 +359,9 @@ function ShipmentDetailDrawer({
                             : "border-line text-text-muted",
                         )}
                       >
-                        {lang === "zh" ? SHIPMENT_STATUS_META[s].labelZh : SHIPMENT_STATUS_META[s].label}
+                        {isZh
+                          ? SHIPMENT_STATUS_META[s].labelZh
+                          : SHIPMENT_STATUS_META[s].label}
                       </button>
                     ))}
                   </div>
@@ -370,9 +381,7 @@ function ShipmentDetailDrawer({
                       )
                     }
                   >
-                    {advance.isPending
-                      ? (lang === "zh" ? "更新中…" : "Updating…")
-                      : (lang === "zh" ? "确认" : "Confirm")}
+                    {advance.isPending ? t("updating") : t("confirm")}
                   </Button>
                 </Card>
               )}
@@ -389,14 +398,13 @@ function CreateShipmentDrawer({
   onClose,
   accountId,
   supplierId,
-  lang,
 }: {
   open: boolean;
   onClose: () => void;
   accountId: string;
   supplierId: string;
-  lang: "en" | "zh";
 }) {
+  const { t } = useTranslation("factory");
   const create = useCreateShipment();
   const [form, setForm] = useState({
     courier: "",
@@ -430,7 +438,9 @@ function CreateShipmentDrawer({
         supplier_id: supplierId,
         courier: form.courier,
         tracking_number: form.tracking_number || undefined,
-        courier_fee_original: form.courier_fee_original ? parseFloat(form.courier_fee_original) : undefined,
+        courier_fee_original: form.courier_fee_original
+          ? parseFloat(form.courier_fee_original)
+          : undefined,
         courier_fee_currency: form.courier_fee_currency,
         shipped_at: form.shipped_at || undefined,
         estimated_arrival: form.estimated_arrival || undefined,
@@ -450,62 +460,68 @@ function CreateShipmentDrawer({
       open={open}
       onClose={onClose}
       wide
-      title={lang === "zh" ? "新建发货单" : "New Shipment"}
+      title={t("newShipment")}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>{lang === "zh" ? "取消" : "Cancel"}</Button>
+          <Button variant="ghost" onClick={onClose}>
+            {t("cancel")}
+          </Button>
           <Button
             variant="primary"
             disabled={create.isPending || !form.courier}
             onClick={handleSubmit}
           >
-            {create.isPending ? (lang === "zh" ? "保存中…" : "Saving…") : (lang === "zh" ? "创建发货单" : "Create Shipment")}
+            {create.isPending ? t("saving") : t("createShipment")}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label={lang === "zh" ? "快递公司" : "Courier"}>
+        <Field label={t("courier")}>
           <input
             type="text"
             value={form.courier}
             onChange={(e) => setF("courier", e.target.value)}
-            placeholder={lang === "zh" ? "如：DHL、FedEx" : "e.g. DHL, FedEx, Yanwen"}
+            placeholder={t("courierPlaceholder")}
             className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
           />
         </Field>
 
-        <Field label={lang === "zh" ? "追踪号" : "Tracking Number"}>
+        <Field label={t("trackingNumber")}>
           <input
             type="text"
             value={form.tracking_number}
             onChange={(e) => setF("tracking_number", e.target.value)}
-            placeholder={lang === "zh" ? "追踪号（选填）" : "Optional"}
+            placeholder={t("trackingPlaceholder")}
             className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono"
           />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={lang === "zh" ? "运费金额" : "Shipping Fee"}>
+          <Field label={t("shippingFee")}>
             <NumberField
               value={form.courier_fee_original}
               onChange={(v) => setF("courier_fee_original", v)}
               placeholder="0.00"
             />
           </Field>
-          <Field label={lang === "zh" ? "货币" : "Currency"}>
+          <Field label={t("currency")}>
             <select
               value={form.courier_fee_currency}
               onChange={(e) => setF("courier_fee_currency", e.target.value)}
               className="w-full h-[42px] px-[11px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
             >
-              {["CNY", "USD", "NGN"].map((c) => <option key={c} value={c}>{c}</option>)}
+              {["CNY", "USD", "NGN"].map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
           </Field>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={lang === "zh" ? "发货日期" : "Shipped Date"}>
+          <Field label={t("shippedDate")}>
             <input
               type="date"
               value={form.shipped_at}
@@ -513,7 +529,7 @@ function CreateShipmentDrawer({
               className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
             />
           </Field>
-          <Field label={lang === "zh" ? "预计到达" : "Est. Arrival"}>
+          <Field label={t("estimatedArrival")}>
             <input
               type="date"
               value={form.estimated_arrival}
@@ -525,25 +541,30 @@ function CreateShipmentDrawer({
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="micro">{lang === "zh" ? "货物明细" : "Items"}</span>
-            <Button size="sm" variant="ghost" icon={<Plus className="w-3.5 h-3.5" />} onClick={addItem}>
-              {lang === "zh" ? "添加" : "Add"}
+            <span className="micro">{t("itemsLabel")}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Plus className="w-3.5 h-3.5" />}
+              onClick={addItem}
+            >
+              {t("add")}
             </Button>
           </div>
           <div className="space-y-2">
             {items.map((item, i) => (
               <div key={i} className="glass rounded-xl p-3">
                 <div className="grid grid-cols-[1fr_80px_100px_28px] gap-2 items-end">
-                  <Field label={lang === "zh" ? "描述" : "Description"}>
+                  <Field label={t("description")}>
                     <input
                       type="text"
                       value={item.sku_description}
                       onChange={(e) => setItem(i, "sku_description", e.target.value)}
-                      placeholder={lang === "zh" ? "产品描述" : "SKU / description"}
+                      placeholder={t("courierPlaceholder")}
                       className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
                     />
                   </Field>
-                  <Field label={lang === "zh" ? "数量" : "Qty"}>
+                  <Field label={t("qty")}>
                     <input
                       type="number"
                       min="1"
@@ -552,7 +573,7 @@ function CreateShipmentDrawer({
                       className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
                     />
                   </Field>
-                  <Field label={lang === "zh" ? "单价(CNY)" : "Unit Price ¥"}>
+                  <Field label={t("unitPrice")}>
                     <input
                       type="number"
                       min="0"

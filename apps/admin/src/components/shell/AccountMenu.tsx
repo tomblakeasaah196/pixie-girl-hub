@@ -30,12 +30,12 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
+  const patchUser = useAuthStore((s) => s.patchUser);
   const [open, setOpen] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,7 +58,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
     setCropFile(null);
     try {
       const { avatar_url } = await uploadAvatar(blob);
-      setAvatarUrl(avatar_url);
+      patchUser({ avatarUrl: avatar_url });
     } catch {
       // silent — the profile drawer shows proper feedback
     }
@@ -75,7 +75,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   if (!user) return null;
 
   const av = initials(user.name);
-  const displayAvatar = avatarUrl;
+  const displayAvatar = user.avatarUrl ?? null;
 
   return (
     <>

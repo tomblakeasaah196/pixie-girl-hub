@@ -26,6 +26,7 @@ require("./smartcomm.realtime");
 
 const router = express.Router();
 const can = (action) => requirePermission("smartcomm", action);
+const canPraxis = (action) => requirePermission("praxis_ai", action);
 
 // ── Reads + dispatch (literal segments before /channels/:id) ─
 router.get("/unread-count", can("view"), c.getUnreadCount);
@@ -38,6 +39,14 @@ router.get(
   "/customer-360/:contact_id",
   can("view"),
   c.getCustomer360,
+);
+
+// ── Order capture (signed pre-fill link sent into a chat) ──
+router.post(
+  "/order-capture",
+  can("edit"),
+  v.validateOrderCaptureCreate,
+  c.createOrderCapture,
 );
 
 // ── Quick replies ──────────────────────────────────────────
@@ -119,6 +128,15 @@ router.put(
   c.saveDraft,
 );
 router.delete("/channels/:id/draft", can("view"), c.discardDraft);
+
+// Praxis-drafted reply (on-demand only, never auto). The composer
+// hides the button when this permission gate fails.
+router.post(
+  "/channels/:id/draft-with-praxis",
+  can("edit"),
+  canPraxis("view"),
+  c.draftWithPraxis,
+);
 
 // ── Messages ───────────────────────────────────────────────
 router.get("/channels/:id/messages", can("view"), c.listMessages);

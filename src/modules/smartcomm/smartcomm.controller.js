@@ -6,6 +6,8 @@
 "use strict";
 
 const service = require("./smartcomm.service");
+const praxisDraft = require("./smartcomm.praxis-draft");
+const orderCapture = require("./smartcomm.order-capture");
 
 const ctx = (req) => ({
   user: req.user,
@@ -245,6 +247,26 @@ async function discardDraft(req, res) {
   res.status(204).end();
 }
 
+async function draftWithPraxis(req, res) {
+  const data = await praxisDraft.draftReply({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    channel_id: req.params.id,
+  });
+  res.json(data);
+}
+
+async function createOrderCapture(req, res) {
+  const data = await orderCapture.createCaptureLink({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    input: req.body,
+  });
+  res.status(201).json(data);
+}
+
 // ── Quick replies ─────────────────────────────────────────
 
 async function listQuickReplies(req, res) {
@@ -317,6 +339,8 @@ module.exports = {
   getDraft,
   saveDraft,
   discardDraft,
+  draftWithPraxis,
+  createOrderCapture,
   listQuickReplies,
   createQuickReply,
   updateQuickReply,

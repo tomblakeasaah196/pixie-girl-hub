@@ -154,6 +154,23 @@ export const smartcommApi = {
     category?: string;
     sort_order?: number;
   }) => api.post<QuickReply>("/smartcomm/quick-replies", input),
+
+  // Praxis-drafted reply (on-demand, permission-gated).
+  draftWithPraxis: (channelId: string) =>
+    api.post<MessageDraft>(`/smartcomm/channels/${channelId}/draft-with-praxis`),
+
+  // Order capture link
+  createOrderCapture: (input: {
+    contact_id: string;
+    items: { product_id: string; qty: number; price_ngn?: string; note?: string }[];
+    sales_channel?: string;
+    notes?: string;
+    expires_in?: number;
+  }) =>
+    api.post<{ url: string; token: string; expires_at: string }>(
+      "/smartcomm/order-capture",
+      input,
+    ),
 };
 
 // ── Customer Onboarding (Online QR link) ─────────────────

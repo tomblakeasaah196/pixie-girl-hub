@@ -867,21 +867,55 @@ async function recordInboundFromCustomer({
  * Send an outbound message to a customer over WhatsApp / IG / email,
  * record it on their thread, and queue the provider send. Used by
  * subscribers (G-4 layaway reminder etc.) and by the staff composer.
+ *
+ * `event_key` (optional) routes the message through the outbound
+ * channel policy matrix (PR 2) so the CEO's per-event preferences are
+ * honoured + `block_whatsapp` is enforced. When omitted, the caller's
+ * explicit `channel` argument wins (used by the staff composer where
+ * the user has already chosen).
  */
 async function sendToCustomer({
   brand,
   contact_id,
-  channel = "whatsapp",
+  channel,
   subject,
   body,
   user,
   soft,
+  event_key,
 }) {
   const contact = await repo.getContactChannelInfo({ contact_id });
   if (!contact) {
     if (soft) return null;
     throw new NotFoundError("Contact");
   }
+
+  // Resolve channel via the policy matrix when an event_key is provided.
+  if (event_key && !channel) {
+    const outboundPolicy = require("../outbound_policy/outbound-policy.service");
+    const r = await outboundPolicy.resolveChannel({
+      brand,
+      event_key,
+      contact_id,
+    });
+    if (r.channel === "disabled") {
+      if (soft) return null;
+      throw new AppError(
+        "CHANNEL_DISABLED",
+        `Outbound for '${event_key}' is disabled by policy (${r.reason})`,
+        409,
+      );
+    }
+    if (r.channel === "in_app_only") {
+      // No outbound — caller should fall back to creating an in-app
+      // notification instead. Returns null so subscribers don't crash.
+      return { skipped: true, reason: "in_app_only" };
+    }
+    channel = r.channel === "respect_contact_pref" ? "email" : r.channel;
+  }
+  // Final default if neither caller nor policy provided one.
+  channel = channel || "whatsapp";
+
   // Validate the destination before recording anything.
   if (channel === "email" && !contact.email) {
     if (soft) return null;
@@ -894,7 +928,7 @@ async function sendToCustomer({
   const thread = await findOrCreateCustomerThread({
     brand,
     contact_id,
-    platform: channel === "email" ? "email" : "whatsapp",
+    platform: channel === "email" ? "email" : channel,
   });
   const msg = await repo.insertMessage({
     message: {

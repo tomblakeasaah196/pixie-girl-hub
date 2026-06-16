@@ -126,6 +126,38 @@ const draftSave = z
   })
   .strict();
 
+const orderCaptureCreate = z
+  .object({
+    contact_id: z.string().uuid(),
+    items: z
+      .array(
+        z
+          .object({
+            product_id: z.string().uuid(),
+            qty: z.number().positive().max(100),
+            price_ngn: z.union([z.string(), z.number()]).optional(),
+            note: z.string().max(280).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(20),
+    sales_channel: z
+      .enum([
+        "whatsapp",
+        "instagram",
+        "facebook",
+        "email",
+        "website_chat",
+        "public_form",
+        "internal",
+      ])
+      .optional(),
+    notes: z.string().max(2000).optional(),
+    expires_in: z.number().int().positive().max(7 * 24 * 3600).optional(),
+  })
+  .strict();
+
 const quickReplyCreate = z
   .object({
     scope: z.enum(["personal", "brand"]).default("personal"),
@@ -175,4 +207,5 @@ module.exports = {
   validateDraftSave: mk(draftSave),
   validateQuickReplyCreate: mk(quickReplyCreate),
   validateQuickReplyUpdate: mk(quickReplyUpdate),
+  validateOrderCaptureCreate: mk(orderCaptureCreate),
 };

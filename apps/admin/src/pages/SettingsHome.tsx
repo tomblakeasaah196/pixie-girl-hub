@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Lock,
   Globe,
+  MessageCircle,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -84,6 +85,8 @@ const SECTIONS: Section[] = [
       { key: "document-templates", label: "Document Templates", desc: "Invoices, POs, receipts, contracts", icon: FileText, to: "/settings/document-templates" },
       { key: "email-signatures", label: "Email Signatures", desc: "Brand template & per-staff render", icon: Mail, to: "/settings/email-signatures" },
       { key: "notifications", label: "Notifications", desc: "Your channel & category preferences", icon: Bell, to: "/settings/notifications" },
+      { key: "channel-policy", label: "Channel Policy", desc: "Where every automated message goes — keeps the WhatsApp bill in check", icon: Wallet, to: "/settings/channel-policy" },
+      { key: "quick-replies", label: "Quick Replies", desc: "Personal + brand snippets for the Smartcomm composer", icon: MessageCircle, to: "/settings/quick-replies" },
     ],
   },
   {

@@ -23,6 +23,8 @@ import {
   Link2,
   Loader2,
   AlertTriangle,
+  Sparkles,
+  ShoppingCart,
 } from "lucide-react";
 import {
   fmtDayLabel,
@@ -49,6 +51,7 @@ import { MessageBubble } from "./MessageBubble";
 import { WhatsAppWindowBadge } from "./WhatsAppWindowBadge";
 import { PlatformPill } from "./PlatformPill";
 import { CostInfoModal } from "./CostInfoModal";
+import { OrderCaptureModal } from "./OrderCaptureModal";
 
 interface Props {
   channelId: string;
@@ -70,8 +73,14 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [costOpen, setCostOpen] = useState(false);
-  const [busy, setBusy] = useState<"sending" | "uploading" | null>(null);
+  const [orderCaptureOpen, setOrderCaptureOpen] = useState(false);
+  const [praxisDrafted, setPraxisDrafted] = useState(false);
+  const [busy, setBusy] = useState<
+    "sending" | "uploading" | "drafting" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
+
+  const canPraxis = useAuthStore((s) => s.can);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,6 +158,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         setReplyTo(null);
       }
       resetTextarea();
+      setPraxisDrafted(false);
       invalidate();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not send");
@@ -247,6 +257,40 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function handleDraftWithPraxis() {
+    setError(null);
+    try {
+      setBusy("drafting");
+      const draft = await smartcommApi.draftWithPraxis(channelId);
+      setContent(draft.content || "");
+      setPraxisDrafted(true);
+      // Auto-resize the textarea to the new content
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.style.height = "auto";
+          el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+          el.focus();
+        }
+      });
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error ? e.message : "Praxis couldn't draft a reply",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendOrderCaptureLink(url: string) {
+    const body = `Here's your order link — just confirm your address and pay 🛍️\n\n${url}`;
+    await smartcommApi.postMessage(channelId, {
+      content: body,
+      message_type: "text",
+    });
+    invalidate();
   }
 
   if (!channel) {
@@ -427,6 +471,28 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         </div>
       )}
 
+      {/* Praxis-drafted chip */}
+      {praxisDrafted && content && (
+        <div className="mx-3 sm:mx-4 mb-1 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-1.5 text-[11.5px] text-text-muted">
+          <Sparkles className="w-3.5 h-3.5 text-accent-glow shrink-0" />
+          <span className="flex-1">
+            Praxis drafted this — edit before sending, or hit Send if it
+            sounds right.
+          </span>
+          <button
+            onClick={() => {
+              setPraxisDrafted(false);
+              setContent("");
+              if (textareaRef.current) textareaRef.current.style.height = "auto";
+            }}
+            className="text-text-faint hover:text-text-primary"
+            title="Discard draft"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Slash quick-reply menu */}
       {slashOpen && slashMatches.length > 0 && (
         <div className="mx-3 sm:mx-4 mb-1 rounded-xl border hairline bg-panel-2 max-h-44 overflow-y-auto">
@@ -503,6 +569,29 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                     <Link2 className="w-4 h-4" />
                   </button>
                 )}
+                {isCustomerThread && (
+                  <button
+                    onClick={() => setOrderCaptureOpen(true)}
+                    className="p-1 text-text-faint hover:text-text-primary"
+                    title="Capture an order"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                  </button>
+                )}
+                {canPraxis("praxis_ai", "view") && (
+                  <button
+                    onClick={handleDraftWithPraxis}
+                    disabled={busy === "drafting"}
+                    className="p-1 text-accent-glow hover:text-accent disabled:opacity-50"
+                    title="Draft with Praxis"
+                  >
+                    {busy === "drafting" ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     const e = "👍";
@@ -549,6 +638,14 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           </div>
         </div>
       )}
+
+      {/* Order Capture modal */}
+      <OrderCaptureModal
+        open={orderCaptureOpen}
+        onClose={() => setOrderCaptureOpen(false)}
+        channel={channel}
+        onSentLink={sendOrderCaptureLink}
+      />
 
       {/* Cost-info modal */}
       <CostInfoModal

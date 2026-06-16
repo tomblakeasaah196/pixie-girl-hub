@@ -91,6 +91,36 @@ const actionUpsert = z
 
 const actionToggle = z.object({ ai_enabled: z.boolean() }).strict();
 
+const brandVoiceUpsert = z
+  .object({
+    tone: z.string().max(160).nullable().optional(),
+    voice_summary: z.string().max(4000).nullable().optional(),
+    signature_html: z.string().max(4000).nullable().optional(),
+    do_donts: z
+      .object({
+        do: z.array(z.string().max(500)).max(50).optional(),
+        dont: z.array(z.string().max(500)).max(50).optional(),
+      })
+      .optional(),
+    faq_markdown: z.string().max(20000).nullable().optional(),
+    sample_transcripts: z
+      .array(
+        z
+          .object({
+            label: z.string().max(120).optional(),
+            customer: z.string().max(2000).optional(),
+            staff: z.string().max(2000).optional(),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+    primary_emojis: z.array(z.string().max(8)).max(20).optional(),
+    classify_inbound: z.boolean().optional(),
+    draft_on_tap: z.boolean().optional(),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -108,4 +138,5 @@ module.exports = {
   validateBudgetCaps: mk(budgetCaps),
   validateActionUpsert: mk(actionUpsert),
   validateActionToggle: mk(actionToggle),
+  validateBrandVoiceUpsert: mk(brandVoiceUpsert),
 };

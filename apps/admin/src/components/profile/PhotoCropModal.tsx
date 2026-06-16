@@ -53,6 +53,7 @@ export function PhotoCropModal({
     return () => el.removeEventListener("wheel", handler);
   }, [minZoom]);
 
+
   const imgStyle = () => {
     if (!imgRef.current) return {};
     const w = imgRef.current.width * zoom;

@@ -397,6 +397,7 @@ export function ProfileDrawer({
     showToast("ok", "Email address updated.");
   };
 
+
   const avatarUrl = profile?.avatar_url;
   const displayName = profile?.display_name ?? user?.name ?? "";
   const av = initials(displayName || "?");

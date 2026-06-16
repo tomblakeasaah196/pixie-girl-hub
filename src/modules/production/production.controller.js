@@ -16,14 +16,14 @@ const base = (req) => ({
 // ── Runs ───────────────────────────────────────────────────
 async function listRuns(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.listRuns({
+  res.json({
+    data: await service.listRuns({
       brand: req.brand,
       status: req.query.status,
       page,
       page_size,
     }),
-  );
+  });
 }
 async function getRun(req, res) {
   res.json({

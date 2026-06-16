@@ -1,0 +1,168 @@
+-- ============================================================
+-- TEMPLATE 000039 — China Factory Account (V2.2 §6.24 extension)
+-- Pixie Girl Hub · JBS Praxis
+--
+-- Running RMB ledger between the CEO (Faith) and China factory managers.
+-- Replaces manual WeChat/Excel tracking with a structured account.
+--
+-- New tables:
+--   factory_accounts          — one per factory supplier; tracks running balance
+--   factory_account_ledger    — every debit/credit entry (orders, payments, fees)
+--   factory_shipments         — batches shipped China → Lagos
+--   factory_shipment_items    — line items per shipment (links to po_lines)
+--
+-- Alters:
+--   po_lines         — wig attributes (lace_type, hair_color, hair_texture, etc.)
+--   purchase_orders  — factory_account_id FK, is_factory_order flag
+-- ============================================================
+
+-- ── Factory Accounts ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_accounts (
+  account_id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  supplier_id            UUID         NOT NULL REFERENCES __SCHEMA__.suppliers(supplier_id) ON DELETE RESTRICT,
+  account_name           VARCHAR(200) NOT NULL,
+  base_currency          CHAR(3)      NOT NULL DEFAULT 'CNY',
+  current_balance_base   NUMERIC(15,2) NOT NULL DEFAULT 0,
+  credit_alert_threshold NUMERIC(15,2),
+  notes                  TEXT,
+  is_active              BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_by             UUID,
+  created_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_accounts_supplier
+  ON __SCHEMA__.factory_accounts(supplier_id);
+
+-- ── Factory Account Ledger ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_account_ledger (
+  entry_id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id         UUID         NOT NULL REFERENCES __SCHEMA__.factory_accounts(account_id) ON DELETE RESTRICT,
+  entry_type         VARCHAR(40)  NOT NULL CHECK (entry_type IN (
+                       'order_charge','payment','shipping_fee','customs_duty',
+                       'discount','bank_charge','misc_charge','misc_credit','adjustment'
+                     )),
+  direction          CHAR(2)      NOT NULL CHECK (direction IN ('DR','CR')),
+  amount_original    NUMERIC(15,2) NOT NULL CHECK (amount_original > 0),
+  original_currency  CHAR(3)      NOT NULL DEFAULT 'CNY',
+  fx_rate_to_base    NUMERIC(15,6) NOT NULL DEFAULT 1,
+  amount_base        NUMERIC(15,2) NOT NULL,
+  running_balance    NUMERIC(15,2) NOT NULL DEFAULT 0,
+  reference_type     VARCHAR(50),
+  reference_id       UUID,
+  description        TEXT,
+  entry_date         DATE         NOT NULL DEFAULT CURRENT_DATE,
+  payment_method     VARCHAR(40)  CHECK (payment_method IN (
+                       'paypal','alipay','bank_transfer','wechat','alibaba','cash','other'
+                     )),
+  paid_by            VARCHAR(200),
+  recorded_by        UUID,
+  notes              TEXT,
+  is_reconciled      BOOLEAN      NOT NULL DEFAULT FALSE,
+  created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_ledger_account
+  ON __SCHEMA__.factory_account_ledger(account_id, entry_date DESC);
+CREATE INDEX IF NOT EXISTS idx_factory_ledger_ref
+  ON __SCHEMA__.factory_account_ledger(reference_type, reference_id);
+
+-- Trigger: keep current_balance_base in sync with ledger
+CREATE OR REPLACE FUNCTION __SCHEMA__.fn_update_factory_account_balance()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+  v_delta NUMERIC(15,2);
+BEGIN
+  IF NEW.direction = 'DR' THEN
+    v_delta := NEW.amount_base;
+  ELSE
+    v_delta := -NEW.amount_base;
+  END IF;
+
+  UPDATE __SCHEMA__.factory_accounts
+  SET current_balance_base = current_balance_base + v_delta,
+      updated_at = NOW()
+  WHERE account_id = NEW.account_id;
+
+  -- Store running balance on the row itself
+  SELECT current_balance_base INTO NEW.running_balance
+  FROM __SCHEMA__.factory_accounts
+  WHERE account_id = NEW.account_id;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_factory_ledger_balance ON __SCHEMA__.factory_account_ledger;
+CREATE TRIGGER trg_factory_ledger_balance
+  BEFORE INSERT ON __SCHEMA__.factory_account_ledger
+  FOR EACH ROW EXECUTE FUNCTION __SCHEMA__.fn_update_factory_account_balance();
+
+-- ── Factory Shipments ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_shipments (
+  shipment_id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  shipment_ref         VARCHAR(50)  NOT NULL,
+  account_id           UUID         NOT NULL REFERENCES __SCHEMA__.factory_accounts(account_id) ON DELETE RESTRICT,
+  supplier_id          UUID         NOT NULL REFERENCES __SCHEMA__.suppliers(supplier_id) ON DELETE RESTRICT,
+  courier              VARCHAR(100) NOT NULL,
+  tracking_number      VARCHAR(200),
+  courier_fee_original NUMERIC(15,2),
+  courier_fee_currency CHAR(3)      DEFAULT 'CNY',
+  courier_fee_base     NUMERIC(15,2),
+  status               VARCHAR(30)  NOT NULL DEFAULT 'dispatched' CHECK (status IN (
+                         'dispatched','in_transit','arrived_lagos',
+                         'cleared_customs','received','cancelled'
+                       )),
+  shipped_at           DATE,
+  estimated_arrival    DATE,
+  arrived_at           DATE,
+  grn_id               UUID,
+  draft_po_id          UUID,
+  notes                TEXT,
+  created_by           UUID,
+  created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_shipments_account
+  ON __SCHEMA__.factory_shipments(account_id);
+CREATE INDEX IF NOT EXISTS idx_factory_shipments_status
+  ON __SCHEMA__.factory_shipments(status);
+
+-- ── Factory Shipment Items ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_shipment_items (
+  item_id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  shipment_id        UUID         NOT NULL REFERENCES __SCHEMA__.factory_shipments(shipment_id) ON DELETE CASCADE,
+  po_line_id         UUID         REFERENCES __SCHEMA__.po_lines(line_id),
+  sku_description    TEXT,
+  quantity_shipped   INTEGER      NOT NULL CHECK (quantity_shipped > 0),
+  unit_price_base    NUMERIC(15,2),
+  total_price_base   NUMERIC(15,2) GENERATED ALWAYS AS (quantity_shipped * unit_price_base) STORED,
+  created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_shipment_items_shipment
+  ON __SCHEMA__.factory_shipment_items(shipment_id);
+
+-- ── Alter po_lines — wig attributes ──────────────────────────────────────────
+ALTER TABLE __SCHEMA__.po_lines
+  ADD COLUMN IF NOT EXISTS factory_order_ref       VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS manufacturing_location   VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS lace_type               VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS hair_color              VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS hair_texture            VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS cap_size                VARCHAR(10),
+  ADD COLUMN IF NOT EXISTS baby_hair               VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS hair_length             VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS density                 VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS expected_photo_url      TEXT;
+
+-- ── Alter purchase_orders — factory linkage ───────────────────────────────────
+ALTER TABLE __SCHEMA__.purchase_orders
+  ADD COLUMN IF NOT EXISTS factory_account_id   UUID REFERENCES __SCHEMA__.factory_accounts(account_id),
+  ADD COLUMN IF NOT EXISTS is_factory_order     BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS factory_shipment_id  UUID REFERENCES __SCHEMA__.factory_shipments(shipment_id);
+
+CREATE INDEX IF NOT EXISTS idx_po_factory_account
+  ON __SCHEMA__.purchase_orders(factory_account_id)
+  WHERE factory_account_id IS NOT NULL;

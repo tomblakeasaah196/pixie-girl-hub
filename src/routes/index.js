@@ -58,6 +58,7 @@ const retentionRouter = require("../modules/retention/retention.routes");
 const productionRouter = require("../modules/production/production.routes");
 const serviceJobsRouter = require("../modules/service_jobs/service-jobs.routes");
 const pricingRouter = require("../modules/pricing/pricing.routes");
+const factoryAccountRouter = require("../modules/factory_account/factory-account.routes");
 const stylistRouter = require("../modules/stylist_programme/stylist.routes");
 const stylistPortalRouter = require("../modules/stylist_programme/stylist.portal.routes");
 const orgWorkflowRouter = require("../shared/org_workflow/org.routes");
@@ -208,6 +209,7 @@ function mountRoutes(app) {
   api.use("/production", productionRouter);
   api.use("/service-jobs", serviceJobsRouter);
   api.use("/pricing", pricingRouter);
+  api.use("/factory-accounts", factoryAccountRouter);
   api.use("/stylists", stylistRouter);
   api.use("/org", orgWorkflowRouter);
   api.use("/storefront-studio", storefrontStudioRouter);

@@ -1,7 +1,8 @@
 /**
  * Centralised notification service — writes to shared.notifications and pushes
- * over socket.io. Columns match the schema (000004): user_id, business, type,
- * priority, title, body, reference_type, reference_id, is_read.
+ * over socket.io + web-push. Columns match the schema (000004): user_id,
+ * business, type, priority, title, body, reference_type, reference_id,
+ * action_url, is_read.
  */
 
 "use strict";
@@ -35,6 +36,7 @@ async function notify({
   priority = "normal",
   reference_type,
   reference_id,
+  action_url,
 }) {
   if (!user_id) return null;
   // Honour the user's in-app opt-out for this notification type (F-14).
@@ -50,8 +52,8 @@ async function notify({
   const prio = VALID_PRIORITY.has(priority) ? priority : "normal";
   const { rows } = await query(
     `INSERT INTO shared.notifications
-       (user_id, business, type, priority, title, body, reference_type, reference_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       (user_id, business, type, priority, title, body, reference_type, reference_id, action_url)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      RETURNING notification_id, created_at`,
     [
       user_id,
@@ -62,27 +64,54 @@ async function notify({
       body || null,
       reference_type || null,
       reference_id || null,
+      action_url || null,
     ],
   );
+  const notif = {
+    id: rows[0].notification_id,
+    type,
+    title,
+    body,
+    priority: prio,
+    action_url: action_url || null,
+    created_at: rows[0].created_at,
+  };
   try {
-    getIo().to(ROOMS.user_notifications(user_id)).emit("notification", {
-      id: rows[0].notification_id,
-      type,
-      title,
-      body,
-      priority: prio,
-      created_at: rows[0].created_at,
-    });
+    getIo().to(ROOMS.user_notifications(user_id)).emit("notification:new", notif);
   } catch {
     // socket.io not ready (worker context); skip silently
+  }
+  // Fire web push for the user's registered push subscriptions if channel is enabled.
+  try {
+    const pushAllowed = await isChannelEnabled({
+      user_id,
+      notification_type: type,
+      channel: "push",
+    });
+    if (pushAllowed) {
+      const pushService = require("../shared/push/push.service");
+      await pushService.sendToUser({
+        user_id,
+        title,
+        body,
+        url: action_url || "/notifications",
+        tag: rows[0].notification_id,
+      });
+    }
+  } catch {
+    // push service may not be configured; skip silently
   }
   return rows[0];
 }
 
-async function list({ user_id, only_unread, page = 1, page_size = 30 }) {
+async function list({ user_id, only_unread, business, page = 1, page_size = 30 }) {
   const where = ["user_id = $1"];
   const params = [user_id];
   if (only_unread) where.push("is_read = false");
+  if (business) {
+    params.push(business);
+    where.push(`business = $${params.length}`);
+  }
   const w = `WHERE ${where.join(" AND ")}`;
   const { rows: c } = await query(
     `SELECT count(*)::int AS total FROM shared.notifications ${w}`,
@@ -91,17 +120,22 @@ async function list({ user_id, only_unread, page = 1, page_size = 30 }) {
   const offset = (page - 1) * page_size;
   const { rows } = await query(
     `SELECT * FROM shared.notifications ${w}
-      ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-    [user_id, page_size, offset],
+      ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, page_size, offset],
   );
   return { data: rows, page, page_size, total: c[0].total };
 }
 
-async function unreadCount({ user_id }) {
+async function unreadCount({ user_id, business }) {
+  const where = ["user_id = $1", "is_read = false"];
+  const params = [user_id];
+  if (business) {
+    params.push(business);
+    where.push(`business = $${params.length}`);
+  }
   const { rows } = await query(
-    `SELECT count(*)::int AS unread FROM shared.notifications
-      WHERE user_id = $1 AND is_read = false`,
-    [user_id],
+    `SELECT count(*)::int AS unread FROM shared.notifications WHERE ${where.join(" AND ")}`,
+    params,
   );
   return rows[0].unread;
 }
@@ -115,13 +149,36 @@ async function markRead({ user_id, id }) {
   return rows[0] || null;
 }
 
-async function markAllRead({ user_id }) {
+async function markAllRead({ user_id, business }) {
+  const where = ["user_id = $1", "is_read = false"];
+  const params = [user_id];
+  if (business) {
+    params.push(business);
+    where.push(`business = $${params.length}`);
+  }
   const { rowCount } = await query(
-    `UPDATE shared.notifications SET is_read = true, read_at = now()
-      WHERE user_id = $1 AND is_read = false`,
-    [user_id],
+    `UPDATE shared.notifications SET is_read = true, read_at = now() WHERE ${where.join(" AND ")}`,
+    params,
   );
   return { marked: rowCount };
+}
+
+async function deleteOne({ user_id, id }) {
+  const { rowCount } = await query(
+    `DELETE FROM shared.notifications WHERE notification_id = $1 AND user_id = $2`,
+    [id, user_id],
+  );
+  return { deleted: rowCount };
+}
+
+async function bulkDelete({ user_id, ids }) {
+  if (!Array.isArray(ids) || ids.length === 0) return { deleted: 0 };
+  const placeholders = ids.map((_, i) => `$${i + 2}`).join(",");
+  const { rowCount } = await query(
+    `DELETE FROM shared.notifications WHERE user_id = $1 AND notification_id IN (${placeholders})`,
+    [user_id, ...ids],
+  );
+  return { deleted: rowCount };
 }
 
 // ── Notification preferences (F-14) ──────────────────────
@@ -185,6 +242,8 @@ module.exports = {
   unreadCount,
   markRead,
   markAllRead,
+  deleteOne,
+  bulkDelete,
   getPreferences,
   upsertPreference,
   isChannelEnabled,

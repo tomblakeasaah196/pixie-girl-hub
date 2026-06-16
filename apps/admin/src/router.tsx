@@ -46,6 +46,8 @@ import { IamSecurityEventsPage } from "@/pages/IamSecurityEventsPage";
 import { IamSessionsPage } from "@/pages/IamSessionsPage";
 import { IamAccessReviewsPage } from "@/pages/IamAccessReviewsPage";
 import { IamMfaPage } from "@/pages/IamMfaPage";
+// Notifications
+import { NotificationsPage } from "@/pages/NotificationsPage";
 // Other module placeholders
 import { HelpCenterPage } from "@/pages/HelpCenterPage";
 
@@ -119,6 +121,9 @@ export const router = createBrowserRouter(
             { path: "iam-security/sessions", element: <IamSessionsPage /> },
             { path: "iam-security/reviews", element: <IamAccessReviewsPage /> },
             { path: "iam-security/mfa", element: <IamMfaPage /> },
+
+            // Notifications inbox.
+            { path: "notifications", element: <NotificationsPage /> },
 
             // Help Center.
             { path: "help", element: <HelpCenterPage /> },

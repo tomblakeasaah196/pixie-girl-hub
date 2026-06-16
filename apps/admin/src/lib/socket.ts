@@ -29,10 +29,18 @@ export function getSocket(): Socket {
     withCredentials: true,
     auth: (cb: (data: Record<string, string>) => void) => cb({ token: getAccessToken() ?? "" }),
   });
+
+  // Forward socket events as window CustomEvents so components can subscribe
+  // without importing the socket directly (avoids tight coupling).
+  socket.on("notification:new", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:notification:new", { detail }));
+  });
+
   return socket;
 }
 
 /** Canonical room helpers (mirror of src/realtime/rooms.js). */
 export const rooms = {
   stock: (brand: string) => `brand:${brand}:stock`,
+  notifications: (userId: string) => `user:${userId}:notifications`,
 };

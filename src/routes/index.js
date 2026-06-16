@@ -72,6 +72,7 @@ const auditRouter = require("../shared/audit/audit.routes");
 const accessRouter = require("../shared/access/access.routes");
 const iamRouter = require("../shared/iam/iam.routes");
 const notificationsRouter = require("../shared/notifications/notifications.routes");
+const pushRouter = require("../shared/push/push.routes");
 
 const {
   cartRouter,
@@ -221,6 +222,7 @@ function mountRoutes(app) {
   api.use("/access", accessRouter);
   api.use("/iam", iamRouter);
   api.use("/notifications", notificationsRouter);
+  api.use("/push", pushRouter);
   api.use("/cart", cartRouter);
   api.use("/wishlist", wishlistRouter);
 

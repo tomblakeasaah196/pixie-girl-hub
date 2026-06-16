@@ -11,6 +11,8 @@ import { FloatingLauncher } from "./FloatingLauncher";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import { BusinessSwitchOverlay } from "./BusinessSwitchOverlay";
+import { NotificationManager } from "@/components/notifications/NotificationManager";
+import { NotificationToastContainer } from "@/components/notifications/NotificationToast";
 
 /** The authenticated shell (canon §3): sidebar + sticky top bar + content,
  *  plus the global floating layer (App-Menu pill, launcher, mobile nav, ⌘K). */
@@ -50,6 +52,10 @@ export function AppShell() {
       <MobileBottomNav />
       {paletteOpen && <CommandPalette />}
       <BusinessSwitchOverlay />
+
+      {/* Global notification layer */}
+      <NotificationManager />
+      <NotificationToastContainer />
     </div>
   );
 }

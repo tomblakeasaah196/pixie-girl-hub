@@ -18,6 +18,8 @@ router.get("/", controller.list);
 router.get("/unread-count", controller.unreadCount);
 router.post("/:id/read", controller.markRead);
 router.post("/read-all", controller.markAllRead);
+router.delete("/bulk", controller.bulkDelete);
+router.delete("/:id", controller.deleteOne);
 
 // Preferences (F-14)
 router.get("/preferences", controller.getPreferences);

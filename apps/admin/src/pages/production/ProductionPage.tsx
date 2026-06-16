@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
-import { toggleFactoryLang, autoDefaultFactoryLang } from "@/i18n";
+import { autoDefaultFactoryLang } from "@/i18n";
+import { useFactoryLanguages } from "@/i18n/useFactoryLanguages";
 import {
   Button,
   Card,
@@ -60,7 +61,8 @@ export function ProductionPage() {
   useBreadcrumbs([{ label: "Production" }]);
   const can = useAuthStore((s) => s.can);
   const user = useAuthStore((s) => s.user);
-  const { t, i18n } = useTranslation("factory");
+  const { i18n } = useTranslation("factory");
+  const { languages } = useFactoryLanguages();
 
   const [tab, setTab] = useState<MainTab>("overview");
   const [factoryTab, setFactoryTab] = useState<FactoryTab>("ledger");
@@ -102,19 +104,26 @@ export function ProductionPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {/* Language toggle — always visible so factory managers can check English */}
-          <button
-            onClick={toggleFactoryLang}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-semibold border transition-all",
-              i18n.language === "zh"
-                ? "bg-accent/15 border-accent/30 text-accent-glow"
-                : "border-line text-text-muted hover:text-text-primary",
-            )}
-          >
-            <Globe className="w-3.5 h-3.5" />
-            {t("langToggle")}
-          </button>
+          {/* Language selector — driven by DB; new languages appear immediately after saving in Settings */}
+          <div className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-semibold border transition-all",
+            i18n.language !== "en"
+              ? "bg-accent/15 border-accent/30 text-accent-glow"
+              : "border-line text-text-muted hover:text-text-primary",
+          )}>
+            <Globe className="w-3.5 h-3.5 shrink-0" />
+            <select
+              value={i18n.language}
+              onChange={(e) => i18n.changeLanguage(e.target.value)}
+              className="bg-transparent outline-none cursor-pointer text-inherit font-semibold"
+            >
+              {Object.entries(languages).map(([code, name]) => (
+                <option key={code} value={code} className="bg-[#1a0808] text-foreground">
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
           {tab === "runs" && can("purchasing", "create") && (
             <Button
               variant="primary"

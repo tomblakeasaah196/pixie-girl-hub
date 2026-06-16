@@ -66,6 +66,7 @@ export function AuthModal({
 }) {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
+  const loadPermissions = useAuthStore((s) => s.loadPermissions);
   const setActiveBusiness = useBusinessStore((s) => s.setActive);
 
   const pinEnabled = toggles.pin_login !== false;
@@ -143,6 +144,8 @@ export function AuthModal({
       const key =
         user.default_business_key || user.available_businesses?.[0] || null;
       if (key) setActiveBusiness(key);
+      // Brand context is now set in localStorage — safe to fetch permissions.
+      loadPermissions().catch(() => {});
       navigate("/", { replace: true });
     } else {
       navigate("/select-entity", { replace: true });

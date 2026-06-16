@@ -167,8 +167,8 @@ function ShipmentCard({
 }) {
   const meta = SHIPMENT_STATUS_META[shipment.status];
   return (
-    <Card
-      className="p-5 cursor-pointer hover:bg-text-primary/[0.02] transition-colors"
+    <div
+      className="glass rounded-[var(--radius)] shadow-glass p-5 cursor-pointer hover:bg-text-primary/[0.02] transition-colors"
       onClick={() => onSelect(shipment.shipment_id)}
     >
       <div className="flex items-start justify-between gap-3">
@@ -222,7 +222,7 @@ function ShipmentCard({
           );
         })}
       </div>
-    </Card>
+    </div>
   );
 }
 

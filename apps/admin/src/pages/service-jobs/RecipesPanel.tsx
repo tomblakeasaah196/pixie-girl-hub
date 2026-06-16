@@ -315,9 +315,10 @@ export function RecipesPanel({ canCreate }: { canCreate: boolean }) {
 
       {recipes.length === 0 ? (
         <EmptyState
+          icon={<span className="text-3xl">🧪</span>}
           title="No recipes yet"
-          subtitle="Create your first colour recipe"
-          action={canCreate ? { label: "New Recipe", onClick: () => setShowCreate(true) } : undefined}
+          message="Create your first colour recipe"
+          action={canCreate ? <Button size="sm" onClick={() => setShowCreate(true)}>New Recipe</Button> : undefined}
         />
       ) : (
         <div className="space-y-3">
@@ -350,10 +351,18 @@ export function RecipesPanel({ canCreate }: { canCreate: boolean }) {
           title={`Edit: ${editingRecipe.display_name}`}
         >
           <RecipeForm
-            initial={editingRecipe}
+            initial={{
+              recipe_key: editingRecipe.recipe_key,
+              display_name: editingRecipe.display_name,
+              ingredients: editingRecipe.ingredients,
+              instructions: editingRecipe.instructions ?? undefined,
+              target_shade: editingRecipe.target_shade ?? undefined,
+              notes: editingRecipe.notes ?? undefined,
+              is_active: editingRecipe.is_active,
+            }}
             onSave={(data) =>
               update.mutate(
-                { id: editingRecipe.recipe_id, patch: data },
+                [editingRecipe.recipe_id, data],
                 { onSuccess: () => setEditingRecipe(null) },
               )
             }

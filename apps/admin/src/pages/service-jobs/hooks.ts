@@ -24,7 +24,7 @@ export function useServiceTypeMutations() {
   return {
     create: useMutation({ mutationFn: api.createServiceType, onSuccess: invalidate }),
     update: useMutation({
-      mutationFn: ({ id, patch }: Parameters<typeof api.updateServiceType>) =>
+      mutationFn: ([id, patch]: Parameters<typeof api.updateServiceType>) =>
         api.updateServiceType(id, patch),
       onSuccess: invalidate,
     }),
@@ -59,7 +59,7 @@ export function useRecipeMutations() {
   return {
     create: useMutation({ mutationFn: api.createRecipe, onSuccess: invalidate }),
     update: useMutation({
-      mutationFn: ({ id, patch }: Parameters<typeof api.updateRecipe>) =>
+      mutationFn: ([id, patch]: Parameters<typeof api.updateRecipe>) =>
         api.updateRecipe(id, patch),
       onSuccess: invalidate,
     }),

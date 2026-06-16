@@ -18,7 +18,7 @@ import { NumberField, Select } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
 import { PricingWorkbench } from "./PricingWorkbench";
 import { usePricingRules, usePriceFloors, useProposals, usePricingRuleMutations, usePriceFloorMutations } from "./hooks";
-import { RULE_TYPE_LABELS, RULE_TYPE_OPTIONS, FLOOR_TYPE_OPTIONS, PROPOSAL_STATUS_META } from "./constants";
+import { RULE_TYPE_LABELS, RULE_TYPE_OPTIONS, FLOOR_TYPE_OPTIONS } from "./constants";
 import type { PricingRule, PriceFloor, SavedScenario } from "./types";
 
 const ProposalsTable = lazy(() => import("./ProposalsTable").then((m) => ({ default: m.ProposalsTable })));
@@ -31,7 +31,7 @@ export function PricingPage() {
   const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
 
   const [tab, setTab] = useState<Tab>("workbench");
-  const [scenarios, setScenarios] = useState<SavedScenario[]>([]);
+  const [, setScenarios] = useState<SavedScenario[]>([]);
 
   if (!can("pricing", "view")) {
     return (

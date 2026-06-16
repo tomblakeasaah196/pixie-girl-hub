@@ -3,7 +3,7 @@ import { Button, Pill, Skeleton, EmptyState, MoneyText } from "@/components/ui/p
 import { Drawer } from "@/components/ui/Drawer";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
-import type { ServiceJob, ServiceType, ChemicalRecipe, JobStatus } from "./types";
+import type { ServiceJob, ServiceType, JobStatus } from "./types";
 import {
   useJobs,
   useJob,
@@ -165,7 +165,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
       {isLoading ? (
         <Skeleton className="h-24" />
       ) : chemicals.length === 0 ? (
-        <EmptyState title="No chemicals recorded" subtitle="Add below" />
+        <EmptyState icon={<span className="text-2xl">🧴</span>} title="No chemicals recorded" message="Add below" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -704,9 +704,10 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
       {/* Board */}
       {jobs.length === 0 ? (
         <EmptyState
+          icon={<span className="text-3xl">📋</span>}
           title="No service jobs"
-          subtitle={statusFilter ? `No jobs with status "${statusFilter}"` : "Create your first job above"}
-          action={canCreate ? { label: "New Job", onClick: () => setShowCreate(true) } : undefined}
+          message={statusFilter ? `No jobs with status "${statusFilter}"` : "Create your first job above"}
+          action={canCreate ? <Button size="sm" onClick={() => setShowCreate(true)}>New Job</Button> : undefined}
         />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

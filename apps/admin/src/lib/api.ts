@@ -60,7 +60,13 @@ function brandContext(): string | null {
   try {
     const raw = localStorage.getItem("pgh-business");
     const parsed = raw ? JSON.parse(raw) : null;
-    return parsed?.state?.activeKey ?? null;
+    const key = parsed?.state?.activeKey ?? null;
+    if (key) return key;
+
+    // Fallback: use defaultBusinessKey from persisted auth store
+    const authRaw = localStorage.getItem("pgh-auth");
+    const authParsed = authRaw ? JSON.parse(authRaw) : null;
+    return authParsed?.state?.user?.defaultBusinessKey ?? null;
   } catch {
     return null;
   }

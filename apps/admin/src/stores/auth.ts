@@ -1,11 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { getAccessToken, refreshAccessToken, setAccessToken } from "@/lib/api";
 import {
-  getAccessToken,
-  refreshAccessToken,
-  setAccessToken,
-} from "@/lib/api";
-import { logout as apiLogout, fetchMyPermissions, type AuthUser } from "@/lib/auth-api";
+  logout as apiLogout,
+  fetchMyPermissions,
+  type AuthUser,
+} from "@/lib/auth-api";
+import { useBusinessStore } from "@/stores/business";
 
 /**
  * Auth/session (canon §5).
@@ -45,7 +46,7 @@ interface AuthState {
   /** Fetch resolved permission grants from /auth/me/permissions and store them. */
   loadPermissions: () => Promise<void>;
   can: (module: string, action: string) => boolean;
-  patchUser: (partial: Partial<Pick<User, 'name' | 'email'>>) => void;
+  patchUser: (partial: Partial<Pick<User, "name" | "email">>) => void;
 }
 
 /** Map the backend AuthUser onto the shell's User shape. */
@@ -79,9 +80,24 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       status: "unknown",
       setSession: (u) => {
-        set({ user: toUser(u), status: "authed" });
+        const user = toUser(u);
+        set({ user, status: "authed" });
+
+        // Ensure the business context is set immediately after login
+        // so X-Brand-Context is present on the very first API call.
+        const { activeKey, setActive } = useBusinessStore.getState();
+        const defaultKey =
+          user.defaultBusinessKey ?? user.availableBusinesses[0];
+        if (defaultKey && (!activeKey || activeKey !== defaultKey)) {
+          setActive(defaultKey);
+        }
+
         // Fire-and-forget: load real permission grants after login.
-        get().loadPermissions().catch(() => { /* non-fatal */ });
+        get()
+          .loadPermissions()
+          .catch(() => {
+            /* non-fatal */
+          });
       },
       signOut: async () => {
         await apiLogout();
@@ -119,7 +135,11 @@ export const useAuthStore = create<AuthState>()(
             if (ok) {
               set({ status: "authed" });
               // Reload permissions after session revival.
-              get().loadPermissions().catch(() => { /* non-fatal */ });
+              get()
+                .loadPermissions()
+                .catch(() => {
+                  /* non-fatal */
+                });
               return;
             }
             setAccessToken(null);

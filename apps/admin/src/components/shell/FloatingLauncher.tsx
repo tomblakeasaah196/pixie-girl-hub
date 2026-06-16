@@ -4,6 +4,8 @@ import { Plus, Sparkles, MessageCircle, HelpCircle, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useUnreadCount } from "@/hooks/useCommandCenter";
+import { useChatDockStore } from "@/stores/chat-dock";
+import { useUnreadMessages } from "@/hooks/useSmartcomm";
 
 /**
  * Floating launcher (canon §3.4) — fans to Praxis · Messages · Help.
@@ -14,7 +16,10 @@ export function FloatingLauncher() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const { data } = useUnreadCount();
-  const unread = data?.unread ?? 0;
+  const { data: messagesUnread } = useUnreadMessages();
+  const openDock = useChatDockStore((s) => s.openDock);
+  const unread =
+    (data?.unread ?? 0) + (messagesUnread?.unread_count ?? 0);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,7 +54,7 @@ export function FloatingLauncher() {
       {open && (
         <div className="flex flex-col items-center gap-2.5 animate-fade-in">
           <div className="group/m">{mini("Help", <HelpCircle className="w-5 h-5" />, () => navigate("/help"))}</div>
-          <div className="group/m">{mini("Messages", <MessageCircle className="w-5 h-5" />, () => navigate("/messages"))}</div>
+          <div className="group/m">{mini("Messages", <MessageCircle className="w-5 h-5" />, () => (isDesktop ? openDock() : navigate("/smartcomm")))}</div>
           <div className="group/m">{mini("Praxis AI", <Sparkles className="w-5 h-5" />, () => navigate("/praxis"), true)}</div>
         </div>
       )}

@@ -13,6 +13,7 @@ import { CommandPalette } from "@/components/search/CommandPalette";
 import { BusinessSwitchOverlay } from "./BusinessSwitchOverlay";
 import { NotificationManager } from "@/components/notifications/NotificationManager";
 import { NotificationToastContainer } from "@/components/notifications/NotificationToast";
+import { ChatDock } from "@/components/messaging/ChatDock";
 
 /** The authenticated shell (canon §3): sidebar + sticky top bar + content,
  *  plus the global floating layer (App-Menu pill, launcher, mobile nav, ⌘K). */
@@ -49,6 +50,7 @@ export function AppShell() {
 
       <AppMenuFab />
       <FloatingLauncher />
+      <ChatDock />
       <MobileBottomNav />
       {paletteOpen && <CommandPalette />}
       <BusinessSwitchOverlay />

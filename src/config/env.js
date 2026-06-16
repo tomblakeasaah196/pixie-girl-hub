@@ -118,8 +118,22 @@ const schema = z.object({
   META_WA_PHONE_ID: z.string().optional(),
   META_WA_TOKEN: z.string().optional(),
   META_WA_VERIFY_TOKEN: z.string().optional(),
+  // App Secret for WA inbound payload HMAC verification (X-Hub-Signature-256)
+  META_WA_APP_SECRET: z.string().optional(),
   META_IG_ACCESS_TOKEN: z.string().optional(),
   META_GRAPH_VERIFY_TOKEN: z.string().optional(),
+  // App Secret for IG/Messenger inbound payload HMAC verification.
+  // Can equal META_WA_APP_SECRET when both run under the same Meta app.
+  META_IG_APP_SECRET: z.string().optional(),
+
+  // Cloudflare Email Routing → inbound webhook HMAC secret. Configure
+  // the same secret in the Email Worker that signs forwarded mail.
+  CF_EMAIL_INBOUND_SECRET: z.string().optional(),
+
+  // Storefront base URL used in customer-facing links (pay-link,
+  // onboarding form, etc.).
+  STOREFRONT_BASE_URL: z.string().url().optional(),
+  ADMIN_BASE_URL: z.string().url().optional(),
 
   // Social posting (V2.2 §6.14). Per-platform publish creds; blank → that
   // platform's publish/metrics calls are skipped with a clear error.

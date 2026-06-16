@@ -31,6 +31,14 @@ const ROOMS = {
   user_tasks: (userId) => `user:${userId}:tasks`,
   user_messages: (userId) => `user:${userId}:messages`,
 
+  // Smartcomm — one room per channel for typing/presence/new-message
+  // fanout, plus a per-brand inbox room for unread-count and per-platform
+  // badges. Members join the channel room when they open the thread;
+  // every brand member joins the inbox room while authenticated.
+  channel: (channelId) => `channel:${channelId}`,
+  channel_typing: (channelId) => `channel:${channelId}:typing`,
+  brand_smartcomm: (brand) => `brand:${brand}:smartcomm`,
+
   // System-wide (CEO/admin)
   ai_usage_meter: "system:ai_usage_meter",
   health: "system:health",

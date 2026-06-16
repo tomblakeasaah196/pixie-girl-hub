@@ -76,12 +76,47 @@ function verifyStripe(rawBody, headers) {
   }
 }
 
+// Meta payload signature — both WhatsApp Cloud and Instagram Messenger
+// sign with the App Secret via HMAC-SHA256 over the raw body and put the
+// hex digest in `x-hub-signature-256: sha256=<hex>`. Same algo for both,
+// different env vars holding the App Secret per integration.
+function verifyMeta(secretEnvKey) {
+  return (rawBody, headers) => {
+    const secret = config[secretEnvKey];
+    if (!secret) return null;
+    const sig = (headers || {})["x-hub-signature-256"];
+    if (!sig) return false;
+    const expected =
+      "sha256=" +
+      crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+    return safeEqual(expected, sig);
+  };
+}
+
+// Cloudflare Email Routing posts to the inbound webhook via an Email
+// Worker that signs the payload with a shared secret in
+// `x-cf-email-signature: sha256=<hex>` (HMAC-SHA256 over the raw body).
+// No secret configured = "logged but not processed" so an unverified
+// stream can never leak into the inbox.
+function verifyCloudflareEmail(rawBody, headers) {
+  const secret = config.CF_EMAIL_INBOUND_SECRET;
+  if (!secret) return null;
+  const sig = (headers || {})["x-cf-email-signature"];
+  if (!sig) return false;
+  const expected =
+    "sha256=" +
+    crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  return safeEqual(expected, sig);
+}
+
 const VERIFIERS = {
   paystack: verifyPaystack,
   opay: verifyOpay,
   nomba: verifyNomba,
   stripe: verifyStripe,
-  // meta_* handled via the GET challenge + (future) payload verifier.
+  meta_whatsapp: verifyMeta("META_WA_APP_SECRET"),
+  meta_instagram: verifyMeta("META_IG_APP_SECRET"),
+  cloudflare_email: verifyCloudflareEmail,
 };
 
 function extractExternalId(source, payload) {

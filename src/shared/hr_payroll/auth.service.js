@@ -444,8 +444,28 @@ async function confirmEmailChange({ user_id, otp }) {
   if (String(otp).trim() !== storedOtp)
     throw new AppError('INVALID_OTP', 'Incorrect verification code', 400);
 
+  // Read the old email before overwriting it.
+  const user = await staffRepo.findById(user_id);
+  const old_email = user?.email;
+
   await redis.del(key);
   await staffRepo.updateEmail(user_id, new_email);
+
+  // Notify the old address so the account owner can act if this was unauthorised.
+  if (old_email) {
+    emailService.send({
+      to: old_email,
+      subject: 'Your Pixie Girl Hub email address was changed',
+      html: `<p>Hello,</p>
+             <p>The email address on your Pixie Girl Hub account was just changed to
+             <strong>${new_email}</strong>.</p>
+             <p>If you made this change, you can ignore this message.</p>
+             <p>If you did <strong>not</strong> make this change, please contact your
+             administrator immediately to secure your account.</p>`,
+      text: `Your Pixie Girl Hub account email was changed to ${new_email}. If you did not do this, contact your administrator immediately.`,
+    }).catch((err) => logger.error({ err: err.message }, 'email-change notification to old address failed'));
+  }
+
   return { email: new_email };
 }
 

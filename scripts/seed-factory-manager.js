@@ -97,7 +97,7 @@ async function main() {
     const { rows: profileRows } = await client.query(
       `INSERT INTO shared.staff_profiles
          (contact_id, employee_number, business, job_title, employment_type, start_date)
-       VALUES ($1, $2, $3, 'Factory Manager', 'contractor', CURRENT_DATE)
+       VALUES ($1, $2, $3, 'Factory Manager', 'contract', CURRENT_DATE)
        RETURNING profile_id`,
       [contactId, employeeNumber, businessArg],
     );

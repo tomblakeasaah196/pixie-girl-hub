@@ -15,8 +15,10 @@ export function PhotoCropModal({
   onCancel: () => void;
 }) {
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [src, setSrc] = useState("");
   const [zoom, setZoom] = useState(1);
+  const [minZoom, setMinZoom] = useState(0.1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const dragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
@@ -27,12 +29,29 @@ export function PhotoCropModal({
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
-      setZoom(Math.max(PREVIEW / img.width, PREVIEW / img.height));
+      const natural = Math.max(PREVIEW / img.width, PREVIEW / img.height);
+      setMinZoom(natural);
+      setZoom(natural);
       setOffset({ x: 0, y: 0 });
     };
     img.src = url;
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  // Non-passive wheel listener — can't use JSX onWheel + preventDefault (passive by default)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom((z) => {
+        const next = z * (1 - e.deltaY * 0.001);
+        return Math.max(minZoom, Math.min(minZoom * 4, next));
+      });
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [minZoom]);
 
   const imgStyle = () => {
     if (!imgRef.current) return {};
@@ -102,12 +121,9 @@ export function PhotoCropModal({
         <h2 className="font-display text-[20px] mb-4">Crop photo</h2>
 
         <div
+          ref={containerRef}
           className="mx-auto rounded-full overflow-hidden bg-text-primary/[0.06] border-2 border-accent/30 cursor-grab active:cursor-grabbing"
-          style={{
-            width: PREVIEW,
-            height: PREVIEW,
-            position: "relative",
-          }}
+          style={{ width: PREVIEW, height: PREVIEW, position: "relative" }}
           onMouseDown={(e) => startDrag(e.clientX, e.clientY)}
           onMouseMove={(e) => moveDrag(e.clientX, e.clientY)}
           onMouseUp={() => { dragging.current = false; }}
@@ -123,9 +139,9 @@ export function PhotoCropModal({
           <ZoomOut className="w-4 h-4 text-text-faint shrink-0" />
           <input
             type="range"
-            min={0.5}
-            max={3}
-            step={0.01}
+            min={minZoom}
+            max={minZoom * 4}
+            step={minZoom * 0.01}
             value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
             className="flex-1 accent-[var(--accent)]"

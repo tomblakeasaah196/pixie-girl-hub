@@ -348,7 +348,10 @@ export function ProfileDrawer({
     if (!open) return;
     setLoading(true);
     getMe()
-      .then(setProfile)
+      .then((p) => {
+        setProfile(p);
+        patchUser({ avatarUrl: p.avatar_url ?? null });
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [open]);
@@ -366,6 +369,7 @@ export function ProfileDrawer({
     try {
       const { avatar_url } = await uploadAvatar(blob);
       setProfile((p) => (p ? { ...p, avatar_url } : p));
+      patchUser({ avatarUrl: avatar_url });
       showToast("ok", "Photo updated.");
     } catch {
       showToast("err", "Photo upload failed. Please try again.");

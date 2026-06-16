@@ -61,9 +61,13 @@ export function TopBar() {
             <button
               aria-label="Account"
               onClick={() => setProfileOpen(true)}
-              className="w-[38px] h-[38px] rounded-full grid place-items-center font-display font-semibold text-[13px] text-white bg-[linear-gradient(140deg,var(--biz-1),var(--biz-2))] shrink-0"
+              className="w-[38px] h-[38px] rounded-full overflow-hidden grid place-items-center font-display font-semibold text-[13px] text-white bg-[linear-gradient(140deg,var(--biz-1),var(--biz-2))] shrink-0"
             >
-              {initials(user.name)}
+              {user.avatarUrl ? (
+                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+              ) : (
+                initials(user.name)
+              )}
             </button>
           )}
         </div>

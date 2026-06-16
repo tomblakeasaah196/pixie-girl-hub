@@ -135,7 +135,7 @@ export function PurchasingPage() {
         />
       )}
       {tab === "suppliers" && <SuppliersTab canCreate={can("purchasing", "create")} />}
-      {tab === "grn-invoices" && <GrnInvoicesTab canCreate={can("purchasing", "create")} canApprove={can("purchasing", "approve")} />}
+      {tab === "grn-invoices" && <GrnInvoicesTab />}
 
       {selectedPo && (
         <PoDetailDrawer
@@ -812,7 +812,7 @@ function SuppliersTab({ canCreate }: { canCreate: boolean }) {
 
 // ── GRN & Invoices Tab ────────────────────────────────────
 
-function GrnInvoicesTab({ canCreate, canApprove }: { canCreate: boolean; canApprove: boolean }) {
+function GrnInvoicesTab() {
   const [subTab, setSubTab] = useState<GrnTab>("grns");
 
   return (

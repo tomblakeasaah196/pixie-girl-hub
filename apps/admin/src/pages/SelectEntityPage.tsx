@@ -16,6 +16,7 @@ export function SelectEntityPage() {
   const navigate = useNavigate();
   const { data } = useBranding();
   const user = useAuthStore((s) => s.user);
+  const loadPermissions = useAuthStore((s) => s.loadPermissions);
   const setActive = useBusinessStore((s) => s.setActive);
 
   const all = data?.businesses ?? [];
@@ -28,12 +29,14 @@ export function SelectEntityPage() {
   useEffect(() => {
     if (businesses.length === 1) {
       setActive(businesses[0].business_key);
+      loadPermissions().catch(() => {});
       navigate("/", { replace: true });
     }
-  }, [businesses, setActive, navigate]);
+  }, [businesses, setActive, loadPermissions, navigate]);
 
   const pick = (key: string) => {
     setActive(key);
+    loadPermissions().catch(() => {});
     navigate("/", { replace: true });
   };
 

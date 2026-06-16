@@ -25,10 +25,10 @@ const TILES = [
   },
   {
     icon: KeyRound,
-    title: "Vendor credentials",
-    body: "API keys for DeepSeek, OpenAI, Groq, etc. Encrypted, rotateable.",
+    title: "Vendors & Models",
+    body: "DeepSeek primary, Gemini fallback. Pick the model per vendor; pricing recomputes from the catalogue immediately.",
     href: "/ai-control/vendors",
-    ready: false,
+    ready: true,
   },
   {
     icon: Gauge,

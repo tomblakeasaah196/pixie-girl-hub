@@ -11,6 +11,7 @@
 
 const repo = require("./governance.repo");
 const brandVoiceRepo = require("./brand-voice.repo");
+const modelCatalogue = require("./model-catalogue.repo");
 const crypto = require("../../services/encryption.service");
 const { audit } = require("../../middleware/audit");
 const { money } = require("../../utils/money");
@@ -340,4 +341,27 @@ module.exports = {
   setActionEnabled,
   getBrandVoice,
   upsertBrandVoice,
+  listModels,
+  upsertModel,
+  resolveActiveModel: (args) => modelCatalogue.resolveActiveModel(args),
 };
+
+// ── Model catalogue (PR 5) ─────────────────────────────────
+// One row per (vendor, model_id) — cost per 1M tokens lives here so
+// switching from gemini-2.5-flash → gemini-2.5-flash-lite is a click,
+// not a redeploy.
+function listModels({ vendor, capability, active_only }) {
+  return modelCatalogue.list({ vendor, capability, active_only });
+}
+async function upsertModel({ user, request_id, input }) {
+  const m = await modelCatalogue.upsert({ user_id: user.user_id, input });
+  await A(
+    user,
+    "ai_governance.model.upsert",
+    "ai_model_catalogue",
+    m.model_id,
+    { vendor: m.vendor, is_default: m.is_default },
+    request_id,
+  );
+  return m;
+}

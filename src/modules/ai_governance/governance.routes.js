@@ -75,6 +75,17 @@ router.put(
   c.upsertBrandVoice,
 );
 
+// ── Model catalogue (PR 5) ─────────────────────────────────
+// Read-everyone-with-view (so they can see what's configured);
+// upsert/edit gated by ai_governance.edit (CEO + AI Control admins).
+router.get("/models", can("view"), c.listModels);
+router.post(
+  "/models",
+  can("edit"),
+  v.validateModelUpsert,
+  c.upsertModel,
+);
+
 // ── Action catalogue ───────────────────────────────────────
 router.get("/actions", can("view"), c.listActions);
 router.post("/actions", can("create"), v.validateActionUpsert, c.upsertAction);

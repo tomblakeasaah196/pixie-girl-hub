@@ -191,6 +191,17 @@ const schema = z.object({
   GROQ_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  // Gemini (Google Generative Language API). Free dev tier on the public
+  // endpoint; vertex AI uses a different base URL.
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_BASE_URL: z
+    .string()
+    .url()
+    .default("https://generativelanguage.googleapis.com"),
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  // Fallback vendor — when the primary call fails (5xx, timeout, rate
+  // limit) the orchestrator tries this vendor before throwing.
+  PRAXIS_LLM_FALLBACK_VENDOR: z.string().default("gemini"),
   AI_MONTHLY_SOFT_CAP_NGN: z.coerce.number().nonnegative().default(75000),
   AI_MONTHLY_HARD_CAP_NGN: z.coerce.number().nonnegative().default(80000),
 

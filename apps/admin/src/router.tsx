@@ -12,6 +12,7 @@ const CashExpensesHome = lazy(() => import("@/pages/cash-expenses/CashExpensesHo
 const ProductionPage = lazy(() => import("@/pages/production/ProductionPage").then((m) => ({ default: m.ProductionPage })));
 const PricingPage = lazy(() => import("@/pages/pricing/PricingPage").then((m) => ({ default: m.PricingPage })));
 const PurchasingPage = lazy(() => import("@/pages/purchasing/PurchasingPage").then((m) => ({ default: m.PurchasingPage })));
+const ServiceJobsPage = lazy(() => import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({ default: m.ServiceJobsPage })));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -80,6 +81,9 @@ export const router = createBrowserRouter(
             { path: "catalogue", element: <CataloguePage /> },
             { path: "catalogue/base/:id", element: <BaseProductPage /> },
             { path: "catalogue/styled/:id", element: <StyledProductPage /> },
+
+            // Service Jobs (Faitlyn hair assignment register)
+            { path: "service-jobs", element: <Suspense fallback={null}><ServiceJobsPage /></Suspense> },
 
             // Production (China factory account + production runs)
             { path: "production", element: <Suspense fallback={null}><ProductionPage /></Suspense> },

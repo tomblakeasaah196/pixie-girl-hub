@@ -52,6 +52,9 @@ router.post(
   c.createAdjustment,
 );
 router.get("/adjustments/:adjId", can("view"), c.getAdjustment);
+router.post("/adjustments/:adjId/submit", can("edit"), c.submitAdjustment);
+router.post("/adjustments/:adjId/approve", can("approve"), c.approveAdjustment);
+router.post("/adjustments/:adjId/reject", can("approve"), c.rejectAdjustment);
 router.post("/adjustments/:adjId/post", can("approve"), c.postAdjustment);
 
 // Transfers (between locations; dispatch/receive → movements)

@@ -43,6 +43,7 @@ const queueNames = [
   "webhooks-replay",
   "ai-embed",
   "report-generate",
+  "cart-ttl",
 ];
 
 const queues = new Map();
@@ -80,6 +81,7 @@ async function startWorkers() {
     "webhooks-replay": require("./processors/webhooks-replay-processor"),
     "ai-embed": require("./processors/ai-embed-processor"),
     "report-generate": require("./processors/report-processor"),
+    "cart-ttl": require("./processors/cart-ttl-processor").processCartTtl,
   };
 
   for (const [name, processor] of Object.entries(handlers)) {

@@ -23,6 +23,7 @@ const SmartCommPage = lazy(() => import("@/pages/smartcomm/SmartCommPage").then(
 const CustomerOnboardingPublic = lazy(() => import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({ default: m.CustomerOnboardingPublic })));
 const AiControlPage = lazy(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
 const BrandVoicePage = lazy(() => import("@/pages/ai-control/BrandVoicePage").then((m) => ({ default: m.BrandVoicePage })));
+const StockPage = lazy(() => import("@/pages/stock/StockPage").then((m) => ({ default: m.StockPage })));
 const ChannelPolicyPage = lazy(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
 const QuickRepliesPage = lazy(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
 import { AppearancePage } from "@/pages/AppearancePage";
@@ -109,6 +110,9 @@ export const router = createBrowserRouter(
             { path: "catalogue", element: <CataloguePage /> },
             { path: "catalogue/base/:id", element: <BaseProductPage /> },
             { path: "catalogue/styled/:id", element: <StyledProductPage /> },
+
+            // Stock & Inventory
+            { path: "stock", element: <Suspense fallback={null}><StockPage /></Suspense> },
 
             // Service Jobs (Faitlyn hair assignment register)
             { path: "service-jobs", element: <Suspense fallback={null}><ServiceJobsPage /></Suspense> },

@@ -222,10 +222,31 @@ async function receiveStock({
   return m;
 }
 
+// GAP-1: cart reservation with 20-minute TTL auto-release via BullMQ delayed job
+async function reserveForCart({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  quantity,
+  reference_id,
+  user_id,
+}) {
+  const m = await reserveForOrder({ client, brand, variant_id, location_id, quantity, reference_id, user_id });
+  const { enqueue } = require("../../jobs/queue-producer");
+  await enqueue("cart-ttl", "release-cart-reservation", {
+    brand, variant_id, location_id, quantity, reference_id,
+  }, { delay: 20 * 60 * 1000, attempts: 1 });
+  return m;
+}
+
+// GAP-7: seed into ALL active locations, not just default
 async function seedVariant({ brand, variant_id }) {
-  const loc = await repo.getDefaultLocation({ brand });
-  if (loc)
-    await repo.seedLevel({ brand, variant_id, location_id: loc.location_id });
+  const locs = await repo.listLocations({ brand });
+  for (const loc of locs) {
+    if (loc.is_active)
+      await repo.seedLevel({ brand, variant_id, location_id: loc.location_id });
+  }
 }
 
 /**
@@ -362,16 +383,58 @@ async function createAdjustment({ brand, user, request_id, input }) {
     return repo.getAdjustment({ client, brand, id: adj.adjustment_id });
   });
 }
+// GAP-2: submit for approval (write-downs require CEO sign-off)
+async function submitAdjustment({ brand, user, request_id, id }) {
+  const adj = await repo.getAdjustment({ brand, id });
+  if (!adj) throw new NotFoundError("Adjustment");
+  if (adj.status !== "draft")
+    throw new AppError("INVALID_STATE", `Cannot submit a '${adj.status}' adjustment`, 409);
+  const updated = await repo.setAdjustmentStatus({ brand, id, status: "submitted" });
+  await A(brand, user.user_id, "stock.adjustment.submit", "stock_adjustment", id, { status: "submitted" }, request_id);
+  events.emit("adjustment.submitted", { brand, id });
+  return updated;
+}
+
+// GAP-2: CEO/manager approves a submitted write-down
+async function approveAdjustment({ brand, user, request_id, id }) {
+  const adj = await repo.getAdjustment({ brand, id });
+  if (!adj) throw new NotFoundError("Adjustment");
+  if (adj.status !== "submitted")
+    throw new AppError("INVALID_STATE", `Cannot approve a '${adj.status}' adjustment`, 409);
+  const updated = await repo.setAdjustmentStatus({ brand, id, status: "approved", approved_by: user.user_id });
+  await A(brand, user.user_id, "stock.adjustment.approve", "stock_adjustment", id, { status: "approved" }, request_id);
+  events.emit("adjustment.approved", { brand, id });
+  return updated;
+}
+
+// GAP-2: reject a submitted adjustment
+async function rejectAdjustment({ brand, user, request_id, id }) {
+  const adj = await repo.getAdjustment({ brand, id });
+  if (!adj) throw new NotFoundError("Adjustment");
+  if (adj.status !== "submitted")
+    throw new AppError("INVALID_STATE", `Cannot reject a '${adj.status}' adjustment`, 409);
+  const updated = await repo.setAdjustmentStatus({ brand, id, status: "rejected" });
+  await A(brand, user.user_id, "stock.adjustment.reject", "stock_adjustment", id, { status: "rejected" }, request_id);
+  events.emit("adjustment.rejected", { brand, id });
+  return updated;
+}
+
 async function postAdjustment({ brand, user, request_id, id }) {
   return transaction(async (client) => {
     const adj = await repo.getAdjustment({ client, brand, id });
     if (!adj) throw new NotFoundError("Adjustment");
-    if (!["draft", "submitted", "approved"].includes(adj.status)) {
-      throw new AppError(
-        "INVALID_STATE",
-        `Cannot post a '${adj.status}' adjustment`,
-        409,
-      );
+    // GAP-2: write-downs (physical < system) require approval before posting
+    const hasWriteDown = adj.lines.some((l) => l.physical_count - l.system_count < 0);
+    if (hasWriteDown && adj.status !== "approved") {
+      throw new AppError("APPROVAL_REQUIRED", "Write-downs require CEO approval before posting", 409, {
+        user_message: "This adjustment contains write-downs and must be approved before posting.",
+      });
+    }
+    if (!hasWriteDown && !["draft", "submitted", "approved"].includes(adj.status)) {
+      throw new AppError("INVALID_STATE", `Cannot post a '${adj.status}' adjustment`, 409);
+    }
+    if (hasWriteDown && adj.status !== "approved") {
+      throw new AppError("INVALID_STATE", `Cannot post a '${adj.status}' adjustment with write-downs`, 409);
     }
     for (const line of adj.lines) {
       const delta = line.physical_count - line.system_count;
@@ -705,11 +768,15 @@ module.exports = {
   deductForSale,
   receiveStock,
   reserveForOrder,
+  reserveForCart,
   releaseReservation,
   seedVariant,
   listAdjustments,
   getAdjustment,
   createAdjustment,
+  submitAdjustment,
+  approveAdjustment,
+  rejectAdjustment,
   postAdjustment,
   listTransfers,
   getTransfer,

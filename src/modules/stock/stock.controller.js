@@ -100,6 +100,18 @@ const createAdjustment = async (req, res) =>
   res.status(201).json({
     data: await service.createAdjustment({ ...base(req), input: req.body }),
   });
+const submitAdjustment = async (req, res) =>
+  res.json({
+    data: await service.submitAdjustment({ ...base(req), id: req.params.adjId }),
+  });
+const approveAdjustment = async (req, res) =>
+  res.json({
+    data: await service.approveAdjustment({ ...base(req), id: req.params.adjId }),
+  });
+const rejectAdjustment = async (req, res) =>
+  res.json({
+    data: await service.rejectAdjustment({ ...base(req), id: req.params.adjId }),
+  });
 const postAdjustment = async (req, res) =>
   res.json({
     data: await service.postAdjustment({ ...base(req), id: req.params.adjId }),
@@ -227,6 +239,9 @@ module.exports = {
   listAdjustments,
   getAdjustment,
   createAdjustment,
+  submitAdjustment,
+  approveAdjustment,
+  rejectAdjustment,
   postAdjustment,
   listTransfers,
   getTransfer,

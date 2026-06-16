@@ -120,3 +120,33 @@ export async function getGeoWelcome(
     "public",
   );
 }
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api.post('/auth/change-password', { current_password: currentPassword, new_password: newPassword });
+}
+
+export interface MyProfile {
+  user_id: string;
+  email: string;
+  display_name: string;
+  avatar_url: string | null;
+  phone: string | null;
+  job_title: string | null;
+  department: string | null;
+  employee_number: string | null;
+  is_ceo: boolean;
+}
+
+export async function getMe(): Promise<MyProfile> {
+  return api.get<MyProfile>('/auth/me');
+}
+
+export async function updateMe(data: { display_name?: string; phone?: string }): Promise<MyProfile> {
+  return api.patch<MyProfile>('/auth/me', data);
+}
+
+export async function uploadAvatar(blob: Blob): Promise<{ avatar_url: string }> {
+  const form = new FormData();
+  form.append('avatar', blob, 'avatar.jpg');
+  return api.postForm<{ avatar_url: string }>('/auth/me/avatar', form);
+}

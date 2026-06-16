@@ -1,20 +1,91 @@
-import { useEffect, useState } from "react";
-import { CheckCircle2, Hash, Loader2, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { CheckCircle2, Eye, EyeOff, Hash, Loader2, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { checkPin } from "@/lib/password";
-import {
-  getPinStatus,
-  removePin,
-  setPin,
-  setPinEnabledLocally,
-} from "@/lib/auth-api";
+import { getPinStatus, removePin, setPin, setPinEnabledLocally } from "@/lib/auth-api";
 
-/**
- * Quick-login PIN management (canon §3.1 account menu). Set, change, or
- * remove the 6-digit PIN that powers the login screen's Quick-PIN tab.
- * The PIN is never displayed — only set/cleared — and the backend stores
- * it argon2-hashed.
- */
+function OtpBoxes({
+  value,
+  onChange,
+  disabled,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  autoFocus?: boolean;
+}) {
+  const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const focus = (i: number) =>
+    refs.current[Math.max(0, Math.min(5, i))]?.focus();
+
+  return (
+    <div className="flex gap-2.5 justify-center">
+      {Array.from({ length: 6 }, (_, i) => {
+        const digit = value[i] ?? "";
+        return (
+          <input
+            key={i}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            type="password"
+            inputMode="numeric"
+            maxLength={1}
+            value={digit}
+            autoFocus={autoFocus && i === 0}
+            disabled={disabled}
+            aria-label={`Digit ${i + 1}`}
+            onChange={(e) => {
+              const d = e.target.value.replace(/\D/g, "").slice(-1);
+              if (!d) return;
+              const next = value.slice(0, i) + d + value.slice(i + 1);
+              onChange(next.slice(0, 6));
+              if (i < 5) focus(i + 1);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Backspace") {
+                if (digit) {
+                  onChange(value.slice(0, i) + value.slice(i + 1));
+                } else if (i > 0) {
+                  focus(i - 1);
+                  onChange(value.slice(0, i - 1) + value.slice(i));
+                }
+                e.preventDefault();
+              } else if (e.key === "ArrowLeft") {
+                focus(i - 1);
+                e.preventDefault();
+              } else if (e.key === "ArrowRight") {
+                focus(i + 1);
+                e.preventDefault();
+              }
+            }}
+            onPaste={(e) => {
+              e.preventDefault();
+              const pasted = e.clipboardData
+                .getData("text")
+                .replace(/\D/g, "")
+                .slice(0, 6);
+              onChange(pasted);
+              focus(Math.min(pasted.length, 5));
+            }}
+            className={cn(
+              "w-11 h-14 rounded-xl border text-center text-2xl font-mono caret-transparent",
+              "outline-none transition-all duration-150 select-none",
+              digit
+                ? "border-accent/60 bg-accent/[0.06] text-accent-glow ring-1 ring-accent/20"
+                : "border-line/50 bg-text-primary/[0.04]",
+              "focus:border-accent focus:ring-2 focus:ring-accent/30",
+              disabled && "opacity-50 cursor-not-allowed",
+            )}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function PinManager({
   open,
   onClose,
@@ -23,7 +94,9 @@ export function PinManager({
   onClose: () => void;
 }) {
   const [hasPin, setHasPin] = useState<boolean | null>(null);
-  const [pin, setPinValue] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [pin, setPin2] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +104,9 @@ export function PinManager({
 
   useEffect(() => {
     if (!open) return;
-    setPinValue("");
+    setPassword("");
+    setShowPw(false);
+    setPin2("");
     setConfirm("");
     setError(null);
     setDone(null);
@@ -39,7 +114,6 @@ export function PinManager({
     getPinStatus()
       .then((s) => {
         setHasPin(s.pin_set);
-        // Keep the device-local default in sync with the server truth.
         setPinEnabledLocally(s.pin_set);
       })
       .catch(() => setHasPin(false));
@@ -54,8 +128,8 @@ export function PinManager({
 
   if (!open) return null;
 
-  const valid = checkPin(pin);
-  const canSave = valid.ok && pin === confirm && !loading;
+  const pinCheck = checkPin(pin);
+  const canSave = password.length >= 1 && pinCheck.ok && pin === confirm && !loading;
 
   const save = async () => {
     if (!canSave) return;
@@ -73,7 +147,7 @@ export function PinManager({
     }
   };
 
-  const clear = async () => {
+  const removePinFn = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -88,17 +162,14 @@ export function PinManager({
     }
   };
 
-  const pinInput =
-    "w-full bg-text-primary/[0.04] border border-line/60 rounded-xl py-3 text-center text-2xl font-mono tracking-[0.5em] text-text-primary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/60 transition-all";
-
-  return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+  const content = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <button
         aria-label="Close"
         className="absolute inset-0 bg-bg/70 backdrop-blur-xl animate-fade-in"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-[380px] dropglass rounded-[22px] p-7 shadow-glass animate-app-in">
+      <div className="relative w-full max-w-[400px] dropglass rounded-[22px] p-7 shadow-glass animate-app-in">
         <button
           onClick={onClose}
           aria-label="Close"
@@ -113,7 +184,7 @@ export function PinManager({
         <h2 className="font-display text-[22px]">Quick login PIN</h2>
 
         {done ? (
-          <div className="text-center py-5">
+          <div className="text-center py-6">
             <div className="w-14 h-14 mx-auto mb-3 rounded-full grid place-items-center bg-success/15 text-success">
               <CheckCircle2 className="w-7 h-7" />
             </div>
@@ -138,8 +209,34 @@ export function PinManager({
             <p className="text-text-muted text-[13px] mt-1 mb-5">
               {hasPin
                 ? "Choose a new 6-digit PIN, or remove the existing one."
-                : "Set a 6-digit PIN for fast sign-in. Avoid repeated or sequential digits."}
+                : "Set a 6-digit PIN for fast sign-in."}
             </p>
+
+            <div className="mb-5">
+              <label className="block text-[11.5px] font-semibold text-text-faint uppercase tracking-wider mb-2">
+                Your password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPw ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Confirm your password"
+                  className="w-full h-11 bg-text-primary/[0.04] border border-line/60 rounded-xl px-4 pr-10 text-[13.5px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/60 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-muted"
+                >
+                  {showPw ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
 
             {error && (
               <div
@@ -150,43 +247,43 @@ export function PinManager({
               </div>
             )}
 
-            <div className="space-y-3">
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                value={pin}
-                onChange={(e) =>
-                  setPinValue(e.target.value.replace(/\D/g, "").slice(0, 6))
-                }
-                placeholder="••••••"
-                className={pinInput}
-                aria-label="New PIN"
-              />
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                value={confirm}
-                onChange={(e) =>
-                  setConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))
-                }
-                placeholder="Confirm"
-                className={cn(pinInput, "text-lg tracking-[0.4em]")}
-                aria-label="Confirm PIN"
-              />
-              {pin.length === 6 && !valid.ok && (
-                <p className="text-[11.5px] text-danger">{valid.error}</p>
-              )}
-              {confirm.length === 6 && valid.ok && pin !== confirm && (
-                <p className="text-[11.5px] text-danger">PINs don't match.</p>
-              )}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[11.5px] font-semibold text-text-faint uppercase tracking-wider mb-2">
+                  New PIN
+                </label>
+                <OtpBoxes
+                  value={pin}
+                  onChange={setPin2}
+                  disabled={loading}
+                />
+                {pin.length === 6 && !pinCheck.ok && (
+                  <p className="text-[11.5px] text-danger mt-2 text-center">
+                    {pinCheck.error}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-semibold text-text-faint uppercase tracking-wider mb-2">
+                  Confirm PIN
+                </label>
+                <OtpBoxes
+                  value={confirm}
+                  onChange={setConfirm}
+                  disabled={loading}
+                />
+                {confirm.length === 6 && pinCheck.ok && pin !== confirm && (
+                  <p className="text-[11.5px] text-danger mt-2 text-center">
+                    PINs don't match.
+                  </p>
+                )}
+              </div>
             </div>
 
             <button
               onClick={save}
               disabled={!canSave}
-              className="mt-5 w-full h-11 rounded-xl bg-accent-deep text-[#F4E9D9] font-semibold text-[13px] tracking-widest uppercase hover:bg-accent transition-all disabled:opacity-50 flex items-center justify-center"
+              className="mt-6 w-full h-11 rounded-xl bg-accent-deep text-[#F4E9D9] font-semibold text-[13px] tracking-widest uppercase hover:bg-accent transition-all disabled:opacity-50 flex items-center justify-center"
             >
               {loading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -199,7 +296,7 @@ export function PinManager({
 
             {hasPin && (
               <button
-                onClick={clear}
+                onClick={removePinFn}
                 disabled={loading}
                 className="mt-3 w-full h-10 rounded-xl text-[12.5px] font-semibold text-danger hover:bg-danger/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
@@ -211,4 +308,6 @@ export function PinManager({
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }

@@ -347,6 +347,49 @@ async function resetPassword({ token, new_password }) {
   await revokeAllSessions(redis, userId);
 }
 
+async function changePassword({ user_id, current_password, new_password }) {
+  const user = await staffRepo.findById(user_id);
+  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+  const ok = await argon2.verify(user.password_hash, current_password);
+  if (!ok) throw new AppError('INVALID_CREDENTIALS', 'Current password is incorrect', 401);
+  assertStrongPassword(new_password);
+  const hash = await argon2.hash(new_password, hashOptions);
+  await staffRepo.updatePassword(user_id, hash);
+}
+
+async function getMe({ user_id }) {
+  const user = await staffRepo.findByIdWithProfile(user_id);
+  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+  return {
+    user_id: user.user_id,
+    email: user.email,
+    display_name: user.display_name,
+    avatar_url: user.avatar_url || null,
+    phone: user.phone || null,
+    job_title: user.job_title || null,
+    department: user.department || null,
+    employee_number: user.employee_number || null,
+    is_ceo: user.is_ceo,
+  };
+}
+
+async function updateMe({ user_id, display_name, phone }) {
+  const updates = {};
+  if (display_name !== undefined) updates.display_name = String(display_name).trim().slice(0, 120) || undefined;
+  if (phone !== undefined) updates.phone = String(phone).trim().slice(0, 40) || undefined;
+  await staffRepo.updateUserProfile(user_id, updates);
+  return getMe({ user_id });
+}
+
+async function uploadAvatar({ user_id, buffer, mimetype }) {
+  const storage = require('../../../services/storage.service');
+  const ext = mimetype === 'image/png' ? 'png' : 'jpg';
+  const key = `avatars/${user_id}.${ext}`;
+  const stored = await storage.put(buffer, { key, contentType: mimetype });
+  await staffRepo.updateUserProfile(user_id, { avatar_url: stored.public_url });
+  return { avatar_url: stored.public_url };
+}
+
 module.exports = {
   login,
   loginPin,
@@ -358,4 +401,8 @@ module.exports = {
   removePin,
   getPinStatus,
   assertStrongPassword,
+  changePassword,
+  getMe,
+  updateMe,
+  uploadAvatar,
 };

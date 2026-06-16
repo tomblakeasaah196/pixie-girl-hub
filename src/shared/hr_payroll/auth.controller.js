@@ -14,6 +14,7 @@
 
 const service = require("./auth.service");
 const permissionsRepo = require("../org_workflow/permissions.repo");
+const { AppError } = require("../../utils/errors");
 
 async function login(req, res) {
   const { email, password } = req.body || {};
@@ -123,6 +124,39 @@ async function mePermissions(req, res) {
   res.json({ data: rows });
 }
 
+async function changePassword(req, res) {
+  await service.changePassword({
+    user_id: req.user.user_id,
+    current_password: req.body?.current_password,
+    new_password: req.body?.new_password,
+  });
+  res.json({ data: { ok: true } });
+}
+
+async function getMe(req, res) {
+  const data = await service.getMe({ user_id: req.user.user_id });
+  res.json({ data });
+}
+
+async function updateMe(req, res) {
+  const data = await service.updateMe({
+    user_id: req.user.user_id,
+    display_name: req.body?.display_name,
+    phone: req.body?.phone,
+  });
+  res.json({ data });
+}
+
+async function uploadAvatar(req, res) {
+  if (!req.file) throw new AppError('NO_FILE', 'No file uploaded', 422);
+  const data = await service.uploadAvatar({
+    user_id: req.user.user_id,
+    buffer: req.file.buffer,
+    mimetype: req.file.mimetype,
+  });
+  res.json({ data });
+}
+
 module.exports = {
   login,
   loginPin,
@@ -134,4 +168,8 @@ module.exports = {
   forgotPassword,
   resetPassword,
   mePermissions,
+  changePassword,
+  getMe,
+  updateMe,
+  uploadAvatar,
 };

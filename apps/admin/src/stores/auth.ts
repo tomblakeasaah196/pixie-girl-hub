@@ -43,6 +43,7 @@ interface AuthState {
   /** Fetch resolved permission grants from /auth/me/permissions and store them. */
   loadPermissions: () => Promise<void>;
   can: (module: string, action: string) => boolean;
+  patchUser: (partial: Partial<Pick<User, 'name' | 'email'>>) => void;
 }
 
 /** Map the backend AuthUser onto the shell's User shape. */
@@ -132,6 +133,10 @@ export const useAuthStore = create<AuthState>()(
           p.includes(`${module}:*`) ||
           p.includes(`${module}:${action}`)
         );
+      },
+      patchUser: (partial) => {
+        const u = get().user;
+        if (u) set({ user: { ...u, ...partial } });
       },
     }),
     {

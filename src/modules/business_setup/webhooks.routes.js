@@ -54,6 +54,12 @@ router.get("/meta/instagram", (req, res) => {
 });
 router.post("/meta/instagram", receiver("meta_instagram"));
 
+// ── Inbound email (Cloudflare Email Routing → Email Worker → here) ─
+// The Email Worker forwards parsed JSON: { to, from, subject, text,
+// html, message_id, in_reply_to, attachments[] } signed with
+// CF_EMAIL_INBOUND_SECRET (HMAC-SHA256 → x-cf-email-signature).
+router.post("/email/inbound", receiver("cloudflare_email"));
+
 // ── Logistics ─────────────────────────────────────────────
 router.post("/chowdeck", receiver("chowdeck"));
 router.post("/gigl", receiver("gigl"));

@@ -11,6 +11,55 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-16 — Smartcomm V2: unified inbox + commerce-in-chat (PR 1)
+
+**Source:** Owner directive — 70% of revenue arrives via Instagram +
+WhatsApp DMs; the hub-system reference shipped these channels DISABLED.
+This migration brings the V2.2 §6.17 vision to life: WhatsApp Cloud API
++ Instagram Graph API + Cloudflare-routed inbound email all flow into
+one inbox; commerce flows (catalogue share, order capture, custom-wig
+revamp) are first-class; per-user × per-platform permissions; Praxis
+draft staging; a shareable Online QR welcome form; Service Catalogue.
+
+**Migration `000213_shared_smartcomm_v2.sql` (NEW).**
+
+- Extended `shared.message_channels` (`status`, `assigned_to`,
+  `assigned_at`, `wa_window_expires_at`, denormalised `last_message_*`).
+- Extended `shared.channel_members` (`is_pinned`, `muted_until`,
+  `notification_pref`, `last_seen_at`).
+- Extended `shared.messages` (`edited_at`, `is_forwarded`,
+  `forwarded_from_id`, `delivery_status`, `delivery_error`).
+- **NEW** `shared.message_reactions`, `shared.message_stars`,
+  `shared.message_drafts` (Praxis-/human-staged replies),
+  `shared.message_quick_replies` (personal + brand-shared with
+  `{{variable}}` interpolation),
+  `shared.contact_social_handles` (multi-platform identity bridge),
+  `shared.messaging_accounts` (webhook → brand routing — separate from
+  `social_accounts` which is for posting),
+  `shared.smartcomm_platform_permissions` (per-user × per-platform ×
+  per-business reply/template/close + personal mute),
+  `shared.user_dnd_schedules` (weekday × local-time DND),
+  `shared.customer_onboarding_submissions` (the Online QR form),
+  `shared.service_offerings` (Service Catalogue — revamps, custom
+  styles, install, etc.),
+  `shared.brand_voice_config` (Praxis per-brand tone + FAQ + few-shot
+  transcripts; classify-inbound and draft-on-tap toggles default OFF
+  and ON respectively).
+- Widened `shared.social_accounts.platform` to include
+  `whatsapp_business` and `email`.
+- Added triggers:
+  - `fn_smartcomm_touch_channel` — keeps the denormalised
+    `last_message_*` columns in sync with every insert/edit/delete.
+  - `fn_smartcomm_refresh_wa_window` — resets `wa_window_expires_at`
+    to NOW+24h on every inbound from the customer.
+- Seeded `permission_module_keys` with `service_catalogue` and
+  `customer_onboarding`.
+
+**Schema-wide impact:** shared table count: 104 → 115 (added 11);
+`message_channels` and `channel_members` and `messages` widened.
+
+---
+
 ## 2026-06-15 — Products: Base/Styled, Cost Vault, pre-order, AI drafting
 
 **Source:** V2.2 §6.4/§6.24 audit gaps P0-6 (3-tier Base→Styled catalogue),

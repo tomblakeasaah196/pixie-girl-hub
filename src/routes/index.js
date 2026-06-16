@@ -90,6 +90,15 @@ const {
   publicRouter: walkinPublicRouter,
 } = require("../modules/storefront/walkin.routes");
 
+// Customer onboarding (Online QR welcome form)
+const {
+  adminRouter: onboardingAdminRouter,
+  publicRouter: onboardingPublicRouter,
+} = require("../modules/customer_onboarding/customer-onboarding.routes");
+
+// Service Catalogue (revamps, custom styles, repairs etc.)
+const serviceCatalogueRouter = require("../modules/service_catalogue/service-catalogue.routes");
+
 // Public (storefront-facing, no auth)
 const publicCatalogueRouter = require("../modules/storefront/public.routes");
 const publicTrackingRouter = require("../modules/logistics/tracking.routes");
@@ -141,6 +150,9 @@ function mountRoutes(app) {
     staffInvitationsPublicRouter,
   );
   publicRouter.use("/walk-in", publicWriteLimiter, walkinPublicRouter);
+  // Customer Onboarding form — public, token-protected. The token
+  // itself is sufficient auth; the per-IP write limiter blunts abuse.
+  publicRouter.use("/onboarding", publicWriteLimiter, onboardingPublicRouter);
   publicRouter.use("/pay", publicWriteLimiter, publicPayLinkRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
   // Unauthenticated branding feed — the login page calls this before
@@ -199,6 +211,8 @@ function mountRoutes(app) {
   api.use("/marketing", marketingRouter);
   api.use("/email-campaigns", emailCampaignsRouter);
   api.use("/smartcomm", smartcommRouter);
+  api.use("/customer-onboarding", onboardingAdminRouter);
+  api.use("/service-catalogue", serviceCatalogueRouter);
   api.use("/calendar", calendarRouter);
   api.use("/tasks", tasksRouter);
   api.use("/dashboards", dashboardsRouter);

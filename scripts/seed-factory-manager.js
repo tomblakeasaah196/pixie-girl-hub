@@ -82,10 +82,10 @@ async function main() {
     // 1. Contact
     const { rows: contactRows } = await client.query(
       `INSERT INTO shared.contacts
-         (contact_type, display_name, email, source, visible_to)
-       VALUES (ARRAY['staff'], $1, $2, 'system', '{}')
+         (contact_type, display_name, email, primary_phone, source, visible_to)
+       VALUES (ARRAY['staff'], $1, $2, $3, 'system', '{}')
        RETURNING contact_id`,
-      [DISPLAY_NAME, EMAIL],
+      [DISPLAY_NAME, EMAIL, "+86-000-0000-0000"],
     );
     const contactId = contactRows[0].contact_id;
 

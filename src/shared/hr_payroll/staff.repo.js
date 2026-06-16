@@ -140,6 +140,34 @@ async function recordPinSuccess(userId, { ip, user_agent }) {
   );
 }
 
+async function findByIdWithProfile(userId) {
+  const { rows } = await query(
+    `SELECT u.user_id, u.email, u.display_name, u.is_ceo, u.default_business_key,
+            u.avatar_url, u.phone, u.status,
+            sp.job_title, sp.department, sp.employee_number,
+            COALESCE(
+              (SELECT array_agg(business_key) FROM shared.user_business_access uba WHERE uba.user_id = u.user_id),
+              '{}'
+            ) AS available_businesses
+       FROM shared.users u
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+      WHERE u.user_id = $1
+      LIMIT 1`,
+    [userId],
+  );
+  return rows[0] || null;
+}
+
+async function updateUserProfile(userId, { display_name, avatar_url, phone }) {
+  const sets = [];
+  const vals = [userId];
+  if (display_name !== undefined) { vals.push(display_name); sets.push(`display_name = $${vals.length}`); }
+  if (avatar_url !== undefined) { vals.push(avatar_url); sets.push(`avatar_url = $${vals.length}`); }
+  if (phone !== undefined) { vals.push(phone); sets.push(`phone = $${vals.length}`); }
+  if (!sets.length) return;
+  await query(`UPDATE shared.users SET ${sets.join(', ')} WHERE user_id = $1`, vals);
+}
+
 module.exports = {
   findById,
   findByEmail,
@@ -150,4 +178,6 @@ module.exports = {
   clearPin,
   recordPinFail,
   recordPinSuccess,
+  findByIdWithProfile,
+  updateUserProfile,
 };

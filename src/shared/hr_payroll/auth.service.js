@@ -381,13 +381,72 @@ async function updateMe({ user_id, display_name, phone }) {
   return getMe({ user_id });
 }
 
+const storage = require('../../services/storage.service');
+
 async function uploadAvatar({ user_id, buffer, mimetype }) {
-  const storage = require('../../../services/storage.service');
   const ext = mimetype === 'image/png' ? 'png' : 'jpg';
   const key = `avatars/${user_id}.${ext}`;
   const stored = await storage.put(buffer, { key, contentType: mimetype });
   await staffRepo.updateUserProfile(user_id, { avatar_url: stored.public_url });
   return { avatar_url: stored.public_url };
+}
+
+// ── Email change (authed, OTP to new address) ─────────────
+const EMAIL_CHANGE_PREFIX = 'emailchange:';
+const EMAIL_CHANGE_TTL = 600; // 10 minutes
+
+async function requestEmailChange({ user_id, current_password, new_email }) {
+  const user = await staffRepo.findById(user_id);
+  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+
+  const ok = await argon2.verify(user.password_hash, current_password);
+  if (!ok)
+    throw new AppError('INVALID_CREDENTIALS', 'Current password is incorrect', 401);
+
+  const email = String(new_email || '').toLowerCase().trim();
+  if (!email || !/.+@.+\..+/.test(email))
+    throw new AppError('INVALID_EMAIL', 'Enter a valid email address', 422);
+  if (email === user.email)
+    throw new AppError('SAME_EMAIL', 'That is already your current email address', 422);
+
+  const existing = await staffRepo.findByEmail(email);
+  if (existing)
+    throw new AppError('EMAIL_TAKEN', 'That email address is already in use', 409);
+
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const redis = getRedis();
+  await redis.set(
+    EMAIL_CHANGE_PREFIX + user_id,
+    JSON.stringify({ otp, new_email: email }),
+    'EX',
+    EMAIL_CHANGE_TTL,
+  );
+
+  await emailService.send({
+    to: email,
+    subject: 'Verify your new email — Pixie Girl Hub',
+    html: `<p>Hello,</p>
+           <p>Your verification code for the email change is:</p>
+           <p style="font-size:30px;font-family:monospace;letter-spacing:0.4em;font-weight:bold;">${otp}</p>
+           <p>This code expires in 10 minutes. If you did not request this, ignore this email.</p>`,
+    text: `Your Pixie Girl Hub email-change code: ${otp} (expires in 10 minutes)`,
+  });
+}
+
+async function confirmEmailChange({ user_id, otp }) {
+  const redis = getRedis();
+  const key = EMAIL_CHANGE_PREFIX + user_id;
+  const raw = await redis.get(key);
+  if (!raw)
+    throw new AppError('INVALID_OTP', 'Verification code expired or not found', 400);
+
+  const { otp: storedOtp, new_email } = JSON.parse(raw);
+  if (String(otp).trim() !== storedOtp)
+    throw new AppError('INVALID_OTP', 'Incorrect verification code', 400);
+
+  await redis.del(key);
+  await staffRepo.updateEmail(user_id, new_email);
+  return { email: new_email };
 }
 
 module.exports = {
@@ -405,4 +464,6 @@ module.exports = {
   getMe,
   updateMe,
   uploadAvatar,
+  requestEmailChange,
+  confirmEmailChange,
 };

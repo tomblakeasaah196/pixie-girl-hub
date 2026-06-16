@@ -157,6 +157,23 @@ async function uploadAvatar(req, res) {
   res.json({ data });
 }
 
+async function requestEmailChange(req, res) {
+  await service.requestEmailChange({
+    user_id: req.user.user_id,
+    current_password: req.body?.current_password,
+    new_email: req.body?.new_email,
+  });
+  res.json({ data: { sent: true } });
+}
+
+async function confirmEmailChange(req, res) {
+  const data = await service.confirmEmailChange({
+    user_id: req.user.user_id,
+    otp: req.body?.otp,
+  });
+  res.json({ data });
+}
+
 module.exports = {
   login,
   loginPin,
@@ -172,4 +189,6 @@ module.exports = {
   getMe,
   updateMe,
   uploadAvatar,
+  requestEmailChange,
+  confirmEmailChange,
 };

@@ -164,6 +164,13 @@ async function updateUserProfile(userId, { display_name, avatar_url, phone }) {
   await query(`UPDATE shared.users SET ${sets.join(', ')} WHERE user_id = $1`, vals);
 }
 
+async function updateEmail(userId, newEmail) {
+  await query(
+    `UPDATE shared.users SET email = $2 WHERE user_id = $1`,
+    [userId, newEmail.toLowerCase().trim()],
+  );
+}
+
 module.exports = {
   findById,
   findByEmail,
@@ -176,4 +183,5 @@ module.exports = {
   recordPinSuccess,
   findByIdWithProfile,
   updateUserProfile,
+  updateEmail,
 };

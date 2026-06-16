@@ -140,7 +140,7 @@ export interface ProductionRun {
   status: ProductionRunStatus;
   units_planned: number;
   units_received: number;
-  total_cost_ngn: number | null;
+  total_landed_cost_ngn: number | null;
   per_unit_cost_ngn: number | null;
   created_at: string;
   updated_at: string;
@@ -149,5 +149,7 @@ export interface ProductionRun {
 
 export interface ProductionRunPage {
   data: ProductionRun[];
+  page: number;
+  page_size: number;
   total: number;
 }

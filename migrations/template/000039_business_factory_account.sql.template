@@ -17,9 +17,9 @@
 -- ============================================================
 
 -- ── Factory Accounts ──────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_accounts (
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.factory_accounts (
   account_id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  supplier_id            UUID         NOT NULL REFERENCES __SCHEMA__.suppliers(supplier_id) ON DELETE RESTRICT,
+  supplier_id            UUID         NOT NULL REFERENCES {{BUSINESS}}.suppliers(supplier_id) ON DELETE RESTRICT,
   account_name           VARCHAR(200) NOT NULL,
   base_currency          CHAR(3)      NOT NULL DEFAULT 'CNY',
   current_balance_base   NUMERIC(15,2) NOT NULL DEFAULT 0,
@@ -32,12 +32,12 @@ CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_accounts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_factory_accounts_supplier
-  ON __SCHEMA__.factory_accounts(supplier_id);
+  ON {{BUSINESS}}.factory_accounts(supplier_id);
 
 -- ── Factory Account Ledger ────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_account_ledger (
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.factory_account_ledger (
   entry_id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id         UUID         NOT NULL REFERENCES __SCHEMA__.factory_accounts(account_id) ON DELETE RESTRICT,
+  account_id         UUID         NOT NULL REFERENCES {{BUSINESS}}.factory_accounts(account_id) ON DELETE RESTRICT,
   entry_type         VARCHAR(40)  NOT NULL CHECK (entry_type IN (
                        'order_charge','payment','shipping_fee','customs_duty',
                        'discount','bank_charge','misc_charge','misc_credit','adjustment'
@@ -63,12 +63,12 @@ CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_account_ledger (
 );
 
 CREATE INDEX IF NOT EXISTS idx_factory_ledger_account
-  ON __SCHEMA__.factory_account_ledger(account_id, entry_date DESC);
+  ON {{BUSINESS}}.factory_account_ledger(account_id, entry_date DESC);
 CREATE INDEX IF NOT EXISTS idx_factory_ledger_ref
-  ON __SCHEMA__.factory_account_ledger(reference_type, reference_id);
+  ON {{BUSINESS}}.factory_account_ledger(reference_type, reference_id);
 
 -- Trigger: keep current_balance_base in sync with ledger
-CREATE OR REPLACE FUNCTION __SCHEMA__.fn_update_factory_account_balance()
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_update_factory_account_balance()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
   v_delta NUMERIC(15,2);
@@ -79,31 +79,31 @@ BEGIN
     v_delta := -NEW.amount_base;
   END IF;
 
-  UPDATE __SCHEMA__.factory_accounts
+  UPDATE {{BUSINESS}}.factory_accounts
   SET current_balance_base = current_balance_base + v_delta,
       updated_at = NOW()
   WHERE account_id = NEW.account_id;
 
   -- Store running balance on the row itself
   SELECT current_balance_base INTO NEW.running_balance
-  FROM __SCHEMA__.factory_accounts
+  FROM {{BUSINESS}}.factory_accounts
   WHERE account_id = NEW.account_id;
 
   RETURN NEW;
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_factory_ledger_balance ON __SCHEMA__.factory_account_ledger;
+DROP TRIGGER IF EXISTS trg_factory_ledger_balance ON {{BUSINESS}}.factory_account_ledger;
 CREATE TRIGGER trg_factory_ledger_balance
-  BEFORE INSERT ON __SCHEMA__.factory_account_ledger
-  FOR EACH ROW EXECUTE FUNCTION __SCHEMA__.fn_update_factory_account_balance();
+  BEFORE INSERT ON {{BUSINESS}}.factory_account_ledger
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_update_factory_account_balance();
 
 -- ── Factory Shipments ─────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_shipments (
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.factory_shipments (
   shipment_id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   shipment_ref         VARCHAR(50)  NOT NULL,
-  account_id           UUID         NOT NULL REFERENCES __SCHEMA__.factory_accounts(account_id) ON DELETE RESTRICT,
-  supplier_id          UUID         NOT NULL REFERENCES __SCHEMA__.suppliers(supplier_id) ON DELETE RESTRICT,
+  account_id           UUID         NOT NULL REFERENCES {{BUSINESS}}.factory_accounts(account_id) ON DELETE RESTRICT,
+  supplier_id          UUID         NOT NULL REFERENCES {{BUSINESS}}.suppliers(supplier_id) ON DELETE RESTRICT,
   courier              VARCHAR(100) NOT NULL,
   tracking_number      VARCHAR(200),
   courier_fee_original NUMERIC(15,2),
@@ -125,15 +125,15 @@ CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_shipments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_factory_shipments_account
-  ON __SCHEMA__.factory_shipments(account_id);
+  ON {{BUSINESS}}.factory_shipments(account_id);
 CREATE INDEX IF NOT EXISTS idx_factory_shipments_status
-  ON __SCHEMA__.factory_shipments(status);
+  ON {{BUSINESS}}.factory_shipments(status);
 
 -- ── Factory Shipment Items ────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_shipment_items (
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.factory_shipment_items (
   item_id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  shipment_id        UUID         NOT NULL REFERENCES __SCHEMA__.factory_shipments(shipment_id) ON DELETE CASCADE,
-  po_line_id         UUID         REFERENCES __SCHEMA__.po_lines(line_id),
+  shipment_id        UUID         NOT NULL REFERENCES {{BUSINESS}}.factory_shipments(shipment_id) ON DELETE CASCADE,
+  po_line_id         UUID         REFERENCES {{BUSINESS}}.po_lines(line_id),
   sku_description    TEXT,
   quantity_shipped   INTEGER      NOT NULL CHECK (quantity_shipped > 0),
   unit_price_base    NUMERIC(15,2),
@@ -142,10 +142,10 @@ CREATE TABLE IF NOT EXISTS __SCHEMA__.factory_shipment_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_factory_shipment_items_shipment
-  ON __SCHEMA__.factory_shipment_items(shipment_id);
+  ON {{BUSINESS}}.factory_shipment_items(shipment_id);
 
 -- ── Alter po_lines — wig attributes ──────────────────────────────────────────
-ALTER TABLE __SCHEMA__.po_lines
+ALTER TABLE {{BUSINESS}}.po_lines
   ADD COLUMN IF NOT EXISTS factory_order_ref       VARCHAR(100),
   ADD COLUMN IF NOT EXISTS manufacturing_location   VARCHAR(100),
   ADD COLUMN IF NOT EXISTS lace_type               VARCHAR(50),
@@ -158,11 +158,11 @@ ALTER TABLE __SCHEMA__.po_lines
   ADD COLUMN IF NOT EXISTS expected_photo_url      TEXT;
 
 -- ── Alter purchase_orders — factory linkage ───────────────────────────────────
-ALTER TABLE __SCHEMA__.purchase_orders
-  ADD COLUMN IF NOT EXISTS factory_account_id   UUID REFERENCES __SCHEMA__.factory_accounts(account_id),
+ALTER TABLE {{BUSINESS}}.purchase_orders
+  ADD COLUMN IF NOT EXISTS factory_account_id   UUID REFERENCES {{BUSINESS}}.factory_accounts(account_id),
   ADD COLUMN IF NOT EXISTS is_factory_order     BOOLEAN NOT NULL DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS factory_shipment_id  UUID REFERENCES __SCHEMA__.factory_shipments(shipment_id);
+  ADD COLUMN IF NOT EXISTS factory_shipment_id  UUID REFERENCES {{BUSINESS}}.factory_shipments(shipment_id);
 
 CREATE INDEX IF NOT EXISTS idx_po_factory_account
-  ON __SCHEMA__.purchase_orders(factory_account_id)
+  ON {{BUSINESS}}.purchase_orders(factory_account_id)
   WHERE factory_account_id IS NOT NULL;

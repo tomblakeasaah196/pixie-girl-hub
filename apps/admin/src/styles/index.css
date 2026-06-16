@@ -116,6 +116,19 @@ body::before {
   }
 }
 
+/* Raw <select> elements in page files — ensure browser renders them in the
+   correct colour scheme so options are never cream-on-cream in dark mode. */
+select {
+  color-scheme: dark;
+  color: rgb(var(--text));
+  background: rgb(var(--panel));
+}
+[data-theme="light"] select {
+  color-scheme: light;
+  color: rgb(var(--text));
+  background: rgb(var(--panel));
+}
+
 ::selection {
   background: rgb(var(--accent) / 0.25);
 }
@@ -148,6 +161,29 @@ body::before {
     -webkit-backdrop-filter: blur(28px) saturate(160%);
     border: 1px solid rgb(var(--border-c) / var(--border-alpha));
     box-shadow: var(--glass-shadow);
+  }
+
+  /* Custom Select component listbox panel — dark mode: maroon-charcoal glass;
+     light mode: warm creamy gradient with a whisper of brand red. */
+  .select-dropdown-list {
+    background: rgb(var(--panel) / 0.95);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid rgb(var(--border-c) / var(--border-alpha));
+    box-shadow: var(--glass-shadow);
+  }
+  [data-theme="light"] .select-dropdown-list {
+    background: linear-gradient(
+      160deg,
+      rgb(255 252 250 / 0.97) 0%,
+      rgb(250 244 241 / 0.95) 55%,
+      rgb(245 237 234 / 0.94) 100%
+    );
+    border-color: rgb(105 9 9 / 0.13);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 16px 40px rgb(80 20 20 / 0.12),
+      0 0 0 0.5px rgb(105 9 9 / 0.06);
   }
   .hairline {
     border-color: rgb(var(--border-c) / var(--border-alpha));

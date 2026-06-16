@@ -4,6 +4,8 @@ import {
   Camera,
   Check,
   ChevronRight,
+  Eye,
+  EyeOff,
   Loader2,
   Pencil,
   Shield,
@@ -14,7 +16,9 @@ import { cn } from "@/lib/cn";
 import { initials } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import {
+  confirmEmailChange,
   getMe,
+  requestEmailChange,
   updateMe,
   uploadAvatar,
   type MyProfile,
@@ -46,9 +50,7 @@ function Field({
       >
         {value || "Not set"}
       </div>
-      {note && (
-        <div className="text-[11px] text-text-faint mt-0.5">{note}</div>
-      )}
+      {note && <div className="text-[11px] text-text-faint mt-0.5">{note}</div>}
     </div>
   );
 }
@@ -121,11 +123,9 @@ function EditableField({
               if (e.key === "Enter") save();
               if (e.key === "Escape") setEditing(false);
             }}
-            className="w-full h-9 bg-text-primary/[0.05] border border-accent/40 rounded-lg px-3 text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all"
+            className="w-full h-9 bg-text-primary/[0.05] border border-accent/40 rounded-lg px-3 text-[13px] placeholder:text-text-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all"
           />
-          {err && (
-            <p className="text-[11px] text-danger">{err}</p>
-          )}
+          {err && <p className="text-[11px] text-danger">{err}</p>}
           <div className="flex gap-2">
             <button
               onClick={save}
@@ -141,7 +141,10 @@ function EditableField({
               )}
             </button>
             <button
-              onClick={() => { setEditing(false); setErr(null); }}
+              onClick={() => {
+                setEditing(false);
+                setErr(null);
+              }}
               className="px-3 h-8 rounded-lg border border-line/60 text-text-muted text-[12px] font-semibold hover:bg-text-primary/[0.05] transition-all"
             >
               Cancel
@@ -149,13 +152,171 @@ function EditableField({
           </div>
         </div>
       ) : (
-        <div
-          className={cn(
-            "text-[13.5px] text-text-primary",
-            !value && "text-text-faint italic",
-          )}
-        >
+        <div className={cn("text-[13.5px]", !value && "text-text-faint italic")}>
           {value || "Not set"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Inline email-change flow: password + new email → OTP verification */
+function EmailField({
+  value,
+  onChanged,
+}: {
+  value: string | null | undefined;
+  onChanged: (newEmail: string) => void;
+}) {
+  type Stage = "idle" | "form" | "otp" | "done";
+  const [stage, setStage] = useState<Stage>("idle");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reset = () => {
+    setStage("idle");
+    setPassword("");
+    setNewEmail("");
+    setOtp("");
+    setErr(null);
+  };
+
+  const sendCode = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      await requestEmailChange(password, newEmail);
+      setStage("otp");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not send code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verify = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const { email } = await confirmEmailChange(otp);
+      onChanged(email);
+      setStage("done");
+      setTimeout(reset, 2500);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Incorrect code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="py-3 border-b hairline last:border-0">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-[11px] font-semibold text-text-faint uppercase tracking-widest">
+          Email
+        </div>
+        {stage === "idle" && (
+          <button
+            onClick={() => setStage("form")}
+            className="text-[11px] text-accent-glow hover:text-accent flex items-center gap-1 transition-colors"
+          >
+            <Pencil className="w-3 h-3" /> Change
+          </button>
+        )}
+      </div>
+
+      <div className="text-[13.5px] mb-2">{value || "—"}</div>
+
+      {stage === "idle" && null}
+
+      {stage === "form" && (
+        <div className="space-y-2 mt-2">
+          {/* Password confirm */}
+          <div className="relative">
+            <input
+              type={showPw ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your current password"
+              className="w-full h-9 bg-text-primary/[0.05] border border-line/60 rounded-lg px-3 pr-9 text-[13px] placeholder:text-text-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-muted"
+            >
+              {showPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+          {/* New email */}
+          <input
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="New email address"
+            onKeyDown={(e) => e.key === "Enter" && sendCode()}
+            className="w-full h-9 bg-text-primary/[0.05] border border-line/60 rounded-lg px-3 text-[13px] placeholder:text-text-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all"
+          />
+          {err && <p className="text-[11px] text-danger">{err}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={sendCode}
+              disabled={loading || !password || !newEmail}
+              className="flex-1 h-8 rounded-lg bg-accent-deep text-[#F4E9D9] text-[12px] font-semibold hover:bg-accent transition-all disabled:opacity-50 flex items-center justify-center"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Send code"}
+            </button>
+            <button
+              onClick={reset}
+              className="px-3 h-8 rounded-lg border border-line/60 text-text-muted text-[12px] font-semibold hover:bg-text-primary/[0.05] transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stage === "otp" && (
+        <div className="space-y-2 mt-2">
+          <p className="text-[11.5px] text-text-muted">
+            A 6-digit code was sent to <strong>{newEmail}</strong>. Enter it below.
+          </p>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="000000"
+            onKeyDown={(e) => e.key === "Enter" && otp.length === 6 && verify()}
+            className="w-full h-9 bg-text-primary/[0.05] border border-line/60 rounded-lg px-3 text-center text-[18px] font-mono tracking-[0.4em] placeholder:tracking-normal placeholder:text-[13px] focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all"
+          />
+          {err && <p className="text-[11px] text-danger">{err}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={verify}
+              disabled={loading || otp.length !== 6}
+              className="flex-1 h-8 rounded-lg bg-accent-deep text-[#F4E9D9] text-[12px] font-semibold hover:bg-accent transition-all disabled:opacity-50 flex items-center justify-center"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Verify & save"}
+            </button>
+            <button
+              onClick={reset}
+              className="px-3 h-8 rounded-lg border border-line/60 text-text-muted text-[12px] font-semibold hover:bg-text-primary/[0.05] transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stage === "done" && (
+        <div className="flex items-center gap-1.5 text-[12px] text-success mt-1">
+          <Check className="w-3.5 h-3.5" /> Email updated successfully.
         </div>
       )}
     </div>
@@ -187,7 +348,10 @@ export function ProfileDrawer({
     if (!open) return;
     setLoading(true);
     getMe()
-      .then(setProfile)
+      .then((p) => {
+        setProfile(p);
+        patchUser({ avatarUrl: p.avatar_url ?? null });
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [open]);
@@ -204,10 +368,11 @@ export function ProfileDrawer({
     setAvatarLoading(true);
     try {
       const { avatar_url } = await uploadAvatar(blob);
-      setProfile((p) => p ? { ...p, avatar_url } : p);
+      setProfile((p) => (p ? { ...p, avatar_url } : p));
+      patchUser({ avatarUrl: avatar_url });
       showToast("ok", "Photo updated.");
     } catch {
-      showToast("err", "Photo upload failed.");
+      showToast("err", "Photo upload failed. Please try again.");
     } finally {
       setAvatarLoading(false);
     }
@@ -225,6 +390,13 @@ export function ProfileDrawer({
     setProfile(updated);
     showToast("ok", "Phone updated.");
   };
+
+  const handleEmailChanged = (email: string) => {
+    setProfile((p) => (p ? { ...p, email } : p));
+    patchUser({ email });
+    showToast("ok", "Email address updated.");
+  };
+
 
   const avatarUrl = profile?.avatar_url;
   const displayName = profile?.display_name ?? user?.name ?? "";
@@ -329,9 +501,7 @@ export function ProfileDrawer({
                 </div>
 
                 <div className="text-center">
-                  <div className="font-display text-lg font-medium">
-                    {displayName}
-                  </div>
+                  <div className="font-display text-lg font-medium">{displayName}</div>
                   <div className="flex items-center justify-center gap-1.5 mt-1">
                     <Shield className="w-3 h-3 text-accent-glow" />
                     <span className="text-[12px] text-text-muted">
@@ -362,7 +532,10 @@ export function ProfileDrawer({
                   type="tel"
                 />
 
-                <Field label="Email" value={profile?.email} note="Contact HR to change your email address." />
+                <EmailField
+                  value={profile?.email}
+                  onChanged={handleEmailChanged}
+                />
               </div>
 
               {/* HR fields */}
@@ -374,7 +547,6 @@ export function ProfileDrawer({
                       Managed by HR
                     </span>
                   </div>
-
                   {profile.job_title && (
                     <Field label="Job title" value={profile.job_title} />
                   )}
@@ -382,11 +554,7 @@ export function ProfileDrawer({
                     <Field label="Department" value={profile.department} />
                   )}
                   {profile.employee_number && (
-                    <Field
-                      label="Employee number"
-                      value={profile.employee_number}
-                      mono
-                    />
+                    <Field label="Employee number" value={profile.employee_number} mono />
                   )}
                 </div>
               )}

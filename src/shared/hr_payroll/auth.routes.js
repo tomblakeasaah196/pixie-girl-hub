@@ -58,5 +58,7 @@ router.post("/change-password", authMiddleware, controller.changePassword);
 router.get("/me", authMiddleware, controller.getMe);
 router.patch("/me", authMiddleware, controller.updateMe);
 router.post("/me/avatar", authMiddleware, avatarUpload.single("avatar"), controller.uploadAvatar);
+router.post("/change-email", authMiddleware, controller.requestEmailChange);
+router.post("/verify-email-change", authMiddleware, controller.confirmEmailChange);
 
 module.exports = router;

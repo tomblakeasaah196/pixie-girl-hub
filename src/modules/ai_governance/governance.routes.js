@@ -66,6 +66,15 @@ router.post(
 router.get("/usage", can("view"), c.listUsage);
 router.get("/usage/meter", can("view"), c.spendMeter);
 
+// ── Brand Voice (per-brand Praxis personality) ─────────────
+router.get("/brand-voice", can("view"), c.getBrandVoice);
+router.put(
+  "/brand-voice",
+  can("edit"),
+  v.validateBrandVoiceUpsert,
+  c.upsertBrandVoice,
+);
+
 // ── Action catalogue ───────────────────────────────────────
 router.get("/actions", can("view"), c.listActions);
 router.post("/actions", can("create"), v.validateActionUpsert, c.upsertAction);

@@ -100,6 +100,12 @@ const {
 // Service Catalogue (revamps, custom styles, repairs etc.)
 const serviceCatalogueRouter = require("../modules/service_catalogue/service-catalogue.routes");
 
+// Outbound Channel Policy (cost discipline — PR 2)
+const outboundPolicyRouter = require("../modules/outbound_policy/outbound-policy.routes");
+
+// Help Center (DB-driven guides + FAQs — PR 2)
+const helpCenterRouter = require("../modules/help_center/help-center.routes");
+
 // Public (storefront-facing, no auth)
 const publicCatalogueRouter = require("../modules/storefront/public.routes");
 const publicTrackingRouter = require("../modules/logistics/tracking.routes");
@@ -214,6 +220,8 @@ function mountRoutes(app) {
   api.use("/smartcomm", smartcommRouter);
   api.use("/customer-onboarding", onboardingAdminRouter);
   api.use("/service-catalogue", serviceCatalogueRouter);
+  api.use("/outbound-policy", outboundPolicyRouter);
+  api.use("/help", helpCenterRouter);
   api.use("/calendar", calendarRouter);
   api.use("/tasks", tasksRouter);
   api.use("/dashboards", dashboardsRouter);

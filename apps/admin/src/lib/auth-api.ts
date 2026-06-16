@@ -151,3 +151,19 @@ export async function uploadAvatar(blob: Blob): Promise<{ avatar_url: string }> 
   form.append('avatar', blob, 'avatar.jpg');
   return api.postForm<{ avatar_url: string }>('/auth/me/avatar', form);
 }
+
+export async function requestEmailChange(
+  currentPassword: string,
+  newEmail: string,
+): Promise<void> {
+  await api.post("/auth/change-email", {
+    current_password: currentPassword,
+    new_email: newEmail,
+  });
+}
+
+export async function confirmEmailChange(
+  otp: string,
+): Promise<{ email: string }> {
+  return api.post<{ email: string }>("/auth/verify-email-change", { otp });
+}

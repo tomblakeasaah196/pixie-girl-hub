@@ -31,6 +31,7 @@ export interface User {
   defaultBusinessKey: string | null;
   /** True when the user holds the factory_manager role — triggers Chinese UI default. */
   isFactoryManager: boolean;
+  avatarUrl?: string | null;
 }
 
 type SessionStatus = "unknown" | "authed" | "anon";
@@ -45,7 +46,7 @@ interface AuthState {
   /** Fetch resolved permission grants from /auth/me/permissions and store them. */
   loadPermissions: () => Promise<void>;
   can: (module: string, action: string) => boolean;
-  patchUser: (partial: Partial<Pick<User, 'name' | 'email'>>) => void;
+  patchUser: (partial: Partial<Pick<User, 'name' | 'email' | 'avatarUrl'>>) => void;
 }
 
 /** Map the backend AuthUser onto the shell's User shape. */

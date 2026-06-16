@@ -19,6 +19,12 @@ const PricingPage = lazy(() => import("@/pages/pricing/PricingPage").then((m) =>
 const PurchasingPage = lazy(() => import("@/pages/purchasing/PurchasingPage").then((m) => ({ default: m.PurchasingPage })));
 const ServiceJobsPage = lazy(() => import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({ default: m.ServiceJobsPage })));
 const FactoryLanguagePage = lazy(() => import("@/pages/FactoryLanguagePage").then((m) => ({ default: m.FactoryLanguagePage })));
+const SmartCommPage = lazy(() => import("@/pages/smartcomm/SmartCommPage").then((m) => ({ default: m.SmartCommPage })));
+const CustomerOnboardingPublic = lazy(() => import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({ default: m.CustomerOnboardingPublic })));
+const AiControlPage = lazy(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
+const BrandVoicePage = lazy(() => import("@/pages/ai-control/BrandVoicePage").then((m) => ({ default: m.BrandVoicePage })));
+const ChannelPolicyPage = lazy(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
+const QuickRepliesPage = lazy(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -55,6 +61,7 @@ import { IamMfaPage } from "@/pages/IamMfaPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
 // Other module placeholders
 import { HelpCenterPage } from "@/pages/HelpCenterPage";
+import { HelpArticlePage } from "@/pages/HelpArticlePage";
 
 /**
  * Two trees:
@@ -71,6 +78,15 @@ export const router = createBrowserRouter(
   [
     { path: "/login", element: <LoginPage /> },
     { path: "/reset-password", element: <ResetPasswordPage /> },
+    // Public Online QR welcome form (token-protected, no auth required).
+    {
+      path: "/welcome/:business/:token",
+      element: (
+        <Suspense fallback={null}>
+          <CustomerOnboardingPublic />
+        </Suspense>
+      ),
+    },
     {
       element: <RequireAuth />,
       children: [
@@ -143,6 +159,18 @@ export const router = createBrowserRouter(
 
             // Help Center.
             { path: "help", element: <HelpCenterPage /> },
+            { path: "help/:slug", element: <HelpArticlePage /> },
+
+            // Smart Comm (Messaging).
+            { path: "smartcomm", element: <Suspense fallback={null}><SmartCommPage /></Suspense> },
+
+            // AI Control + Brand Voice editor (PR 3).
+            { path: "ai-control", element: <Suspense fallback={null}><AiControlPage /></Suspense> },
+            { path: "ai-control/brand-voice", element: <Suspense fallback={null}><BrandVoicePage /></Suspense> },
+
+            // Channel Policy + Quick Replies (PR 3 — Settings).
+            { path: "settings/channel-policy", element: <Suspense fallback={null}><ChannelPolicyPage /></Suspense> },
+            { path: "settings/quick-replies", element: <Suspense fallback={null}><QuickRepliesPage /></Suspense> },
 
             { path: "*", element: <ModulePlaceholder /> },
           ],

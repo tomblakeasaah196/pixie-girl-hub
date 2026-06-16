@@ -10,6 +10,7 @@
 "use strict";
 
 const repo = require("./governance.repo");
+const brandVoiceRepo = require("./brand-voice.repo");
 const crypto = require("../../services/encryption.service");
 const { audit } = require("../../middleware/audit");
 const { money } = require("../../utils/money");
@@ -287,6 +288,33 @@ async function setActionEnabled({ user, request_id, action_key, ai_enabled }) {
   return a;
 }
 
+// ── Brand Voice (per-brand Praxis personality) ──────────────
+// Stored in shared.brand_voice_config (PR 1, migration 000213). The
+// editor lives under AI Control; the data is read by smartcomm's
+// Praxis-draft endpoint when generating replies.
+async function getBrandVoice({ brand }) {
+  return brandVoiceRepo.getByBrand({ brand });
+}
+async function upsertBrandVoice({ brand, user, request_id, input }) {
+  const v = await brandVoiceRepo.upsert({
+    brand,
+    user_id: user.user_id,
+    input,
+  });
+  await A(
+    user,
+    "ai_governance.brand_voice.upsert",
+    "brand_voice_config",
+    brand,
+    {
+      classify_inbound: v.classify_inbound,
+      draft_on_tap: v.draft_on_tap,
+    },
+    request_id,
+  );
+  return v;
+}
+
 module.exports = {
   listFlags,
   upsertFlag,
@@ -310,4 +338,6 @@ module.exports = {
   listActions,
   upsertAction,
   setActionEnabled,
+  getBrandVoice,
+  upsertBrandVoice,
 };

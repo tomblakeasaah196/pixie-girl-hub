@@ -19,7 +19,11 @@ const retentionService = require("./retention.service");
 const tasksService = require("../../shared/tasks/tasks.service");
 const email = require("../../services/email.service");
 const whatsapp = require("../../services/whatsapp.service");
-const sms = require("../../services/sms.service");
+// SMS removed in PR 2 (smartcomm policy work — see migration 000214).
+// Email + WhatsApp + Instagram cover every retention workflow we need;
+// the `send_sms` action is kept here but always returns 'suppressed' so
+// existing retention rules don't crash the worker — admins should retire
+// the action in Retention Workflows UI.
 const notifications = require("../../services/notifications.service");
 const { query, transaction } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
@@ -243,15 +247,13 @@ async function runAction({ brand, rule, execution }) {
       };
     }
     case "send_sms": {
-      if (!contact || !contact.phone)
-        return { status: "suppressed", failure_reason: "no contact phone" };
-      const res = await sms.send({ to: contact.phone, body: cfg.body || "" });
-      if (res && res.skipped)
-        return {
-          status: "suppressed",
-          failure_reason: "SMS provider not configured",
-        };
-      return { status: "completed", result_summary: { sms_sent: true } };
+      // SMS deprecated in PR 2: dropping Twilio entirely. Existing rules
+      // are no-ops so the retention worker doesn't crash; admins should
+      // edit any `send_sms` rules to use `send_email` or `send_whatsapp`.
+      return {
+        status: "suppressed",
+        failure_reason: "SMS channel removed — switch this rule to email or WhatsApp",
+      };
     }
     default:
       // assign_to_user / add_to_segment / custom — incremental

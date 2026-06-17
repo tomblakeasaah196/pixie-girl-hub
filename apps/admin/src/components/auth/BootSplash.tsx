@@ -8,7 +8,7 @@ import { useBranding } from "@/lib/branding";
 export function BootSplash({ label }: { label?: string }) {
   const { data } = useBranding();
   const p = data?.platform;
-  const product = p?.product_name ?? "Pixie Girl Hub";
+  const product = p?.product_name ?? "Pixie Hub";
   const logo = p?.logo_dark_url ?? p?.logo_light_url ?? null;
   const mark = product.trim().charAt(0).toUpperCase() || "P";
 

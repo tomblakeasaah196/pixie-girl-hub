@@ -16,7 +16,7 @@
          static /manifest.webmanifest shipped in public/ if the API is
          unavailable at build/host time. -->
     <link rel="manifest" href="/api/public/manifest.webmanifest" />
-    <title>Pixie Girl Hub</title>
+    <title>Pixie Hub</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -178,18 +178,20 @@
             <stop offset="0" stop-color="#2a0f15"/>
             <stop offset="1" stop-color="#0f0809"/>
           </linearGradient>
-          <linearGradient id="splash-mark" x1="16" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stop-color="#f6d9c9"/>
-            <stop offset="1" stop-color="#e0607a"/>
-          </linearGradient>
+          <radialGradient id="splash-petal" cx="50%" cy="35%" r="60%">
+            <stop offset="0" stop-color="#e03030"/>
+            <stop offset="0.55" stop-color="#a81d1d"/>
+            <stop offset="1" stop-color="#690909"/>
+          </radialGradient>
         </defs>
         <rect width="64" height="64" rx="16" fill="url(#splash-bg)"/>
-        <path fill="url(#splash-mark)" d="M32 12c1.8 8.4 5.6 12.2 14 14-8.4 1.8-12.2 5.6-14 14-1.8-8.4-5.6-12.2-14-14 8.4-1.8 12.2-5.6 14-14z"/>
-        <circle cx="48" cy="20" r="2.6" fill="#f6d9c9"/>
-        <circle cx="18" cy="46" r="1.8" fill="#e0607a"/>
+        <g transform="translate(32,32)">
+          <ellipse rx="5.5" ry="14" transform="rotate(45)" fill="url(#splash-petal)"/>
+          <ellipse rx="5.5" ry="14" transform="rotate(-45)" fill="url(#splash-petal)"/>
+        </g>
       </svg>
       <div id="splash-bar-wrap"></div>
-      <div id="splash-name">Pixie Girl <span>Hub</span></div>
+      <div id="splash-name">Pixie <span>Hub</span></div>
       <div id="splash-tagline">Your command center</div>
     </div>
     <div id="root"></div>

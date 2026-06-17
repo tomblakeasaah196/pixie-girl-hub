@@ -1,19 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Pixie Girl Hub">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Pixie Hub">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="192" y2="192" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#2a0f15"/>
       <stop offset="1" stop-color="#0f0809"/>
     </linearGradient>
-    <linearGradient id="mark" x1="48" y1="36" x2="144" y2="156" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f6d9c9"/>
-      <stop offset="1" stop-color="#e0607a"/>
-    </linearGradient>
+    <radialGradient id="petal" cx="50%" cy="35%" r="60%">
+      <stop offset="0" stop-color="#e03030"/>
+      <stop offset="0.55" stop-color="#a81d1d"/>
+      <stop offset="1" stop-color="#690909"/>
+    </radialGradient>
   </defs>
   <rect width="192" height="192" fill="url(#bg)"/>
-  <!-- Four-point sparkle: the Pixie Hub "craftsmanship" mark -->
-  <!-- Original at 64x64: center 32,32; scaled 2.4x, centered at 96,96 within maskable safe zone -->
-  <path fill="url(#mark)"
-        d="M96 36c4.32 20.16 13.44 29.28 33.6 33.6-20.16 4.32-29.28 13.44-33.6 33.6-4.32-20.16-13.44-29.28-33.6-33.6 20.16-4.32 29.28-13.44 33.6-33.6z"/>
-  <circle cx="144" cy="60" r="6.24" fill="#f6d9c9"/>
-  <circle cx="54" cy="138" r="4.32" fill="#e0607a"/>
+  <g transform="translate(96,96)">
+    <ellipse rx="21" ry="49" transform="rotate(45)" fill="url(#petal)"/>
+    <ellipse rx="21" ry="49" transform="rotate(-45)" fill="url(#petal)"/>
+  </g>
 </svg>

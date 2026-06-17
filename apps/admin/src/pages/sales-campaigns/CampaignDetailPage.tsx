@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Copy, Gift, MessageCircle, Pencil, Send, Share2, Sparkles, Trophy, Users } from "lucide-react";
+import { ArrowLeft, Copy, Gift, Pencil, Send, Share2, Sparkles, Trophy, Users } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, EmptyState, KpiTile, MoneyText, Pill, Skeleton, type Tone } from "@/components/ui/primitives";

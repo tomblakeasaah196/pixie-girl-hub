@@ -340,7 +340,12 @@ async function dryRunPricing({ brand, user, campaign_id, question, payload = {} 
   const campaign = await campaignsRepo.findById({ brand, id: campaign_id });
   if (!campaign) throw new NotFoundError("Campaign");
 
-  if (payload.proposed_price_ngn != null && payload.floor_ngn != null) {
+  if (
+    payload.proposed_price_ngn !== null &&
+    payload.proposed_price_ngn !== undefined &&
+    payload.floor_ngn !== null &&
+    payload.floor_ngn !== undefined
+  ) {
     const above = Number(payload.proposed_price_ngn) >= Number(payload.floor_ngn);
     return {
       answer: above

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
@@ -35,7 +35,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, EmptyState, KpiTile, MoneyText, Pill, Skeleton, type Tone } from "@/components/ui/primitives";
-import { DeniedState, ErrorState, MultiSelect, NumberField, Select, Toggle } from "@/components/ui/controls";
+import { DeniedState, ErrorState, NumberField, Select, Toggle } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { Field, FormSection } from "@/components/ui/Form";
@@ -49,7 +49,6 @@ import {
   type CartUpsell,
   type Bundle,
   type CampaignStatus,
-  useAttachAmbassador,
   useAttachCampaignBundle,
   useBundleList,
   useCampaign,
@@ -63,7 +62,6 @@ import {
   useDetachCampaignBundle,
   usePraxisDraftCopy,
   usePraxisSuggestLayout,
-  usePraxisSuggestPricing,
   usePraxisAccept,
   useUpdateCampaign,
   useUpsertTier,

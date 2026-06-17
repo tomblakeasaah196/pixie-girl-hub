@@ -44,6 +44,7 @@ import {
   Star,
 } from "lucide-react";
 import { useGreeting } from "@/hooks/useGreeting";
+import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useAuthStore } from "@/stores/auth";
 import { useActiveBusiness } from "@/stores/business";
 import { AppGrid } from "@/components/hub/AppGrid";
@@ -139,11 +140,11 @@ function SectionHead({ title, action }: { title: string; action?: React.ReactNod
 
 function KpiSkeletons() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-md:gap-2.5 mb-6">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="glass rounded-[var(--radius)] p-[17px_18px] space-y-3">
+        <div key={i} className={`glass rounded-[var(--radius)] p-[17px_18px] max-md:p-[12px_14px] space-y-3${i === 2 ? " col-span-2 sm:col-span-1" : ""}`}>
           <Skeleton className="w-24 h-3" />
-          <Skeleton className="w-36 h-7" />
+          <Skeleton className="w-36 h-7 max-md:h-5" />
           <Skeleton className="w-16 h-3" />
         </div>
       ))}
@@ -220,9 +221,11 @@ function KpiStrip({
       ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-      {tiles.map((t) => (
-        <KpiTile key={t.label} label={t.label} value={t.value} delta={t.delta} tone={t.tone} />
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-md:gap-2.5 mb-6">
+      {tiles.map((t, i) => (
+        <div key={t.label} className={i === tiles.length - 1 ? "col-span-2 sm:col-span-1" : undefined}>
+          <KpiTile label={t.label} value={t.value} delta={t.delta} tone={t.tone} />
+        </div>
       ))}
     </div>
   );
@@ -242,12 +245,12 @@ function QuickActions({ can }: { can: (m: string, a: string) => boolean }) {
   if (actions.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 mb-6">
+    <div className="flex flex-wrap gap-2 mb-6 max-md:overflow-x-auto max-md:flex-nowrap max-md:pb-2 max-md:-mx-4 max-md:px-4 hide-scrollbar">
       {actions.map((a) => (
         <button
           key={a.label}
           onClick={() => navigate(a.route)}
-          className="inline-flex items-center gap-1.5 px-3 h-8 rounded-[10px] text-[12.5px] font-semibold
+          className="no-min-h inline-flex items-center gap-1.5 px-3 h-10 max-md:h-11 shrink-0 max-md:whitespace-nowrap rounded-[10px] text-[12.5px] font-semibold
             bg-text-primary/[0.05] border border-line text-text-muted
             hover:bg-accent/10 hover:border-accent/35 hover:text-accent-glow transition-all duration-200"
         >
@@ -534,36 +537,24 @@ function PushBanner() {
   }
 
   return (
-    <div className="glass rounded-[14px] px-5 py-4 mb-6 flex items-center gap-4 border border-accent/20 animate-[slide-up_0.22s_ease-out]">
-      <div className="w-9 h-9 rounded-xl bg-accent/10 grid place-items-center shrink-0">
-        <Bell className="w-4.5 h-4.5 text-accent" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13.5px] font-semibold text-text-primary">Stay in the loop with push notifications</p>
-        <p className="text-[12px] text-text-muted mt-0.5">
-          Get alerts for approvals, payments, and more — even when the app is closed.
-        </p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={handleDismiss}
-          className="text-[12px] text-text-faint hover:text-text-muted transition-colors px-3 py-1.5 rounded-lg hover:bg-text-primary/[0.05]"
-        >
-          Not now
-        </button>
-        <button
-          onClick={handleEnable}
-          className="h-9 px-4 rounded-xl bg-accent-deep text-[#F4E9D9] text-[12.5px] font-semibold hover:bg-accent transition-colors"
-        >
-          Enable
-        </button>
-      </div>
+    <div className="glass rounded-[14px] px-4 py-3 mb-5 flex items-center gap-2.5 border border-accent/20 animate-[slide-up_0.22s_ease-out]">
+      <Bell className="w-4 h-4 text-accent shrink-0" />
+      <p className="flex-1 min-w-0 text-[12px] text-text-muted truncate">
+        <span className="font-semibold text-text-primary">Enable push notifications</span>
+        <span className="max-md:hidden"> — approvals, payments &amp; more</span>
+      </p>
+      <button
+        onClick={handleEnable}
+        className="no-min-h h-7 px-3 rounded-lg bg-accent-deep text-[#F4E9D9] text-[11px] font-semibold hover:bg-accent transition-colors shrink-0"
+      >
+        Enable
+      </button>
       <button
         onClick={handleDismiss}
         aria-label="Dismiss"
-        className="shrink-0 p-1 rounded-lg text-text-faint hover:text-text-primary transition-colors"
+        className="no-min-h shrink-0 p-1 rounded-md text-text-faint hover:text-text-primary transition-colors"
       >
-        <X className="w-4 h-4" />
+        <X className="w-3.5 h-3.5" />
       </button>
     </div>
   );
@@ -576,6 +567,7 @@ export function CommandCenter() {
   const user = useAuthStore((s) => s.user);
   const can = useAuthStore((s) => s.can);
   const biz = useActiveBusiness();
+  const isDesktop = useIsDesktop();
 
   // Data
   const overview = useDashboardOverview();
@@ -583,7 +575,7 @@ export function CommandCenter() {
   const myFeed = useMyAuditFeed();
   const notifs = useRecentNotifications();
 
-  const hh = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const hh = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const dd = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
   // Whether this user has access to dashboard KPIs
@@ -596,46 +588,60 @@ export function CommandCenter() {
       <PushBanner />
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <div className="flex gap-6 items-start flex-wrap mb-6">
-        <div className="flex-1 min-w-[280px]">
+      {isDesktop ? (
+        <div className="flex gap-6 items-start flex-wrap mb-6">
+          <div className="flex-1 min-w-[280px]">
+            <div className="text-[13px] text-text-muted">
+              {greeting.primary},{" "}
+              <b className="text-accent-glow font-semibold">{firstName}</b>
+            </div>
+            <h2 className="font-display font-medium leading-[1.04] my-2.5 max-w-[14ch] text-[clamp(26px,4.2vw,44px)]">
+              What would you like to{" "}
+              <em className="italic text-accent-glow">craft</em> today?
+            </h2>
+            <div className="text-text-muted text-sm max-w-[46ch]">{greeting.secondary}</div>
+          </div>
+          <Card className="relative overflow-hidden w-[min(250px,100%)] p-[18px_20px] text-right">
+            <span
+              className="pointer-events-none absolute -right-[30px] -top-[40px] w-[140px] h-[140px] rounded-full opacity-50 blur-[22px]"
+              style={{ background: `radial-gradient(circle, color-mix(in srgb, ${biz.grad2} 40%, transparent), transparent 70%)` }}
+            />
+            <div className="relative font-display font-medium text-[42px] leading-none tabular-nums">{hh}</div>
+            <div className="relative text-text-muted text-[12.5px] mt-1.5">{dd}</div>
+            <div className="relative mt-3 pt-3 border-t hairline flex items-center gap-2.5 justify-end">
+              <span
+                className="w-6 h-6 rounded-[7px] grid place-items-center text-white font-display font-semibold text-xs overflow-hidden"
+                style={{ background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})` }}
+              >
+                {biz.logoUrl ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.monogram}
+              </span>
+              <span className="font-semibold text-[12.5px]">{biz.name}</span>
+            </div>
+          </Card>
+        </div>
+      ) : (
+        <div className="mb-5">
           <div className="text-[13px] text-text-muted">
             {greeting.primary},{" "}
             <b className="text-accent-glow font-semibold">{firstName}</b>
           </div>
-          <h2 className="font-display font-medium leading-[1.04] my-2.5 max-w-[14ch] text-[clamp(26px,4.2vw,44px)]">
+          <h2 className="font-display font-medium leading-[1.08] my-1.5 text-[22px]">
             What would you like to{" "}
             <em className="italic text-accent-glow">craft</em> today?
           </h2>
-          <div className="text-text-muted text-sm max-w-[46ch]">{greeting.secondary}</div>
-        </div>
-
-        {/* Live clock card */}
-        <Card className="relative overflow-hidden w-[min(250px,100%)] p-[18px_20px] text-right">
-          <span
-            className="pointer-events-none absolute -right-[30px] -top-[40px] w-[140px] h-[140px] rounded-full opacity-50 blur-[22px]"
-            style={{
-              background: `radial-gradient(circle, color-mix(in srgb, ${biz.grad2} 40%, transparent), transparent 70%)`,
-            }}
-          />
-          <div className="relative font-display font-medium text-[42px] leading-none tabular-nums">
-            {hh}
-          </div>
-          <div className="relative text-text-muted text-[12.5px] mt-1.5">{dd}</div>
-          <div className="relative mt-3 pt-3 border-t hairline flex items-center gap-2.5 justify-end">
+          <div className="flex items-center gap-1.5 mt-1 text-text-muted text-[12px]">
             <span
-              className="w-6 h-6 rounded-[7px] grid place-items-center text-white font-display font-semibold text-xs overflow-hidden"
+              className="w-[18px] h-[18px] rounded-[5px] grid place-items-center text-white font-display font-semibold text-[8px] overflow-hidden shrink-0"
               style={{ background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})` }}
             >
-              {biz.logoUrl ? (
-                <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" />
-              ) : (
-                biz.monogram
-              )}
+              {biz.logoUrl ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.monogram}
             </span>
-            <span className="font-semibold text-[12.5px]">{biz.name}</span>
+            <span className="font-semibold text-text-primary">{biz.name}</span>
+            <span className="text-text-faint">&middot;</span>
+            <span className="tabular-nums">{hh}</span>
           </div>
-        </Card>
-      </div>
+        </div>
+      )}
 
       {/* ── KPI strip (role-adaptive) ──────────────────────────────────── */}
       {canSeeDashboard && (
@@ -645,34 +651,40 @@ export function CommandCenter() {
       {/* ── Quick Actions ──────────────────────────────────────────────── */}
       <QuickActions can={can} />
 
-      {/* ── AI Insights alert bar ──────────────────────────────────────── */}
-      {canSeeDashboard && <InsightsAlertBar summary={insights} />}
+      {/* ── Reordered sections: on mobile App Grid moves above AI ────── */}
+      <div className="flex flex-col">
+        {/* AI sections — pushed below app grid on mobile */}
+        <div className="max-md:order-2">
+          {canSeeDashboard && <InsightsAlertBar summary={insights} />}
+          {canSeeDashboard && <BriefingWidget overview={overview} />}
+        </div>
 
-      {/* ── AI Briefing widget ────────────────────────────────────────── */}
-      {canSeeDashboard && <BriefingWidget overview={overview} />}
+        {/* App grid — promoted to first on mobile */}
+        <div className="max-md:order-1">
+          <SectionHead title="Your apps" />
+          <AppGrid />
+        </div>
 
-      {/* ── App grid ─────────────────────────────────────────────────── */}
-      <SectionHead title="Your apps" />
-      <AppGrid />
+        {/* Activity + Notifications — last on mobile */}
+        <div className="max-md:order-3">
+          <SectionHead
+            title="My activity"
+            action={
+              myFeed.data?.window === "24h" ? (
+                <span className="micro text-text-faint">Last 24 hours</span>
+              ) : null
+            }
+          />
+          <ActivityFeed feed={myFeed} />
 
-      {/* ── My recent activity (self-scoped audit, last 24 h) ─────────── */}
-      <SectionHead
-        title="My activity"
-        action={
-          myFeed.data?.window === "24h" ? (
-            <span className="micro text-text-faint">Last 24 hours</span>
-          ) : null
-        }
-      />
-      <ActivityFeed feed={myFeed} />
-
-      {/* ── Recent notifications ──────────────────────────────────────── */}
-      {(notifs.data as { data?: AppNotification[] })?.data?.length ? (
-        <>
-          <SectionHead title="Notifications" />
-          <NotificationsFeed notifs={notifs} />
-        </>
-      ) : null}
+          {(notifs.data as { data?: AppNotification[] })?.data?.length ? (
+            <>
+              <SectionHead title="Notifications" />
+              <NotificationsFeed notifs={notifs} />
+            </>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

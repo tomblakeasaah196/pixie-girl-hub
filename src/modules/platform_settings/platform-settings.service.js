@@ -55,28 +55,51 @@ function isPrivateOrLocalIp(ip) {
 }
 
 /**
- * Best-effort IP geolocation via ipwho.is (free, no key). Aborts after
- * ~1500ms and swallows every error — the caller falls back to the
- * default welcome. Returns the normalised location or null.
+ * Best-effort IP geolocation. Tries ipwho.is first, then ip-api.com as
+ * fallback. Aborts each attempt after ~3s and swallows every error — the
+ * caller falls back to the default welcome. Returns the normalised
+ * location or null.
  */
 async function lookupGeo(ip) {
+  // Provider 1: ipwho.is (free, no key)
+  const loc = await _fetchGeo(
+    `https://ipwho.is/${encodeURIComponent(ip)}`,
+    (body) => {
+      if (!body || body.success === false) return null;
+      return {
+        city: body.city || null,
+        country: body.country || null,
+        country_code: body.country_code || null,
+        continent_code: body.continent_code || null,
+      };
+    },
+  );
+  if (loc) return loc;
+
+  // Provider 2 (fallback): ip-api.com (free for non-commercial, no key)
+  return _fetchGeo(
+    `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,city,country,countryCode,continentCode`,
+    (body) => {
+      if (!body || body.status !== "success") return null;
+      return {
+        city: body.city || null,
+        country: body.country || null,
+        country_code: body.countryCode || null,
+        continent_code: body.continentCode || null,
+      };
+    },
+  );
+}
+
+async function _fetchGeo(url, parse) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 1500);
+  const timer = setTimeout(() => controller.abort(), 3000);
   try {
-    const resp = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
-      signal: controller.signal,
-    });
+    const resp = await fetch(url, { signal: controller.signal });
     if (!resp.ok) return null;
-    const body = await resp.json();
-    if (!body || body.success === false) return null;
-    return {
-      city: body.city || null,
-      country: body.country || null,
-      country_code: body.country_code || null,
-      continent_code: body.continent_code || null,
-    };
+    return parse(await resp.json());
   } catch (err) {
-    logger.warn({ err: err.message }, "geo-welcome lookup failed");
+    logger.warn({ err: err.message, url }, "geo-welcome lookup failed");
     return null;
   } finally {
     clearTimeout(timer);
@@ -180,11 +203,37 @@ async function getWebManifest() {
         purpose: "maskable",
       },
     );
+  } else {
+    // No pipeline icons — use the static safe-zone-padded SVGs as maskable
+    // fallbacks so Android home-screen icons render correctly.
+    icons.push(
+      {
+        src: "/pwa-icon-192.svg",
+        type: "image/svg+xml",
+        sizes: "192x192",
+        purpose: "maskable",
+      },
+      {
+        src: "/pwa-icon.svg",
+        type: "image/svg+xml",
+        sizes: "512x512",
+        purpose: "maskable",
+      },
+    );
   }
 
   return {
     name,
-    short_name: name.length > 12 ? name.split(" ")[0] : name,
+    short_name:
+      name.length > 12
+        ? (() => {
+            const words = name.split(/\s+/);
+            // Keep first + last word (e.g. "Pixie Girl Hub" → "Pixie Hub")
+            return words.length > 2
+              ? `${words[0]} ${words[words.length - 1]}`
+              : words[0];
+          })()
+        : name,
     description:
       p?.tagline ||
       "One command center for Pixie Girl Global and Faitlyn Hair.",
@@ -195,6 +244,8 @@ async function getWebManifest() {
     orientation: "portrait-primary",
     background_color: themeColour,
     theme_color: themeColour,
+    prefer_related_applications: false,
+    categories: ["business", "productivity"],
     icons,
   };
 }
@@ -247,10 +298,15 @@ async function getGeoWelcome({ ip, override } = {}) {
   // loopback short-circuit). Otherwise honour the loopback skip.
   const lookupIp = override?.ip || ip;
   if (!override?.ip && isPrivateOrLocalIp(ip)) {
+    logger.info({ ip, private: true }, "geo-welcome: skipping private IP");
     return pick(null);
   }
 
+  logger.info({ ip: lookupIp }, "geo-welcome: looking up IP");
   const location = await lookupGeo(lookupIp);
+  if (!location) {
+    logger.warn({ ip: lookupIp }, "geo-welcome: lookup returned no result");
+  }
   return pick(location);
 }
 

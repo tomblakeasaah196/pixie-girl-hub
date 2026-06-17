@@ -20,27 +20,27 @@ const { query } = require("../../config/database");
 // ── Dashboard stats ─────────────────────────────────────────
 
 async function getSecurityStats(business) {
-  // Failed logins in the last 24 hours (from audit_log)
+  // Failed logins in the last 24 hours, grouped by user
   const failedLoginsQ = query(
-    `SELECT COUNT(*)::int AS count
+    `SELECT user_name, user_email, COUNT(*)::int AS count
        FROM shared.audit_log
       WHERE action = 'login'
         AND metadata->>'success' = 'false'
         AND occurred_at >= now() - interval '24 hours'
-        AND business = $1`,
+        AND business = $1
+      GROUP BY user_name, user_email
+      ORDER BY count DESC`,
     [business],
   );
 
-  // Inactive accounts (last login > 90 days or never logged in)
+  // Inactive accounts (last login > 90 days or never logged in), scoped to business
   const inactiveQ = query(
     `SELECT COUNT(*)::int AS count
        FROM shared.users u
       WHERE u.status = 'active'
-        AND NOT EXISTS (
-          SELECT 1 FROM shared.audit_log a
-           WHERE a.user_id = u.user_id AND a.action = 'login'
-             AND a.occurred_at >= now() - interval '90 days'
-        )`,
+        AND ($1 = ANY(u.permitted_businesses) OR u.is_ceo = true)
+        AND (u.last_login_at IS NULL OR u.last_login_at < now() - interval '90 days')`,
+    [business],
   );
 
   // Locked accounts
@@ -63,6 +63,20 @@ async function getSecurityStats(business) {
        FROM shared.users
       WHERE status = 'active'
         AND (totp_enabled = false OR totp_enabled IS NULL)`,
+  );
+
+  // Total active users
+  const totalUsersQ = query(
+    `SELECT COUNT(*)::int AS count
+       FROM shared.users
+      WHERE status = 'active'`,
+  );
+
+  // Active sessions
+  const activeSessionsQ = query(
+    `SELECT COUNT(*)::int AS count
+       FROM shared.user_sessions
+      WHERE expires_at > now()`,
   );
 
   // Recent security events (last 20)
@@ -90,6 +104,8 @@ async function getSecurityStats(business) {
     locked,
     pendingInvites,
     noMfa,
+    totalUsers,
+    activeSessions,
     recentEvents,
   ] = await Promise.all([
     failedLoginsQ,
@@ -97,22 +113,26 @@ async function getSecurityStats(business) {
     lockedQ,
     pendingInvitesQ,
     noMfaQ,
+    totalUsersQ,
+    activeSessionsQ,
     recentEventsQ,
   ]);
 
   return {
-    failed_logins_24h: failedLogins.rows[0].count,
+    failed_logins_24h: failedLogins.rows,
     inactive_accounts: inactive.rows[0].count,
     locked_accounts: locked.rows[0].count,
     pending_invites: pendingInvites.rows[0].count,
     users_without_mfa: noMfa.rows[0].count,
-    recent_security_events: recentEvents.rows,
+    total_users: totalUsers.rows[0].count,
+    active_sessions: activeSessions.rows[0].count,
+    recent_events: recentEvents.rows,
   };
 }
 
 // ── User management ─────────────────────────────────────────
 
-async function listUsers({ business, search, status, page = 1, limit = 25 }) {
+async function listUsers({ business, search, status, profile_type, page = 1, limit = 25 }) {
   const where = [];
   const params = [];
   let i = 1;
@@ -134,6 +154,11 @@ async function listUsers({ business, search, status, page = 1, limit = 25 }) {
     params.push(status);
     i++;
   }
+  if (profile_type) {
+    where.push(`u.profile_type = $${i}`);
+    params.push(profile_type);
+    i++;
+  }
 
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
@@ -152,8 +177,7 @@ async function listUsers({ business, search, status, page = 1, limit = 25 }) {
             COALESCE(u.display_name, c.display_name) AS display_name,
             u.profile_type, u.external_label, u.status,
             COALESCE(u.totp_enabled, false) AS totp_enabled,
-            (SELECT max(a.occurred_at) FROM shared.audit_log a
-              WHERE a.user_id = u.user_id AND a.action = 'login') AS last_login_at,
+            u.last_login_at,
             u.failed_login_count, u.is_ceo,
             u.permitted_businesses, u.default_business_key,
             sp.profile_id,
@@ -172,9 +196,7 @@ async function listUsers({ business, search, status, page = 1, limit = 25 }) {
 
   const [countRes, dataRes] = await Promise.all([countQ, dataQ]);
   return {
-    data: dataRes.rows,
-    page,
-    limit,
+    rows: dataRes.rows,
     total: countRes.rows[0].total,
   };
 }
@@ -186,8 +208,7 @@ async function getUserDetail(userId) {
             u.profile_type, u.external_label, u.status,
             COALESCE(u.totp_enabled, false) AS totp_enabled,
             u.totp_verified_at,
-            (SELECT max(a.occurred_at) FROM shared.audit_log a
-              WHERE a.user_id = u.user_id AND a.action = 'login') AS last_login_at,
+            u.last_login_at,
             u.failed_login_count, u.is_ceo,
             u.permitted_businesses, u.default_business_key,
             u.force_password_reset, u.created_at,

@@ -59,8 +59,8 @@ const variantStock = async (req, res) =>
 
 async function listMovements(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.listMovements({
+  res.json({
+    data: await service.listMovements({
       brand: req.brand,
       filters: {
         variant_id: req.query.variant_id,
@@ -70,7 +70,7 @@ async function listMovements(req, res) {
       page,
       page_size,
     }),
-  );
+  });
 }
 const recordMovement = async (req, res) =>
   res.status(201).json({
@@ -80,14 +80,14 @@ const recordMovement = async (req, res) =>
 // Adjustments
 async function listAdjustments(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.listAdjustments({
+  res.json({
+    data: await service.listAdjustments({
       brand: req.brand,
       filters: { status: req.query.status, location_id: req.query.location_id },
       page,
       page_size,
     }),
-  );
+  });
 }
 const getAdjustment = async (req, res) =>
   res.json({
@@ -120,14 +120,14 @@ const postAdjustment = async (req, res) =>
 // Transfers
 async function listTransfers(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.listTransfers({
+  res.json({
+    data: await service.listTransfers({
       brand: req.brand,
       filters: { status: req.query.status },
       page,
       page_size,
     }),
-  );
+  });
 }
 const getTransfer = async (req, res) =>
   res.json({
@@ -156,14 +156,14 @@ const receiveTransfer = async (req, res) =>
 // Alerts
 async function listAlerts(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.listAlerts({
+  res.json({
+    data: await service.listAlerts({
       brand: req.brand,
       filters: { status: req.query.status, variant_id: req.query.variant_id },
       page,
       page_size,
     }),
-  );
+  });
 }
 const ackAlert = async (req, res) =>
   res.json({
@@ -193,14 +193,14 @@ const resolveAlert = async (req, res) =>
 // Inbound shipments
 async function listShipments(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.listShipments({
+  res.json({
+    data: await service.listShipments({
       brand: req.brand,
       filters: { status: req.query.status },
       page,
       page_size,
     }),
-  );
+  });
 }
 const getShipment = async (req, res) =>
   res.json({

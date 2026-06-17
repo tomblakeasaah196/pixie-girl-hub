@@ -9,3 +9,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <App />
   </React.StrictMode>,
 );
+
+// Remove the CSS splash screen now that React has mounted
+document.getElementById("splash")?.remove();

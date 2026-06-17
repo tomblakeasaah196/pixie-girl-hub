@@ -153,11 +153,11 @@ export function KpiTile({
   const edge = tone === "warn" ? "rgb(var(--warn))" : "rgb(var(--accent))";
   return (
     <div
-      className="glass rounded-[var(--radius)] shadow-glass p-[17px_18px] border-l-[3px]"
+      className="glass rounded-[var(--radius)] shadow-glass p-[17px_18px] max-md:p-[12px_14px] border-l-[3px]"
       style={{ borderLeftColor: edge }}
     >
       <div className="micro">{label}</div>
-      <div className="font-display font-medium text-[28px] mt-2 tabular-nums">{value}</div>
+      <div className="font-display font-medium text-[28px] max-md:text-[22px] mt-2 max-md:mt-1.5 tabular-nums">{value}</div>
       {delta && (
         <div className={cn("text-[11px] font-bold mt-1.5", delta.up ? "text-success" : "text-danger")}>
           {delta.up ? "▲" : "▼"} {delta.text}

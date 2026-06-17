@@ -195,7 +195,7 @@ export default function OverviewTab() {
         <div className="flex items-center gap-2 mb-3">
           <TrendingDown className="w-4 h-4 text-warn" />
           <span className="text-[13px] font-semibold">Low-Stock Alerts</span>
-          {alerts.data && (
+          {alerts.data?.meta && (
             <span className="text-[11px] tabular-nums text-text-faint ml-auto">
               {alerts.data.meta.total} open
             </span>

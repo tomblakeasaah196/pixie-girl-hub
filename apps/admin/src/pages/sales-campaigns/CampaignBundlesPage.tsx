@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Edit3, Package, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit3, Package, Plus, Search } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, EmptyState, MoneyText, Pill, Skeleton } from "@/components/ui/primitives";

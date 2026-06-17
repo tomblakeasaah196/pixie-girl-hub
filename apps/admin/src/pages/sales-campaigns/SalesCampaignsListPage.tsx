@@ -22,7 +22,7 @@ import {
 import { DeniedState, ErrorState, Select } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
-import { money, moneyCompact } from "@/lib/format";
+import { moneyCompact } from "@/lib/format";
 import { useCampaignList, useCreateCampaign, type Campaign, type CampaignStatus } from "@/lib/campaigns";
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [

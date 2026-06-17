@@ -197,9 +197,9 @@ function pickNextCartUpsell({ cart, upsells, shown_ids = new Set() }) {
     .sort((a, b) => a.rung - b.rung);
 
   for (const c of candidates) {
-    if (c.trigger_type === "cart_qty" && c.min_cart_qty != null) {
+    if (c.trigger_type === "cart_qty" && c.min_cart_qty !== null && c.min_cart_qty !== undefined) {
       if (totalQty >= c.min_cart_qty) return c;
-    } else if (c.trigger_type === "cart_value" && c.min_cart_value_ngn != null) {
+    } else if (c.trigger_type === "cart_value" && c.min_cart_value_ngn !== null && c.min_cart_value_ngn !== undefined) {
       if (totalValue.gte(d(c.min_cart_value_ngn))) return c;
     } else if (c.trigger_type === "specific_bundle" && c.trigger_bundle_id) {
       const hasBundle = cart.items.some((it) => it.bundle_id === c.trigger_bundle_id);
@@ -243,7 +243,10 @@ function computePreorderPrice({
  */
 function assertAboveFloor(items) {
   const breaches = items.filter(
-    (it) => it.floor_ngn != null && d(it.proposed_price_ngn).lt(d(it.floor_ngn)),
+    (it) =>
+      it.floor_ngn !== null &&
+      it.floor_ngn !== undefined &&
+      d(it.proposed_price_ngn).lt(d(it.floor_ngn)),
   );
   if (breaches.length) {
     throw new AppError(

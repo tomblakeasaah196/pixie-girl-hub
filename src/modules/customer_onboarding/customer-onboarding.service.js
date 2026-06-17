@@ -23,8 +23,8 @@ const smartcommRepo = require("../smartcomm/smartcomm.repo");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { AppError, NotFoundError } = require("../../utils/errors");
-const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
+const brandUrls = require("../../utils/brand-urls");
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -34,11 +34,11 @@ function newToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
 
+// Per-brand domain via business_config.storefront_domain — see
+// src/utils/brand-urls.js. Falls back to STOREFRONT_BASE_URL env var
+// when a brand hasn't configured its public domain yet.
 function publicLink({ business, token }) {
-  const base = config.STOREFRONT_BASE_URL || "";
-  return base
-    ? `${base}/welcome/${business}/${token}`
-    : `/welcome/${business}/${token}`;
+  return brandUrls.welcomeUrl(business, token);
 }
 
 // ── Staff: generate a link ────────────────────────────────
@@ -65,10 +65,14 @@ async function createLink({ brand, user, request_id, input }) {
       after: { channel_id: input.channel_id || null },
       request_id,
     });
+    const url = await publicLink({
+      business: link.business,
+      token: link.token,
+    });
     return {
       submission_id: link.submission_id,
       token: link.token,
-      url: publicLink({ business: link.business, token: link.token }),
+      url,
       expires_at: link.expires_at,
     };
   });

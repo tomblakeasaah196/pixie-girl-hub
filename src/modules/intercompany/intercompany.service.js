@@ -189,6 +189,29 @@ async function matchTransaction({ user, request_id, id }) {
     target_id: id,
     request_id,
   });
+  // GAP-6: when buyer matches (confirms receipt), receive stock into buyer's ledger
+  if (txn.reference_type === "product_variant" && txn.reference_id) {
+    try {
+      const stockService = require("../stock/stock.service");
+      const stockRepo = require("../stock/stock.repo");
+      const loc = await stockRepo.getDefaultLocation({ brand: txn.buyer_brand });
+      if (loc) {
+        await stockService.receiveStock({
+          client: null,
+          brand: txn.buyer_brand,
+          variant_id: txn.reference_id,
+          location_id: loc.location_id,
+          quantity: 1,
+          reference_id: id,
+          reference_type: "intercompany",
+          unit_cost_ngn: txn.amount_ngn,
+          user_id: user.user_id,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, ic_transaction_id: id }, "IC stock reception skipped");
+    }
+  }
   events.emit("matched", { ic_transaction_id: id });
   return updated;
 }

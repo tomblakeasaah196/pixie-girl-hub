@@ -22,8 +22,10 @@
 
 const repo = require("./praxis.repo");
 const governance = require("../ai_governance/governance.service");
+const modelCatalogue = require("../ai_governance/model-catalogue.repo");
 const embeddings = require("../../services/embeddings.service");
 const llm = require("../../services/llm.service");
+const gemini = require("../../services/gemini.service");
 const queryAgent = require("./query-agent");
 const { money, toCurrencyString } = require("../../utils/money");
 const { logger } = require("../../config/logger");
@@ -371,4 +373,263 @@ async function recordUsageSafe({
   }
 }
 
-module.exports = { orchestrate };
+// ──────────────────────────────────────────────────────────────────
+// Smartcomm draft — single-turn brand-voice reply for the composer
+// "Draft with Praxis" button (PR 3 / PR 5).
+//
+// Different shape from `orchestrate`:
+//   - No RAG, no tools, no pending actions. Single chat completion.
+//   - Tries the primary vendor (PRAXIS_LLM_VENDOR, default deepseek),
+//     falls back to the configured fallback (PRAXIS_LLM_FALLBACK_VENDOR,
+//     default gemini) on retryable failure.
+//   - Costs read from ai_model_catalogue, not the legacy vendor.cost_*.
+//   - Returns { text, usage } in the shape smartcomm.praxis-draft.js
+//     expects (provider/model/input_tokens/output_tokens/cost_ngn).
+// ──────────────────────────────────────────────────────────────────
+
+const PRIMARY_VENDOR = () => config.PRAXIS_LLM_VENDOR || "deepseek";
+const FALLBACK_VENDOR = () => config.PRAXIS_LLM_FALLBACK_VENDOR || "gemini";
+
+function buildSmartcommPrompt(ctx) {
+  const lines = [];
+  lines.push(
+    `You are drafting a customer-service reply on behalf of the ${ctx.brand} business.`,
+    "Write ONE concise message ready to send — no preamble, no quotation marks, no 'Sure, here is...'. Just the reply text.",
+  );
+  if (ctx.tone) lines.push(`Tone: ${ctx.tone}.`);
+  if (ctx.voice_summary) lines.push(`Voice: ${ctx.voice_summary}`);
+  if (ctx.platform && ctx.platform !== "internal") {
+    lines.push(
+      `Channel: ${ctx.platform}. Keep it short, mobile-friendly, conversational.`,
+    );
+  }
+  if (ctx.preferred_channel) {
+    lines.push(`Customer prefers replies on: ${ctx.preferred_channel}.`);
+  }
+  if (ctx.primary_emojis && ctx.primary_emojis.length) {
+    lines.push(
+      `Brand emoji palette (use sparingly): ${ctx.primary_emojis.join(" ")}`,
+    );
+  }
+  const dos = (ctx.do_donts && ctx.do_donts.do) || [];
+  const donts = (ctx.do_donts && ctx.do_donts.dont) || [];
+  if (dos.length) lines.push(`Always: ${dos.join("; ")}.`);
+  if (donts.length) lines.push(`Never: ${donts.join("; ")}.`);
+  if (ctx.sample_transcripts && ctx.sample_transcripts.length) {
+    lines.push("Tone-match examples:");
+    for (const s of ctx.sample_transcripts.slice(0, 3)) {
+      if (s.customer && s.staff) {
+        lines.push(`- Customer: "${s.customer}"\n  Brand: "${s.staff}"`);
+      }
+    }
+  }
+  if (ctx.signature_html) {
+    // Strip HTML for the system prompt — model treats signatures literally.
+    const sig = String(ctx.signature_html).replace(/<[^>]+>/g, "").trim();
+    if (sig) lines.push(`End with this signature: ${sig}`);
+  }
+  return lines.join("\n");
+}
+
+function transcriptToMessages(transcript, customerName) {
+  if (!transcript) {
+    return [
+      {
+        role: "user",
+        content: `(${customerName} just opened the conversation — write a warm opener.)`,
+      },
+    ];
+  }
+  // Convert "Customer: ..." / "Staff: ..." lines to message objects so
+  // the model sees genuine roles, not one block of text.
+  const out = [];
+  for (const line of transcript.split("\n")) {
+    const m = /^(Customer|Staff|System|[A-Z][a-zA-Z]+):\s*(.*)$/.exec(line);
+    if (!m) {
+      if (out.length) out[out.length - 1].content += "\n" + line;
+      else out.push({ role: "user", content: line });
+      continue;
+    }
+    const isCustomer = m[1] === "Customer";
+    out.push({
+      role: isCustomer ? "user" : "assistant",
+      content: m[2],
+    });
+  }
+  // Ensure the last message is from the customer so the model knows to
+  // reply, not echo us.
+  if (out.length && out[out.length - 1].role !== "user") {
+    out.push({
+      role: "user",
+      content: `(Now write the next reply from ${customerName}'s brand.)`,
+    });
+  }
+  return out;
+}
+
+async function callVendor(vendorName, { system, messages }) {
+  if (vendorName === "gemini") {
+    if (!gemini.isConfigured()) {
+      const e = new Error("GEMINI_NOT_CONFIGURED");
+      e.code = "VENDOR_NOT_CONFIGURED";
+      e.retryable = false;
+      throw e;
+    }
+    const model = await modelCatalogue.resolveActiveModel({
+      vendor: "gemini",
+      capability: "chat",
+    });
+    const result = await gemini.chatCompletion({
+      system,
+      messages,
+      model: model ? model.model_id : undefined,
+      temperature: 0.6,
+      maxOutputTokens: 600,
+    });
+    return { ...result, modelRow: model };
+  }
+  // Default: OpenAI-compatible vendors via llm.service.
+  const vendor = await llm.resolveVendor(vendorName);
+  if (!vendor) {
+    const e = new Error(`${vendorName.toUpperCase()}_NOT_CONFIGURED`);
+    e.code = "VENDOR_NOT_CONFIGURED";
+    e.retryable = false;
+    throw e;
+  }
+  const model = await modelCatalogue.resolveActiveModel({
+    vendor: vendorName,
+    capability: "chat",
+  });
+  const completion = await llm.chat({
+    vendor,
+    model: model ? model.model_id : vendor.default_model,
+    messages: [{ role: "system", content: system }, ...messages],
+    temperature: 0.6,
+  });
+  return {
+    text: completion.content || "",
+    input_tokens: (completion.usage && completion.usage.prompt_tokens) || 0,
+    output_tokens:
+      (completion.usage && completion.usage.completion_tokens) || 0,
+    model: completion.model,
+    vendor: vendorName,
+    modelRow: model,
+  };
+}
+
+/**
+ * Generate a single Smartcomm reply draft. Vendor fallback is built in:
+ * primary fails → fallback tried automatically. The cost calculation
+ * uses the model catalogue (so switching `gemini-2.5-flash` →
+ * `gemini-2.5-flash-lite` in the UI immediately reduces the per-call
+ * spend).
+ *
+ * Throws `AI_UNAVAILABLE` only when BOTH vendors fail to produce a
+ * draft. Caller (smartcomm.praxis-draft) catches and surfaces the
+ * deterministic stub.
+ *
+ * @param {object} args
+ * @param {object} args.user
+ * @param {string} args.brand
+ * @param {object} args.context  — see smartcomm.praxis-draft.js promptContext
+ */
+async function generateSmartcommDraft({ user, brand, context }) {
+  const system = buildSmartcommPrompt(context);
+  const messages = transcriptToMessages(
+    context.transcript,
+    context.customer_name || "the customer",
+  );
+
+  const primary = PRIMARY_VENDOR();
+  const fallback = FALLBACK_VENDOR();
+
+  // Primary attempt
+  let result = null;
+  let lastError = null;
+  try {
+    result = await callVendor(primary, { system, messages });
+  } catch (err) {
+    lastError = err;
+    if (!err.retryable && err.code === "VENDOR_NOT_CONFIGURED") {
+      logger.warn(
+        { vendor: primary, err: err.message },
+        "smartcomm draft: primary vendor not configured; trying fallback",
+      );
+    } else {
+      logger.warn(
+        { vendor: primary, err: err.message },
+        "smartcomm draft: primary vendor failed; trying fallback",
+      );
+    }
+  }
+
+  // Fallback
+  if (!result && primary !== fallback) {
+    try {
+      result = await callVendor(fallback, { system, messages });
+    } catch (err) {
+      lastError = err;
+      logger.error(
+        { vendor: fallback, err: err.message },
+        "smartcomm draft: fallback vendor also failed",
+      );
+    }
+  }
+
+  if (!result) {
+    const e = new Error(
+      `Both ${primary} and ${fallback} failed: ${lastError ? lastError.message : "no result"}`,
+    );
+    e.code = "AI_UNAVAILABLE";
+    throw e;
+  }
+
+  const costNgn = result.modelRow
+    ? modelCatalogue.computeCost({
+        model: result.modelRow,
+        input_tokens: result.input_tokens,
+        output_tokens: result.output_tokens,
+      })
+    : "0";
+
+  // Persist usage row on the AI ledger so the spend meter sees it.
+  try {
+    await governance.recordUsage({
+      usage: {
+        user_id: user.user_id,
+        feature_key: FEATURE,
+        business: brand,
+        provider: result.vendor,
+        model: result.model,
+        call_type: "smartcomm_draft",
+        input_tokens: result.input_tokens,
+        output_tokens: result.output_tokens,
+        total_tokens: (result.input_tokens || 0) + (result.output_tokens || 0),
+        cost_native: costNgn,
+        cost_ngn: costNgn,
+        was_successful: true,
+      },
+    });
+  } catch (err) {
+    logger.warn(
+      { err: err.message },
+      "smartcomm draft: usage record failed (continuing)",
+    );
+  }
+
+  return {
+    text: result.text,
+    usage: {
+      provider: result.vendor,
+      model: result.model,
+      input_tokens: result.input_tokens,
+      output_tokens: result.output_tokens,
+      total_tokens: (result.input_tokens || 0) + (result.output_tokens || 0),
+      cost_native: costNgn,
+      cost_ngn: costNgn,
+      was_successful: true,
+    },
+  };
+}
+
+module.exports = { orchestrate, generateSmartcommDraft };

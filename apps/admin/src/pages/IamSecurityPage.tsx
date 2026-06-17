@@ -91,8 +91,8 @@ export function IamSecurityPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <HealthCard
           label="Failed Logins (24h)"
-          value={s?.failed_logins_24h.length}
-          tone={(s?.failed_logins_24h.length ?? 0) > 0 ? "danger" : "success"}
+          value={s?.failed_logins_24h?.length ?? 0}
+          tone={(s?.failed_logins_24h?.length ?? 0) > 0 ? "danger" : "success"}
           icon={<AlertTriangle className="w-4 h-4" />}
           onClick={() => setDetailModal("failed_logins")}
           loading={loading}
@@ -209,11 +209,11 @@ export function IamSecurityPage() {
 
       {/* Failed Logins */}
       <Modal open={detailModal === "failed_logins"} onClose={() => setDetailModal(null)} title="Failed Logins (24h)">
-        {s?.failed_logins_24h.length === 0 ? (
+        {!s?.failed_logins_24h?.length ? (
           <p className="text-text-muted text-[13px]">No failed login attempts in the last 24 hours.</p>
         ) : (
           <div className="space-y-2">
-            {s?.failed_logins_24h.map((u, i) => (
+            {s.failed_logins_24h.map((u, i) => (
               <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-text-primary/[0.03] border border-line">
                 <div>
                   <div className="text-[13px] font-medium">{u.user_name}</div>

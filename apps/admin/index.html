@@ -11,7 +11,7 @@
     <!-- Static defaults so there's never a /favicon.ico 404; ThemeProvider
          swaps these to the live branding (logo / favicon) once it loads. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/pwa-icon.svg" />
     <!-- Dynamic manifest (live product name + icons). Falls back to the
          static /manifest.webmanifest shipped in public/ if the API is
          unavailable at build/host time. -->
@@ -23,8 +23,175 @@
       href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Montserrat:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <style>
+      /* ── Splash screen (removed by React after mount) ─────────── */
+      body {
+        margin: 0;
+        background: #0f0809;
+      }
+
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #0f0809;
+        overflow: hidden;
+      }
+
+      /* ── Ambient mesh gradient background ─────────────────────── */
+      #splash::before {
+        content: '';
+        position: absolute;
+        inset: -50%;
+        width: 200%;
+        height: 200%;
+        background:
+          radial-gradient(ellipse 60% 50% at 20% 30%, rgba(105, 9, 9, 0.45) 0%, transparent 70%),
+          radial-gradient(ellipse 50% 60% at 80% 20%, rgba(168, 29, 29, 0.30) 0%, transparent 65%),
+          radial-gradient(ellipse 55% 45% at 60% 80%, rgba(42, 15, 21, 0.55) 0%, transparent 70%),
+          radial-gradient(ellipse 45% 55% at 30% 70%, rgba(105, 9, 9, 0.35) 0%, transparent 60%);
+        filter: blur(40px);
+        animation: splashMeshDrift 26s ease-in-out infinite alternate;
+      }
+
+      @keyframes splashMeshDrift {
+        0%   { transform: translate(0, 0) rotate(0deg); }
+        25%  { transform: translate(-3%, 2%) rotate(1deg); }
+        50%  { transform: translate(2%, -3%) rotate(-0.5deg); }
+        75%  { transform: translate(-1%, 1%) rotate(0.8deg); }
+        100% { transform: translate(3%, -2%) rotate(-1deg); }
+      }
+
+      /* ── Shared fade+scale entrance ───────────────────────────── */
+      #splash-logo,
+      #splash-bar-wrap,
+      #splash-name,
+      #splash-tagline {
+        position: relative;
+        opacity: 0;
+        animation-fill-mode: forwards;
+        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      /* ── Sparkle logo ─────────────────────────────────────────── */
+      #splash-logo {
+        width: 56px;
+        height: 56px;
+        animation:
+          splashFadeScaleIn 400ms 0ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+          splashPulse 2s 600ms ease-in-out infinite;
+        filter: drop-shadow(0 0 18px rgba(168, 29, 29, 0.5));
+      }
+
+      @keyframes splashFadeScaleIn {
+        from {
+          opacity: 0;
+          transform: scale(0.6);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      @keyframes splashPulse {
+        0%, 100% {
+          filter: drop-shadow(0 0 18px rgba(168, 29, 29, 0.5));
+          transform: scale(1);
+        }
+        50% {
+          filter: drop-shadow(0 0 28px rgba(216, 92, 87, 0.6));
+          transform: scale(1.04);
+        }
+      }
+
+      /* ── Progress bar ─────────────────────────────────────────── */
+      #splash-bar-wrap {
+        margin-top: 24px;
+        width: 180px;
+        height: 3px;
+        border-radius: 2px;
+        background: rgba(244, 233, 217, 0.08);
+        overflow: hidden;
+        animation: splashFadeIn 300ms 400ms ease forwards;
+      }
+
+      #splash-bar-wrap::after {
+        content: '';
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: 2px;
+        background: linear-gradient(90deg, #a81d1d, #690909);
+        animation: splashBarSlide 1.2s 400ms ease-in-out infinite;
+      }
+
+      @keyframes splashBarSlide {
+        0%   { transform: translateX(-100%); }
+        50%  { transform: translateX(300%); }
+        100% { transform: translateX(-100%); }
+      }
+
+      @keyframes splashFadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+
+      /* ── Product name ─────────────────────────────────────────── */
+      #splash-name {
+        margin-top: 20px;
+        font-family: 'Playfair Display', serif;
+        font-size: 22px;
+        font-weight: 600;
+        color: #F4E9D9;
+        letter-spacing: 0.02em;
+        animation: splashFadeIn 400ms 500ms ease forwards;
+      }
+
+      #splash-name span {
+        color: #d85c57;
+      }
+
+      /* ── Tagline ──────────────────────────────────────────────── */
+      #splash-tagline {
+        margin-top: 8px;
+        font-family: 'Montserrat', sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: #b3a49b;
+        animation: splashFadeIn 400ms 700ms ease forwards;
+      }
+    </style>
   </head>
   <body>
+    <!-- Splash screen: pure CSS, visible before React hydrates -->
+    <div id="splash">
+      <svg id="splash-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <linearGradient id="splash-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#2a0f15"/>
+            <stop offset="1" stop-color="#0f0809"/>
+          </linearGradient>
+          <linearGradient id="splash-mark" x1="16" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#f6d9c9"/>
+            <stop offset="1" stop-color="#e0607a"/>
+          </linearGradient>
+        </defs>
+        <rect width="64" height="64" rx="16" fill="url(#splash-bg)"/>
+        <path fill="url(#splash-mark)" d="M32 12c1.8 8.4 5.6 12.2 14 14-8.4 1.8-12.2 5.6-14 14-1.8-8.4-5.6-12.2-14-14 8.4-1.8 12.2-5.6 14-14z"/>
+        <circle cx="48" cy="20" r="2.6" fill="#f6d9c9"/>
+        <circle cx="18" cy="46" r="1.8" fill="#e0607a"/>
+      </svg>
+      <div id="splash-bar-wrap"></div>
+      <div id="splash-name">Pixie Girl <span>Hub</span></div>
+      <div id="splash-tagline">Your command center</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

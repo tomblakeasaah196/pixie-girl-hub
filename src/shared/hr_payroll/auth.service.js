@@ -16,6 +16,8 @@ const { getClient: getRedis } = require("../../config/redis");
 const { logger } = require("../../config/logger");
 const emailService = require("../../services/email.service");
 const staffRepo = require("./staff.repo");
+const { audit } = require("../../middleware/audit");
+const iamRepo = require("../iam/iam.repo");
 
 // ── Password-reset helpers ─────────────────────────────────
 const RESET_PREFIX = "pwreset:";
@@ -153,11 +155,49 @@ async function login({ email, password, ip, user_agent }) {
   const ok = await argon2.verify(user.password_hash, password);
   if (!ok) {
     await staffRepo.recordFailedLogin(user.user_id);
+    audit({
+      business: user.default_business_key || "system",
+      user_id: user.user_id,
+      action_key: "login",
+      target_type: "users",
+      target_id: user.user_id,
+      metadata: { success: "false", reason: "invalid_password" },
+      ip,
+      user_agent,
+      user_name: user.display_name || user.email,
+      module: "auth",
+    });
     throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
   }
   await staffRepo.recordSuccessfulLogin(user.user_id, { ip, user_agent });
 
-  return issueTokens(user);
+  const result = await issueTokens(user);
+
+  const sessionId = uuidv4();
+  const sessionExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  iamRepo.createSession({
+    session_id: sessionId,
+    user_id: user.user_id,
+    ip_address: ip || null,
+    user_agent: user_agent || null,
+    device_label: null,
+    expires_at: sessionExpiry.toISOString(),
+  }).catch((err) => logger.error({ err: err.message }, "session record create failed"));
+
+  audit({
+    business: user.default_business_key || "system",
+    user_id: user.user_id,
+    action_key: "login",
+    target_type: "users",
+    target_id: user.user_id,
+    metadata: { success: "true", method: "password" },
+    ip,
+    user_agent,
+    user_name: user.display_name || user.email,
+    module: "auth",
+  });
+
+  return result;
 }
 
 /**
@@ -189,11 +229,49 @@ async function loginPin({ email, pin, ip, user_agent }) {
   const ok = await argon2.verify(user.pin_hash, String(pin));
   if (!ok) {
     await staffRepo.recordPinFail(user.user_id);
+    audit({
+      business: user.default_business_key || "system",
+      user_id: user.user_id,
+      action_key: "login",
+      target_type: "users",
+      target_id: user.user_id,
+      metadata: { success: "false", reason: "invalid_pin" },
+      ip,
+      user_agent,
+      user_name: user.display_name || user.email,
+      module: "auth",
+    });
     throw new AppError("INVALID_CREDENTIALS", "Invalid email or PIN", 401);
   }
   await staffRepo.recordPinSuccess(user.user_id, { ip, user_agent });
 
-  return issueTokens(user);
+  const result = await issueTokens(user);
+
+  const sessionId = uuidv4();
+  const sessionExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  iamRepo.createSession({
+    session_id: sessionId,
+    user_id: user.user_id,
+    ip_address: ip || null,
+    user_agent: user_agent || null,
+    device_label: null,
+    expires_at: sessionExpiry.toISOString(),
+  }).catch((err) => logger.error({ err: err.message }, "session record create failed"));
+
+  audit({
+    business: user.default_business_key || "system",
+    user_id: user.user_id,
+    action_key: "login",
+    target_type: "users",
+    target_id: user.user_id,
+    metadata: { success: "true", method: "pin" },
+    ip,
+    user_agent,
+    user_name: user.display_name || user.email,
+    module: "auth",
+  });
+
+  return result;
 }
 
 /**
@@ -271,12 +349,24 @@ async function refresh({ refresh_token }) {
   };
 }
 
-async function logout({ refresh_token }) {
+async function logout({ refresh_token, user_id, ip, user_agent }) {
   if (!refresh_token) return;
   try {
     const payload = jwt.verify(refresh_token, config.JWT_SECRET);
     const redis = getRedis();
     await redis.del(`refresh:${payload.jti}`);
+    if (user_id) {
+      audit({
+        business: "system",
+        user_id,
+        action_key: "logout",
+        target_type: "users",
+        target_id: user_id,
+        ip,
+        user_agent,
+        module: "auth",
+      });
+    }
   } catch {
     // ignore — already invalid
   }

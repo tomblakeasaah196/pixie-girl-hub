@@ -6,7 +6,7 @@
 
 const { z } = require("zod");
 
-const VENDOR = ["deepseek", "groq", "openai", "self_hosted", "other"];
+const VENDOR = ["deepseek", "groq", "openai", "gemini", "self_hosted", "other"];
 
 const flagUpsert = z
   .object({
@@ -42,11 +42,31 @@ const vendorUpsert = z
     org_id: z.string().max(200).optional(),
     endpoint_url: z.string().url().max(500).optional(),
     default_model: z.string().max(120).optional(),
+    current_model: z.string().max(120).nullable().optional(),
     cost_per_1k_input_tokens: z.coerce.number().nonnegative().optional(),
     cost_per_1k_output_tokens: z.coerce.number().nonnegative().optional(),
     cost_per_audio_minute: z.coerce.number().nonnegative().optional(),
     cost_native_currency: z.string().length(3).optional(),
     per_vendor_monthly_cap_ngn: z.coerce.number().nonnegative().optional(),
+  })
+  .strict();
+
+const modelUpsert = z
+  .object({
+    model_id: z.string().min(1).max(120),
+    vendor: z.enum(VENDOR),
+    display_name: z.string().min(1).max(160),
+    family: z.string().max(60).nullable().optional(),
+    capability: z.enum(["chat", "embedding", "audio", "vision"]).default("chat"),
+    context_window: z.coerce.number().int().positive().nullable().optional(),
+    supports_tools: z.boolean().optional(),
+    supports_streaming: z.boolean().optional(),
+    input_cost_per_1m_ngn: z.coerce.number().nonnegative().optional(),
+    output_cost_per_1m_ngn: z.coerce.number().nonnegative().optional(),
+    cost_per_audio_minute_ngn: z.coerce.number().nonnegative().optional(),
+    is_default: z.boolean().optional(),
+    is_active: z.boolean().optional(),
+    notes: z.string().max(2000).nullable().optional(),
   })
   .strict();
 
@@ -139,4 +159,5 @@ module.exports = {
   validateActionUpsert: mk(actionUpsert),
   validateActionToggle: mk(actionToggle),
   validateBrandVoiceUpsert: mk(brandVoiceUpsert),
+  validateModelUpsert: mk(modelUpsert),
 };

@@ -97,8 +97,15 @@ const {
   publicRouter: onboardingPublicRouter,
 } = require("../modules/customer_onboarding/customer-onboarding.routes");
 
+// Order Capture public verifier (PR 4) — decodes signed JWT, returns
+// prefill payload for the storefront's consumer page.
+const orderCapturePublicRouter = require("../modules/smartcomm/smartcomm.order-capture.public.routes");
+
 // Service Catalogue (revamps, custom styles, repairs etc.)
 const serviceCatalogueRouter = require("../modules/service_catalogue/service-catalogue.routes");
+
+// Messaging Accounts (PR 6) — admin surface for inbound routing rows
+const messagingAccountsRouter = require("../modules/messaging_accounts/messaging-accounts.routes");
 
 // Outbound Channel Policy (cost discipline — PR 2)
 const outboundPolicyRouter = require("../modules/outbound_policy/outbound-policy.routes");
@@ -160,6 +167,13 @@ function mountRoutes(app) {
   // Customer Onboarding form — public, token-protected. The token
   // itself is sufficient auth; the per-IP write limiter blunts abuse.
   publicRouter.use("/onboarding", publicWriteLimiter, onboardingPublicRouter);
+  // Order Capture verifier — the storefront consumer page POSTs the JWT
+  // and gets back the prefilled items + contact + address.
+  publicRouter.use(
+    "/order-capture",
+    publicWriteLimiter,
+    orderCapturePublicRouter,
+  );
   publicRouter.use("/pay", publicWriteLimiter, publicPayLinkRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
   // Unauthenticated branding feed — the login page calls this before
@@ -220,6 +234,7 @@ function mountRoutes(app) {
   api.use("/smartcomm", smartcommRouter);
   api.use("/customer-onboarding", onboardingAdminRouter);
   api.use("/service-catalogue", serviceCatalogueRouter);
+  api.use("/messaging-accounts", messagingAccountsRouter);
   api.use("/outbound-policy", outboundPolicyRouter);
   api.use("/help", helpCenterRouter);
   api.use("/calendar", calendarRouter);

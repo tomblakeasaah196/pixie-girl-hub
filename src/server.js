@@ -72,12 +72,13 @@ async function bootstrap() {
   //   - the JSON 404 below now only fires for unmatched /api/* routes.
   const clientDist = path.join(__dirname, "..", "apps/admin", "dist");
 
+  app.use("/media", express.static(path.resolve(config.STORAGE_LOCAL_ROOT)));
   app.use(express.static(clientDist));
 
   app.get("*", (req, res, next) => {
     // Never let the SPA fallback answer an API request — an unknown
     // /api route must still return the JSON 404 below, not index.html.
-    if (req.path.startsWith("/api") || req.path === "/api") {
+    if (req.path.startsWith("/api") || req.path.startsWith("/media")) {
       return next();
     }
     res.sendFile(path.join(clientDist, "index.html"), (err) => {

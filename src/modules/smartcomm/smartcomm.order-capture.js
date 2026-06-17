@@ -27,13 +27,9 @@ const jwt = require("jsonwebtoken");
 const { config } = require("../../config/env");
 const { audit } = require("../../middleware/audit");
 const { AppError } = require("../../utils/errors");
+const brandUrls = require("../../utils/brand-urls");
 
 const DEFAULT_EXPIRY_SECONDS = 24 * 3600;
-
-function publicLink(payload) {
-  const base = config.STOREFRONT_BASE_URL || "";
-  return base ? `${base}/order?capture=${payload}` : `/order?capture=${payload}`;
-}
 
 /**
  * @param {object} args
@@ -87,7 +83,7 @@ async function createCaptureLink({ brand, user, request_id, input }) {
     issuer: "smartcomm",
     audience: "order-capture",
   });
-  const url = publicLink(token);
+  const url = await brandUrls.orderCaptureUrl(brand, token);
   const expires_at = new Date(Date.now() + expiresIn * 1000).toISOString();
 
   await audit({

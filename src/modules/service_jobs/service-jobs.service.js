@@ -18,6 +18,7 @@ const { transaction } = require("../../config/database");
 const { money } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { BRANDS } = require("../../config/brands");
+const { logger } = require("../../config/logger");
 
 const A = (
   brand,
@@ -173,6 +174,29 @@ async function advanceJob({
       request_id,
     );
     events.emit("advanced", { brand, job_id: id, status });
+    // GAP-5: deduct stock for the wig consumed when service job completes
+    if (status === "completed" && job.hair_variant_id) {
+      try {
+        const stockService = require("../stock/stock.service");
+        const stockRepo = require("../stock/stock.repo");
+        const loc = await stockRepo.getDefaultLocation({ client, brand });
+        if (loc) {
+          await stockService.deductForSale({
+            client,
+            brand,
+            variant_id: job.hair_variant_id,
+            location_id: loc.location_id,
+            quantity: 1,
+            reference_id: id,
+            sales_channel: "service_job",
+            unit_cost_ngn: job.actual_cost_ngn || null,
+            user_id: user.user_id,
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, job_id: id }, "service job stock deduction skipped");
+      }
+    }
     if (status === "completed") events.emit("completed", { brand, job_id: id });
     return job;
   });

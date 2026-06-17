@@ -9,6 +9,8 @@
   "orientation": "portrait-primary",
   "background_color": "#0f0809",
   "theme_color": "#0f0809",
+  "prefer_related_applications": false,
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/favicon.svg",

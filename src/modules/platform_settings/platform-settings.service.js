@@ -244,6 +244,8 @@ async function getWebManifest() {
     orientation: "portrait-primary",
     background_color: themeColour,
     theme_color: themeColour,
+    prefer_related_applications: false,
+    categories: ["business", "productivity"],
     icons,
   };
 }

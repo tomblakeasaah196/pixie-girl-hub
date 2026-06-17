@@ -1,0 +1,42 @@
+{
+  "name": "@pixie-girl-hub/landing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pixie Girl Hub — public sales landing page (Next.js 14 App Router). Deployed to the per-brand sales subdomain (sales.pixiegirlglobal.com / sales.thefaitlynbrand.com). Reads its brand from the Host header and calls /api/public/sale/:slug on the Hub backend.",
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.0",
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.11.0",
+    "lottie-react": "^2.4.0",
+    "lucide-react": "^0.452.0",
+    "next": "^14.2.15",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^2.5.4",
+    "three": "^0.169.0",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.169.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.13.0",
+    "eslint-config-next": "^14.2.15",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3"
+  }
+}

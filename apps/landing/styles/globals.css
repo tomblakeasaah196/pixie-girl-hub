@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Maroon Noir tokens (mirrors the admin canon) ──────────────────── */
+:root {
+  --bg: 15 8 9;
+  --panel: 26 15 17;
+  --panel-2: 39 22 25;
+  --panel-alpha: 0.55;
+  --text: 244 233 217;
+  --text-muted: 179 164 155;
+  --text-faint: 128 112 107;
+  --border-c: 244 233 217;
+  --border-alpha: 0.08;
+
+  --accent: 168 29 29;
+  --accent-deep: 105 9 9;
+  --accent-glow: 216 92 87;
+
+  --success: 127 160 106;
+  --warn: 201 162 75;
+  --danger: 229 84 78;
+  --info: 110 134 168;
+
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body: "Montserrat", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Mono", monospace;
+
+  --radius: 18px;
+  --blur: 22px;
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 18px 44px rgb(0 0 0 / 0.6);
+
+  /* Layer-B per-business defaults (overridden inline by the page from
+     the campaign payload's brand). */
+  --biz-1: #a81d1d;
+  --biz-2: #690909;
+}
+
+/* Faitlyn override — applied via data-business="faitlynhair". */
+html[data-business="faitlynhair"] {
+  --biz-1: #7f703d;
+  --biz-2: #d5b8a4;
+  --accent: 127 112 61;
+  --accent-deep: 127 112 61;
+  --accent-glow: 213 184 164;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: rgb(var(--bg));
+  color: rgb(var(--text));
+  font-family: var(--font-body);
+  font-feature-settings: "ss01" on, "ss02" on, "tnum" on;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100%;
+}
+
+/* ── Living mesh — same drift effect as the admin demo ─────────────── */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse at 18% 18%,
+      rgba(var(--accent-deep), 0.42),
+      transparent 56%
+    ),
+    radial-gradient(
+      ellipse at 86% 14%,
+      rgba(var(--accent), 0.32),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 12% 92%,
+      rgba(var(--accent-glow), 0.18),
+      transparent 60%
+    ),
+    radial-gradient(ellipse at 92% 88%, rgba(var(--accent), 0.22), transparent 65%);
+  filter: blur(34px) saturate(120%);
+  opacity: 0.85;
+  animation: drift 26s ease-in-out infinite;
+}
+
+/* ── Glass surfaces ──────────────────────────────────────────────── */
+.glass {
+  background: rgb(var(--panel) / var(--panel-alpha));
+  border: 1px solid rgb(var(--border-c) / var(--border-alpha));
+  backdrop-filter: blur(var(--blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
+  box-shadow: var(--glass-shadow);
+}
+.dropglass {
+  background: rgb(var(--panel) / 0.92);
+  border: 1px solid rgb(var(--border-c) / 0.12);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Hairline border used on dividers (matches admin). */
+.hairline {
+  border-color: rgb(var(--border-c) / var(--border-alpha));
+}
+
+/* ── Micro label ─────────────────────────────────────────────────── */
+.micro {
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: rgb(var(--text-faint));
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001s !important;
+    animation-duration: 0.001s !important;
+  }
+}
+
+/* ── Cinematic CTA — used on Live state primary button ────────────── */
+.cta-sheen {
+  position: relative;
+  overflow: hidden;
+}
+.cta-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(244, 233, 217, 0.25) 50%,
+    transparent 70%
+  );
+  transform: translateX(-110%);
+  transition: transform 0.7s ease;
+}
+.cta-sheen:hover::after {
+  transform: translateX(110%);
+}
+
+/* ── Countdown digits — tabular nums + serif for the Hero variant ── */
+.countdown-digit {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* Hide scrollbars on horizontal carousels. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* Section base — used across blocks. */
+.section {
+  padding: 64px 24px;
+}
+@media (min-width: 768px) {
+  .section {
+    padding: 96px 32px;
+  }
+}
+.section-tight {
+  padding: 32px 24px;
+}
+@media (min-width: 768px) {
+  .section-tight {
+    padding: 48px 32px;
+  }
+}
+
+/* Ended-state monochrome filter (animated). */
+.ended-fade {
+  animation: ended-monochrome 6s ease-in forwards;
+}
+@keyframes ended-monochrome {
+  from {
+    filter: grayscale(0%) saturate(120%);
+  }
+  to {
+    filter: grayscale(85%) saturate(60%);
+  }
+}

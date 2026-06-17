@@ -146,11 +146,12 @@ async function getStats(ctx) {
 
 // ── User management ─────────────────────────────────────────
 
-async function listUsers(ctx, { search, status, page, limit }) {
+async function listUsers(ctx, { search, status, profile_type, page, limit }) {
   return repo.listUsers({
     business: ctx.business,
     search,
     status,
+    profile_type,
     page,
     limit,
   });

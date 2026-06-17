@@ -139,18 +139,28 @@ const auditExportSchema = z.object({
   search: z.string().optional(),
 });
 
-const listQuerySchema = z.object({
-  search: z.string().optional(),
-  status: z.string().optional(),
-  page: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseInt(v, 10) : 1)),
-  limit: z
-    .string()
-    .optional()
-    .transform((v) => (v ? Math.min(parseInt(v, 10), 200) : 25)),
-});
+const listQuerySchema = z
+  .object({
+    search: z.string().optional(),
+    status: z.string().optional(),
+    profile_type: z.enum(["staff", "external"]).optional(),
+    page: z
+      .string()
+      .optional()
+      .transform((v) => (v ? parseInt(v, 10) : 1)),
+    limit: z
+      .string()
+      .optional()
+      .transform((v) => (v ? Math.min(parseInt(v, 10), 200) : undefined)),
+    per_page: z
+      .string()
+      .optional()
+      .transform((v) => (v ? Math.min(parseInt(v, 10), 200) : undefined)),
+  })
+  .transform((o) => ({
+    ...o,
+    limit: o.limit || o.per_page || 25,
+  }));
 
 const reviewListQuerySchema = z.object({
   status: z.enum(["open", "in_progress", "completed", "cancelled"]).optional(),

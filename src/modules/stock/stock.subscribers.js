@@ -20,12 +20,15 @@ let registered = false;
 function register() {
   if (registered) return;
   registered = true;
+  // GAP-7: seed into ALL active locations, not just default
   outbox.register("variant.created", "stock-seed-level", async (payload) => {
     const { brand, variant_id } = payload || {};
     if (!brand || !variant_id) return;
-    const loc = await repo.getDefaultLocation({ brand });
-    if (loc)
-      await repo.seedLevel({ brand, variant_id, location_id: loc.location_id });
+    const locs = await repo.listLocations({ brand });
+    for (const loc of locs) {
+      if (loc.is_active)
+        await repo.seedLevel({ brand, variant_id, location_id: loc.location_id });
+    }
   });
   logger.info(
     "stock subscribers registered (outbox variant.created → seed level)",

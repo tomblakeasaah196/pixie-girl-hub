@@ -882,6 +882,23 @@ async function markPaid({ client, brand, user, _request_id, order }) {
           );
         }
       }
+      // GAP-3: when styled_product_id is on the line, COGS = base cost + style addon
+      let costForCogs = line.unit_cost_ngn;
+      if (line.styled_product_id) {
+        try {
+          const spRow = await client.query(
+            `SELECT style_addon_price_ngn FROM ${brand}.styled_products WHERE styled_product_id = $1`,
+            [line.styled_product_id],
+          );
+          if (spRow.rows[0] && spRow.rows[0].style_addon_price_ngn) {
+            costForCogs = String(
+              Number(costForCogs || 0) + Number(spRow.rows[0].style_addon_price_ngn),
+            );
+          }
+        } catch (err) {
+          logger.warn({ err, styled_product_id: line.styled_product_id }, "styled addon lookup skipped");
+        }
+      }
       await stockService.deductForSale({
         client,
         brand,
@@ -890,7 +907,7 @@ async function markPaid({ client, brand, user, _request_id, order }) {
         quantity: line.quantity,
         reference_id: order.order_id,
         sales_channel: order.sales_channel,
-        unit_cost_ngn: line.unit_cost_ngn,
+        unit_cost_ngn: costForCogs,
         user_id: user.user_id,
       });
     }

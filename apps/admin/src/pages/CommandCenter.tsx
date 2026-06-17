@@ -537,36 +537,24 @@ function PushBanner() {
   }
 
   return (
-    <div className="glass rounded-[14px] px-5 py-4 mb-6 flex items-center gap-4 border border-accent/20 animate-[slide-up_0.22s_ease-out]">
-      <div className="w-9 h-9 rounded-xl bg-accent/10 grid place-items-center shrink-0">
-        <Bell className="w-4.5 h-4.5 text-accent" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13.5px] font-semibold text-text-primary">Stay in the loop with push notifications</p>
-        <p className="text-[12px] text-text-muted mt-0.5">
-          Get alerts for approvals, payments, and more — even when the app is closed.
-        </p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={handleDismiss}
-          className="text-[12px] text-text-faint hover:text-text-muted transition-colors px-3 py-1.5 rounded-lg hover:bg-text-primary/[0.05]"
-        >
-          Not now
-        </button>
-        <button
-          onClick={handleEnable}
-          className="h-9 px-4 rounded-xl bg-accent-deep text-[#F4E9D9] text-[12.5px] font-semibold hover:bg-accent transition-colors"
-        >
-          Enable
-        </button>
-      </div>
+    <div className="glass rounded-[14px] px-4 py-3 mb-5 flex items-center gap-2.5 border border-accent/20 animate-[slide-up_0.22s_ease-out]">
+      <Bell className="w-4 h-4 text-accent shrink-0" />
+      <p className="flex-1 min-w-0 text-[12px] text-text-muted truncate">
+        <span className="font-semibold text-text-primary">Enable push notifications</span>
+        <span className="max-md:hidden"> — approvals, payments &amp; more</span>
+      </p>
+      <button
+        onClick={handleEnable}
+        className="no-min-h h-7 px-3 rounded-lg bg-accent-deep text-[#F4E9D9] text-[11px] font-semibold hover:bg-accent transition-colors shrink-0"
+      >
+        Enable
+      </button>
       <button
         onClick={handleDismiss}
         aria-label="Dismiss"
-        className="shrink-0 p-1 rounded-lg text-text-faint hover:text-text-primary transition-colors"
+        className="no-min-h shrink-0 p-1 rounded-md text-text-faint hover:text-text-primary transition-colors"
       >
-        <X className="w-4 h-4" />
+        <X className="w-3.5 h-3.5" />
       </button>
     </div>
   );

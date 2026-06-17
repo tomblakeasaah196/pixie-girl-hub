@@ -20,14 +20,16 @@ const { query } = require("../../config/database");
 // ── Dashboard stats ─────────────────────────────────────────
 
 async function getSecurityStats(business) {
-  // Failed logins in the last 24 hours (from audit_log)
+  // Failed logins in the last 24 hours, grouped by user
   const failedLoginsQ = query(
-    `SELECT COUNT(*)::int AS count
+    `SELECT user_name, user_email, COUNT(*)::int AS count
        FROM shared.audit_log
       WHERE action = 'login'
         AND metadata->>'success' = 'false'
         AND occurred_at >= now() - interval '24 hours'
-        AND business = $1`,
+        AND business = $1
+      GROUP BY user_name, user_email
+      ORDER BY count DESC`,
     [business],
   );
 
@@ -65,6 +67,20 @@ async function getSecurityStats(business) {
         AND (totp_enabled = false OR totp_enabled IS NULL)`,
   );
 
+  // Total active users
+  const totalUsersQ = query(
+    `SELECT COUNT(*)::int AS count
+       FROM shared.users
+      WHERE status = 'active'`,
+  );
+
+  // Active sessions
+  const activeSessionsQ = query(
+    `SELECT COUNT(*)::int AS count
+       FROM shared.user_sessions
+      WHERE expires_at > now()`,
+  );
+
   // Recent security events (last 20)
   const recentEventsQ = query(
     `SELECT log_id, occurred_at, user_id, user_name, user_email,
@@ -90,6 +106,8 @@ async function getSecurityStats(business) {
     locked,
     pendingInvites,
     noMfa,
+    totalUsers,
+    activeSessions,
     recentEvents,
   ] = await Promise.all([
     failedLoginsQ,
@@ -97,16 +115,20 @@ async function getSecurityStats(business) {
     lockedQ,
     pendingInvitesQ,
     noMfaQ,
+    totalUsersQ,
+    activeSessionsQ,
     recentEventsQ,
   ]);
 
   return {
-    failed_logins_24h: failedLogins.rows[0].count,
+    failed_logins_24h: failedLogins.rows,
     inactive_accounts: inactive.rows[0].count,
     locked_accounts: locked.rows[0].count,
     pending_invites: pendingInvites.rows[0].count,
     users_without_mfa: noMfa.rows[0].count,
-    recent_security_events: recentEvents.rows,
+    total_users: totalUsers.rows[0].count,
+    active_sessions: activeSessions.rows[0].count,
+    recent_events: recentEvents.rows,
   };
 }
 

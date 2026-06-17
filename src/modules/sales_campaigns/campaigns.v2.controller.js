@@ -1,0 +1,363 @@
+/**
+ * Sales Campaigns v2 — HTTP controllers for bundles, tiers, cart upsells,
+ * Praxis assist, ambassadors, and VIP grants. Thin glue: req/res → service.
+ */
+
+"use strict";
+
+const bundles = require("./campaigns.bundles.service");
+const praxis = require("./campaigns.praxis.service");
+const vip = require("./campaigns.vip.service");
+const { parsePagination } = require("../../utils/pagination");
+
+// ── Bundles (catalogue-level) ────────────────────────────
+async function listBundles(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  const offset = (page - 1) * page_size;
+  const result = await bundles.listBundles({
+    brand: req.brand,
+    filters: { q: req.query.q, status: req.query.status },
+    limit: page_size,
+    offset,
+  });
+  res.json({ ...result, meta: { ...(result.meta || {}), page, page_size } });
+}
+async function getBundle(req, res) {
+  const data = await bundles.getBundle({ brand: req.brand, id: req.params.id });
+  res.json({ data });
+}
+async function createBundle(req, res) {
+  const data = await bundles.createBundle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    input: req.body,
+  });
+  res.status(201).json({ data });
+}
+async function updateBundle(req, res) {
+  const data = await bundles.updateBundle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+    patch: req.body,
+  });
+  res.json({ data });
+}
+async function archiveBundle(req, res) {
+  await bundles.archiveBundle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+  });
+  res.status(204).end();
+}
+async function addBundleItem(req, res) {
+  const data = await bundles.addBundleItem({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    bundle_id: req.params.id,
+    input: req.body,
+  });
+  res.status(201).json({ data });
+}
+async function removeBundleItem(req, res) {
+  await bundles.removeBundleItem({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    bundle_item_id: req.params.itemId,
+  });
+  res.status(204).end();
+}
+async function reorderBundleItems(req, res) {
+  await bundles.reorderBundleItems({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    bundle_id: req.params.id,
+    ordered_ids: req.body.ordered_ids || [],
+  });
+  res.status(204).end();
+}
+
+// ── Campaign attachments ─────────────────────────────────
+async function listCampaignBundles(req, res) {
+  const data = await bundles.listCampaignBundles({
+    brand: req.brand,
+    campaign_id: req.params.id,
+  });
+  res.json({ data });
+}
+async function attachCampaignBundle(req, res) {
+  const data = await bundles.attachCampaignBundle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    input: req.body,
+  });
+  res.status(201).json({ data });
+}
+async function detachCampaignBundle(req, res) {
+  await bundles.detachCampaignBundle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    link_id: req.params.linkId,
+  });
+  res.status(204).end();
+}
+
+// ── Tiers ────────────────────────────────────────────────
+async function listTiers(req, res) {
+  const data = await bundles.listTiers({
+    brand: req.brand,
+    campaign_id: req.params.id,
+  });
+  res.json({ data });
+}
+async function upsertTier(req, res) {
+  const data = await bundles.upsertTier({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    input: req.body,
+  });
+  res.status(201).json({ data });
+}
+async function deleteTier(req, res) {
+  await bundles.deleteTier({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    tier_id: req.params.tierId,
+  });
+  res.status(204).end();
+}
+
+// ── Upsells ──────────────────────────────────────────────
+async function listUpsells(req, res) {
+  const data = await bundles.listUpsells({
+    brand: req.brand,
+    campaign_id: req.params.id,
+  });
+  res.json({ data });
+}
+async function upsertUpsell(req, res) {
+  const data = await bundles.upsertUpsell({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    input: req.body,
+  });
+  res.status(201).json({ data });
+}
+async function deleteUpsell(req, res) {
+  await bundles.deleteUpsell({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    upsell_id: req.params.upsellId,
+  });
+  res.status(204).end();
+}
+
+// ── Ambassadors ──────────────────────────────────────────
+async function listCampaignAmbassadors(req, res) {
+  const data = await bundles.listCampaignAmbassadors({
+    brand: req.brand,
+    campaign_id: req.params.id,
+  });
+  res.json({ data });
+}
+async function attachAmbassador(req, res) {
+  const data = await bundles.addCampaignAmbassador({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    input: req.body,
+  });
+  res.status(201).json({ data });
+}
+async function detachAmbassador(req, res) {
+  await bundles.removeCampaignAmbassador({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    ambassador_link_id: req.params.linkId,
+  });
+  res.status(204).end();
+}
+async function listAmbassadorContacts(req, res) {
+  const data = await bundles.listAmbassadorContacts({
+    brand: req.brand,
+    q: req.query.q,
+  });
+  res.json({ data });
+}
+async function promoteContact(req, res) {
+  const data = await bundles.promoteContactToAmbassador({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    contact_id: req.params.contactId,
+    profile: req.body || {},
+  });
+  res.json({ data });
+}
+async function demoteContact(req, res) {
+  await bundles.demoteAmbassador({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    contact_id: req.params.contactId,
+  });
+  res.status(204).end();
+}
+
+// ── Praxis assist ────────────────────────────────────────
+async function praxisDraftCopy(req, res) {
+  const data = await praxis.draftCopy({
+    brand: req.brand,
+    user: req.user,
+    campaign_id: req.params.id,
+    brief: req.body,
+  });
+  res.json({ data });
+}
+async function praxisSuggestLayout(req, res) {
+  const data = await praxis.suggestLayout({
+    brand: req.brand,
+    user: req.user,
+    campaign_id: req.params.id,
+    brief: req.body,
+  });
+  res.json({ data });
+}
+async function praxisSuggestPricing(req, res) {
+  const data = await praxis.suggestPricing({
+    brand: req.brand,
+    user: req.user,
+    campaign_id: req.params.id,
+    target_margin_pct: req.body.target_margin_pct,
+    include_charm_rounding: req.body.include_charm_rounding,
+    inputs: req.body.inputs,
+  });
+  res.json({ data });
+}
+async function praxisDryRunPricing(req, res) {
+  const data = await praxis.dryRunPricing({
+    brand: req.brand,
+    user: req.user,
+    campaign_id: req.params.id,
+    question: req.body.question,
+    payload: req.body,
+  });
+  res.json({ data });
+}
+async function praxisAnalyticsQna(req, res) {
+  const data = await praxis.analyticsQna({
+    brand: req.brand,
+    user: req.user,
+    campaign_id: req.params.id,
+    question: req.body.question,
+  });
+  res.json({ data });
+}
+async function praxisDailyBriefing(req, res) {
+  const data = await praxis.dailyBriefing({
+    brand: req.brand,
+    user: req.user,
+    campaign_id: req.params.id,
+  });
+  res.json({ data });
+}
+async function praxisAccept(req, res) {
+  await praxis.recordAcceptance({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    action_key: req.body.action_key,
+    prompt: req.body.prompt,
+    draft: req.body.draft,
+    accepted: req.body.accepted,
+  });
+  res.status(204).end();
+}
+
+// ── VIP grants ───────────────────────────────────────────
+async function listVipGrants(req, res) {
+  const data = await vip.listGrants({
+    brand: req.brand,
+    campaign_id: req.params.id,
+  });
+  res.json({ data });
+}
+async function grantVip(req, res) {
+  const data = await vip.grantTopSpenders({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    top_n: req.body.top_n,
+  });
+  res.json({ data });
+}
+async function updateGiftStatus(req, res) {
+  const data = await vip.updateGiftStatus({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    grant_id: req.params.grantId,
+    gift_status: req.body.gift_status,
+  });
+  res.json({ data });
+}
+
+module.exports = {
+  listBundles,
+  getBundle,
+  createBundle,
+  updateBundle,
+  archiveBundle,
+  addBundleItem,
+  removeBundleItem,
+  reorderBundleItems,
+  listCampaignBundles,
+  attachCampaignBundle,
+  detachCampaignBundle,
+  listTiers,
+  upsertTier,
+  deleteTier,
+  listUpsells,
+  upsertUpsell,
+  deleteUpsell,
+  listCampaignAmbassadors,
+  attachAmbassador,
+  detachAmbassador,
+  listAmbassadorContacts,
+  promoteContact,
+  demoteContact,
+  praxisDraftCopy,
+  praxisSuggestLayout,
+  praxisSuggestPricing,
+  praxisDryRunPricing,
+  praxisAnalyticsQna,
+  praxisDailyBriefing,
+  praxisAccept,
+  listVipGrants,
+  grantVip,
+  updateGiftStatus,
+};

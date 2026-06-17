@@ -24,19 +24,13 @@ const service = require("./smartcomm.service");
 const repo = require("./smartcomm.repo");
 const outbox = require("../../shared/outbox/outbox");
 const webhookRepo = require("../business_setup/webhooks.repo");
-const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const { transaction } = require("../../config/database");
+const brandUrls = require("../../utils/brand-urls");
 
 let registered = false;
 
 // ── G-4: layaway reminder over WhatsApp ──────────────────────────
-
-function payLink(token) {
-  if (!token) return "";
-  const base = config.STOREFRONT_BASE_URL || "";
-  return base ? `${base}/pay/${token}` : `/pay/${token}`;
-}
 
 function registerSalesReminder() {
   salesEvents.on(
@@ -51,7 +45,7 @@ function registerSalesReminder() {
       public_tracking_token,
     }) => {
       if (!contact_id) return;
-      const link = payLink(public_tracking_token);
+      const link = await brandUrls.payLinkUrl(brand, public_tracking_token);
       const body =
         `Hi! You've paid ₦${amount_paid_ngn || 0} of ₦${total_ngn} on order ` +
         `${order_number} (₦${balance_due_ngn} left). Pay any amount${

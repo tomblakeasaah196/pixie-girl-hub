@@ -21,6 +21,7 @@ const ServiceJobsPage = lazy(() => import("@/pages/service-jobs/ServiceJobsPage"
 const FactoryLanguagePage = lazy(() => import("@/pages/FactoryLanguagePage").then((m) => ({ default: m.FactoryLanguagePage })));
 const SmartCommPage = lazy(() => import("@/pages/smartcomm/SmartCommPage").then((m) => ({ default: m.SmartCommPage })));
 const CustomerOnboardingPublic = lazy(() => import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({ default: m.CustomerOnboardingPublic })));
+const OrderCapturePublic = lazy(() => import("@/pages/order-capture/OrderCapturePublic").then((m) => ({ default: m.OrderCapturePublic })));
 const AiControlPage = lazy(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
 const BrandVoicePage = lazy(() => import("@/pages/ai-control/BrandVoicePage").then((m) => ({ default: m.BrandVoicePage })));
 const StockPage = lazy(() => import("@/pages/stock/StockPage").then((m) => ({ default: m.StockPage })));
@@ -85,6 +86,15 @@ export const router = createBrowserRouter(
       element: (
         <Suspense fallback={null}>
           <CustomerOnboardingPublic />
+        </Suspense>
+      ),
+    },
+    // Public Order Capture consumer (the staffer mints, customer opens).
+    {
+      path: "/order/capture/:token",
+      element: (
+        <Suspense fallback={null}>
+          <OrderCapturePublic />
         </Suspense>
       ),
     },

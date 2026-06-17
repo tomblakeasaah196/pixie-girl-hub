@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
+import { GooglePlacesAutocomplete } from "@/components/common/GooglePlacesAutocomplete";
 
 /**
  * Public Customer Onboarding form (the "Online QR" link customers fill).
@@ -38,13 +39,20 @@ export function CustomerOnboardingPublic() {
     delivery_area: "",
     delivery_city: "Lagos",
     delivery_state: "Lagos",
+    delivery_country: "Nigeria",
+    delivery_country_code: "NG",
+    delivery_postal_code: "",
     delivery_landmark: "",
+    delivery_latitude: undefined as number | undefined,
+    delivery_longitude: undefined as number | undefined,
+    delivery_google_maps_url: "",
     billing_same_as_delivery: true,
     billing_line1: "",
     billing_city: "Lagos",
     billing_state: "Lagos",
     notes: "",
   });
+  const [internationalAddress, setInternationalAddress] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,9 +121,13 @@ export function CustomerOnboardingPublic() {
           area: form.delivery_area || undefined,
           city: form.delivery_city || "Lagos",
           state: form.delivery_state || "Lagos",
-          country: "Nigeria",
-          country_code: "NG",
+          country: form.delivery_country || "Nigeria",
+          country_code: form.delivery_country_code || "NG",
+          postal_code: form.delivery_postal_code || undefined,
           landmark: form.delivery_landmark || undefined,
+          latitude: form.delivery_latitude,
+          longitude: form.delivery_longitude,
+          google_maps_url: form.delivery_google_maps_url || undefined,
         },
         billing_same_as_delivery: form.billing_same_as_delivery,
         billing_address: form.billing_same_as_delivery
@@ -302,31 +314,54 @@ export function CustomerOnboardingPublic() {
         </Section>
 
         <Section title="Delivery address">
-          <Field
-            label="Street / house"
+          <GooglePlacesAutocomplete
+            label="Search your address"
             required
-            value={form.delivery_line1}
-            onChange={(v) => setForm({ ...form, delivery_line1: v })}
-            placeholder="e.g. 12 Admiralty Way"
+            countryRestriction={internationalAddress ? null : "ng"}
+            initial={{
+              line1: form.delivery_line1,
+              latitude: form.delivery_latitude,
+              longitude: form.delivery_longitude,
+              formatted_address: [
+                form.delivery_line1,
+                form.delivery_area,
+                form.delivery_city,
+                form.delivery_state,
+              ]
+                .filter(Boolean)
+                .join(", "),
+            }}
+            onChange={(p) =>
+              setForm({
+                ...form,
+                delivery_line1: p.line1,
+                delivery_area: p.area ?? "",
+                delivery_city: p.city,
+                delivery_state: p.state,
+                delivery_country: p.country,
+                delivery_country_code: p.country_code,
+                delivery_postal_code: p.postal_code ?? "",
+                delivery_latitude: p.latitude,
+                delivery_longitude: p.longitude,
+                delivery_google_maps_url: p.google_maps_url ?? "",
+              })
+            }
           />
+          <label className="flex items-center gap-2 text-[12px] text-text-muted">
+            <input
+              type="checkbox"
+              checked={internationalAddress}
+              onChange={(e) => setInternationalAddress(e.target.checked)}
+              className="rounded accent-accent"
+            />
+            Delivering outside Nigeria
+          </label>
           <Field
-            label="Area / neighbourhood"
+            label="Apartment / floor / extra detail (optional)"
             value={form.delivery_area}
             onChange={(v) => setForm({ ...form, delivery_area: v })}
-            placeholder="e.g. Lekki Phase 1"
+            placeholder="e.g. Block C, Flat 5"
           />
-          <Row>
-            <Field
-              label="City"
-              value={form.delivery_city}
-              onChange={(v) => setForm({ ...form, delivery_city: v })}
-            />
-            <Field
-              label="State"
-              value={form.delivery_state}
-              onChange={(v) => setForm({ ...form, delivery_state: v })}
-            />
-          </Row>
           <Field
             label="Landmark (helps the rider find you)"
             value={form.delivery_landmark}

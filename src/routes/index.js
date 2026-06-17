@@ -97,6 +97,10 @@ const {
   publicRouter: onboardingPublicRouter,
 } = require("../modules/customer_onboarding/customer-onboarding.routes");
 
+// Order Capture public verifier (PR 4) — decodes signed JWT, returns
+// prefill payload for the storefront's consumer page.
+const orderCapturePublicRouter = require("../modules/smartcomm/smartcomm.order-capture.public.routes");
+
 // Service Catalogue (revamps, custom styles, repairs etc.)
 const serviceCatalogueRouter = require("../modules/service_catalogue/service-catalogue.routes");
 
@@ -160,6 +164,13 @@ function mountRoutes(app) {
   // Customer Onboarding form — public, token-protected. The token
   // itself is sufficient auth; the per-IP write limiter blunts abuse.
   publicRouter.use("/onboarding", publicWriteLimiter, onboardingPublicRouter);
+  // Order Capture verifier — the storefront consumer page POSTs the JWT
+  // and gets back the prefilled items + contact + address.
+  publicRouter.use(
+    "/order-capture",
+    publicWriteLimiter,
+    orderCapturePublicRouter,
+  );
   publicRouter.use("/pay", publicWriteLimiter, publicPayLinkRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
   // Unauthenticated branding feed — the login page calls this before

@@ -85,7 +85,7 @@ ALTER TABLE shared.contacts
     }'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_shared_contacts_ambassador
-  ON shared.contacts (business, is_ambassador)
+  ON shared.contacts (is_ambassador)
   WHERE is_ambassador = true;
 
 COMMENT ON COLUMN shared.contacts.is_ambassador IS

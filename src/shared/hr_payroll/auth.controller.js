@@ -92,7 +92,12 @@ async function refresh(req, res) {
 
 async function logout(req, res) {
   const token = req.cookies?.refresh_token;
-  await service.logout({ refresh_token: token });
+  await service.logout({
+    refresh_token: token,
+    user_id: req.user?.user_id,
+    ip: req.ip,
+    user_agent: req.headers["user-agent"],
+  });
   res.clearCookie("refresh_token");
   res.status(204).end();
 }

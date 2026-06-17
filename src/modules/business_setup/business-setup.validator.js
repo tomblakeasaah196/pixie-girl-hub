@@ -22,6 +22,8 @@ const configUpdate = z
     address: z.string().max(500).optional(),
     phone: z.string().max(40).optional(),
     email: z.string().email().optional(),
+    support_email: z.string().email().nullable().optional(),
+    support_email_display_name: z.string().max(160).nullable().optional(),
     website: z.string().max(200).optional(),
     tin: z.string().max(40).optional(),
     cac_number: z.string().max(40).optional(),

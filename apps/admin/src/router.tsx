@@ -20,6 +20,7 @@ const PurchasingPage = lazy(() => import("@/pages/purchasing/PurchasingPage").th
 const ServiceJobsPage = lazy(() => import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({ default: m.ServiceJobsPage })));
 const FactoryLanguagePage = lazy(() => import("@/pages/FactoryLanguagePage").then((m) => ({ default: m.FactoryLanguagePage })));
 const SmartCommPage = lazy(() => import("@/pages/smartcomm/SmartCommPage").then((m) => ({ default: m.SmartCommPage })));
+const MessagingAccountsPage = lazy(() => import("@/pages/settings/MessagingAccountsPage").then((m) => ({ default: m.MessagingAccountsPage })));
 const CustomerOnboardingPublic = lazy(() => import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({ default: m.CustomerOnboardingPublic })));
 const OrderCapturePublic = lazy(() => import("@/pages/order-capture/OrderCapturePublic").then((m) => ({ default: m.OrderCapturePublic })));
 const AiControlPage = lazy(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
@@ -185,6 +186,7 @@ export const router = createBrowserRouter(
             // Channel Policy + Quick Replies (PR 3 — Settings).
             { path: "settings/channel-policy", element: <Suspense fallback={null}><ChannelPolicyPage /></Suspense> },
             { path: "settings/quick-replies", element: <Suspense fallback={null}><QuickRepliesPage /></Suspense> },
+            { path: "settings/messaging-accounts", element: <Suspense fallback={null}><MessagingAccountsPage /></Suspense> },
 
             { path: "*", element: <ModulePlaceholder /> },
           ],

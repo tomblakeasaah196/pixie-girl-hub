@@ -575,7 +575,7 @@ export function CommandCenter() {
   const myFeed = useMyAuditFeed();
   const notifs = useRecentNotifications();
 
-  const hh = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const hh = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const dd = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
   // Whether this user has access to dashboard KPIs

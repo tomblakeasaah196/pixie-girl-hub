@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Camera,
   Check,
@@ -7,6 +8,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  LogOut,
   Pencil,
   Shield,
   User,
@@ -330,7 +332,9 @@ export function ProfileDrawer({
   open: boolean;
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
   const patchUser = useAuthStore((s) => s.patchUser);
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [loading, setLoading] = useState(false);
@@ -570,6 +574,19 @@ export function ProfileDrawer({
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-text-faint group-hover:text-text-muted transition-colors" />
+              </button>
+
+              {/* Sign out */}
+              <button
+                onClick={async () => {
+                  onClose();
+                  await signOut();
+                  navigate("/login", { replace: true });
+                }}
+                className="mt-4 w-full flex items-center justify-center gap-2 p-3.5 rounded-xl border border-danger/30 text-danger text-[13px] font-semibold hover:bg-danger/10 transition-all"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign out
               </button>
             </>
           )}

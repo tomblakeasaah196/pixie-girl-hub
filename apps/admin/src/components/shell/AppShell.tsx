@@ -18,6 +18,7 @@ import { NotificationManager } from "@/components/notifications/NotificationMana
 import { NotificationToastContainer } from "@/components/notifications/NotificationToast";
 import { ChatDock } from "@/components/messaging/ChatDock";
 import { IosInstallHint } from "./IosInstallHint";
+import { PwaInstallBanner } from "./PwaInstallBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
 
 /** The authenticated shell (canon §3): sidebar + sticky top bar + content,
@@ -54,6 +55,7 @@ export function AppShell() {
       >
         <TopBar />
         <OfflineIndicator />
+        <PwaInstallBanner />
         <IosInstallHint />
         <BreadcrumbStrip />
         <div className="p-[26px_34px_120px] max-md:p-[20px_16px_96px]">

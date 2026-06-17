@@ -11,7 +11,9 @@ import { api } from "@/lib/api";
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   try {
-    return await navigator.serviceWorker.register("/sw.js");
+    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    reg.update();
+    return reg;
   } catch {
     return null;
   }

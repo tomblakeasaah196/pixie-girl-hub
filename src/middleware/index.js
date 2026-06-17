@@ -25,6 +25,21 @@ function applyGlobalMiddleware(app) {
     /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy,
   );
 
+  // Cloudflare (and some other CDNs/reverse-proxies) set headers that
+  // carry the true client IP regardless of how many hops exist. Override
+  // req.ip early so every downstream consumer (rate limiters, controllers,
+  // audit) sees the real address without per-callsite patching.
+  app.use((req, _res, next) => {
+    const cdnIp = req.headers["cf-connecting-ip"] || req.headers["x-real-ip"];
+    if (cdnIp && typeof cdnIp === "string") {
+      const clean = cdnIp.split(",")[0].trim();
+      if (clean) {
+        Object.defineProperty(req, "ip", { value: clean, writable: true });
+      }
+    }
+    next();
+  });
+
   // Security headers
   app.use(
     helmet({

@@ -128,7 +128,7 @@ async function revokeGrant({ grant_id, reason }) {
 // ── Vendor credentials (keys encrypted; never returned raw) ─
 async function listVendors() {
   const { rows } = await query(
-    `SELECT credential_id, vendor, display_name, endpoint_url, default_model,
+    `SELECT credential_id, vendor, display_name, endpoint_url, default_model, current_model,
             cost_per_1k_input_tokens, cost_per_1k_output_tokens, cost_per_audio_minute,
             cost_native_currency, per_vendor_monthly_cap_ngn, is_active,
             (api_key_enc IS NOT NULL) AS has_api_key, last_rotated_at, created_at, updated_at
@@ -146,23 +146,24 @@ async function getVendorRaw({ client, vendor }) {
 async function upsertVendor({ v }) {
   const { rows } = await query(
     `INSERT INTO shared.ai_vendor_credentials
-       (vendor, display_name, api_key_enc, org_id_enc, endpoint_url, default_model,
+       (vendor, display_name, api_key_enc, org_id_enc, endpoint_url, default_model, current_model,
         cost_per_1k_input_tokens, cost_per_1k_output_tokens, cost_per_audio_minute,
         cost_native_currency, per_vendor_monthly_cap_ngn)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,0),COALESCE($8,0),COALESCE($9,0),$10,$11)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,0),COALESCE($9,0),COALESCE($10,0),$11,$12)
      ON CONFLICT (vendor) DO UPDATE
        SET display_name = EXCLUDED.display_name,
            api_key_enc = COALESCE(EXCLUDED.api_key_enc, shared.ai_vendor_credentials.api_key_enc),
            org_id_enc = COALESCE(EXCLUDED.org_id_enc, shared.ai_vendor_credentials.org_id_enc),
            endpoint_url = EXCLUDED.endpoint_url,
            default_model = EXCLUDED.default_model,
+           current_model = EXCLUDED.current_model,
            cost_per_1k_input_tokens = EXCLUDED.cost_per_1k_input_tokens,
            cost_per_1k_output_tokens = EXCLUDED.cost_per_1k_output_tokens,
            cost_per_audio_minute = EXCLUDED.cost_per_audio_minute,
            cost_native_currency = EXCLUDED.cost_native_currency,
            per_vendor_monthly_cap_ngn = EXCLUDED.per_vendor_monthly_cap_ngn,
            updated_at = now()
-     RETURNING credential_id, vendor, display_name`,
+     RETURNING credential_id, vendor, display_name, current_model`,
     [
       v.vendor,
       v.display_name,
@@ -170,6 +171,7 @@ async function upsertVendor({ v }) {
       v.org_id_enc || null,
       v.endpoint_url || null,
       v.default_model || null,
+      v.current_model || null,
       v.cost_per_1k_input_tokens === undefined
         ? null
         : v.cost_per_1k_input_tokens,

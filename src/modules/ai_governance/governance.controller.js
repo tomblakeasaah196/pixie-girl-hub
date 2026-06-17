@@ -155,6 +155,25 @@ async function toggleAction(req, res) {
   });
 }
 
+async function listModels(req, res) {
+  res.json({
+    data: await service.listModels({
+      vendor: req.query.vendor,
+      capability: req.query.capability,
+      active_only: req.query.include_inactive !== "true",
+    }),
+  });
+}
+async function upsertModel(req, res) {
+  res.status(201).json({
+    data: await service.upsertModel({
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
+    }),
+  });
+}
+
 async function getBrandVoice(req, res) {
   res.json(await service.getBrandVoice({ brand: req.brand }));
 }
@@ -191,4 +210,6 @@ module.exports = {
   toggleAction,
   getBrandVoice,
   upsertBrandVoice,
+  listModels,
+  upsertModel,
 };

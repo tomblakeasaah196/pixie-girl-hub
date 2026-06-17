@@ -26,6 +26,7 @@ const OrderCapturePublic = lazy(() => import("@/pages/order-capture/OrderCapture
 const AiControlPage = lazy(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
 const BrandVoicePage = lazy(() => import("@/pages/ai-control/BrandVoicePage").then((m) => ({ default: m.BrandVoicePage })));
 const StockPage = lazy(() => import("@/pages/stock/StockPage").then((m) => ({ default: m.StockPage })));
+const ModelsAndVendorsPage = lazy(() => import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({ default: m.ModelsAndVendorsPage })));
 const ChannelPolicyPage = lazy(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
 const QuickRepliesPage = lazy(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
 import { AppearancePage } from "@/pages/AppearancePage";
@@ -182,6 +183,7 @@ export const router = createBrowserRouter(
             // AI Control + Brand Voice editor (PR 3).
             { path: "ai-control", element: <Suspense fallback={null}><AiControlPage /></Suspense> },
             { path: "ai-control/brand-voice", element: <Suspense fallback={null}><BrandVoicePage /></Suspense> },
+            { path: "ai-control/vendors", element: <Suspense fallback={null}><ModelsAndVendorsPage /></Suspense> },
 
             // Channel Policy + Quick Replies (PR 3 — Settings).
             { path: "settings/channel-policy", element: <Suspense fallback={null}><ChannelPolicyPage /></Suspense> },

@@ -24,6 +24,8 @@ const CONFIG_COLS = [
   "address",
   "phone",
   "email",
+  "support_email",
+  "support_email_display_name",
   "website",
   "tin",
   "cac_number",

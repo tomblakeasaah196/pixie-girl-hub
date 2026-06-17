@@ -61,6 +61,7 @@ const config: Config = {
         "tile-in": "tile-in .5s cubic-bezier(.16,1,.3,1) backwards",
         "fade-in": "fade-in .3s ease-out",
         shimmer: "shimmer 1.4s infinite",
+        "sheet-slide-up": "sheet-slide-up .3s cubic-bezier(.16,1,.3,1)",
       },
     },
   },

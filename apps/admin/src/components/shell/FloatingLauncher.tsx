@@ -47,7 +47,7 @@ export function FloatingLauncher() {
   return (
     <div
       ref={ref}
-      className="fixed right-6 bottom-6 max-md:bottom-[78px] z-[70] flex flex-col items-center gap-2.5"
+      className="fixed right-6 bottom-6 max-md:bottom-[calc(68px+max(env(safe-area-inset-bottom,0px),8px))] z-[70] flex flex-col items-center gap-2.5"
       onMouseEnter={isDesktop ? () => setOpen(true) : undefined}
       onMouseLeave={isDesktop ? () => setOpen(false) : undefined}
     >

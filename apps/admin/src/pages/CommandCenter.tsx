@@ -47,7 +47,6 @@ import { useGreeting } from "@/hooks/useGreeting";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useAuthStore } from "@/stores/auth";
 import { useActiveBusiness } from "@/stores/business";
-import { cn } from "@/lib/cn";
 import { AppGrid } from "@/components/hub/AppGrid";
 import {
   Card,
@@ -642,18 +641,16 @@ export function CommandCenter() {
             What would you like to{" "}
             <em className="italic text-accent-glow">craft</em> today?
           </h2>
-          <div className="flex items-center gap-2 mt-2 text-text-muted text-[12px]">
+          <div className="flex items-center gap-1.5 mt-1 text-text-muted text-[12px]">
             <span
-              className="w-5 h-5 rounded-[5px] grid place-items-center text-white font-display font-semibold text-[9px] overflow-hidden shrink-0"
+              className="w-[18px] h-[18px] rounded-[5px] grid place-items-center text-white font-display font-semibold text-[8px] overflow-hidden shrink-0"
               style={{ background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})` }}
             >
               {biz.logoUrl ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.monogram}
             </span>
-            <span className="font-semibold">{biz.name}</span>
-            <span className="text-text-faint">·</span>
-            <span className="font-mono tabular-nums">{hh}</span>
-            <span className="text-text-faint">·</span>
-            <span>{dd}</span>
+            <span className="font-semibold text-text-primary">{biz.name}</span>
+            <span className="text-text-faint">&middot;</span>
+            <span className="tabular-nums">{hh}</span>
           </div>
         </div>
       )}
@@ -666,19 +663,22 @@ export function CommandCenter() {
       {/* ── Quick Actions ──────────────────────────────────────────────── */}
       <QuickActions can={can} />
 
-      {/* ── Reordered sections: App grid first on mobile ────────────── */}
+      {/* ── Reordered sections: on mobile App Grid moves above AI ────── */}
       <div className="flex flex-col">
-        <div className={cn(!isDesktop && "order-1")}>
-          <SectionHead title="Your apps" />
-          <AppGrid />
-        </div>
-
-        <div className={cn(!isDesktop && "order-2")}>
+        {/* AI sections — pushed below app grid on mobile */}
+        <div className="max-md:order-2">
           {canSeeDashboard && <InsightsAlertBar summary={insights} />}
           {canSeeDashboard && <BriefingWidget overview={overview} />}
         </div>
 
-        <div className={cn(!isDesktop && "order-3")}>
+        {/* App grid — promoted to first on mobile */}
+        <div className="max-md:order-1">
+          <SectionHead title="Your apps" />
+          <AppGrid />
+        </div>
+
+        {/* Activity + Notifications — last on mobile */}
+        <div className="max-md:order-3">
           <SectionHead
             title="My activity"
             action={

@@ -3,7 +3,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { CommandCenter } from "@/pages/CommandCenter";
-import { SalesPage } from "@/pages/SalesPage";
+
 import { ContactsPage } from "@/pages/contacts/ContactsPage";
 import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
 import { ContactTagsPage } from "@/pages/ContactTagsPage";
@@ -113,7 +113,7 @@ export const router = createBrowserRouter(
           element: <AppShell />,
           children: [
             { index: true, element: <CommandCenter /> },
-            { path: "sales", element: <SalesPage /> },
+            { path: "sales", element: <ModulePlaceholder /> },
             { path: "contacts", element: <ContactsPage /> },
             { path: "contacts/milestones", element: <MilestonesPage /> },
             { path: "crm", element: <CrmPage /> },

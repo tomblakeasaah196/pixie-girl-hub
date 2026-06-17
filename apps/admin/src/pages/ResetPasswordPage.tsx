@@ -29,7 +29,7 @@ export function ResetPasswordPage() {
   const token = params.get("token") ?? "";
   const navigate = useNavigate();
   const { data } = useBranding();
-  const productName = data?.platform?.product_name ?? "Pixie Girl Hub";
+  const productName = data?.platform?.product_name ?? "Pixie Hub";
 
   const [pw, setPw] = useState("");
   const [confirm, setConfirm] = useState("");

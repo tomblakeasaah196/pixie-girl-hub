@@ -48,15 +48,17 @@ export function TopBar() {
             <span className="max-md:hidden">Search Hub…</span>
             <kbd className="ml-auto font-mono text-[10px] border border-line rounded-md px-1.5 py-px max-md:hidden">⌘K</kbd>
           </button>
-          <ClockWidget compact={!isDesktop} />
+          {isDesktop && <ClockWidget compact={!isDesktop} />}
           <NotificationBell />
-          <button
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            className="grid place-items-center w-[38px] h-[38px] rounded-[11px] bg-text-primary/[0.05] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all"
-          >
-            {theme === "dark" ? <Sun className="w-[18px]" /> : <Moon className="w-[18px]" />}
-          </button>
+          {isDesktop && (
+            <button
+              onClick={toggleTheme}
+              aria-label="Toggle theme"
+              className="grid place-items-center w-[38px] h-[38px] rounded-[11px] bg-text-primary/[0.05] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all"
+            >
+              {theme === "dark" ? <Sun className="w-[18px]" /> : <Moon className="w-[18px]" />}
+            </button>
+          )}
           {!isDesktop && user && (
             <button
               aria-label="Account"

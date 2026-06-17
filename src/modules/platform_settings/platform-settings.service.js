@@ -203,11 +203,37 @@ async function getWebManifest() {
         purpose: "maskable",
       },
     );
+  } else {
+    // No pipeline icons — use the static safe-zone-padded SVGs as maskable
+    // fallbacks so Android home-screen icons render correctly.
+    icons.push(
+      {
+        src: "/pwa-icon-192.svg",
+        type: "image/svg+xml",
+        sizes: "192x192",
+        purpose: "maskable",
+      },
+      {
+        src: "/pwa-icon.svg",
+        type: "image/svg+xml",
+        sizes: "512x512",
+        purpose: "maskable",
+      },
+    );
   }
 
   return {
     name,
-    short_name: name.length > 12 ? name.split(" ")[0] : name,
+    short_name:
+      name.length > 12
+        ? (() => {
+            const words = name.split(/\s+/);
+            // Keep first + last word (e.g. "Pixie Girl Hub" → "Pixie Hub")
+            return words.length > 2
+              ? `${words[0]} ${words[words.length - 1]}`
+              : words[0];
+          })()
+        : name,
     description:
       p?.tagline ||
       "One command center for Pixie Girl Global and Faitlyn Hair.",

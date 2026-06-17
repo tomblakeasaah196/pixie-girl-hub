@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pixie Girl Hub">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2a0f15"/>
+      <stop offset="1" stop-color="#0f0809"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="128" y1="96" x2="384" y2="416" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f6d9c9"/>
+      <stop offset="1" stop-color="#e0607a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- Four-point sparkle: the Pixie Hub "craftsmanship" mark -->
+  <!-- Original at 64x64: center 32,32; scaled 6.4x but offset to keep within maskable safe zone (center 80% = 51..461) -->
+  <!-- Sparkle spans ~28px in original (12..40 range), scaled to ~179px, centered at 256,256 -->
+  <path fill="url(#mark)"
+        d="M256 96c11.52 53.76 35.84 78.08 89.6 89.6-53.76 11.52-78.08 35.84-89.6 89.6-11.52-53.76-35.84-78.08-89.6-89.6 53.76-11.52 78.08-35.84 89.6-89.6z"/>
+  <circle cx="384" cy="160" r="16.64" fill="#f6d9c9"/>
+  <circle cx="144" cy="368" r="11.52" fill="#e0607a"/>
+</svg>

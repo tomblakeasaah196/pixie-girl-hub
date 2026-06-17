@@ -77,7 +77,7 @@ export function SelectEntityPage() {
                     <img
                       src={b.logo_path}
                       alt=""
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain p-1.5"
                     />
                   ) : (
                     b.display_name.charAt(0)

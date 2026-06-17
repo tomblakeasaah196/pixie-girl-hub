@@ -166,7 +166,7 @@ async function getPublicBranding() {
  */
 async function getWebManifest() {
   const p = await repo.getPlatformSettings({ client: null });
-  const name = p?.product_name || "Pixie Girl Hub";
+  const name = p?.product_name || "Pixie Hub";
   const themeColour =
     rgbToHex(p?.theme?.dark?.bg) ?? rgbToHex(p?.theme?.light?.bg) ?? "#0f0809";
 

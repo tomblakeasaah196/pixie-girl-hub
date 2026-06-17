@@ -26,6 +26,10 @@ const OrderCapturePublic = lazy(() => import("@/pages/order-capture/OrderCapture
 const AiControlPage = lazy(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
 const BrandVoicePage = lazy(() => import("@/pages/ai-control/BrandVoicePage").then((m) => ({ default: m.BrandVoicePage })));
 const StockPage = lazy(() => import("@/pages/stock/StockPage").then((m) => ({ default: m.StockPage })));
+const SalesCampaignsListPage = lazy(() => import("@/pages/sales-campaigns/SalesCampaignsListPage").then((m) => ({ default: m.SalesCampaignsListPage })));
+const CampaignBuilderPage = lazy(() => import("@/pages/sales-campaigns/CampaignBuilderPage").then((m) => ({ default: m.CampaignBuilderPage })));
+const CampaignDetailPage = lazy(() => import("@/pages/sales-campaigns/CampaignDetailPage").then((m) => ({ default: m.CampaignDetailPage })));
+const CampaignBundlesPage = lazy(() => import("@/pages/sales-campaigns/CampaignBundlesPage").then((m) => ({ default: m.CampaignBundlesPage })));
 const ModelsAndVendorsPage = lazy(() => import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({ default: m.ModelsAndVendorsPage })));
 const ChannelPolicyPage = lazy(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
 const QuickRepliesPage = lazy(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
@@ -125,6 +129,12 @@ export const router = createBrowserRouter(
 
             // Stock & Inventory
             { path: "stock", element: <Suspense fallback={null}><StockPage /></Suspense> },
+
+            // Sales Campaigns & Landing Pages (V2.2 §6.22).
+            { path: "sales-campaigns", element: <Suspense fallback={null}><SalesCampaignsListPage /></Suspense> },
+            { path: "sales-campaigns/bundles", element: <Suspense fallback={null}><CampaignBundlesPage /></Suspense> },
+            { path: "sales-campaigns/:id", element: <Suspense fallback={null}><CampaignDetailPage /></Suspense> },
+            { path: "sales-campaigns/:id/edit", element: <Suspense fallback={null}><CampaignBuilderPage /></Suspense> },
 
             // Service Jobs (Faitlyn hair assignment register)
             { path: "service-jobs", element: <Suspense fallback={null}><ServiceJobsPage /></Suspense> },

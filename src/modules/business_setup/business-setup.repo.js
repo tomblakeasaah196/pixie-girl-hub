@@ -21,6 +21,11 @@ const CONFIG_COLS = [
   "document_prefix",
   "storefront_domain",
   "storefront_enabled",
+  // Sales Campaigns v2 — dynamic sales subdomain + brand voice + viewer policy.
+  "sales_subdomain",
+  "praxis_voice_profile",
+  "show_viewer_count_policy",
+  "viewer_count_floor",
   "address",
   "phone",
   "email",
@@ -54,6 +59,7 @@ const CONFIG_COLS = [
   "is_active",
 ];
 const CONFIG_JSONB = new Set([
+  "praxis_voice_profile",
   "brand_fonts",
   "brand_theme",
   "payment_methods",

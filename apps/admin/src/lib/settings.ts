@@ -28,6 +28,19 @@ export interface BusinessConfig {
   phone: string | null;
   email: string | null;
   website: string | null;
+  // Public identity (Sales Campaigns v2 + storefront).
+  storefront_domain?: string | null;
+  sales_subdomain?: string | null;
+  praxis_voice_profile?: {
+    tone?: string;
+    tagline_pace?: string;
+    banned_words?: string[];
+    no_fabricated_reviews?: boolean;
+    exclamation_policy?: "never" | "rare" | "ok";
+    sample_paragraphs?: string[];
+  } | null;
+  show_viewer_count_policy?: "smart" | "on" | "off" | null;
+  viewer_count_floor?: number | null;
   tin: string | null;
   cac_number: string | null;
   vat_number: string | null;

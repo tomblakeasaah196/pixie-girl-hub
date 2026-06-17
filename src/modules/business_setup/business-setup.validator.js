@@ -19,6 +19,29 @@ const configUpdate = z
     document_prefix: z.string().min(1).max(10).optional(),
     storefront_domain: z.string().max(200).nullable().optional(),
     storefront_enabled: z.boolean().optional(),
+    // Sales Campaigns v2 — dynamic sales subdomain + Praxis voice + viewer policy.
+    sales_subdomain: z
+      .string()
+      .max(200)
+      .regex(
+        /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i,
+        "sales_subdomain must be a valid DNS hostname (e.g. sales.pixiegirlglobal.com)",
+      )
+      .nullable()
+      .optional(),
+    praxis_voice_profile: z
+      .object({
+        tone: z.string().max(60).optional(),
+        tagline_pace: z.string().max(40).optional(),
+        banned_words: z.array(z.string().max(60)).optional(),
+        no_fabricated_reviews: z.boolean().optional(),
+        exclamation_policy: z.enum(["never", "rare", "ok"]).optional(),
+        sample_paragraphs: z.array(z.string().max(2000)).optional(),
+      })
+      .passthrough()
+      .optional(),
+    show_viewer_count_policy: z.enum(["smart", "on", "off"]).optional(),
+    viewer_count_floor: z.coerce.number().int().min(0).max(100000).optional(),
     address: z.string().max(500).optional(),
     phone: z.string().max(40).optional(),
     email: z.string().email().optional(),

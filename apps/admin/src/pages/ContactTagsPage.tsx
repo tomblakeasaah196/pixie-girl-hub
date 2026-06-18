@@ -368,7 +368,7 @@ export function ContactTagsPage() {
   );
 
   return (
-    <div className="max-w-[800px] pb-12">
+    <div className="max-w-[800px] mx-auto pb-12">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>

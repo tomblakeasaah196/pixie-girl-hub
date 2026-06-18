@@ -104,7 +104,7 @@ const SECTIONS: Section[] = [
 
 export function SettingsHome() {
   return (
-    <div className="max-w-[1000px]">
+    <div className="max-w-[1280px] mx-auto">
       <div className="mb-6">
         <h2 className="font-display text-[22px] font-medium">Settings</h2>
         <p className="text-text-muted text-[13px] mt-1">
@@ -116,7 +116,7 @@ export function SettingsHome() {
       {SECTIONS.map((section) => (
         <section key={section.title} className="mb-7">
           <div className="micro mb-3">{section.title}</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {section.tiles.map((t) => (
               <SettingsTile key={t.key} tile={t} />
             ))}

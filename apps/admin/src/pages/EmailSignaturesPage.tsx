@@ -52,7 +52,7 @@ export function EmailSignaturesPage() {
 
   if (query.isLoading) {
     return (
-      <div className="max-w-[1100px]">
+      <div className="max-w-[1100px] mx-auto">
         <Card className="p-5 text-text-muted">Loading signature template…</Card>
       </div>
     );
@@ -60,7 +60,7 @@ export function EmailSignaturesPage() {
 
   if (query.isError) {
     return (
-      <div className="max-w-[1100px]">
+      <div className="max-w-[1100px] mx-auto">
         <Card className="overflow-hidden">
           <ErrorState
             message="We couldn't load the signature template."
@@ -74,7 +74,7 @@ export function EmailSignaturesPage() {
   // "Empty" — no template yet. Offer a starter CTA.
   if (!saved && !dirty) {
     return (
-      <div className="max-w-[1100px]">
+      <div className="max-w-[1100px] mx-auto">
         <Header />
         <Card className="overflow-hidden">
           <EmptyState
@@ -96,7 +96,7 @@ export function EmailSignaturesPage() {
   }
 
   return (
-    <div className="max-w-[1100px] pb-24">
+    <div className="max-w-[1100px] mx-auto pb-24">
       <Header />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

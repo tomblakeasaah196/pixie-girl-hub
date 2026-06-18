@@ -62,7 +62,7 @@ export function IamAccessReviewsPage() {
   const totalPages = Math.ceil(total / (filters.per_page ?? 20));
 
   return (
-    <div className="max-w-[1000px] space-y-5">
+    <div className="max-w-[1000px] mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">

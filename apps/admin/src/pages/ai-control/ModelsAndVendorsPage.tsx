@@ -82,7 +82,7 @@ export function ModelsAndVendorsPage() {
   });
 
   return (
-    <div className="max-w-[1080px] space-y-7">
+    <div className="max-w-[1080px] mx-auto space-y-7">
       <header className="flex items-start gap-3">
         <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
           <KeyRound className="w-5 h-5" />

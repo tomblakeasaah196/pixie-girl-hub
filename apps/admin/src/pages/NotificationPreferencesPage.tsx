@@ -83,7 +83,7 @@ export function NotificationPreferencesPage() {
 
   if (query.isError) {
     return (
-      <div className="max-w-[960px]">
+      <div className="max-w-[960px] mx-auto">
         <Card className="overflow-hidden">
           <ErrorState
             message="We couldn't load your notification preferences."
@@ -95,7 +95,7 @@ export function NotificationPreferencesPage() {
   }
 
   return (
-    <div className="max-w-[960px] space-y-6">
+    <div className="max-w-[960px] mx-auto space-y-6">
       <div>
         <h2 className="font-display text-xl font-medium">Notification preferences</h2>
         <p className="text-[13px] text-text-muted mt-0.5">

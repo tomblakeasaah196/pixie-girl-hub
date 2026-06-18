@@ -51,7 +51,7 @@ export function TaxRatesPage() {
   }, [query.data]);
 
   return (
-    <div className="max-w-[1000px] space-y-7 pb-24">
+    <div className="max-w-[1000px] mx-auto space-y-7 pb-24">
       <header className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 mb-1.5">

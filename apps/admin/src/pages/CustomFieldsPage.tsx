@@ -140,7 +140,7 @@ export function CustomFieldsPage() {
   ];
 
   return (
-    <div className="max-w-[1000px] space-y-4 pb-12">
+    <div className="max-w-[1000px] mx-auto space-y-4 pb-12">
       <div className="flex items-center gap-2.5 flex-wrap">
         <h1 className="font-display text-2xl font-medium">Custom fields</h1>
         <Pill tone="accent" dot={false}>

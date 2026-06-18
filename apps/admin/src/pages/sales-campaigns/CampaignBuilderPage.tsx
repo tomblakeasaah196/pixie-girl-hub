@@ -793,9 +793,9 @@ function PricingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
 
       <Card className="p-5 space-y-4">
         <div>
-          <h2 className="font-display text-[22px] leading-tight">Cart upsell ladder (Temu-style)</h2>
+          <h2 className="font-display text-[22px] leading-tight">Cart upsell ladder</h2>
           <p className="text-text-muted text-[13px] mt-1">
-            One rung per popup. Triggers escalate as the cart grows. Polite, on-brand, dismissible.
+            One polite, dismissible nudge per rung — the offer escalates as the cart grows.
           </p>
         </div>
         <UpsellEditor
@@ -860,18 +860,15 @@ function TierEditor({
         )}
       </div>
       {canEdit && (
-        <div className="grid grid-cols-12 gap-2 items-end">
-          <div className="col-span-2">
-            <Field label="Min qty">
-              <NumberField value={qty} onChange={setQty} allowDecimal={false} />
+        <div className="rounded-[14px] border border-line bg-text-primary/[0.02] p-4 space-y-3">
+          <div className="micro">Add a tier</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Minimum quantity">
+              <NumberField value={qty} onChange={setQty} allowDecimal={false} suffix="items" />
             </Field>
-          </div>
-          <div className="col-span-3">
-            <Field label="₦ off">
+            <Field label="Discount" hint="Fixed ₦ off the cart subtotal">
               <NumberField value={discount} onChange={setDiscount} suffix="NGN" allowDecimal={false} />
             </Field>
-          </div>
-          <div className="col-span-5">
             <Field label="Label (optional)">
               <input
                 value={label}
@@ -881,8 +878,13 @@ function TierEditor({
               />
             </Field>
           </div>
-          <div className="col-span-2">
-            <Button variant="primary" onClick={submit} icon={<Plus className="w-4 h-4" />} className="w-full">
+          <div className="flex justify-end">
+            <Button
+              variant="primary"
+              onClick={submit}
+              icon={<Plus className="w-4 h-4" />}
+              disabled={!qty || !discount}
+            >
               Add tier
             </Button>
           </div>
@@ -931,23 +933,30 @@ function UpsellEditor({
     <div className="space-y-3">
       <div className="space-y-1.5">
         {upsells.length === 0 ? (
-          <div className="text-[13px] text-text-faint italic py-3">No upsell rungs yet.</div>
+          <div className="text-[13px] text-text-faint italic py-3">No upsell rungs yet — add the first below.</div>
         ) : (
           upsells.map((u) => (
             <div
               key={u.upsell_id}
-              className="grid grid-cols-12 items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
+              className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
             >
-              <span className="col-span-1 font-display font-medium text-[14px] text-center tabular-nums">#{u.rung}</span>
-              <div className="col-span-7 min-w-0">
+              <span className="font-display font-medium text-[14px] w-8 text-center tabular-nums shrink-0">#{u.rung}</span>
+              <div className="min-w-0 flex-1">
                 <div className="font-medium text-[13px] truncate">{u.offer_label}</div>
-                <div className="text-text-muted text-[11px] truncate">{u.offer_subline}</div>
+                {u.offer_subline && <div className="text-text-muted text-[11px] truncate">{u.offer_subline}</div>}
               </div>
-              <span className="col-span-3 text-[12px] text-text-faint tabular-nums truncate">
-                Trigger: {u.trigger_type === "cart_qty" ? `≥ ${u.min_cart_qty} items` : u.trigger_type === "cart_value" ? `≥ ${money(Number(u.min_cart_value_ngn))}` : "bundle"}
+              <span className="text-[12px] text-text-faint tabular-nums whitespace-nowrap hidden sm:block">
+                {u.trigger_type === "cart_qty"
+                  ? `≥ ${u.min_cart_qty} items`
+                  : u.trigger_type === "cart_value"
+                    ? `≥ ${money(Number(u.min_cart_value_ngn))}`
+                    : "bundle"}
               </span>
+              {u.reward_value != null && Number(u.reward_value) > 0 && (
+                <span className="text-[12px] text-accent-glow tabular-nums whitespace-nowrap">−{money(Number(u.reward_value))}</span>
+              )}
               {canEdit && (
-                <button onClick={() => onDelete(u.upsell_id)} className="col-span-1 text-text-faint hover:text-danger p-1 ml-auto">
+                <button onClick={() => onDelete(u.upsell_id)} className="text-text-faint hover:text-danger p-1 shrink-0" aria-label="Remove rung">
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
@@ -956,13 +965,12 @@ function UpsellEditor({
         )}
       </div>
       {canEdit && (
-        <div className="grid grid-cols-12 gap-2 items-end">
-          <div className="col-span-1">
+        <div className="rounded-[14px] border border-line bg-text-primary/[0.02] p-4 space-y-3">
+          <div className="micro">Add a rung</div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Field label="Rung">
               <NumberField value={rung} onChange={setRung} allowDecimal={false} />
             </Field>
-          </div>
-          <div className="col-span-3">
             <Field label="Trigger">
               <Select<CartUpsell["trigger_type"]>
                 value={triggerType}
@@ -974,34 +982,41 @@ function UpsellEditor({
                 ]}
               />
             </Field>
-          </div>
-          <div className="col-span-2">
-            <Field label={triggerType === "cart_qty" ? "Min items" : "Min value (₦)"}>
-              {triggerType === "cart_qty" ? (
-                <NumberField value={minQty} onChange={setMinQty} allowDecimal={false} />
-              ) : (
+            <Field label={triggerType === "cart_value" ? "Min value (₦)" : "Min items"}>
+              {triggerType === "cart_value" ? (
                 <NumberField value={minValue} onChange={setMinValue} allowDecimal={false} />
+              ) : (
+                <NumberField value={minQty} onChange={setMinQty} allowDecimal={false} />
               )}
             </Field>
-          </div>
-          <div className="col-span-3">
-            <Field label="Offer label">
-              <input
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="Add 1 more bundle"
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
-              />
-            </Field>
-          </div>
-          <div className="col-span-2">
-            <Field label="Reward ₦">
+            <Field label="Reward ₦ off">
               <NumberField value={rewardValue} onChange={setRewardValue} allowDecimal={false} />
             </Field>
           </div>
-          <div className="col-span-1">
-            <Button variant="primary" onClick={submit} className="w-full">
-              <Plus className="w-4 h-4" />
+          <Field label="Offer headline">
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Add 1 more bundle"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            />
+          </Field>
+          <Field label="Subline (optional)" hint="The smaller line under the headline">
+            <input
+              value={subline}
+              onChange={(e) => setSubline(e.target.value)}
+              placeholder="and save an extra ₦100,000"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            />
+          </Field>
+          <div className="flex justify-end">
+            <Button
+              variant="primary"
+              onClick={submit}
+              icon={<Plus className="w-4 h-4" />}
+              disabled={!label && !rewardValue}
+            >
+              Add rung
             </Button>
           </div>
         </div>

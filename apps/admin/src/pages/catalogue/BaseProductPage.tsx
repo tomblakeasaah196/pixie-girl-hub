@@ -164,7 +164,10 @@ function BaseEditor({
   const savePreorder = () =>
     update.mutate({
       preorder_enabled: preorder,
-      expected_ready_date: readyDate || null,
+      // Normalise to YYYY-MM-DD: the API can return DATE as a full ISO
+      // timestamp, and the server validates expected_ready_date as a plain
+      // date — sending the raw ISO string would 400.
+      expected_ready_date: readyDate ? readyDate.slice(0, 10) : null,
       production_lead_days: leadDays ? Number(leadDays) : null,
     } as Partial<BaseProduct>);
 

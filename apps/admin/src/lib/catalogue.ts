@@ -140,8 +140,29 @@ export interface Collection {
   name: string;
   slug: string;
   description: string | null;
-  collection_type?: string | null;
+  /** 'manual' = explicit members; 'rule' = auto-populated. Matches the DB
+   *  column (was wrongly read as `collection_type` before). */
+  mode: "manual" | "rule";
+  is_visible_storefront: boolean;
   is_active: boolean;
+}
+
+/** A service offering (Service Catalogue) — revamps, installs, repairs.
+ *  Lives in shared.service_offerings, scoped by `business`. */
+export interface ServiceOffering {
+  service_id: string;
+  business: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  base_price_ngn: number | null;
+  duration_minutes: number | null;
+  category: string | null;
+  image_url: string | null;
+  is_active: boolean;
+  sort_order: number;
+  required_stylist_tier: string | null;
+  created_at: string;
 }
 
 export interface VariantCost {
@@ -450,6 +471,50 @@ export function useCreateCollection() {
 }
 
 // ════════════════════════════════════════════════════════════
+// Service Catalogue (revamps, installs, repairs) — /service-catalogue
+// ════════════════════════════════════════════════════════════
+export interface ServiceInput {
+  name: string;
+  slug: string;
+  description?: string | null;
+  base_price_ngn?: number;
+  duration_minutes?: number | null;
+  category?: string | null;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+/** Admin list — includes inactive so they can be toggled back on. */
+export function useServices() {
+  const brand = useBrand();
+  return useQuery<ServiceOffering[]>({
+    queryKey: ["catalogue", "services", brand],
+    queryFn: () =>
+      api.get<ServiceOffering[]>("/service-catalogue?include_inactive=true"),
+  });
+}
+
+export function useCreateService() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: ServiceInput) =>
+      api.post<ServiceOffering>("/service-catalogue", input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
+  });
+}
+
+export function useToggleService() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
+      api.patch<ServiceOffering>(`/service-catalogue/${id}`, { is_active }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
+  });
+}
+
+// ════════════════════════════════════════════════════════════
 // Cost vault (P0-1) — server is the boundary
 // ════════════════════════════════════════════════════════════
 /** Boolean-only access probe so the UI can decide whether to render the
@@ -538,11 +603,32 @@ export function useBundles() {
   });
 }
 
+/** A bundle component points at a base product (or a specific variant) with a
+ *  quantity. The backend requires at least one. */
+export interface BundleComponentInput {
+  product_id?: string;
+  variant_id?: string;
+  quantity?: number;
+  role?: "core" | "free" | "discounted" | "optional";
+}
+
+export interface BundleCreateInput {
+  bundle_code: string;
+  display_name: string;
+  description?: string | null;
+  pricing_model: string;
+  bundle_price_ngn?: number;
+  discount_value?: number;
+  is_visible_storefront?: boolean;
+  components: BundleComponentInput[];
+}
+
 export function useCreateBundle() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (input: Partial<Bundle>) => api.post<Bundle>("/retention/bundles", input),
+    mutationFn: (input: BundleCreateInput) =>
+      api.post<Bundle>("/retention/bundles", input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
   });
 }

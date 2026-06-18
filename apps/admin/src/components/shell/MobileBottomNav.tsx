@@ -9,8 +9,8 @@ import { useNavStore } from "@/stores/nav";
 // Each route prefix maps to up to 4 module keys shown alongside the Hub tab.
 
 const CONTEXT_MAP: [test: (p: string) => boolean, keys: string[]][] = [
-  [(p) => p.startsWith("/contacts"), ["contacts", "crm", "smartcomm", "tasks"]],
-  [(p) => p.startsWith("/crm"), ["crm", "contacts", "calendar", "sales"]],
+  [(p) => p.startsWith("/contacts"), ["contacts", "crm", "smartcomm", "workspace"]],
+  [(p) => p.startsWith("/crm"), ["crm", "contacts", "workspace", "sales"]],
   [
     (p) => p.startsWith("/sales") || p.startsWith("/invoicing"),
     ["sales", "invoicing", "contacts", "crm"],
@@ -27,13 +27,14 @@ const CONTEXT_MAP: [test: (p: string) => boolean, keys: string[]][] = [
   [(p) => p.startsWith("/expenses"), ["expenses", "purchasing", "invoicing", "contacts"]],
   [
     (p) => p.startsWith("/hr") || p.startsWith("/payroll"),
-    ["hr", "tasks", "contacts", "calendar"],
+    ["hr", "workspace", "contacts", "smartcomm"],
   ],
   [(p) => p.startsWith("/praxis"), ["praxis", "contacts", "sales", "stock"]],
   [
     (p) => p.startsWith("/smartcomm") || p.startsWith("/messaging"),
-    ["smartcomm", "contacts", "crm", "tasks"],
+    ["smartcomm", "contacts", "crm", "workspace"],
   ],
+  [(p) => p.startsWith("/workspace"), ["workspace", "contacts", "crm", "smartcomm"]],
   [(p) => p.startsWith("/settings"), ["settings", "contacts", "sales", "stock"]],
 ];
 

@@ -106,6 +106,7 @@ export const MODULE_BY_KEY: Record<string, AppModule> = Object.fromEntries(
 /** The default top-10 (Dashboard is anchored first). */
 export const DEFAULT_TOP = [
   "dashboard",
+  "workspace",
   "sales",
   "crm",
   "pos",
@@ -113,7 +114,6 @@ export const DEFAULT_TOP = [
   "catalogue",
   "invoicing",
   "logistics",
-  "retention",
   "praxis",
 ];
 

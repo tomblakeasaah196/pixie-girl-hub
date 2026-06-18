@@ -337,19 +337,34 @@ export interface BulkImportRow {
   texture_type?: string;
   lace_type?: string;
   hair_length_inches?: number;
+  density?: string;
+  cap_size?: string;
+  primary_colour?: string;
+  hair_origin?: string;
+  short_description?: string;
+  /** Category NAME — resolved to an id (created if new) server-side. */
+  category?: string;
   weight_g?: number;
+  // Always Naira. Cost is only applied for Cost-Vault holders.
+  cost_ngn?: number;
+  wholesale_price_ngn?: number;
 }
+export type ImportStatus = "created" | "updated" | "up_to_date";
 export interface BulkImportCreated {
   row: number;
+  status: ImportStatus;
   product_id: string;
   product_code: string;
   name: string;
   variant_id: string;
-  weight_g: number | null;
+  cost_applied: boolean;
 }
 export interface BulkImportResult {
   count: number;
   created: BulkImportCreated[];
+  counts: Partial<Record<ImportStatus, number>>;
+  cost_permitted: boolean;
+  cost_ignored: boolean;
 }
 export function useBulkImportProducts() {
   const qc = useQueryClient();

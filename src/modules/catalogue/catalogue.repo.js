@@ -137,6 +137,22 @@ async function getCategory({ client, brand, id }) {
   );
   return rows[0] || null;
 }
+// Resolve a category by name (case-insensitive) for the import — the operator
+// types a category name; the service creates it on the fly when missing.
+async function findCategoryByName({ client, brand, name }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "product_categories")} WHERE lower(name) = lower($1) LIMIT 1`,
+    [name],
+  );
+  return rows[0] || null;
+}
+async function categorySlugTaken({ client, brand, slug }) {
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "product_categories")} WHERE slug = $1 LIMIT 1`,
+    [slug],
+  );
+  return rows.length > 0;
+}
 async function createCategory({ client, brand, input }) {
   const { f, ph, p } = insert(CAT_COLS, input);
   const { rows } = await ex(client)(
@@ -217,6 +233,17 @@ async function findProductById({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "products")} WHERE product_id = $1 AND is_deleted = false`,
     [id],
+  );
+  return rows[0] || null;
+}
+// Exact full-name match among LIVE products — drives the import upsert (a
+// re-imported row updates the existing product instead of duplicating it).
+async function findProductByName({ client, brand, name }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "products")}
+      WHERE lower(name) = lower($1) AND is_deleted = false
+      ORDER BY created_at ASC LIMIT 1`,
+    [name],
   );
   return rows[0] || null;
 }
@@ -308,6 +335,17 @@ async function getVariant({ client, brand, product_id, variant_id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "product_variants")} WHERE variant_id = $1 AND product_id = $2`,
     [variant_id, product_id],
+  );
+  return rows[0] || null;
+}
+// The product's default (then first) variant — where the import writes the
+// wholesale price + cost for an existing product.
+async function getDefaultVariant({ client, brand, product_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "product_variants")}
+      WHERE product_id = $1
+      ORDER BY is_default DESC, display_order ASC, created_at ASC LIMIT 1`,
+    [product_id],
   );
   return rows[0] || null;
 }
@@ -744,6 +782,7 @@ module.exports = {
   archiveCategory,
   findAllProducts,
   findProductById,
+  findProductByName,
   productSlugTaken,
   productCodeTaken,
   createProduct,
@@ -754,7 +793,10 @@ module.exports = {
   restoreProduct,
   listVariants,
   getVariant,
+  getDefaultVariant,
   createVariant,
   updateVariant,
   deactivateVariant,
+  findCategoryByName,
+  categorySlugTaken,
 };

@@ -14,8 +14,10 @@ import { cn } from "@/lib/cn";
 import { Button, IconButton, Pill } from "@/components/ui/primitives";
 import {
   useBulkImportProducts,
+  useVaultAccess,
   type BulkImportRow,
   type BulkImportResult,
+  type ImportStatus,
 } from "@/lib/catalogue";
 
 /**
@@ -37,7 +39,15 @@ const TEMPLATE_HEADERS = [
   "Texture",
   "Lace",
   "Length (inches)",
+  "Density",
+  "Cap Size",
+  "Colour",
+  "Origin",
+  "Short Description",
+  "Category",
   "Weight (grams)",
+  "Cost (NGN)",
+  "Wholesale Price (NGN)",
 ];
 
 type ParsedRow = {
@@ -45,11 +55,28 @@ type ParsedRow = {
   texture?: string;
   lace?: string;
   length?: number;
+  density?: string;
+  cap_size?: string;
+  colour?: string;
+  origin?: string;
+  short_description?: string;
+  category?: string;
   weight?: number;
+  cost?: number;
+  price?: number;
   error: string | null;
 };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Parse a money cell (Naira) — strips ₦, commas, spaces. */
+function parseMoney(s: string): { value?: number; bad: boolean } {
+  if (!s) return { value: undefined, bad: false };
+  const cleaned = s.replace(/[^0-9.]/g, "");
+  const n = Number(cleaned);
+  if (!cleaned || !Number.isFinite(n) || n < 0) return { value: undefined, bad: true };
+  return { value: n, bad: false };
+}
 
 /** Read a value from a parsed row by any of the accepted header spellings. */
 function pick(row: Record<string, unknown>, keys: string[]): string {
@@ -86,8 +113,18 @@ async function parseSheet(file: File): Promise<ParsedRow[]> {
       const texture = pick(raw, ["texture", "texturetype"]);
       const lace = pick(raw, ["lace", "lacetype"]);
       const len = parseNum(pick(raw, ["lengthinches", "length", "inches"]));
+      const density = pick(raw, ["density"]);
+      const cap = pick(raw, ["capsize", "cap"]);
+      const colour = pick(raw, ["colour", "color", "primarycolour", "primarycolor"]);
+      const origin = pick(raw, ["origin", "hairorigin"]);
+      const desc = pick(raw, ["shortdescription", "description", "desc"]);
+      const category = pick(raw, ["category", "categoryname"]);
       const wt = parseNum(
         pick(raw, ["weightgrams", "weight", "weightg", "grams"]),
+      );
+      const cost = parseMoney(pick(raw, ["costngn", "cost", "costnaira"]));
+      const price = parseMoney(
+        pick(raw, ["wholesalepricengn", "wholesaleprice", "wholesale", "pricengn", "price"]),
       );
       let error: string | null = null;
       if (!name) error = "Missing name";
@@ -95,33 +132,38 @@ async function parseSheet(file: File): Promise<ParsedRow[]> {
       else if (len.value != null && (len.value < 0 || len.value > 60))
         error = "Length must be 0–60 inches";
       else if (wt.bad) error = "Weight must be a number";
+      else if (cost.bad) error = "Cost must be a number";
+      else if (price.bad) error = "Price must be a number";
       return {
         name,
         texture: texture || undefined,
         lace: lace || undefined,
         length: len.value,
+        density: density || undefined,
+        cap_size: cap || undefined,
+        colour: colour || undefined,
+        origin: origin || undefined,
+        short_description: desc || undefined,
+        category: category || undefined,
         weight: wt.value,
+        cost: cost.value,
+        price: price.value,
         error,
       };
     })
-    .filter(
-      (r) =>
-        r.name ||
-        r.texture ||
-        r.lace ||
-        r.length != null ||
-        r.weight != null,
-    );
+    .filter((r) => r.name || r.texture || r.lace || r.length != null);
 }
 
 function downloadTemplate() {
   // A blank, header-only CSV plus two example rows so the sheet stays clean
   // (no stray columns) — fill in and re-upload. Product code is intentionally
   // absent: the system generates it.
+  // Cost is only applied for Cost-Vault holders; non-owners can leave Cost (and
+  // Price) blank to import "raw". All money is Naira.
   const csv = [
     TEMPLATE_HEADERS.join(","),
-    "Loose Deep Wave,Natural,HD Lace,18,220",
-    "Body Wave,Natural,Transparent Lace,20,250",
+    "Loose Deep Wave,Natural,HD Lace,18,150%,Medium,1B Natural Black,Human,Soft loose deep wave,Wigs,220,45000,120000",
+    "Body Wave,Natural,Transparent Lace,20,180%,Medium,1B Natural Black,Human,,Wigs,250,,",
   ].join("\r\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -142,6 +184,8 @@ export function BulkImportModal({
   onClose: () => void;
 }) {
   const imp = useBulkImportProducts();
+  const vault = useVaultAccess();
+  const canCost = !!vault.data?.can_see;
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<ParsedRow[] | null>(null);
@@ -211,7 +255,15 @@ export function BulkImportModal({
       texture_type: r.texture,
       lace_type: r.lace,
       hair_length_inches: r.length,
+      density: r.density,
+      cap_size: r.cap_size,
+      primary_colour: r.colour,
+      hair_origin: r.origin,
+      short_description: r.short_description,
+      category: r.category,
       weight_g: r.weight,
+      cost_ngn: r.cost,
+      wholesale_price_ngn: r.price,
     }));
     imp.mutate(payload, { onSuccess: (res) => setResult(res) });
   };
@@ -256,13 +308,19 @@ export function BulkImportModal({
           {result ? (
             <ResultView result={result} />
           ) : rows ? (
-            <PreviewView rows={rows} invalidCount={invalidCount} validCount={valid.length} />
+            <PreviewView
+              rows={rows}
+              invalidCount={invalidCount}
+              validCount={valid.length}
+              canCost={canCost}
+            />
           ) : (
             <ChooseView
               parsing={parsing}
               parseError={parseError}
               fileName={fileName}
               dragOver={dragOver}
+              canCost={canCost}
               onPick={() => fileRef.current?.click()}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -358,6 +416,7 @@ function ChooseView({
   parseError,
   fileName,
   dragOver,
+  canCost,
   onPick,
   onDragOver,
   onDragLeave,
@@ -367,6 +426,7 @@ function ChooseView({
   parseError: string | null;
   fileName: string;
   dragOver: boolean;
+  canCost: boolean;
   onPick: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -424,8 +484,21 @@ function ChooseView({
         <p className="mt-3 text-[11.5px] text-text-faint leading-relaxed">
           Product codes are generated automatically from Document Numbering
           (e.g. <span className="font-mono text-text-muted">FLH001N</span>) — you
-          never type them. Weight is used for shipping. Headers are matched
-          loosely, so minor spelling differences are fine.
+          never type them. Money is always in Naira. Headers are matched loosely,
+          so minor spelling differences are fine. A row whose{" "}
+          <span className="text-text-muted">Name</span> already exists is{" "}
+          <span className="text-text-muted">updated</span>, not duplicated — so
+          re-upload with prices filled in to price everything at once.
+        </p>
+        <p
+          className={cn(
+            "mt-2 text-[11.5px] leading-relaxed",
+            canCost ? "text-text-faint" : "text-warn",
+          )}
+        >
+          {canCost
+            ? "You hold Cost-Vault access, so the Cost column will be saved (encrypted)."
+            : "You don't have Cost-Vault access — the Cost column is ignored. Wholesale Price still imports."}
         </p>
       </div>
     </div>
@@ -438,12 +511,15 @@ function PreviewView({
   rows,
   invalidCount,
   validCount,
+  canCost,
 }: {
   rows: ParsedRow[];
   invalidCount: number;
   validCount: number;
+  canCost: boolean;
 }) {
   const shown = rows.slice(0, PREVIEW_CAP);
+  const ngn = (n?: number) => (n != null ? `₦${n.toLocaleString()}` : "—");
   return (
     <div>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -467,10 +543,9 @@ function PreviewView({
               <tr className="bg-surface/95 backdrop-blur text-text-faint">
                 <th className="text-left font-semibold px-3 py-2 w-9">#</th>
                 <th className="text-left font-semibold px-3 py-2">Name</th>
-                <th className="text-left font-semibold px-3 py-2">Texture</th>
-                <th className="text-left font-semibold px-3 py-2">Lace</th>
                 <th className="text-right font-semibold px-3 py-2">Length</th>
-                <th className="text-right font-semibold px-3 py-2">Weight</th>
+                <th className="text-right font-semibold px-3 py-2">Cost</th>
+                <th className="text-right font-semibold px-3 py-2">Price</th>
                 <th className="text-left font-semibold px-3 py-2">Status</th>
               </tr>
             </thead>
@@ -486,16 +561,24 @@ function PreviewView({
                   <td className="px-3 py-2 text-text-faint tabular-nums">
                     {i + 1}
                   </td>
-                  <td className="px-3 py-2 text-text-primary max-w-[220px] truncate">
+                  <td className="px-3 py-2 text-text-primary max-w-[260px] truncate">
                     {r.name || <span className="text-text-faint">—</span>}
                   </td>
-                  <td className="px-3 py-2 text-text-muted">{r.texture || "—"}</td>
-                  <td className="px-3 py-2 text-text-muted">{r.lace || "—"}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-text-muted">
                     {r.length != null ? `${r.length}"` : "—"}
                   </td>
+                  <td
+                    className={cn(
+                      "px-3 py-2 text-right tabular-nums",
+                      r.cost != null && !canCost
+                        ? "text-text-faint line-through"
+                        : "text-text-muted",
+                    )}
+                  >
+                    {ngn(r.cost)}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums text-text-muted">
-                    {r.weight != null ? `${r.weight} g` : "—"}
+                    {ngn(r.price)}
                   </td>
                   <td className="px-3 py-2">
                     {r.error ? (
@@ -532,43 +615,77 @@ function PreviewView({
 }
 
 /* ── Result ─────────────────────────────────────────────── */
+const STATUS_META: Record<ImportStatus, { label: string; tone: "success" | "info" | "neutral" }> = {
+  created: { label: "New", tone: "success" },
+  updated: { label: "Updated", tone: "info" },
+  up_to_date: { label: "Up to date", tone: "neutral" },
+};
+
 function ResultView({ result }: { result: BulkImportResult }) {
   const shown = result.created.slice(0, PREVIEW_CAP);
+  const c = result.counts || {};
+  const parts = [
+    c.created ? `${c.created} new` : null,
+    c.updated ? `${c.updated} updated` : null,
+    c.up_to_date ? `${c.up_to_date} already up to date` : null,
+  ].filter(Boolean);
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4 p-3 rounded-[12px] bg-success/[0.08] border border-success/30">
+      <div className="flex items-center gap-3 mb-3 p-3 rounded-[12px] bg-success/[0.08] border border-success/30">
         <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
         <div className="text-[13px] text-text-primary">
-          <span className="font-semibold">{result.count}</span> product
-          {result.count === 1 ? "" : "s"} imported. Each has a stock-bearing
-          default variant ready for pricing and stock.
+          <span className="font-semibold">{result.count}</span> row
+          {result.count === 1 ? "" : "s"} processed
+          {parts.length ? ` — ${parts.join(" · ")}.` : "."}{" "}
+          Existing products were updated in place, not duplicated.
         </div>
       </div>
 
+      {result.cost_ignored && (
+        <p className="mb-3 text-[11.5px] text-warn flex items-center gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5" />
+          The Cost column was ignored (no Cost-Vault access). Wholesale prices
+          were still saved.
+        </p>
+      )}
+
       <div className="rounded-[12px] border hairline overflow-hidden">
-        <div className="max-h-[46vh] overflow-auto">
+        <div className="max-h-[44vh] overflow-auto">
           <table className="w-full text-[12px] border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-surface/95 backdrop-blur text-text-faint">
                 <th className="text-left font-semibold px-3 py-2">Code</th>
                 <th className="text-left font-semibold px-3 py-2">Name</th>
-                <th className="text-right font-semibold px-3 py-2">Weight</th>
+                <th className="text-left font-semibold px-3 py-2">Result</th>
+                <th className="text-center font-semibold px-3 py-2">Cost</th>
               </tr>
             </thead>
             <tbody>
-              {shown.map((c) => (
-                <tr key={c.product_id} className="border-t hairline">
-                  <td className="px-3 py-2 font-mono text-[11px] text-accent-glow">
-                    {c.product_code}
-                  </td>
-                  <td className="px-3 py-2 text-text-primary max-w-[320px] truncate">
-                    {c.name}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-text-muted">
-                    {c.weight_g != null ? `${c.weight_g} g` : "—"}
-                  </td>
-                </tr>
-              ))}
+              {shown.map((r) => {
+                const meta = STATUS_META[r.status] ?? STATUS_META.updated;
+                return (
+                  <tr key={`${r.product_id}-${r.row}`} className="border-t hairline">
+                    <td className="px-3 py-2 font-mono text-[11px] text-accent-glow">
+                      {r.product_code}
+                    </td>
+                    <td className="px-3 py-2 text-text-primary max-w-[300px] truncate">
+                      {r.name}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Pill tone={meta.tone} dot={false}>
+                        {meta.label}
+                      </Pill>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {r.cost_applied ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-success inline" />
+                      ) : (
+                        <span className="text-text-faint">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

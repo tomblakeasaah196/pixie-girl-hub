@@ -80,7 +80,7 @@ export function IamMfaPage() {
   if (status.isError) return <ErrorState message="Failed to load MFA status" onRetry={() => status.refetch()} />;
 
   return (
-    <div className="max-w-[600px] space-y-6">
+    <div className="max-w-[600px] mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">

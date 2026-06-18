@@ -9,8 +9,8 @@ import { useNavStore } from "@/stores/nav";
 // Each route prefix maps to up to 4 module keys shown alongside the Hub tab.
 
 const CONTEXT_MAP: [test: (p: string) => boolean, keys: string[]][] = [
-  [(p) => p.startsWith("/contacts"), ["contacts", "crm", "smartcomm", "tasks"]],
-  [(p) => p.startsWith("/crm"), ["crm", "contacts", "calendar", "sales"]],
+  [(p) => p.startsWith("/contacts"), ["contacts", "crm", "smartcomm", "workspace"]],
+  [(p) => p.startsWith("/crm"), ["crm", "contacts", "workspace", "sales"]],
   [
     (p) => p.startsWith("/sales") || p.startsWith("/invoicing"),
     ["sales", "invoicing", "contacts", "crm"],
@@ -27,13 +27,14 @@ const CONTEXT_MAP: [test: (p: string) => boolean, keys: string[]][] = [
   [(p) => p.startsWith("/expenses"), ["expenses", "purchasing", "invoicing", "contacts"]],
   [
     (p) => p.startsWith("/hr") || p.startsWith("/payroll"),
-    ["hr", "tasks", "contacts", "calendar"],
+    ["hr", "workspace", "contacts", "smartcomm"],
   ],
   [(p) => p.startsWith("/praxis"), ["praxis", "contacts", "sales", "stock"]],
   [
     (p) => p.startsWith("/smartcomm") || p.startsWith("/messaging"),
-    ["smartcomm", "contacts", "crm", "tasks"],
+    ["smartcomm", "contacts", "crm", "workspace"],
   ],
+  [(p) => p.startsWith("/workspace"), ["workspace", "contacts", "crm", "smartcomm"]],
   [(p) => p.startsWith("/settings"), ["settings", "contacts", "sales", "stock"]],
 ];
 
@@ -195,7 +196,7 @@ export function MobileBottomNav() {
     <>
       <PinToast message={toast?.msg ?? ""} visible={!!toast} />
       <nav
-        className="hidden max-md:flex fixed bottom-0 inset-x-0 z-[60] glass border-t pb-[max(8px,env(safe-area-inset-bottom,0px))]"
+        className="flex lg:hidden fixed bottom-0 inset-x-0 z-[60] glass border-t pb-[max(8px,env(safe-area-inset-bottom,0px))]"
         aria-label="Bottom navigation"
       >
         <div className="grid grid-cols-5 w-full">

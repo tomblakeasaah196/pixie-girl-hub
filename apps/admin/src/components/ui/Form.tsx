@@ -13,6 +13,34 @@ export function FormSection({ title, children }: { title?: string; children: Rea
   );
 }
 
+/**
+ * Responsive field grid. Single column on phones (base `grid-cols-1`), then
+ * 2 (or 3) columns from `md:` up — so wide modals/pages lay fields out side by
+ * side on desktop while phones are completely unchanged. Use this instead of a
+ * bare `grid grid-cols-2` so fields don't stay cramped two-up on small screens.
+ */
+export function FormGrid({
+  cols = 2,
+  className,
+  children,
+}: {
+  cols?: 2 | 3;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid gap-4 grid-cols-1",
+        cols === 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function Field({
   label,
   hint,

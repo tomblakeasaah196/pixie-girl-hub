@@ -91,7 +91,17 @@ const bulkImportRow = z
     texture_type: emptyToUndef(z.string().max(40)),
     lace_type: emptyToUndef(z.string().max(40)),
     hair_length_inches: emptyToUndef(z.coerce.number().int().min(0).max(60)),
+    density: emptyToUndef(z.string().max(20)),
+    cap_size: emptyToUndef(z.string().max(40)),
+    primary_colour: emptyToUndef(z.string().max(60)),
+    hair_origin: emptyToUndef(z.string().max(40)),
+    short_description: emptyToUndef(z.string().max(500)),
+    // Category NAME — the service resolves it to an id, creating it if new.
+    category: emptyToUndef(z.string().max(160)),
     weight_g: emptyToUndef(z.coerce.number().int().min(0).max(1000000)),
+    // Money — always Naira. cost is only applied for Cost-Vault holders.
+    cost_ngn: emptyToUndef(z.coerce.number().min(0).max(1000000000000)),
+    wholesale_price_ngn: emptyToUndef(z.coerce.number().min(0).max(1000000000000)),
   })
   .strict();
 

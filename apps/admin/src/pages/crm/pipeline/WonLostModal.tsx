@@ -37,7 +37,7 @@ export function WonLostModal({ deal, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-sm glass rounded-[22px] p-5 shadow-glass">
+      <div className="w-full max-w-sm lg:max-w-md glass rounded-[22px] p-5 shadow-glass">
         <div className="text-[14px] font-semibold text-text-primary mb-0.5">Update deal status</div>
         <div className="text-[12px] text-text-faint mb-4 truncate">{deal.title}</div>
 

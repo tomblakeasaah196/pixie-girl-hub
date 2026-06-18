@@ -9,6 +9,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
+import { PageActions } from "@/components/shell/PageActions";
 import { usePipelines, usePipelineDeals, usePipelineStages } from "../hooks";
 import { KanbanView } from "./KanbanView";
 import { TableView } from "./TableView";
@@ -130,14 +131,16 @@ export function PipelineTab() {
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
 
-        <Button
-          variant="primary"
-          size="sm"
-          icon={<Plus className="w-3.5 h-3.5" />}
-          onClick={() => setNewDealContact({ id: "", name: "New Contact" })}
-        >
-          New deal
-        </Button>
+        <PageActions>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => setNewDealContact({ id: "", name: "New Contact" })}
+          >
+            New deal
+          </Button>
+        </PageActions>
       </div>
 
       {/* Deal count */}

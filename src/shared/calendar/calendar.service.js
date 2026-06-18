@@ -14,7 +14,7 @@ const repo = require("./calendar.repo");
 const events = require("./calendar.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { NotFoundError } = require("../../utils/errors");
+const { NotFoundError, AppError } = require("../../utils/errors");
 
 const A = (
   brand,
@@ -67,6 +67,27 @@ async function getEvent({ brand, id }) {
 }
 async function createEvent({ brand, user, request_id, input }) {
   return transaction(async (client) => {
+    // Clash detection: check for overlapping events at the same location
+    if (input.location && !input.force) {
+      const clashes = await repo.findClashes({
+        client,
+        brand,
+        location: input.location,
+        start_at: input.start_at,
+        end_at: input.end_at,
+      });
+      if (clashes.length > 0) {
+        throw new AppError(
+          "CLASH_DETECTED",
+          `${clashes.length} overlapping event(s) at this location`,
+          409,
+          {
+            user_message: `There are ${clashes.length} event(s) already scheduled at "${input.location}" during this time. Set force=true to override.`,
+            metadata: { clashes },
+          },
+        );
+      }
+    }
     const event = await repo.createEvent({
       client,
       e: { ...input, business: brand, created_by: user.user_id },

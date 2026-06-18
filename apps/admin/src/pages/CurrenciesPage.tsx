@@ -26,7 +26,7 @@ export function CurrenciesPage() {
   const active = useActiveBusiness();
 
   return (
-    <div className="max-w-[920px] space-y-9 pb-24">
+    <div className="max-w-[920px] mx-auto space-y-9 pb-24">
       <header>
         <div className="flex items-center gap-2.5 mb-1.5">
           <h1 className="font-display text-[22px] font-medium">Currencies &amp; FX</h1>

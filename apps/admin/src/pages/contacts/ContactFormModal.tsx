@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
+import { Select } from "@/components/ui/controls";
 import { useCreateContact, useUpdateContact } from "./hooks";
 import type { Contact, ContactType, PriorityLevel, ContactSource, ContactCreateInput } from "./types";
 
@@ -176,6 +177,45 @@ function TypeChips({
   );
 }
 
+// ── Themed-select option sets ──────────────────────────────────────────────
+
+const GENDER_OPTS = [
+  { value: "", label: "— select —" },
+  { value: "F", label: "Female" },
+  { value: "M", label: "Male" },
+  { value: "other", label: "Non-binary / Other" },
+  { value: "prefer_not", label: "Prefer not to say" },
+];
+const COUNTRY_OPTS = DIAL_CODES.filter((d) => d.code !== "OTHER").map((d) => ({
+  value: d.code,
+  label: `${d.flag} ${d.label}`,
+}));
+const PRIORITY_OPTS: { value: PriorityLevel; label: string }[] = [
+  { value: "new", label: "New" },
+  { value: "regular", label: "Regular" },
+  { value: "vip", label: "VIP" },
+];
+const SOURCE_OPTS: { value: ContactSource | ""; label: string }[] = [
+  { value: "", label: "— select —" },
+  { value: "walk_in", label: "Walk-in" },
+  { value: "instagram_dm", label: "Instagram DM" },
+  { value: "social_media", label: "Social Media" },
+  { value: "referral", label: "Referral" },
+  { value: "website", label: "Website" },
+  { value: "storefront", label: "Storefront" },
+  { value: "event", label: "Event" },
+];
+const MONTH_OPTS = [
+  { value: "", label: "Month" },
+  ...["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map(
+    (m, i) => ({ value: String(i + 1).padStart(2, "0"), label: m }),
+  ),
+];
+const DAY_OPTS = [
+  { value: "", label: "Day" },
+  ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1).padStart(2, "0"), label: String(i + 1) })),
+];
+
 // ── Main form ────────────────────────────────────────────────────────────
 
 interface Props {
@@ -310,6 +350,7 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
     <Modal
       open
       onClose={onClose}
+      size="xl"
       title={isEdit ? `Edit · ${contact.display_name}` : "New Contact"}
       footer={
         <>
@@ -334,236 +375,188 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
           </div>
         )}
 
-        {/* Type */}
+        {/* Type — full width above the two columns */}
         <FormSection>
           <TypeChips value={types} onChange={setTypes} />
         </FormSection>
 
-        {/* Identity */}
-        <FormSection title="Identity">
-          <Field label="Display name *">
-            <TextInput
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. Amara Okafor or Pixie Hair Ltd"
-              required
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="First name">
-              <TextInput
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="Amara"
-              />
-            </Field>
-            <Field label="Last name">
-              <TextInput
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="Okafor"
-              />
-            </Field>
-          </div>
-          {(types.includes("supplier") || types.includes("retail_partner")) && (
-            <Field label="Company / Organisation">
-              <TextInput
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                placeholder="e.g. Faitlyn Hair Nigeria Ltd"
-              />
-            </Field>
-          )}
-        </FormSection>
-
-        {/* Contact */}
-        <FormSection title="Contact Details">
-          <PhoneField
-            label="Primary phone *"
-            value={phone}
-            onChange={setPhone}
-            placeholder="8020868273"
-          />
-          <PhoneField
-            label="WhatsApp number"
-            value={whatsapp}
-            onChange={setWhatsapp}
-            placeholder="Same as phone if same"
-          />
-          <Field label="Email">
-            <TextInput
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="amara@example.com"
-            />
-          </Field>
-          <SocialHandleField
-            label="Instagram"
-            value={instagram}
-            onChange={setInstagram}
-            placeholder="amara.style"
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <SocialHandleField
-              label="TikTok"
-              value={tiktok}
-              onChange={setTiktok}
-              placeholder="amara.style"
-            />
-            <SocialHandleField
-              label="Facebook"
-              value={facebook}
-              onChange={setFacebook}
-              placeholder="amara.style"
-            />
-          </div>
-        </FormSection>
-
-        {/* Personal */}
-        <FormSection title="Personal">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Gender">
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                <option value="">— select —</option>
-                <option value="F">Female</option>
-                <option value="M">Male</option>
-                <option value="other">Non-binary / Other</option>
-                <option value="prefer_not">Prefer not to say</option>
-              </select>
-            </Field>
-            <Field label="Country">
-              <select
-                value={countryCode}
-                onChange={(e) => setCountryCode(e.target.value)}
-                className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                {DIAL_CODES.filter((d) => d.code !== "OTHER").map((d) => (
-                  <option key={d.code} value={d.code}>
-                    {d.flag} {d.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          {/* Birthday: month + day (year optional) */}
-          <Field label="Birthday (month & day)" hint="Used for birthday reminders. Year is optional.">
-            <div className="flex gap-2 items-center">
-              <select
-                value={birthMonth}
-                onChange={(e) => setBirthMonth(e.target.value)}
-                className="flex-1 h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                <option value="">Month</option>
-                {[
-                  "January", "February", "March", "April", "May", "June",
-                  "July", "August", "September", "October", "November", "December",
-                ].map((m, i) => (
-                  <option key={m} value={String(i + 1).padStart(2, "0")}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={birthDay}
-                onChange={(e) => setBirthDay(e.target.value)}
-                className="flex-1 h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                <option value="">Day</option>
-                {Array.from({ length: 31 }, (_, i) => (
-                  <option key={i + 1} value={String(i + 1).padStart(2, "0")}>
-                    {i + 1}
-                  </option>
-                ))}
-              </select>
-              <TextInput
-                type="number"
-                placeholder="Year"
-                value={birthYear}
-                onChange={(e) => setBirthYear(e.target.value)}
-                min={1900}
-                max={new Date().getFullYear()}
-                style={{ width: 90 }}
-                className="flex-shrink-0"
-              />
-            </div>
-          </Field>
-        </FormSection>
-
-        {/* Classification */}
-        <FormSection title="Classification">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Priority">
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as PriorityLevel)}
-                className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                <option value="new">New</option>
-                <option value="regular">Regular</option>
-                <option value="vip">VIP</option>
-              </select>
-            </Field>
-            <Field label="Source">
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value as ContactSource | "")}
-                className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                <option value="">— select —</option>
-                <option value="walk_in">Walk-in</option>
-                <option value="instagram_dm">Instagram DM</option>
-                <option value="social_media">Social Media</option>
-                <option value="referral">Referral</option>
-                <option value="website">Website</option>
-                <option value="storefront">Storefront</option>
-                <option value="event">Event</option>
-              </select>
-            </Field>
-          </div>
-        </FormSection>
-
-        {/* Business identifiers (for suppliers/retail) */}
-        {(types.includes("supplier") ||
-          types.includes("retail_partner") ||
-          types.includes("staff")) && (
-          <FormSection title="Business Identifiers">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="TIN">
+        {/* On desktop the sections flow into two columns; on phone they stack
+            in the original order (single column) — mobile is unchanged. */}
+        <div className="lg:grid lg:grid-cols-2 lg:gap-x-8 lg:items-start">
+          <div>
+            {/* Identity */}
+            <FormSection title="Identity">
+              <Field label="Display name *">
                 <TextInput
-                  value={tin}
-                  onChange={(e) => setTin(e.target.value)}
-                  placeholder="Tax Identification No."
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="e.g. Amara Okafor or Pixie Hair Ltd"
+                  required
                 />
               </Field>
-              <Field label="CAC Number">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="First name">
+                  <TextInput
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Amara"
+                  />
+                </Field>
+                <Field label="Last name">
+                  <TextInput
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Okafor"
+                  />
+                </Field>
+              </div>
+              {(types.includes("supplier") || types.includes("retail_partner")) && (
+                <Field label="Company / Organisation">
+                  <TextInput
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    placeholder="e.g. Faitlyn Hair Nigeria Ltd"
+                  />
+                </Field>
+              )}
+            </FormSection>
+
+            {/* Contact */}
+            <FormSection title="Contact Details">
+              <PhoneField
+                label="Primary phone *"
+                value={phone}
+                onChange={setPhone}
+                placeholder="8020868273"
+              />
+              <PhoneField
+                label="WhatsApp number"
+                value={whatsapp}
+                onChange={setWhatsapp}
+                placeholder="Same as phone if same"
+              />
+              <Field label="Email">
                 <TextInput
-                  value={cac}
-                  onChange={(e) => setCac(e.target.value)}
-                  placeholder="RC 123456"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="amara@example.com"
                 />
               </Field>
-            </div>
-          </FormSection>
-        )}
+              <SocialHandleField
+                label="Instagram"
+                value={instagram}
+                onChange={setInstagram}
+                placeholder="amara.style"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <SocialHandleField
+                  label="TikTok"
+                  value={tiktok}
+                  onChange={setTiktok}
+                  placeholder="amara.style"
+                />
+                <SocialHandleField
+                  label="Facebook"
+                  value={facebook}
+                  onChange={setFacebook}
+                  placeholder="amara.style"
+                />
+              </div>
+            </FormSection>
+          </div>
 
-        {/* Notes */}
-        <FormSection>
-          <Field label="Notes">
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any internal notes about this contact…"
-              rows={3}
-              className="w-full px-[13px] py-[10px] rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/50 transition-colors resize-none"
-            />
-          </Field>
-        </FormSection>
+          <div>
+            {/* Personal */}
+            <FormSection title="Personal">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Gender">
+                  <Select value={gender} onChange={setGender} options={GENDER_OPTS} />
+                </Field>
+                <Field label="Country">
+                  <Select value={countryCode} onChange={setCountryCode} options={COUNTRY_OPTS} />
+                </Field>
+              </div>
+
+              {/* Birthday: month + day (year optional) */}
+              <Field label="Birthday (month & day)" hint="Used for birthday reminders. Year is optional.">
+                <div className="flex gap-2 items-center">
+                  <Select
+                    className="flex-1"
+                    value={birthMonth}
+                    onChange={setBirthMonth}
+                    options={MONTH_OPTS}
+                  />
+                  <Select
+                    className="flex-1"
+                    value={birthDay}
+                    onChange={setBirthDay}
+                    options={DAY_OPTS}
+                  />
+                  <TextInput
+                    type="number"
+                    placeholder="Year"
+                    value={birthYear}
+                    onChange={(e) => setBirthYear(e.target.value)}
+                    min={1900}
+                    max={new Date().getFullYear()}
+                    style={{ width: 90 }}
+                    className="flex-shrink-0"
+                  />
+                </div>
+              </Field>
+            </FormSection>
+
+            {/* Classification */}
+            <FormSection title="Classification">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Priority">
+                  <Select value={priority} onChange={setPriority} options={PRIORITY_OPTS} />
+                </Field>
+                <Field label="Source">
+                  <Select value={source} onChange={setSource} options={SOURCE_OPTS} />
+                </Field>
+              </div>
+            </FormSection>
+
+            {/* Business identifiers (for suppliers/retail) */}
+            {(types.includes("supplier") ||
+              types.includes("retail_partner") ||
+              types.includes("staff")) && (
+              <FormSection title="Business Identifiers">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="TIN">
+                    <TextInput
+                      value={tin}
+                      onChange={(e) => setTin(e.target.value)}
+                      placeholder="Tax Identification No."
+                    />
+                  </Field>
+                  <Field label="CAC Number">
+                    <TextInput
+                      value={cac}
+                      onChange={(e) => setCac(e.target.value)}
+                      placeholder="RC 123456"
+                    />
+                  </Field>
+                </div>
+              </FormSection>
+            )}
+
+            {/* Notes */}
+            <FormSection>
+              <Field label="Notes">
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Any internal notes about this contact…"
+                  rows={3}
+                  className="w-full px-[13px] py-[10px] rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/50 transition-colors resize-none"
+                />
+              </Field>
+            </FormSection>
+          </div>
+        </div>
       </form>
     </Modal>
   );

@@ -4,7 +4,7 @@ import { ArrowLeft, Sparkles, Send, Archive, Undo2, Trash2 } from "lucide-react"
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
-import { ErrorState, ConfirmDialog, NumberField, Select } from "@/components/ui/controls";
+import { ErrorState, ConfirmDialog, NumberField } from "@/components/ui/controls";
 import { FormSection, Field } from "@/components/ui/Form";
 import {
   useStyledProduct,
@@ -13,10 +13,11 @@ import {
   usePublishStyled,
   useUnpublishStyled,
   useRemoveStyled,
-  useBaseProducts,
   type StyledProduct,
 } from "@/lib/catalogue";
 import { AvailabilityPill, StyledStatusBadge } from "./parts";
+import { BaseProductPicker } from "./BaseProductPicker";
+import { StyledVariantsManager } from "./StyledVariantsManager";
 
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -34,16 +35,10 @@ export function StyledProductPage() {
 function StyledCreate() {
   const nav = useNavigate();
   useBreadcrumbs([{ label: "Catalogue", href: "/catalogue" }, { label: "New styled" }]);
-  const bases = useBaseProducts();
   const create = useCreateStyled();
   const [baseId, setBaseId] = useState("");
   const [name, setName] = useState("");
-  const [addon, setAddon] = useState("");
-
-  const baseOptions = [
-    { value: "", label: "Select a base product…" },
-    ...(bases.data ?? []).map((b) => ({ value: b.product_id, label: `${b.name} · ${b.product_code}` })),
-  ];
+  const [retail, setRetail] = useState("");
 
   const submit = () => {
     if (!baseId || !name.trim()) return;
@@ -52,7 +47,7 @@ function StyledCreate() {
         base_product_id: baseId,
         name: name.trim(),
         slug: slugify(name),
-        style_addon_price_ngn: addon ? Number(addon) : undefined,
+        retail_price_ngn: retail ? Number(retail) : undefined,
       },
       { onSuccess: (s) => nav(`/catalogue/styled/${s.styled_id}`) },
     );
@@ -63,8 +58,8 @@ function StyledCreate() {
       <BackBar label="New styled product" />
       <Card className="p-5">
         <FormSection title="Basics">
-          <Field label="Base product" hint="stock is drawn from here">
-            <Select value={baseId} onChange={setBaseId} options={baseOptions} />
+          <Field label="Base product" hint="the raw base this styling sits on — stock is drawn from here">
+            <BaseProductPicker value={baseId} onChange={setBaseId} />
           </Field>
           <Field label="Name">
             <input
@@ -74,8 +69,8 @@ function StyledCreate() {
               className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
             />
           </Field>
-          <Field label="Styling add-on price" hint="added on top of the base price">
-            <NumberField value={addon} onChange={setAddon} suffix="₦" />
+          <Field label="Retail price" hint="the styled product's own price (size S); add colours & sizes next">
+            <NumberField value={retail} onChange={setRetail} suffix="₦" />
           </Field>
         </FormSection>
         {create.isError && (
@@ -154,28 +149,34 @@ function StyledEditor({
   const [name, setName] = useState(s.name);
   const [shortDesc, setShortDesc] = useState(s.short_description ?? "");
   const [longDesc, setLongDesc] = useState(s.long_description ?? "");
-  const [addon, setAddon] = useState(s.style_addon_price_ngn != null ? String(s.style_addon_price_ngn) : "");
+  const [retail, setRetail] = useState(s.retail_price_ngn != null ? String(s.retail_price_ngn) : "");
+  const [compareAt, setCompareAt] = useState(
+    s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "",
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     setName(s.name);
     setShortDesc(s.short_description ?? "");
     setLongDesc(s.long_description ?? "");
-    setAddon(s.style_addon_price_ngn != null ? String(s.style_addon_price_ngn) : "");
+    setRetail(s.retail_price_ngn != null ? String(s.retail_price_ngn) : "");
+    setCompareAt(s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "");
   }, [s]);
 
   const dirty =
     name !== s.name ||
     shortDesc !== (s.short_description ?? "") ||
     longDesc !== (s.long_description ?? "") ||
-    addon !== (s.style_addon_price_ngn != null ? String(s.style_addon_price_ngn) : "");
+    retail !== (s.retail_price_ngn != null ? String(s.retail_price_ngn) : "") ||
+    compareAt !== (s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "");
 
   const save = () =>
     update.mutate({
       name: name.trim(),
       short_description: shortDesc.trim() || null,
       long_description: longDesc.trim() || null,
-      style_addon_price_ngn: addon ? Number(addon) : undefined,
+      retail_price_ngn: retail ? Number(retail) : null,
+      compare_at_price_ngn: compareAt ? Number(compareAt) : null,
     });
 
   return (
@@ -256,9 +257,14 @@ function StyledEditor({
                 className="w-full px-[13px] py-2.5 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 resize-y disabled:opacity-60"
               />
             </Field>
-            <Field label="Styling add-on price" hint="on top of the base price">
-              <NumberField value={addon} onChange={setAddon} suffix="₦" disabled={!canEdit} />
-            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Retail price" hint="own price at size S">
+                <NumberField value={retail} onChange={setRetail} suffix="₦" disabled={!canEdit} />
+              </Field>
+              <Field label="Compare-at" hint="optional was/now">
+                <NumberField value={compareAt} onChange={setCompareAt} suffix="₦" disabled={!canEdit} />
+              </Field>
+            </div>
           </FormSection>
 
           {canEdit && (
@@ -287,18 +293,39 @@ function StyledEditor({
           </Card>
           <Card className="p-4">
             <div className="micro mb-1.5">Price</div>
-            {s.effective_price_ngn != null ? (
-              <MoneyText ngn={s.effective_price_ngn} className="text-[22px]" />
+            {s.price_range ? (
+              s.price_range.min === s.price_range.max ? (
+                <MoneyText ngn={s.price_range.min} className="text-[22px]" />
+              ) : (
+                <div className="flex items-baseline gap-1.5">
+                  <MoneyText ngn={s.price_range.min} className="text-[20px]" />
+                  <span className="text-text-faint text-[13px]">–</span>
+                  <MoneyText ngn={s.price_range.max} className="text-[16px]" />
+                </div>
+              )
+            ) : s.retail_price_ngn != null ? (
+              <MoneyText ngn={s.retail_price_ngn} className="text-[22px]" />
             ) : (
-              <span className="text-text-faint text-[13px]">Base has no price yet</span>
+              <span className="text-text-faint text-[13px]">Set a retail price</span>
             )}
+            <p className="text-[11px] text-text-faint mt-1">across colours &amp; sizes</p>
           </Card>
           <Card className="p-4">
             <div className="micro mb-1.5">Base product</div>
             <div className="text-[13px]">{s.base_name}</div>
             <div className="font-mono text-[10.5px] text-accent-glow">{s.base_product_code}</div>
+            <p className="text-[11px] text-text-faint mt-1.5">wholesale base · stock source</p>
           </Card>
         </div>
+      </div>
+
+      {/* Colours + colour×size variants */}
+      <div className="mt-4">
+        <StyledVariantsManager
+          styledId={s.styled_id}
+          anchorPrice={s.retail_price_ngn}
+          canEdit={canEdit}
+        />
       </div>
 
       <ConfirmDialog

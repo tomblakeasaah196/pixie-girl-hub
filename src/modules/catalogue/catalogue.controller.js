@@ -94,6 +94,15 @@ async function deleteProduct(req, res) {
   await service.deleteProduct({ ...base(req), id: req.params.id });
   res.status(204).end();
 }
+async function listTrash(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  res.json(await service.listTrash({ brand: req.brand, page, page_size }));
+}
+async function restoreProduct(req, res) {
+  res.json({
+    data: await service.restoreProduct({ ...base(req), id: req.params.id }),
+  });
+}
 
 // Variants
 async function listVariants(req, res) {
@@ -349,6 +358,8 @@ module.exports = {
   bulkImportProducts,
   updateProduct,
   deleteProduct,
+  listTrash,
+  restoreProduct,
   listVariants,
   addVariant,
   updateVariant,

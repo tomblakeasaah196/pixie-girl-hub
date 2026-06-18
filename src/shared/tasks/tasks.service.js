@@ -57,15 +57,7 @@ async function notifyAssignee({ brand, task }) {
   }
 }
 
-const VALID_STATUSES = [
-  "inbox",
-  "today",
-  "this_week",
-  "this_month",
-  "later",
-  "done",
-  "cancelled",
-];
+const VALID_STATUSES = ["to_do", "in_progress", "in_review", "done", "cancelled"];
 const VALID_PRIORITIES = ["low", "normal", "high", "urgent"];
 
 function listTasks(args) {
@@ -75,16 +67,11 @@ function listTasks(args) {
 /** Kanban board: active tasks grouped by status column. */
 async function getBoard({ brand, assigned_to }) {
   const rows = await repo.boardTasks({ brand, assigned_to });
-  const columns = {};
-  for (const s of VALID_STATUSES) {
-    if (s === "cancelled") continue;
-    columns[s] = [];
-  }
+  const board = { to_do: [], in_progress: [], in_review: [], done: [] };
   for (const t of rows) {
-    if (!columns[t.status]) columns[t.status] = [];
-    columns[t.status].push(t);
+    if (board[t.status]) board[t.status].push(t);
   }
-  return { columns };
+  return board;
 }
 async function getTask({ brand, id }) {
   const task = await repo.findTask({ brand, id });

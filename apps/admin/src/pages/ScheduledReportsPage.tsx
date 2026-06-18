@@ -150,7 +150,7 @@ export function ScheduledReportsPage() {
 
   if (query.isError) {
     return (
-      <div className="max-w-[1040px]">
+      <div className="max-w-[1040px] mx-auto">
         <Card className="overflow-hidden">
           <ErrorState message="We couldn't load scheduled reports." onRetry={() => query.refetch()} />
         </Card>
@@ -159,7 +159,7 @@ export function ScheduledReportsPage() {
   }
 
   return (
-    <div className="max-w-[1040px]">
+    <div className="max-w-[1040px] mx-auto">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="font-display text-xl font-medium">Scheduled reports</h2>

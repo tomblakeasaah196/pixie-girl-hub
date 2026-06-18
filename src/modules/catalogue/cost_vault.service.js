@@ -106,8 +106,10 @@ async function getCost({ brand, user, request_id, variant_id }) {
 }
 
 // ── Write a variant's cost (grantee-only, encrypts, audited) ──
-async function setCost({ brand, user, request_id, variant_id, input }) {
-  const allowed = await canSeeCost({ user, brand });
+// Client-aware core so callers in an existing transaction (e.g. bulk import)
+// can set cost atomically without nesting a second transaction.
+async function setCostTx({ client, brand, user, request_id, variant_id, input }) {
+  const allowed = await canSeeCost({ client, user, brand });
   if (!allowed) {
     throw new PermissionDeniedError("You do not have cost-vault access.");
   }
@@ -122,9 +124,7 @@ async function setCost({ brand, user, request_id, variant_id, input }) {
   if (input.cost_native) {
     fields.cost_native_enc = encryption.encrypt(JSON.stringify(input.cost_native));
   }
-  const row = await transaction((client) =>
-    repo.upsertVault({ client, brand, variant_id, fields }),
-  );
+  const row = await repo.upsertVault({ client, brand, variant_id, fields });
 
   await auditSensitive({
     business: brand,
@@ -137,6 +137,12 @@ async function setCost({ brand, user, request_id, variant_id, input }) {
     request_id,
   });
   return { variant_id, cost_last_refreshed_at: row.cost_last_refreshed_at };
+}
+
+async function setCost({ brand, user, request_id, variant_id, input }) {
+  return transaction((client) =>
+    setCostTx({ client, brand, user, request_id, variant_id, input }),
+  );
 }
 
 // ── Self access check (any authed catalogue user) ────────
@@ -206,6 +212,7 @@ module.exports = {
   myAccess,
   getCost,
   setCost,
+  setCostTx,
   listGrants,
   grantAccess,
   revokeAccess,

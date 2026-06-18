@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Sparkles, Package, ClipboardCheck } from "lucide-react";
+import { Plus, Sparkles, Package, ClipboardCheck, Ruler, Trash2 } from "lucide-react";
 import { Button, Card, MoneyText, EmptyState, Pill } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
@@ -19,6 +19,8 @@ import {
   CardGridSkeleton,
 } from "./parts";
 import { AiDraftModal } from "./AiDraftModal";
+import { SizeGuideModal } from "./SizeGuideModal";
+import { TrashModal } from "./TrashModal";
 
 /**
  * Styled products — storefront skins over a base. Card grid + status filter;
@@ -38,6 +40,8 @@ export function StyledTab() {
   const [status, setStatus] = useState<string>("all");
   const [q, setQ] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
+  const [sizeOpen, setSizeOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
 
   // Keep availability fresh while this tab is mounted.
   useStockRealtime();
@@ -87,6 +91,26 @@ export function StyledTab() {
         <Tabs tabs={STATUS_TABS} active={status} onChange={setStatus} />
         <SearchBox value={q} onChange={setQ} placeholder="Search styled products…" />
         <div className="ml-auto flex gap-2">
+          {can("catalogue", "edit") && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Ruler className="w-3.5 h-3.5" />}
+              onClick={() => setSizeOpen(true)}
+            >
+              Size &amp; guide
+            </Button>
+          )}
+          {can("catalogue", "edit") && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={() => setTrashOpen(true)}
+            >
+              Trash
+            </Button>
+          )}
           {canCreate && (
             <Button
               size="sm"
@@ -145,6 +169,8 @@ export function StyledTab() {
           nav(`/catalogue/styled/${d.styled_id}`);
         }}
       />
+      <SizeGuideModal open={sizeOpen} onClose={() => setSizeOpen(false)} />
+      <TrashModal open={trashOpen} onClose={() => setTrashOpen(false)} />
     </div>
   );
 }

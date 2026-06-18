@@ -11,6 +11,42 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-18 — Catalogue: Styled colour×size variants, size pricing, trash
+
+**Source:** Owner directives (June 2026) — base products are RAW China hair
+(wholesale-priced); colour and head size are created during STYLING, so
+colour×size variants and the RETAIL price belong on the STYLED product, never
+"base + add-on". Plus: a global size-premium config + head-size guide, a
+searchable base picker, per-colour pictures, and reversible deletes.
+
+**Migration `template/000041_business_catalogue_styled_variants.sql.template`
+(NEW, additive).** Applied to existing brands by `db:repair` (every statement
+is idempotent — `IF NOT EXISTS` / `ON CONFLICT` / `DROP CONSTRAINT IF EXISTS`).
+
+- **NEW** `styled_product_colours` — a styled product's colour options; each
+  owns its pictures (`product_images.styled_colour_id`, added here) + an
+  optional self-hosted/IG video link + an optional per-colour price bump.
+- **NEW** `styled_product_variants` — the colour × size SKU matrix. Retail =
+  `COALESCE(price_override_ngn, styled.retail_price_ngn + colour.premium_ngn +
+  size_tier.premium_ngn)`.
+- **NEW** `styled_size_tiers` — brand-wide S/M/L/XL ladder (premium +
+  head-circumference range + tip), seeded (S 0 · M +5k · L +15k · XL +30k).
+- **NEW** `catalogue_config` (singleton) — the customer-facing head-size guide
+  copy, seeded with a friendly emoji guide; editable from the Styled tab modal.
+- `styled_products` gains `retail_price_ngn` (its own size-S anchor) +
+  `compare_at_price_ngn`. `style_addon_price_ngn` retained for legacy rows only.
+- **Trash + Restore:** `products`/`styled_products` `UNIQUE(code, slug)`
+  replaced with PARTIAL uniques over LIVE rows, so a soft-delete frees the name
+  (fixes the un-recreatable "Full Frontal Curly Pixie") and restore is possible
+  (the service disambiguates a reused name on restore).
+
+**App layer:** new `styled_variants` module (colours, variant matrix bulk
+generator, size/guide config, per-colour image upload via the Documents
+gateway); product + styled trash/restore endpoints; admin UI for all of the
+above plus a searchable base-product picker and quick add-to-collection.
+
+---
+
 ## 2026-06-16 — Smartcomm V2: unified inbox + commerce-in-chat (PR 1)
 
 **Source:** Owner directive — 70% of revenue arrives via Instagram +

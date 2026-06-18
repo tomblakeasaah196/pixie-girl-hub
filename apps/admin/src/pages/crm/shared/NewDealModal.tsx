@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Loader2, ChevronDown } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
-import { Field, TextInput, FormSection } from "@/components/ui/Form";
+import { Field, TextInput, FormSection, FormGrid } from "@/components/ui/Form";
+import { Select } from "@/components/ui/controls";
 import { usePipelines, usePipelineStages, useCreateDeal } from "../hooks";
 import type { DealCreateInput, DealChannel } from "@/pages/contacts/types";
 
@@ -19,6 +20,11 @@ const DEAL_CHANNELS: { value: DealChannel; label: string }[] = [
   { value: "pos", label: "POS" },
   { value: "event", label: "Event" },
   { value: "other", label: "Other" },
+];
+
+const CHANNEL_OPTS: { value: DealChannel | ""; label: string }[] = [
+  { value: "", label: "— select channel —" },
+  ...DEAL_CHANNELS,
 ];
 
 interface Props {
@@ -66,6 +72,7 @@ export function NewDealModal({ contactId, contactName, onClose, onCreated }: Pro
     <Modal
       open
       onClose={onClose}
+      size="lg"
       title={`New Deal · ${contactName}`}
       footer={
         <>
@@ -81,86 +88,77 @@ export function NewDealModal({ contactId, contactName, onClose, onCreated }: Pro
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <FormSection title="Deal info">
-          <Field label="Deal title">
-            <TextInput
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Custom wig order — June"
-            />
-          </Field>
-          <Field label="Description">
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional notes about this deal…"
-              rows={2}
-              className="w-full px-3 py-2 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/50 transition-colors resize-none"
-            />
-          </Field>
-        </FormSection>
+      {/* On desktop the sections flow into two columns; on phone they stack in
+          the original source order (single column) — mobile is unchanged. */}
+      <div className="lg:grid lg:grid-cols-2 lg:gap-x-8 lg:items-start">
+        <div>
+          <FormSection title="Deal info">
+            <Field label="Deal title">
+              <TextInput
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Custom wig order — June"
+              />
+            </Field>
+            <Field label="Description">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Optional notes about this deal…"
+                rows={2}
+                className="w-full px-3 py-2 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/50 transition-colors resize-none"
+              />
+            </Field>
+          </FormSection>
 
-        <FormSection title="Pipeline">
-          <Field label="Pipeline">
-            <div className="relative">
-              <select
+          <FormSection title="Pipeline">
+            <Field label="Pipeline">
+              <Select
                 value={pipelineId}
-                onChange={(e) => setPipelineId(e.target.value)}
-                className="w-full h-[42px] px-3 pr-8 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary appearance-none focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                {pipelines.map((p) => (
-                  <option key={p.pipeline_id} value={p.pipeline_id}>
-                    {p.display_name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
-            </div>
-          </Field>
-        </FormSection>
+                onChange={setPipelineId}
+                options={pipelines.map((p) => ({ value: p.pipeline_id, label: p.display_name }))}
+              />
+            </Field>
+          </FormSection>
+        </div>
 
-        <FormSection title="Value & timing">
-          <Field label="Expected value (NGN)">
-            <TextInput
-              type="number"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="0"
-            />
-          </Field>
-          <Field label="Expected close date">
-            <TextInput
-              type="date"
-              value={closeDate}
-              onChange={(e) => setCloseDate(e.target.value)}
-            />
-          </Field>
-        </FormSection>
+        <div>
+          <FormSection title="Value & timing">
+            <FormGrid cols={2}>
+              <Field label="Expected value (NGN)">
+                <TextInput
+                  type="number"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Expected close date">
+                <TextInput
+                  type="date"
+                  value={closeDate}
+                  onChange={(e) => setCloseDate(e.target.value)}
+                />
+              </Field>
+            </FormGrid>
+          </FormSection>
 
-        <FormSection title="Source">
-          <Field label="Channel">
-            <div className="relative">
-              <select
+          <FormSection title="Source">
+            <Field label="Channel">
+              <Select
                 value={channel}
-                onChange={(e) => setChannel(e.target.value as DealChannel)}
-                className="w-full h-[42px] px-3 pr-8 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary appearance-none focus:outline-none focus:border-accent/50 transition-colors"
-              >
-                <option value="">— select channel —</option>
-                {DEAL_CHANNELS.map((c) => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
-            </div>
-          </Field>
-        </FormSection>
+                onChange={(v) => setChannel(v as DealChannel | "")}
+                options={CHANNEL_OPTS}
+              />
+            </Field>
+          </FormSection>
 
-        {createDeal.isError && (
-          <p className="text-[12px] text-danger text-center">
-            Failed to create deal. Please try again.
-          </p>
-        )}
+          {createDeal.isError && (
+            <p className="text-[12px] text-danger text-center">
+              Failed to create deal. Please try again.
+            </p>
+          )}
+        </div>
       </div>
     </Modal>
   );

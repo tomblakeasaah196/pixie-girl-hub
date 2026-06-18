@@ -49,7 +49,7 @@ const TILES = [
 export function AiControlPage() {
   useBreadcrumbs([{ label: "AI Control" }]);
   return (
-    <div className="max-w-[920px]">
+    <div className="max-w-[920px] mx-auto">
       <header className="flex items-center gap-3 mb-5">
         <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
           <ShieldCheck className="w-5 h-5" />

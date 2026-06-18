@@ -8,6 +8,7 @@ import { StyledTab } from "./StyledTab";
 import { CategoriesTab } from "./CategoriesTab";
 import { CollectionsTab } from "./CollectionsTab";
 import { BundlesTab } from "./BundlesTab";
+import { ServicesTab } from "./ServicesTab";
 
 /**
  * Catalogue (V2.2 §6.4) — the base→styled product model.
@@ -22,6 +23,7 @@ const TABS = [
   { key: "categories", label: "Categories" },
   { key: "collections", label: "Collections" },
   { key: "bundles", label: "Bundles" },
+  { key: "services", label: "Services" },
 ];
 
 export function CataloguePage() {
@@ -41,6 +43,7 @@ export function CataloguePage() {
       {tab === "categories" && <CategoriesTab />}
       {tab === "collections" && <CollectionsTab />}
       {tab === "bundles" && <BundlesTab />}
+      {tab === "services" && <ServicesTab />}
     </div>
   );
 }

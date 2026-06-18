@@ -58,34 +58,36 @@ async function createService({ brand, user_id, input }) {
   return rows[0];
 }
 
+// Only updates the fields actually present in `input`. The previous version
+// direct-SET duration_minutes / required_stylist_tier, so a partial PATCH (e.g.
+// toggling is_active) silently WIPED them. A dynamic SET clause respects
+// explicit nulls (clearing) without clobbering omitted fields.
+const UPDATABLE_COLS = [
+  "name",
+  "slug",
+  "description",
+  "base_price_ngn",
+  "duration_minutes",
+  "category",
+  "image_url",
+  "is_active",
+  "sort_order",
+  "required_stylist_tier",
+];
 async function updateService({ brand, id, input }) {
+  const sets = [];
+  const params = [id, brand];
+  let i = 3;
+  for (const c of UPDATABLE_COLS) {
+    if (input[c] === undefined) continue;
+    sets.push(`${c} = $${i++}`);
+    params.push(input[c]);
+  }
+  if (sets.length === 0) return getService({ brand, id });
   const { rows } = await query(
-    `UPDATE shared.service_offerings
-        SET name                  = COALESCE($3, name),
-            description           = COALESCE($4, description),
-            base_price_ngn        = COALESCE($5, base_price_ngn),
-            duration_minutes      = $6,
-            category              = COALESCE($7, category),
-            image_url             = COALESCE($8, image_url),
-            is_active             = COALESCE($9, is_active),
-            sort_order            = COALESCE($10, sort_order),
-            required_stylist_tier = $11
+    `UPDATE shared.service_offerings SET ${sets.join(", ")}
       WHERE service_id = $1 AND business = $2 RETURNING *`,
-    [
-      id,
-      brand,
-      input.name || null,
-      input.description || null,
-      input.base_price_ngn || null,
-      input.duration_minutes === undefined ? null : input.duration_minutes,
-      input.category || null,
-      input.image_url || null,
-      input.is_active === undefined ? null : input.is_active,
-      input.sort_order === undefined ? null : input.sort_order,
-      input.required_stylist_tier === undefined
-        ? null
-        : input.required_stylist_tier,
-    ],
+    params,
   );
   return rows[0] || null;
 }

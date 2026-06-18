@@ -164,6 +164,15 @@ async function removeProduct(req, res) {
   res.status(204).end();
 }
 
+async function uploadImage(req, res) {
+  const data = await service.uploadImage({
+    brand: req.brand,
+    id: req.params.id,
+    file: req.file,
+  });
+  res.status(201).json({ data });
+}
+
 async function getLanding(req, res) {
   const data = await service.getLanding({
     brand: req.brand,
@@ -257,6 +266,7 @@ module.exports = {
   addProduct,
   updateProduct,
   removeProduct,
+  uploadImage,
   getLanding,
   updateLanding,
   preview,

@@ -65,6 +65,7 @@ const SalesCampaignsListPage = lazyWithRetry(() => import("@/pages/sales-campaig
 const CampaignBuilderPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignBuilderPage").then((m) => ({ default: m.CampaignBuilderPage })));
 const CampaignDetailPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignDetailPage").then((m) => ({ default: m.CampaignDetailPage })));
 const CampaignBundlesPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignBundlesPage").then((m) => ({ default: m.CampaignBundlesPage })));
+const SaleLandingPublic = lazyWithRetry(() => import("@/pages/sales-campaigns/public/SaleLandingPublic").then((m) => ({ default: m.SaleLandingPublic })));
 const ModelsAndVendorsPage = lazyWithRetry(() => import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({ default: m.ModelsAndVendorsPage })));
 const ChannelPolicyPage = lazyWithRetry(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
 const QuickRepliesPage = lazyWithRetry(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
@@ -136,6 +137,16 @@ export const router = createBrowserRouter(
       element: (
         <Suspense fallback={null}>
           <OrderCapturePublic />
+        </Suspense>
+      ),
+    },
+    // Public sales-campaign landing page (sales subdomain → Host resolves brand;
+    // admin preview passes ?brand=). Same renderer the Studio previews.
+    {
+      path: "/sale/:slug",
+      element: (
+        <Suspense fallback={null}>
+          <SaleLandingPublic />
         </Suspense>
       ),
     },

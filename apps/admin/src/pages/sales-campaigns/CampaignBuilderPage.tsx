@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
   ChevronRight,
   Eye,
-  GripVertical,
   Image as ImageIcon,
   Layers,
   PackagePlus,
+  Pencil,
   Plus,
   Send,
   Settings,
@@ -17,21 +17,6 @@ import {
   Users,
   Wand2,
 } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, EmptyState, KpiTile, MoneyText, Pill, Skeleton, type Tone } from "@/components/ui/primitives";
@@ -44,12 +29,12 @@ import { money } from "@/lib/format";
 import {
   type Campaign,
   type CampaignBundleLink,
-  type LandingBlock,
   type QuantityTier,
   type CartUpsell,
   type Bundle,
   type CampaignStatus,
   useAttachCampaignBundle,
+  useBrand,
   useBundleList,
   useCampaign,
   useCampaignAmbassadors,
@@ -67,6 +52,7 @@ import {
   useUpsertTier,
   useUpsertUpsell,
 } from "@/lib/campaigns";
+import { LandingStudio } from "./landing/LandingStudio";
 
 const TONE_FOR: Record<CampaignStatus, Tone> = {
   draft: "neutral",
@@ -158,7 +144,7 @@ export function CampaignBuilderPage() {
           {step === "brief" && <BriefStep campaign={campaign} canEdit={canEdit} onNext={() => setStep("bundles")} />}
           {step === "bundles" && <BundlesStep campaign={campaign} canEdit={canEdit} />}
           {step === "pricing" && <PricingStep campaign={campaign} canEdit={canEdit} />}
-          {step === "landing" && <LandingStep campaign={campaign} canEdit={canEdit} />}
+          {step === "landing" && <LandingStep campaign={campaign} canEdit={canEdit} onNext={() => setStep("ambassadors")} />}
           {step === "ambassadors" && <AmbassadorsStep campaign={campaign} canEdit={canEdit} />}
           {step === "approval" && <ApprovalStep campaign={campaign} />}
         </div>
@@ -181,6 +167,7 @@ function CampaignHeader({
   campaign: Campaign;
   onPraxis: () => void;
 }) {
+  const brand = useBrand();
   return (
     <Card className="p-5 relative overflow-hidden">
       <div
@@ -204,10 +191,14 @@ function CampaignHeader({
           </Pill>
         )}
         <div className="ml-auto flex gap-2">
-          <Button variant="ghost" icon={<Eye className="w-4 h-4" />}>
-            <Link to={`/sales-campaigns/${campaign.campaign_id}`} className="contents">
-              Live view
-            </Link>
+          <Button
+            variant="ghost"
+            icon={<Eye className="w-4 h-4" />}
+            onClick={() =>
+              window.open(`/sale/${campaign.slug}?brand=${brand}`, "_blank", "noopener")
+            }
+          >
+            View live page
           </Button>
           <Button
             variant="primary"
@@ -1020,241 +1011,79 @@ function UpsellEditor({
 }
 
 // ── Step 4: Landing page ─────────────────────────────────
-function LandingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean }) {
-  const update = useUpdateCampaign(campaign.campaign_id);
-  const initial: LandingBlock[] = useMemo(() => {
-    if (campaign.landing_blocks && campaign.landing_blocks.length) return campaign.landing_blocks;
-    return [
-      { key: "hero", enabled: true },
-      { key: "countdown", enabled: true },
-      { key: "bundle_showcase", enabled: true },
-      { key: "featured_products", enabled: true },
-      { key: "lookbook_carousel", enabled: true },
-      { key: "faq", enabled: true },
-    ];
-  }, [campaign.landing_blocks]);
-  const [blocks, setBlocks] = useState<LandingBlock[]>(initial);
-  const [heroTitle, setHeroTitle] = useState(campaign.landing_hero_title || "");
-  const [heroSubtitle, setHeroSubtitle] = useState(campaign.landing_hero_subtitle || "");
-  const [heroImage, setHeroImage] = useState(campaign.landing_hero_image_url || "");
-  const [ctaText, setCtaText] = useState(campaign.landing_cta_text || "Shop the drop");
-  const [countdownMsg, setCountdownMsg] = useState(campaign.countdown_message || "");
-  const [endedMsg, setEndedMsg] = useState(campaign.ended_message || "");
-  const [endedRedirect, setEndedRedirect] = useState(campaign.ended_redirect_to || "");
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => setDirty(true), [blocks, heroTitle, heroSubtitle, heroImage, ctaText, countdownMsg, endedMsg, endedRedirect]);
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-
-  function onDragEnd(e: DragEndEvent) {
-    if (!canEdit) return;
-    if (e.over && e.active.id !== e.over.id) {
-      const oldIdx = blocks.findIndex((b) => b.key === e.active.id);
-      const newIdx = blocks.findIndex((b) => b.key === e.over!.id);
-      if (oldIdx >= 0 && newIdx >= 0) setBlocks(arrayMove(blocks, oldIdx, newIdx));
-    }
-  }
-
-  function toggleBlock(key: string) {
-    if (!canEdit) return;
-    if (blocks.some((b) => b.key === key)) {
-      setBlocks(blocks.filter((b) => b.key !== key));
-    } else {
-      setBlocks([...blocks, { key, enabled: true }]);
-    }
-  }
-
-  async function save() {
-    await update.mutateAsync({
-      landing_hero_title: heroTitle || null,
-      landing_hero_subtitle: heroSubtitle || null,
-      landing_hero_image_url: heroImage || null,
-      landing_cta_text: ctaText || null,
-      landing_blocks: blocks,
-      countdown_message: countdownMsg || null,
-      ended_message: endedMsg || null,
-      ended_redirect_to: endedRedirect || null,
-    });
-    setDirty(false);
-  }
+// The heavy editing now lives in the full-screen Studio (edit + live preview
+// side by side, image upload). This step is a launcher + at-a-glance summary.
+function LandingStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit: boolean; onNext?: () => void }) {
+  const brand = useBrand();
+  const [studioOpen, setStudioOpen] = useState(false);
+  const blocks = campaign.landing_blocks || [];
+  const enabledCount = blocks.filter((b) => b.enabled !== false).length;
 
   return (
-    <Card className="p-5 space-y-5">
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5">
-        <div className="space-y-5">
-          <FormSection title="Hero">
-            <Field label="Hero title">
-              <input
-                value={heroTitle}
-                onChange={(e) => setHeroTitle(e.target.value)}
-                disabled={!canEdit}
-                placeholder={`The next ${campaign.name} begins now`}
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[14px] disabled:opacity-50"
-              />
-            </Field>
-            <Field label="Hero subtitle">
-              <input
-                value={heroSubtitle}
-                onChange={(e) => setHeroSubtitle(e.target.value)}
-                disabled={!canEdit}
-                placeholder="A brief, restrained line that holds the room."
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
-              />
-            </Field>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Hero image URL" hint="Paste a URL or upload via Catalogue">
-                <input
-                  value={heroImage}
-                  onChange={(e) => setHeroImage(e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="https://…"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[12px] disabled:opacity-50 font-mono"
-                />
-              </Field>
-              <Field label="CTA text">
-                <input
-                  value={ctaText}
-                  onChange={(e) => setCtaText(e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="Shop the drop"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
-                />
-              </Field>
-            </div>
-          </FormSection>
-
-          <FormSection title="Blocks (drag to reorder)">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={blocks.map((b) => b.key)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
-                  {blocks.map((b) => (
-                    <SortableBlockRow key={b.key} block={b} canEdit={canEdit} onRemove={() => toggleBlock(b.key)} />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          </FormSection>
-
-          <FormSection title="Countdown & ended state">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Countdown message" hint="Shown next to the timer (Before / Live)">
-                <input
-                  value={countdownMsg}
-                  onChange={(e) => setCountdownMsg(e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="Doors open in"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
-                />
-              </Field>
-              <Field label="Ended redirect URL" hint="Where 'Shop our collection' points">
-                <input
-                  value={endedRedirect}
-                  onChange={(e) => setEndedRedirect(e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="https://pixiegirlglobal.com"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[12px] disabled:opacity-50 font-mono"
-                />
-              </Field>
-            </div>
-            <Field label="Ended message">
-              <input
-                value={endedMsg}
-                onChange={(e) => setEndedMsg(e.target.value)}
-                disabled={!canEdit}
-                placeholder="The drop has ended — but our shelves are full of beautiful things."
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
-              />
-            </Field>
-          </FormSection>
-        </div>
-
-        <div>
-          <div className="micro mb-2">Block library</div>
-          <div className="space-y-1.5">
-            {BLOCK_LIBRARY.map((b) => {
-              const enabled = blocks.some((x) => x.key === b.key);
-              return (
-                <button
-                  key={b.key}
-                  type="button"
-                  onClick={() => toggleBlock(b.key)}
-                  disabled={!canEdit}
-                  className={cn(
-                    "w-full text-left px-3 py-2 rounded-[10px] border text-[12.5px] transition-colors disabled:opacity-50",
-                    enabled
-                      ? "bg-accent/[0.08] border-accent/35 text-accent-glow"
-                      : "border-line text-text-muted hover:text-text-primary hover:border-text-primary/15",
-                  )}
-                >
-                  <span className="font-semibold">{b.label}</span>
-                  <span className="block text-[10.5px] text-text-faint">{b.description}</span>
-                </button>
-              );
-            })}
+    <Card className="p-0 overflow-hidden">
+      <div
+        className="h-44 md:h-56 relative"
+        style={{
+          backgroundImage: campaign.landing_hero_image_url
+            ? `linear-gradient(180deg, rgb(0 0 0/0.12), rgb(var(--panel)/0.88)), url("${campaign.landing_hero_image_url}")`
+            : "linear-gradient(135deg, rgb(var(--accent-deep)/0.6), rgb(var(--panel)/0.92))",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div className="absolute inset-0 p-5 md:p-7 flex flex-col justify-end">
+          <div className="font-display text-[24px] md:text-[30px] leading-tight max-w-[560px] drop-shadow">
+            {campaign.landing_hero_title || campaign.name}
           </div>
+          {campaign.landing_hero_subtitle && (
+            <div className="text-text-primary/80 text-[13px] mt-1.5 max-w-[460px] truncate">
+              {campaign.landing_hero_subtitle}
+            </div>
+          )}
         </div>
       </div>
 
-      {canEdit && dirty && (
-        <div className="flex justify-end gap-2 sticky bottom-2">
-          <Button variant="primary" onClick={save} icon={<Check className="w-4 h-4" />}>
-            Save landing
+      <div className="p-5 md:p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="font-display text-[22px] leading-tight">Design the landing page</h2>
+            <p className="text-text-muted text-[13px] mt-1 max-w-[520px]">
+              Open the full-screen Studio to edit and preview side by side — hero, look book,
+              bundles, testimonials and more. Upload images right there; no detours.
+            </p>
+          </div>
+          <Button variant="primary" icon={<Pencil className="w-4 h-4" />} onClick={() => setStudioOpen(true)}>
+            {canEdit ? "Open the Studio" : "Open preview"}
           </Button>
         </div>
-      )}
-    </Card>
-  );
-}
 
-function SortableBlockRow({
-  block,
-  canEdit,
-  onRemove,
-}: {
-  block: LandingBlock;
-  canEdit: boolean;
-  onRemove: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: block.key,
-  });
-  const info = BLOCK_LIBRARY.find((b) => b.key === block.key);
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.65 : 1,
-      }}
-      className="flex items-center gap-2 p-2.5 rounded-[10px] bg-text-primary/[0.04] border border-line"
-    >
-      {canEdit && (
-        <button
-          {...attributes}
-          {...listeners}
-          aria-label="Drag handle"
-          className="cursor-grab active:cursor-grabbing text-text-faint p-1"
-        >
-          <GripVertical className="w-4 h-4" />
-        </button>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold">{info?.label || block.key}</div>
-        <div className="text-[10.5px] text-text-faint truncate">{info?.description}</div>
+        <div className="flex flex-wrap gap-2">
+          <Pill tone="neutral" dot={false}>{enabledCount} sections</Pill>
+          <Pill tone={campaign.landing_hero_image_url ? "success" : "warn"} dot={false}>
+            {campaign.landing_hero_image_url ? "Hero image set" : "No hero image yet"}
+          </Pill>
+          <Pill tone="neutral" dot={false}>/sale/{campaign.slug}</Pill>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-line/60">
+          <a
+            href={`/sale/${campaign.slug}?brand=${brand}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-accent-glow hover:underline"
+          >
+            <Eye className="w-3.5 h-3.5" /> Open the public page ↗
+          </a>
+          {onNext && (
+            <Button variant="ghost" icon={<ChevronRight className="w-4 h-4" />} onClick={onNext}>
+              Continue
+            </Button>
+          )}
+        </div>
       </div>
-      {block.drafted_by_ai && (
-        <Pill tone="accent" dot={false}>
-          <Sparkles className="w-3 h-3" /> AI
-        </Pill>
-      )}
-      {canEdit && (
-        <button onClick={onRemove} className="text-text-faint hover:text-danger p-1" aria-label="Remove block">
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
-    </div>
+
+      <LandingStudio open={studioOpen} onClose={() => setStudioOpen(false)} campaign={campaign} canEdit={canEdit} />
+    </Card>
   );
 }
 

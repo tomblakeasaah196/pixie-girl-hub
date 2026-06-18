@@ -10,12 +10,15 @@ export function Modal({
   title,
   footer,
   children,
+  width,
 }: {
   open: boolean;
   onClose: () => void;
   title?: ReactNode;
   footer?: ReactNode;
   children: ReactNode;
+  /** Tailwind width class for wider forms. Defaults to the compact dialog. */
+  width?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -37,7 +40,8 @@ export function Modal({
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "w-[min(460px,94vw)] dropglass rounded-[18px] overflow-hidden transition-transform duration-300 ease-brand",
+          "dropglass rounded-[18px] overflow-hidden transition-transform duration-300 ease-brand",
+          width ?? "w-[min(460px,94vw)]",
           open ? "scale-100" : "scale-95",
         )}
       >

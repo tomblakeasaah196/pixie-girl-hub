@@ -17,6 +17,7 @@ import {
   type Variant,
 } from "@/lib/catalogue";
 import { CostVaultSection } from "./CostVaultSection";
+import { AddToCollection } from "./AddToCollection";
 
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -262,6 +263,11 @@ function BaseEditor({
               </Button>
             )}
           </Card>
+          {canEdit && (
+            <Card className="p-4">
+              <AddToCollection productId={p.product_id} />
+            </Card>
+          )}
         </div>
       </div>
 

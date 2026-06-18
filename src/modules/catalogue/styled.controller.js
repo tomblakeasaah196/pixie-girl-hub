@@ -74,6 +74,15 @@ async function remove(req, res) {
   res.status(204).end();
 }
 
+async function listTrash(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  res.json(await service.listTrash({ brand: req.brand, page, page_size }));
+}
+
+async function restore(req, res) {
+  res.json({ data: await service.restore({ ...base(req), id: req.params.id }) });
+}
+
 // AI drafts a Styled product over a base — saved as a DRAFT for review.
 async function aiDraft(req, res) {
   res.status(201).json({
@@ -89,5 +98,7 @@ module.exports = {
   publish,
   unpublish,
   remove,
+  listTrash,
+  restore,
   aiDraft,
 };

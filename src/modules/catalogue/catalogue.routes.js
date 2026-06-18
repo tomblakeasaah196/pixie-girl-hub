@@ -14,6 +14,8 @@ const vault = require("./cost_vault.controller");
 const vaultV = require("./cost_vault.validator");
 const styled = require("./styled.controller");
 const styledV = require("./styled.validator");
+const styledVar = require("./styled_variants.controller");
+const styledVarV = require("./styled_variants.validator");
 const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
 
@@ -57,6 +59,9 @@ router.post(
   v.validateBulkImport,
   c.bulkImportProducts,
 );
+// Trash bin — soft-deleted products available to restore. Literal segment
+// declared before :id so it is never shadowed by the param route.
+router.get("/products/trash", can("view"), c.listTrash);
 router.get("/products/:id", can("view"), c.getProduct);
 router.patch(
   "/products/:id",
@@ -65,6 +70,8 @@ router.patch(
   c.updateProduct,
 );
 router.delete("/products/:id", can("delete"), c.deleteProduct);
+// Restore a soft-deleted product (frees-name model — see 000041).
+router.post("/products/:id/restore", can("edit"), c.restoreProduct);
 
 // Variants (under a product)
 router.get("/products/:id/variants", can("view"), c.listVariants);
@@ -121,6 +128,17 @@ router.delete(
 
 // ── Styled products (P0-6) — storefront skins over a base ─
 router.get("/styled-products", can("view"), styled.list);
+// Brand-wide size-tier ladder + head-size guide (the "Size & Guide" modal).
+// Literal segments declared before :id so they are never shadowed.
+router.get("/styled-products/size-config", can("view"), styledVar.getSizeConfig);
+router.put(
+  "/styled-products/size-config",
+  can("edit"),
+  styledVarV.validateSizeConfig,
+  styledVar.saveSizeConfig,
+);
+// Trash bin — soft-deleted styled products available to restore.
+router.get("/styled-products/trash", can("view"), styled.listTrash);
 // AI draft (P0-8: only ever creates a DRAFT; gated by the products_ai_drafting
 // feature in the service). Literal segment declared before :id.
 router.post(
@@ -142,6 +160,8 @@ router.patch(
   styledV.validateStyledUpdate,
   styled.update,
 );
+// Restore a soft-deleted styled product.
+router.post("/styled-products/:id/restore", can("edit"), styled.restore);
 // Promote draft → live, and the reverse — both gated by catalogue.publish
 // (the "Ops can publish" rule; Sales/Marketing edit drafts but can't publish).
 router.post("/styled-products/:id/publish", can("publish"), styled.publish);
@@ -152,6 +172,66 @@ router.post(
   styled.unpublish,
 );
 router.delete("/styled-products/:id", can("delete"), styled.remove);
+
+// ── Styled colours (each colour owns its pictures + optional video) ──
+router.get("/styled-products/:id/colours", can("view"), styledVar.listColours);
+router.post(
+  "/styled-products/:id/colours",
+  can("edit"),
+  styledVarV.validateColourCreate,
+  styledVar.createColour,
+);
+router.patch(
+  "/styled-products/:id/colours/:colourId",
+  can("edit"),
+  styledVarV.validateColourUpdate,
+  styledVar.updateColour,
+);
+router.delete(
+  "/styled-products/:id/colours/:colourId",
+  can("edit"),
+  styledVar.deleteColour,
+);
+// Per-colour images (2–3 pictures per colour). Literal 'images' before :imageId.
+router.get(
+  "/styled-products/:id/colours/:colourId/images",
+  can("view"),
+  styledVar.listColourImages,
+);
+router.post(
+  "/styled-products/:id/colours/:colourId/images",
+  can("edit"),
+  upload.single("file"),
+  v.validateImageMeta,
+  styledVar.addColourImage,
+);
+router.delete(
+  "/styled-products/:id/colours/:colourId/images/:imageId",
+  can("edit"),
+  styledVar.removeColourImage,
+);
+
+// ── Styled colour × size variants ────────────────────────
+router.get("/styled-products/:id/variants", can("view"), styledVar.listVariants);
+// Bulk-generate the colour × size matrix ("all sizes" or a picked subset).
+// Literal 'bulk' declared before the :variantId param route.
+router.post(
+  "/styled-products/:id/variants/bulk",
+  can("edit"),
+  styledVarV.validateVariantBulkCreate,
+  styledVar.bulkCreateVariants,
+);
+router.patch(
+  "/styled-products/:id/variants/:variantId",
+  can("edit"),
+  styledVarV.validateVariantUpdate,
+  styledVar.updateVariant,
+);
+router.delete(
+  "/styled-products/:id/variants/:variantId",
+  can("edit"),
+  styledVar.deleteVariant,
+);
 
 // Collections (+ rules + members)
 router.get("/collections", can("view"), c.listCollections);

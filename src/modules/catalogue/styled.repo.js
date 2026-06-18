@@ -25,6 +25,10 @@ const STYLED_COLS = [
   "slug",
   "short_description",
   "long_description",
+  // Styled retail is its OWN price (the size-S anchor). style_addon_price_ngn
+  // is retained for legacy rows but is no longer the pricing source.
+  "retail_price_ngn",
+  "compare_at_price_ngn",
   "style_addon_price_ngn",
   "category_id",
   "visible_on_channels",
@@ -221,6 +225,57 @@ async function softDelete({ client, brand, id }) {
   return rowCount > 0;
 }
 
+// ── Trash + Restore (names are partial-unique over live rows, 000041) ──
+async function listTrashed({ client, brand, page = 1, page_size = 25, offset = 0 }) {
+  const run = ex(client);
+  const { rows: c } = await run(
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "styled_products")} WHERE is_deleted = true`,
+  );
+  const { rows } = await run(
+    `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code
+       FROM ${t(brand, "styled_products")} s
+       JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+      WHERE s.is_deleted = true
+      ORDER BY s.deleted_at DESC NULLS LAST LIMIT $1 OFFSET $2`,
+    [page_size, offset],
+  );
+  return {
+    data: rows,
+    meta: { page, page_size, total: c[0].total, has_more: offset + rows.length < c[0].total },
+  };
+}
+async function getTrashedById({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "styled_products")} WHERE styled_id = $1 AND is_deleted = true`,
+    [id],
+  );
+  return rows[0] || null;
+}
+async function styledSlugTaken({ client, brand, slug }) {
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "styled_products")} WHERE slug = $1 AND is_deleted = false LIMIT 1`,
+    [slug],
+  );
+  return rows.length > 0;
+}
+async function styledCodeTaken({ client, brand, code }) {
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "styled_products")} WHERE styled_code = $1 AND is_deleted = false LIMIT 1`,
+    [code],
+  );
+  return rows.length > 0;
+}
+async function restore({ client, brand, id, slug, styled_code }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_products")}
+        SET is_deleted = false, deleted_at = null,
+            slug = COALESCE($2, slug), styled_code = COALESCE($3, styled_code)
+      WHERE styled_id = $1 AND is_deleted = true RETURNING *`,
+    [id, slug || null, styled_code || null],
+  );
+  return rows[0] || null;
+}
+
 /**
  * Total available units for the base behind a styled product. When the
  * styled row pins a base_variant_id we sum just that variant; otherwise we
@@ -279,5 +334,10 @@ module.exports = {
   update,
   setStatus,
   softDelete,
+  listTrashed,
+  getTrashedById,
+  styledSlugTaken,
+  styledCodeTaken,
+  restore,
   baseAvailability,
 };

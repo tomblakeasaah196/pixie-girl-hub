@@ -1,0 +1,221 @@
+-- ============================================================
+-- TEMPLATE 000041 — Catalogue: Styled colour×size variants,
+-- size-tier pricing config + head-size guide, trash/restore.
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema name
+-- (e.g. 'pixiegirl', 'faitlynhair'). Applied to NEW brands by
+-- bootstrap-business.js (runs after 000016) and to EXISTING brands
+-- by repair-business-schema.js (sentinel = styled_size_tiers — a new
+-- table, so the whole file runs once). Every statement is idempotent
+-- (IF NOT EXISTS / ON CONFLICT) so a re-run is safe.
+--
+-- WHY (owner directives, June 2026):
+--   • Base products are RAW China hair (texture/lace/length/density) and
+--     carry the WHOLESALE price. Colour and head size are created during
+--     STYLING — so colour×size variants and the RETAIL price live on the
+--     STYLED product, NOT the base. Styled retail is its OWN price, never
+--     "base + add-on".
+--   • Size premiums are set ONCE, globally (cumulative S→M→L→XL) via a
+--     config modal on the Styled tab, and apply to every styled product.
+--   • Each colour carries its own 2–3 pictures (+ optional video / IG link).
+--   • Deleting a product must free its name and be reversible (Trash +
+--     Restore) — so name/slug uniqueness becomes partial (live rows only).
+--
+-- Tables (new):
+--   styled_size_tiers        — brand-wide S/M/L/XL premium + circumference
+--   catalogue_config         — singleton: head-size guide copy (storefront)
+--   styled_product_colours   — a styled product's colour options + media
+--   styled_product_variants  — colour × size SKUs (own retail / overrides)
+-- Altered:
+--   styled_products          — retail_price_ngn, compare_at_price_ngn
+--   product_images           — styled_colour_id (per-colour gallery)
+-- Reworked:
+--   products / styled_products UNIQUE(code,slug) → partial (live rows)
+-- ============================================================
+
+-- ── styled_size_tiers (SENTINEL — first CREATE TABLE) ─────
+-- One brand-wide ladder of head sizes. premium_ngn is the ABSOLUTE amount
+-- added to a styled product's retail anchor for that size (so S = 0 and the
+-- rest are cumulative). Edited from the "Size & Guide" modal on the Styled
+-- tab; the circumference range + guidance render on the storefront.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.styled_size_tiers (
+  tier_id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Natural key referenced by styled_product_variants.size_code.
+  size_code             TEXT        NOT NULL UNIQUE,           -- 'S','M','L','XL'
+  label                 TEXT        NOT NULL,                  -- 'Small','Medium',…
+  -- Absolute premium added to the styled retail anchor for this size.
+  premium_ngn           NUMERIC(14,2) NOT NULL DEFAULT 0
+                        CHECK (premium_ngn >= 0),
+  -- Head circumference range (both units; the storefront shows whichever).
+  circumference_min_in  NUMERIC(5,2),
+  circumference_max_in  NUMERIC(5,2),
+  circumference_min_cm  NUMERIC(6,2),
+  circumference_max_cm  NUMERIC(6,2),
+  -- Short per-size tip ("Petite / snug fit"). Customer-facing.
+  guidance_text         TEXT,
+  display_order         SMALLINT    NOT NULL DEFAULT 0,
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_styled_size_tiers_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.styled_size_tiers
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+-- ── catalogue_config (singleton) ─────────────────────────
+-- One row per brand. Holds the customer-facing "how to find your head size"
+-- guide (markdown, editable from the same modal). Single-row enforced by a
+-- boolean PK pinned to true.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.catalogue_config (
+  singleton             BOOLEAN     PRIMARY KEY DEFAULT true CHECK (singleton),
+  size_guide_title      TEXT        NOT NULL DEFAULT 'How to find your head size',
+  head_size_guide_md    TEXT,
+  updated_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_catalogue_config_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.catalogue_config
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+-- ── styled_product_colours ───────────────────────────────
+-- A styled product comes in one or more colours. Each colour owns its OWN
+-- pictures (product_images.styled_colour_id) and an optional video — either
+-- self-hosted (video_url) or a pasted Instagram/UGC link (external_video_url).
+-- premium_ngn is an optional per-colour price bump (e.g. blonde/highlights
+-- cost more); 0 = same price as every other colour.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.styled_product_colours (
+  colour_id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  styled_id             UUID        NOT NULL REFERENCES {{BUSINESS}}.styled_products (styled_id) ON DELETE CASCADE,
+  name                  TEXT        NOT NULL,                  -- 'Natural Black','Dark Copper'
+  hex                   TEXT,                                  -- '#1B1B1B' swatch (optional)
+  premium_ngn           NUMERIC(14,2) NOT NULL DEFAULT 0
+                        CHECK (premium_ngn >= 0),
+  -- Optional video: self-hosted compressed file OR an external IG/UGC link.
+  video_url             TEXT,
+  external_video_url    TEXT,
+  display_order         SMALLINT    NOT NULL DEFAULT 0,
+  is_default            BOOLEAN     NOT NULL DEFAULT false,
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (styled_id, name)
+);
+CREATE TRIGGER trg_{{BUSINESS}}_styled_colours_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.styled_product_colours
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_colours_styled
+  ON {{BUSINESS}}.styled_product_colours (styled_id, display_order);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_colours_default
+  ON {{BUSINESS}}.styled_product_colours (styled_id) WHERE is_default = true;
+
+-- ── styled_product_variants ──────────────────────────────
+-- The sellable colour × size matrix for a styled product. Generated in bulk
+-- ("all sizes" or a picked subset). Effective retail =
+--   COALESCE(price_override_ngn,
+--            styled.retail_price_ngn + colour.premium_ngn + size_tier.premium_ngn)
+-- so the global size ladder + per-colour bump apply automatically, while any
+-- single combo can still be hand-priced.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.styled_product_variants (
+  styled_variant_id     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  styled_id             UUID        NOT NULL REFERENCES {{BUSINESS}}.styled_products (styled_id) ON DELETE CASCADE,
+  colour_id             UUID        NOT NULL REFERENCES {{BUSINESS}}.styled_product_colours (colour_id) ON DELETE CASCADE,
+  size_code             TEXT        NOT NULL REFERENCES {{BUSINESS}}.styled_size_tiers (size_code) ON DELETE RESTRICT,
+  sku                   TEXT        NOT NULL UNIQUE,           -- 'PXG-STY-001-DKC-L'
+  -- NULL = use the computed price (anchor + premiums). Non-NULL = hand price.
+  price_override_ngn    NUMERIC(14,2) CHECK (price_override_ngn IS NULL OR price_override_ngn >= 0),
+  compare_at_price_ngn  NUMERIC(14,2),                          -- "was" price for sale badge
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  is_default            BOOLEAN     NOT NULL DEFAULT false,
+  display_order         SMALLINT    NOT NULL DEFAULT 0,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (styled_id, colour_id, size_code)
+);
+CREATE TRIGGER trg_{{BUSINESS}}_styled_variants_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.styled_product_variants
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_variants_styled
+  ON {{BUSINESS}}.styled_product_variants (styled_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_variants_colour
+  ON {{BUSINESS}}.styled_product_variants (colour_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_variants_default
+  ON {{BUSINESS}}.styled_product_variants (styled_id) WHERE is_default = true;
+
+-- ── ALTER styled_products: own RETAIL price (anchor) ─────
+-- retail_price_ngn is the styled product's OWN storefront price at the base
+-- size (size premium 0). It is INDEPENDENT of the base wholesale price —
+-- never "base + add-on". style_addon_price_ngn (000016) is retained for
+-- backward-compatibility/legacy rows but is no longer the pricing source.
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS retail_price_ngn NUMERIC(14,2)
+    CHECK (retail_price_ngn IS NULL OR retail_price_ngn >= 0);
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS compare_at_price_ngn NUMERIC(14,2);
+
+-- ── ALTER product_images: per-colour gallery ─────────────
+-- A styled colour's photos. For a colour image: product_id = the base,
+-- styled_id = the styled product, styled_colour_id = the colour.
+ALTER TABLE {{BUSINESS}}.product_images
+  ADD COLUMN IF NOT EXISTS styled_colour_id UUID
+    REFERENCES {{BUSINESS}}.styled_product_colours (colour_id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_product_images_styled_colour
+  ON {{BUSINESS}}.product_images (styled_colour_id, display_order)
+  WHERE styled_colour_id IS NOT NULL;
+
+-- ── Trash + Restore: free the name on delete ─────────────
+-- The original 000016 UNIQUE(product_code)/UNIQUE(slug) spanned ALL rows
+-- incl. soft-deleted ones, so a deleted product permanently squatted its
+-- name and could never be recreated (the "Full Frontal Curly Pixie" bug).
+-- Replace with PARTIAL uniques over LIVE rows only, so deleting frees the
+-- name and restoring is possible (the service guards restore collisions).
+ALTER TABLE {{BUSINESS}}.products  DROP CONSTRAINT IF EXISTS products_product_code_key;
+ALTER TABLE {{BUSINESS}}.products  DROP CONSTRAINT IF EXISTS products_slug_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_products_code_live
+  ON {{BUSINESS}}.products (product_code) WHERE is_deleted = false;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_products_slug_live
+  ON {{BUSINESS}}.products (slug) WHERE is_deleted = false;
+
+ALTER TABLE {{BUSINESS}}.styled_products DROP CONSTRAINT IF EXISTS styled_products_styled_code_key;
+ALTER TABLE {{BUSINESS}}.styled_products DROP CONSTRAINT IF EXISTS styled_products_slug_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_code_live
+  ON {{BUSINESS}}.styled_products (styled_code) WHERE is_deleted = false;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_slug_live
+  ON {{BUSINESS}}.styled_products (slug) WHERE is_deleted = false;
+
+-- ── Seed: default S/M/L/XL ladder (editable) ─────────────
+-- Premiums seed the owner's cumulative example (S 0 → M +5k → L +15k →
+-- XL +30k). Circumference ranges are typical wig-cap sizing; all editable.
+INSERT INTO {{BUSINESS}}.styled_size_tiers
+  (size_code, label, premium_ngn, circumference_min_in, circumference_max_in,
+   circumference_min_cm, circumference_max_cm, guidance_text, display_order)
+VALUES
+  ('S',  'Small',        0,     21.0, 21.5, 53.3, 54.6, 'Petite — a snug, secure fit.',        1),
+  ('M',  'Medium',       5000,  21.5, 22.5, 54.6, 57.2, 'Average — fits most heads.',          2),
+  ('L',  'Large',        15000, 22.5, 23.0, 57.2, 58.4, 'Roomy — for a fuller head or braids.',3),
+  ('XL', 'Extra Large',  30000, 23.0, 24.0, 58.4, 61.0, 'Extra room — maximum comfort.',       4)
+ON CONFLICT (size_code) DO NOTHING;
+
+-- ── Seed: head-size guide copy (storefront, editable) ────
+INSERT INTO {{BUSINESS}}.catalogue_config (singleton, size_guide_title, head_size_guide_md)
+VALUES (
+  true,
+  'How to find your head size',
+  E'### Not sure of your size? It takes one minute 📏\n\n'
+  || E'Most people don''t know their head size in inches — that''s totally fine! '
+  || E'Here''s the easy way to measure:\n\n'
+  || E'1. 🧵 Grab a **soft tape measure** (or a piece of string you can lay against a ruler).\n'
+  || E'2. 📍 Start at your **front hairline**, in the centre of your forehead.\n'
+  || E'3. 🔄 Wrap it **around your head** — above the ears, around the nape, and back to the start.\n'
+  || E'4. ✨ Keep it **snug, not tight**. Note the number where the tape meets.\n\n'
+  || E'Now match your measurement to a size below 👇 If you''re between sizes, '
+  || E'size up for comfort — our caps are adjustable with straps.\n\n'
+  || E'💡 **Tip:** measuring with your hair in its everyday style gives the truest fit.'
+)
+ON CONFLICT (singleton) DO NOTHING;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT to_regclass('{{BUSINESS}}.styled_product_variants');  -- not null
+--   SELECT size_code, premium_ngn FROM {{BUSINESS}}.styled_size_tiers ORDER BY display_order;
+-- ============================================================

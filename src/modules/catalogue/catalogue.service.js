@@ -282,6 +282,47 @@ async function deleteProduct({ brand, user, request_id, id }) {
   events.emit("product.deleted", { brand, id });
 }
 
+// ── Trash + Restore ──────────────────────────────────────
+function listTrash({ brand, page, page_size }) {
+  const offset = (page - 1) * page_size;
+  return repo.listTrashedProducts({ brand, page, page_size, offset });
+}
+
+// Short disambiguator for the rare case where a freed name was reused by a
+// new product before the old one is restored.
+const restoreSuffix = () => Date.now().toString(36).slice(-4);
+
+async function restoreProduct({ brand, user, request_id, id }) {
+  return transaction(async (client) => {
+    const trashed = await repo.getTrashedProductById({ client, brand, id });
+    if (!trashed) throw new NotFoundError("Product");
+    let slug = null;
+    let product_code = null;
+    let renamed = false;
+    if (await repo.productSlugTaken({ client, brand, slug: trashed.slug })) {
+      slug = `${trashed.slug}-restored-${restoreSuffix()}`;
+      renamed = true;
+    }
+    if (await repo.productCodeTaken({ client, brand, code: trashed.product_code })) {
+      product_code = `${trashed.product_code}-R${restoreSuffix()}`;
+      renamed = true;
+    }
+    const p = await repo.restoreProduct({ client, brand, id, slug, product_code });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.product.restore",
+      "product",
+      id,
+      { renamed, slug: p.slug, product_code: p.product_code },
+      request_id,
+      trashed,
+    );
+    events.emit("product.updated", { brand, id });
+    return { ...p, renamed };
+  });
+}
+
 // ── Variants ─────────────────────────────────────────────
 async function listVariants({ brand, id, user }) {
   const exists = await repo.findProductById({ brand, id });
@@ -811,6 +852,8 @@ module.exports = {
   bulkImportProducts,
   updateProduct,
   deleteProduct,
+  listTrash,
+  restoreProduct,
   listVariants,
   addVariant,
   updateVariant,

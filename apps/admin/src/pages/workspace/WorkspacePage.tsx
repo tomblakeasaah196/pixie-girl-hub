@@ -329,14 +329,9 @@ export function WorkspacePage() {
 
   return (
     <div className="animate-fade-in">
-      {/* Tab bar — desktop: top, mobile: bottom fixed */}
-      <div
-        className={cn(
-          "flex items-center gap-2 mb-6",
-          isMobile &&
-            "fixed bottom-0 left-0 right-0 z-30 glass border-t hairline p-2 mb-0 justify-center",
-        )}
-      >
+      {/* Tab bar — top on all sizes; mobile gets shell bottom nav */}
+      <div className="flex items-center gap-2 mb-6">
+
         <div className="flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
@@ -381,7 +376,6 @@ export function WorkspacePage() {
       {/* Content area */}
       <div
         className={cn(
-          isMobile && "pb-[70px]", // room for bottom tabs
           isDesktop && selectedTaskId && "grid grid-cols-[1fr_340px] gap-5",
         )}
       >
@@ -539,7 +533,7 @@ export function WorkspacePage() {
             if (activeTab === "calendar") setShowCreateEvent(true);
             else openCreateTaskForDate();
           }}
-          className="fixed bottom-[76px] right-4 z-40 w-14 h-14 rounded-full bg-accent-deep text-[#F4E9D9] shadow-lg grid place-items-center hover:bg-accent transition-colors"
+          className="fixed bottom-[80px] right-4 z-40 w-14 h-14 rounded-full bg-accent-deep text-[#F4E9D9] shadow-lg grid place-items-center hover:bg-accent transition-colors"
         >
           <Plus className="w-6 h-6" />
         </button>

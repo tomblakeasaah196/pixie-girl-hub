@@ -15,6 +15,7 @@ const pinoHttp = require("pino-http");
 const { config } = require("../config/env");
 const { logger } = require("../config/logger");
 const { requestIdMiddleware } = require("./request-id");
+const { geoCurrencyMiddleware } = require("./geo-currency");
 
 function applyGlobalMiddleware(app) {
   // Behind a proxy (nginx, etc.) — trust X-Forwarded-* headers. An integer
@@ -78,6 +79,11 @@ function applyGlobalMiddleware(app) {
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
   app.use(requestIdMiddleware);
+
+  // Geo-currency: attach req.geoCountry + req.geoCurrency from the local
+  // MaxMind mmdb reader. Sub-millisecond, never throws, degrades gracefully
+  // when the database file is absent (reader returns null → DEFAULT_CURRENCY).
+  app.use(geoCurrencyMiddleware);
 
   if (config.ENABLE_REQUEST_LOGGING) {
     app.use(

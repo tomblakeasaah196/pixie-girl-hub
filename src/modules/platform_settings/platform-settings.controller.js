@@ -61,6 +61,26 @@ const uploadImage = async (req, res) =>
     }),
   });
 
+/**
+ * GET /api/public/geo/currency
+ *
+ * Returns the detected country + recommended storefront currency for the
+ * requesting IP. Called by the Next.js storefront during SSR to initialise
+ * the price-display component without a layout shift.
+ *
+ * Always 200 — falls back to USD on missing/private IP.
+ * Cache-Control: no-store — response varies per client IP.
+ */
+const getGeoCurrency = (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({
+    data: {
+      country: req.geoCountry || null,
+      currency: req.geoCurrency || "USD",
+    },
+  });
+};
+
 module.exports = {
   getSettings,
   updateSettings,
@@ -68,5 +88,6 @@ module.exports = {
   getPublicBranding,
   getWebManifest,
   getGeoWelcome,
+  getGeoCurrency,
   uploadImage,
 };

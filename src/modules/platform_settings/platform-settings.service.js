@@ -18,6 +18,7 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { logger } = require("../../config/logger");
 const { AppError } = require("../../utils/errors");
+const geoip = require("../../services/geoip");
 
 // Branding images (logos, login background) are public assets served from
 // a dedicated /media/branding prefix. SVG is excluded — it can carry script
@@ -55,55 +56,51 @@ function isPrivateOrLocalIp(ip) {
 }
 
 /**
- * Best-effort IP geolocation. Tries ipwho.is first, then ip-api.com as
- * fallback. Aborts each attempt after ~3s and swallows every error — the
- * caller falls back to the default welcome. Returns the normalised
- * location or null.
+ * Best-effort IP geolocation via the local MaxMind GeoLite2-Country database.
+ *
+ * The GeoLite2 Country db carries iso_code + continent_code but not city.
+ * Returns null (gracefully) when the reader is not yet loaded or the IP is
+ * private/local. Zero network calls — pure in-memory mmdb trie walk.
  */
-async function lookupGeo(ip) {
-  // Provider 1: ipwho.is (free, no key)
-  const loc = await _fetchGeo(
-    `https://ipwho.is/${encodeURIComponent(ip)}`,
-    (body) => {
-      if (!body || body.success === false) return null;
-      return {
-        city: body.city || null,
-        country: body.country || null,
-        country_code: body.country_code || null,
-        continent_code: body.continent_code || null,
-      };
-    },
-  );
-  if (loc) return loc;
+function lookupGeo(ip) {
+  const isoCode = geoip.lookupCountry(ip);
+  if (!isoCode) return null;
 
-  // Provider 2 (fallback): ip-api.com (free for non-commercial, no key)
-  return _fetchGeo(
-    `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,city,country,countryCode,continentCode`,
-    (body) => {
-      if (!body || body.status !== "success") return null;
-      return {
-        city: body.city || null,
-        country: body.country || null,
-        country_code: body.countryCode || null,
-        continent_code: body.continentCode || null,
-      };
-    },
-  );
+  // GeoLite2-Country does not include continent data; derive it from the
+  // country code so the login-page regional welcome copy still works.
+  return {
+    city: null,
+    country: null,
+    country_code: isoCode,
+    continent_code: _continentFromCountry(isoCode),
+  };
 }
 
-async function _fetchGeo(url, parse) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3000);
-  try {
-    const resp = await fetch(url, { signal: controller.signal });
-    if (!resp.ok) return null;
-    return parse(await resp.json());
-  } catch (err) {
-    logger.warn({ err: err.message, url }, "geo-welcome lookup failed");
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+/**
+ * Derive a continent code from an ISO 3166-1 alpha-2 country code.
+ * Covers the most common cases; unknown codes fall back to null so the
+ * caller uses the default welcome message.
+ *
+ * @param {string} cc  e.g. 'NG', 'US', 'DE'
+ * @returns {string|null}  'AF'|'AN'|'AS'|'EU'|'NA'|'OC'|'SA'|null
+ */
+function _continentFromCountry(cc) {
+  /* eslint-disable prettier/prettier */
+  const AF = ["DZ","AO","BJ","BW","BF","BI","CM","CV","CF","TD","KM","CG","CD","CI","DJ","EG","GQ","ER","ET","GA","GM","GH","GN","GW","KE","LS","LR","LY","MG","MW","ML","MR","MU","YT","MA","MZ","NA","NE","NG","RE","RW","SH","ST","SN","SC","SL","SO","ZA","SS","SD","SZ","TZ","TG","TN","UG","EH","ZM","ZW"];
+  const AS = ["AF","AM","AZ","BH","BD","BT","BN","KH","CN","CX","CC","IO","GE","HK","IN","ID","IR","IQ","IL","JP","JO","KZ","KW","KG","LA","LB","MO","MY","MV","MN","MM","NP","KP","OM","PK","PS","PH","QA","SA","SG","KR","LK","SY","TW","TJ","TH","TR","TM","AE","UZ","VN","YE"];
+  const EU = ["AX","AL","AD","AT","BY","BE","BA","BG","HR","CY","CZ","DK","EE","FO","FI","FR","DE","GI","GR","GG","VA","HU","IS","IE","IM","IT","JE","LV","LI","LT","LU","MK","MT","MD","MC","ME","NL","NO","PL","PT","RO","RU","SM","RS","SK","SI","ES","SJ","SE","CH","UA","GB"];
+  const NA = ["AI","AG","AW","BS","BB","BZ","BM","BQ","VG","CA","KY","CR","CU","CW","DM","DO","SV","GL","GD","GP","GT","HT","HN","JM","MQ","MX","MS","AN","NI","PA","PR","BL","KN","LC","MF","PM","VC","SX","TT","TC","US","VI"];
+  const SA = ["AR","BO","BR","CL","CO","EC","FK","GF","GY","PY","PE","GS","SR","UY","VE"];
+  const OC = ["AS","AU","CK","FJ","PF","GU","KI","MH","FM","NR","NC","NZ","NU","NF","MP","PW","PG","PN","WS","SB","TK","TO","TV","UM","VU","WF"];
+
+  if (AF.includes(cc)) return "AF";
+  if (AS.includes(cc)) return "AS";
+  if (EU.includes(cc)) return "EU";
+  if (NA.includes(cc)) return "NA";
+  if (SA.includes(cc)) return "SA";
+  if (OC.includes(cc)) return "OC";
+  return null;
+  /* eslint-enable prettier/prettier */
 }
 
 function emitBrandingUpdated(payload) {
@@ -303,7 +300,7 @@ async function getGeoWelcome({ ip, override } = {}) {
   }
 
   logger.info({ ip: lookupIp }, "geo-welcome: looking up IP");
-  const location = await lookupGeo(lookupIp);
+  const location = lookupGeo(lookupIp);
   if (!location) {
     logger.warn({ ip: lookupIp }, "geo-welcome: lookup returned no result");
   }

@@ -79,6 +79,7 @@ async function pushAdCampaign(req, res) {
     data: await service.pushAdCampaign({
       ...base(req),
       id: req.params.id,
+      input: req.body,
     }),
   });
 }

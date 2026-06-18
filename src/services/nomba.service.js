@@ -59,11 +59,11 @@ async function getToken(k) {
   });
   const body = data && data.data ? data.data : data;
   const token = body.access_token || body.accessToken;
-  const expiresInS = Number(body.expiresAt ? 0 : body.expires_in || 3600);
-  tokenCache.set(k.client_id, {
-    token,
-    expiresAt: Date.now() + (expiresInS > 0 ? expiresInS : 3600) * 1000,
-  });
+  const expiresAt = body.expiresAt
+    ? new Date(body.expiresAt).getTime()
+    : Date.now() + (Number(body.expires_in) || 3600) * 1000;
+
+  tokenCache.set(k.client_id, { token, expiresAt });
   return token;
 }
 
@@ -119,20 +119,15 @@ async function requestTerminalPayment({
   terminal_id,
   amount_ngn,
   reference,
-  customer_email,
-  metadata,
   creds,
 }) {
   return authed(
     "post",
-    "/v1/transactions/terminal/request-payment",
+    `/v1/terminals/payment-request/${encodeURIComponent(terminal_id)}`,
     {
-      terminalId: terminal_id,
+      merchantTxRef: reference,
       amount: Number(amount_ngn),
       currency: "NGN",
-      merchantTxRef: reference,
-      customerEmail: customer_email,
-      metadata: metadata || {},
     },
     creds,
   );
@@ -155,18 +150,44 @@ async function verifyTransaction(reference, creds) {
 function verifyWebhookSignature(rawBody, headers = {}, creds) {
   const secret = (creds && creds.client_secret) || config.NOMBA_API_KEY;
   if (!secret) return null;
-  const sig =
-    headers["x-nomba-signature"] || headers["x-nomba-signature-256"] || null;
-  if (!sig) return false;
+
+  const sig = headers["nomba-signature"] || headers["nomba-sig-value"] || null;
+  const timestamp = headers["nomba-timestamp"] || null;
+  if (!sig || !timestamp) return false;
+
+  let payload;
+  try {
+    payload = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+  } catch {
+    return false;
+  }
+
+  const data = payload.data || {};
+  const merchant = data.merchant || {};
+  const transaction = data.transaction || {};
+
+  let responseCode = transaction.responseCode || "";
+  if (responseCode === "null") responseCode = "";
+
+  const hashInput = [
+    payload.event_type || "",
+    payload.requestId || "",
+    merchant.userId || "",
+    merchant.walletId || "",
+    transaction.transactionId || "",
+    transaction.type || "",
+    transaction.time || "",
+    responseCode,
+    timestamp,
+  ].join(":");
+
   const computed = crypto
     .createHmac("sha256", secret)
-    .update(rawBody)
-    .digest("hex");
+    .update(hashInput)
+    .digest("base64");
+
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(String(computed)),
-      Buffer.from(String(sig)),
-    );
+    return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(sig));
   } catch {
     return false;
   }

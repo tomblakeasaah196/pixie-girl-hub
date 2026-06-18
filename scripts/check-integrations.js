@@ -149,6 +149,30 @@ const checks = [
         : [NO, "set CHOWDECK_API_KEY / GIGL_API_KEY"],
   ],
   [
+    "Paid ads — Google Ads",
+    () =>
+      has(
+        "GOOGLE_ADS_DEVELOPER_TOKEN",
+        "GOOGLE_ADS_CLIENT_ID",
+        "GOOGLE_ADS_CLIENT_SECRET",
+      )
+        ? [PASS, "app creds set; per-account OAuth tokens live in the DB"]
+        : [
+            NO,
+            "optional — set GOOGLE_ADS_DEVELOPER_TOKEN / CLIENT_ID / CLIENT_SECRET",
+          ],
+  ],
+  [
+    "Paid ads — Meta Marketing",
+    () =>
+      has("META_MARKETING_API_KEY")
+        ? [PASS, "system token set"]
+        : [
+            NO,
+            "per-account tokens (DB); system token optional via META_MARKETING_API_KEY",
+          ],
+  ],
+  [
     "Error monitoring (Sentry)",
     () => (has("SENTRY_DSN") ? [PASS, ""] : [NO, "optional — set SENTRY_DSN"]),
   ],
@@ -164,8 +188,9 @@ for (const [name, fn] of checks) {
 }
 // eslint-disable-next-line no-console
 console.log(
-  "\nPayments (Paystack/Opay/Nomba/Stripe): configured PER-BUSINESS in the DB " +
-    "(shared.payment_gateways via Business Setup) — verify in the app, not here.",
+  `\nPayments — active gateways: ${env.ENABLED_PAYMENT_GATEWAYS || "paystack,nomba"} ` +
+    "(OPay/Stripe stay coded but off unless listed in ENABLED_PAYMENT_GATEWAYS). " +
+    "Per-business creds live in the DB (shared.payment_gateways) — verify in the app.",
 );
 // eslint-disable-next-line no-console
 console.log(

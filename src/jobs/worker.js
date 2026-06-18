@@ -24,6 +24,7 @@
  *   every 30m        — Invoice reminder sweep (F-10)
  *   every 30m        — Webhook replay sweep (H-4 — re-drive stuck webhooks)
  *   daily 03:00      — Soft-FK reconciliation sweep (F-13)
+ *   Sun 02:00        — GeoLite2-Country database auto-update (MaxMind)
  */
 
 "use strict";
@@ -151,6 +152,10 @@ async function startWorkers() {
     runChemicalReconciliation,
   } = require("./schedulers/chemical-reconciliation");
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
+  const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
+  const {
+    runGeoIpDatabaseUpdate,
+  } = require("./schedulers/geoip-updater");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart.
@@ -216,6 +221,12 @@ async function startWorkers() {
     "chemical-reconciliation",
     "30 3 2 * *",
     runChemicalReconciliation,
+  );
+  scheduleCron("ad-spend-sync", "30 4 * * *", runAdSpendSync);
+  scheduleCron(
+    "geoip-db-update",
+    config.CRON_GEOIP_DB_UPDATE,
+    runGeoIpDatabaseUpdate,
   );
 
   // ── Transactional outbox dispatcher (H-2) ──────────────

@@ -1,13 +1,12 @@
 /**
- * Public geo-welcome — GET /api/public/geo-welcome.
+ * Public geo endpoints (unauthenticated, per-IP).
  *
- * Unauthenticated, per-IP. The login page calls this to greet a visitor
- * by continent ("Welcome from Africa") using login_config.region_messages.
- * Best-effort: a missing/private IP or a failed lookup falls back to the
- * default welcome, and the endpoint always returns 200.
+ * GET /api/public/geo-welcome   — login-page continent greeting
+ * GET /api/public/geo/currency  — storefront SSR currency detection
  *
- * Never cached (Cache-Control: no-store, set in the controller) — the
- * response varies per client IP.
+ * Both are best-effort (always 200, never cached).
+ * Results come from the local MaxMind GeoLite2-Country mmdb reader;
+ * no external API calls are made.
  */
 
 "use strict";
@@ -15,8 +14,19 @@
 const express = require("express");
 const controller = require("./platform-settings.controller");
 
-const router = express.Router();
+// ── /api/public/geo-welcome (existing) ────────────────────────────────────
+const welcomeRouter = express.Router();
+welcomeRouter.get("/", controller.getGeoWelcome);
 
-router.get("/", controller.getGeoWelcome);
+// ── /api/public/geo (new) ─────────────────────────────────────────────────
+const geoRouter = express.Router();
 
-module.exports = router;
+/**
+ * GET /api/public/geo/currency
+ * Body: { data: { country: 'NG'|null, currency: 'NGN'|'USD'|... } }
+ * Used by the Next.js storefront during SSR to choose the display currency
+ * before the first paint (zero layout shift).
+ */
+geoRouter.get("/currency", controller.getGeoCurrency);
+
+module.exports = { welcomeRouter, geoRouter };

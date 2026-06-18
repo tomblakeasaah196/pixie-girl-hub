@@ -26,6 +26,21 @@ const { NotFoundError, AppError } = require("../../utils/errors");
 
 const PROVIDERS = ["paystack", "opay", "nomba", "stripe"];
 
+/**
+ * Gateways live in THIS deployment. OPay + Stripe remain fully implemented but
+ * are off unless ENABLED_PAYMENT_GATEWAYS lists them, so another project can
+ * re-enable them with a single env change (no code change).
+ */
+function enabledProviders() {
+  return String(config.ENABLED_PAYMENT_GATEWAYS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+function isEnabled(provider) {
+  return enabledProviders().includes(provider);
+}
+
 // env fallback bags (used when no DB row, or to fill unset DB fields).
 function envCreds(provider) {
   switch (provider) {
@@ -218,17 +233,21 @@ async function getActiveChain({ brand, currency = "NGN" }) {
   } catch {
     rows = [];
   }
+  const allowed = enabledProviders();
   const chain = [];
   if (rows.length) {
     for (const r of rows) {
+      if (!allowed.includes(r.provider)) continue; // disabled in this deployment
       const creds = await resolveCredentials({ brand, provider: r.provider });
       if (creds) chain.push({ provider: r.provider, credentials: creds });
     }
   } else {
-    // No DB config → env fallback (single-tenant): primary = paystack for NGN,
-    // stripe for foreign.
-    const fallbackProviders = ngn ? ["paystack", "opay"] : ["stripe"];
-    for (const p of fallbackProviders) {
+    // No DB config → env fallback (single-tenant), restricted to the gateways
+    // enabled for this deployment, in preference order.
+    const candidates = (
+      ngn ? ["paystack", "nomba", "opay"] : ["stripe", "paystack"]
+    ).filter((p) => allowed.includes(p));
+    for (const p of candidates) {
       const creds = await resolveCredentials({ brand, provider: p });
       if (creds) chain.push({ provider: p, credentials: creds });
     }
@@ -238,6 +257,8 @@ async function getActiveChain({ brand, currency = "NGN" }) {
 
 module.exports = {
   PROVIDERS,
+  enabledProviders,
+  isEnabled,
   listGateways,
   configureGateway,
   setActive,

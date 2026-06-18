@@ -32,6 +32,7 @@ const { applyGlobalMiddleware } = require("./middleware");
 const { mountRoutes } = require("./routes");
 const { startWorkers, stopWorkers } = require("./jobs/worker");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
+const geoip = require("./services/geoip");
 
 async function bootstrap() {
   // ── Validate environment first; fail fast ──────────────
@@ -49,6 +50,11 @@ async function bootstrap() {
 
   await initRedis();
   logger.info("redis connected");
+
+  // ── GeoIP local database ───────────────────────────────
+  // Non-fatal: the server starts fine without the mmdb file; geo lookups
+  // return null and the currency middleware falls back to the default (USD).
+  await geoip.init();
 
   // ── Build Express app ──────────────────────────────────
   const app = express();

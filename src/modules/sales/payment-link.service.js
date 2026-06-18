@@ -18,6 +18,7 @@ const salesRepo = require("./sales.repo");
 const gateways = require("../business_setup/payment-gateways.service");
 const paystack = require("../../services/paystack.service");
 const opay = require("../../services/opay.service");
+const nomba = require("../../services/nomba.service");
 const stripe = require("../../services/stripe.service");
 const { query } = require("../../config/database");
 const { config } = require("../../config/env");
@@ -72,6 +73,20 @@ async function initOnGateway({
     });
     const url = data && data.data && data.data.authorization_url;
     if (!url) throw new Error("paystack: no authorization_url");
+    return { provider, reference, checkout_url: url };
+  }
+  if (provider === "nomba") {
+    // Nomba takes NGN major units (not kobo) and returns a checkout link.
+    const data = await nomba.initializePayment({
+      reference,
+      amount_ngn,
+      email,
+      callback_url,
+      creds: credentials,
+    });
+    const url =
+      data && data.data && (data.data.checkoutLink || data.data.checkout_url);
+    if (!url) throw new Error("nomba: no checkoutLink");
     return { provider, reference, checkout_url: url };
   }
   if (provider === "opay") {

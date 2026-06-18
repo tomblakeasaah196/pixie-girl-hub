@@ -12,7 +12,7 @@ const repo = require("./marketing.repo");
 const events = require("./marketing.events");
 const { audit } = require("../../middleware/audit");
 const { money, toCurrencyString } = require("../../utils/money");
-const { NotFoundError } = require("../../utils/errors");
+const { NotFoundError, AppError } = require("../../utils/errors");
 const { forPlatform } = require("../../services/ad-connectors");
 const { logger } = require("../../config/logger");
 
@@ -41,6 +41,16 @@ function listAdAccounts({ brand }) {
 }
 async function connectAdAccount({ brand, user, request_id, input }) {
   const acc = await repo.createAdAccount({ brand, account: input });
+  // Store the per-account OAuth tokens (encrypted) when the connect call carries
+  // them — this is what makes the account "live" for pull/push.
+  if (input.access_token || input.refresh_token) {
+    await repo.updateAccountTokens({
+      brand,
+      id: acc.ad_account_id,
+      access_token: input.access_token || null,
+      refresh_token: input.refresh_token || null,
+    });
+  }
   await A(
     brand,
     user,
@@ -76,7 +86,23 @@ async function getAdCampaign({ brand, id }) {
   return c;
 }
 async function createAdCampaign({ brand, user, request_id, input }) {
-  const c = await repo.createAdCampaign({ brand, c: input });
+  const payload = { ...input };
+  // Create-on-platform: when push is requested and the account is authorised,
+  // create the campaign on the network first (always PAUSED — no auto-spend),
+  // then record it locally with the real external id.
+  if (input.push) {
+    const account = await repo.getAccountInternal({
+      brand,
+      id: input.ad_account_id,
+    });
+    if (!account) throw new NotFoundError("Ad account");
+    const connector = forPlatform(input.platform);
+    const prepared = await connector.prepare(account);
+    const created = await connector.createCampaign(prepared, input);
+    payload.external_campaign_id = created.external_campaign_id;
+    payload.status = "paused";
+  }
+  const c = await repo.createAdCampaign({ brand, c: payload });
   await A(
     brand,
     user,
@@ -178,9 +204,18 @@ async function attributionReport({ brand, from, to }) {
 }
 
 // ── Live push operations ─────────────────────────────────
-async function pushAdCampaign({ brand, user, request_id, id }) {
+async function pushAdCampaign({ brand, user, request_id, id, input = {} }) {
   const c = await repo.getCampaignForPush({ brand, id });
   if (!c) throw new NotFoundError("Ad campaign");
+  // Guard ad spend: pushing a campaign in 'active' state starts/continues spend
+  // on the network, so it needs explicit confirmation (confirm:true).
+  if (c.status === "active" && input.confirm !== true) {
+    throw new AppError(
+      "CONFIRM_REQUIRED",
+      "Pushing an active (spending) campaign needs explicit confirmation. Resend with confirm:true.",
+      412,
+    );
+  }
   const connector = forPlatform(c.platform);
   // Ensure connector is configured for this platform
   if (!connector || typeof connector.prepare !== "function") {

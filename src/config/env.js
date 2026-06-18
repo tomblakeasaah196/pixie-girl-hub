@@ -113,6 +113,9 @@ const schema = z.object({
   // Stripe
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // Gateways live in THIS deployment (comma list). OPay + Stripe stay fully
+  // implemented but off by default — list them here to re-enable for a project.
+  ENABLED_PAYMENT_GATEWAYS: z.string().default("paystack,nomba"),
 
   // Communication
   META_WA_PHONE_ID: z.string().optional(),
@@ -181,8 +184,17 @@ const schema = z.object({
   CHOWDECK_API_KEY: z.string().optional(),
   GIGL_API_KEY: z.string().optional(),
 
-  // Geolocation
+  // Geolocation (MaxMind GeoLite2 local database)
   MAXMIND_DB_PATH: z.string().default("./data/GeoLite2-Country.mmdb"),
+  // Free licence key from maxmind.com — required only for automated weekly
+  // database updates (CRON_GEOIP_DB_UPDATE). IP lookups work without it once
+  // the .mmdb file is placed at MAXMIND_DB_PATH.
+  MAXMIND_LICENSE_KEY: z.string().optional(),
+  // MaxMind account ID (numeric). Required alongside MAXMIND_LICENSE_KEY for
+  // Basic Auth on the download endpoint. Free accounts: use your account ID.
+  MAXMIND_ACCOUNT_ID: z.string().optional(),
+  // node-cron expression for the weekly database update (default: Sun 02:00 WAT).
+  CRON_GEOIP_DB_UPDATE: z.string().default("0 2 * * 0"),
 
   // AI
   DEEPSEEK_API_KEY: z.string().optional(),

@@ -1,5 +1,5 @@
 import type { Tone } from "@/components/ui/primitives";
-import type { TaskStatus, TaskPriority } from "./types";
+import type { TaskStatus, TaskPriority, TaskBoard } from "./types";
 
 // ── Task status metadata ────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@ export const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
 ];
 
 /** Columns shown in the kanban board (excludes cancelled). */
-export const BOARD_COLUMNS: TaskStatus[] = [
+export const BOARD_COLUMNS: (keyof TaskBoard)[] = [
   "to_do",
   "in_progress",
   "in_review",

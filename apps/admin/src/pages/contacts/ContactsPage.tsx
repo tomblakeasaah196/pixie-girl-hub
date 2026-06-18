@@ -74,9 +74,9 @@ export function ContactsPage() {
   const [showQR, setShowQR] = useState(false);
 
   const params = {
-    ...(search ? { search } : {}),
-    ...(typeFilter ? { type: typeFilter } : {}),
-    ...(priorityFilter ? { priority: priorityFilter } : {}),
+    ...(search ? { q: search } : {}),
+    ...(typeFilter ? { contact_type: typeFilter } : {}),
+    ...(priorityFilter ? { priority_level: priorityFilter } : {}),
     page,
     page_size: 25,
   };

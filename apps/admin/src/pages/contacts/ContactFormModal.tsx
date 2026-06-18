@@ -95,6 +95,40 @@ function PhoneField({
   );
 }
 
+// ── Social-handle field ───────────────────────────────────────────────────
+// Renders an '@' prefix and strips it on input + on store, so the canonical
+// stored handle has no leading '@'. Matches the backend's contactCreate
+// validator (preprocesses ""→undefined, regex ^@?[A-Za-z0-9._]{1,30}$).
+function SocialHandleField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (handle: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <Field label={label}>
+      <div className="flex items-center h-[42px] rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 transition-colors">
+        <span className="px-3 text-[13px] text-text-faint select-none">@</span>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/^@+/, ""))}
+          placeholder={placeholder}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          className="flex-1 bg-transparent text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none pr-3"
+        />
+      </div>
+    </Field>
+  );
+}
+
 // ── Multi-select chip component ──────────────────────────────────────────
 
 function TypeChips({
@@ -169,6 +203,10 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
   const [whatsapp, setWhatsapp] = useState(contact?.whatsapp_number ?? "");
   const [email, setEmail] = useState(contact?.email ?? "");
   const [gender, setGender] = useState(contact?.gender ?? "");
+  // Social handles — stored without the leading '@'. UI shows the '@' prefix.
+  const [instagram, setInstagram] = useState(contact?.instagram_handle ?? "");
+  const [tiktok, setTiktok] = useState(contact?.tiktok_handle ?? "");
+  const [facebook, setFacebook] = useState(contact?.facebook_handle ?? "");
   // Birthday: store as month + day, year optional (defaults to 1900 for birthday-only)
   const [birthMonth, setBirthMonth] = useState(() => {
     if (!contact?.date_of_birth) return "";
@@ -199,8 +237,17 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
     types.join() !== (contact?.contact_type ?? ["customer"]).join() ||
     displayName !== (contact?.display_name ?? "") ||
     firstName !== (contact?.first_name ?? "") ||
+    lastName !== (contact?.last_name ?? "") ||
     phone !== (contact?.primary_phone ?? "") ||
-    email !== (contact?.email ?? "");
+    whatsapp !== (contact?.whatsapp_number ?? "") ||
+    email !== (contact?.email ?? "") ||
+    instagram !== (contact?.instagram_handle ?? "") ||
+    tiktok !== (contact?.tiktok_handle ?? "") ||
+    facebook !== (contact?.facebook_handle ?? "") ||
+    gender !== (contact?.gender ?? "") ||
+    priority !== (contact?.priority_level ?? "regular") ||
+    source !== (contact?.source ?? "") ||
+    notes !== (contact?.notes ?? "");
 
   const buildDob = (): string | undefined => {
     if (!birthMonth || !birthDay) return undefined;
@@ -230,6 +277,9 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
       ...(phone ? { primary_phone: phone } : {}),
       ...(whatsapp ? { whatsapp_number: whatsapp } : {}),
       ...(email.trim() ? { email: email.trim() } : {}),
+      ...(instagram.trim() ? { instagram_handle: instagram.trim() } : {}),
+      ...(tiktok.trim() ? { tiktok_handle: tiktok.trim() } : {}),
+      ...(facebook.trim() ? { facebook_handle: facebook.trim() } : {}),
       ...(gender ? { gender } : {}),
       ...(buildDob() ? { date_of_birth: buildDob() } : {}),
       ...(countryCode ? { country_code: countryCode } : {}),
@@ -348,6 +398,26 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
               placeholder="amara@example.com"
             />
           </Field>
+          <SocialHandleField
+            label="Instagram"
+            value={instagram}
+            onChange={setInstagram}
+            placeholder="amara.style"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <SocialHandleField
+              label="TikTok"
+              value={tiktok}
+              onChange={setTiktok}
+              placeholder="amara.style"
+            />
+            <SocialHandleField
+              label="Facebook"
+              value={facebook}
+              onChange={setFacebook}
+              placeholder="amara.style"
+            />
+          </div>
         </FormSection>
 
         {/* Personal */}
@@ -360,10 +430,10 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
                 className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
               >
                 <option value="">— select —</option>
-                <option value="female">Female</option>
-                <option value="male">Male</option>
-                <option value="non_binary">Non-binary</option>
-                <option value="prefer_not_to_say">Prefer not to say</option>
+                <option value="F">Female</option>
+                <option value="M">Male</option>
+                <option value="other">Non-binary / Other</option>
+                <option value="prefer_not">Prefer not to say</option>
               </select>
             </Field>
             <Field label="Country">

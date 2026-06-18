@@ -6,6 +6,20 @@
 
 const { z } = require("zod");
 
+/** Social handle: optional leading '@', then 1-30 chars of letters/digits/._
+ *  Empty string from the form is treated as "not provided". Stored without
+ *  the leading '@' so the canonical form is consistent. */
+const socialHandle = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z
+    .string()
+    .trim()
+    .max(60)
+    .regex(/^@?[A-Za-z0-9._]{1,30}$/, "Invalid handle")
+    .transform((s) => s.replace(/^@/, ""))
+    .optional(),
+);
+
 const contactCreate = z
   .object({
     display_name: z.string().min(1).max(200),
@@ -21,6 +35,9 @@ const contactCreate = z
     whatsapp_number: z.string().max(30).optional(),
     email: z.string().email().optional(),
     country_code: z.string().max(4).optional(),
+    instagram_handle: socialHandle,
+    tiktok_handle: socialHandle,
+    facebook_handle: socialHandle,
     priority_level: z.enum(["vip", "regular", "new"]).optional(),
     assigned_to: z.string().uuid().optional(),
     visible_to: z.array(z.string()).optional(),

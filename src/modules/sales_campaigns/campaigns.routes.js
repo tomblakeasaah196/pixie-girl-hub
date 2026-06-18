@@ -11,12 +11,20 @@
 "use strict";
 
 const express = require("express");
+const multer = require("multer");
 const controller = require("./campaigns.controller");
 const v2 = require("./campaigns.v2.controller");
 const validator = require("./campaigns.validator");
 const { requirePermission } = require("../../middleware/rbac");
+const { config } = require("../../config/env");
 
 const router = express.Router();
+
+// In-memory upload for landing hero / look-book images → storage.service.
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: (config.MEDIA_MAX_FILE_SIZE_MB || 10) * 1024 * 1024 },
+});
 
 // ── v2: Bundles (catalogue-level) ──────────────────────────
 router.get("/bundles", requirePermission("sales_campaigns", "view"), v2.listBundles);
@@ -131,6 +139,12 @@ router.delete(
 );
 
 // ── Landing page ───────────────────────────────────────────
+router.post(
+  "/:id/upload-image",
+  requirePermission("sales_campaigns", "edit"),
+  imageUpload.single("file"),
+  controller.uploadImage,
+);
 router.get(
   "/:id/landing",
   requirePermission("sales_campaigns", "view"),

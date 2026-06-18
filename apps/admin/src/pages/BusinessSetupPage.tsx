@@ -81,7 +81,7 @@ export function BusinessSetupPage() {
   if (!draft) return null;
 
   return (
-    <div className="max-w-[860px] pb-24">
+    <div className="max-w-[860px] mx-auto pb-24">
       <div className="flex items-center gap-3 mb-1">
         <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
           <Building2 className="w-5 h-5" />

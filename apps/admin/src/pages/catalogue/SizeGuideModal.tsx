@@ -61,7 +61,7 @@ export function SizeGuideModal({ open, onClose }: { open: boolean; onClose: () =
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Size & guide" width="w-[min(840px,95vw)]">
+    <Modal open={open} onClose={onClose} title="Size & guide" size="lg">
       <div className="flex items-center gap-2 text-[12.5px] text-text-muted mb-4">
         <Ruler className="w-4 h-4 text-accent-glow" />
         Set the size premiums and the head-size guide once — they apply to every styled product and

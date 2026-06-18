@@ -58,7 +58,7 @@ export function BusinessesPage() {
   ];
 
   return (
-    <div className="max-w-[1000px] space-y-4 pb-12">
+    <div className="max-w-[1000px] mx-auto space-y-4 pb-12">
       <h1 className="font-display text-2xl font-medium">Businesses</h1>
 
       {q.isError ? (

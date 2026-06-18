@@ -714,7 +714,7 @@ export function IamUsersPage() {
   const totalPages = Math.ceil(total / PER_PAGE);
 
   return (
-    <div className="max-w-[1100px] space-y-4 pb-12">
+    <div className="max-w-[1100px] mx-auto space-y-4 pb-12">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">

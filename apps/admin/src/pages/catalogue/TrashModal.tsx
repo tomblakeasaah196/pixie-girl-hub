@@ -17,7 +17,7 @@ import {
 export function TrashModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<"styled" | "base">("styled");
   return (
-    <Modal open={open} onClose={onClose} title="Trash" width="w-[min(620px,95vw)]">
+    <Modal open={open} onClose={onClose} title="Trash" size="md">
       <div className="flex gap-1 p-1 rounded-[12px] glass mb-4 w-fit">
         {(["styled", "base"] as const).map((k) => (
           <button

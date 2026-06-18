@@ -32,7 +32,8 @@ export function BreadcrumbStrip() {
   }
 
   return (
-    <nav className="flex items-center gap-1.5 px-[30px] py-2 border-b border-[rgb(var(--border-c)/0.5)] bg-[rgb(var(--panel-2)/0.35)] backdrop-blur-md">
+    <nav className="border-b border-[rgb(var(--border-c)/0.5)] bg-[rgb(var(--panel-2)/0.35)] backdrop-blur-md">
+     <div className="mx-auto w-full max-w-[var(--content-max)] flex items-center gap-1.5 px-[34px] py-2">
       {crumbs.map((crumb, i) => {
         const isLast = i === crumbs.length - 1;
         return (
@@ -53,6 +54,7 @@ export function BreadcrumbStrip() {
           </span>
         );
       })}
+     </div>
     </nav>
   );
 }

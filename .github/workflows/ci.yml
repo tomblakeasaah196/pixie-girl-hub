@@ -6,9 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  # Prevents Puppeteer from downloading Chromium during npm install.
-  # Your VPS and CI runners don't need a bundled browser — Puppeteer
-  # is almost certainly a dev/test dep anyway.
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
   PUPPETEER_SKIP_DOWNLOAD: "true"
 
@@ -29,13 +26,7 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --prefer-offline
-        # --prefer-offline: use cache aggressively, only hit network
-        # for packages not already cached — cuts install time and
-        # reduces the surface area for network hangs.
         timeout-minutes: 10
-        # Hard kill if npm ci hasn't finished in 10 min — surfaces
-        # the hang immediately instead of burning your whole Actions
-        # quota on a stuck job.
 
       - name: Run tests
         run: npm test --if-present || true
@@ -50,33 +41,17 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
-        timeout-minutes: 20
-        # Caps the entire SSH session — without this, a hung npm install
-        # on the VPS will hold your deploy job open until GitHub kills it
-        # at 6h, wasting a deploy slot and leaving PM2 in a partial state.
+        timeout-minutes: 30
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # command_timeout controls how long appleboy waits for the
-          # remote script to finish before it disconnects. Match this
-          # to the job-level timeout above.
-          command_timeout: "18m"
+          command_timeout: "28m"
           script: |
             set -e
 
-            # Skip Puppeteer's Chromium download on the VPS too.
-            # Without this, every deploy re-downloads a ~300MB browser
-            # binary even though your server never opens a browser.
             export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
             export PUPPETEER_SKIP_DOWNLOAD=true
-
-            # Tune npm's network behaviour for a VPS environment:
-            #   fetch-timeout      — give up on a single request after 60s
-            #   fetch-retries      — retry failed requests 3× before erroring
-            #   fetch-retry-maxtimeout — cap the per-retry wait
-            # Without these, npm will wait ~forever on a stalled CDN
-            # connection, which is the most common cause of multi-hour hangs.
             export NPM_CONFIG_FETCH_TIMEOUT=60000
             export NPM_CONFIG_FETCH_RETRIES=3
             export NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=60000
@@ -89,6 +64,7 @@ jobs:
             echo "--- Pulling latest code"
             git pull origin main
 
+            # ── Backend ────────────────────────────────────────────
             echo "--- Installing backend dependencies"
             npm install --omit=dev
 
@@ -102,13 +78,10 @@ jobs:
             NODE_ENV=production node scripts/migrate-shared.js run
             NODE_ENV=production node scripts/repair-business-schema.js --all run
 
-            echo "--- Zero-downtime reload"
-            pm2 reload pixie-girl-hub || pm2 start ecosystem.config.js --env production
+            echo "--- Zero-downtime reload backend"
+            pm2 reload pixie-girl-hub || pm2 start ecosystem.config.js --only pixie-girl-hub --env production
 
-            echo "--- Saving PM2 process list"
-            pm2 save
-
-            echo "--- Health check"
+            echo "--- Health check backend"
             PORT=$(grep -E '^PORT=' /var/www/pixie-girl-hub/.env | head -1 \
                    | cut -d '=' -f2 | tr -d ' "')
             PORT=${PORT:-7000}
@@ -117,7 +90,7 @@ jobs:
             HEALTHY=0
             for i in $(seq 1 10); do
               if curl -sf "http://localhost:$PORT/health" > /dev/null; then
-                echo "Health check passed on attempt $i ✓"
+                echo "Backend health check passed on attempt $i ✓"
                 HEALTHY=1
                 break
               fi
@@ -126,11 +99,44 @@ jobs:
             done
 
             if [ "$HEALTHY" -ne 1 ]; then
-              echo "Health check FAILED after ~30s"
-              echo "--- pm2 status ---"
+              echo "Backend health check FAILED"
               pm2 list || true
-              echo "--- last 40 log lines ---"
               pm2 logs pixie-girl-hub --lines 40 --nostream || true
+              exit 1
+            fi
+
+            # ── Landing (Next.js) ──────────────────────────────────
+            echo "--- Installing landing dependencies"
+            cd apps/landing
+            npm install
+
+            echo "--- Building landing app (.next)"
+            npm run build
+
+            cd ../..
+
+            echo "--- Zero-downtime reload landing"
+            pm2 reload pixie-girl-landing || pm2 start ecosystem.config.js --only pixie-girl-landing --env production
+
+            echo "--- Saving PM2 process list"
+            pm2 save
+
+            echo "--- Health check landing"
+            HEALTHY=0
+            for i in $(seq 1 10); do
+              if curl -sf "http://localhost:3000" > /dev/null; then
+                echo "Landing health check passed on attempt $i ✓"
+                HEALTHY=1
+                break
+              fi
+              echo "  attempt $i/10 — not ready, waiting 3s..."
+              sleep 3
+            done
+
+            if [ "$HEALTHY" -ne 1 ]; then
+              echo "Landing health check FAILED"
+              pm2 list || true
+              pm2 logs pixie-girl-landing --lines 40 --nostream || true
               exit 1
             fi
 

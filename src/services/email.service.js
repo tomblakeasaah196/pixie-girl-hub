@@ -18,6 +18,7 @@ function getTransporter() {
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       secure: false,
+      ignoreTLS: true,
       auth: config.SMTP_USER
         ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD }
         : undefined,

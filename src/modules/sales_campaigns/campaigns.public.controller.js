@@ -19,6 +19,14 @@ function brandHint(req) {
   return typeof h === "string" ? h.toLowerCase().trim() : undefined;
 }
 
+async function index(req, res) {
+  const data = await publicService.getIndex({
+    brand: req.brand,
+    brandHint: brandHint(req),
+  });
+  res.json({ data });
+}
+
 async function landing(req, res) {
   const data = await publicService.getLanding({
     slug: req.params.slug,
@@ -49,4 +57,4 @@ async function signup(req, res) {
   res.status(result.already_signed_up ? 200 : 201).json({ data: result });
 }
 
-module.exports = { landing, stock, signup };
+module.exports = { index, landing, stock, signup };

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/auth/RequireAuth";
@@ -13,26 +13,63 @@ import { CataloguePage } from "@/pages/catalogue/CataloguePage";
 import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
 import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
 
-const CashExpensesHome = lazy(() => import("@/pages/cash-expenses/CashExpensesHome"));
-const ProductionPage = lazy(() => import("@/pages/production/ProductionPage").then((m) => ({ default: m.ProductionPage })));
-const PricingPage = lazy(() => import("@/pages/pricing/PricingPage").then((m) => ({ default: m.PricingPage })));
-const PurchasingPage = lazy(() => import("@/pages/purchasing/PurchasingPage").then((m) => ({ default: m.PurchasingPage })));
-const ServiceJobsPage = lazy(() => import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({ default: m.ServiceJobsPage })));
-const FactoryLanguagePage = lazy(() => import("@/pages/FactoryLanguagePage").then((m) => ({ default: m.FactoryLanguagePage })));
-const SmartCommPage = lazy(() => import("@/pages/smartcomm/SmartCommPage").then((m) => ({ default: m.SmartCommPage })));
-const MessagingAccountsPage = lazy(() => import("@/pages/settings/MessagingAccountsPage").then((m) => ({ default: m.MessagingAccountsPage })));
-const CustomerOnboardingPublic = lazy(() => import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({ default: m.CustomerOnboardingPublic })));
-const OrderCapturePublic = lazy(() => import("@/pages/order-capture/OrderCapturePublic").then((m) => ({ default: m.OrderCapturePublic })));
-const AiControlPage = lazy(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
-const BrandVoicePage = lazy(() => import("@/pages/ai-control/BrandVoicePage").then((m) => ({ default: m.BrandVoicePage })));
-const StockPage = lazy(() => import("@/pages/stock/StockPage").then((m) => ({ default: m.StockPage })));
-const SalesCampaignsListPage = lazy(() => import("@/pages/sales-campaigns/SalesCampaignsListPage").then((m) => ({ default: m.SalesCampaignsListPage })));
-const CampaignBuilderPage = lazy(() => import("@/pages/sales-campaigns/CampaignBuilderPage").then((m) => ({ default: m.CampaignBuilderPage })));
-const CampaignDetailPage = lazy(() => import("@/pages/sales-campaigns/CampaignDetailPage").then((m) => ({ default: m.CampaignDetailPage })));
-const CampaignBundlesPage = lazy(() => import("@/pages/sales-campaigns/CampaignBundlesPage").then((m) => ({ default: m.CampaignBundlesPage })));
-const ModelsAndVendorsPage = lazy(() => import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({ default: m.ModelsAndVendorsPage })));
-const ChannelPolicyPage = lazy(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
-const QuickRepliesPage = lazy(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
+/**
+ * Lazy-import wrapper that survives a redeploy. When a new build ships, the
+ * hashed chunk names change and an import() to an old chunk 404s — React
+ * Router then surfaces "Failed to fetch dynamically imported module". We retry
+ * once after a short delay, then force a single full reload to fetch the fresh
+ * index.html + asset graph. A sessionStorage flag prevents a reload loop.
+ */
+function lazyWithRetry<T extends ComponentType<any>>( // eslint-disable-line @typescript-eslint/no-explicit-any
+  factory: () => Promise<{ default: T }>,
+) {
+  return lazy(async () => {
+    const FLAG = "pgh-chunk-reloaded";
+    try {
+      const mod = await factory();
+      sessionStorage.removeItem(FLAG);
+      return mod;
+    } catch {
+      // One quiet retry first — covers a transient network blip.
+      try {
+        await new Promise((r) => setTimeout(r, 350));
+        const mod = await factory();
+        sessionStorage.removeItem(FLAG);
+        return mod;
+      } catch (err) {
+        if (!sessionStorage.getItem(FLAG)) {
+          sessionStorage.setItem(FLAG, "1");
+          window.location.reload();
+          return new Promise<{ default: T }>(() => {}); // never resolves; page reloads
+        }
+        throw err;
+      }
+    }
+  });
+}
+
+const CashExpensesHome = lazyWithRetry(() => import("@/pages/cash-expenses/CashExpensesHome"));
+const ProductionPage = lazyWithRetry(() => import("@/pages/production/ProductionPage").then((m) => ({ default: m.ProductionPage })));
+const PricingPage = lazyWithRetry(() => import("@/pages/pricing/PricingPage").then((m) => ({ default: m.PricingPage })));
+const PurchasingPage = lazyWithRetry(() => import("@/pages/purchasing/PurchasingPage").then((m) => ({ default: m.PurchasingPage })));
+const ServiceJobsPage = lazyWithRetry(() => import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({ default: m.ServiceJobsPage })));
+const FactoryLanguagePage = lazyWithRetry(() => import("@/pages/FactoryLanguagePage").then((m) => ({ default: m.FactoryLanguagePage })));
+const SmartCommPage = lazyWithRetry(() => import("@/pages/smartcomm/SmartCommPage").then((m) => ({ default: m.SmartCommPage })));
+const MessagingAccountsPage = lazyWithRetry(() => import("@/pages/settings/MessagingAccountsPage").then((m) => ({ default: m.MessagingAccountsPage })));
+const CustomerOnboardingPublic = lazyWithRetry(() => import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({ default: m.CustomerOnboardingPublic })));
+const OrderCapturePublic = lazyWithRetry(() => import("@/pages/order-capture/OrderCapturePublic").then((m) => ({ default: m.OrderCapturePublic })));
+const AiControlPage = lazyWithRetry(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
+const BrandVoicePage = lazyWithRetry(() => import("@/pages/ai-control/BrandVoicePage").then((m) => ({ default: m.BrandVoicePage })));
+const StockPage = lazyWithRetry(() => import("@/pages/stock/StockPage").then((m) => ({ default: m.StockPage })));
+const SalesCampaignsListPage = lazyWithRetry(() => import("@/pages/sales-campaigns/SalesCampaignsListPage").then((m) => ({ default: m.SalesCampaignsListPage })));
+const CampaignBuilderPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignBuilderPage").then((m) => ({ default: m.CampaignBuilderPage })));
+const CampaignDetailPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignDetailPage").then((m) => ({ default: m.CampaignDetailPage })));
+const CampaignBundlesPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignBundlesPage").then((m) => ({ default: m.CampaignBundlesPage })));
+const SaleLandingPublic = lazyWithRetry(() => import("@/pages/sales-campaigns/public/SaleLandingPublic").then((m) => ({ default: m.SaleLandingPublic })));
+const SalesIndexPublic = lazyWithRetry(() => import("@/pages/sales-campaigns/public/SalesIndexPublic").then((m) => ({ default: m.SalesIndexPublic })));
+const ModelsAndVendorsPage = lazyWithRetry(() => import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({ default: m.ModelsAndVendorsPage })));
+const ChannelPolicyPage = lazyWithRetry(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
+const QuickRepliesPage = lazyWithRetry(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -101,6 +138,24 @@ export const router = createBrowserRouter(
       element: (
         <Suspense fallback={null}>
           <OrderCapturePublic />
+        </Suspense>
+      ),
+    },
+    // Public sales-campaign landing page (sales subdomain → Host resolves brand;
+    // admin preview passes ?brand=). Same renderer the Studio previews.
+    {
+      path: "/sale",
+      element: (
+        <Suspense fallback={null}>
+          <SalesIndexPublic />
+        </Suspense>
+      ),
+    },
+    {
+      path: "/sale/:slug",
+      element: (
+        <Suspense fallback={null}>
+          <SaleLandingPublic />
         </Suspense>
       ),
     },

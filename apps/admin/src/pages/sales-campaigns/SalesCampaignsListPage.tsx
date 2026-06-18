@@ -124,7 +124,7 @@ export function SalesCampaignsListPage() {
         />
         <div className="relative flex flex-col md:flex-row md:items-end gap-5">
           <div className="min-w-0">
-            <div className="micro mb-2">Module · Sales Campaigns &amp; Landing Pages</div>
+            <div className="micro mb-2">Module · Sales Campaigns & Landing Pages</div>
             <h1 className="font-display text-[34px] md:text-[40px] leading-[1.05]">
               <span>The next ₦100M sale begins </span>
               <span className="italic text-accent-glow">here.</span>
@@ -332,20 +332,32 @@ function CreateCampaignModal({
   const create = useCreateCampaign();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [discountType, setDiscountType] = useState("percentage");
   const [discountValue, setDiscountValue] = useState("0.20");
   const [error, setError] = useState<string | null>(null);
 
-  function makeSlug(input: string) {
+  // Auto-generate from the name (full normalisation — the user isn't typing
+  // in the slug box, so trimming stray hyphens is safe here).
+  function slugifyName(input: string) {
     return input
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9\s-]/g, "")
       .replace(/\s+/g, "-")
-      .replace(/-+/g, "-")
+      .replace(/-{2,}/g, "-")
       .replace(/^-|-$/g, "");
+  }
+  // Gentle cleaning WHILE typing in the slug box — keeps a trailing hyphen so
+  // "pixie-summer-sale" can be typed one character at a time.
+  function cleanSlugInput(raw: string) {
+    return raw.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-{2,}/g, "-");
+  }
+  // Final pass on submit — trims any leading/trailing hyphen.
+  function finalizeSlug(raw: string) {
+    return raw.replace(/^-+|-+$/g, "");
   }
 
   async function submit(e: React.FormEvent) {
@@ -354,7 +366,7 @@ function CreateCampaignModal({
     try {
       const created = await create.mutateAsync({
         name,
-        slug: slug || makeSlug(name),
+        slug: finalizeSlug(slug) || slugifyName(name),
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
         discount_type: discountType as Campaign["discount_type"],
@@ -374,7 +386,7 @@ function CreateCampaignModal({
             value={name}
             onChange={(e) => {
               setName(e.target.value);
-              if (!slug) setSlug(makeSlug(e.target.value));
+              if (!slugTouched) setSlug(slugifyName(e.target.value));
             }}
             placeholder="Black Friday Drop 2026"
             required
@@ -384,7 +396,10 @@ function CreateCampaignModal({
         <Field label="URL slug" hint={`/sale/${slug || "your-slug"}`}>
           <input
             value={slug}
-            onChange={(e) => setSlug(makeSlug(e.target.value))}
+            onChange={(e) => {
+              setSlugTouched(true);
+              setSlug(cleanSlugInput(e.target.value));
+            }}
             placeholder="black-friday-2026"
             required
             className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px]"
@@ -454,7 +469,7 @@ function CreateCampaignModal({
             disabled={create.isPending}
             icon={<TrendingUp className="w-4 h-4" />}
           >
-            {create.isPending ? "Creating…" : "Create &amp; open builder"}
+            {create.isPending ? "Creating…" : "Create & open builder"}
           </Button>
         </div>
       </form>

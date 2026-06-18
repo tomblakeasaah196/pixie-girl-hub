@@ -98,7 +98,7 @@ export function DocumentNumberingPage() {
   ];
 
   return (
-    <div className="max-w-[900px] space-y-4 pb-12">
+    <div className="max-w-[900px] mx-auto space-y-4 pb-12">
       <div className="flex items-center gap-2.5 flex-wrap">
         <h1 className="font-display text-2xl font-medium">Document numbering</h1>
         <Pill tone="accent" dot={false}>

@@ -54,7 +54,7 @@ export function PaymentGatewaysPage() {
   const [configuring, setConfiguring] = useState<PaymentGateway["provider"] | null>(null);
 
   return (
-    <div className="max-w-[960px] space-y-7 pb-24">
+    <div className="max-w-[960px] mx-auto space-y-7 pb-24">
       <header>
         <div className="flex items-center gap-2.5 mb-1.5">
           <h1 className="font-display text-[22px] font-medium">Payment gateways</h1>

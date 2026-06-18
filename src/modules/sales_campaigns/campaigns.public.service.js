@@ -61,6 +61,45 @@ async function getLanding({ slug, brand, brandHint }) {
   );
 }
 
+/**
+ * Storefront index for the sales subdomain root (no slug). Returns the
+ * currently-open drop (if any), the next scheduled drops, and a short archive
+ * of recent past drops — all public-safe fields only. Powers the editorial
+ * "between drops" page and the VIP-gated archive.
+ */
+async function getIndex({ brand, brandHint }) {
+  let targetBrand = null;
+  if (brand && BRANDS.has(brand)) targetBrand = brand;
+  else if (brandHint && BRANDS.has(brandHint)) targetBrand = brandHint;
+  if (!targetBrand) throw new NotFoundError("Storefront");
+
+  const pub = (c) => ({
+    slug: c.slug,
+    name: c.name,
+    hero_image_url: c.landing_hero_image_url,
+    og_image_url: c.og_image_url,
+    hero_subtitle: c.landing_hero_subtitle,
+    starts_at: c.starts_at,
+    ends_at: c.ends_at,
+    state: main.resolveState(c),
+  });
+
+  const [live, scheduled, ended] = await Promise.all([
+    repo.findAll({ brand: targetBrand, filters: { status: "live" }, page: 1, page_size: 4, offset: 0 }),
+    repo.findAll({ brand: targetBrand, filters: { status: "scheduled" }, page: 1, page_size: 3, offset: 0 }),
+    repo.findAll({ brand: targetBrand, filters: { status: "ended" }, page: 1, page_size: 6, offset: 0 }),
+  ]);
+
+  // Only surface a live campaign whose window is actually open right now.
+  const liveOpen = live.data.find((c) => main.resolveState(c) === "live");
+  return {
+    brand: targetBrand,
+    active: liveOpen ? pub(liveOpen) : null,
+    upcoming: scheduled.data.map(pub),
+    past: ended.data.map(pub),
+  };
+}
+
 async function getStock({ slug, brand, brandHint }) {
   const found = await resolveCampaign({ slug, brand, brandHint });
   // Stock is only meaningful (and safe to expose) while the campaign is
@@ -150,4 +189,4 @@ async function signup({ slug, brand, brandHint, input, ip, user_agent }) {
   });
 }
 
-module.exports = { getLanding, getStock, signup };
+module.exports = { getIndex, getLanding, getStock, signup };

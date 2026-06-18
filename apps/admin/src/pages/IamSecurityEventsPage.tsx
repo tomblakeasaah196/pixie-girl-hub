@@ -134,7 +134,7 @@ export function IamSecurityEventsPage() {
   }
 
   return (
-    <div className="max-w-[1000px] space-y-6">
+    <div className="max-w-[1000px] mx-auto space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
         <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">

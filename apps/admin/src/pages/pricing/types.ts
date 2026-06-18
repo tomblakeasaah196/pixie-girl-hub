@@ -2,15 +2,12 @@
 
 export type RuleType =
   | "markup_pct"
-  | "margin_pct"
+  | "target_margin_pct"
   | "fixed_price"
   | "channel_override"
   | "seasonal";
 
-export type FloorType =
-  | "absolute"
-  | "cost_plus_pct"
-  | "cost_plus_fixed";
+export type FloorType = "absolute" | "cost_plus_pct" | "cost_plus_fixed";
 
 export type ProposalStatus = "pending" | "approved" | "rejected";
 
@@ -22,7 +19,7 @@ export interface PricingRule {
   rule_type: RuleType;
   applies_to: string | null; // variant_id / category / "*"
   markup_pct: string | null;
-  margin_pct: string | null;
+  target_margin_pct: string | null;
   fixed_price_ngn: string | null;
   channel: string | null;
   is_active: boolean;
@@ -39,7 +36,7 @@ export interface CreateRuleInput {
   rule_type: RuleType;
   applies_to?: string;
   markup_pct?: number;
-  margin_pct?: number;
+  target_margin_pct?: number;
   fixed_price_ngn?: number;
   channel?: string;
   priority?: number;
@@ -97,7 +94,7 @@ export interface SensitivityRow {
 
 export interface ScenarioResult {
   base_price: number;
-  margin_pct: number;
+  target_margin_pct: number;
   markup_pct: number;
   sensitivity_grid: SensitivityRow[];
   channel_prices: ChannelPrice[];

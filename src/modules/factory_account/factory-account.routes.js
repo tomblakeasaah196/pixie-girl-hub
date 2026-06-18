@@ -22,19 +22,51 @@ const can = (action) => requirePermission("purchasing", action);
 // ── Accounts ──────────────────────────────────────────────
 router.get("/", can("view"), c.listAccounts);
 router.post("/", can("create"), v.validateAccountCreate, c.createAccount);
+
+// ── Shipments (must come before /:accountId routes) ────────
+router.get("/shipments", can("view"), c.listShipments);
+router.post(
+  "/shipments",
+  can("create"),
+  v.validateShipmentCreate,
+  c.createShipment,
+);
+router.get("/shipments/:shipmentId", can("view"), c.getShipment);
+router.patch(
+  "/shipments/:shipmentId",
+  can("edit"),
+  v.validateShipmentUpdate,
+  c.advanceShipment,
+);
+router.post(
+  "/shipments/:shipmentId/advance",
+  can("edit"),
+  v.validateShipmentAdvance,
+  c.advanceShipment,
+);
+
+// ── Accounts (dynamic :accountId, must come after static paths) ──
 router.get("/:accountId", can("view"), c.getAccount);
-router.patch("/:accountId", can("edit"), v.validateAccountUpdate, c.updateAccount);
+router.patch(
+  "/:accountId",
+  can("edit"),
+  v.validateAccountUpdate,
+  c.updateAccount,
+);
 
 // ── Ledger entries ────────────────────────────────────────
 router.get("/:accountId/ledger", can("view"), c.listLedger);
-router.post("/:accountId/ledger", can("edit"), v.validateLedgerEntry, c.addLedgerEntry);
-router.post("/:accountId/reconcile", can("approve"), v.validateLedgerReconcile, c.reconcileEntries);
-
-// ── Shipments ─────────────────────────────────────────────
-router.get("/shipments", can("view"), c.listShipments);
-router.post("/shipments", can("create"), v.validateShipmentCreate, c.createShipment);
-router.get("/shipments/:shipmentId", can("view"), c.getShipment);
-router.patch("/shipments/:shipmentId", can("edit"), v.validateShipmentUpdate, c.advanceShipment);
-router.post("/shipments/:shipmentId/advance", can("edit"), v.validateShipmentAdvance, c.advanceShipment);
+router.post(
+  "/:accountId/ledger",
+  can("edit"),
+  v.validateLedgerEntry,
+  c.addLedgerEntry,
+);
+router.post(
+  "/:accountId/reconcile",
+  can("approve"),
+  v.validateLedgerReconcile,
+  c.reconcileEntries,
+);
 
 module.exports = router;

@@ -40,7 +40,7 @@ function KpiSkeleton() {
 export default function OverviewTab() {
   const valuation = useStockValuation();
   const locations = useStockLocations();
-  const levels = useStockLevels({ page: 1, page_size: 5000 });
+  const levels = useStockLevels({ page: 1, page_size: 100 });
   const alerts = useStockAlerts({ status: "open", page: 1, page_size: 5 });
   const movements = useStockMovements({ page: 1, page_size: 10 });
 

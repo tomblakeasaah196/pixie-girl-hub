@@ -170,7 +170,7 @@ function RulesTab({ canEdit }: { canEdit: boolean }) {
       render: (r) => (
         <span className="font-mono text-[13px]">
           {r.markup_pct ? `${r.markup_pct}%` :
-           r.margin_pct ? `${r.margin_pct}%` :
+           r.target_margin_pct ? `${r.target_margin_pct}%` :
            r.fixed_price_ngn ? `₦${r.fixed_price_ngn}` : "—"}
         </span>
       ),
@@ -248,15 +248,15 @@ function RuleDrawer({
   saving: boolean;
 }) {
   const [name, setName] = useState(rule?.name ?? "");
-  const [ruleType, setRuleType] = useState(rule?.rule_type ?? "margin_pct");
-  const [value, setValue] = useState(rule?.margin_pct ?? rule?.markup_pct ?? rule?.fixed_price_ngn ?? "");
+  const [ruleType, setRuleType] = useState(rule?.rule_type ?? "target_margin_pct");
+  const [value, setValue] = useState(rule?.target_margin_pct ?? rule?.markup_pct ?? rule?.fixed_price_ngn ?? "");
   const [priority, setPriority] = useState(String(rule?.priority ?? 10));
   const [isActive, setIsActive] = useState(rule?.is_active ?? true);
 
   const handleSubmit = () => {
     if (!name) return;
     const base = { name, rule_type: ruleType as PricingRule["rule_type"], priority: parseInt(priority) || 10 };
-    const withValue = ruleType === "margin_pct" ? { ...base, margin_pct: parseFloat(String(value)) }
+    const withValue = ruleType === "target_margin_pct" ? { ...base, target_margin_pct: parseFloat(String(value)) }
       : ruleType === "markup_pct" ? { ...base, markup_pct: parseFloat(String(value)) }
       : { ...base, fixed_price_ngn: parseFloat(String(value)) };
 

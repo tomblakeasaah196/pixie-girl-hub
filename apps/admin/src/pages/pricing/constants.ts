@@ -6,9 +6,9 @@ import type { ProposalStatus, RuleType, FloorType } from "./types";
 
 export interface ChannelFee {
   label: string;
-  pct_fee: number;    // as decimal: 0.12 = 12%
+  pct_fee: number; // as decimal: 0.12 = 12%
   fixed_fee_ngn: number;
-  icon: string;       // emoji shorthand
+  icon: string; // emoji shorthand
 }
 
 export const CHANNEL_FEES: Record<string, ChannelFee> = {
@@ -20,7 +20,7 @@ export const CHANNEL_FEES: Record<string, ChannelFee> = {
   },
   konga: {
     label: "Konga",
-    pct_fee: 0.10,
+    pct_fee: 0.1,
     fixed_fee_ngn: 0,
     icon: "🔵",
   },
@@ -99,7 +99,7 @@ export const PROPOSAL_STATUS_META: Record<ProposalStatus, StatusMeta> = {
 
 export const RULE_TYPE_LABELS: Record<RuleType, string> = {
   markup_pct: "Markup %",
-  margin_pct: "Margin %",
+  target_margin_pct: "Margin %",
   fixed_price: "Fixed Price",
   channel_override: "Channel Override",
   seasonal: "Seasonal",
@@ -107,7 +107,7 @@ export const RULE_TYPE_LABELS: Record<RuleType, string> = {
 
 export const RULE_TYPE_OPTIONS: { value: RuleType; label: string }[] = [
   { value: "markup_pct", label: "Markup %" },
-  { value: "margin_pct", label: "Margin %" },
+  { value: "target_margin_pct", label: "Margin %" },
   { value: "fixed_price", label: "Fixed Price" },
   { value: "channel_override", label: "Channel Override" },
   { value: "seasonal", label: "Seasonal" },
@@ -144,5 +144,5 @@ export const SENSITIVITY_STEPS = 5;
 export const SENSITIVITY_STEP_PCT = 0.02; // 2% per step = ±10% total
 
 /** Colour thresholds for the sensitivity grid cells */
-export const MARGIN_THRESHOLD_WARN = 15;  // below 15% = warn
+export const MARGIN_THRESHOLD_WARN = 15; // below 15% = warn
 export const MARGIN_THRESHOLD_DANGER = 5; // below 5% = danger

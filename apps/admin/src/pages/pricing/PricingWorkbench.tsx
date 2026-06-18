@@ -196,10 +196,10 @@ export function PricingWorkbench({
               <div
                 className={cn(
                   "font-mono text-[22px] font-bold",
-                  result.margin_pct < 20 ? "text-danger" : result.margin_pct < 35 ? "text-warn" : "text-success",
+                  result.target_margin_pct < 20 ? "text-danger" : result.target_margin_pct < 35 ? "text-warn" : "text-success",
                 )}
               >
-                {fmtPct(result.margin_pct)}
+                {fmtPct(result.target_margin_pct)}
               </div>
             </Card>
             <Card className="p-4 border-l-[3px] border-l-[rgb(var(--info))]">
@@ -228,7 +228,7 @@ export function PricingWorkbench({
                   </thead>
                   <tbody>
                     {result.sensitivity_grid.map((row) => {
-                      const isTarget = Math.abs(row.margin - result.margin_pct) < 0.5;
+                      const isTarget = Math.abs(row.margin - result.target_margin_pct) < 0.5;
                       const isBelowFloorRow = floor != null && row.price < floor;
                       return (
                         <tr

@@ -11,10 +11,29 @@ const vault = require("./cost_vault.service");
 const events = require("./catalogue.events");
 const outbox = require("../../shared/outbox/outbox");
 const documents = require("../../shared/documents/documents.service");
+const numbering = require("../../services/numbering.service");
 const { compressImage } = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+
+// Kebab-case a product name for use as a URL slug.
+function slugify(s) {
+  return String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+// A collision-free slug: prefer the bare name slug, else disambiguate with the
+// (globally unique) product code. Runs inside the caller's tx, so earlier
+// inserts in a bulk batch are already visible to the probe.
+async function uniqueSlug(client, brand, name, code) {
+  const base = slugify(name) || "product";
+  if (!(await repo.productSlugTaken({ client, brand, slug: base }))) return base;
+  return `${base}-${String(code).toLowerCase()}`;
+}
 
 const A = (
   brand,
@@ -108,10 +127,25 @@ async function getProduct({ brand, id, user }) {
 }
 async function createProduct({ brand, user, request_id, input }) {
   return transaction(async (client) => {
+    // Operators no longer type the code: allocate the next one from the
+    // Document Numbering sequence (FLH001N / PXG001N) when not supplied, and
+    // derive a unique slug from the name when not supplied.
+    const prepared = { ...input };
+    if (!prepared.product_code) {
+      prepared.product_code = await numbering.nextProductCode(client, brand);
+    }
+    if (!prepared.slug) {
+      prepared.slug = await uniqueSlug(
+        client,
+        brand,
+        prepared.name,
+        prepared.product_code,
+      );
+    }
     const p = await repo.createProduct({
       client,
       brand,
-      input,
+      input: prepared,
       user_id: user.user_id,
     });
     await A(
@@ -125,6 +159,95 @@ async function createProduct({ brand, user, request_id, input }) {
     );
     events.emit("product.created", { brand, id: p.product_id });
     return p;
+  });
+}
+
+/**
+ * Bulk import base products from a spreadsheet (Excel/CSV parsed client-side).
+ * For each row we generate the product code + slug, insert the product, and
+ * create ONE default variant carrying the shipping weight + length — the
+ * variant is where stock and shipping weight live, so this makes every
+ * imported product immediately stockable (Stock seeds a stock_levels row off
+ * `variant.created`). The whole batch runs in a single transaction: it's
+ * all-or-nothing, so a mid-batch failure never leaves a half-imported sheet.
+ */
+async function bulkImportProducts({ brand, user, request_id, rows }) {
+  return transaction(async (client) => {
+    const created = [];
+    for (let idx = 0; idx < rows.length; idx++) {
+      const row = rows[idx];
+      const product_code = await numbering.nextProductCode(client, brand);
+      const slug = await uniqueSlug(client, brand, row.name, product_code);
+
+      const product = await repo.createProduct({
+        client,
+        brand,
+        user_id: user.user_id,
+        input: {
+          product_code,
+          name: row.name,
+          slug,
+          texture_type: row.texture_type ?? undefined,
+          lace_type: row.lace_type ?? undefined,
+          hair_length_inches: row.hair_length_inches ?? undefined,
+          product_type: "physical",
+        },
+      });
+
+      const variant = await repo.createVariant({
+        client,
+        brand,
+        product_id: product.product_id,
+        input: {
+          sku: product_code,
+          variant_name: row.name.slice(0, 160),
+          variant_length_inches: row.hair_length_inches ?? undefined,
+          weight_g: row.weight_g ?? undefined,
+          is_default: true,
+          is_active: true,
+        },
+      });
+
+      await A(
+        brand,
+        user.user_id,
+        "catalogue.product.create",
+        "product",
+        product.product_id,
+        { ...product, source: "bulk_import" },
+        request_id,
+      );
+      // Same SSOT hook as a single variant create (H-2): in-process emit for
+      // realtime, durable post-commit outbox so Stock seeds a stock_levels row.
+      events.emit("product.created", { brand, id: product.product_id });
+      events.emit("variant.created", {
+        brand,
+        product_id: product.product_id,
+        variant_id: variant.variant_id,
+        reorder_point: variant.reorder_point,
+      });
+      await outbox.enqueue(client, {
+        business: brand,
+        event_type: "variant.created",
+        payload: {
+          brand,
+          product_id: product.product_id,
+          variant_id: variant.variant_id,
+          reorder_point: variant.reorder_point,
+        },
+        dedup_key: `variant.created:${variant.variant_id}`,
+      });
+
+      created.push({
+        row: idx + 1,
+        product_id: product.product_id,
+        product_code: product.product_code,
+        name: product.name,
+        variant_id: variant.variant_id,
+        weight_g: variant.weight_g ?? null,
+      });
+    }
+    return { count: created.length, created };
   });
 }
 async function updateProduct({ brand, user, request_id, id, patch }) {
@@ -685,6 +808,7 @@ module.exports = {
   listProducts,
   getProduct,
   createProduct,
+  bulkImportProducts,
   updateProduct,
   deleteProduct,
   listVariants,

@@ -65,13 +65,27 @@ function availabilityState(available, base) {
   return { state: "out_of_stock", available: 0 };
 }
 
-/** Attach computed price + availability to a styled row. */
-async function enrich({ brand, styled }) {
+/** Pure: attach computed price + availability given the base's stock + price.
+ *  No DB access — the caller supplies the two derived numbers. */
+function enrichRow(styled, available, base_price) {
   const base = {
     preorder_enabled: styled.preorder_enabled,
     expected_ready_date: styled.expected_ready_date,
     production_lead_days: styled.production_lead_days,
   };
+  const has_price = base_price !== null && base_price !== undefined;
+  return {
+    ...styled,
+    availability: availabilityState(available || 0, base),
+    base_price_ngn: has_price ? base_price : null,
+    effective_price_ngn: has_price
+      ? money(base_price) + money(styled.style_addon_price_ngn)
+      : null,
+  };
+}
+
+/** Attach computed price + availability to a single styled row (2 reads). */
+async function enrich({ brand, styled }) {
   const available = await repo.baseAvailability({
     brand,
     base_product_id: styled.base_product_id,
@@ -82,21 +96,16 @@ async function enrich({ brand, styled }) {
     base_product_id: styled.base_product_id,
     base_variant_id: styled.base_variant_id,
   });
-  const effective_price_ngn =
-    base_price === null ? null : money(base_price) + money(styled.style_addon_price_ngn);
-  return {
-    ...styled,
-    availability: availabilityState(available, base),
-    base_price_ngn: base_price,
-    effective_price_ngn,
-  };
+  return enrichRow(styled, available, base_price);
 }
 
 async function list({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
   const res = await repo.list({ brand, filters, page, page_size, offset });
-  res.data = await Promise.all(
-    res.data.map((styled) => enrich({ brand, styled })),
+  // repo.list resolves availability + base price inline (LATERAL), so no
+  // per-row queries here.
+  res.data = res.data.map((styled) =>
+    enrichRow(styled, styled.base_available, styled.base_price_storefront_ngn),
   );
   return res;
 }

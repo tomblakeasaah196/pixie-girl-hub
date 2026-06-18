@@ -21,7 +21,7 @@ export function Sidebar() {
   const collapsed = isDesktop && sidebarCollapsed;
   const { data: branding } = useBranding();
   const platform = branding?.platform;
-  const productName = platform?.product_name ?? "Pixie Girl Hub";
+  const productName = platform?.product_name ?? "Pixie Hub";
   const tagline = platform?.tagline ?? "Group ERP";
   const logoUrl = platform?.logo_dark_url;
   const words = productName.split(" ");

@@ -19,6 +19,7 @@ const path = require("path");
 const { config } = require("../config/env");
 const { authMiddleware } = require("../middleware/auth");
 const { brandContextMiddleware } = require("../middleware/brand-context");
+const { hostBrandResolverMiddleware } = require("../middleware/host-brand-resolver");
 const { publicWriteLimiter } = require("../middleware");
 
 // Auth & user-management
@@ -155,7 +156,10 @@ function mountRoutes(app) {
   publicRouter.use("/stylist-verify", publicStylistVerifyRouter);
   publicRouter.use("/referral", publicWriteLimiter, publicReferralRouter);
   publicRouter.use("/hair-quiz", publicWriteLimiter, publicHairQuizRouter);
-  publicRouter.use("/sale", publicCampaignRouter);
+  // Public sales landing — host → brand resolver runs first so the
+  // /sale/:slug controller knows which brand to load when served from
+  // sales.pixiegirlglobal.com / sales.thefaitlynbrand.com.
+  publicRouter.use("/sale", hostBrandResolverMiddleware, publicCampaignRouter);
   publicRouter.use("/sign", publicWriteLimiter, publicSignRouter);
   publicRouter.use("/newsletter", publicWriteLimiter, publicNewsletterRouter);
   publicRouter.use(

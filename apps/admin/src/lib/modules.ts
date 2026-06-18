@@ -88,7 +88,7 @@ export const MODULES: AppModule[] = [
   { key: "retention", label: "Retention", description: "Loyalty & referrals", group: "people", route: "/retention", icon: Heart },
   { key: "smartcomm", label: "Messaging", description: "Unified inbox", group: "people", route: "/smartcomm", icon: MessageSquare },
   { key: "orgworkflow", label: "Org & Workflow", description: "Structure, roles & approvals", group: "people", route: "/org-workflow", icon: GitBranch, badgeKey: "orgworkflow" },
-  { key: "campaigns", label: "Campaigns", description: "Flash sales", group: "grow", route: "/campaigns", icon: Megaphone, badgeKey: "campaigns" },
+  { key: "campaigns", label: "Sales Campaigns", description: "Flash sales & landing pages", group: "grow", route: "/sales-campaigns", icon: Megaphone, badgeKey: "campaigns" },
   { key: "social", label: "Social", description: "Posts & reach", group: "grow", route: "/social", icon: Share2 },
   { key: "marketing", label: "Marketing", description: "Email & ads", group: "grow", route: "/marketing", icon: Mail },
   { key: "praxis", label: "Praxis AI", description: "Your agent", group: "grow", route: "/praxis", icon: Sparkles },

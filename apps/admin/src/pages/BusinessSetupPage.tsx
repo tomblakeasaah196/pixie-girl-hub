@@ -112,7 +112,7 @@ export function BusinessSetupPage() {
 
       {tab === "profile" && <ProfileTab draft={draft} set={set} />}
       {tab === "financial" && <FinancialTab draft={draft} set={set} />}
-      {tab === "identity" && <IdentityTab draft={draft} />}
+      {tab === "identity" && <IdentityTab draft={draft} set={set} />}
       {tab === "policies" && <OperationalPoliciesTab draft={draft} set={set} />}
 
       {dirty && (
@@ -225,31 +225,178 @@ function FinancialTab({
 }
 
 // ── IDENTITY ───────────────────────────────────────────────
-function IdentityTab({ draft }: { draft: BusinessConfig }) {
+function IdentityTab({
+  draft,
+  set,
+}: {
+  draft: BusinessConfig;
+  set: <K extends keyof BusinessConfig>(k: K, v: BusinessConfig[K]) => void;
+}) {
+  const voice = draft.praxis_voice_profile || {};
   return (
-    <Card className="p-5 space-y-4">
-      <Field label="Document prefix" hint="Locks on first issued document — manage in Document Numbering">
-        <TextInput value={draft.document_prefix} disabled />
-      </Field>
-      <div className="text-[12px] text-text-muted">
-        Logo, accents, gradients and fonts live in{" "}
-        <Link to="/settings/appearance" className="text-accent-glow hover:underline inline-flex items-center gap-1">
-          <Palette className="w-3.5 h-3.5" /> Appearance
-        </Link>{" "}
-        — both the platform skin (Layer A) and per-brand identity (Layer B).
-      </div>
-      <div className="text-[12px] text-text-muted">
-        Document templates (Invoices, POs, Delivery Notes, Receipts, Contracts) live in{" "}
-        <Link to="/settings/document-templates" className="text-accent-glow hover:underline inline-flex items-center gap-1">
-          <FileSignature className="w-3.5 h-3.5" /> Document Templates
-        </Link>
-        ; bank accounts in{" "}
-        <Link to="/settings/bank-accounts" className="text-accent-glow hover:underline inline-flex items-center gap-1">
-          <Wallet className="w-3.5 h-3.5" /> Bank Accounts
-        </Link>
-        .
-      </div>
-    </Card>
+    <div className="space-y-4">
+      <Card className="p-5 space-y-4">
+        <div className="micro">Document identity</div>
+        <Field label="Document prefix" hint="Locks on first issued document — manage in Document Numbering">
+          <TextInput value={draft.document_prefix} disabled />
+        </Field>
+        <div className="text-[12px] text-text-muted">
+          Logo, accents, gradients and fonts live in{" "}
+          <Link to="/settings/appearance" className="text-accent-glow hover:underline inline-flex items-center gap-1">
+            <Palette className="w-3.5 h-3.5" /> Appearance
+          </Link>{" "}
+          — both the platform skin (Layer A) and per-brand identity (Layer B).
+        </div>
+        <div className="text-[12px] text-text-muted">
+          Document templates live in{" "}
+          <Link to="/settings/document-templates" className="text-accent-glow hover:underline inline-flex items-center gap-1">
+            <FileSignature className="w-3.5 h-3.5" /> Document Templates
+          </Link>
+          ; bank accounts in{" "}
+          <Link to="/settings/bank-accounts" className="text-accent-glow hover:underline inline-flex items-center gap-1">
+            <Wallet className="w-3.5 h-3.5" /> Bank Accounts
+          </Link>
+          .
+        </div>
+      </Card>
+
+      {/* Public Identity — the dynamic hostnames + Praxis voice + viewer ticker. */}
+      <Card className="p-5 space-y-4">
+        <div>
+          <div className="micro">Public identity</div>
+          <p className="text-[12.5px] text-text-muted mt-1">
+            Dynamic hostnames for this brand's storefront and sales landing page,
+            plus the Praxis voice profile used when drafting campaign copy.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Storefront domain" hint="Public site, e.g. pixiegirlglobal.com">
+            <TextInput
+              value={draft.storefront_domain || ""}
+              onChange={(e) => set("storefront_domain", e.target.value || null)}
+              placeholder="pixiegirlglobal.com"
+            />
+          </Field>
+          <Field label="Sales subdomain" hint="Public sales landing host, e.g. sales.pixiegirlglobal.com">
+            <TextInput
+              value={draft.sales_subdomain || ""}
+              onChange={(e) => set("sales_subdomain", e.target.value || null)}
+              placeholder="sales.pixiegirlglobal.com"
+            />
+          </Field>
+        </div>
+        <div className="text-[12px] text-text-muted">
+          Point a DNS <span className="font-mono">CNAME</span> from your sales subdomain to the
+          platform host. The host-based brand resolver reads this column on every request — no
+          code deploy needed when you change the domain.
+        </div>
+      </Card>
+
+      <Card className="p-5 space-y-4">
+        <div>
+          <div className="micro">Praxis brand voice</div>
+          <p className="text-[12.5px] text-text-muted mt-1">
+            Loaded as a system prompt every time Praxis drafts campaign copy. Hard rails always on:
+            no fabricated reviews, no banned superlatives.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Tone">
+            <Select<string>
+              value={voice.tone || "editorial-luxury"}
+              onChange={(v) =>
+                set("praxis_voice_profile", { ...(voice as Record<string, unknown>), tone: v })
+              }
+              options={[
+                { value: "editorial-luxury", label: "Pixie Global · Editorial luxury" },
+                { value: "confident-beauty-bar", label: "Faitlyn · Confident beauty-bar" },
+                { value: "warm-curatorial", label: "Warm curatorial" },
+                { value: "playful-energetic", label: "Playful energetic" },
+              ]}
+            />
+          </Field>
+          <Field label="Exclamation policy">
+            <Select<string>
+              value={voice.exclamation_policy || "rare"}
+              onChange={(v) =>
+                set("praxis_voice_profile", {
+                  ...(voice as Record<string, unknown>),
+                  exclamation_policy: v as "never" | "rare" | "ok",
+                })
+              }
+              options={[
+                { value: "never", label: "Never" },
+                { value: "rare", label: "Rare (at most one per page)" },
+                { value: "ok", label: "OK (normal)" },
+              ]}
+            />
+          </Field>
+        </div>
+        <Field
+          label="Banned words"
+          hint="Comma-separated — Praxis refuses these in every draft"
+        >
+          <TextInput
+            value={(voice.banned_words || []).join(", ")}
+            onChange={(e) =>
+              set("praxis_voice_profile", {
+                ...(voice as Record<string, unknown>),
+                banned_words: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+              })
+            }
+            placeholder="cheap, amazing deal, guaranteed, best ever"
+          />
+        </Field>
+        <Field label="No fabricated reviews">
+          <Toggle
+            checked={voice.no_fabricated_reviews !== false}
+            onChange={(v) =>
+              set("praxis_voice_profile", {
+                ...(voice as Record<string, unknown>),
+                no_fabricated_reviews: v,
+              })
+            }
+            label="Refuse to invent customer reviews or testimonials"
+          />
+        </Field>
+      </Card>
+
+      <Card className="p-5 space-y-4">
+        <div>
+          <div className="micro">Live viewer ticker default</div>
+          <p className="text-[12.5px] text-text-muted mt-1">
+            Default for every new campaign on this brand. Per-campaign override available in the
+            builder.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Display policy">
+            <Select<string>
+              value={draft.show_viewer_count_policy || "smart"}
+              onChange={(v) =>
+                set("show_viewer_count_policy", v as BusinessConfig["show_viewer_count_policy"])
+              }
+              options={[
+                { value: "smart", label: "Smart (auto-hide below floor)" },
+                { value: "on", label: "Always show" },
+                { value: "off", label: "Always hide" },
+              ]}
+            />
+          </Field>
+          <Field
+            label="Viewer floor"
+            hint="Below this concurrent count, smart-mode hides the number"
+          >
+            <NumberField
+              value={String(draft.viewer_count_floor ?? 20)}
+              onChange={(v) => set("viewer_count_floor", v ? Number(v) : 20)}
+              allowDecimal={false}
+              suffix="viewers"
+            />
+          </Field>
+        </div>
+      </Card>
+    </div>
   );
 }
 

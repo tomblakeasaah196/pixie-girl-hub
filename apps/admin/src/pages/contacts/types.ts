@@ -33,6 +33,9 @@ export interface Contact {
   whatsapp_number: string | null;
   email: string | null;
   country_code: string | null;
+  instagram_handle: string | null;
+  tiktok_handle: string | null;
+  facebook_handle: string | null;
   priority_level: PriorityLevel;
   assigned_to: string | null;
   visible_to: string[];
@@ -328,6 +331,9 @@ export interface ContactCreateInput {
   whatsapp_number?: string;
   email?: string;
   country_code?: string;
+  instagram_handle?: string;
+  tiktok_handle?: string;
+  facebook_handle?: string;
   priority_level?: PriorityLevel;
   assigned_to?: string;
   visible_to?: string[];

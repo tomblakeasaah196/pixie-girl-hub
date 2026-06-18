@@ -101,10 +101,37 @@ async function list({ client, brand, filters = {}, page = 1, page_size = 25, off
     `SELECT COUNT(*)::int AS total FROM ${t(brand, "styled_products")} s ${w}`,
     params,
   );
+  // Availability + base price are resolved INLINE via LATERAL joins so the
+  // list is a single query instead of an N+1 (two extra queries per row in
+  // the old enrich loop). The base's pre-order fields are also selected here
+  // so list cards can show the production-framed state (the old query omitted
+  // them, so styled cards always read "out of stock" when a base hit zero).
   const { rows } = await run(
-    `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code
+    `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
+            b.preorder_enabled, b.expected_ready_date, b.production_lead_days,
+            COALESCE(av.available, 0) AS base_available,
+            pr.price_storefront_ngn AS base_price_storefront_ngn
        FROM ${t(brand, "styled_products")} s
        JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(sl.available), 0)::int AS available
+           FROM ${t(brand, "stock_levels")} sl
+           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+          WHERE CASE WHEN s.base_variant_id IS NOT NULL
+                     THEN sl.variant_id = s.base_variant_id
+                     ELSE pv.product_id = s.base_product_id AND pv.is_active = true
+                END
+       ) av ON true
+       LEFT JOIN LATERAL (
+         SELECT pv2.price_storefront_ngn
+           FROM ${t(brand, "product_variants")} pv2
+          WHERE CASE WHEN s.base_variant_id IS NOT NULL
+                     THEN pv2.variant_id = s.base_variant_id
+                     ELSE pv2.product_id = s.base_product_id AND pv2.is_active = true
+                END
+          ORDER BY pv2.is_default DESC, pv2.display_order ASC
+          LIMIT 1
+       ) pr ON true
        ${w}
       ORDER BY s.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],

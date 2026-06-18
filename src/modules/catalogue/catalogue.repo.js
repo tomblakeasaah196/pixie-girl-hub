@@ -220,6 +220,16 @@ async function findProductById({ client, brand, id }) {
   );
   return rows[0] || null;
 }
+// Slug uniqueness probe (the DB has a UNIQUE(slug) over ALL rows, incl.
+// soft-deleted) — lets the service derive a collision-free slug before insert
+// so a bulk import never aborts the whole batch on a duplicate name.
+async function productSlugTaken({ client, brand, slug }) {
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "products")} WHERE slug = $1 LIMIT 1`,
+    [slug],
+  );
+  return rows.length > 0;
+}
 async function createProduct({ client, brand, input, user_id }) {
   const { f, ph, p } = insert(PROD_COLS, input, { created_by: user_id });
   const { rows } = await ex(client)(
@@ -675,6 +685,7 @@ module.exports = {
   archiveCategory,
   findAllProducts,
   findProductById,
+  productSlugTaken,
   createProduct,
   updateProduct,
   softDeleteProduct,

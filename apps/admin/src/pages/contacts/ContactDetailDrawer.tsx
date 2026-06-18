@@ -49,6 +49,13 @@ const PRIORITY_TONE: Record<PriorityLevel, Tone> = {
   new: "info",
 };
 
+const GENDER_LABEL: Record<string, string> = {
+  F: "Female",
+  M: "Male",
+  other: "Non-binary / Other",
+  prefer_not: "Prefer not to say",
+};
+
 const RISK_TONE: Record<string, Tone> = {
   low: "success",
   medium: "warn",
@@ -580,7 +587,7 @@ function OverviewTab({ contact }: { contact: Contact; }) {
     ["First name", contact.first_name],
     ["Last name", contact.last_name],
     ["Company", contact.company_name],
-    ["Gender", contact.gender],
+    ["Gender", contact.gender ? (GENDER_LABEL[contact.gender] ?? contact.gender) : null],
     [
       "Birthday",
       contact.date_of_birth
@@ -593,6 +600,9 @@ function OverviewTab({ contact }: { contact: Contact; }) {
     ],
     ["WhatsApp", contact.whatsapp_number],
     ["Email", contact.email],
+    ["Instagram", contact.instagram_handle ? `@${contact.instagram_handle}` : null],
+    ["TikTok", contact.tiktok_handle ? `@${contact.tiktok_handle}` : null],
+    ["Facebook", contact.facebook_handle ? `@${contact.facebook_handle}` : null],
     ["Country code", contact.country_code],
     ["TIN", contact.tin],
     ["CAC number", contact.cac_number],

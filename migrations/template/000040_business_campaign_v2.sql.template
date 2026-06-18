@@ -1,0 +1,318 @@
+-- ============================================================
+-- TEMPLATE 000040 — Sales Campaigns v2: bundles, quantity tiers,
+-- cart upsells, VIP gifts, ambassador links, viewer policy + the
+-- preorder hook. All per-brand (schema name {{BUSINESS}}).
+-- Pixie Girl Hub · JBS Praxis · V2.2 — Sales Campaigns module PR 1
+-- ============================================================
+--
+-- Companion shared changes (000220) added the dynamic sales_subdomain,
+-- the Praxis voice profile, the smart-viewer policy defaults, and the
+-- ambassador flag on shared.contacts. This template extends the
+-- per-brand sales_campaigns + sales_campaign_products tables and adds
+-- the new bundle / tier / upsell / VIP / ambassador tables.
+--
+-- Substitute {{BUSINESS}} via bootstrapBusiness.js / db:migrate:template.
+-- ============================================================
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 1. product_bundles — catalogue-level bundle entity                  ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+-- Bundles live in the catalogue and are reusable across campaigns. They
+-- carry a hero image, a curated composition, and a default discount
+-- structure that any attaching campaign inherits as a starting point.
+--
+-- The composition rule (`is_fixed_composition = true`) honours Faith's
+-- explicit instruction: the CEO picks the styles/colours in the bundle,
+-- not the shopper.
+CREATE TABLE {{BUSINESS}}.product_bundles (
+  bundle_id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug                   TEXT         NOT NULL UNIQUE,
+  name                   TEXT         NOT NULL,
+  description            TEXT,
+  hero_image_url         TEXT,
+  category_id            UUID         REFERENCES {{BUSINESS}}.product_categories (category_id) ON DELETE SET NULL,
+  -- Fixed composition or shopper-pick. Faith's verbatim spec is fixed.
+  is_fixed_composition   BOOLEAN      NOT NULL DEFAULT true,
+  -- Default per-item ₦ discount for this bundle (overridable per campaign).
+  default_per_item_discount_ngn NUMERIC(14,4) NOT NULL DEFAULT 0,
+  -- Preorder discount-loss percent — when CEO toggles preorder ON for
+  -- this bundle during a live sale, the preorder price becomes:
+  --   sale_price + (regular_price − sale_price) × default_preorder_loss_pct
+  default_preorder_loss_pct NUMERIC(5,4) NOT NULL DEFAULT 0.70
+    CHECK (default_preorder_loss_pct BETWEEN 0 AND 1),
+  status                 TEXT         NOT NULL DEFAULT 'active'
+                         CHECK (status IN ('active','archived','draft')),
+  display_order          SMALLINT     NOT NULL DEFAULT 0,
+  -- Praxis attribution — % of this bundle's setup drafted by Praxis.
+  ai_assist_pct          NUMERIC(5,4) NOT NULL DEFAULT 0,
+  created_by             UUID         REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_product_bundles_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.product_bundles
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX idx_{{BUSINESS}}_product_bundles_status
+  ON {{BUSINESS}}.product_bundles (status, display_order);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 2. product_bundle_items — composition rows                          ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+CREATE TABLE {{BUSINESS}}.product_bundle_items (
+  bundle_item_id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  bundle_id              UUID         NOT NULL REFERENCES {{BUSINESS}}.product_bundles (bundle_id) ON DELETE CASCADE,
+  product_id             UUID         REFERENCES {{BUSINESS}}.products (product_id) ON DELETE RESTRICT,
+  variant_id             UUID         REFERENCES {{BUSINESS}}.product_variants (variant_id) ON DELETE RESTRICT,
+  -- Quantity of this product/variant in the bundle composition.
+  quantity               SMALLINT     NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+  -- Per-item ₦ off override (NULL means inherit bundle default).
+  per_item_discount_ngn  NUMERIC(14,4),
+  display_position       SMALLINT     NOT NULL DEFAULT 0,
+  created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  CHECK ( (product_id IS NOT NULL) OR (variant_id IS NOT NULL) )
+);
+CREATE INDEX idx_{{BUSINESS}}_product_bundle_items_bundle
+  ON {{BUSINESS}}.product_bundle_items (bundle_id, display_position);
+CREATE INDEX idx_{{BUSINESS}}_product_bundle_items_product
+  ON {{BUSINESS}}.product_bundle_items (product_id);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 3. sales_campaign_bundles — attach a bundle to a campaign           ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+CREATE TABLE {{BUSINESS}}.sales_campaign_bundles (
+  link_id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id            UUID         NOT NULL REFERENCES {{BUSINESS}}.sales_campaigns (campaign_id) ON DELETE CASCADE,
+  bundle_id              UUID         NOT NULL REFERENCES {{BUSINESS}}.product_bundles (bundle_id) ON DELETE RESTRICT,
+  -- Override the bundle's default discount for this campaign.
+  per_item_discount_ngn  NUMERIC(14,4),
+  -- Bundle price computed = sum(variants × (variant_price - per_item_discount))
+  -- but the CEO can override the final displayed bundle price.
+  campaign_bundle_price_ngn NUMERIC(14,4),
+  -- Preorder configuration for this bundle within this campaign.
+  preorder_enabled       BOOLEAN      NOT NULL DEFAULT false,
+  preorder_loss_pct      NUMERIC(5,4) CHECK (preorder_loss_pct IS NULL OR preorder_loss_pct BETWEEN 0 AND 1),
+  preorder_lead_weeks    SMALLINT,
+  starting_stock         INTEGER,
+  current_stock_snapshot INTEGER,
+  is_featured            BOOLEAN      NOT NULL DEFAULT false,
+  display_order          SMALLINT     NOT NULL DEFAULT 0,
+  created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  UNIQUE (campaign_id, bundle_id)
+);
+CREATE INDEX idx_{{BUSINESS}}_sales_campaign_bundles_campaign
+  ON {{BUSINESS}}.sales_campaign_bundles (campaign_id, display_order);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 4. sales_campaign_quantity_tiers — cart-level tier ladder           ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+-- Faith's spec: fixed ₦ amounts, not percentages. Multiple tiers
+-- per campaign (buy 2 save ₦X, buy 3 save ₦Y). Tier reconciliation
+-- runs at the cart level and respects pricing_floors.min_price.
+CREATE TABLE {{BUSINESS}}.sales_campaign_quantity_tiers (
+  tier_id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id            UUID         NOT NULL REFERENCES {{BUSINESS}}.sales_campaigns (campaign_id) ON DELETE CASCADE,
+  min_quantity           SMALLINT     NOT NULL CHECK (min_quantity >= 2),
+  -- The fixed ₦ saving applied at the cart subtotal.
+  fixed_discount_ngn     NUMERIC(14,4) NOT NULL CHECK (fixed_discount_ngn > 0),
+  label                  TEXT,                                       -- "Buy 2 save ₦15,000"
+  -- Optional scope: tier applies only to these bundle(s)/product(s).
+  scope_bundle_ids       UUID[]       NOT NULL DEFAULT '{}',
+  scope_product_ids      UUID[]       NOT NULL DEFAULT '{}',
+  display_order          SMALLINT     NOT NULL DEFAULT 0,
+  is_active              BOOLEAN      NOT NULL DEFAULT true,
+  created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  UNIQUE (campaign_id, min_quantity)
+);
+CREATE INDEX idx_{{BUSINESS}}_campaign_tiers
+  ON {{BUSINESS}}.sales_campaign_quantity_tiers (campaign_id, min_quantity)
+  WHERE is_active = true;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 5. sales_campaign_cart_upsells — Temu-style escalating popups       ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+-- Each row = one rung of the escalator. Triggered when the cart meets
+-- `min_cart_qty` items OR `min_cart_value_ngn`. Shows once per cart-open
+-- unless it converts. Tracks shown/converted counts for live analytics.
+CREATE TABLE {{BUSINESS}}.sales_campaign_cart_upsells (
+  upsell_id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id            UUID         NOT NULL REFERENCES {{BUSINESS}}.sales_campaigns (campaign_id) ON DELETE CASCADE,
+  rung                   SMALLINT     NOT NULL CHECK (rung BETWEEN 1 AND 20),
+  trigger_type           TEXT         NOT NULL DEFAULT 'cart_qty'
+                         CHECK (trigger_type IN ('cart_qty','cart_value','specific_bundle')),
+  min_cart_qty           SMALLINT     CHECK (min_cart_qty IS NULL OR min_cart_qty >= 1),
+  min_cart_value_ngn     NUMERIC(14,4) CHECK (min_cart_value_ngn IS NULL OR min_cart_value_ngn >= 0),
+  trigger_bundle_id      UUID         REFERENCES {{BUSINESS}}.product_bundles (bundle_id) ON DELETE CASCADE,
+  -- The offer the popup makes.
+  offer_label            TEXT         NOT NULL,                       -- "Add 1 more bundle"
+  offer_subline          TEXT,                                        -- "save an extra ₦100,000"
+  -- The discount to apply if the customer accepts.
+  reward_type            TEXT         NOT NULL DEFAULT 'fixed_amount'
+                         CHECK (reward_type IN ('fixed_amount','percentage','suggest_bundle')),
+  reward_value           NUMERIC(14,4),
+  reward_bundle_id       UUID         REFERENCES {{BUSINESS}}.product_bundles (bundle_id) ON DELETE CASCADE,
+  display_order          SMALLINT     NOT NULL DEFAULT 0,
+  is_active              BOOLEAN      NOT NULL DEFAULT true,
+  -- Counters for live analytics.
+  shown_count            INTEGER      NOT NULL DEFAULT 0,
+  converted_count        INTEGER      NOT NULL DEFAULT 0,
+  created_at             TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_{{BUSINESS}}_campaign_upsells_campaign
+  ON {{BUSINESS}}.sales_campaign_cart_upsells (campaign_id, rung, display_order)
+  WHERE is_active = true;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 6. sales_campaign_vip_grants — auto-tag + gift task ledger          ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+-- Populated by the post-campaign rollup job. One row per top-N spender.
+-- The "Send VIP gift" task is created server-side (assignee = CEO) and
+-- its id is recorded here so the dashboard can show task status.
+CREATE TABLE {{BUSINESS}}.sales_campaign_vip_grants (
+  grant_id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id            UUID         NOT NULL REFERENCES {{BUSINESS}}.sales_campaigns (campaign_id) ON DELETE CASCADE,
+  contact_id             UUID         NOT NULL,
+  rank                   SMALLINT     NOT NULL CHECK (rank >= 1),
+  total_spend_ngn        NUMERIC(14,4) NOT NULL,
+  promoted_to_platinum   BOOLEAN      NOT NULL DEFAULT false,
+  gift_task_id           UUID,                                       -- shared.tasks
+  gift_status            TEXT         NOT NULL DEFAULT 'pending'
+                         CHECK (gift_status IN ('pending','approved','dispatched','delivered','rejected')),
+  praxis_gift_suggestion TEXT,
+  thank_you_sent_at      TIMESTAMPTZ,
+  created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  UNIQUE (campaign_id, contact_id)
+);
+CREATE INDEX idx_{{BUSINESS}}_vip_grants_campaign
+  ON {{BUSINESS}}.sales_campaign_vip_grants (campaign_id, rank);
+CREATE INDEX idx_{{BUSINESS}}_vip_grants_contact
+  ON {{BUSINESS}}.sales_campaign_vip_grants (contact_id);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 7. sales_campaign_ambassadors — per-campaign attribution links      ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+CREATE TABLE {{BUSINESS}}.sales_campaign_ambassadors (
+  ambassador_link_id     UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id            UUID         NOT NULL REFERENCES {{BUSINESS}}.sales_campaigns (campaign_id) ON DELETE CASCADE,
+  contact_id             UUID         NOT NULL,
+  -- UTM source for the link (typically the ambassador's IG handle).
+  utm_source             TEXT         NOT NULL,
+  -- Optional commission percent overriding contact-level default.
+  commission_pct         NUMERIC(5,4) CHECK (commission_pct IS NULL OR commission_pct BETWEEN 0 AND 1),
+  -- Rollups (updated by the analytics worker).
+  visits_count           INTEGER      NOT NULL DEFAULT 0,
+  orders_count           INTEGER      NOT NULL DEFAULT 0,
+  revenue_ngn            NUMERIC(14,4) NOT NULL DEFAULT 0,
+  earned_commission_ngn  NUMERIC(14,4) NOT NULL DEFAULT 0,
+  share_link             TEXT,
+  qr_url                 TEXT,
+  created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  UNIQUE (campaign_id, contact_id),
+  UNIQUE (campaign_id, utm_source)
+);
+CREATE INDEX idx_{{BUSINESS}}_campaign_ambassadors_campaign
+  ON {{BUSINESS}}.sales_campaign_ambassadors (campaign_id);
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 8. sales_campaigns — extend with v2 fields                          ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+ALTER TABLE {{BUSINESS}}.sales_campaigns
+  -- Brand voice / Praxis attribution.
+  ADD COLUMN IF NOT EXISTS voice_profile_override JSONB,
+  ADD COLUMN IF NOT EXISTS ai_assist_pct          NUMERIC(5,4) NOT NULL DEFAULT 0,
+  -- Smart-viewer policy override (NULL = inherit business_config).
+  ADD COLUMN IF NOT EXISTS show_viewer_count_policy TEXT
+    CHECK (show_viewer_count_policy IS NULL OR show_viewer_count_policy IN ('smart','on','off')),
+  ADD COLUMN IF NOT EXISTS viewer_count_floor     INTEGER
+    CHECK (viewer_count_floor IS NULL OR viewer_count_floor >= 0),
+  -- Three-state schedule extras.
+  ADD COLUMN IF NOT EXISTS vip_early_access_minutes INTEGER NOT NULL DEFAULT 0
+    CHECK (vip_early_access_minutes >= 0),
+  ADD COLUMN IF NOT EXISTS last_call_surge_minutes  INTEGER NOT NULL DEFAULT 0
+    CHECK (last_call_surge_minutes >= 0),
+  -- VIP picker.
+  ADD COLUMN IF NOT EXISTS vip_top_n              SMALLINT NOT NULL DEFAULT 10
+    CHECK (vip_top_n >= 1 AND vip_top_n <= 100),
+  ADD COLUMN IF NOT EXISTS vip_lifetime_threshold_ngn NUMERIC(14,4),
+  -- Next-drop promotion (when this campaign ends, redirect to / promote
+  -- this campaign's slug — engine resolves to URL).
+  ADD COLUMN IF NOT EXISTS next_campaign_slug     TEXT,
+  -- Exit-intent code.
+  ADD COLUMN IF NOT EXISTS exit_intent_enabled    BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS exit_intent_code       TEXT,
+  ADD COLUMN IF NOT EXISTS exit_intent_discount_ngn NUMERIC(14,4),
+  -- Cart abandonment recovery toggle.
+  ADD COLUMN IF NOT EXISTS abandonment_recovery_enabled BOOLEAN NOT NULL DEFAULT true,
+  -- Display-currency policy for international shoppers.
+  ADD COLUMN IF NOT EXISTS allow_multi_currency_display BOOLEAN NOT NULL DEFAULT true;
+
+COMMENT ON COLUMN {{BUSINESS}}.sales_campaigns.voice_profile_override IS
+  'Optional per-campaign override of the brand-level Praxis voice profile. '
+  'When NULL, the brand-level profile is used.';
+COMMENT ON COLUMN {{BUSINESS}}.sales_campaigns.ai_assist_pct IS
+  'Recorded percentage of this campaign''s setup drafted by Praxis '
+  '(copy + layout + discount maths). Surfaced in the post-campaign report.';
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 9. sales_campaign_products — preorder + ambassador tracking         ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+ALTER TABLE {{BUSINESS}}.sales_campaign_products
+  ADD COLUMN IF NOT EXISTS preorder_enabled       BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS preorder_loss_pct      NUMERIC(5,4)
+    CHECK (preorder_loss_pct IS NULL OR preorder_loss_pct BETWEEN 0 AND 1),
+  ADD COLUMN IF NOT EXISTS preorder_lead_weeks    SMALLINT;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 10. sales_orders — record campaign attribution + ambassador         ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS campaign_ambassador_id UUID
+    REFERENCES {{BUSINESS}}.sales_campaign_ambassadors (ambassador_link_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS is_preorder            BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS preorder_ships_after   TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_orders_campaign_ambassador
+  ON {{BUSINESS}}.sales_orders (campaign_ambassador_id)
+  WHERE campaign_ambassador_id IS NOT NULL;
+
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ 11. Bundle stock-snapshot trigger                                    ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+-- Refresh sales_campaign_bundles.current_stock_snapshot from the variant
+-- inventory whenever the bundle is read. (Cheap: aggregate over a small
+-- composition.) Implemented as a function the service can call rather
+-- than a per-row trigger that fires on every variant write.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_refresh_campaign_bundle_stock(p_link_id UUID)
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE
+  v_min_stock INTEGER;
+BEGIN
+  -- Compute available bundle "units" = min over composition items of
+  -- (sum of available across all locations) divided by bundle item qty.
+  SELECT MIN(
+    COALESCE(
+      (SELECT SUM(sl.available)
+         FROM {{BUSINESS}}.stock_levels sl
+        WHERE sl.variant_id = bi.variant_id),
+      0
+    ) / GREATEST(bi.quantity, 1)
+  )
+    INTO v_min_stock
+    FROM {{BUSINESS}}.sales_campaign_bundles scb
+    JOIN {{BUSINESS}}.product_bundle_items bi ON bi.bundle_id = scb.bundle_id
+   WHERE scb.link_id = p_link_id
+     AND bi.variant_id IS NOT NULL;
+
+  UPDATE {{BUSINESS}}.sales_campaign_bundles
+     SET current_stock_snapshot = COALESCE(v_min_stock, 0)
+   WHERE link_id = p_link_id;
+
+  RETURN COALESCE(v_min_stock, 0);
+END;
+$$;
+
+-- ── Verify
+--   SELECT count(*) FROM {{BUSINESS}}.product_bundles;
+--   SELECT column_name FROM information_schema.columns
+--    WHERE table_schema='{{BUSINESS}}' AND table_name='sales_campaigns'
+--    ORDER BY ordinal_position;
+-- ============================================================

@@ -70,23 +70,70 @@ function unionSql(brand) {
   ].join("\n    UNION ALL\n");
 }
 
+// Module → frontend timeline category. "commercial" = money-bearing events,
+// "engagement" = touchpoints/notes, "internal" = system-side changes.
+const CATEGORY_BY_MODULE = {
+  sales: "commercial",
+  invoicing: "commercial",
+  pos: "commercial",
+  service: "commercial",
+  retention: "commercial",
+  storefront: "engagement",
+  crm: "engagement",
+  logistics: "internal",
+};
+
+function toTimelineEvent(r) {
+  return {
+    event_id: r.ref_id,
+    event_type: `${r.module}.${r.kind}`,
+    event_at: r.occurred_at,
+    title:
+      r.title ||
+      r.ref ||
+      `${r.module} · ${String(r.kind).replace(/_/g, " ")}`,
+    detail: r.status || null,
+    metadata: {
+      module: r.module,
+      kind: r.kind,
+      ref: r.ref,
+      amount_ngn: r.amount_ngn,
+    },
+    created_by: null,
+    created_by_name: null,
+    category: CATEGORY_BY_MODULE[r.module] || "internal",
+  };
+}
+
 async function timeline({
   brand,
   contact_id,
   kinds,
+  category,
   page = 1,
   page_size = 30,
 }) {
   const union = unionSql(brand);
   const params = [contact_id, brand];
-  let kindFilter = "";
+  const where = [];
   if (Array.isArray(kinds) && kinds.length > 0) {
     params.push(kinds);
-    kindFilter = `WHERE kind = ANY($${params.length})`;
+    where.push(`kind = ANY($${params.length})`);
   }
+  if (category) {
+    // Translate a category filter into the set of modules it covers.
+    const modules = Object.entries(CATEGORY_BY_MODULE)
+      .filter(([, c]) => c === category)
+      .map(([m]) => m);
+    if (modules.length > 0) {
+      params.push(modules);
+      where.push(`module = ANY($${params.length})`);
+    }
+  }
+  const filterSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const { rows: countRows } = await query(
-    `SELECT count(*)::int AS total FROM (${union}) tl ${kindFilter}`,
+    `SELECT count(*)::int AS total FROM (${union}) tl ${filterSql}`,
     params,
   );
 
@@ -94,13 +141,22 @@ async function timeline({
   const limitIdx = params.length + 1;
   const offsetIdx = params.length + 2;
   const { rows } = await query(
-    `SELECT * FROM (${union}) tl ${kindFilter}
+    `SELECT * FROM (${union}) tl ${filterSql}
       ORDER BY occurred_at DESC NULLS LAST
       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     [...params, page_size, offset],
   );
 
-  return { data: rows, page, page_size, total: countRows[0].total };
+  const total = countRows[0].total;
+  return {
+    data: rows.map(toTimelineEvent),
+    meta: {
+      page,
+      page_size,
+      total,
+      has_more: offset + rows.length < total,
+    },
+  };
 }
 
 /** Roll-up counters for the contact header (cheap targeted aggregates). */

@@ -20,13 +20,15 @@ const styledCreate = z
     styled_code: z.string().min(1).max(60).optional(), // auto-generated if absent
     name: z.string().min(1).max(200),
     slug,
-    short_description: z.string().max(500).optional(),
-    long_description: z.string().max(8000).optional(),
-    style_addon_price_ngn: money.optional(),
-    category_id: z.string().uuid().optional(),
+    // `.nullable()` so the editor can clear copy (sends null → NULL). Without
+    // it, saving with an empty description 400s.
+    short_description: z.string().max(500).nullable().optional(),
+    long_description: z.string().max(8000).nullable().optional(),
+    style_addon_price_ngn: money.nullable().optional(),
+    category_id: z.string().uuid().nullable().optional(),
     visible_on_channels: z.array(z.string()).optional(),
-    meta_title: z.string().max(200).optional(),
-    meta_description: z.string().max(500).optional(),
+    meta_title: z.string().max(200).nullable().optional(),
+    meta_description: z.string().max(500).nullable().optional(),
     search_keywords: z.array(z.string()).optional(),
   })
   .strict();

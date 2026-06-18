@@ -67,8 +67,8 @@ export function CollectionsTab() {
             <Card key={c.collection_id} className="p-4">
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="font-display text-[15px] truncate">{c.name}</div>
-                <Pill tone={c.collection_type === "rule" ? "info" : "neutral"} dot={false}>
-                  {c.collection_type === "rule" ? "Rule-based" : "Manual"}
+                <Pill tone={c.mode === "rule" ? "info" : "neutral"} dot={false}>
+                  {c.mode === "rule" ? "Rule-based" : "Manual"}
                 </Pill>
               </div>
               {c.description && <div className="text-[12px] text-text-faint">{c.description}</div>}

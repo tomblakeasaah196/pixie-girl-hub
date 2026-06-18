@@ -17,6 +17,16 @@ const { query } = require("../../config/database");
 
 const { VALID_BRANDS } = require("../../config/brands");
 
+const VALID_STATUSES = new Set([
+  "draft",
+  "pending_approval",
+  "scheduled",
+  "live",
+  "paused",
+  "ended",
+  "archived",
+]);
+
 function t(brand, table) {
   if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   return `${brand}.${table}`;
@@ -52,12 +62,33 @@ const CREATE_COLS = [
   "meta_description",
   "og_image_url",
   "total_usage_limit",
+  // ── Sales Campaigns v2 (migration 000040) — were silently dropped on save ──
+  "voice_profile_override",
+  "show_viewer_count_policy",
+  "viewer_count_floor",
+  "vip_early_access_minutes",
+  "last_call_surge_minutes",
+  "vip_top_n",
+  "vip_lifetime_threshold_ngn",
+  "next_campaign_slug",
+  "exit_intent_enabled",
+  "exit_intent_code",
+  "exit_intent_discount_ngn",
+  "abandonment_recovery_enabled",
+  "allow_multi_currency_display",
 ];
 const UPDATE_COLS = CREATE_COLS; // same set is editable (status excluded by design)
-const JSONB_COLS = new Set(["landing_blocks"]);
+const JSONB_COLS = new Set(["landing_blocks", "voice_profile_override"]);
 
 function bindValue(col, val) {
-  if (JSONB_COLS.has(col)) return JSON.stringify(val ?? []);
+  if (JSONB_COLS.has(col)) {
+    // landing_blocks is an array (default []); voice_profile_override is an
+    // object or NULL — don't coerce a missing object into an empty array.
+    if (val === undefined || val === null) {
+      return col === "landing_blocks" ? "[]" : null;
+    }
+    return JSON.stringify(val);
+  }
   return val;
 }
 
@@ -78,9 +109,21 @@ async function findAll({
   let i = 1;
 
   if (filters.status) {
-    const statuses = Array.isArray(filters.status)
+    const requested = Array.isArray(filters.status)
       ? filters.status
       : String(filters.status).split(",");
+    // Drop unknown values rather than passing them to Postgres (which would
+    // 500 on a check-constraint mismatch and leak the SQL error shape).
+    const statuses = requested
+      .map((s) => String(s).trim())
+      .filter((s) => VALID_STATUSES.has(s));
+    if (statuses.length === 0) {
+      // Caller asked for status=garbage — return an empty result deterministically.
+      return {
+        data: [],
+        meta: { page, page_size, total: 0, has_more: false },
+      };
+    }
     where.push(`status = ANY($${i++}::text[])`);
     params.push(statuses);
   } else {
@@ -99,7 +142,14 @@ async function findAll({
     i++;
   }
 
-  if (scope === "own" && user_id) {
+  // Record-level scope (5-layer RBAC, CLAUDE.md §RBAC):
+  //   all  → no filter
+  //   team → no team_id on this table yet, so collapse to `own` (caller's records)
+  //          rather than leaking everyone's. Revisit when a team mapping lands.
+  //   own  → only campaigns the caller created.
+  // Anything else (a typo, a custom role with an unknown scope) is also
+  // narrowed to `own` so a misconfigured role can't accidentally widen reads.
+  if (scope && scope !== "all" && user_id) {
     where.push(`created_by = $${i++}`);
     params.push(user_id);
   }

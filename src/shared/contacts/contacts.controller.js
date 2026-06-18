@@ -15,18 +15,20 @@ const base = (req) => ({
 
 async function list(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.list({
+  // Accept both backend-native param names (q, contact_type, priority_level)
+  // and the friendlier UI aliases (search, type, priority) for compatibility.
+  res.json({
+    data: await service.list({
       filters: {
-        q: req.query.q,
-        priority_level: req.query.priority_level,
+        q: req.query.q ?? req.query.search,
+        priority_level: req.query.priority_level ?? req.query.priority,
         assigned_to: req.query.assigned_to,
-        contact_type: req.query.contact_type,
+        contact_type: req.query.contact_type ?? req.query.type,
       },
       page,
       page_size,
     }),
-  );
+  });
 }
 async function getById(req, res) {
   res.json({ data: await service.getById({ id: req.params.id }) });
@@ -39,15 +41,16 @@ async function getTimeline(req, res) {
         .map((k) => k.trim())
         .filter(Boolean)
     : null;
-  res.json(
-    await service.getTimeline({
+  res.json({
+    data: await service.getTimeline({
       brand: req.brand,
       id: req.params.id,
       kinds,
+      category: req.query.category,
       page,
       page_size,
     }),
-  );
+  });
 }
 async function getSummary(req, res) {
   res.json({

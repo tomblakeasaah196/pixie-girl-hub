@@ -39,7 +39,7 @@ export function LoginPage() {
   }, [status, navigate]);
 
   const platform = branding?.platform;
-  const productName = platform?.product_name ?? "Pixie Girl Hub";
+  const productName = platform?.product_name ?? "Pixie Hub";
   const businesses = useMemo(
     () => (branding?.businesses ?? []).filter(Boolean),
     [branding],
@@ -88,7 +88,7 @@ export function LoginPage() {
     return () => clearInterval(id);
   }, [t.quotes, quotes.length]);
 
-  // Product wordmark: accent the final word ("Pixie Girl Hub" → Hub).
+  // Product wordmark: accent the final word ("Pixie Hub" → Hub).
   const words = productName.split(" ");
   const tail = words.length > 1 ? words.pop()! : "";
   const head = words.join(" ");
@@ -225,7 +225,7 @@ export function LoginPage() {
                     <img
                       src={b.logo_path}
                       alt=""
-                      className="w-5 h-5 rounded-full object-cover"
+                      className="h-4 max-w-[56px] object-contain"
                     />
                   ) : (
                     <span

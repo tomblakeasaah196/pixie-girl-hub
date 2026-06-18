@@ -10,9 +10,11 @@
 
 "use strict";
 
+const crypto = require("crypto");
 const repo = require("./campaigns.repo");
 const events = require("./campaigns.events");
 const wf = require("../../workflows/engine");
+const storage = require("../../services/storage.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
@@ -267,6 +269,7 @@ async function approve({ brand, user, request_id, id, notes }) {
       action_key: "sales_campaigns.approve",
       target_type: REFERENCE_TABLE,
       target_id: id,
+      before: { status: campaign.status },
       after: {
         workflow_status: result.status,
         campaign_status: updated.status,
@@ -311,6 +314,7 @@ async function reject({ brand, user, request_id, id, notes }) {
       action_key: "sales_campaigns.reject",
       target_type: REFERENCE_TABLE,
       target_id: id,
+      before: { status: campaign.status },
       after: { status: "draft", notes },
       request_id,
     });
@@ -678,12 +682,42 @@ async function ensureExists({ brand, id }) {
   return c;
 }
 
+// ── Landing image upload ─────────────────────────────────
+// Stores a hero / look-book image for a campaign and returns its public URL.
+// Brand-scoped (the campaign must exist in the caller's brand) so a campaign
+// editor can upload without needing the platform branding permission.
+async function uploadImage({ brand, id, file }) {
+  if (!file || !file.buffer || !file.buffer.length) {
+    throw new AppError("NO_FILE", "No image was uploaded", 400);
+  }
+  if (!/^image\//.test(file.mimetype || "")) {
+    throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
+  }
+  const campaign = await repo.findById({ brand, id });
+  if (!campaign) throw new NotFoundError("Campaign");
+
+  const ext =
+    String(file.originalname || "")
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 5) || "jpg";
+  const key = `campaigns/${brand}/${id}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
+  const stored = await storage.put(file.buffer, {
+    key,
+    contentType: file.mimetype,
+  });
+  return { url: stored.public_url };
+}
+
 module.exports = {
   resolveState,
   buildLandingPayload,
   list,
   getById,
   create,
+  uploadImage,
   update,
   archive,
   submit,

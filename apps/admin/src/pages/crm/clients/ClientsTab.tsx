@@ -133,9 +133,9 @@ export function ClientsTab() {
   const priorityFilter = segment === "vip" ? "vip" : segment === "new" ? "new" : segment === "regular" ? "regular" : undefined;
 
   const { data, isLoading } = useContacts({
-    search: search || undefined,
-    priority: priorityFilter,
-    type: "customer",
+    q: search || undefined,
+    priority_level: priorityFilter,
+    contact_type: "customer",
     page,
     page_size: 20,
   });

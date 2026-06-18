@@ -16,7 +16,24 @@ const validator = require("./campaigns.validator");
 
 const router = express.Router();
 
-// Reads are cheap; cap abuse on the public signup.
+// Reads are cheap individually but can be hammered to scrape inventory or
+// brute-force-enumerate slugs. The global limiter (300/min) is too loose for
+// an unauthenticated endpoint that hits the DB per request.
+const landingReadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "TOO_MANY_REQUESTS",
+      message: "Too many requests — slow down and try again shortly.",
+    },
+  },
+});
+
+// Stricter cap on writes — pre-launch notification list is a popular abuse
+// target (email enumeration, mailing list seeding).
 const signupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -30,8 +47,10 @@ const signupLimiter = rateLimit({
   },
 });
 
-router.get("/:slug", controller.landing);
-router.get("/:slug/stock", controller.stock);
+// Storefront index (no slug) — must precede the /:slug route.
+router.get("/", landingReadLimiter, controller.index);
+router.get("/:slug", landingReadLimiter, controller.landing);
+router.get("/:slug/stock", landingReadLimiter, controller.stock);
 router.post(
   "/:slug/signup",
   signupLimiter,

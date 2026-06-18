@@ -22,12 +22,12 @@ async function getService(req, res) {
     brand: req.brand,
     id: req.params.id,
   });
-  res.json(data);
+  res.json({ data });
 }
 
 async function createService(req, res) {
   const data = await service.createService({ ...ctx(req), input: req.body });
-  res.status(201).json(data);
+  res.status(201).json({ data });
 }
 
 async function updateService(req, res) {
@@ -36,7 +36,7 @@ async function updateService(req, res) {
     id: req.params.id,
     input: req.body,
   });
-  res.json(data);
+  res.json({ data });
 }
 
 async function deleteService(req, res) {

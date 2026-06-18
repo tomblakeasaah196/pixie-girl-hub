@@ -47,6 +47,8 @@ const signupLimiter = rateLimit({
   },
 });
 
+// Storefront index (no slug) — must precede the /:slug route.
+router.get("/", landingReadLimiter, controller.index);
 router.get("/:slug", landingReadLimiter, controller.landing);
 router.get("/:slug/stock", landingReadLimiter, controller.stock);
 router.post(

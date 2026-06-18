@@ -734,6 +734,45 @@ export function usePublicLanding(slug: string | undefined, brand?: string) {
   });
 }
 
+// ════════════════════════════════════════════════════════════
+// Public storefront index (no auth) — /api/public/sale
+// ════════════════════════════════════════════════════════════
+export interface SalesIndexCampaign {
+  slug: string;
+  name: string;
+  hero_image_url: string | null;
+  og_image_url: string | null;
+  hero_subtitle: string | null;
+  starts_at: string;
+  ends_at: string;
+  state: PublicState;
+}
+export interface SalesIndex {
+  brand: string;
+  active: SalesIndexCampaign | null;
+  upcoming: SalesIndexCampaign[];
+  past: SalesIndexCampaign[];
+}
+
+export function usePublicSalesIndex(brand?: string) {
+  const qs = brand ? `?brand=${encodeURIComponent(brand)}` : "";
+  return useQuery({
+    queryKey: ["public-sales-index", brand || ""],
+    queryFn: () => api.get<SalesIndex>(`/sale${qs}`, "public"),
+    retry: false,
+  });
+}
+
+/** Brand-level "join the list" — reuses the public newsletter endpoint, which
+ *  upserts a CRM contact (source='website'). Email + phone (WhatsApp) required. */
+export async function subscribeSalesList(
+  input: { email: string; phone: string; first_name?: string },
+  brand?: string,
+): Promise<void> {
+  const qs = brand ? `?brand=${encodeURIComponent(brand)}` : "";
+  await api.post(`/newsletter${qs}`, input, "public");
+}
+
 export function useLandingPreview(campaignId: string | undefined, state?: PublicState) {
   const brand = useBrand();
   const qs = new URLSearchParams();

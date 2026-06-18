@@ -51,7 +51,7 @@ function ngn(v: number | string | null | undefined): string {
 }
 
 /** A deterministic tasteful gradient when an image is missing — never a grey box. */
-function placeholderBg(seed: string): string {
+export function placeholderBg(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
   return `linear-gradient(150deg, rgb(var(--accent-deep)/0.55), rgb(var(--panel)/0.92)), conic-gradient(from ${h}deg at 70% 20%, rgb(var(--accent)/0.35), transparent 40%)`;

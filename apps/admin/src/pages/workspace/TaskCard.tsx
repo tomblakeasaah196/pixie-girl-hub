@@ -2,7 +2,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { Calendar, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/primitives";
-import type { Task, TaskPriority } from "./types";
+import type { Task } from "./types";
 import { TASK_PRIORITY_META, isPast } from "./constants";
 
 interface TaskCardProps {

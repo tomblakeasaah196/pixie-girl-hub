@@ -46,7 +46,6 @@ import {
   TASK_PRIORITY_META,
   MONTH_NAMES,
   getGreeting,
-  isToday,
   isSameDay,
   isPast,
   formatTime,
@@ -446,7 +445,7 @@ export function WorkspacePage() {
                 onDragEnd={onDragEnd}
                 onDragCancel={() => setActiveDragId(null)}
                 onSelectTask={(t) => setSelectedTaskId(t.task_id)}
-                onAddTask={(status) => {
+                onAddTask={() => {
                   openCreateTaskForDate();
                 }}
               />

@@ -52,7 +52,7 @@ export function QuickSaleForm() {
   const [step, setStep] = useState(1);
 
   // Step 1: Channel
-  const [channel, setChannel] = useState<SalesChannel>("walk_in");
+  const [channel, setChannel] = useState<SalesChannel>("pos");
 
   // Step 2: Customer
   const [contactSearch, setContactSearch] = useState("");
@@ -95,14 +95,14 @@ export function QuickSaleForm() {
     if (q.length < 2) { setContactResults([]); return; }
     try {
       const { data } = await import("@/lib/api").then(m =>
-        m.api.get<{ data: Array<{ contact_id: string; first_name: string; last_name: string; email: string | null }> }>(
-          `/contacts?search=${encodeURIComponent(q)}&page_size=6`
+        m.api.get<{ data: Array<{ contact_id: string; display_name: string; email: string | null }> }>(
+          `/contacts?q=${encodeURIComponent(q)}&page_size=6`
         )
       );
       setContactResults(
         data.map((c) => ({
           id: c.contact_id,
-          label: `${c.first_name} ${c.last_name}`,
+          label: c.display_name,
           sub: c.email ?? "",
         })),
       );
@@ -133,12 +133,18 @@ export function QuickSaleForm() {
           sub: `${p.styled_code} · ${p.retail_price_ngn ? `₦${Number(p.retail_price_ngn).toLocaleString()}` : "No price"}`,
         })));
       } else {
-        const res = await salesApi.searchBundles(q);
-        setProductResults(res.data.map((b) => ({
-          id: b.bundle_id,
-          label: b.display_name,
-          sub: `${b.bundle_code} · ${b.bundle_price_ngn ? `₦${Number(b.bundle_price_ngn).toLocaleString()}` : b.pricing_model}`,
-        })));
+        const bundles = await salesApi.searchBundles(q);
+        const lower = q.toLowerCase();
+        setProductResults(
+          bundles
+            .filter((b) => b.display_name.toLowerCase().includes(lower) || b.bundle_code.toLowerCase().includes(lower))
+            .slice(0, 10)
+            .map((b) => ({
+              id: b.bundle_id,
+              label: b.display_name,
+              sub: `${b.bundle_code} · ${b.bundle_price_ngn ? `₦${Number(b.bundle_price_ngn).toLocaleString()}` : b.pricing_model}`,
+            })),
+        );
       }
     } catch { setProductResults([]); }
   }, [productType]);
@@ -227,7 +233,7 @@ export function QuickSaleForm() {
 
   const reset = () => {
     setStep(1);
-    setChannel("walk_in");
+    setChannel("pos");
     setContactId(null);
     setContactName("");
     setContactSearch("");

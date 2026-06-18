@@ -29,7 +29,7 @@ export const QUOTE_STATUS: Record<QuoteStatus, StatusMeta> = {
 };
 
 export const SALES_CHANNELS: { value: SalesChannel; label: string }[] = [
-  { value: "walk_in", label: "Walk-in" },
+  { value: "pos", label: "Walk-in / POS" },
   { value: "instagram", label: "Instagram" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "phone", label: "Phone" },
@@ -41,7 +41,6 @@ export const SALES_CHANNELS: { value: SalesChannel; label: string }[] = [
   { value: "wholesale", label: "Wholesale" },
   { value: "partner", label: "Partner" },
   { value: "stylist_routed", label: "Stylist" },
-  { value: "pos", label: "POS" },
   { value: "subscription", label: "Subscription" },
   { value: "intercompany", label: "Intercompany" },
   { value: "woocommerce", label: "WooCommerce" },

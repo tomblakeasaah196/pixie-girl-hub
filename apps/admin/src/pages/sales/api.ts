@@ -37,8 +37,8 @@ export interface OrderListParams {
   page_size?: number;
 }
 
-export const listOrders = (params: OrderListParams = {}) =>
-  api.get<PaginatedResponse<SalesOrder>>(`${S}/orders${qs(params)}`);
+export const listOrders = ({ search, ...rest }: OrderListParams = {}) =>
+  api.get<PaginatedResponse<SalesOrder>>(`${S}/orders${qs({ ...rest, q: search })}`);
 
 export const getOrder = (id: string) =>
   api.get<SalesOrder>(`${S}/orders/${id}`);
@@ -74,8 +74,8 @@ export interface QuoteListParams {
   page_size?: number;
 }
 
-export const listQuotations = (params: QuoteListParams = {}) =>
-  api.get<PaginatedResponse<Quotation>>(`${S}/quotations${qs(params)}`);
+export const listQuotations = ({ search, ...rest }: QuoteListParams = {}) =>
+  api.get<PaginatedResponse<Quotation>>(`${S}/quotations${qs(rest)}`);
 
 export const getQuotation = (id: string) =>
   api.get<Quotation>(`${S}/quotations/${id}`);
@@ -103,12 +103,12 @@ export const requestCancellation = (orderId: string, input: CancellationRequestI
 // ── KPIs ────────────────────────────────────────────────────
 
 export const getSalesKpis = () =>
-  api.get<SalesKpis>(`${S}/kpis`);
+  api.get<SalesKpis>(`/dashboards/kpis/sales`);
 
 // ── Catalogue helpers (for product picker) ──────────────────
 
 export const searchProducts = (search: string) =>
-  api.get<PaginatedResponse<{ product_id: string; name: string; slug: string }>>(`/catalogue/products?search=${encodeURIComponent(search)}&page_size=10`);
+  api.get<PaginatedResponse<{ product_id: string; name: string; slug: string }>>(`/catalogue/products?q=${encodeURIComponent(search)}&page_size=10`);
 
 export const getProductVariants = (productId: string) =>
   api.get<Array<{
@@ -126,13 +126,13 @@ export const searchStyledProducts = (search: string) =>
     name: string;
     styled_code: string;
     retail_price_ngn: string | null;
-  }>>(`/catalogue/styled-products?search=${encodeURIComponent(search)}&page_size=10`);
+  }>>(`/catalogue/styled-products?q=${encodeURIComponent(search)}&page_size=10`);
 
-export const searchBundles = (search: string) =>
-  api.get<PaginatedResponse<{
+export const searchBundles = (_search: string) =>
+  api.get<Array<{
     bundle_id: string;
     bundle_code: string;
     display_name: string;
     bundle_price_ngn: string | null;
     pricing_model: string;
-  }>>(`/retention/bundles?search=${encodeURIComponent(search)}&page_size=10`);
+  }>>(`/retention/bundles?active=true`);

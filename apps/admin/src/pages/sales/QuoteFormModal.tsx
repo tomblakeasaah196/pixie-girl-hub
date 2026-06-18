@@ -50,11 +50,11 @@ export function QuoteFormModal({ open, onClose }: { open: boolean; onClose: () =
     if (q.length < 2) { setContactHits([]); return; }
     try {
       const { data } = await import("@/lib/api").then(m =>
-        m.api.get<{ data: Array<{ contact_id: string; first_name: string; last_name: string; email: string | null }> }>(
-          `/contacts?search=${encodeURIComponent(q)}&page_size=6`
+        m.api.get<{ data: Array<{ contact_id: string; display_name: string; email: string | null }> }>(
+          `/contacts?q=${encodeURIComponent(q)}&page_size=6`
         )
       );
-      setContactHits(data.map((c) => ({ id: c.contact_id, label: `${c.first_name} ${c.last_name}`, sub: c.email ?? "" })));
+      setContactHits(data.map((c) => ({ id: c.contact_id, label: c.display_name, sub: c.email ?? "" })));
     } catch { setContactHits([]); }
   }, []);
 

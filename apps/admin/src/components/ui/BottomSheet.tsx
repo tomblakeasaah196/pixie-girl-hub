@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 
 interface BottomSheetProps {
@@ -43,7 +44,7 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
     setDragY(0);
   };
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-[2px] animate-fade-in"
@@ -71,6 +72,7 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
           {children}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

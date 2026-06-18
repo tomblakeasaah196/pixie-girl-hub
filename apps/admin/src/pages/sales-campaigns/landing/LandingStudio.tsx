@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowUp,
@@ -221,7 +222,7 @@ export function LandingStudio({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[120] bg-bg flex flex-col">
       {/* Header */}
       <div className="h-14 shrink-0 flex items-center gap-3 px-4 border-b border-line bg-panel/60 backdrop-blur">
@@ -501,7 +502,8 @@ export function LandingStudio({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

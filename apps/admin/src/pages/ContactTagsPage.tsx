@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Tag, Pencil, Trash2, GitMerge, Check, X, Loader2, ChevronDown } from "lucide-react";
+import { Tag, Pencil, Trash2, GitMerge, Check, X, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useBusinessStore } from "@/stores/business";
 import { Button, Pill, Skeleton, Card } from "@/components/ui/primitives";
+import { Modal } from "@/components/ui/Modal";
+import { Select } from "@/components/ui/controls";
 import * as contactsApi from "@/pages/contacts/api";
 import type { ContactTag } from "@/pages/contacts/types";
 
@@ -230,67 +232,57 @@ function MergeDialog({ sourceTag, allTags, onClose }: MergeDialogProps) {
   const targetTag = targetOptions.find((t) => t.tag_id === targetId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm glass rounded-[20px] p-5 shadow-glass">
-        <div className="text-[14px] font-semibold text-text-primary mb-1">Merge tag</div>
-        <p className="text-[12px] text-text-muted mb-4">
-          All contacts tagged{" "}
-          <TagPill tag={sourceTag} /> will be re-tagged with the target tag. The source tag is
-          permanently removed.
-        </p>
+    <Modal open onClose={onClose} title="Merge tag">
+      <p className="text-[12px] text-text-muted mb-4">
+        All contacts tagged{" "}
+        <TagPill tag={sourceTag} /> will be re-tagged with the target tag. The source tag is
+        permanently removed.
+      </p>
 
-        {/* Target picker */}
-        <div className="mb-4">
-          <label className="micro mb-2 block">Merge into</label>
-          <div className="relative">
-            <select
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-              className="w-full h-[38px] px-3 pr-8 rounded-[10px] bg-text-primary/[0.06] border border-line text-[13px] text-text-primary appearance-none focus:outline-none focus:border-accent/40 transition-colors"
-            >
-              <option value="">— choose target tag —</option>
-              {targetOptions.map((t) => (
-                <option key={t.tag_id} value={t.tag_id}>
-                  {t.tag_name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
-          </div>
-        </div>
-
-        {/* Preview */}
-        {targetTag && (
-          <div className="flex items-center gap-2 mb-4 p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
-            <TagPill tag={sourceTag} />
-            <span className="text-text-faint text-[12px]">→</span>
-            <TagPill tag={targetTag} />
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" className="flex-1" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            className="flex-1"
-            disabled={!targetId || mergeMut.isPending}
-            onClick={() => mergeMut.mutate()}
-            icon={mergeMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : undefined}
-          >
-            Merge
-          </Button>
-        </div>
-
-        {mergeMut.isError && (
-          <p className="text-[11.5px] text-danger mt-2 text-center">
-            Merge failed — please try again.
-          </p>
-        )}
+      {/* Target picker */}
+      <div className="mb-4">
+        <label className="micro mb-2 block">Merge into</label>
+        <Select
+          value={targetId}
+          onChange={setTargetId}
+          options={[
+            { value: "", label: "— choose target tag —" },
+            ...targetOptions.map((t) => ({ value: t.tag_id, label: t.tag_name })),
+          ]}
+        />
       </div>
-    </div>
+
+      {/* Preview */}
+      {targetTag && (
+        <div className="flex items-center gap-2 mb-4 p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
+          <TagPill tag={sourceTag} />
+          <span className="text-text-faint text-[12px]">→</span>
+          <TagPill tag={targetTag} />
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button variant="ghost" size="sm" className="flex-1" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          className="flex-1"
+          disabled={!targetId || mergeMut.isPending}
+          onClick={() => mergeMut.mutate()}
+          icon={mergeMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : undefined}
+        >
+          Merge
+        </Button>
+      </div>
+
+      {mergeMut.isError && (
+        <p className="text-[11.5px] text-danger mt-2 text-center">
+          Merge failed — please try again.
+        </p>
+      )}
+    </Modal>
   );
 }
 
@@ -314,34 +306,31 @@ function DeleteConfirm({ tag, onClose }: DeleteConfirmProps) {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm glass rounded-[20px] p-5 shadow-glass">
-        <div className="text-[14px] font-semibold text-text-primary mb-1">Delete tag</div>
-        <p className="text-[12px] text-text-muted mb-4">
-          Remove <TagPill tag={tag} /> from all contacts? This cannot be undone.
-        </p>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" className="flex-1" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            className="flex-1 bg-danger/90 hover:bg-danger"
-            onClick={() => deleteMut.mutate()}
-            disabled={deleteMut.isPending}
-            icon={deleteMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : undefined}
-          >
-            Delete
-          </Button>
-        </div>
-        {deleteMut.isError && (
-          <p className="text-[11.5px] text-danger mt-2 text-center">
-            Delete failed — please try again.
-          </p>
-        )}
+    <Modal open onClose={onClose} title="Delete tag">
+      <p className="text-[12px] text-text-muted mb-4">
+        Remove <TagPill tag={tag} /> from all contacts? This cannot be undone.
+      </p>
+      <div className="flex gap-2">
+        <Button variant="ghost" size="sm" className="flex-1" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          className="flex-1 bg-danger/90 hover:bg-danger"
+          onClick={() => deleteMut.mutate()}
+          disabled={deleteMut.isPending}
+          icon={deleteMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : undefined}
+        >
+          Delete
+        </Button>
       </div>
-    </div>
+      {deleteMut.isError && (
+        <p className="text-[11.5px] text-danger mt-2 text-center">
+          Delete failed — please try again.
+        </p>
+      )}
+    </Modal>
   );
 }
 

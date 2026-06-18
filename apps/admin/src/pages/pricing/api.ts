@@ -2,32 +2,27 @@ import { api } from "@/lib/api";
 import type {
   PricingRule,
   PriceFloor,
-  ScenarioResult,
-  ScenarioComputeInput,
-  Proposal,
   CreateRuleInput,
   UpdateRuleInput,
   CreateFloorInput,
-  UpdateFloorInput,
+  Scenario,
+  ScenarioResultResponse,
+  CreateScenarioInput,
+  ComputeScenarioInput,
+  Proposal,
   CreateProposalInput,
   PaginatedResponse,
 } from "./types";
 
-const BASE = "/pricing";
+const BASE = "/api/v1/pricing"; // Corrected base path
 
-// ── Pricing Rules ─────────────────────────────────────────────────────────────
-
-export function listRules(params?: { page?: number; page_size?: number; is_active?: boolean }) {
+// ── Rules ─────────────────────────────────────────────────────────────
+export function listRules(params?: { channel?: string; is_active?: boolean }) {
   const qs = new URLSearchParams();
-  if (params?.page) qs.set("page", String(params.page));
-  if (params?.page_size) qs.set("page_size", String(params.page_size));
+  if (params?.channel) qs.set("channel", params.channel);
   if (params?.is_active !== undefined) qs.set("is_active", String(params.is_active));
   const q = qs.toString();
   return api.get<PaginatedResponse<PricingRule>>(`${BASE}/rules${q ? `?${q}` : ""}`);
-}
-
-export function getRule(id: string) {
-  return api.get<PricingRule>(`${BASE}/rules/${id}`);
 }
 
 export function createRule(input: CreateRuleInput) {
@@ -38,12 +33,14 @@ export function updateRule(id: string, input: UpdateRuleInput) {
   return api.patch<PricingRule>(`${BASE}/rules/${id}`, input);
 }
 
-// ── Price Floors ──────────────────────────────────────────────────────────────
+export function deactivateRule(id: string) {
+  return api.delete(`${BASE}/rules/${id}`);
+}
 
-export function listFloors(params?: { page?: number; page_size?: number }) {
+// ── Floors ────────────────────────────────────────────────────────────
+export function listFloors(params?: { variant_id?: string }) {
   const qs = new URLSearchParams();
-  if (params?.page) qs.set("page", String(params.page));
-  if (params?.page_size) qs.set("page_size", String(params.page_size));
+  if (params?.variant_id) qs.set("variant_id", params.variant_id);
   const q = qs.toString();
   return api.get<PaginatedResponse<PriceFloor>>(`${BASE}/floors${q ? `?${q}` : ""}`);
 }
@@ -52,26 +49,33 @@ export function createFloor(input: CreateFloorInput) {
   return api.post<PriceFloor>(`${BASE}/floors`, input);
 }
 
-export function updateFloor(id: string, input: UpdateFloorInput) {
-  return api.patch<PriceFloor>(`${BASE}/floors/${id}`, input);
+export function removeFloor(id: string) {
+  return api.delete(`${BASE}/floors/${id}`);
 }
 
-// ── Scenario Computation ──────────────────────────────────────────────────────
-
-export function computeScenario(input: ScenarioComputeInput) {
-  return api.post<ScenarioResult>(`${BASE}/scenarios/compute`, input);
-}
-
-// ── Pricing Proposals ─────────────────────────────────────────────────────────
-
-export function listProposals(params?: {
-  page?: number;
-  page_size?: number;
-  status?: string;
-}) {
+// ── Scenarios ─────────────────────────────────────────────────────────
+export function listScenarios(params?: { status?: string }) {
   const qs = new URLSearchParams();
-  if (params?.page) qs.set("page", String(params.page));
-  if (params?.page_size) qs.set("page_size", String(params.page_size));
+  if (params?.status) qs.set("status", params.status);
+  const q = qs.toString();
+  return api.get<PaginatedResponse<Scenario>>(`${BASE}/scenarios${q ? `?${q}` : ""}`);
+}
+
+export function createScenario(input: CreateScenarioInput) {
+  return api.post<Scenario>(`${BASE}/scenarios`, input);
+}
+
+export function computeScenario(id: string, input: ComputeScenarioInput = {}) {
+  return api.post<ScenarioResultResponse>(`${BASE}/scenarios/${id}/compute`, input);
+}
+
+export function getScenario(id: string) {
+  return api.get<ScenarioResultResponse>(`${BASE}/scenarios/${id}`);
+}
+
+// ── Proposals ─────────────────────────────────────────────────────────
+export function listProposals(params?: { status?: string }) {
+  const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   const q = qs.toString();
   return api.get<PaginatedResponse<Proposal>>(`${BASE}/proposals${q ? `?${q}` : ""}`);
@@ -89,6 +93,6 @@ export function rejectProposal(id: string, reason: string) {
   return api.post<Proposal>(`${BASE}/proposals/${id}/reject`, { reason });
 }
 
-export function revertProposal(id: string) {
-  return api.post<Proposal>(`${BASE}/proposals/${id}/revert`);
+export function revertProposal(id: string, reason: string) {
+  return api.post<Proposal>(`${BASE}/proposals/${id}/revert`, { reason });
 }

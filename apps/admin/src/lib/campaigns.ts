@@ -692,6 +692,87 @@ export function useCampaignSignups(campaignId: string | undefined, page = 1) {
   });
 }
 
+// ════════════════════════════════════════════════════════════
+// Landing image upload (hero / look-book) → returns a public URL
+// ════════════════════════════════════════════════════════════
+export async function uploadCampaignImage(campaignId: string, file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const { url } = await api.postForm<{ url: string }>(
+    `/sales-campaigns/${campaignId}/upload-image`,
+    form,
+  );
+  return url;
+}
+
+// ════════════════════════════════════════════════════════════
+// Public landing (no auth) — /api/public/sale/:slug
+// ════════════════════════════════════════════════════════════
+export interface PublicLanding {
+  slug: string;
+  name: string;
+  state: PublicState;
+  hero: { title: string | null; subtitle: string | null; image_url: string | null; cta_text: string | null };
+  countdown_to: string | null;
+  countdown_message: string | null;
+  signup_for_notifications: boolean;
+  blocks: LandingBlock[];
+  products: Array<Record<string, unknown>>;
+  ended: { message: string | null; redirect_to: string | null } | null;
+  seo: { meta_title: string | null; meta_description: string | null; og_image_url: string | null };
+}
+
+/** Public landing payload. `brand` is required when not served from the sales
+ *  subdomain (e.g. admin "Live view") so the API can resolve the campaign. */
+export function usePublicLanding(slug: string | undefined, brand?: string) {
+  const qs = brand ? `?brand=${encodeURIComponent(brand)}` : "";
+  return useQuery({
+    enabled: Boolean(slug),
+    queryKey: ["public-landing", slug, brand || ""],
+    queryFn: () => api.get<PublicLanding>(`/sale/${slug}${qs}`, "public"),
+    retry: false,
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// Public storefront index (no auth) — /api/public/sale
+// ════════════════════════════════════════════════════════════
+export interface SalesIndexCampaign {
+  slug: string;
+  name: string;
+  hero_image_url: string | null;
+  og_image_url: string | null;
+  hero_subtitle: string | null;
+  starts_at: string;
+  ends_at: string;
+  state: PublicState;
+}
+export interface SalesIndex {
+  brand: string;
+  active: SalesIndexCampaign | null;
+  upcoming: SalesIndexCampaign[];
+  past: SalesIndexCampaign[];
+}
+
+export function usePublicSalesIndex(brand?: string) {
+  const qs = brand ? `?brand=${encodeURIComponent(brand)}` : "";
+  return useQuery({
+    queryKey: ["public-sales-index", brand || ""],
+    queryFn: () => api.get<SalesIndex>(`/sale${qs}`, "public"),
+    retry: false,
+  });
+}
+
+/** Brand-level "join the list" — reuses the public newsletter endpoint, which
+ *  upserts a CRM contact (source='website'). Email + phone (WhatsApp) required. */
+export async function subscribeSalesList(
+  input: { email: string; phone: string; first_name?: string },
+  brand?: string,
+): Promise<void> {
+  const qs = brand ? `?brand=${encodeURIComponent(brand)}` : "";
+  await api.post(`/newsletter${qs}`, input, "public");
+}
+
 export function useLandingPreview(campaignId: string | undefined, state?: PublicState) {
   const brand = useBrand();
   const qs = new URLSearchParams();

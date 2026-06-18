@@ -80,7 +80,7 @@ export function CampaignBundlesPage() {
           <EmptyState
             icon={<Package className="w-7 h-7" />}
             title="No bundles yet"
-            message="Create your first bundle. Faith's spec: fixed composition, per-item ₦ off, before/after totals on the landing."
+            message="Create your first bundle — fixed composition, per-item ₦ off, before/after totals shown on the landing."
             action={canCreate ? <Button variant="primary" onClick={() => setCreateOpen(true)}>Create a bundle</Button> : null}
           />
         </Card>
@@ -135,12 +135,13 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
   const create = useCreateBundle();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
   const [perItem, setPerItem] = useState("");
   const [preorderLoss, setPreorderLoss] = useState("0.7");
   const [heroImage, setHeroImage] = useState("");
 
   function makeSlug(s: string) {
-    return s.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
+    return s.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-{2,}/g, "-");
   }
 
   async function submit(e: React.FormEvent) {
@@ -154,6 +155,7 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
     });
     setName("");
     setSlug("");
+    setSlugTouched(false);
     setPerItem("");
     setHeroImage("");
     onClose();
@@ -166,7 +168,7 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
             value={name}
             onChange={(e) => {
               setName(e.target.value);
-              if (!slug) setSlug(makeSlug(e.target.value));
+              if (!slugTouched) setSlug(makeSlug(e.target.value));
             }}
             required
             placeholder="The 5-Frontal Set"
@@ -176,7 +178,10 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
         <Field label="Slug">
           <input
             value={slug}
-            onChange={(e) => setSlug(makeSlug(e.target.value))}
+            onChange={(e) => {
+              setSlugTouched(true);
+              setSlug(makeSlug(e.target.value));
+            }}
             required
             className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px]"
           />

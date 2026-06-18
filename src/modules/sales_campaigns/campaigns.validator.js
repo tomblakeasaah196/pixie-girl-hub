@@ -42,16 +42,50 @@ const notifyVia = ["email", "whatsapp", "sms", "both"];
 // render fast. Extra fields are allowed (`passthrough`) for forward-compat
 // but the explicitly-known fields are length-limited and the items array is
 // capped. The outer landing_blocks array is also bounded — see usage below.
+//
+// A block is identified by `key` (the builder's block-library id) and/or a
+// legacy `type`. The admin builder sends `{ key, enabled }` (plus optional
+// Praxis attribution), so BOTH are optional and we only require that at least
+// one identifier is present. Making `type` mandatory here is what silently
+// 400'd every "Save landing" from the builder.
 const landingBlock = z
   .object({
-    type: z.string().max(60),
     key: z.string().max(60).optional(),
+    type: z.string().max(60).optional(),
+    enabled: z.boolean().optional(),
+    drafted_by_ai: z.boolean().optional(),
+    rationale: z.string().max(600).optional(),
     title: z.string().max(300).optional(),
     body: z.string().max(4000).optional(),
     items: z.array(z.any()).max(50).optional(),
+    props: z.record(z.any()).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((b) => Boolean(b.key || b.type), {
+    message: "each landing block needs a key or a type",
+  });
 const landingBlocksArray = z.array(landingBlock).max(40);
+
+// ── Sales Campaigns v2 — campaign config fields (migration 000040) ──
+// These columns live on the per-brand sales_campaigns table but were never
+// added to the create/update schemas, so the strict() guard rejected every
+// brief save that touched VIP / exit-intent / viewer / currency settings.
+// Shared by both create and update so the two stay in lock-step.
+const v2CampaignFields = {
+  voice_profile_override: z.record(z.any()).nullable().optional(),
+  show_viewer_count_policy: z.enum(["smart", "on", "off"]).nullable().optional(),
+  viewer_count_floor: z.coerce.number().int().min(0).nullable().optional(),
+  vip_early_access_minutes: z.coerce.number().int().min(0).max(10080).optional(),
+  last_call_surge_minutes: z.coerce.number().int().min(0).max(10080).optional(),
+  vip_top_n: z.coerce.number().int().min(1).max(100).optional(),
+  vip_lifetime_threshold_ngn: moneyNgn.nullable().optional(),
+  next_campaign_slug: slug.nullable().optional(),
+  exit_intent_enabled: z.boolean().optional(),
+  exit_intent_code: z.string().max(60).nullable().optional(),
+  exit_intent_discount_ngn: moneyNgn.nullable().optional(),
+  abandonment_recovery_enabled: z.boolean().optional(),
+  allow_multi_currency_display: z.boolean().optional(),
+};
 
 const createSchema = z
   .object({
@@ -79,6 +113,7 @@ const createSchema = z
     meta_description: z.string().max(500).optional(),
     og_image_url: safeUrl.optional(),
     total_usage_limit: z.coerce.number().int().positive().optional(),
+    ...v2CampaignFields,
   })
   .strict()
   .superRefine((val, ctx) => {
@@ -126,6 +161,7 @@ const updateSchema = z
     meta_description: z.string().max(500).nullable().optional(),
     og_image_url: safeUrl.nullable().optional(),
     total_usage_limit: z.coerce.number().int().positive().nullable().optional(),
+    ...v2CampaignFields,
   })
   .strict();
 

@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
   ChevronRight,
   Eye,
-  GripVertical,
   Image as ImageIcon,
   Layers,
   PackagePlus,
+  Pencil,
   Plus,
   Send,
   Settings,
@@ -17,21 +17,6 @@ import {
   Users,
   Wand2,
 } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, EmptyState, KpiTile, MoneyText, Pill, Skeleton, type Tone } from "@/components/ui/primitives";
@@ -44,12 +29,12 @@ import { money } from "@/lib/format";
 import {
   type Campaign,
   type CampaignBundleLink,
-  type LandingBlock,
   type QuantityTier,
   type CartUpsell,
   type Bundle,
   type CampaignStatus,
   useAttachCampaignBundle,
+  useBrand,
   useBundleList,
   useCampaign,
   useCampaignAmbassadors,
@@ -67,6 +52,7 @@ import {
   useUpsertTier,
   useUpsertUpsell,
 } from "@/lib/campaigns";
+import { LandingStudio } from "./landing/LandingStudio";
 
 const TONE_FOR: Record<CampaignStatus, Tone> = {
   draft: "neutral",
@@ -93,8 +79,8 @@ const STEPS = [
   { key: "bundles", label: "Bundles", icon: PackagePlus },
   { key: "pricing", label: "Pricing", icon: Wand2 },
   { key: "landing", label: "Landing page", icon: Layers },
-  { key: "ambassadors", label: "Share &amp; ambassadors", icon: Users },
-  { key: "approval", label: "Approval &amp; launch", icon: Send },
+  { key: "ambassadors", label: "Share & ambassadors", icon: Users },
+  { key: "approval", label: "Approval & launch", icon: Send },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]["key"];
@@ -115,7 +101,7 @@ const BLOCK_LIBRARY: Array<{ key: string; label: string; description: string }> 
   { key: "faq", label: "FAQ", description: "Pre-empt friction" },
   { key: "wig_care", label: "Wig Care", description: "Care guide snippet" },
   { key: "stylist_spotlight", label: "Stylist Spotlight", description: "Showcase a stylist" },
-  { key: "shipping_returns", label: "Shipping &amp; Returns", description: "DHL info + policy" },
+  { key: "shipping_returns", label: "Shipping & Returns", description: "DHL info + policy" },
   { key: "newsletter_capture", label: "Newsletter", description: "Email signup" },
   { key: "vip_signup", label: "VIP Signup", description: "Pre-launch heads-up" },
 ];
@@ -155,10 +141,10 @@ export function CampaignBuilderPage() {
       <Stepper active={step} onChange={setStep} />
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
         <div>
-          {step === "brief" && <BriefStep campaign={campaign} canEdit={canEdit} />}
+          {step === "brief" && <BriefStep campaign={campaign} canEdit={canEdit} onNext={() => setStep("bundles")} />}
           {step === "bundles" && <BundlesStep campaign={campaign} canEdit={canEdit} />}
           {step === "pricing" && <PricingStep campaign={campaign} canEdit={canEdit} />}
-          {step === "landing" && <LandingStep campaign={campaign} canEdit={canEdit} />}
+          {step === "landing" && <LandingStep campaign={campaign} canEdit={canEdit} onNext={() => setStep("ambassadors")} />}
           {step === "ambassadors" && <AmbassadorsStep campaign={campaign} canEdit={canEdit} />}
           {step === "approval" && <ApprovalStep campaign={campaign} />}
         </div>
@@ -181,6 +167,7 @@ function CampaignHeader({
   campaign: Campaign;
   onPraxis: () => void;
 }) {
+  const brand = useBrand();
   return (
     <Card className="p-5 relative overflow-hidden">
       <div
@@ -204,10 +191,14 @@ function CampaignHeader({
           </Pill>
         )}
         <div className="ml-auto flex gap-2">
-          <Button variant="ghost" icon={<Eye className="w-4 h-4" />}>
-            <Link to={`/sales-campaigns/${campaign.campaign_id}`} className="contents">
-              Live view
-            </Link>
+          <Button
+            variant="ghost"
+            icon={<Eye className="w-4 h-4" />}
+            onClick={() =>
+              window.open(`/sale/${campaign.slug}?brand=${brand}`, "_blank", "noopener")
+            }
+          >
+            View live page
           </Button>
           <Button
             variant="primary"
@@ -270,7 +261,7 @@ function PraxisSidebar({ campaign, step }: { campaign: Campaign; step: StepKey }
         </div>
         <div className="text-[12.5px] text-text-muted leading-relaxed">
           {step === "brief" && "Set the campaign name, slug and dates. Praxis uses your voice profile to write copy in the next steps."}
-          {step === "bundles" && "Bundles are catalogue entities. Attach existing bundles or create new ones. Faith's spec: fixed composition, per-item ₦ discount."}
+          {step === "bundles" && "Bundles are catalogue entities. Attach existing bundles or create new ones — fixed composition, per-item ₦ discount."}
           {step === "pricing" && "Goal-seek margin, charm round, configure the tier ladder + cart upsell escalator. Floors are enforced — Praxis refuses any breach."}
           {step === "landing" && "Drag blocks from the library, reorder, edit copy inline. Preview Before / Live / Ended states."}
           {step === "ambassadors" && "Promote contacts to ambassadors, mint per-ambassador trackable links. Share kit auto-generates copy for every channel."}
@@ -307,9 +298,10 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 // ── Step 1: Brief ────────────────────────────────────────
-function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean }) {
+function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit: boolean; onNext?: () => void }) {
   const update = useUpdateCampaign(campaign.campaign_id);
   const [name, setName] = useState(campaign.name);
+  const [slug, setSlug] = useState(campaign.slug);
   const [description, setDescription] = useState(campaign.description || "");
   const [startsAt, setStartsAt] = useState(toLocalInput(campaign.starts_at));
   const [endsAt, setEndsAt] = useState(toLocalInput(campaign.ends_at));
@@ -331,9 +323,12 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
   const [multiCurrency, setMultiCurrency] = useState(campaign.allow_multi_currency_display);
   const [abandonment, setAbandonment] = useState(campaign.abandonment_recovery_enabled);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const dirty =
     name !== campaign.name ||
+    slug !== campaign.slug ||
     description !== (campaign.description || "") ||
     startsAt !== toLocalInput(campaign.starts_at) ||
     endsAt !== toLocalInput(campaign.ends_at) ||
@@ -349,11 +344,14 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
     multiCurrency !== campaign.allow_multi_currency_display ||
     abandonment !== campaign.abandonment_recovery_enabled;
 
-  async function save() {
+  async function save(advance = false) {
     setSaving(true);
+    setError(null);
+    const cleanSlug = finalizeSlug(slug);
     try {
       await update.mutateAsync({
         name,
+        ...(cleanSlug && cleanSlug !== campaign.slug ? { slug: cleanSlug } : {}),
         description: description || null,
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
@@ -369,6 +367,14 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
         allow_multi_currency_display: multiCurrency,
         abandonment_recovery_enabled: abandonment,
       });
+      if (cleanSlug) setSlug(cleanSlug);
+      setSavedAt(Date.now());
+      if (advance) onNext?.();
+    } catch (e: unknown) {
+      setError(
+        (e as Error)?.message ||
+          "Couldn't save the brief. Check the highlighted fields and try again.",
+      );
     } finally {
       setSaving(false);
     }
@@ -386,11 +392,20 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
               className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
             />
           </Field>
-          <Field label="URL slug" hint="Read-only after creation — fixed for share links">
+          <Field
+            label="URL slug"
+            hint={
+              canEdit
+                ? `Editable until launch · /sale/${finalizeSlug(slug) || "your-slug"}`
+                : "Locked once the campaign is live — share links stay stable"
+            }
+          >
             <input
-              value={campaign.slug}
-              disabled
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none text-[13px] opacity-60 font-mono"
+              value={slug}
+              onChange={(e) => setSlug(cleanSlugInput(e.target.value))}
+              disabled={!canEdit}
+              spellCheck={false}
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50 font-mono"
             />
           </Field>
         </div>
@@ -425,7 +440,7 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
         </div>
       </FormSection>
 
-      <FormSection title="States &amp; extras">
+      <FormSection title="States & extras">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Field label="VIP early-access (minutes)" hint="0 = no head-start; e.g. 60 = 1h">
             <NumberField
@@ -540,10 +555,32 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
         </div>
       </FormSection>
 
-      {canEdit && dirty && (
-        <div className="flex justify-end gap-2 sticky bottom-2">
-          <Button variant="primary" disabled={saving} onClick={save} icon={<Check className="w-4 h-4" />}>
-            {saving ? "Saving…" : "Save brief"}
+      {error && (
+        <div className="rounded-[12px] border border-danger/40 bg-danger/[0.08] px-4 py-3 text-[13px] text-danger">
+          {error}
+        </div>
+      )}
+      {canEdit && (
+        <div className="flex items-center justify-end gap-3 sticky bottom-2">
+          {dirty ? (
+            <span className="text-[12px] text-text-faint">Unsaved changes</span>
+          ) : savedAt ? (
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-success">
+              <Check className="w-3.5 h-3.5" /> All changes saved
+            </span>
+          ) : null}
+          {dirty && (
+            <Button variant="ghost" disabled={saving} onClick={() => save(false)}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            disabled={saving}
+            onClick={() => (dirty ? save(true) : onNext?.())}
+            icon={<ChevronRight className="w-4 h-4" />}
+          >
+            {saving ? "Saving…" : dirty ? "Save & continue" : "Continue"}
           </Button>
         </div>
       )}
@@ -555,6 +592,15 @@ function toLocalInput(iso: string): string {
   const d = new Date(iso);
   const off = d.getTimezoneOffset() * 60_000;
   return new Date(d.getTime() - off).toISOString().slice(0, 16);
+}
+
+// Gentle slug cleaning WHILE typing — keeps a trailing hyphen so a multi-word
+// slug can be typed; finalizeSlug trims the stray ends on save.
+function cleanSlugInput(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-{2,}/g, "-");
+}
+function finalizeSlug(raw: string): string {
+  return raw.replace(/^-+|-+$/g, "");
 }
 
 // ── Step 2: Bundles ──────────────────────────────────────
@@ -733,8 +779,8 @@ function PricingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
         <div>
           <h2 className="font-display text-[22px] leading-tight">Quantity-tier ladder</h2>
           <p className="text-text-muted text-[13px] mt-1">
-            Faith's spec: <span className="font-mono">fixed ₦</span> amounts at the cart, not percentages.
-            Engine respects the per-product price floor.
+            <span className="font-mono">Fixed ₦</span> amounts at the cart, not percentages.
+            The engine always respects the per-product price floor.
           </p>
         </div>
         <TierEditor
@@ -747,9 +793,9 @@ function PricingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
 
       <Card className="p-5 space-y-4">
         <div>
-          <h2 className="font-display text-[22px] leading-tight">Cart upsell ladder (Temu-style)</h2>
+          <h2 className="font-display text-[22px] leading-tight">Cart upsell ladder</h2>
           <p className="text-text-muted text-[13px] mt-1">
-            One rung per popup. Triggers escalate as the cart grows. Polite, on-brand, dismissible.
+            One polite, dismissible nudge per rung — the offer escalates as the cart grows.
           </p>
         </div>
         <UpsellEditor
@@ -814,18 +860,15 @@ function TierEditor({
         )}
       </div>
       {canEdit && (
-        <div className="grid grid-cols-12 gap-2 items-end">
-          <div className="col-span-2">
-            <Field label="Min qty">
-              <NumberField value={qty} onChange={setQty} allowDecimal={false} />
+        <div className="rounded-[14px] border border-line bg-text-primary/[0.02] p-4 space-y-3">
+          <div className="micro">Add a tier</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Minimum quantity">
+              <NumberField value={qty} onChange={setQty} allowDecimal={false} suffix="items" />
             </Field>
-          </div>
-          <div className="col-span-3">
-            <Field label="₦ off">
+            <Field label="Discount" hint="Fixed ₦ off the cart subtotal">
               <NumberField value={discount} onChange={setDiscount} suffix="NGN" allowDecimal={false} />
             </Field>
-          </div>
-          <div className="col-span-5">
             <Field label="Label (optional)">
               <input
                 value={label}
@@ -835,8 +878,13 @@ function TierEditor({
               />
             </Field>
           </div>
-          <div className="col-span-2">
-            <Button variant="primary" onClick={submit} icon={<Plus className="w-4 h-4" />} className="w-full">
+          <div className="flex justify-end">
+            <Button
+              variant="primary"
+              onClick={submit}
+              icon={<Plus className="w-4 h-4" />}
+              disabled={!qty || !discount}
+            >
               Add tier
             </Button>
           </div>
@@ -885,23 +933,30 @@ function UpsellEditor({
     <div className="space-y-3">
       <div className="space-y-1.5">
         {upsells.length === 0 ? (
-          <div className="text-[13px] text-text-faint italic py-3">No upsell rungs yet.</div>
+          <div className="text-[13px] text-text-faint italic py-3">No upsell rungs yet — add the first below.</div>
         ) : (
           upsells.map((u) => (
             <div
               key={u.upsell_id}
-              className="grid grid-cols-12 items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
+              className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
             >
-              <span className="col-span-1 font-display font-medium text-[14px] text-center tabular-nums">#{u.rung}</span>
-              <div className="col-span-7 min-w-0">
+              <span className="font-display font-medium text-[14px] w-8 text-center tabular-nums shrink-0">#{u.rung}</span>
+              <div className="min-w-0 flex-1">
                 <div className="font-medium text-[13px] truncate">{u.offer_label}</div>
-                <div className="text-text-muted text-[11px] truncate">{u.offer_subline}</div>
+                {u.offer_subline && <div className="text-text-muted text-[11px] truncate">{u.offer_subline}</div>}
               </div>
-              <span className="col-span-3 text-[12px] text-text-faint tabular-nums truncate">
-                Trigger: {u.trigger_type === "cart_qty" ? `≥ ${u.min_cart_qty} items` : u.trigger_type === "cart_value" ? `≥ ${money(Number(u.min_cart_value_ngn))}` : "bundle"}
+              <span className="text-[12px] text-text-faint tabular-nums whitespace-nowrap hidden sm:block">
+                {u.trigger_type === "cart_qty"
+                  ? `≥ ${u.min_cart_qty} items`
+                  : u.trigger_type === "cart_value"
+                    ? `≥ ${money(Number(u.min_cart_value_ngn))}`
+                    : "bundle"}
               </span>
+              {u.reward_value != null && Number(u.reward_value) > 0 && (
+                <span className="text-[12px] text-accent-glow tabular-nums whitespace-nowrap">−{money(Number(u.reward_value))}</span>
+              )}
               {canEdit && (
-                <button onClick={() => onDelete(u.upsell_id)} className="col-span-1 text-text-faint hover:text-danger p-1 ml-auto">
+                <button onClick={() => onDelete(u.upsell_id)} className="text-text-faint hover:text-danger p-1 shrink-0" aria-label="Remove rung">
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
@@ -910,13 +965,12 @@ function UpsellEditor({
         )}
       </div>
       {canEdit && (
-        <div className="grid grid-cols-12 gap-2 items-end">
-          <div className="col-span-1">
+        <div className="rounded-[14px] border border-line bg-text-primary/[0.02] p-4 space-y-3">
+          <div className="micro">Add a rung</div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Field label="Rung">
               <NumberField value={rung} onChange={setRung} allowDecimal={false} />
             </Field>
-          </div>
-          <div className="col-span-3">
             <Field label="Trigger">
               <Select<CartUpsell["trigger_type"]>
                 value={triggerType}
@@ -928,34 +982,41 @@ function UpsellEditor({
                 ]}
               />
             </Field>
-          </div>
-          <div className="col-span-2">
-            <Field label={triggerType === "cart_qty" ? "Min items" : "Min value (₦)"}>
-              {triggerType === "cart_qty" ? (
-                <NumberField value={minQty} onChange={setMinQty} allowDecimal={false} />
-              ) : (
+            <Field label={triggerType === "cart_value" ? "Min value (₦)" : "Min items"}>
+              {triggerType === "cart_value" ? (
                 <NumberField value={minValue} onChange={setMinValue} allowDecimal={false} />
+              ) : (
+                <NumberField value={minQty} onChange={setMinQty} allowDecimal={false} />
               )}
             </Field>
-          </div>
-          <div className="col-span-3">
-            <Field label="Offer label">
-              <input
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="Add 1 more bundle"
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
-              />
-            </Field>
-          </div>
-          <div className="col-span-2">
-            <Field label="Reward ₦">
+            <Field label="Reward ₦ off">
               <NumberField value={rewardValue} onChange={setRewardValue} allowDecimal={false} />
             </Field>
           </div>
-          <div className="col-span-1">
-            <Button variant="primary" onClick={submit} className="w-full">
-              <Plus className="w-4 h-4" />
+          <Field label="Offer headline">
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Add 1 more bundle"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            />
+          </Field>
+          <Field label="Subline (optional)" hint="The smaller line under the headline">
+            <input
+              value={subline}
+              onChange={(e) => setSubline(e.target.value)}
+              placeholder="and save an extra ₦100,000"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            />
+          </Field>
+          <div className="flex justify-end">
+            <Button
+              variant="primary"
+              onClick={submit}
+              icon={<Plus className="w-4 h-4" />}
+              disabled={!label && !rewardValue}
+            >
+              Add rung
             </Button>
           </div>
         </div>
@@ -965,241 +1026,79 @@ function UpsellEditor({
 }
 
 // ── Step 4: Landing page ─────────────────────────────────
-function LandingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean }) {
-  const update = useUpdateCampaign(campaign.campaign_id);
-  const initial: LandingBlock[] = useMemo(() => {
-    if (campaign.landing_blocks && campaign.landing_blocks.length) return campaign.landing_blocks;
-    return [
-      { key: "hero", enabled: true },
-      { key: "countdown", enabled: true },
-      { key: "bundle_showcase", enabled: true },
-      { key: "featured_products", enabled: true },
-      { key: "lookbook_carousel", enabled: true },
-      { key: "faq", enabled: true },
-    ];
-  }, [campaign.landing_blocks]);
-  const [blocks, setBlocks] = useState<LandingBlock[]>(initial);
-  const [heroTitle, setHeroTitle] = useState(campaign.landing_hero_title || "");
-  const [heroSubtitle, setHeroSubtitle] = useState(campaign.landing_hero_subtitle || "");
-  const [heroImage, setHeroImage] = useState(campaign.landing_hero_image_url || "");
-  const [ctaText, setCtaText] = useState(campaign.landing_cta_text || "Shop the drop");
-  const [countdownMsg, setCountdownMsg] = useState(campaign.countdown_message || "");
-  const [endedMsg, setEndedMsg] = useState(campaign.ended_message || "");
-  const [endedRedirect, setEndedRedirect] = useState(campaign.ended_redirect_to || "");
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => setDirty(true), [blocks, heroTitle, heroSubtitle, heroImage, ctaText, countdownMsg, endedMsg, endedRedirect]);
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-
-  function onDragEnd(e: DragEndEvent) {
-    if (!canEdit) return;
-    if (e.over && e.active.id !== e.over.id) {
-      const oldIdx = blocks.findIndex((b) => b.key === e.active.id);
-      const newIdx = blocks.findIndex((b) => b.key === e.over!.id);
-      if (oldIdx >= 0 && newIdx >= 0) setBlocks(arrayMove(blocks, oldIdx, newIdx));
-    }
-  }
-
-  function toggleBlock(key: string) {
-    if (!canEdit) return;
-    if (blocks.some((b) => b.key === key)) {
-      setBlocks(blocks.filter((b) => b.key !== key));
-    } else {
-      setBlocks([...blocks, { key, enabled: true }]);
-    }
-  }
-
-  async function save() {
-    await update.mutateAsync({
-      landing_hero_title: heroTitle || null,
-      landing_hero_subtitle: heroSubtitle || null,
-      landing_hero_image_url: heroImage || null,
-      landing_cta_text: ctaText || null,
-      landing_blocks: blocks,
-      countdown_message: countdownMsg || null,
-      ended_message: endedMsg || null,
-      ended_redirect_to: endedRedirect || null,
-    });
-    setDirty(false);
-  }
+// The heavy editing now lives in the full-screen Studio (edit + live preview
+// side by side, image upload). This step is a launcher + at-a-glance summary.
+function LandingStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit: boolean; onNext?: () => void }) {
+  const brand = useBrand();
+  const [studioOpen, setStudioOpen] = useState(false);
+  const blocks = campaign.landing_blocks || [];
+  const enabledCount = blocks.filter((b) => b.enabled !== false).length;
 
   return (
-    <Card className="p-5 space-y-5">
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5">
-        <div className="space-y-5">
-          <FormSection title="Hero">
-            <Field label="Hero title">
-              <input
-                value={heroTitle}
-                onChange={(e) => setHeroTitle(e.target.value)}
-                disabled={!canEdit}
-                placeholder={`The next ${campaign.name} begins now`}
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[14px] disabled:opacity-50"
-              />
-            </Field>
-            <Field label="Hero subtitle">
-              <input
-                value={heroSubtitle}
-                onChange={(e) => setHeroSubtitle(e.target.value)}
-                disabled={!canEdit}
-                placeholder="A brief, restrained line that holds the room."
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
-              />
-            </Field>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Hero image URL" hint="Paste a URL or upload via Catalogue">
-                <input
-                  value={heroImage}
-                  onChange={(e) => setHeroImage(e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="https://…"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[12px] disabled:opacity-50 font-mono"
-                />
-              </Field>
-              <Field label="CTA text">
-                <input
-                  value={ctaText}
-                  onChange={(e) => setCtaText(e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="Shop the drop"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
-                />
-              </Field>
-            </div>
-          </FormSection>
-
-          <FormSection title="Blocks (drag to reorder)">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={blocks.map((b) => b.key)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
-                  {blocks.map((b) => (
-                    <SortableBlockRow key={b.key} block={b} canEdit={canEdit} onRemove={() => toggleBlock(b.key)} />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          </FormSection>
-
-          <FormSection title="Countdown &amp; ended state">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Countdown message" hint="Shown next to the timer (Before / Live)">
-                <input
-                  value={countdownMsg}
-                  onChange={(e) => setCountdownMsg(e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="Doors open in"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
-                />
-              </Field>
-              <Field label="Ended redirect URL" hint="Where 'Shop our collection' points">
-                <input
-                  value={endedRedirect}
-                  onChange={(e) => setEndedRedirect(e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="https://pixiegirlglobal.com"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[12px] disabled:opacity-50 font-mono"
-                />
-              </Field>
-            </div>
-            <Field label="Ended message">
-              <input
-                value={endedMsg}
-                onChange={(e) => setEndedMsg(e.target.value)}
-                disabled={!canEdit}
-                placeholder="The drop has ended — but our shelves are full of beautiful things."
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
-              />
-            </Field>
-          </FormSection>
-        </div>
-
-        <div>
-          <div className="micro mb-2">Block library</div>
-          <div className="space-y-1.5">
-            {BLOCK_LIBRARY.map((b) => {
-              const enabled = blocks.some((x) => x.key === b.key);
-              return (
-                <button
-                  key={b.key}
-                  type="button"
-                  onClick={() => toggleBlock(b.key)}
-                  disabled={!canEdit}
-                  className={cn(
-                    "w-full text-left px-3 py-2 rounded-[10px] border text-[12.5px] transition-colors disabled:opacity-50",
-                    enabled
-                      ? "bg-accent/[0.08] border-accent/35 text-accent-glow"
-                      : "border-line text-text-muted hover:text-text-primary hover:border-text-primary/15",
-                  )}
-                >
-                  <span className="font-semibold">{b.label}</span>
-                  <span className="block text-[10.5px] text-text-faint">{b.description}</span>
-                </button>
-              );
-            })}
+    <Card className="p-0 overflow-hidden">
+      <div
+        className="h-44 md:h-56 relative"
+        style={{
+          backgroundImage: campaign.landing_hero_image_url
+            ? `linear-gradient(180deg, rgb(0 0 0/0.12), rgb(var(--panel)/0.88)), url("${campaign.landing_hero_image_url}")`
+            : "linear-gradient(135deg, rgb(var(--accent-deep)/0.6), rgb(var(--panel)/0.92))",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div className="absolute inset-0 p-5 md:p-7 flex flex-col justify-end">
+          <div className="font-display text-[24px] md:text-[30px] leading-tight max-w-[560px] drop-shadow">
+            {campaign.landing_hero_title || campaign.name}
           </div>
+          {campaign.landing_hero_subtitle && (
+            <div className="text-text-primary/80 text-[13px] mt-1.5 max-w-[460px] truncate">
+              {campaign.landing_hero_subtitle}
+            </div>
+          )}
         </div>
       </div>
 
-      {canEdit && dirty && (
-        <div className="flex justify-end gap-2 sticky bottom-2">
-          <Button variant="primary" onClick={save} icon={<Check className="w-4 h-4" />}>
-            Save landing
+      <div className="p-5 md:p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="font-display text-[22px] leading-tight">Design the landing page</h2>
+            <p className="text-text-muted text-[13px] mt-1 max-w-[520px]">
+              Open the full-screen Studio to edit and preview side by side — hero, look book,
+              bundles, testimonials and more. Upload images right there; no detours.
+            </p>
+          </div>
+          <Button variant="primary" icon={<Pencil className="w-4 h-4" />} onClick={() => setStudioOpen(true)}>
+            {canEdit ? "Open the Studio" : "Open preview"}
           </Button>
         </div>
-      )}
-    </Card>
-  );
-}
 
-function SortableBlockRow({
-  block,
-  canEdit,
-  onRemove,
-}: {
-  block: LandingBlock;
-  canEdit: boolean;
-  onRemove: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: block.key,
-  });
-  const info = BLOCK_LIBRARY.find((b) => b.key === block.key);
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.65 : 1,
-      }}
-      className="flex items-center gap-2 p-2.5 rounded-[10px] bg-text-primary/[0.04] border border-line"
-    >
-      {canEdit && (
-        <button
-          {...attributes}
-          {...listeners}
-          aria-label="Drag handle"
-          className="cursor-grab active:cursor-grabbing text-text-faint p-1"
-        >
-          <GripVertical className="w-4 h-4" />
-        </button>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold">{info?.label || block.key}</div>
-        <div className="text-[10.5px] text-text-faint truncate">{info?.description}</div>
+        <div className="flex flex-wrap gap-2">
+          <Pill tone="neutral" dot={false}>{enabledCount} sections</Pill>
+          <Pill tone={campaign.landing_hero_image_url ? "success" : "warn"} dot={false}>
+            {campaign.landing_hero_image_url ? "Hero image set" : "No hero image yet"}
+          </Pill>
+          <Pill tone="neutral" dot={false}>/sale/{campaign.slug}</Pill>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-line/60">
+          <a
+            href={`/sale/${campaign.slug}?brand=${brand}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-accent-glow hover:underline"
+          >
+            <Eye className="w-3.5 h-3.5" /> Open the public page ↗
+          </a>
+          {onNext && (
+            <Button variant="ghost" icon={<ChevronRight className="w-4 h-4" />} onClick={onNext}>
+              Continue
+            </Button>
+          )}
+        </div>
       </div>
-      {block.drafted_by_ai && (
-        <Pill tone="accent" dot={false}>
-          <Sparkles className="w-3 h-3" /> AI
-        </Pill>
-      )}
-      {canEdit && (
-        <button onClick={onRemove} className="text-text-faint hover:text-danger p-1" aria-label="Remove block">
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
-    </div>
+
+      <LandingStudio open={studioOpen} onClose={() => setStudioOpen(false)} campaign={campaign} canEdit={canEdit} />
+    </Card>
   );
 }
 
@@ -1273,7 +1172,7 @@ function ApprovalStep({ campaign }: { campaign: Campaign }) {
 
   return (
     <Card className="p-5 space-y-4">
-      <h2 className="font-display text-[22px]">Approval &amp; launch</h2>
+      <h2 className="font-display text-[22px]">Approval & launch</h2>
       <div className="text-[13px] text-text-muted">
         Submit the campaign for approval. Anyone with <span className="font-mono">sales_campaigns.approve</span> can launch it once approved.
       </div>
@@ -1445,7 +1344,7 @@ function PraxisAssistDrawer({
                 </pre>
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" onClick={() => setCopyResult(null)}>Discard</Button>
-                  <Button variant="primary" onClick={applyCopy} icon={<Check className="w-4 h-4" />}>Accept &amp; apply</Button>
+                  <Button variant="primary" onClick={applyCopy} icon={<Check className="w-4 h-4" />}>Accept & apply</Button>
                 </div>
               </div>
             )}
@@ -1474,7 +1373,7 @@ function PraxisAssistDrawer({
                 </ol>
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" onClick={() => setLayoutResult(null)}>Discard</Button>
-                  <Button variant="primary" onClick={applyLayout} icon={<Check className="w-4 h-4" />}>Accept &amp; apply</Button>
+                  <Button variant="primary" onClick={applyLayout} icon={<Check className="w-4 h-4" />}>Accept & apply</Button>
                 </div>
               </div>
             )}

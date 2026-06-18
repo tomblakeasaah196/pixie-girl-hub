@@ -100,7 +100,7 @@ export function CampaignDetailPage() {
             { k: "live", l: "Live" },
             { k: "signups", l: "Signups" },
             { k: "share", l: "Share kit" },
-            { k: "vip", l: "VIP &amp; gifts" },
+            { k: "vip", l: "VIP & gifts" },
             { k: "praxis", l: "Ask Praxis" },
           ].map(({ k, l }) => (
             <button
@@ -243,7 +243,7 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
         <div>
           <h2 className="font-display text-[22px]">VIP gifts</h2>
           <p className="text-text-muted text-[13px] mt-1">
-            Top {campaign.vip_top_n} spenders get a personal gift from Faith.
+            Top {campaign.vip_top_n} spenders receive a personal thank-you gift.
             {campaign.vip_lifetime_threshold_ngn ? ` Anyone above ${money(Number(campaign.vip_lifetime_threshold_ngn))} lifetime spend is promoted to Platinum VIP.` : ""}
           </p>
         </div>

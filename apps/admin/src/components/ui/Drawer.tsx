@@ -46,9 +46,13 @@ export function Drawer({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "fixed top-0 right-0 h-full z-[90] flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-transform duration-300 ease-brand",
+          // `visibility` rides the same transition as the transform so the
+          // panel stays visible while it slides out, then flips to hidden —
+          // otherwise the big left-spreading shadow bleeds back on-screen and
+          // the drawer appears to "hang" at the right edge when closed.
+          "fixed top-0 right-0 h-full z-[90] flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-[transform,visibility] duration-300 ease-brand",
           wide ? "w-[min(560px,97vw)]" : "w-[min(460px,95vw)]",
-          open ? "translate-x-0" : "translate-x-full",
+          open ? "translate-x-0 visible" : "translate-x-full invisible pointer-events-none",
         )}
       >
         <div className="flex items-center gap-3 p-5 border-b hairline">

@@ -49,6 +49,14 @@ router.post(
   v.validateProductCreate,
   c.createProduct,
 );
+// Bulk import (Excel/CSV → catalogue). Literal segment declared before :id so
+// it is never shadowed by the param route. Codes are auto-generated server-side.
+router.post(
+  "/products/bulk-import",
+  can("create"),
+  v.validateBulkImport,
+  c.bulkImportProducts,
+);
 router.get("/products/:id", can("view"), c.getProduct);
 router.patch(
   "/products/:id",

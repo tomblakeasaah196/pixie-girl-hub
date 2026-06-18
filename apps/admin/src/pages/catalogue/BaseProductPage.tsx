@@ -21,9 +21,6 @@ import { CostVaultSection } from "./CostVaultSection";
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
-function codeFrom(s: string) {
-  return s.toUpperCase().trim().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-}
 
 export function BaseProductPage() {
   const { id } = useParams();
@@ -37,18 +34,18 @@ function BaseCreate() {
   useBreadcrumbs([{ label: "Catalogue", href: "/catalogue" }, { label: "New base product" }]);
   const create = useCreateBaseProduct();
   const [name, setName] = useState("");
-  const [code, setCode] = useState("");
   const [texture, setTexture] = useState("");
   const [lace, setLace] = useState("");
   const [length, setLength] = useState("");
 
   const submit = () => {
     if (!name.trim()) return;
+    // No product_code: the server allocates the next one from Document
+    // Numbering (e.g. FLH001N). Slug is derived from the name.
     create.mutate(
       {
         name: name.trim(),
         slug: slugify(name),
-        product_code: (code.trim() || codeFrom(name)) as string,
         texture_type: texture || undefined,
         lace_type: lace || undefined,
         hair_length_inches: length ? Number(length) : undefined,
@@ -69,8 +66,10 @@ function BaseCreate() {
           <Field label="Name">
             <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
           </Field>
-          <Field label="Product code" hint="auto from name if blank">
-            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={name ? codeFrom(name) : "e.g. BODY-WAVE-18"} className={`${inputCls} font-mono`} />
+          <Field label="Product code" hint="generated automatically">
+            <div className={`${inputCls} font-mono flex items-center text-text-faint`}>
+              Assigned on save · e.g. FLH001N
+            </div>
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Texture" hint="optional">

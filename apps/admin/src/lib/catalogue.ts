@@ -251,6 +251,39 @@ export function useCreateBaseProduct() {
   });
 }
 
+// ── Bulk import (Excel/CSV) ───────────────────────────────
+/** One spreadsheet row, normalised. Codes/slugs/SKUs are generated server-side
+ *  — the operator's sheet only carries the merchandising fields. Weight (g)
+ *  rides on the auto-created default variant (the shipping-weight field). */
+export interface BulkImportRow {
+  name: string;
+  texture_type?: string;
+  lace_type?: string;
+  hair_length_inches?: number;
+  weight_g?: number;
+}
+export interface BulkImportCreated {
+  row: number;
+  product_id: string;
+  product_code: string;
+  name: string;
+  variant_id: string;
+  weight_g: number | null;
+}
+export interface BulkImportResult {
+  count: number;
+  created: BulkImportCreated[];
+}
+export function useBulkImportProducts() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (rows: BulkImportRow[]) =>
+      api.post<BulkImportResult>("/catalogue/products/bulk-import", { rows }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
 export function useUpdateBaseProduct(id: string) {
   const qc = useQueryClient();
   const brand = useBrand();

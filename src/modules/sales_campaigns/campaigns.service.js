@@ -267,6 +267,7 @@ async function approve({ brand, user, request_id, id, notes }) {
       action_key: "sales_campaigns.approve",
       target_type: REFERENCE_TABLE,
       target_id: id,
+      before: { status: campaign.status },
       after: {
         workflow_status: result.status,
         campaign_status: updated.status,
@@ -311,6 +312,7 @@ async function reject({ brand, user, request_id, id, notes }) {
       action_key: "sales_campaigns.reject",
       target_type: REFERENCE_TABLE,
       target_id: id,
+      before: { status: campaign.status },
       after: { status: "draft", notes },
       request_id,
     });

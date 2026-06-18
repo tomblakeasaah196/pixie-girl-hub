@@ -17,6 +17,16 @@ const { query } = require("../../config/database");
 
 const { VALID_BRANDS } = require("../../config/brands");
 
+const VALID_STATUSES = new Set([
+  "draft",
+  "pending_approval",
+  "scheduled",
+  "live",
+  "paused",
+  "ended",
+  "archived",
+]);
+
 function t(brand, table) {
   if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   return `${brand}.${table}`;
@@ -78,9 +88,21 @@ async function findAll({
   let i = 1;
 
   if (filters.status) {
-    const statuses = Array.isArray(filters.status)
+    const requested = Array.isArray(filters.status)
       ? filters.status
       : String(filters.status).split(",");
+    // Drop unknown values rather than passing them to Postgres (which would
+    // 500 on a check-constraint mismatch and leak the SQL error shape).
+    const statuses = requested
+      .map((s) => String(s).trim())
+      .filter((s) => VALID_STATUSES.has(s));
+    if (statuses.length === 0) {
+      // Caller asked for status=garbage — return an empty result deterministically.
+      return {
+        data: [],
+        meta: { page, page_size, total: 0, has_more: false },
+      };
+    }
     where.push(`status = ANY($${i++}::text[])`);
     params.push(statuses);
   } else {
@@ -99,7 +121,14 @@ async function findAll({
     i++;
   }
 
-  if (scope === "own" && user_id) {
+  // Record-level scope (5-layer RBAC, CLAUDE.md §RBAC):
+  //   all  → no filter
+  //   team → no team_id on this table yet, so collapse to `own` (caller's records)
+  //          rather than leaking everyone's. Revisit when a team mapping lands.
+  //   own  → only campaigns the caller created.
+  // Anything else (a typo, a custom role with an unknown scope) is also
+  // narrowed to `own` so a misconfigured role can't accidentally widen reads.
+  if (scope && scope !== "all" && user_id) {
     where.push(`created_by = $${i++}`);
     params.push(user_id);
   }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Megaphone,
@@ -55,6 +55,21 @@ const STATUS_LABEL: Record<CampaignStatus, string> = {
   archived: "Archived",
 };
 
+// Escape a URL for safe interpolation inside a CSS `url(...)` value. The
+// validator already restricts URLs to http/https, but defence-in-depth: a
+// stray `)`, quote, or backslash anywhere in the path/query would break out
+// of the url() function and let us inject arbitrary CSS. encodeURI keeps the
+// URL navigable; the targeted replaces neutralise the few characters that
+// matter for CSS escape.
+function cssUrl(raw: string): string {
+  return encodeURI(raw).replace(/["'()\\]/g, (c) => `\\${c}`);
+}
+
+function safeNumber(value: number | string | null | undefined): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function SalesCampaignsListPage() {
   useBreadcrumbs([{ label: "Sales Campaigns" }]);
   const { can } = useAuthStore();
@@ -62,7 +77,14 @@ export function SalesCampaignsListPage() {
   const [q, setQ] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const navigate = useNavigate();
-  const list = useCampaignList({ status: status || undefined, q: q || undefined, page_size: 50 });
+  // useDeferredValue lets React keep the input snappy while still throttling
+  // network fetches as the user types.
+  const deferredQ = useDeferredValue(q);
+  const list = useCampaignList({
+    status: status || undefined,
+    q: deferredQ || undefined,
+    page_size: 50,
+  });
 
   if (!can("sales_campaigns", "view")) {
     return (
@@ -81,9 +103,9 @@ export function SalesCampaignsListPage() {
     for (const c of campaigns) {
       if (c.status === "live") live++;
       if (c.status === "scheduled") scheduled++;
-      revenue += Number(c.total_revenue_ngn || 0);
-      orders += Number(c.total_orders || 0);
-      signups += Number(c.total_signups || 0);
+      revenue += safeNumber(c.total_revenue_ngn);
+      orders += safeNumber(c.total_orders);
+      signups += safeNumber(c.total_signups);
     }
     return { live, scheduled, revenue, orders, signups };
   }, [campaigns]);
@@ -236,7 +258,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
           className="h-28 relative"
           style={{
             backgroundImage: campaign.landing_hero_image_url
-              ? `linear-gradient(180deg, rgb(0 0 0 / 0.05) 0%, rgb(var(--panel)/0.7) 100%), url(${campaign.landing_hero_image_url})`
+              ? `linear-gradient(180deg, rgb(0 0 0 / 0.05) 0%, rgb(var(--panel)/0.7) 100%), url("${cssUrl(campaign.landing_hero_image_url)}")`
               : "linear-gradient(135deg, rgb(var(--accent-deep)/0.6), rgb(var(--panel)/0.9))",
             backgroundSize: "cover",
             backgroundPosition: "center",
@@ -274,9 +296,9 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             </div>
           )}
           <div className="grid grid-cols-3 gap-1 text-center">
-            <Stat label="Visitors" value={campaign.total_unique_visitors} />
-            <Stat label="Orders" value={campaign.total_orders} />
-            <Stat label="Revenue" value={moneyCompact(Number(campaign.total_revenue_ngn || 0))} isMoney />
+            <Stat label="Visitors" value={safeNumber(campaign.total_unique_visitors)} />
+            <Stat label="Orders" value={safeNumber(campaign.total_orders)} />
+            <Stat label="Revenue" value={moneyCompact(safeNumber(campaign.total_revenue_ngn))} isMoney />
           </div>
         </div>
       </Card>
@@ -285,10 +307,11 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 }
 
 function Stat({ label, value, isMoney }: { label: string; value: number | string; isMoney?: boolean }) {
+  const display = isMoney ? String(value) : safeNumber(value).toLocaleString();
   return (
     <div className="rounded-[10px] bg-text-primary/[0.04] py-1.5">
       <div className="font-display font-medium text-[15px] tabular-nums">
-        {isMoney ? String(value) : Number(value).toLocaleString()}
+        {display}
       </div>
       <div className="micro" style={{ fontSize: 8.5 }}>
         {label}

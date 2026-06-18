@@ -270,7 +270,7 @@ export function NotificationsPage() {
   }, [navigate]);
 
   return (
-    <div className="flex gap-5 max-lg:flex-col max-w-[1100px]">
+    <div className="flex gap-5 max-lg:flex-col max-w-[1100px] mx-auto">
       {/* Sidebar filters */}
       <aside className="w-[200px] shrink-0 max-lg:w-full">
         <Card className="overflow-hidden">

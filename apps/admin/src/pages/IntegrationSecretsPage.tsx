@@ -95,7 +95,7 @@ export function IntegrationSecretsPage() {
 
   if (query.isError) {
     return (
-      <div className="max-w-[960px]">
+      <div className="max-w-[960px] mx-auto">
         <Card className="overflow-hidden">
           <ErrorState
             message="We couldn't load integration secrets."
@@ -107,7 +107,7 @@ export function IntegrationSecretsPage() {
   }
 
   return (
-    <div className="max-w-[960px]">
+    <div className="max-w-[960px] mx-auto">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="font-display text-xl font-medium">Integration secrets</h2>

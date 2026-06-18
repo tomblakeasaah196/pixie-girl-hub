@@ -58,7 +58,11 @@ export function AppShell() {
         <PwaInstallBanner />
         <IosInstallHint />
         <BreadcrumbStrip />
-        <div className="p-[26px_34px_120px] max-md:p-[20px_16px_96px]">
+        {/* Centered content column on desktop (canon §3): caps at --content-max
+            and gains side gutters on wide monitors instead of stretching
+            edge-to-edge. The cap is wider than any phone/tablet, so this is a
+            no-op below the desktop tier. */}
+        <div className="mx-auto w-full max-w-[var(--content-max)] p-[26px_34px_120px] max-md:p-[20px_16px_96px]">
           <PageTransition>
             <Outlet />
           </PageTransition>

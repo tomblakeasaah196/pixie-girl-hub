@@ -60,7 +60,7 @@ export function HelpCenterPage() {
   }, [articlesQ.data]);
 
   return (
-    <div className="max-w-[980px]">
+    <div className="max-w-[980px] mx-auto">
       <div className="flex items-center gap-3 mb-1">
         <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
           <HelpCircle className="w-5 h-5" />

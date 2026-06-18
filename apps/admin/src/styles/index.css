@@ -44,6 +44,11 @@
 
   --side-w: 264px;
   --side-c: 78px;
+
+  /* Desktop content container cap (canon: centered column, never edge-to-edge
+     on wide monitors). Only takes effect above this width — phone/tablet are
+     always narrower, so it is a no-op there. */
+  --content-max: 1440px;
 }
 
 [data-theme="light"] {

@@ -93,8 +93,8 @@ const STEPS = [
   { key: "bundles", label: "Bundles", icon: PackagePlus },
   { key: "pricing", label: "Pricing", icon: Wand2 },
   { key: "landing", label: "Landing page", icon: Layers },
-  { key: "ambassadors", label: "Share &amp; ambassadors", icon: Users },
-  { key: "approval", label: "Approval &amp; launch", icon: Send },
+  { key: "ambassadors", label: "Share & ambassadors", icon: Users },
+  { key: "approval", label: "Approval & launch", icon: Send },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]["key"];
@@ -115,7 +115,7 @@ const BLOCK_LIBRARY: Array<{ key: string; label: string; description: string }> 
   { key: "faq", label: "FAQ", description: "Pre-empt friction" },
   { key: "wig_care", label: "Wig Care", description: "Care guide snippet" },
   { key: "stylist_spotlight", label: "Stylist Spotlight", description: "Showcase a stylist" },
-  { key: "shipping_returns", label: "Shipping &amp; Returns", description: "DHL info + policy" },
+  { key: "shipping_returns", label: "Shipping & Returns", description: "DHL info + policy" },
   { key: "newsletter_capture", label: "Newsletter", description: "Email signup" },
   { key: "vip_signup", label: "VIP Signup", description: "Pre-launch heads-up" },
 ];
@@ -155,7 +155,7 @@ export function CampaignBuilderPage() {
       <Stepper active={step} onChange={setStep} />
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
         <div>
-          {step === "brief" && <BriefStep campaign={campaign} canEdit={canEdit} />}
+          {step === "brief" && <BriefStep campaign={campaign} canEdit={canEdit} onNext={() => setStep("bundles")} />}
           {step === "bundles" && <BundlesStep campaign={campaign} canEdit={canEdit} />}
           {step === "pricing" && <PricingStep campaign={campaign} canEdit={canEdit} />}
           {step === "landing" && <LandingStep campaign={campaign} canEdit={canEdit} />}
@@ -270,7 +270,7 @@ function PraxisSidebar({ campaign, step }: { campaign: Campaign; step: StepKey }
         </div>
         <div className="text-[12.5px] text-text-muted leading-relaxed">
           {step === "brief" && "Set the campaign name, slug and dates. Praxis uses your voice profile to write copy in the next steps."}
-          {step === "bundles" && "Bundles are catalogue entities. Attach existing bundles or create new ones. Faith's spec: fixed composition, per-item ₦ discount."}
+          {step === "bundles" && "Bundles are catalogue entities. Attach existing bundles or create new ones — fixed composition, per-item ₦ discount."}
           {step === "pricing" && "Goal-seek margin, charm round, configure the tier ladder + cart upsell escalator. Floors are enforced — Praxis refuses any breach."}
           {step === "landing" && "Drag blocks from the library, reorder, edit copy inline. Preview Before / Live / Ended states."}
           {step === "ambassadors" && "Promote contacts to ambassadors, mint per-ambassador trackable links. Share kit auto-generates copy for every channel."}
@@ -307,9 +307,10 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 // ── Step 1: Brief ────────────────────────────────────────
-function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean }) {
+function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit: boolean; onNext?: () => void }) {
   const update = useUpdateCampaign(campaign.campaign_id);
   const [name, setName] = useState(campaign.name);
+  const [slug, setSlug] = useState(campaign.slug);
   const [description, setDescription] = useState(campaign.description || "");
   const [startsAt, setStartsAt] = useState(toLocalInput(campaign.starts_at));
   const [endsAt, setEndsAt] = useState(toLocalInput(campaign.ends_at));
@@ -331,9 +332,12 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
   const [multiCurrency, setMultiCurrency] = useState(campaign.allow_multi_currency_display);
   const [abandonment, setAbandonment] = useState(campaign.abandonment_recovery_enabled);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const dirty =
     name !== campaign.name ||
+    slug !== campaign.slug ||
     description !== (campaign.description || "") ||
     startsAt !== toLocalInput(campaign.starts_at) ||
     endsAt !== toLocalInput(campaign.ends_at) ||
@@ -349,11 +353,14 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
     multiCurrency !== campaign.allow_multi_currency_display ||
     abandonment !== campaign.abandonment_recovery_enabled;
 
-  async function save() {
+  async function save(advance = false) {
     setSaving(true);
+    setError(null);
+    const cleanSlug = finalizeSlug(slug);
     try {
       await update.mutateAsync({
         name,
+        ...(cleanSlug && cleanSlug !== campaign.slug ? { slug: cleanSlug } : {}),
         description: description || null,
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
@@ -369,6 +376,14 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
         allow_multi_currency_display: multiCurrency,
         abandonment_recovery_enabled: abandonment,
       });
+      if (cleanSlug) setSlug(cleanSlug);
+      setSavedAt(Date.now());
+      if (advance) onNext?.();
+    } catch (e: unknown) {
+      setError(
+        (e as Error)?.message ||
+          "Couldn't save the brief. Check the highlighted fields and try again.",
+      );
     } finally {
       setSaving(false);
     }
@@ -386,11 +401,20 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
               className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
             />
           </Field>
-          <Field label="URL slug" hint="Read-only after creation — fixed for share links">
+          <Field
+            label="URL slug"
+            hint={
+              canEdit
+                ? `Editable until launch · /sale/${finalizeSlug(slug) || "your-slug"}`
+                : "Locked once the campaign is live — share links stay stable"
+            }
+          >
             <input
-              value={campaign.slug}
-              disabled
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none text-[13px] opacity-60 font-mono"
+              value={slug}
+              onChange={(e) => setSlug(cleanSlugInput(e.target.value))}
+              disabled={!canEdit}
+              spellCheck={false}
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50 font-mono"
             />
           </Field>
         </div>
@@ -425,7 +449,7 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
         </div>
       </FormSection>
 
-      <FormSection title="States &amp; extras">
+      <FormSection title="States & extras">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Field label="VIP early-access (minutes)" hint="0 = no head-start; e.g. 60 = 1h">
             <NumberField
@@ -540,10 +564,32 @@ function BriefStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean
         </div>
       </FormSection>
 
-      {canEdit && dirty && (
-        <div className="flex justify-end gap-2 sticky bottom-2">
-          <Button variant="primary" disabled={saving} onClick={save} icon={<Check className="w-4 h-4" />}>
-            {saving ? "Saving…" : "Save brief"}
+      {error && (
+        <div className="rounded-[12px] border border-danger/40 bg-danger/[0.08] px-4 py-3 text-[13px] text-danger">
+          {error}
+        </div>
+      )}
+      {canEdit && (
+        <div className="flex items-center justify-end gap-3 sticky bottom-2">
+          {dirty ? (
+            <span className="text-[12px] text-text-faint">Unsaved changes</span>
+          ) : savedAt ? (
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-success">
+              <Check className="w-3.5 h-3.5" /> All changes saved
+            </span>
+          ) : null}
+          {dirty && (
+            <Button variant="ghost" disabled={saving} onClick={() => save(false)}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            disabled={saving}
+            onClick={() => (dirty ? save(true) : onNext?.())}
+            icon={<ChevronRight className="w-4 h-4" />}
+          >
+            {saving ? "Saving…" : dirty ? "Save & continue" : "Continue"}
           </Button>
         </div>
       )}
@@ -555,6 +601,15 @@ function toLocalInput(iso: string): string {
   const d = new Date(iso);
   const off = d.getTimezoneOffset() * 60_000;
   return new Date(d.getTime() - off).toISOString().slice(0, 16);
+}
+
+// Gentle slug cleaning WHILE typing — keeps a trailing hyphen so a multi-word
+// slug can be typed; finalizeSlug trims the stray ends on save.
+function cleanSlugInput(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-{2,}/g, "-");
+}
+function finalizeSlug(raw: string): string {
+  return raw.replace(/^-+|-+$/g, "");
 }
 
 // ── Step 2: Bundles ──────────────────────────────────────
@@ -733,8 +788,8 @@ function PricingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
         <div>
           <h2 className="font-display text-[22px] leading-tight">Quantity-tier ladder</h2>
           <p className="text-text-muted text-[13px] mt-1">
-            Faith's spec: <span className="font-mono">fixed ₦</span> amounts at the cart, not percentages.
-            Engine respects the per-product price floor.
+            <span className="font-mono">Fixed ₦</span> amounts at the cart, not percentages.
+            The engine always respects the per-product price floor.
           </p>
         </div>
         <TierEditor
@@ -1081,7 +1136,7 @@ function LandingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
             </DndContext>
           </FormSection>
 
-          <FormSection title="Countdown &amp; ended state">
+          <FormSection title="Countdown & ended state">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Countdown message" hint="Shown next to the timer (Before / Live)">
                 <input
@@ -1273,7 +1328,7 @@ function ApprovalStep({ campaign }: { campaign: Campaign }) {
 
   return (
     <Card className="p-5 space-y-4">
-      <h2 className="font-display text-[22px]">Approval &amp; launch</h2>
+      <h2 className="font-display text-[22px]">Approval & launch</h2>
       <div className="text-[13px] text-text-muted">
         Submit the campaign for approval. Anyone with <span className="font-mono">sales_campaigns.approve</span> can launch it once approved.
       </div>
@@ -1445,7 +1500,7 @@ function PraxisAssistDrawer({
                 </pre>
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" onClick={() => setCopyResult(null)}>Discard</Button>
-                  <Button variant="primary" onClick={applyCopy} icon={<Check className="w-4 h-4" />}>Accept &amp; apply</Button>
+                  <Button variant="primary" onClick={applyCopy} icon={<Check className="w-4 h-4" />}>Accept & apply</Button>
                 </div>
               </div>
             )}
@@ -1474,7 +1529,7 @@ function PraxisAssistDrawer({
                 </ol>
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" onClick={() => setLayoutResult(null)}>Discard</Button>
-                  <Button variant="primary" onClick={applyLayout} icon={<Check className="w-4 h-4" />}>Accept &amp; apply</Button>
+                  <Button variant="primary" onClick={applyLayout} icon={<Check className="w-4 h-4" />}>Accept & apply</Button>
                 </div>
               </div>
             )}

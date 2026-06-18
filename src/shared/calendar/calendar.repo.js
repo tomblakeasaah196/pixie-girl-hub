@@ -18,8 +18,8 @@ async function createEvent({ client, e }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.calendar_events
        (business, title, event_type, start_at, end_at, all_day, location,
-        description, recurrence_rule, reference_type, reference_id, created_by)
-     VALUES ($1,$2,$3,$4,$5,COALESCE($6,false),$7,$8,$9,$10,$11,$12)
+        description, recurrence_rule, reference_type, reference_id, created_by, is_private)
+     VALUES ($1,$2,$3,$4,$5,COALESCE($6,false),$7,$8,$9,$10,$11,$12,COALESCE($13,false))
      RETURNING *`,
     [
       e.business,
@@ -34,6 +34,7 @@ async function createEvent({ client, e }) {
       e.reference_type || null,
       e.reference_id || null,
       e.created_by || null,
+      e.is_private === undefined ? null : e.is_private,
     ],
   );
   return rows[0];
@@ -43,41 +44,53 @@ async function listEvents({
   from,
   to,
   event_type,
+  created_by,
   reference_type,
   reference_id,
 }) {
-  const where = ["business = $1", "is_deleted = false"];
+  const where = ["e.business = $1", "e.is_deleted = false"];
   const params = [brand];
   let i = 2;
   if (from) {
-    where.push(`start_at >= $${i++}`);
+    where.push(`e.start_at >= $${i++}`);
     params.push(from);
   }
   if (to) {
-    where.push(`start_at <= $${i++}`);
+    where.push(`e.start_at <= $${i++}`);
     params.push(to);
   }
   if (event_type) {
-    where.push(`event_type = $${i++}`);
+    where.push(`e.event_type = $${i++}`);
     params.push(event_type);
   }
+  if (created_by) {
+    where.push(`e.created_by = $${i++}`);
+    params.push(created_by);
+  }
   if (reference_type) {
-    where.push(`reference_type = $${i++}`);
+    where.push(`e.reference_type = $${i++}`);
     params.push(reference_type);
   }
   if (reference_id) {
-    where.push(`reference_id = $${i++}`);
+    where.push(`e.reference_id = $${i++}`);
     params.push(reference_id);
   }
   const { rows } = await query(
-    `SELECT * FROM shared.calendar_events WHERE ${where.join(" AND ")} ORDER BY start_at`,
+    `SELECT e.*, u.display_name AS created_by_name
+       FROM shared.calendar_events e
+       LEFT JOIN shared.users u ON u.user_id = e.created_by
+       WHERE ${where.join(" AND ")}
+       ORDER BY e.start_at`,
     params,
   );
   return rows;
 }
 async function findEvent({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM shared.calendar_events WHERE event_id = $1 AND business = $2 AND is_deleted = false`,
+    `SELECT e.*, u.display_name AS created_by_name
+       FROM shared.calendar_events e
+       LEFT JOIN shared.users u ON u.user_id = e.created_by
+      WHERE e.event_id = $1 AND e.business = $2 AND e.is_deleted = false`,
     [id, brand],
   );
   return rows[0] || null;
@@ -92,6 +105,7 @@ async function updateEvent({ brand, id, patch }) {
     "location",
     "description",
     "recurrence_rule",
+    "is_private",
   ];
   const sets = [];
   const params = [];
@@ -120,6 +134,43 @@ async function softDeleteEvent({ brand, id }) {
   return rows[0] || null;
 }
 
+/**
+ * Find events that overlap the given time range at the same location.
+ * Two events overlap when: existing.start_at < new.end_at AND existing.end_at > new.start_at.
+ * Excludes the event with `exclude_id` (for updates).
+ */
+async function findClashes({
+  client,
+  brand,
+  location,
+  start_at,
+  end_at,
+  exclude_id,
+}) {
+  const where = [
+    "business = $1",
+    "is_deleted = false",
+    "location = $2",
+    "start_at < $4",
+    "end_at > $3",
+  ];
+  const params = [brand, location, start_at, end_at];
+  let i = 5;
+  if (exclude_id) {
+    where.push(`event_id <> $${i++}`);
+    params.push(exclude_id);
+  }
+  const { rows } = await ex(client)(
+    `SELECT event_id, title, start_at, end_at, location
+       FROM shared.calendar_events
+      WHERE ${where.join(" AND ")}
+      ORDER BY start_at
+      LIMIT 10`,
+    params,
+  );
+  return rows;
+}
+
 // ── Participants ───────────────────────────────────────────
 async function addParticipant({ client, p }) {
   const { rows } = await ex(client)(
@@ -138,7 +189,12 @@ async function addParticipant({ client, p }) {
 }
 async function listParticipants({ event_id }) {
   const { rows } = await query(
-    `SELECT * FROM shared.event_participants WHERE event_id = $1`,
+    `SELECT ep.*,
+            u.display_name AS user_name,
+            u.email AS user_email
+       FROM shared.event_participants ep
+       LEFT JOIN shared.users u ON u.user_id = ep.user_id
+      WHERE ep.event_id = $1`,
     [event_id],
   );
   return rows;
@@ -212,6 +268,7 @@ module.exports = {
   findEvent,
   updateEvent,
   softDeleteEvent,
+  findClashes,
   addParticipant,
   listParticipants,
   respondParticipant,

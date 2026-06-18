@@ -6,15 +6,7 @@
 
 const { z } = require("zod");
 
-const STATUS = [
-  "inbox",
-  "today",
-  "this_week",
-  "this_month",
-  "later",
-  "done",
-  "cancelled",
-];
+const STATUS = ["to_do", "in_progress", "in_review", "done", "cancelled"];
 const PRIORITY = ["low", "normal", "high", "urgent"];
 
 const subtask = z.object({
@@ -28,11 +20,13 @@ const taskCreate = z
     description: z.string().max(4000).optional(),
     status: z.enum(STATUS).optional(),
     priority: z.enum(PRIORITY).optional(),
-    assigned_to: z.string().uuid().optional(),
-    due_at: z.string().datetime().optional(),
+    assigned_to: z.string().uuid().nullable().optional(),
+    due_at: z.string().datetime().nullable().optional(),
     parent_task_id: z.string().uuid().optional(),
     reference_type: z.string().max(40).optional(),
     reference_id: z.string().uuid().optional(),
+    is_personal: z.boolean().optional(),
+    reminder_minutes: z.coerce.number().int().min(0).nullable().optional(),
     subtasks: z.array(subtask).optional(),
   })
   .strict();
@@ -40,12 +34,15 @@ const taskCreate = z
 const taskUpdate = z
   .object({
     title: z.string().min(1).max(300).optional(),
-    description: z.string().max(4000).optional(),
+    description: z.string().max(4000).nullable().optional(),
+    status: z.enum(STATUS).optional(),
     priority: z.enum(PRIORITY).optional(),
-    assigned_to: z.string().uuid().optional(),
-    due_at: z.string().datetime().optional(),
+    assigned_to: z.string().uuid().nullable().optional(),
+    due_at: z.string().datetime().nullable().optional(),
     reference_type: z.string().max(40).optional(),
     reference_id: z.string().uuid().optional(),
+    is_personal: z.boolean().optional(),
+    reminder_minutes: z.coerce.number().int().min(0).nullable().optional(),
   })
   .strict();
 

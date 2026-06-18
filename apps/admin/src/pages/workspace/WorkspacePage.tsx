@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import {
   Sun,
@@ -465,7 +466,7 @@ export function WorkspacePage() {
       </div>
 
       {/* Mobile: show task detail as modal-like overlay */}
-      {isMobile && selectedTaskId && (
+      {isMobile && selectedTaskId && createPortal(
         <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-[3px]" onClick={() => setSelectedTaskId(null)}>
           <div
             className="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto dropglass rounded-t-[22px] animate-slide-up"
@@ -480,7 +481,8 @@ export function WorkspacePage() {
               }}
             />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Event detail overlay (mobile + tablet) */}
@@ -1100,7 +1102,7 @@ function EventDetailOverlay({
   onClose: () => void;
   onEdit: () => void;
 }) {
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-[3px]" onClick={onClose}>
       <div
         className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-y-auto dropglass rounded-t-[22px] p-5 lg:absolute lg:bottom-auto lg:top-1/2 lg:left-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 lg:w-[min(460px,94vw)] lg:rounded-[18px]"
@@ -1160,6 +1162,7 @@ function EventDetailOverlay({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -38,7 +38,7 @@ export interface TaskListParams {
 }
 
 export const listTasks = (params: TaskListParams = {}) =>
-  api.get<{ data: Task[]; meta: { total: number } }>(`${T}${qs(params)}`);
+  api.get<{ data: Task[]; meta: { total: number } }>(`${T}${qs({ ...params })}`);
 
 export const getTask = (id: string) => api.get<Task>(`${T}/${id}`);
 
@@ -75,7 +75,7 @@ export interface EventListParams {
 }
 
 export const listCalendarEvents = (params: EventListParams = {}) =>
-  api.get<CalendarEvent[]>(`${CAL}${qs(params)}`);
+  api.get<CalendarEvent[]>(`${CAL}${qs({ ...params })}`);
 
 export const getCalendarEvent = (id: string) =>
   api.get<CalendarEvent>(`${CAL}/${id}`);

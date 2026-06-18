@@ -5,7 +5,6 @@ import type { CalendarEvent } from "./types";
 import {
   buildMonthGrid,
   DAY_SHORT,
-  isSameDay,
   isToday,
   formatTime,
   toISODate,

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, IconButton, Pill, Skeleton } from "@/components/ui/primitives";
-import type { Task, Subtask } from "./types";
+import type { Subtask } from "./types";
 import {
   TASK_STATUS_META,
   TASK_PRIORITY_META,

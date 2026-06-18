@@ -1,7 +1,7 @@
 import { Calendar, Clock, MapPin } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Skeleton, EmptyState } from "@/components/ui/primitives";
-import { formatTime, formatDate, MONTH_NAMES, isSameDay } from "./constants";
+import { formatTime, MONTH_NAMES, isSameDay } from "./constants";
 import type { CalendarEvent } from "./types";
 
 interface AgendaViewProps {

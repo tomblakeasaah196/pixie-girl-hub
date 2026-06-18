@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import {
   X,
@@ -216,7 +217,7 @@ export function BulkImportModal({
     imp.mutate(payload, { onSuccess: (res) => setResult(res) });
   };
 
-  return (
+  return createPortal(
     <div
       className={cn(
         "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
@@ -348,7 +349,8 @@ export function BulkImportModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

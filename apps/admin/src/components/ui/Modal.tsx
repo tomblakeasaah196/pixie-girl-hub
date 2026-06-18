@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "./primitives";
@@ -42,7 +43,7 @@ export function Modal({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  return (
+  return createPortal(
     <div
       className={cn(
         "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
@@ -74,6 +75,7 @@ export function Modal({
           <div className="p-[14px_20px] border-t hairline flex gap-2 justify-end shrink-0">{footer}</div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -49,8 +49,8 @@ function PhoneField({
   const [selectedDial, setSelectedDial] = useState<DialCode>(parsedDial);
   const [rawNumber, setRawNumber] = useState(parsedNumber);
 
-  const handleDialChange = (dialCode: string) => {
-    const d = DIAL_CODES.find((c) => c.dial === dialCode) ?? DIAL_CODES[0];
+  const handleDialChange = (code: string) => {
+    const d = DIAL_CODES.find((c) => c.code === code) ?? DIAL_CODES[0];
     setSelectedDial(d);
     const stripped = rawNumber.replace(/\D/g, "");
     onChange(stripped ? `${d.dial}${stripped}` : "");
@@ -66,18 +66,15 @@ function PhoneField({
   return (
     <Field label={label}>
       <div className="flex gap-2">
-        <select
-          value={selectedDial.dial}
-          onChange={(e) => handleDialChange(e.target.value)}
-          className="h-[42px] px-2 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors flex-shrink-0"
-          style={{ width: 90 }}
-        >
-          {DIAL_CODES.map((d) => (
-            <option key={`${d.code}-${d.dial}`} value={d.dial}>
-              {d.flag} {d.dial}
-            </option>
-          ))}
-        </select>
+        <Select
+          className="w-[100px] shrink-0"
+          value={selectedDial.code}
+          onChange={handleDialChange}
+          options={DIAL_CODES.map((d) => ({
+            value: d.code,
+            label: `${d.flag} ${d.dial}`,
+          }))}
+        />
         <TextInput
           className="flex-1"
           type="tel"

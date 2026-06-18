@@ -87,6 +87,12 @@ export const useNavStore = create<NavState>()(
         top: s.top,
         pinnedBottomNav: s.pinnedBottomNav,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.top = normalize(state.top);
+          state.pinnedBottomNav = normalizeBottomNav(state.pinnedBottomNav);
+        }
+      },
     },
   ),
 );

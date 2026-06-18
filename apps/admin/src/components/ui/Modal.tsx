@@ -27,8 +27,8 @@ export function Modal({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-opacity duration-300",
-        open ? "opacity-100" : "opacity-0 pointer-events-none",
+        "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
+        open ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none",
       )}
       onClick={onClose}
     >

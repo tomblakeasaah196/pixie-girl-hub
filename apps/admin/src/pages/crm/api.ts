@@ -51,7 +51,7 @@ export const getTodayStaleDeals = (staleDays = 14) =>
   );
 
 export const getTodayLapsedContacts = () =>
-  contactsApi.listContacts({ priority: "vip", page_size: 50 }).then((r) =>
+  contactsApi.listContacts({ priority_level: "vip", page_size: 50 }).then((r) =>
     r.data.filter(
       (c) => ((c as unknown) as { churn_risk_band?: string }).churn_risk_band === "high",
     ).slice(0, 20),

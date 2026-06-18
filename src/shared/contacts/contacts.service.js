@@ -45,23 +45,34 @@ async function getById({ id }) {
 }
 
 /** Contacts 360: time-sorted activity feed across all modules. */
-async function getTimeline({ brand, id, kinds, page, page_size }) {
+async function getTimeline({ brand, id, kinds, category, page, page_size }) {
   const c = await repo.findById({ id });
   if (!c) throw new NotFoundError("Contact");
   return timelineRepo.timeline({
     brand,
     contact_id: id,
     kinds,
+    category,
     page,
     page_size,
   });
 }
 
-/** Contacts 360: header roll-up (orders, spend, AR, deals, loyalty). */
+/** Contacts 360: header roll-up (orders, spend, AR, deals, loyalty).
+ *  Shaped to match the frontend `ContactSummary` contract. */
 async function getSummary({ brand, id }) {
   const c = await repo.findById({ id });
   if (!c) throw new NotFoundError("Contact");
-  return timelineRepo.summary({ brand, contact_id: id });
+  const raw = await timelineRepo.summary({ brand, contact_id: id });
+  return {
+    total_orders: Number(raw.orders_count ?? 0),
+    lifetime_value_ngn: String(raw.lifetime_spend_ngn ?? "0"),
+    last_activity_at: raw.last_activity_at ?? null,
+    open_deals: Number(raw.open_deals ?? 0),
+    churn_risk_score: raw.churn_risk_score ?? null,
+    churn_risk_band: raw.churn_risk_band ?? null,
+    loyalty_points: Number(raw.loyalty_balance ?? 0),
+  };
 }
 async function create({ brand, user, request_id, input }) {
   return transaction(async (client) => {

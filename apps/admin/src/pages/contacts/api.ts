@@ -26,9 +26,11 @@ const CRM = "/crm";
 // ── Contacts ────────────────────────────────────────────────────────────
 
 export interface ContactListParams {
-  search?: string;
-  type?: string;
-  priority?: string;
+  /** Free-text search across display_name, primary_phone, email, company_name. */
+  q?: string;
+  /** Filter by ANY membership in the contact_type[] array. */
+  contact_type?: string;
+  priority_level?: string;
   source?: string;
   assigned_to?: string;
   page?: number;

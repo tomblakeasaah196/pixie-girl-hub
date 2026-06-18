@@ -13,6 +13,7 @@ const discount = require("../../../src/modules/sales_campaigns/campaigns.discoun
 const wf = require("../../../src/workflows/engine");
 const {
   createSchema,
+  updateSchema,
   signupSchema,
 } = require("../../../src/modules/sales_campaigns/campaigns.validator");
 
@@ -97,6 +98,43 @@ describe("signupSchema", () => {
   test("requires email or phone", () => {
     expect(() => signupSchema.parse({ notify_via: "email" })).toThrow();
     expect(() => signupSchema.parse({ email: "a@b.com" })).not.toThrow();
+  });
+});
+
+describe("URL safety on landing fields", () => {
+  test("rejects javascript: in ended_redirect_to", () => {
+    expect(() =>
+      updateSchema.parse({ ended_redirect_to: "javascript:alert(1)" }),
+    ).toThrow();
+  });
+  test("rejects data: in landing_hero_image_url", () => {
+    expect(() =>
+      updateSchema.parse({
+        landing_hero_image_url: "data:text/html,<script>alert(1)</script>",
+      }),
+    ).toThrow();
+  });
+  test("accepts plain https URLs", () => {
+    expect(() =>
+      updateSchema.parse({
+        landing_hero_image_url: "https://cdn.example.com/img.jpg",
+        ended_redirect_to: "https://pixiegirl.com/new-drop",
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("landing_blocks bounds", () => {
+  test("rejects landing_blocks larger than the bound", () => {
+    const tooMany = Array.from({ length: 41 }, () => ({ type: "hero" }));
+    expect(() => updateSchema.parse({ landing_blocks: tooMany })).toThrow();
+  });
+  test("accepts a small set of blocks", () => {
+    const blocks = [
+      { type: "hero", title: "X" },
+      { type: "faq", items: [{ q: "a", a: "b" }] },
+    ];
+    expect(() => updateSchema.parse({ landing_blocks: blocks })).not.toThrow();
   });
 });
 

@@ -18,6 +18,16 @@ const slug = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be kebab-case (a-z, 0-9, -)");
 const moneyNgn = z.coerce.number().nonnegative();
 
+// http/https-only URL — used wherever a value is rendered as an <a href>,
+// a redirect target, or a CSS url(). Blocks javascript:, data:, file:, etc.
+const safeUrl = z
+  .string()
+  .max(2048)
+  .url()
+  .refine((u) => /^https?:\/\//i.test(u), {
+    message: "URL must use http or https",
+  });
+
 const discountTypes = [
   "percentage",
   "fixed_amount",
@@ -28,14 +38,20 @@ const discountTypes = [
 const productScopes = ["all", "specific_products", "specific_categories"];
 const notifyVia = ["email", "whatsapp", "sms", "both"];
 
+// Landing block: bounded to keep the JSON payload small and the public
+// render fast. Extra fields are allowed (`passthrough`) for forward-compat
+// but the explicitly-known fields are length-limited and the items array is
+// capped. The outer landing_blocks array is also bounded — see usage below.
 const landingBlock = z
   .object({
-    type: z.string(),
-    title: z.string().optional(),
-    body: z.string().optional(),
-    items: z.array(z.any()).optional(),
+    type: z.string().max(60),
+    key: z.string().max(60).optional(),
+    title: z.string().max(300).optional(),
+    body: z.string().max(4000).optional(),
+    items: z.array(z.any()).max(50).optional(),
   })
   .passthrough();
+const landingBlocksArray = z.array(landingBlock).max(40);
 
 const createSchema = z
   .object({
@@ -52,16 +68,16 @@ const createSchema = z
     product_scope: z.enum(productScopes).optional().default("all"),
     landing_hero_title: z.string().max(300).optional(),
     landing_hero_subtitle: z.string().max(500).optional(),
-    landing_hero_image_url: z.string().url().optional(),
+    landing_hero_image_url: safeUrl.optional(),
     landing_cta_text: z.string().max(80).optional(),
-    landing_blocks: z.array(landingBlock).optional(),
+    landing_blocks: landingBlocksArray.optional(),
     countdown_message: z.string().max(200).optional(),
     signup_for_notifications: z.boolean().optional(),
     ended_message: z.string().max(300).optional(),
-    ended_redirect_to: z.string().max(500).optional(),
+    ended_redirect_to: safeUrl.optional(),
     meta_title: z.string().max(200).optional(),
     meta_description: z.string().max(500).optional(),
-    og_image_url: z.string().url().optional(),
+    og_image_url: safeUrl.optional(),
     total_usage_limit: z.coerce.number().int().positive().optional(),
   })
   .strict()
@@ -99,16 +115,16 @@ const updateSchema = z
     product_scope: z.enum(productScopes).optional(),
     landing_hero_title: z.string().max(300).nullable().optional(),
     landing_hero_subtitle: z.string().max(500).nullable().optional(),
-    landing_hero_image_url: z.string().url().nullable().optional(),
+    landing_hero_image_url: safeUrl.nullable().optional(),
     landing_cta_text: z.string().max(80).nullable().optional(),
-    landing_blocks: z.array(landingBlock).optional(),
+    landing_blocks: landingBlocksArray.optional(),
     countdown_message: z.string().max(200).nullable().optional(),
     signup_for_notifications: z.boolean().optional(),
     ended_message: z.string().max(300).nullable().optional(),
-    ended_redirect_to: z.string().max(500).nullable().optional(),
+    ended_redirect_to: safeUrl.nullable().optional(),
     meta_title: z.string().max(200).nullable().optional(),
     meta_description: z.string().max(500).nullable().optional(),
-    og_image_url: z.string().url().nullable().optional(),
+    og_image_url: safeUrl.nullable().optional(),
     total_usage_limit: z.coerce.number().int().positive().nullable().optional(),
   })
   .strict();
@@ -146,15 +162,15 @@ const landingSchema = z
   .object({
     landing_hero_title: z.string().max(300).nullable().optional(),
     landing_hero_subtitle: z.string().max(500).nullable().optional(),
-    landing_hero_image_url: z.string().url().nullable().optional(),
+    landing_hero_image_url: safeUrl.nullable().optional(),
     landing_cta_text: z.string().max(80).nullable().optional(),
-    landing_blocks: z.array(landingBlock).optional(),
+    landing_blocks: landingBlocksArray.optional(),
     countdown_message: z.string().max(200).nullable().optional(),
     ended_message: z.string().max(300).nullable().optional(),
-    ended_redirect_to: z.string().max(500).nullable().optional(),
+    ended_redirect_to: safeUrl.nullable().optional(),
     meta_title: z.string().max(200).nullable().optional(),
     meta_description: z.string().max(500).nullable().optional(),
-    og_image_url: z.string().url().nullable().optional(),
+    og_image_url: safeUrl.nullable().optional(),
   })
   .strict();
 
@@ -195,7 +211,7 @@ const bundleCreateSchema = z
     slug,
     name: z.string().min(1).max(200),
     description: z.string().max(2000).optional(),
-    hero_image_url: z.string().url().optional(),
+    hero_image_url: safeUrl.optional(),
     category_id: z.string().uuid().optional(),
     is_fixed_composition: z.boolean().optional(),
     default_per_item_discount_ngn: moneyNgn.optional(),

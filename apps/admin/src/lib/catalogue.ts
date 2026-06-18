@@ -103,6 +103,9 @@ export interface StyledProduct {
   short_description: string | null;
   long_description: string | null;
   style_addon_price_ngn: number | null;
+  // Styled retail is its OWN price (the size-S anchor), not base + add-on.
+  retail_price_ngn: number | null;
+  compare_at_price_ngn: number | null;
   category_id: string | null;
   status: StyledStatus;
   is_visible_storefront: boolean;
@@ -121,7 +124,81 @@ export interface StyledProduct {
   availability: Availability;
   base_price_ngn: number | null;
   effective_price_ngn: number | null;
+  // Attached on the detail fetch.
+  colours?: StyledColour[];
+  variants?: StyledVariant[];
+  price_range?: { min: number; max: number } | null;
   created_at: string;
+}
+
+/** A colour option on a styled product — owns its own pictures + optional
+ *  video/IG link and an optional per-colour price bump. */
+export interface StyledColour {
+  colour_id: string;
+  styled_id: string;
+  name: string;
+  hex: string | null;
+  premium_ngn: number;
+  video_url: string | null;
+  external_video_url: string | null;
+  display_order: number;
+  is_default: boolean;
+  is_active: boolean;
+  image_count?: number;
+}
+
+/** A sellable colour × size SKU. effective_price_ngn is the computed retail
+ *  (anchor + colour premium + size premium) unless price_override_ngn is set. */
+export interface StyledVariant {
+  styled_variant_id: string;
+  styled_id: string;
+  colour_id: string;
+  size_code: string;
+  sku: string;
+  price_override_ngn: number | null;
+  compare_at_price_ngn: number | null;
+  is_active: boolean;
+  is_default: boolean;
+  display_order: number;
+  // Joined / computed by the server.
+  colour_name: string;
+  colour_hex: string | null;
+  colour_premium_ngn: number;
+  size_label: string;
+  size_premium_ngn: number;
+  anchor_price_ngn: number | null;
+  effective_price_ngn: number | null;
+}
+
+/** Brand-wide head-size ladder (S/M/L/XL) — premium + circumference + tip. */
+export interface SizeTier {
+  tier_id?: string;
+  size_code: string;
+  label: string;
+  premium_ngn: number;
+  circumference_min_in: number | null;
+  circumference_max_in: number | null;
+  circumference_min_cm: number | null;
+  circumference_max_cm: number | null;
+  guidance_text: string | null;
+  display_order: number;
+  is_active: boolean;
+}
+export interface CatalogueConfig {
+  size_guide_title: string;
+  head_size_guide_md: string | null;
+}
+export interface SizeConfig {
+  tiers: SizeTier[];
+  config: CatalogueConfig | null;
+}
+
+export interface ProductImage {
+  image_id: string;
+  cdn_url: string | null;
+  alt_text: string | null;
+  caption: string | null;
+  display_order: number;
 }
 
 export interface Category {
@@ -260,19 +337,34 @@ export interface BulkImportRow {
   texture_type?: string;
   lace_type?: string;
   hair_length_inches?: number;
+  density?: string;
+  cap_size?: string;
+  primary_colour?: string;
+  hair_origin?: string;
+  short_description?: string;
+  /** Category NAME — resolved to an id (created if new) server-side. */
+  category?: string;
   weight_g?: number;
+  // Always Naira. Cost is only applied for Cost-Vault holders.
+  cost_ngn?: number;
+  wholesale_price_ngn?: number;
 }
+export type ImportStatus = "created" | "updated" | "up_to_date";
 export interface BulkImportCreated {
   row: number;
+  status: ImportStatus;
   product_id: string;
   product_code: string;
   name: string;
   variant_id: string;
-  weight_g: number | null;
+  cost_applied: boolean;
 }
 export interface BulkImportResult {
   count: number;
   created: BulkImportCreated[];
+  counts: Partial<Record<ImportStatus, number>>;
+  cost_permitted: boolean;
+  cost_ignored: boolean;
 }
 export function useBulkImportProducts() {
   const qc = useQueryClient();
@@ -714,4 +806,246 @@ export function useStockRealtime() {
       evts.forEach((e) => socket.off(e, onChange));
     };
   }, [brand, qc]);
+}
+
+// ════════════════════════════════════════════════════════════
+// Styled colours, colour×size variants, size config (this PR)
+// ════════════════════════════════════════════════════════════
+
+/** Invalidate everything that depends on a styled product's detail (the
+ *  detail query carries colours + variants + price range). */
+function invalidateStyledDetail(qc: QueryClient, brand: string, id: string) {
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand, "one", id] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled-colours", brand, id] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled-variants", brand, id] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
+}
+
+// ── Size-tier ladder + head-size guide (one modal) ───────
+export function useSizeConfig() {
+  const brand = useBrand();
+  return useQuery<SizeConfig>({
+    queryKey: ["catalogue", "size-config", brand],
+    queryFn: () => api.get<SizeConfig>("/catalogue/styled-products/size-config"),
+  });
+}
+
+export interface SaveSizeConfigInput {
+  tiers?: Partial<SizeTier>[];
+  size_guide_title?: string | null;
+  head_size_guide_md?: string | null;
+}
+export function useSaveSizeConfig() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: SaveSizeConfigInput) =>
+      api.put<SizeConfig>("/catalogue/styled-products/size-config", input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["catalogue", "size-config", brand] });
+      qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
+    },
+  });
+}
+
+// ── Colours ──────────────────────────────────────────────
+export function useStyledColours(styledId: string | null) {
+  const brand = useBrand();
+  return useQuery<StyledColour[]>({
+    queryKey: ["catalogue", "styled-colours", brand, styledId],
+    queryFn: () =>
+      api.get<StyledColour[]>(`/catalogue/styled-products/${styledId}/colours`),
+    enabled: !!styledId,
+  });
+}
+export function useCreateColour(styledId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: Partial<StyledColour>) =>
+      api.post<StyledColour>(`/catalogue/styled-products/${styledId}/colours`, input),
+    onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
+  });
+}
+export function useUpdateColour(styledId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ colourId, patch }: { colourId: string; patch: Partial<StyledColour> }) =>
+      api.patch<StyledColour>(
+        `/catalogue/styled-products/${styledId}/colours/${colourId}`,
+        patch,
+      ),
+    onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
+  });
+}
+export function useDeleteColour(styledId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (colourId: string) =>
+      api.delete<void>(`/catalogue/styled-products/${styledId}/colours/${colourId}`),
+    onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
+  });
+}
+
+// ── Per-colour images (2–3 pictures per colour) ──────────
+export function useColourImages(styledId: string | null, colourId: string | null) {
+  const brand = useBrand();
+  return useQuery<ProductImage[]>({
+    queryKey: ["catalogue", "colour-images", brand, styledId, colourId],
+    queryFn: () =>
+      api.get<ProductImage[]>(
+        `/catalogue/styled-products/${styledId}/colours/${colourId}/images`,
+      ),
+    enabled: !!styledId && !!colourId,
+  });
+}
+export function useAddColourImage(styledId: string, colourId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return api.postForm<ProductImage>(
+        `/catalogue/styled-products/${styledId}/colours/${colourId}/images`,
+        form,
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "colour-images", brand, styledId, colourId],
+      });
+      qc.invalidateQueries({ queryKey: ["catalogue", "styled-colours", brand, styledId] });
+    },
+  });
+}
+export function useRemoveColourImage(styledId: string, colourId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (imageId: string) =>
+      api.delete<void>(
+        `/catalogue/styled-products/${styledId}/colours/${colourId}/images/${imageId}`,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "colour-images", brand, styledId, colourId],
+      });
+      qc.invalidateQueries({ queryKey: ["catalogue", "styled-colours", brand, styledId] });
+    },
+  });
+}
+
+// ── Colour × size variants ───────────────────────────────
+export function useStyledVariants(styledId: string | null) {
+  const brand = useBrand();
+  return useQuery<StyledVariant[]>({
+    queryKey: ["catalogue", "styled-variants", brand, styledId],
+    queryFn: () =>
+      api.get<StyledVariant[]>(`/catalogue/styled-products/${styledId}/variants`),
+    enabled: !!styledId,
+  });
+}
+export interface BulkVariantInput {
+  colour_ids?: string[];
+  all_sizes?: boolean;
+  size_codes?: string[];
+}
+export function useBulkCreateVariants(styledId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: BulkVariantInput) =>
+      api.post<{ created_count: number; skipped: number }>(
+        `/catalogue/styled-products/${styledId}/variants/bulk`,
+        input,
+      ),
+    onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
+  });
+}
+export function useUpdateStyledVariant(styledId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ variantId, patch }: { variantId: string; patch: Partial<StyledVariant> }) =>
+      api.patch<StyledVariant>(
+        `/catalogue/styled-products/${styledId}/variants/${variantId}`,
+        patch,
+      ),
+    onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
+  });
+}
+export function useDeleteStyledVariant(styledId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (variantId: string) =>
+      api.delete<void>(`/catalogue/styled-products/${styledId}/variants/${variantId}`),
+    onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// Trash + Restore (free-the-name model)
+// ════════════════════════════════════════════════════════════
+export function useProductTrash(enabled = true) {
+  const brand = useBrand();
+  return useQuery<BaseProduct[]>({
+    queryKey: ["catalogue", "trash", "products", brand],
+    queryFn: () => api.get<BaseProduct[]>("/catalogue/products/trash?page_size=100"),
+    enabled,
+  });
+}
+export function useRestoreProduct() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<BaseProduct & { renamed: boolean }>(`/catalogue/products/${id}/restore`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["catalogue", "trash", "products", brand] });
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] });
+    },
+  });
+}
+export function useStyledTrash(enabled = true) {
+  const brand = useBrand();
+  return useQuery<StyledProduct[]>({
+    queryKey: ["catalogue", "trash", "styled", brand],
+    queryFn: () =>
+      api.get<StyledProduct[]>("/catalogue/styled-products/trash?page_size=100"),
+    enabled,
+  });
+}
+export function useRestoreStyled() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<StyledProduct & { renamed: boolean }>(
+        `/catalogue/styled-products/${id}/restore`,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["catalogue", "trash", "styled", brand] });
+      invalidateStyled(qc, brand);
+    },
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// Quick add-to-collection (from a product)
+// ════════════════════════════════════════════════════════════
+export function useAddCollectionMember() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ collectionId, productId }: { collectionId: string; productId: string }) =>
+      api.post<{ member_id: string }>(
+        `/catalogue/collections/${collectionId}/members`,
+        { product_id: productId },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] }),
+  });
 }

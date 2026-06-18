@@ -164,91 +164,222 @@ async function createProduct({ brand, user, request_id, input }) {
 
 /**
  * Bulk import base products from a spreadsheet (Excel/CSV parsed client-side).
- * For each row we generate the product code + slug, insert the product, and
- * create ONE default variant carrying the shipping weight + length — the
- * variant is where stock and shipping weight live, so this makes every
- * imported product immediately stockable (Stock seeds a stock_levels row off
- * `variant.created`). The whole batch runs in a single transaction: it's
- * all-or-nothing, so a mid-batch failure never leaves a half-imported sheet.
+ *
+ * The template carries the full base spec plus money: cost (₦) and wholesale
+ * price (₦). UPSERT by exact full name — a row whose name already exists
+ * UPDATES that product (and its default variant's price/cost) instead of
+ * creating a duplicate, so re-importing a priced sheet sets every price in one
+ * pass. Cost is only written for Cost-Vault holders; for everyone else the cost
+ * column is ignored (price stays — wholesale is the operational, non-secret
+ * number). Each row reports a status: created / updated / up_to_date.
+ * The whole batch runs in one transaction.
  */
 async function bulkImportProducts({ brand, user, request_id, rows }) {
+  const canCost = await vault.canSeeCost({ user, brand });
   return transaction(async (client) => {
-    const created = [];
+    const results = [];
+    let costIgnored = false;
+
     for (let idx = 0; idx < rows.length; idx++) {
       const row = rows[idx];
-      const product_code = await numbering.nextProductCode(client, brand);
-      const slug = await uniqueSlug(client, brand, row.name, product_code);
+      const category_id = await resolveCategoryId(client, brand, row.category, user);
 
-      const product = await repo.createProduct({
-        client,
-        brand,
-        user_id: user.user_id,
-        input: {
-          product_code,
-          name: row.name,
-          slug,
-          texture_type: row.texture_type ?? undefined,
-          lace_type: row.lace_type ?? undefined,
-          hair_length_inches: row.hair_length_inches ?? undefined,
-          product_type: "physical",
-        },
-      });
+      // Full base-product fields present in this row (undefined = not supplied).
+      const fields = {
+        texture_type: row.texture_type,
+        lace_type: row.lace_type,
+        hair_length_inches: row.hair_length_inches,
+        density: row.density,
+        cap_size: row.cap_size,
+        primary_colour: row.primary_colour,
+        hair_origin: row.hair_origin,
+        short_description: row.short_description,
+        category_id,
+      };
+      const wantsCost = row.cost_ngn !== undefined && row.cost_ngn !== null;
+      if (wantsCost && !canCost) costIgnored = true;
 
-      const variant = await repo.createVariant({
-        client,
-        brand,
-        product_id: product.product_id,
-        input: {
-          sku: product_code,
-          variant_name: row.name.slice(0, 160),
-          variant_length_inches: row.hair_length_inches ?? undefined,
-          weight_g: row.weight_g ?? undefined,
-          is_default: true,
-          is_active: true,
-        },
-      });
+      const existing = await repo.findProductByName({ client, brand, name: row.name });
 
-      await A(
-        brand,
-        user.user_id,
-        "catalogue.product.create",
-        "product",
-        product.product_id,
-        { ...product, source: "bulk_import" },
-        request_id,
-      );
-      // Same SSOT hook as a single variant create (H-2): in-process emit for
-      // realtime, durable post-commit outbox so Stock seeds a stock_levels row.
-      events.emit("product.created", { brand, id: product.product_id });
-      events.emit("variant.created", {
-        brand,
-        product_id: product.product_id,
-        variant_id: variant.variant_id,
-        reorder_point: variant.reorder_point,
-      });
-      await outbox.enqueue(client, {
-        business: brand,
-        event_type: "variant.created",
-        payload: {
+      if (existing) {
+        // ── UPDATE the matched product (overwrite changed fields only) ──
+        const patch = {};
+        for (const [k, v] of Object.entries(fields)) {
+          if (v === undefined) continue;
+          if (String(existing[k] ?? "") !== String(v)) patch[k] = v;
+        }
+        const product = Object.keys(patch).length
+          ? await repo.updateProduct({ client, brand, id: existing.product_id, patch })
+          : existing;
+
+        let variant = await repo.getDefaultVariant({
+          client,
+          brand,
+          product_id: existing.product_id,
+        });
+        if (!variant) {
+          variant = await createDefaultVariant(client, brand, product, row);
+        }
+
+        const vpatch = {};
+        if (row.wholesale_price_ngn !== undefined &&
+            Number(variant.price_wholesale_ngn ?? NaN) !== Number(row.wholesale_price_ngn)) {
+          vpatch.price_wholesale_ngn = row.wholesale_price_ngn;
+        }
+        if (row.weight_g !== undefined && Number(variant.weight_g ?? NaN) !== Number(row.weight_g)) {
+          vpatch.weight_g = row.weight_g;
+        }
+        if (Object.keys(vpatch).length) {
+          variant = await repo.updateVariant({
+            client,
+            brand,
+            product_id: existing.product_id,
+            variant_id: variant.variant_id,
+            patch: vpatch,
+          });
+        }
+
+        let costApplied = false;
+        if (wantsCost && canCost) {
+          await vault.setCostTx({
+            client,
+            brand,
+            user,
+            request_id,
+            variant_id: variant.variant_id,
+            input: { cost_ngn: row.cost_ngn, cost_source: "import" },
+          });
+          costApplied = true;
+        }
+
+        const changed = Object.keys(patch).length > 0 || Object.keys(vpatch).length > 0 || costApplied;
+        if (changed) {
+          await A(brand, user.user_id, "catalogue.product.update", "product",
+            product.product_id, { source: "bulk_import" }, request_id, existing);
+          events.emit("product.updated", { brand, id: product.product_id });
+        }
+        results.push({
+          row: idx + 1,
+          status: changed ? "updated" : "up_to_date",
+          product_id: product.product_id,
+          product_code: product.product_code,
+          name: product.name,
+          variant_id: variant.variant_id,
+          cost_applied: costApplied,
+        });
+      } else {
+        // ── CREATE a new base product + its default variant ──
+        const product_code = await numbering.nextProductCode(client, brand);
+        const slug = await uniqueSlug(client, brand, row.name, product_code);
+        const product = await repo.createProduct({
+          client,
+          brand,
+          user_id: user.user_id,
+          input: { product_code, name: row.name, slug, product_type: "physical", ...stripUndefined(fields) },
+        });
+        const variant = await createDefaultVariant(client, brand, product, row);
+
+        let costApplied = false;
+        if (wantsCost && canCost) {
+          await vault.setCostTx({
+            client,
+            brand,
+            user,
+            request_id,
+            variant_id: variant.variant_id,
+            input: { cost_ngn: row.cost_ngn, cost_source: "import" },
+          });
+          costApplied = true;
+        }
+
+        await A(brand, user.user_id, "catalogue.product.create", "product",
+          product.product_id, { ...product, source: "bulk_import" }, request_id);
+        events.emit("product.created", { brand, id: product.product_id });
+        events.emit("variant.created", {
           brand,
           product_id: product.product_id,
           variant_id: variant.variant_id,
           reorder_point: variant.reorder_point,
-        },
-        dedup_key: `variant.created:${variant.variant_id}`,
-      });
+        });
+        await outbox.enqueue(client, {
+          business: brand,
+          event_type: "variant.created",
+          payload: {
+            brand,
+            product_id: product.product_id,
+            variant_id: variant.variant_id,
+            reorder_point: variant.reorder_point,
+          },
+          dedup_key: `variant.created:${variant.variant_id}`,
+        });
 
-      created.push({
-        row: idx + 1,
-        product_id: product.product_id,
-        product_code: product.product_code,
-        name: product.name,
-        variant_id: variant.variant_id,
-        weight_g: variant.weight_g ?? null,
-      });
+        results.push({
+          row: idx + 1,
+          status: "created",
+          product_id: product.product_id,
+          product_code: product.product_code,
+          name: product.name,
+          variant_id: variant.variant_id,
+          cost_applied: costApplied,
+        });
+      }
     }
-    return { count: created.length, created };
+
+    const counts = results.reduce(
+      (acc, r) => ({ ...acc, [r.status]: (acc[r.status] || 0) + 1 }),
+      {},
+    );
+    return {
+      count: results.length,
+      created: results,
+      counts,
+      cost_permitted: canCost,
+      cost_ignored: costIgnored,
+    };
   });
+}
+
+/** Drop undefined keys so an INSERT never sends `undefined`. */
+function stripUndefined(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) if (v !== undefined) out[k] = v;
+  return out;
+}
+
+/** Create the stock-bearing default variant for an imported product. */
+function createDefaultVariant(client, brand, product, row) {
+  return repo.createVariant({
+    client,
+    brand,
+    product_id: product.product_id,
+    input: {
+      sku: product.product_code,
+      variant_name: row.name.slice(0, 160),
+      variant_length_inches: row.hair_length_inches ?? undefined,
+      variant_colour: row.primary_colour ?? undefined,
+      variant_density: row.density ?? undefined,
+      variant_cap_size: row.cap_size ?? undefined,
+      weight_g: row.weight_g ?? undefined,
+      price_wholesale_ngn: row.wholesale_price_ngn ?? undefined,
+      is_default: true,
+      is_active: true,
+    },
+  });
+}
+
+/** Resolve a category NAME to an id, creating it (with a unique slug) if new. */
+async function resolveCategoryId(client, brand, name, user) {
+  if (!name) return undefined;
+  const existing = await repo.findCategoryByName({ client, brand, name });
+  if (existing) return existing.category_id;
+  const base = slugify(name) || "category";
+  let slug = base;
+  let n = 2;
+  while (await repo.categorySlugTaken({ client, brand, slug })) slug = `${base}-${n++}`;
+  const created = await repo.createCategory({ client, brand, input: { name, slug } });
+  await A(brand, user.user_id, "catalogue.category.create", "product_category",
+    created.category_id, { source: "bulk_import" }, undefined);
+  return created.category_id;
 }
 async function updateProduct({ brand, user, request_id, id, patch }) {
   const before = await repo.findProductById({ brand, id });
@@ -280,6 +411,47 @@ async function deleteProduct({ brand, user, request_id, id }) {
     request_id,
   );
   events.emit("product.deleted", { brand, id });
+}
+
+// ── Trash + Restore ──────────────────────────────────────
+function listTrash({ brand, page, page_size }) {
+  const offset = (page - 1) * page_size;
+  return repo.listTrashedProducts({ brand, page, page_size, offset });
+}
+
+// Short disambiguator for the rare case where a freed name was reused by a
+// new product before the old one is restored.
+const restoreSuffix = () => Date.now().toString(36).slice(-4);
+
+async function restoreProduct({ brand, user, request_id, id }) {
+  return transaction(async (client) => {
+    const trashed = await repo.getTrashedProductById({ client, brand, id });
+    if (!trashed) throw new NotFoundError("Product");
+    let slug = null;
+    let product_code = null;
+    let renamed = false;
+    if (await repo.productSlugTaken({ client, brand, slug: trashed.slug })) {
+      slug = `${trashed.slug}-restored-${restoreSuffix()}`;
+      renamed = true;
+    }
+    if (await repo.productCodeTaken({ client, brand, code: trashed.product_code })) {
+      product_code = `${trashed.product_code}-R${restoreSuffix()}`;
+      renamed = true;
+    }
+    const p = await repo.restoreProduct({ client, brand, id, slug, product_code });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.product.restore",
+      "product",
+      id,
+      { renamed, slug: p.slug, product_code: p.product_code },
+      request_id,
+      trashed,
+    );
+    events.emit("product.updated", { brand, id });
+    return { ...p, renamed };
+  });
 }
 
 // ── Variants ─────────────────────────────────────────────
@@ -811,6 +983,8 @@ module.exports = {
   bulkImportProducts,
   updateProduct,
   deleteProduct,
+  listTrash,
+  restoreProduct,
   listVariants,
   addVariant,
   updateVariant,

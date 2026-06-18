@@ -15,6 +15,7 @@
 "use strict";
 
 const repo = require("./styled.repo");
+const variantsRepo = require("./styled_variants.repo");
 const events = require("./catalogue.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -66,21 +67,31 @@ function availabilityState(available, base) {
 }
 
 /** Pure: attach computed price + availability given the base's stock + price.
- *  No DB access — the caller supplies the two derived numbers. */
+ *  No DB access — the caller supplies the two derived numbers.
+ *
+ *  Pricing model: a styled product carries its OWN retail price
+ *  (`retail_price_ngn`, the size-S anchor), independent of the base wholesale
+ *  price. Rows created before this model fall back to the legacy
+ *  base + style_addon figure so nothing reads ₦0. */
 function enrichRow(styled, available, base_price) {
   const base = {
     preorder_enabled: styled.preorder_enabled,
     expected_ready_date: styled.expected_ready_date,
     production_lead_days: styled.production_lead_days,
   };
-  const has_price = base_price !== null && base_price !== undefined;
+  const has_base_price = base_price !== null && base_price !== undefined;
+  const anchor = styled.retail_price_ngn;
+  const has_anchor = anchor !== null && anchor !== undefined;
+  const legacy = has_base_price
+    ? money(base_price) + money(styled.style_addon_price_ngn)
+    : null;
   return {
     ...styled,
     availability: availabilityState(available || 0, base),
-    base_price_ngn: has_price ? base_price : null,
-    effective_price_ngn: has_price
-      ? money(base_price) + money(styled.style_addon_price_ngn)
-      : null,
+    base_price_ngn: has_base_price ? base_price : null,
+    retail_price_ngn: has_anchor ? anchor : null,
+    // Headline "from" price: the styled retail anchor (size S), else legacy.
+    effective_price_ngn: has_anchor ? money(anchor) : legacy,
   };
 }
 
@@ -113,7 +124,22 @@ async function list({ brand, filters, page, page_size }) {
 async function getById({ brand, id }) {
   const styled = await repo.getById({ brand, id });
   if (!styled) throw new NotFoundError("Styled product");
-  return enrich({ brand, styled });
+  const enriched = await enrich({ brand, styled });
+  // Attach the colour options + the colour×size variant matrix with their
+  // computed retail prices, plus the headline price range across live variants.
+  const [colours, variants] = await Promise.all([
+    variantsRepo.listColours({ brand, styled_id: id }),
+    variantsRepo.listVariants({ brand, styled_id: id }),
+  ]);
+  const prices = variants
+    .filter((v) => v.is_active && v.effective_price_ngn !== null)
+    .map((v) => Number(v.effective_price_ngn));
+  enriched.colours = colours;
+  enriched.variants = variants;
+  enriched.price_range = prices.length
+    ? { min: Math.min(...prices), max: Math.max(...prices) }
+    : null;
+  return enriched;
 }
 
 async function create({ brand, user, request_id, input, ai }) {
@@ -243,6 +269,44 @@ async function remove({ brand, user, request_id, id }) {
   events.emit("styled.deleted", { brand, id });
 }
 
+// ── Trash + Restore ──────────────────────────────────────
+function listTrash({ brand, page, page_size }) {
+  const offset = (page - 1) * page_size;
+  return repo.listTrashed({ brand, page, page_size, offset });
+}
+
+const restoreSuffix = () => Date.now().toString(36).slice(-4);
+
+async function restore({ brand, user, request_id, id }) {
+  return transaction(async (client) => {
+    const trashed = await repo.getTrashedById({ client, brand, id });
+    if (!trashed) throw new NotFoundError("Styled product");
+    let slug = null;
+    let styled_code = null;
+    let renamed = false;
+    if (await repo.styledSlugTaken({ client, brand, slug: trashed.slug })) {
+      slug = `${trashed.slug}-restored-${restoreSuffix()}`;
+      renamed = true;
+    }
+    if (await repo.styledCodeTaken({ client, brand, code: trashed.styled_code })) {
+      styled_code = `${trashed.styled_code}-R${restoreSuffix()}`;
+      renamed = true;
+    }
+    const s = await repo.restore({ client, brand, id, slug, styled_code });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.styled.restore",
+      id,
+      { renamed, slug: s.slug, styled_code: s.styled_code },
+      request_id,
+      { status: trashed.status },
+    );
+    events.emit("styled.updated", { brand, id });
+    return { ...s, renamed };
+  });
+}
+
 module.exports = {
   availabilityState,
   enrich,
@@ -253,4 +317,6 @@ module.exports = {
   publish,
   unpublish,
   remove,
+  listTrash,
+  restore,
 };

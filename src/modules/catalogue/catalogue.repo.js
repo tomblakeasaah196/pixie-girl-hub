@@ -137,6 +137,22 @@ async function getCategory({ client, brand, id }) {
   );
   return rows[0] || null;
 }
+// Resolve a category by name (case-insensitive) for the import — the operator
+// types a category name; the service creates it on the fly when missing.
+async function findCategoryByName({ client, brand, name }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "product_categories")} WHERE lower(name) = lower($1) LIMIT 1`,
+    [name],
+  );
+  return rows[0] || null;
+}
+async function categorySlugTaken({ client, brand, slug }) {
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "product_categories")} WHERE slug = $1 LIMIT 1`,
+    [slug],
+  );
+  return rows.length > 0;
+}
 async function createCategory({ client, brand, input }) {
   const { f, ph, p } = insert(CAT_COLS, input);
   const { rows } = await ex(client)(
@@ -220,13 +236,31 @@ async function findProductById({ client, brand, id }) {
   );
   return rows[0] || null;
 }
-// Slug uniqueness probe (the DB has a UNIQUE(slug) over ALL rows, incl.
-// soft-deleted) — lets the service derive a collision-free slug before insert
-// so a bulk import never aborts the whole batch on a duplicate name.
+// Exact full-name match among LIVE products — drives the import upsert (a
+// re-imported row updates the existing product instead of duplicating it).
+async function findProductByName({ client, brand, name }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "products")}
+      WHERE lower(name) = lower($1) AND is_deleted = false
+      ORDER BY created_at ASC LIMIT 1`,
+    [name],
+  );
+  return rows[0] || null;
+}
+// Slug/code uniqueness probes. Uniqueness is now PARTIAL (live rows only,
+// 000041), so a deleted product frees its name — these check LIVE rows so the
+// service can reuse a freed name and only disambiguates against active ones.
 async function productSlugTaken({ client, brand, slug }) {
   const { rows } = await ex(client)(
-    `SELECT 1 FROM ${t(brand, "products")} WHERE slug = $1 LIMIT 1`,
+    `SELECT 1 FROM ${t(brand, "products")} WHERE slug = $1 AND is_deleted = false LIMIT 1`,
     [slug],
+  );
+  return rows.length > 0;
+}
+async function productCodeTaken({ client, brand, code }) {
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "products")} WHERE product_code = $1 AND is_deleted = false LIMIT 1`,
+    [code],
   );
   return rows.length > 0;
 }
@@ -255,6 +289,39 @@ async function softDeleteProduct({ client, brand, id }) {
   );
   return rowCount > 0;
 }
+// ── Trash + Restore ──────────────────────────────────────
+async function listTrashedProducts({ client, brand, page = 1, page_size = 25, offset = 0 }) {
+  const run = ex(client);
+  const { rows: c } = await run(
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "products")} WHERE is_deleted = true`,
+  );
+  const { rows } = await run(
+    `SELECT * FROM ${t(brand, "products")} WHERE is_deleted = true
+      ORDER BY deleted_at DESC NULLS LAST LIMIT $1 OFFSET $2`,
+    [page_size, offset],
+  );
+  return {
+    data: rows,
+    meta: { page, page_size, total: c[0].total, has_more: offset + rows.length < c[0].total },
+  };
+}
+async function getTrashedProductById({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "products")} WHERE product_id = $1 AND is_deleted = true`,
+    [id],
+  );
+  return rows[0] || null;
+}
+async function restoreProduct({ client, brand, id, slug, product_code }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "products")}
+        SET is_deleted = false, deleted_at = null,
+            slug = COALESCE($2, slug), product_code = COALESCE($3, product_code)
+      WHERE product_id = $1 AND is_deleted = true RETURNING *`,
+    [id, slug || null, product_code || null],
+  );
+  return rows[0] || null;
+}
 
 // ── Variants ─────────────────────────────────────────────
 async function listVariants({ client, brand, product_id }) {
@@ -268,6 +335,17 @@ async function getVariant({ client, brand, product_id, variant_id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "product_variants")} WHERE variant_id = $1 AND product_id = $2`,
     [variant_id, product_id],
+  );
+  return rows[0] || null;
+}
+// The product's default (then first) variant — where the import writes the
+// wholesale price + cost for an existing product.
+async function getDefaultVariant({ client, brand, product_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "product_variants")}
+      WHERE product_id = $1
+      ORDER BY is_default DESC, display_order ASC, created_at ASC LIMIT 1`,
+    [product_id],
   );
   return rows[0] || null;
 }
@@ -425,11 +503,13 @@ async function listImages({ client, brand, product_id }) {
 }
 async function addImage({ client, brand, image }) {
   const { rows } = await ex(client)(
-    `INSERT INTO ${t(brand, "product_images")} (product_id, variant_id, file_path, cdn_url, alt_text, caption, display_order, is_primary, file_size_bytes, uploaded_by)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,0),COALESCE($8,false),$9,$10) RETURNING *`,
+    `INSERT INTO ${t(brand, "product_images")} (product_id, variant_id, styled_id, styled_colour_id, file_path, cdn_url, alt_text, caption, display_order, is_primary, file_size_bytes, uploaded_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),COALESCE($10,false),$11,$12) RETURNING *`,
     [
       image.product_id,
       image.variant_id || null,
+      image.styled_id || null,
+      image.styled_colour_id || null,
       image.file_path,
       image.cdn_url,
       image.alt_text,
@@ -441,6 +521,21 @@ async function addImage({ client, brand, image }) {
     ],
   );
   return rows[0];
+}
+// A styled colour's own gallery (2–3 pictures per colour).
+async function listColourImages({ client, brand, colour_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "product_images")} WHERE styled_colour_id = $1 ORDER BY display_order, uploaded_at`,
+    [colour_id],
+  );
+  return rows;
+}
+async function removeColourImage({ client, brand, colour_id, image_id }) {
+  const { rowCount } = await ex(client)(
+    `DELETE FROM ${t(brand, "product_images")} WHERE image_id = $1 AND styled_colour_id = $2`,
+    [image_id, colour_id],
+  );
+  return rowCount > 0;
 }
 async function updateImage({ client, brand, product_id, image_id, patch }) {
   const cols = [
@@ -663,6 +758,8 @@ module.exports = {
   removeCollectionMember,
   listImages,
   addImage,
+  listColourImages,
+  removeColourImage,
   updateImage,
   removeImage,
   listVideos,
@@ -685,13 +782,21 @@ module.exports = {
   archiveCategory,
   findAllProducts,
   findProductById,
+  findProductByName,
   productSlugTaken,
+  productCodeTaken,
   createProduct,
   updateProduct,
   softDeleteProduct,
+  listTrashedProducts,
+  getTrashedProductById,
+  restoreProduct,
   listVariants,
   getVariant,
+  getDefaultVariant,
   createVariant,
   updateVariant,
   deactivateVariant,
+  findCategoryByName,
+  categorySlugTaken,
 };

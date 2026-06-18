@@ -30,9 +30,13 @@ const categoryCreate = z
 
 const productCreate = z
   .object({
-    product_code: z.string().min(1).max(60),
+    // Optional: when omitted the service allocates the next code from the
+    // Document Numbering sequence (e.g. FLH001N) — operators never type it.
+    product_code: z.string().min(1).max(60).optional(),
     name: z.string().min(1).max(200),
-    slug,
+    // Optional: the service derives a unique kebab-case slug from the name
+    // when not supplied.
+    slug: slug.optional(),
     category_id: z.string().uuid().nullable().optional(),
     // Optional free-text fields are `.nullable()` so the UI can CLEAR them
     // (sends null → repo writes NULL). Without this, an empty field 400s.
@@ -66,6 +70,34 @@ const productCreate = z
     preorder_enabled: z.boolean().optional(),
     expected_ready_date: z.string().date().nullable().optional(),
     production_lead_days: z.coerce.number().int().min(0).max(365).nullable().optional(),
+  })
+  .strict();
+
+// Bulk import (Excel/CSV → catalogue). Each row is the minimal spec our
+// operators maintain in a sheet; codes/slugs/SKUs are generated server-side.
+// Weight (grams) lands on the auto-created default variant — it's what the
+// shipping engine reads. Empty strings are coerced to undefined so blank
+// cells don't 400. Capped at 1000 rows so the import stays a single, bounded
+// transaction.
+const emptyToUndef = (schema) =>
+  z.preprocess(
+    (v) => (v === "" || v === null ? undefined : v),
+    schema.optional(),
+  );
+
+const bulkImportRow = z
+  .object({
+    name: z.string().min(1).max(200),
+    texture_type: emptyToUndef(z.string().max(40)),
+    lace_type: emptyToUndef(z.string().max(40)),
+    hair_length_inches: emptyToUndef(z.coerce.number().int().min(0).max(60)),
+    weight_g: emptyToUndef(z.coerce.number().int().min(0).max(1000000)),
+  })
+  .strict();
+
+const bulkImport = z
+  .object({
+    rows: z.array(bulkImportRow).min(1).max(1000),
   })
   .strict();
 
@@ -236,6 +268,7 @@ module.exports = {
   validateCategoryUpdate: mw(categoryCreate.partial()),
   validateProductCreate: mw(productCreate),
   validateProductUpdate: mw(productCreate.partial()),
+  validateBulkImport: mw(bulkImport),
   validateVariantCreate: mw(variantCreate),
   validateVariantUpdate: mw(variantCreate.partial()),
   validateCollectionCreate: mw(collectionCreate),
@@ -251,5 +284,6 @@ module.exports = {
   validateRelatedCreate: mw(relatedCreate),
   categoryCreate,
   productCreate,
+  bulkImport,
   variantCreate,
 };

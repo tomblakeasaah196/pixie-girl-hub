@@ -76,6 +76,11 @@ async function createProduct(req, res) {
     data: await service.createProduct({ ...base(req), input: req.body }),
   });
 }
+async function bulkImportProducts(req, res) {
+  res.status(201).json({
+    data: await service.bulkImportProducts({ ...base(req), rows: req.body.rows }),
+  });
+}
 async function updateProduct(req, res) {
   res.json({
     data: await service.updateProduct({
@@ -341,6 +346,7 @@ module.exports = {
   listProducts,
   getProduct,
   createProduct,
+  bulkImportProducts,
   updateProduct,
   deleteProduct,
   listVariants,

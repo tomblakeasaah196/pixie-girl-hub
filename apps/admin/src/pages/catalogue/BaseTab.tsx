@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Boxes, ShieldCheck, Factory } from "lucide-react";
+import { Plus, Boxes, ShieldCheck, Factory, Upload } from "lucide-react";
 import { Button, Card, EmptyState, Pill } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
 import { useBaseProducts, type BaseProduct } from "@/lib/catalogue";
 import { SearchBox, CardGrid, CardGridSkeleton } from "./parts";
 import { CostVaultGrants } from "./CostVaultGrants";
+import { BulkImportModal } from "./BulkImportModal";
 
 /**
  * Base products — the China-origin, stock-bearing register (the only place
@@ -18,6 +19,7 @@ export function BaseTab() {
   const { can, user } = useAuthStore();
   const [q, setQ] = useState("");
   const [grantsOpen, setGrantsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const filters = useMemo(() => ({ q: q.trim() || undefined }), [q]);
   const products = useBaseProducts(filters);
@@ -35,6 +37,15 @@ export function BaseTab() {
               onClick={() => setGrantsOpen(true)}
             >
               Cost-vault access
+            </Button>
+          )}
+          {canCreate && (
+            <Button
+              size="sm"
+              icon={<Upload className="w-3.5 h-3.5" />}
+              onClick={() => setImportOpen(true)}
+            >
+              Import from Excel
             </Button>
           )}
           {canCreate && (
@@ -78,6 +89,7 @@ export function BaseTab() {
       )}
 
       <CostVaultGrants open={grantsOpen} onClose={() => setGrantsOpen(false)} />
+      <BulkImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }

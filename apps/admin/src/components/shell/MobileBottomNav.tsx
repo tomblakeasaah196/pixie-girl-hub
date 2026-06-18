@@ -195,7 +195,7 @@ export function MobileBottomNav() {
     <>
       <PinToast message={toast?.msg ?? ""} visible={!!toast} />
       <nav
-        className="hidden max-md:flex fixed bottom-0 inset-x-0 z-[60] glass border-t pb-[max(8px,env(safe-area-inset-bottom,0px))]"
+        className="flex lg:hidden fixed bottom-0 inset-x-0 z-[60] glass border-t pb-[max(8px,env(safe-area-inset-bottom,0px))]"
         aria-label="Bottom navigation"
       >
         <div className="grid grid-cols-5 w-full">

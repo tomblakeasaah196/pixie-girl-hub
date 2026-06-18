@@ -5,7 +5,8 @@ import { Card, Skeleton, EmptyState } from "./primitives";
 /**
  * The workhorse list surface (canon §5). Server-driven in real use
  * (pagination/sort/filter/search sent to the API); here it renders a column
- * config + rows and the four states. Collapses to stacked cards on mobile.
+ * config + rows and the four states. The table scrolls horizontally on narrow
+ * screens; on the desktop tier (≥1024px) rows tighten up for more density.
  */
 export interface Column<T> {
   key: string;
@@ -43,7 +44,7 @@ export function DataTable<T>({
                 <th
                   key={c.key}
                   style={{ width: c.width, textAlign: c.align ?? "left" }}
-                  className="micro p-[12px_18px] border-b hairline bg-text-primary/[0.02]"
+                  className="micro p-[12px_18px] lg:p-[9px_16px] border-b hairline bg-text-primary/[0.02]"
                 >
                   {c.header}
                 </th>
@@ -55,7 +56,7 @@ export function DataTable<T>({
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i}>
                   {columns.map((c) => (
-                    <td key={c.key} className="p-[0_18px] h-[54px] border-b hairline">
+                    <td key={c.key} className="p-[0_18px] lg:px-4 h-[54px] lg:h-[44px] border-b hairline">
                       <Skeleton className="w-3/4" />
                     </td>
                   ))}
@@ -75,7 +76,7 @@ export function DataTable<T>({
                     <td
                       key={c.key}
                       style={{ textAlign: c.align ?? "left" }}
-                      className="p-[0_18px] h-[54px] text-[13px] align-middle"
+                      className="p-[0_18px] lg:px-4 h-[54px] lg:h-[44px] text-[13px] align-middle"
                     >
                       {c.render(row)}
                     </td>

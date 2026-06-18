@@ -42,7 +42,6 @@ export interface TaskBoard {
   in_progress: Task[];
   in_review: Task[];
   done: Task[];
-  cancelled: Task[];
 }
 
 export interface TaskCreateInput {

@@ -224,7 +224,6 @@ export function WorkspacePage() {
       ...board.in_progress,
       ...board.in_review,
       ...board.done,
-      ...board.cancelled,
     ];
   }, [board]);
 
@@ -270,7 +269,6 @@ export function WorkspacePage() {
       in_progress: filter(board.in_progress),
       in_review: filter(board.in_review),
       done: filter(board.done),
-      cancelled: filter(board.cancelled),
     };
   }, [board, taskSearch]);
 

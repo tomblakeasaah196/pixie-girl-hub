@@ -70,6 +70,7 @@ const SalesIndexPublic = lazyWithRetry(() => import("@/pages/sales-campaigns/pub
 const ModelsAndVendorsPage = lazyWithRetry(() => import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({ default: m.ModelsAndVendorsPage })));
 const ChannelPolicyPage = lazyWithRetry(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
 const QuickRepliesPage = lazyWithRetry(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
+const WorkspacePage = lazyWithRetry(() => import("@/pages/workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -181,6 +182,9 @@ export const router = createBrowserRouter(
             { path: "catalogue", element: <CataloguePage /> },
             { path: "catalogue/base/:id", element: <BaseProductPage /> },
             { path: "catalogue/styled/:id", element: <StyledProductPage /> },
+
+            // Workspace (Tasks + Calendar + My Day)
+            { path: "workspace", element: <Suspense fallback={null}><WorkspacePage /></Suspense> },
 
             // Stock & Inventory
             { path: "stock", element: <Suspense fallback={null}><StockPage /></Suspense> },

@@ -191,9 +191,6 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
           lace_type: row.lace_type ?? undefined,
           hair_length_inches: row.hair_length_inches ?? undefined,
           product_type: "physical",
-          // Imported hidden by design — they arrive without pricing or images,
-          // so publishing stays a deliberate step (no accidental mass go-live).
-          is_visible_storefront: false,
         },
       });
 

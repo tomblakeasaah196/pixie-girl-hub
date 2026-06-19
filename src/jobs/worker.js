@@ -138,7 +138,6 @@ async function startWorkers() {
   const {
     runScheduledEmailSends,
   } = require("./schedulers/email-campaign-send");
-  const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
   const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
   const { runRetentionWorkflows } = require("./schedulers/retention-workflows");
   const {
@@ -153,9 +152,7 @@ async function startWorkers() {
   } = require("./schedulers/chemical-reconciliation");
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
   const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
-  const {
-    runGeoIpDatabaseUpdate,
-  } = require("./schedulers/geoip-updater");
+  const { runGeoIpDatabaseUpdate } = require("./schedulers/geoip-updater");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart.

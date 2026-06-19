@@ -201,12 +201,22 @@ async function nextEntryNumber({ client, brand }) {
   );
   return rows[0].n;
 }
+/**
+ * Insert the entry header. `ON CONFLICT ... DO NOTHING` against the partial
+ * idempotency_key index (P1-3) means a second insert under the same key never
+ * raises — it just returns no row — so this is safe to call without a
+ * surrounding SAVEPOINT even when nested in a caller's larger transaction.
+ * Returns null when the key already existed; the caller (postEntry) then
+ * looks up and returns the original entry instead of re-posting.
+ */
 async function insertEntry({ client, brand, entry }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "journal_entries")}
        (entry_number, source_type, source_table, source_id, fiscal_period_id, posting_date,
-        transaction_currency, fx_rate_used, description, reference, status)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'NGN'),COALESCE($8,1),$9,$10,'draft') RETURNING *`,
+        transaction_currency, fx_rate_used, description, reference, idempotency_key, status)
+     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'NGN'),COALESCE($8,1),$9,$10,$11,'draft')
+     ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+     RETURNING *`,
     [
       entry.entry_number,
       entry.source_type,
@@ -218,9 +228,10 @@ async function insertEntry({ client, brand, entry }) {
       entry.fx_rate_used,
       entry.description,
       entry.reference || null,
+      entry.idempotency_key || null,
     ],
   );
-  return rows[0];
+  return rows[0] || null;
 }
 async function insertLine({ client, brand, line }) {
   const { rows } = await ex(client)(
@@ -279,6 +290,22 @@ async function findEntryBySource({ client, brand, source_type, source_id }) {
       WHERE source_type = $1 AND source_id = $2
       LIMIT 1`,
     [source_type, source_id],
+  );
+  return rows[0] || null;
+}
+/**
+ * Idempotency lookup (P1-3): find an existing journal by its opt-in posting
+ * key. Generalised counterpart to findEntryBySource for posting paths that
+ * can't rely on a unique (source_type, source_id) pair (multiple legitimate
+ * postings share that pair — e.g. instalment payments).
+ */
+async function findEntryByIdempotencyKey({ client, brand, idempotency_key }) {
+  if (!idempotency_key) return null;
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "journal_entries")}
+      WHERE idempotency_key = $1
+      LIMIT 1`,
+    [idempotency_key],
   );
   return rows[0] || null;
 }
@@ -704,6 +731,7 @@ module.exports = {
   setEntryStatus,
   findEntryById,
   findEntryBySource,
+  findEntryByIdempotencyKey,
   listEntries,
   setEntryReversed,
   accountActivity,

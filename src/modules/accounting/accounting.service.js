@@ -48,6 +48,17 @@ async function resolveAccountId({ client, brand, line }) {
  */
 async function postEntry({ client, brand, entry, lines, user_id }) {
   const run = async (c) => {
+    // Opt-in idempotency (P1-3): a caller posting under at-least-once
+    // delivery (or a retried request) passes its own globally-unique key.
+    // Pre-check here; the unique index is the race backstop below.
+    if (entry.idempotency_key) {
+      const existing = await repo.findEntryByIdempotencyKey({
+        client: c,
+        brand,
+        idempotency_key: entry.idempotency_key,
+      });
+      if (existing) return repo.findEntryById({ client: c, brand, id: existing.entry_id });
+    }
     if (!Array.isArray(lines) || lines.length < 2) {
       throw new AppError(
         "INVALID_JOURNAL",
@@ -109,8 +120,20 @@ async function postEntry({ client, brand, entry, lines, user_id }) {
         fx_rate_used: entry.fx_rate_used,
         description: entry.description,
         reference: entry.reference,
+        idempotency_key: entry.idempotency_key,
       },
     });
+    if (!created) {
+      // Lost the race to a concurrent post under the same idempotency_key —
+      // the unique index rejected us (ON CONFLICT DO NOTHING, no exception).
+      // That post already completed lines/status/audit/event; just return it.
+      const existing = await repo.findEntryByIdempotencyKey({
+        client: c,
+        brand,
+        idempotency_key: entry.idempotency_key,
+      });
+      return repo.findEntryById({ client: c, brand, id: existing.entry_id });
+    }
     for (const line of resolved)
       await repo.insertLine({
         client: c,
@@ -490,6 +513,7 @@ async function postFxGainLoss({
   description,
   source_id,
   user_id,
+  idempotency_key,
 }) {
   const delta = money(delta_ngn);
   if (delta.abs().lte(money("0.01"))) return null;
@@ -514,6 +538,7 @@ async function postFxGainLoss({
       reference,
       description:
         description || `Realised FX ${delta.gt(0) ? "gain" : "loss"}`,
+      idempotency_key,
     },
     lines,
   });

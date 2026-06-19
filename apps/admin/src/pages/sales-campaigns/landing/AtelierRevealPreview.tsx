@@ -11,14 +11,8 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { LandingConfig } from "@/lib/landing-studio";
 
-const ThreeDTextReveal = dynamic(
-  () => import("../../../../../apps/landing/components/ThreeDTextReveal").then((m) => ({ default: m.ThreeDTextReveal })),
-  { ssr: false }
-);
-const ThreeDLogoReveal = dynamic(
-  () => import("../../../../../apps/landing/components/ThreeDLogoReveal").then((m) => ({ default: m.ThreeDLogoReveal })),
-  { ssr: false }
-);
+const ThreeDTextReveal = dynamic(() => import("@/components/ThreeDTextReveal").then((m) => ({ default: m.ThreeDTextReveal })), { ssr: false });
+const ThreeDLogoReveal = dynamic(() => import("@/components/ThreeDLogoReveal").then((m) => ({ default: m.ThreeDLogoReveal })), { ssr: false });
 
 const DISPLAY_FONT = '"Fraunces", "Playfair Display", Georgia, serif';
 

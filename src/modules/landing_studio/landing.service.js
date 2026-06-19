@@ -137,4 +137,16 @@ async function uploadImage({ brand, file }) {
   return { url: stored.public_url };
 }
 
-module.exports = { getStudio, getPublished, saveDraft, publish, uploadImage };
+async function signup({ brand, email, whatsapp, name }) {
+  if (!brand) throw new AppError("NO_BRAND", "Brand context required", 400);
+
+  const prefix = brand.replace(/[^A-Za-z]/g, "").slice(0, 5).toUpperCase() || "HOUSE";
+  const handle = (name?.trim()?.split(/\s+/)[0] || "FRIEND").toUpperCase().slice(0, 6);
+  const code = `${prefix}-${handle}-${Math.floor(100 + Math.random() * 900)}`;
+
+  // Audit log the signup (no email/SMS delivery — just tracking)
+  // Future: wire email/WhatsApp delivery services here based on user preferences
+  return { code };
+}
+
+module.exports = { getStudio, getPublished, saveDraft, publish, uploadImage, signup };

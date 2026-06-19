@@ -8,6 +8,102 @@
  * still evolving and the landing renders state-by-state.
  */
 
+// Landing Studio config type (published landing pages)
+export type ChannelOption = "email" | "whatsapp" | "both";
+
+export interface SocialLink {
+  platform: string;
+  href: string;
+  label?: string;
+}
+
+export interface LandingTheme {
+  ink: string;
+  paper: string;
+  primary: string;
+  primaryDeep: string;
+  accent: string;
+  muted: string;
+  glow: string;
+}
+
+export interface RevealThreeD {
+  enabled: boolean;
+  brandType: "pixiegirl" | "faitlynhair";
+  variant: "text-dual" | "logo-static";
+  rotationSpeed: number;
+  glowIntensity: number;
+}
+
+export interface LandingConfig {
+  brandName: string;
+  legalName: string;
+  tagline: string;
+  welcomeLine: string;
+  domain: string;
+  storefront: string;
+  address: string;
+  theme: LandingTheme;
+  three: { primary: string; accent: string; ink: string; metal: string };
+  background: { type: "color" | "image"; imageUrl: string | null };
+  logo: {
+    url: string | null;
+    headerTint: string | null;
+    footerTint: string | null;
+    headerScale: number;
+    footerScale: number;
+  };
+  hero: {
+    imageUrl: string | null;
+    eyebrow: string;
+    headline: string;
+    headlineAccent: string;
+    body: string;
+    ctaLabel: string;
+    launchSeasonLabel: string;
+  };
+  invitation: {
+    eyebrow: string;
+    heading: string;
+    headingAccent: string;
+    body: string;
+    seatsTotal: number;
+    seatsClaimedBase: number;
+    perks: { numeral: string; label: string }[];
+    formTitle: string;
+    formTitleAccent: string;
+    formEyebrow: string;
+    referralNote: string;
+  };
+  form: {
+    collectName: boolean;
+    collectEmail: boolean;
+    collectWhatsapp: boolean;
+    collectReferral: boolean;
+    channels: ChannelOption[];
+    submitLabel: string;
+    footnote: string;
+  };
+  galleryEyebrow: string;
+  galleryHeading: string;
+  gallery: { url: string; caption?: string }[];
+  pillars: { numeral: string; title: string; body: string }[];
+  socials: SocialLink[];
+  reveal: {
+    enabled: boolean;
+    tagline: string;
+    showScarcity: boolean;
+    threeD?: RevealThreeD;
+  };
+}
+
+export function hexToTriplet(hex: string | null | undefined): string {
+  const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
+  if (!hex || !HEX_RE.test(hex)) return "0 0 0";
+  const h = hex.replace("#", "");
+  return `${parseInt(h.slice(0, 2), 16)} ${parseInt(h.slice(2, 4), 16)} ${parseInt(h.slice(4, 6), 16)}`;
+}
+
 export type LandingState = "before" | "live" | "ended";
 
 export interface Hero {

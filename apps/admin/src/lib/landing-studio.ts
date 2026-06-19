@@ -40,6 +40,14 @@ export interface LandingTheme {
   glow: string;
 }
 
+export interface RevealThreeD {
+  enabled: boolean;
+  brandType: "pixiegirl" | "faitlynhair";
+  variant: "text-dual" | "logo-static";
+  rotationSpeed: number;
+  glowIntensity: number;
+}
+
 export interface LandingConfig {
   brandName: string;
   legalName: string;
@@ -94,7 +102,12 @@ export interface LandingConfig {
   gallery: { url: string; caption?: string }[];
   pillars: { numeral: string; title: string; body: string }[];
   socials: SocialLink[];
-  reveal: { enabled: boolean; tagline: string; showScarcity: boolean };
+  reveal: {
+    enabled: boolean;
+    tagline: string;
+    showScarcity: boolean;
+    threeD?: RevealThreeD;
+  };
 }
 
 export interface LandingStudioPayload {
@@ -186,7 +199,18 @@ export function defaultConfig(brandKey: string): LandingConfig {
         { platform: "twitter", href: "https://twitter.com/Faitlynhair", label: "X" },
         { platform: "whatsapp", href: "https://wa.me/2348061987874", label: "WhatsApp" },
       ],
-      reveal: { enabled: true, tagline: "Quietly extraordinary.", showScarcity: true },
+      reveal: {
+        enabled: true,
+        tagline: "Quietly extraordinary.",
+        showScarcity: true,
+        threeD: {
+          enabled: true,
+          brandType: "faitlynhair",
+          variant: "logo-static",
+          rotationSpeed: 1.2,
+          glowIntensity: 0.8,
+        },
+      },
     };
   }
   return {
@@ -210,7 +234,18 @@ export function defaultConfig(brandKey: string): LandingConfig {
       { platform: "twitter", href: "https://x.com/pixiegirlg", label: "X" },
       { platform: "pinterest", href: "https://www.pinterest.com/pixiegirlg", label: "Pinterest" },
     ],
-    reveal: { enabled: true, tagline: "The House of the Pixie", showScarcity: true },
+    reveal: {
+      enabled: true,
+      tagline: "The House of the Pixie",
+      showScarcity: true,
+      threeD: {
+        enabled: true,
+        brandType: "pixiegirl",
+        variant: "text-dual",
+        rotationSpeed: 0.8,
+        glowIntensity: 1.0,
+      },
+    },
   };
 }
 
@@ -232,7 +267,11 @@ export function withDefaults(brandKey: string, cfg: Partial<LandingConfig> | nul
     pillars: cfg.pillars?.length ? cfg.pillars : d.pillars,
     socials: cfg.socials?.length ? cfg.socials : d.socials,
     gallery: cfg.gallery ?? d.gallery,
-    reveal: { ...d.reveal, ...(cfg.reveal ?? {}) },
+    reveal: {
+      ...d.reveal,
+      ...(cfg.reveal ?? {}),
+      threeD: { ...d.reveal.threeD, ...(cfg.reveal?.threeD ?? {}) },
+    },
   };
 }
 

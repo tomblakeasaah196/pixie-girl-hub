@@ -23,4 +23,19 @@ async function published(req, res) {
   res.json({ data });
 }
 
-module.exports = { published };
+async function signup(req, res) {
+  const { email, whatsapp, name, referral } = req.body;
+  const brand = req.brand || brandHint(req);
+
+  const data = await service.signup({
+    brand,
+    email,
+    whatsapp,
+    name,
+    referral,
+  });
+
+  res.json({ data });
+}
+
+module.exports = { published, signup };

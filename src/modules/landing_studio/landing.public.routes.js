@@ -27,5 +27,6 @@ const readLimiter = rateLimit({
 });
 
 router.get("/", readLimiter, controller.published);
+router.post("/signup", readLimiter, controller.signup);
 
 module.exports = router;

@@ -69,9 +69,10 @@ const eventIngest = z
 const newsletter = z
   .object({
     email: z.string().email(),
-    phone: z.string().min(4).max(40),
+    phone: z.string().min(4).max(40).optional(),
     first_name: z.string().max(120).optional(),
     last_name: z.string().max(120).optional(),
+    notify_via: z.enum(["email", "whatsapp", "both"]).optional(),
   })
   .strict();
 

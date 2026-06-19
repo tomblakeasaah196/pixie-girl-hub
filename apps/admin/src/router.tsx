@@ -8,6 +8,7 @@ import { ContactsPage } from "@/pages/contacts/ContactsPage";
 import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
 import { ContactTagsPage } from "@/pages/ContactTagsPage";
 import { CrmPage } from "@/pages/crm/CrmPage";
+import { SalesPage } from "@/pages/sales/SalesPage";
 import { DealDetailPage } from "@/pages/crm/deals/DealDetailPage";
 import { CataloguePage } from "@/pages/catalogue/CataloguePage";
 import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
@@ -169,7 +170,7 @@ export const router = createBrowserRouter(
           element: <AppShell />,
           children: [
             { index: true, element: <CommandCenter /> },
-            { path: "sales", element: <ModulePlaceholder /> },
+            { path: "sales", element: <SalesPage /> },
             { path: "contacts", element: <ContactsPage /> },
             { path: "contacts/milestones", element: <MilestonesPage /> },
             { path: "crm", element: <CrmPage /> },

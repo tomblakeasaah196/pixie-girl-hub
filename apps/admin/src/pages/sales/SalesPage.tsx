@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ShoppingBag, Zap, FileText } from "lucide-react";
 import { cn } from "@/lib/cn";

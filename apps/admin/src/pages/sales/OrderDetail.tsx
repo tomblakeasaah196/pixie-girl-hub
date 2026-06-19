@@ -1,11 +1,11 @@
 import { useState } from "react";
 import {
-  CreditCard, Link2, Clock, Send, FileText, XCircle,
+  CreditCard, Link2, XCircle,
 } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
-import { FormSection, FormGrid, Field } from "@/components/ui/Form";
+import { FormGrid, Field } from "@/components/ui/Form";
 import { NumberField, Select, ConfirmDialog } from "@/components/ui/controls";
 import { useOrder, useOrderTimeline, useAddPayment, useCreatePaymentLink, useCancelOrder } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";

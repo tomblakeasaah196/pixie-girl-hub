@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Plus, CheckCircle, XCircle, AlertTriangle, RotateCcw } from "lucide-react";
-import { Button, Pill, MoneyText, EmptyState } from "@/components/ui/primitives";
+import { CheckCircle, XCircle, AlertTriangle, RotateCcw } from "lucide-react";
+import { Button, Pill, EmptyState } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Form";

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Send, CheckCircle, XCircle, ArrowRightCircle,
+  Send, CheckCircle, ArrowRightCircle,
 } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
@@ -24,7 +24,7 @@ export function QuoteDetail({ quoteId, onClose }: { quoteId: string | null; onCl
 
   const [sendVia, setSendVia] = useState<NonNullable<QuotationSendInput["sent_via"]>>("email");
   const [showConvert, setShowConvert] = useState(false);
-  const [convertChannel, setConvertChannel] = useState<SalesChannel>("walk_in");
+  const [convertChannel, setConvertChannel] = useState<SalesChannel>("pos");
 
   const handleSend = async () => {
     if (!quoteId) return;

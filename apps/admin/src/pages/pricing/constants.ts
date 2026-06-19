@@ -27,6 +27,11 @@ export function marginPct(cost: number, netPrice: number): number {
   return ((netPrice - cost) / netPrice) * 100;
 }
 
+export function markupPct(cost: number, price: number): number {
+  if (cost <= 0) return 0;
+  return ((price - cost) / cost) * 100;
+}
+
 export function priceFromMargin(cost: number, targetMarginPct: number): number {
   const m = targetMarginPct / 100;
   if (m >= 1) return cost * 1000;

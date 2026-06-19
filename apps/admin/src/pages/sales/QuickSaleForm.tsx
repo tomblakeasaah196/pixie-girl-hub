@@ -1,15 +1,15 @@
 import { useState, useCallback, useMemo } from "react";
 import {
-  Search, User, Plus, Package, Layers, Box, X, Truck, Store,
-  Send, ChevronDown, ChevronUp, QrCode, Copy,
+  Search, User, Package, Layers, Box, X, Truck, Store,
+  Send, QrCode, Copy,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Card, Button, MoneyText, Pill } from "@/components/ui/primitives";
+import { Card, Button, MoneyText } from "@/components/ui/primitives";
 import { Toggle, Select, NumberField } from "@/components/ui/controls";
-import { FormSection, FormGrid, Field, TextInput } from "@/components/ui/Form";
+import { FormGrid, Field, TextInput } from "@/components/ui/Form";
 import { AddressAutocomplete, type PlaceAddress } from "@/components/ui/AddressAutocomplete";
 import { SALES_CHANNELS, FULFILMENT_OPTIONS } from "./constants";
-import { useCreateOrder, useCreatePaymentLink } from "./hooks";
+import { useCreateOrder } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { onboardingApi } from "@/lib/smartcomm-api";
 import { useBusinessStore } from "@/stores/business";
@@ -76,7 +76,7 @@ export function QuickSaleForm() {
   const [coupon, setCoupon] = useState("");
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("walk_in");
   const [addressText, setAddressText] = useState("");
-  const [address, setAddress] = useState<PlaceAddress | null>(null);
+  const [, setAddress] = useState<PlaceAddress | null>(null);
   const [shippingFee, setShippingFee] = useState("");
 
   // Step 5: Send

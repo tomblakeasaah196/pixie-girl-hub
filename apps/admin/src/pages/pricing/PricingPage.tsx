@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { PricingWorkbench } from "./PricingWorkbench";
 import { usePricingRules, usePriceFloors, useProposals, usePricingRuleMutations, usePriceFloorMutations } from "./hooks";
 import { RULE_TYPE_LABELS, RULE_TYPE_OPTIONS, FLOOR_TYPE_LABELS, FLOOR_TYPE_OPTIONS } from "./constants";
-import type { PricingRule, PriceFloor, RuleType, FloorType } from "./types";
+import type { PricingRule, PriceFloor, RuleType, FloorType, CreateRuleInput, UpdateRuleInput, CreateFloorInput } from "./types";
 
 const ProposalsTable = lazy(() => import("./ProposalsTable").then((m) => ({ default: m.ProposalsTable })));
 
@@ -121,7 +121,7 @@ function RulesTab({ canEdit }: { canEdit: boolean }) {
         {canEdit && <Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowCreate(true)}>New Rule</Button>}
       </div>
       <DataTable columns={cols} rows={data?.data ?? []} rowKey={(r) => r.rule_id} onRowClick={canEdit ? setSelected : undefined} loading={isLoading} empty={{ icon: <Tag className="w-7 h-7" />, title: "No pricing rules", message: "Define rules to automate pricing." }} />
-      <RuleDrawer open={showCreate || !!selected} rule={selected} onClose={() => { setShowCreate(false); setSelected(null); }} onCreate={(input) => create.mutate(input, { onSuccess: () => setShowCreate(false) })} onUpdate={(id, input) => update.mutate({ id, input }, { onSuccess: () => setSelected(null) })} saving={create.isPending || update.isPending} />
+      <RuleDrawer open={showCreate || !!selected} rule={selected} onClose={() => { setShowCreate(false); setSelected(null); }} onCreate={(input: CreateRuleInput) => create.mutate(input, { onSuccess: () => setShowCreate(false) })} onUpdate={(id: string, input: UpdateRuleInput) => update.mutate({ id, input }, { onSuccess: () => setSelected(null) })} saving={create.isPending || update.isPending} />
     </div>
   );
 }
@@ -183,13 +183,13 @@ function FloorsTab({ canEdit }: { canEdit: boolean }) {
       <DataTable columns={cols} rows={data?.data ?? []} rowKey={(r) => r.floor_id} loading={isLoading} empty={{ icon: <Shield className="w-7 h-7" />, title: "No price floors", message: "Set minimum limits." }} />
       {isError && <EmptyState icon={<AlertTriangle className="w-7 h-7" />} title="Failed to load" action={<Button size="sm" onClick={() => refetch()}>Retry</Button>} />}
       <Drawer open={showCreate} onClose={() => setShowCreate(false)} title="New Price Floor" footer={<><Button variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button><Button variant="primary" form="floor-form" type="submit">Create Floor</Button></>}>
-        <FloorForm onSubmit={(input) => create.mutate(input, { onSuccess: () => setShowCreate(false) })} saving={create.isPending} />
+        <FloorForm onSubmit={(input: CreateFloorInput) => create.mutate(input, { onSuccess: () => setShowCreate(false) })} />
       </Drawer>
     </div>
   );
 }
 
-function FloorForm({ onSubmit, saving }: any) {
+function FloorForm({ onSubmit }: { onSubmit: (input: CreateFloorInput) => void }) {
   const [reason, setReason] = useState("");
   const [floorType, setFloorType] = useState<FloorType>("min_price_ngn");
   const [value, setValue] = useState("");

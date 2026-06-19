@@ -62,7 +62,7 @@ async function IndexContent() {
   return (
     <main className="min-h-screen">
       {/* Hero: "Between drops" messaging */}
-      <section className="relative overflow-hidden min-h-[40vh] flex items-center justify-center px-6">
+      <section className="relative overflow-hidden min-h-[40vh] flex items-center justify-center px-6 py-10 md:py-0">
         <div
           className="absolute inset-0 -z-10"
           style={{

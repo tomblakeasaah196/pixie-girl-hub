@@ -15,11 +15,16 @@ const ex = (c) => (c ? c.query.bind(c) : query);
 
 // ── Tasks ──────────────────────────────────────────────────
 async function createTask({ client, task }) {
+  const remind_at =
+    task.reminder_minutes != null && task.due_at
+      ? new Date(new Date(task.due_at).getTime() - task.reminder_minutes * 60000).toISOString()
+      : null;
   const { rows } = await ex(client)(
     `INSERT INTO shared.tasks
        (business, title, description, status, priority, assigned_to, due_at,
-        parent_task_id, reference_type, reference_id, created_by)
-     VALUES ($1,$2,$3,COALESCE($4,'inbox'),COALESCE($5,'normal'),$6,$7,$8,$9,$10,$11)
+        parent_task_id, reference_type, reference_id, created_by,
+        is_personal, reminder_minutes, remind_at, calendar_event_id)
+     VALUES ($1,$2,$3,COALESCE($4,'to_do'),COALESCE($5,'normal'),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       task.business,
@@ -33,6 +38,10 @@ async function createTask({ client, task }) {
       task.reference_type || null,
       task.reference_id || null,
       task.created_by,
+      task.is_personal === true,
+      task.reminder_minutes ?? null,
+      remind_at,
+      task.calendar_event_id || null,
     ],
   );
   return rows[0];
@@ -44,42 +53,55 @@ async function listTasks({
   priority,
   reference_type,
   reference_id,
+  search,
   page = 1,
   page_size = 50,
 }) {
-  const where = ["business = $1", "is_deleted = false"];
+  const where = ["t.business = $1", "t.is_deleted = false"];
   const params = [brand];
   let i = 2;
   if (status) {
-    where.push(`status = $${i++}`);
+    where.push(`t.status = $${i++}`);
     params.push(status);
   }
   if (assigned_to) {
-    where.push(`assigned_to = $${i++}`);
+    where.push(`t.assigned_to = $${i++}`);
     params.push(assigned_to);
   }
   if (priority) {
-    where.push(`priority = $${i++}`);
+    where.push(`t.priority = $${i++}`);
     params.push(priority);
   }
   if (reference_type) {
-    where.push(`reference_type = $${i++}`);
+    where.push(`t.reference_type = $${i++}`);
     params.push(reference_type);
   }
   if (reference_id) {
-    where.push(`reference_id = $${i++}`);
+    where.push(`t.reference_id = $${i++}`);
     params.push(reference_id);
+  }
+  if (search) {
+    where.push(`t.title ILIKE $${i++}`);
+    params.push(`%${search}%`);
   }
   const w = `WHERE ${where.join(" AND ")}`;
   const { rows: c } = await query(
-    `SELECT count(*)::int AS total FROM shared.tasks ${w}`,
+    `SELECT count(*)::int AS total FROM shared.tasks t ${w}`,
     params,
   );
   const offset = (page - 1) * page_size;
   const { rows } = await query(
-    `SELECT * FROM shared.tasks ${w}
-      ORDER BY (due_at IS NULL), due_at ASC, created_at DESC
-      LIMIT $${i++} OFFSET $${i}`,
+    `SELECT t.*,
+            ua.display_name AS assigned_to_name,
+            uc.display_name AS created_by_name,
+            (SELECT count(*)::int FROM shared.task_subtasks WHERE task_id = t.task_id) AS subtask_count,
+            (SELECT count(*)::int FROM shared.task_subtasks WHERE task_id = t.task_id AND is_done = true) AS subtask_done_count
+       FROM shared.tasks t
+       LEFT JOIN shared.users ua ON ua.user_id = t.assigned_to
+       LEFT JOIN shared.users uc ON uc.user_id = t.created_by
+       ${w}
+       ORDER BY (t.due_at IS NULL), t.due_at ASC, t.created_at DESC
+       LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],
   );
   return { data: rows, page, page_size, total: c[0].total };
@@ -96,10 +118,13 @@ async function updateTask({ brand, id, patch }) {
     "title",
     "description",
     "priority",
+    "status",
     "assigned_to",
     "due_at",
     "reference_type",
     "reference_id",
+    "is_personal",
+    "reminder_minutes",
   ];
   const sets = [];
   const params = [];
@@ -176,22 +201,32 @@ async function deleteSubtask({ subtask_id }) {
   return rows[0] || null;
 }
 
-/** All non-done tasks for the board view (optionally scoped to an assignee). */
+/** All non-cancelled tasks for the board view (optionally scoped to an assignee). */
 async function boardTasks({ brand, assigned_to }) {
   const where = [
-    "business = $1",
-    "is_deleted = false",
-    "status <> 'cancelled'",
+    "t.business = $1",
+    "t.is_deleted = false",
+    "t.status <> 'cancelled'",
   ];
   const params = [brand];
   let i = 2;
   if (assigned_to) {
-    where.push(`assigned_to = $${i++}`);
+    where.push(`t.assigned_to = $${i++}`);
     params.push(assigned_to);
   }
   const { rows } = await query(
-    `SELECT * FROM shared.tasks WHERE ${where.join(" AND ")}
-      ORDER BY (due_at IS NULL), due_at ASC, created_at DESC`,
+    `SELECT t.*,
+            ua.display_name AS assigned_to_name,
+            uc.display_name AS created_by_name,
+            (SELECT count(*)::int FROM shared.task_subtasks WHERE task_id = t.task_id) AS subtask_count,
+            (SELECT count(*)::int FROM shared.task_subtasks WHERE task_id = t.task_id AND is_done = true) AS subtask_done_count
+       FROM shared.tasks t
+       LEFT JOIN shared.users ua ON ua.user_id = t.assigned_to
+       LEFT JOIN shared.users uc ON uc.user_id = t.created_by
+       WHERE ${where.join(" AND ")}
+       ORDER BY
+         CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+         (t.due_at IS NULL), t.due_at ASC, t.created_at DESC`,
     params,
   );
   return rows;

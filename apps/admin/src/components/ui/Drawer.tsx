@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "./primitives";
@@ -6,6 +7,12 @@ import { IconButton } from "./primitives";
 /**
  * Right-side glass Drawer — the dominant detail/edit pattern (canon §5).
  * Esc + scrim-click close. Footer is optional (e.g. a SaveBar).
+ *
+ * Portaled to document.body (like Modal). Page content can pick up a CSS
+ * containing block from a transform/filter/backdrop-filter ancestor
+ * (e.g. PageTransition's enter animation, or a `.glass` panel) — any of
+ * which would confine an un-portaled `position: fixed` Drawer to that
+ * ancestor's box instead of the viewport.
  */
 export function Drawer({
   open,
@@ -33,7 +40,7 @@ export function Drawer({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  return (
+  return createPortal(
     <>
       <div
         onClick={onClose}
@@ -73,6 +80,7 @@ export function Drawer({
         <div className="flex-1 overflow-y-auto p-[22px]">{children}</div>
         {footer && <div className="p-[15px_20px] border-t hairline flex gap-2 justify-end">{footer}</div>}
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }

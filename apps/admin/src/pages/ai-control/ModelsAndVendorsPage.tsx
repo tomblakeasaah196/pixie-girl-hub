@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
+import { Modal } from "@/components/ui/Modal";
+import { Select } from "@/components/ui/controls";
 import {
   aiGovernanceApi,
   type AiModel,
@@ -167,32 +169,28 @@ export function ModelsAndVendorsPage() {
                       <span className="block text-[10.5px] uppercase tracking-widest text-text-faint mb-1">
                         Current model
                       </span>
-                      <select
+                      <Select
                         value={row.current_model ?? ""}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           setCurrentModel.mutate({
                             vendor: row,
-                            current_model: e.target.value || null,
+                            current_model: v || null,
                           })
                         }
                         disabled={setCurrentModel.isPending}
-                        className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[12.5px] focus:outline-none focus:border-accent/40"
-                      >
-                        <option value="">
-                          {(chatModels.find((m) => m.is_default)?.display_name ??
-                            "Default") +
-                            " (auto)"}
-                        </option>
-                        {chatModels.map((m) => (
-                          <option key={m.model_id} value={m.model_id}>
-                            {m.display_name} · ₦
-                            {Number(m.input_cost_per_1m_ngn).toLocaleString()}/M
-                            in · ₦
-                            {Number(m.output_cost_per_1m_ngn).toLocaleString()}/M
-                            out
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          {
+                            value: "",
+                            label:
+                              (chatModels.find((m) => m.is_default)?.display_name ??
+                                "Default") + " (auto)",
+                          },
+                          ...chatModels.map((m) => ({
+                            value: m.model_id,
+                            label: `${m.display_name} · ₦${Number(m.input_cost_per_1m_ngn).toLocaleString()}/M in · ₦${Number(m.output_cost_per_1m_ngn).toLocaleString()}/M out`,
+                          })),
+                        ]}
+                      />
                     </div>
                   </div>
                 </div>
@@ -381,56 +379,78 @@ function ModelEditor({
   const isNew = !draft.model_id;
 
   return (
-    <div className="fixed inset-0 z-[95] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px]">
-      <div className="w-[min(600px,94vw)] dropglass rounded-2xl overflow-hidden border hairline">
-        <div className="p-5 border-b hairline flex items-center gap-2">
+    <Modal
+      open
+      onClose={onClose}
+      title={
+        <span className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-accent-glow" />
-          <h3 className="font-display text-[17px] flex-1">
-            {isNew ? "Add" : "Edit"} model
-          </h3>
+          {isNew ? "Add" : "Edit"} model
+        </span>
+      }
+      footer={
+        <>
           <button
             onClick={onClose}
-            className="text-text-muted hover:text-text-primary text-[18px]"
+            className="rounded-xl bg-panel-2 border hairline px-4 py-2 text-[13px] text-text-muted hover:text-text-primary"
           >
-            ×
+            Cancel
           </button>
-        </div>
-        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={() => save.mutate()}
+            disabled={!m.model_id || !m.display_name || save.isPending}
+            className="rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {save.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Check className="w-3.5 h-3.5" />
+            )}
+            Save
+          </button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FieldText
             label="Model ID"
             value={m.model_id}
             disabled={!isNew}
             onChange={(v) => setM({ ...m, model_id: v })}
           />
-          <FieldSelect
-            label="Vendor"
-            value={m.vendor}
-            onChange={(v) => setM({ ...m, vendor: v as AiVendor })}
-            options={[
-              { value: "deepseek", label: "DeepSeek" },
-              { value: "gemini", label: "Gemini" },
-              { value: "openai", label: "OpenAI" },
-              { value: "groq", label: "Groq" },
-              { value: "self_hosted", label: "Self-hosted" },
-              { value: "other", label: "Other" },
-            ]}
-          />
+          <label className="block">
+            <span className="block text-[11.5px] text-text-muted mb-1">Vendor</span>
+            <Select
+              value={m.vendor}
+              onChange={(v) => setM({ ...m, vendor: v as AiVendor })}
+              options={[
+                { value: "deepseek", label: "DeepSeek" },
+                { value: "gemini", label: "Gemini" },
+                { value: "openai", label: "OpenAI" },
+                { value: "groq", label: "Groq" },
+                { value: "self_hosted", label: "Self-hosted" },
+                { value: "other", label: "Other" },
+              ]}
+            />
+          </label>
           <FieldText
             label="Display name"
             value={m.display_name}
             onChange={(v) => setM({ ...m, display_name: v })}
           />
-          <FieldSelect
-            label="Capability"
-            value={m.capability}
-            onChange={(v) => setM({ ...m, capability: v as AiModel["capability"] })}
-            options={[
-              { value: "chat", label: "Chat" },
-              { value: "embedding", label: "Embedding" },
-              { value: "audio", label: "Audio (Whisper-style)" },
-              { value: "vision", label: "Vision" },
-            ]}
-          />
+          <label className="block">
+            <span className="block text-[11.5px] text-text-muted mb-1">Capability</span>
+            <Select
+              value={m.capability}
+              onChange={(v) => setM({ ...m, capability: v as AiModel["capability"] })}
+              options={[
+                { value: "chat", label: "Chat" },
+                { value: "embedding", label: "Embedding" },
+                { value: "audio", label: "Audio (Whisper-style)" },
+                { value: "vision", label: "Vision" },
+              ]}
+            />
+          </label>
           <FieldNumber
             label="₦ per 1M input tokens"
             value={Number(m.input_cost_per_1m_ngn)}
@@ -501,34 +521,13 @@ function ModelEditor({
             />
           </div>
         </div>
-        {save.isError && (
-          <div className="px-5 pb-2 text-[12px] text-danger inline-flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5" />
-            Couldn&rsquo;t save.
-          </div>
-        )}
-        <div className="p-4 border-t hairline flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-xl bg-panel-2 border hairline px-4 py-2 text-[13px] text-text-muted hover:text-text-primary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => save.mutate()}
-            disabled={!m.model_id || !m.display_name || save.isPending}
-            className="rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 inline-flex items-center gap-1.5"
-          >
-            {save.isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Check className="w-3.5 h-3.5" />
-            )}
-            Save
-          </button>
+      {save.isError && (
+        <div className="px-0 pt-2 text-[12px] text-danger inline-flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5" />
+          Couldn&rsquo;t save.
         </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 }
 
@@ -574,34 +573,6 @@ function FieldNumber({
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40 tabular-nums"
       />
-    </label>
-  );
-}
-function FieldSelect({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <label className="block">
-      <span className="block text-[11.5px] text-text-muted mb-1">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
     </label>
   );
 }

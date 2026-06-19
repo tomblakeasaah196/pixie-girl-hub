@@ -20,6 +20,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useActiveBusiness } from "@/stores/business";
 import { Card } from "@/components/ui/primitives";
+import { Modal } from "@/components/ui/Modal";
 import {
   messagingAccountsApi,
   PLATFORM_META,
@@ -384,21 +385,39 @@ function AccountEditor({
   const canSave = !!form.external_account_id && !!form.display_name;
 
   return (
-    <div className="fixed inset-0 z-[95] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px]">
-      <div className="w-[min(560px,94vw)] dropglass rounded-2xl overflow-hidden border hairline">
-        <div className="p-5 border-b hairline flex items-center gap-2">
-          <h3 className="font-display text-[17px] flex-1">
-            {existing ? "Edit" : "Connect"} {meta.label}
-            <span className="text-text-faint text-[13px] ml-2">· {brand}</span>
-          </h3>
+    <Modal
+      open
+      onClose={onClose}
+      title={
+        <>
+          {existing ? "Edit" : "Connect"} {meta.label}
+          <span className="text-text-faint text-[13px] ml-2">· {brand}</span>
+        </>
+      }
+      footer={
+        <>
           <button
             onClick={onClose}
-            className="text-text-muted hover:text-text-primary text-[18px]"
+            className="rounded-xl bg-panel-2 border hairline px-4 py-2 text-[13px] text-text-muted hover:text-text-primary"
           >
-            ×
+            Cancel
           </button>
-        </div>
-        <div className="p-5 space-y-3">
+          <button
+            onClick={() => save.mutate()}
+            disabled={!canSave || save.isPending}
+            className="rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {save.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Check className="w-3.5 h-3.5" />
+            )}
+            {existing ? "Save" : "Connect"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
           <Field
             label="External account ID"
             required
@@ -459,29 +478,8 @@ function AccountEditor({
               registered to another brand.
             </p>
           )}
-        </div>
-        <div className="p-4 border-t hairline flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-xl bg-panel-2 border hairline px-4 py-2 text-[13px] text-text-muted hover:text-text-primary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => save.mutate()}
-            disabled={!canSave || save.isPending}
-            className="rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 inline-flex items-center gap-1.5"
-          >
-            {save.isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Check className="w-3.5 h-3.5" />
-            )}
-            {existing ? "Save" : "Connect"}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

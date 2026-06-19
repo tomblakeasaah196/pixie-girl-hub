@@ -29,7 +29,6 @@ import {
   Globe,
   MessageSquare,
   CalendarDays,
-  ListTodo,
   Bell,
   Scissors,
   Palette,
@@ -68,8 +67,7 @@ export const MODULES: AppModule[] = [
   { key: "crm", label: "CRM", description: "Deals & 360° profiles", group: "run", route: "/crm", icon: Users },
   { key: "pos", label: "Point of Sale", description: "Walk-in checkout", group: "run", route: "/pos", icon: CreditCard },
   { key: "ecommerce", label: "E-Commerce", description: "Storefront admin", group: "run", route: "/ecommerce", icon: Globe },
-  { key: "calendar", label: "Calendar", description: "Scheduling & events", group: "run", route: "/calendar", icon: CalendarDays },
-  { key: "tasks", label: "Tasks", description: "To-dos & assignments", group: "run", route: "/tasks", icon: ListTodo },
+  { key: "workspace", label: "Workspace", description: "Tasks, calendar & my day", group: "run", route: "/workspace", icon: CalendarDays },
   { key: "stock", label: "Stock", description: "One true count", group: "operate", route: "/stock", icon: Boxes },
   { key: "catalogue", label: "Catalogue", description: "Products & variants", group: "operate", route: "/catalogue", icon: Package },
   { key: "logistics", label: "Logistics", description: "Deliveries & couriers", group: "operate", route: "/logistics", icon: Truck },
@@ -108,6 +106,7 @@ export const MODULE_BY_KEY: Record<string, AppModule> = Object.fromEntries(
 /** The default top-10 (Dashboard is anchored first). */
 export const DEFAULT_TOP = [
   "dashboard",
+  "workspace",
   "sales",
   "crm",
   "pos",
@@ -115,7 +114,6 @@ export const DEFAULT_TOP = [
   "catalogue",
   "invoicing",
   "logistics",
-  "retention",
   "praxis",
 ];
 

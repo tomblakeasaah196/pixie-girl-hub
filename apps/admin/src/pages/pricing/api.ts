@@ -1,94 +1,121 @@
 import { api } from "@/lib/api";
 import type {
-  PricingRule,
-  PriceFloor,
-  ScenarioResult,
-  ScenarioComputeInput,
-  Proposal,
-  CreateRuleInput,
-  UpdateRuleInput,
+  ApplyInput,
+  ApplyResult,
   CreateFloorInput,
-  UpdateFloorInput,
+  CreateOverrideInput,
   CreateProposalInput,
-  PaginatedResponse,
+  CreateRuleInput,
+  CreateScenarioInput,
+  ComputeSliderInput,
+  Floor,
+  HistoryRow,
+  Override,
+  PricingConfig,
+  Proposal,
+  ProposalDetail,
+  Recommendation,
+  RecommendInput,
+  Rule,
+  Scenario,
+  ScenarioDetail,
+  UpdateConfigInput,
+  UpdateRuleInput,
 } from "./types";
 
 const BASE = "/pricing";
 
-// ── Pricing Rules ─────────────────────────────────────────────────────────────
-
-export function listRules(params?: { page?: number; page_size?: number; is_active?: boolean }) {
-  const qs = new URLSearchParams();
-  if (params?.page) qs.set("page", String(params.page));
-  if (params?.page_size) qs.set("page_size", String(params.page_size));
-  if (params?.is_active !== undefined) qs.set("is_active", String(params.is_active));
-  const q = qs.toString();
-  return api.get<PaginatedResponse<PricingRule>>(`${BASE}/rules${q ? `?${q}` : ""}`);
+function qs(params: Record<string, string | undefined>): string {
+  const parts = Object.entries(params).filter(([, v]) => v != null && v !== "");
+  if (!parts.length) return "";
+  return "?" + parts.map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join("&");
 }
 
-export function getRule(id: string) {
-  return api.get<PricingRule>(`${BASE}/rules/${id}`);
-}
+// ── Advisor ──────────────────────────────────────────────────────────────────
+export const recommend = (input: RecommendInput) =>
+  api.post<Recommendation>(`${BASE}/recommend`, input);
 
-export function createRule(input: CreateRuleInput) {
-  return api.post<PricingRule>(`${BASE}/rules`, input);
-}
+export const applyPrice = (input: ApplyInput) =>
+  api.post<ApplyResult>(`${BASE}/apply`, input);
 
-export function updateRule(id: string, input: UpdateRuleInput) {
-  return api.patch<PricingRule>(`${BASE}/rules/${id}`, input);
-}
+export const getConfig = () => api.get<PricingConfig>(`${BASE}/config`);
 
-// ── Price Floors ──────────────────────────────────────────────────────────────
+export const updateConfig = (input: UpdateConfigInput) =>
+  api.put<PricingConfig>(`${BASE}/config`, input);
 
-export function listFloors(params?: { page?: number; page_size?: number }) {
-  const qs = new URLSearchParams();
-  if (params?.page) qs.set("page", String(params.page));
-  if (params?.page_size) qs.set("page_size", String(params.page_size));
-  const q = qs.toString();
-  return api.get<PaginatedResponse<PriceFloor>>(`${BASE}/floors${q ? `?${q}` : ""}`);
-}
+export const setVariantUsd = (variantId: string, priceUsd: number | null) =>
+  api.put<{ variant_id: string; price_usd: number | null }>(
+    `${BASE}/variants/${variantId}/usd`,
+    { price_usd: priceUsd },
+  );
 
-export function createFloor(input: CreateFloorInput) {
-  return api.post<PriceFloor>(`${BASE}/floors`, input);
-}
+// ── Scenarios ────────────────────────────────────────────────────────────────
+export const listScenarios = (status?: string) =>
+  api.get<Scenario[]>(`${BASE}/scenarios${qs({ status })}`);
 
-export function updateFloor(id: string, input: UpdateFloorInput) {
-  return api.patch<PriceFloor>(`${BASE}/floors/${id}`, input);
-}
+export const getScenario = (id: string) =>
+  api.get<ScenarioDetail>(`${BASE}/scenarios/${id}`);
 
-// ── Scenario Computation ──────────────────────────────────────────────────────
+export const createScenario = (input: CreateScenarioInput) =>
+  api.post<Scenario>(`${BASE}/scenarios`, input);
 
-export function computeScenario(input: ScenarioComputeInput) {
-  return api.post<ScenarioResult>(`${BASE}/scenarios/compute`, input);
-}
+export const computeScenario = (id: string, sliders?: ComputeSliderInput[]) =>
+  api.post<Scenario & { results_count: number }>(`${BASE}/scenarios/${id}/compute`, { sliders });
 
-// ── Pricing Proposals ─────────────────────────────────────────────────────────
+// ── Proposals ────────────────────────────────────────────────────────────────
+export const listProposals = (status?: string) =>
+  api.get<Proposal[]>(`${BASE}/proposals${qs({ status })}`);
 
-export function listProposals(params?: {
-  page?: number;
-  page_size?: number;
-  status?: string;
-}) {
-  const qs = new URLSearchParams();
-  if (params?.page) qs.set("page", String(params.page));
-  if (params?.page_size) qs.set("page_size", String(params.page_size));
-  if (params?.status) qs.set("status", params.status);
-  const q = qs.toString();
-  return api.get<PaginatedResponse<Proposal>>(`${BASE}/proposals${q ? `?${q}` : ""}`);
-}
+export const getProposal = (id: string) =>
+  api.get<ProposalDetail>(`${BASE}/proposals/${id}`);
 
-export function createProposal(input: CreateProposalInput) {
-  return api.post<Proposal>(`${BASE}/proposals`, input);
-}
+export const createProposal = (input: CreateProposalInput) =>
+  api.post<Proposal>(`${BASE}/proposals`, input);
 
-export function approveProposal(id: string) {
-  return api.post<Proposal>(`${BASE}/proposals/${id}/approve`);
-}
+export const approveProposal = (id: string) =>
+  api.post<Proposal & { applied?: boolean }>(`${BASE}/proposals/${id}/approve`);
 
-export function rejectProposal(id: string, reason: string) {
-  return api.post<Proposal>(`${BASE}/proposals/${id}/reject`, { reason });
-}
+export const rejectProposal = (id: string, reason?: string) =>
+  api.post<Proposal>(`${BASE}/proposals/${id}/reject`, { reason });
 
-export function revertProposal(id: string) {
-  return api.post<Proposal>(`${BASE}/proposals/${id}/revert`);
-}
+export const revertProposal = (id: string, reason?: string) =>
+  api.post<Proposal & { reverted?: boolean }>(`${BASE}/proposals/${id}/revert`, { reason });
+
+// ── Rules ────────────────────────────────────────────────────────────────────
+export const listRules = (params?: { channel?: string; is_active?: boolean }) =>
+  api.get<Rule[]>(
+    `${BASE}/rules${qs({
+      channel: params?.channel,
+      is_active: params?.is_active === undefined ? undefined : String(params.is_active),
+    })}`,
+  );
+
+export const createRule = (input: CreateRuleInput) =>
+  api.post<Rule>(`${BASE}/rules`, input);
+
+export const updateRule = (id: string, input: UpdateRuleInput) =>
+  api.patch<Rule>(`${BASE}/rules/${id}`, input);
+
+export const deleteRule = (id: string) => api.delete<void>(`${BASE}/rules/${id}`);
+
+// ── Floors ───────────────────────────────────────────────────────────────────
+export const listFloors = (variantId?: string) =>
+  api.get<Floor[]>(`${BASE}/floors${qs({ variant_id: variantId })}`);
+
+export const createFloor = (input: CreateFloorInput) =>
+  api.post<Floor>(`${BASE}/floors`, input);
+
+export const deleteFloor = (id: string) => api.delete<void>(`${BASE}/floors/${id}`);
+
+// ── Overrides ────────────────────────────────────────────────────────────────
+export const listOverrides = (variantId?: string) =>
+  api.get<Override[]>(`${BASE}/overrides${qs({ variant_id: variantId })}`);
+
+export const createOverride = (input: CreateOverrideInput) =>
+  api.post<Override>(`${BASE}/overrides`, input);
+
+export const deleteOverride = (id: string) => api.delete<void>(`${BASE}/overrides/${id}`);
+
+// ── History ──────────────────────────────────────────────────────────────────
+export const getHistory = (variantId: string) =>
+  api.get<HistoryRow[]>(`${BASE}/history/${variantId}`);

@@ -1,148 +1,183 @@
 import type { Tone } from "@/components/ui/primitives";
-import type { ProposalStatus, RuleType, FloorType } from "./types";
+import type {
+  Basis,
+  Channel,
+  CostSource,
+  FloorType,
+  GoalType,
+  ProposalStatus,
+  RuleType,
+  ScenarioStatus,
+  ScopeType,
+} from "./types";
 
-// ── Channel Fees (D-7 gross-up formula) ─────────────────────────────────────
-// gross = (net + fixed_fee) / (1 - pct_fee)
+// ── Channels ─────────────────────────────────────────────────────────────────
+// The advisor accepts any channel string; overrides accept this fixed set.
+export const CHANNEL_OPTIONS: { value: Channel; label: string }[] = [
+  { value: "storefront", label: "Storefront" },
+  { value: "pos", label: "POS" },
+  { value: "wholesale", label: "Wholesale" },
+  { value: "partner", label: "Partner" },
+  { value: "intercompany", label: "Intercompany" },
+  { value: "instagram", label: "Instagram" },
+];
 
-export interface ChannelFee {
-  label: string;
-  pct_fee: number;    // as decimal: 0.12 = 12%
-  fixed_fee_ngn: number;
-  icon: string;       // emoji shorthand
-}
-
-export const CHANNEL_FEES: Record<string, ChannelFee> = {
-  jumia: {
-    label: "Jumia",
-    pct_fee: 0.12,
-    fixed_fee_ngn: 0,
-    icon: "🟠",
-  },
-  konga: {
-    label: "Konga",
-    pct_fee: 0.10,
-    fixed_fee_ngn: 0,
-    icon: "🔵",
-  },
-  instagram: {
-    label: "Instagram (COD)",
-    pct_fee: 0,
-    fixed_fee_ngn: 500,
-    icon: "📸",
-  },
-  website: {
-    label: "Website",
-    pct_fee: 0.029,
-    fixed_fee_ngn: 100,
-    icon: "🌐",
-  },
-  wholesale: {
-    label: "Wholesale",
-    pct_fee: 0,
-    fixed_fee_ngn: 0,
-    icon: "📦",
-  },
+export const CHANNEL_LABEL: Record<string, string> = {
+  storefront: "Storefront",
+  pos: "POS",
+  wholesale: "Wholesale",
+  partner: "Partner",
+  intercompany: "Intercompany",
+  instagram: "Instagram",
 };
 
-/** D-7 gross-up: what to list on the channel so the net received = net_price */
-export function grossUp(netPrice: number, channel: string): number {
-  const fee = CHANNEL_FEES[channel];
-  if (!fee) return netPrice;
-  return (netPrice + fee.fixed_fee_ngn) / (1 - fee.pct_fee);
+export function channelLabel(c: string | null | undefined): string {
+  if (!c) return "All channels";
+  return CHANNEL_LABEL[c] ?? c;
 }
 
-/** Reverse of grossUp: net received from a given gross listing price */
-export function netFromGross(grossPrice: number, channel: string): number {
-  const fee = CHANNEL_FEES[channel];
-  if (!fee) return grossPrice;
-  return grossPrice * (1 - fee.pct_fee) - fee.fixed_fee_ngn;
-}
+// ── Advisor basis ────────────────────────────────────────────────────────────
+export const BASIS_OPTIONS: { value: Basis; label: string }[] = [
+  { value: "margin", label: "Target margin" },
+  { value: "markup", label: "Target markup" },
+  { value: "price", label: "Target price" },
+];
 
-/** Compute margin % from cost and net price */
-export function marginPct(cost: number, netPrice: number): number {
-  if (netPrice <= 0) return 0;
-  return ((netPrice - cost) / netPrice) * 100;
-}
-
-/** Compute markup % from cost and net price */
-export function markupPct(cost: number, netPrice: number): number {
-  if (cost <= 0) return 0;
-  return ((netPrice - cost) / cost) * 100;
-}
-
-/** Derive retail price from cost + target margin % */
-export function priceFromMargin(cost: number, targetMarginPct: number): number {
-  const m = targetMarginPct / 100;
-  if (m >= 1) return cost * 1000; // guard against division by zero
-  return cost / (1 - m);
-}
-
-/** Derive retail price from cost + target markup % */
-export function priceFromMarkup(cost: number, targetMarkupPct: number): number {
-  return cost * (1 + targetMarkupPct / 100);
-}
-
-// ── Proposal Status Meta ─────────────────────────────────────────────────────
-
-interface StatusMeta {
-  label: string;
-  tone: Tone;
-}
-
-export const PROPOSAL_STATUS_META: Record<ProposalStatus, StatusMeta> = {
-  pending: { label: "Pending", tone: "warn" },
-  approved: { label: "Approved", tone: "success" },
-  rejected: { label: "Rejected", tone: "danger" },
+// Slider bounds per basis (margin 0–90, markup 0–300, step 1).
+export const SLIDER_BOUNDS: Record<Basis, { min: number; max: number; step: number } | null> = {
+  margin: { min: 0, max: 90, step: 1 },
+  markup: { min: 0, max: 300, step: 1 },
+  price: null,
 };
 
-// ── Rule Types ───────────────────────────────────────────────────────────────
+// ── Cost source chips ────────────────────────────────────────────────────────
+export const COST_SOURCE_META: Record<CostSource, { label: string; tone: Tone }> = {
+  vault: { label: "Vault", tone: "accent" },
+  operational: { label: "Operational", tone: "info" },
+  override: { label: "Override", tone: "warn" },
+  none: { label: "Cost hidden", tone: "neutral" },
+};
 
+// ── Rule types (7 real types) ────────────────────────────────────────────────
 export const RULE_TYPE_LABELS: Record<RuleType, string> = {
   markup_pct: "Markup %",
-  margin_pct: "Margin %",
-  fixed_price: "Fixed Price",
-  channel_override: "Channel Override",
-  seasonal: "Seasonal",
+  target_margin_pct: "Target margin %",
+  fixed_price: "Fixed price",
+  discount_pct: "Discount %",
+  min_price: "Min price",
+  cost_pass_through: "Cost pass-through",
+  tiered_quantity: "Tiered quantity",
 };
 
-export const RULE_TYPE_OPTIONS: { value: RuleType; label: string }[] = [
-  { value: "markup_pct", label: "Markup %" },
-  { value: "margin_pct", label: "Margin %" },
-  { value: "fixed_price", label: "Fixed Price" },
-  { value: "channel_override", label: "Channel Override" },
-  { value: "seasonal", label: "Seasonal" },
-];
+export const RULE_TYPE_OPTIONS: { value: RuleType; label: string }[] = (
+  Object.keys(RULE_TYPE_LABELS) as RuleType[]
+).map((v) => ({ value: v, label: RULE_TYPE_LABELS[v] }));
 
-// ── Floor Types ───────────────────────────────────────────────────────────────
+/** Rule types whose value is a money figure (NGN) rather than a percent. */
+export const RULE_VALUE_IS_NGN: Record<RuleType, boolean> = {
+  markup_pct: false,
+  target_margin_pct: false,
+  fixed_price: true,
+  discount_pct: false,
+  min_price: true,
+  cost_pass_through: false,
+  tiered_quantity: false,
+};
 
+// ── Floor types ──────────────────────────────────────────────────────────────
 export const FLOOR_TYPE_LABELS: Record<FloorType, string> = {
-  absolute: "Absolute Price",
-  cost_plus_pct: "Cost + %",
-  cost_plus_fixed: "Cost + Fixed Amount",
+  min_price_ngn: "Min price (₦)",
+  min_margin_pct: "Min margin %",
+  min_markup_pct: "Min markup %",
 };
 
-export const FLOOR_TYPE_OPTIONS: { value: FloorType; label: string }[] = [
-  { value: "absolute", label: "Absolute Price (₦)" },
-  { value: "cost_plus_pct", label: "Cost + Percentage" },
-  { value: "cost_plus_fixed", label: "Cost + Fixed Amount (₦)" },
+export const FLOOR_TYPE_OPTIONS: { value: FloorType; label: string }[] = (
+  Object.keys(FLOOR_TYPE_LABELS) as FloorType[]
+).map((v) => ({ value: v, label: FLOOR_TYPE_LABELS[v] }));
+
+export const FLOOR_VALUE_IS_NGN: Record<FloorType, boolean> = {
+  min_price_ngn: true,
+  min_margin_pct: false,
+  min_markup_pct: false,
+};
+
+// ── Scenario meta ────────────────────────────────────────────────────────────
+export const SCOPE_TYPE_OPTIONS: { value: ScopeType; label: string }[] = [
+  { value: "all_active", label: "All active products" },
+  { value: "category", label: "Specific categories" },
+  { value: "specific_products", label: "Specific products" },
+  { value: "specific_variants", label: "Specific variants" },
 ];
 
-// ── Proposal Status Tabs ─────────────────────────────────────────────────────
+export const GOAL_TYPE_OPTIONS: { value: GoalType; label: string }[] = [
+  { value: "target_margin", label: "Target margin" },
+  { value: "target_price", label: "Target price" },
+  { value: "target_revenue", label: "Target revenue" },
+  { value: "sensitivity_only", label: "Sensitivity only" },
+];
+
+export const GOAL_TYPE_LABELS: Record<GoalType, string> = {
+  target_margin: "Target margin",
+  target_price: "Target price",
+  target_revenue: "Target revenue",
+  sensitivity_only: "Sensitivity only",
+};
+
+export const SCENARIO_STATUS_META: Record<ScenarioStatus, { label: string; tone: Tone }> = {
+  draft: { label: "Draft", tone: "neutral" },
+  computed: { label: "Computed", tone: "info" },
+  proposed: { label: "Proposed", tone: "warn" },
+  applied: { label: "Applied", tone: "success" },
+  rejected: { label: "Rejected", tone: "danger" },
+  archived: { label: "Archived", tone: "neutral" },
+};
+
+export const SCENARIO_STATUS_TABS = [
+  { value: "", label: "All" },
+  { value: "draft", label: "Draft" },
+  { value: "computed", label: "Computed" },
+  { value: "proposed", label: "Proposed" },
+  { value: "applied", label: "Applied" },
+] as const;
+
+// ── Proposal meta ────────────────────────────────────────────────────────────
+export const PROPOSAL_STATUS_META: Record<ProposalStatus, { label: string; tone: Tone }> = {
+  draft: { label: "Draft", tone: "neutral" },
+  pending_approval: { label: "Pending approval", tone: "warn" },
+  approved: { label: "Approved", tone: "success" },
+  applied: { label: "Applied", tone: "success" },
+  rejected: { label: "Rejected", tone: "danger" },
+  reverted: { label: "Reverted", tone: "neutral" },
+  expired: { label: "Expired", tone: "neutral" },
+};
 
 export const PROPOSAL_STATUS_TABS = [
   { value: "", label: "All" },
-  { value: "pending", label: "Pending" },
+  { value: "pending_approval", label: "Pending" },
   { value: "approved", label: "Approved" },
+  { value: "applied", label: "Applied" },
   { value: "rejected", label: "Rejected" },
 ] as const;
 
-// ── Sensitivity grid config ───────────────────────────────────────────────────
+// ── Small helpers ────────────────────────────────────────────────────────────
+export function fmtPct(n: number | null | undefined, dp = 1): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return `${n.toFixed(dp)}%`;
+}
 
-/** Number of ± cost steps in the sensitivity grid */
-export const SENSITIVITY_STEPS = 5;
-/** % shift per step */
-export const SENSITIVITY_STEP_PCT = 0.02; // 2% per step = ±10% total
+/** Margin colour bands (re-used by advisor + scenario results). */
+export function marginTone(pct: number | null | undefined): Tone {
+  if (pct == null) return "neutral";
+  if (pct < 20) return "danger";
+  if (pct < 35) return "warn";
+  return "success";
+}
 
-/** Colour thresholds for the sensitivity grid cells */
-export const MARGIN_THRESHOLD_WARN = 15;  // below 15% = warn
-export const MARGIN_THRESHOLD_DANGER = 5; // below 5% = danger
+export function fmtDate(d: string | null | undefined): string {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "2-digit",
+  });
+}

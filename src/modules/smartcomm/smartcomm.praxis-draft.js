@@ -221,7 +221,9 @@ function lastFromTranscript(transcript, speaker) {
   return null;
 }
 function stripHtml(s) {
-  return String(s).replace(/<[^>]+>/g, "").trim();
+  return String(s)
+    .replace(/<[^>]+>/g, "")
+    .trim();
 }
 
 module.exports = { draftReply };

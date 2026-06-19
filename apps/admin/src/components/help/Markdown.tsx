@@ -78,7 +78,7 @@ function parseBlocks(src: string): Block[] {
     const h = /^(#{1,3})\s+(.+)$/.exec(line);
     if (h) {
       blocks.push({
-        kind: (`h${h[1].length}` as "h1" | "h2" | "h3"),
+        kind: `h${h[1].length}` as "h1" | "h2" | "h3",
         text: h[2].trim(),
       });
       i++;
@@ -157,8 +157,7 @@ function splitRow(line: string): string[] {
 function inline(text: string): ReactNode[] {
   const out: ReactNode[] = [];
   // Order: code → bold → italic. Each pass walks remaining segments.
-  const pattern =
-    /(`[^`]+`)|(\*\*[^*]+\*\*)|(_[^_]+_)|(\[[^\]]+\]\([^)]+\))/g;
+  const pattern = /(`[^`]+`)|(\*\*[^*]+\*\*)|(_[^_]+_)|(\[[^\]]+\]\([^)]+\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = pattern.exec(text))) {

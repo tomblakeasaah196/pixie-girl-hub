@@ -236,7 +236,9 @@ const StorefrontOrderTrack = lazy(
   () => import("@pages/storefront/OrderTracking"),
 );
 const QRJoinForm = lazy(() => import("@pages/storefront/QRJoinForm"));
-const WalkinRegisterForm = lazy(() => import("@pages/storefront/WalkinRegisterForm"));
+const WalkinRegisterForm = lazy(
+  () => import("@pages/storefront/WalkinRegisterForm"),
+);
 
 function PageFallback() {
   return (

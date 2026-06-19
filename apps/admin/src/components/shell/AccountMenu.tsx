@@ -178,7 +178,10 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) { setCropFile(f); e.target.value = ""; }
+          if (f) {
+            setCropFile(f);
+            e.target.value = "";
+          }
         }}
       />
 
@@ -195,10 +198,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
         open={passwordOpen}
         onClose={() => setPasswordOpen(false)}
       />
-      <ProfileDrawer
-        open={profileOpen}
-        onClose={() => setProfileOpen(false)}
-      />
+      <ProfileDrawer open={profileOpen} onClose={() => setProfileOpen(false)} />
     </>
   );
 }

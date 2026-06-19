@@ -1,9 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, Eye, EyeOff, Hash, Loader2, Trash2, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Hash,
+  Loader2,
+  Trash2,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { checkPin } from "@/lib/password";
-import { getPinStatus, removePin, setPin, setPinEnabledLocally } from "@/lib/auth-api";
+import {
+  getPinStatus,
+  removePin,
+  setPin,
+  setPinEnabledLocally,
+} from "@/lib/auth-api";
 
 function OtpBoxes({
   value,
@@ -129,7 +142,8 @@ export function PinManager({
   if (!open) return null;
 
   const pinCheck = checkPin(pin);
-  const canSave = password.length >= 1 && pinCheck.ok && pin === confirm && !loading;
+  const canSave =
+    password.length >= 1 && pinCheck.ok && pin === confirm && !loading;
 
   const save = async () => {
     if (!canSave) return;
@@ -252,11 +266,7 @@ export function PinManager({
                 <label className="block text-[11.5px] font-semibold text-text-faint uppercase tracking-wider mb-2">
                   New PIN
                 </label>
-                <OtpBoxes
-                  value={pin}
-                  onChange={setPin2}
-                  disabled={loading}
-                />
+                <OtpBoxes value={pin} onChange={setPin2} disabled={loading} />
                 {pin.length === 6 && !pinCheck.ok && (
                   <p className="text-[11.5px] text-danger mt-2 text-center">
                     {pinCheck.error}

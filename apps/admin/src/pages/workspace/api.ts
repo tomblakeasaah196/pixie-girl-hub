@@ -38,12 +38,13 @@ export interface TaskListParams {
 }
 
 export const listTasks = (params: TaskListParams = {}) =>
-  api.get<{ data: Task[]; meta: { total: number } }>(`${T}${qs({ ...params })}`);
+  api.get<{ data: Task[]; meta: { total: number } }>(
+    `${T}${qs({ ...params })}`,
+  );
 
 export const getTask = (id: string) => api.get<Task>(`${T}/${id}`);
 
-export const createTask = (input: TaskCreateInput) =>
-  api.post<Task>(T, input);
+export const createTask = (input: TaskCreateInput) => api.post<Task>(T, input);
 
 export const updateTask = (id: string, input: TaskUpdateInput) =>
   api.patch<Task>(`${T}/${id}`, input);
@@ -58,8 +59,11 @@ export const deleteTask = (id: string) => api.delete<void>(`${T}/${id}`);
 export const addSubtask = (taskId: string, title: string) =>
   api.post<Subtask>(`${T}/${taskId}/subtasks`, { title });
 
-export const toggleSubtask = (taskId: string, subtaskId: string, is_done: boolean) =>
-  api.patch<Subtask>(`${T}/${taskId}/subtasks/${subtaskId}`, { is_done });
+export const toggleSubtask = (
+  taskId: string,
+  subtaskId: string,
+  is_done: boolean,
+) => api.patch<Subtask>(`${T}/${taskId}/subtasks/${subtaskId}`, { is_done });
 
 export const deleteSubtask = (taskId: string, subtaskId: string) =>
   api.delete<void>(`${T}/${taskId}/subtasks/${subtaskId}`);

@@ -9,7 +9,7 @@ import { persist } from "zustand/middleware";
 interface DndSchedule {
   enabled: boolean;
   startHour: number; // 0-23
-  endHour: number;   // 0-23
+  endHour: number; // 0-23
 }
 
 interface NotifUiState {

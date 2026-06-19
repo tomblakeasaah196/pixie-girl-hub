@@ -13,7 +13,9 @@ export function StockCounter({
 }) {
   if (state !== "live") return null;
   const bundles = (payload.bundles || []).filter(
-    (b) => b.current_stock_snapshot !== null && b.current_stock_snapshot !== undefined,
+    (b) =>
+      b.current_stock_snapshot !== null &&
+      b.current_stock_snapshot !== undefined,
   );
   if (!bundles.length) return null;
 
@@ -31,8 +33,13 @@ export function StockCounter({
             const pct = Math.min(100, (remaining / start) * 100);
             const low = remaining > 0 && remaining <= Math.max(2, start * 0.2);
             return (
-              <li key={b.link_id} className="grid grid-cols-12 gap-3 items-center">
-                <div className="col-span-5 truncate text-[13.5px]">{b.bundle_name}</div>
+              <li
+                key={b.link_id}
+                className="grid grid-cols-12 gap-3 items-center"
+              >
+                <div className="col-span-5 truncate text-[13.5px]">
+                  {b.bundle_name}
+                </div>
                 <div className="col-span-5">
                   <div className="h-1.5 rounded-full bg-[rgb(var(--text)/0.08)] overflow-hidden">
                     <motion.div
@@ -49,11 +56,21 @@ export function StockCounter({
                 </div>
                 <div className="col-span-2 text-right tabular-nums text-[12.5px]">
                   {remaining === 0 ? (
-                    <span className="text-[rgb(var(--text-faint))]">Sold out</span>
+                    <span className="text-[rgb(var(--text-faint))]">
+                      Sold out
+                    </span>
                   ) : (
                     <>
-                      <span className={low ? "text-[rgb(var(--danger))] font-semibold" : ""}>{remaining}</span>{" "}
-                      <span className="text-[rgb(var(--text-faint))]">left</span>
+                      <span
+                        className={
+                          low ? "text-[rgb(var(--danger))] font-semibold" : ""
+                        }
+                      >
+                        {remaining}
+                      </span>{" "}
+                      <span className="text-[rgb(var(--text-faint))]">
+                        left
+                      </span>
                     </>
                   )}
                 </div>

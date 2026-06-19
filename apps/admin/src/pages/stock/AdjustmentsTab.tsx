@@ -11,7 +11,12 @@ import {
   X,
 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
-import { ErrorState, Select, NumberField, ConfirmDialog } from "@/components/ui/controls";
+import {
+  ErrorState,
+  Select,
+  NumberField,
+  ConfirmDialog,
+} from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
 import { useAuthStore } from "@/stores/auth";
@@ -34,7 +39,10 @@ import {
 
 /* ─── Constants ─── */
 
-const ADJUSTMENT_TYPE_TONE: Record<string, "info" | "warn" | "danger" | "success" | "accent" | "neutral"> = {
+const ADJUSTMENT_TYPE_TONE: Record<
+  string,
+  "info" | "warn" | "danger" | "success" | "accent" | "neutral"
+> = {
   count: "info",
   damage: "danger",
   theft: "danger",
@@ -101,7 +109,10 @@ export default function AdjustmentsTab() {
   const locationOptions = useMemo(
     () => [
       { value: "", label: "All locations" },
-      ...locations.map((l) => ({ value: l.location_id, label: l.display_name })),
+      ...locations.map((l) => ({
+        value: l.location_id,
+        label: l.display_name,
+      })),
     ],
     [locations],
   );
@@ -136,14 +147,11 @@ export default function AdjustmentsTab() {
     [mutations],
   );
 
-  const handleReject = useCallback(
-    async () => {
-      if (!rejectTarget) return;
-      await mutations.rejectAdjustment.mutateAsync(rejectTarget);
-      setRejectTarget(null);
-    },
-    [rejectTarget, mutations],
-  );
+  const handleReject = useCallback(async () => {
+    if (!rejectTarget) return;
+    await mutations.rejectAdjustment.mutateAsync(rejectTarget);
+    setRejectTarget(null);
+  }, [rejectTarget, mutations]);
 
   /* ─── Columns ─── */
 
@@ -158,7 +166,9 @@ export default function AdjustmentsTab() {
       key: "adjustment_number",
       header: "Adjustment Ref",
       render: (r) => (
-        <span className="font-mono text-[13px] text-text-primary">{r.adjustment_number}</span>
+        <span className="font-mono text-[13px] text-text-primary">
+          {r.adjustment_number}
+        </span>
       ),
     },
     {
@@ -179,7 +189,11 @@ export default function AdjustmentsTab() {
         </span>
       ),
     },
-    { key: "status", header: "Status", render: (r) => <StatusPill status={r.status} /> },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => <StatusPill status={r.status} />,
+    },
     {
       key: "lines",
       header: "Lines",
@@ -221,7 +235,12 @@ export default function AdjustmentsTab() {
   /* ─── Render ─── */
 
   if (adjustmentsQ.isError) {
-    return <ErrorState message="Failed to load adjustments." onRetry={() => adjustmentsQ.refetch()} />;
+    return (
+      <ErrorState
+        message="Failed to load adjustments."
+        onRetry={() => adjustmentsQ.refetch()}
+      />
+    );
   }
 
   return (
@@ -243,7 +262,11 @@ export default function AdjustmentsTab() {
                   <span className="font-mono text-[13px] text-text-primary">
                     {adj.adjustment_number}
                   </span>
-                  <Pill tone={ADJUSTMENT_TYPE_TONE[adj.adjustment_type] ?? "neutral"}>
+                  <Pill
+                    tone={
+                      ADJUSTMENT_TYPE_TONE[adj.adjustment_type] ?? "neutral"
+                    }
+                  >
                     {adj.adjustment_type.replace(/_/g, " ")}
                   </Pill>
                   <span className="text-[12px] text-text-muted truncate">
@@ -263,7 +286,10 @@ export default function AdjustmentsTab() {
                     variant="primary"
                     icon={<ShieldCheck className="w-3.5 h-3.5" />}
                     onClick={() => handleApprove(adj.adjustment_id)}
-                    disabled={mutations.approveAdjustment.isPending || mutations.postAdjustment.isPending}
+                    disabled={
+                      mutations.approveAdjustment.isPending ||
+                      mutations.postAdjustment.isPending
+                    }
                   >
                     Approve
                   </Button>
@@ -285,8 +311,16 @@ export default function AdjustmentsTab() {
 
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={statusFilter} onChange={setStatusFilter} options={STATUS_OPTIONS} />
-        <Select value={locationFilter} onChange={setLocationFilter} options={locationOptions} />
+        <Select
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={STATUS_OPTIONS}
+        />
+        <Select
+          value={locationFilter}
+          onChange={setLocationFilter}
+          options={locationOptions}
+        />
         <div className="flex-1" />
         {canCreate && (
           <>
@@ -323,7 +357,12 @@ export default function AdjustmentsTab() {
         }}
       />
       {meta && (
-        <Pagination page={page} pageSize={PAGE_SIZE} total={meta.total} onChange={setPage} />
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={meta.total}
+          onChange={setPage}
+        />
       )}
 
       {/* ── Reject confirm dialog ── */}
@@ -383,7 +422,10 @@ function StocktakeDrawer({
   const locationOptions = useMemo(
     () => [
       { value: "", label: "Select location" },
-      ...locations.map((l) => ({ value: l.location_id, label: l.display_name })),
+      ...locations.map((l) => ({
+        value: l.location_id,
+        label: l.display_name,
+      })),
     ],
     [locations],
   );
@@ -394,7 +436,9 @@ function StocktakeDrawer({
     page: countPage,
     page_size: PAGE_SIZE,
   });
-  const levels: StockLevel[] = Array.isArray(levelsQ.data) ? levelsQ.data : (levelsQ.data as any)?.data ?? [];
+  const levels: StockLevel[] = Array.isArray(levelsQ.data)
+    ? levelsQ.data
+    : ((levelsQ.data as any)?.data ?? []);
 
   const filteredLevels = useMemo(() => {
     if (!search) return levels;
@@ -537,16 +581,24 @@ function StocktakeDrawer({
         <div className="space-y-5 p-1">
           <InfoBanner>
             <AlertTriangle className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" />
-            Active sales during a count may cause discrepancies. Consider pausing POS sales at this
-            location while counting.
+            Active sales during a count may cause discrepancies. Consider
+            pausing POS sales at this location while counting.
           </InfoBanner>
           <div>
             <FieldLabel>Location</FieldLabel>
-            <Select value={locationId} onChange={setLocationId} options={locationOptions} />
+            <Select
+              value={locationId}
+              onChange={setLocationId}
+              options={locationOptions}
+            />
           </div>
           <div>
             <FieldLabel>Note / Reference</FieldLabel>
-            <TextInput value={note} onChange={setNote} placeholder="e.g. Monthly stocktake June" />
+            <TextInput
+              value={note}
+              onChange={setNote}
+              placeholder="e.g. Monthly stocktake June"
+            />
           </div>
         </div>
       )}
@@ -554,7 +606,11 @@ function StocktakeDrawer({
       {/* Step 2 — Count Entry */}
       {step === 2 && (
         <div className="space-y-4 p-1">
-          <SearchBox value={search} onChange={setSearch} placeholder="Filter by SKU or name..." />
+          <SearchBox
+            value={search}
+            onChange={setSearch}
+            placeholder="Filter by SKU or name..."
+          />
           <div className="overflow-x-auto rounded-[11px] border border-line">
             <table className="w-full text-[13px]">
               <thead>
@@ -579,7 +635,10 @@ function StocktakeDrawer({
                       else if (diff > 0) rowColor = "bg-success/[0.06]";
                     }
                     return (
-                      <tr key={lv.variant_id} className={`border-b border-line ${rowColor}`}>
+                      <tr
+                        key={lv.variant_id}
+                        className={`border-b border-line ${rowColor}`}
+                      >
                         <td className="px-4 py-2.5 font-mono text-text-secondary">
                           {lv.sku ?? lv.variant_id.slice(0, 8)}
                         </td>
@@ -593,7 +652,10 @@ function StocktakeDrawer({
                           <NumberField
                             value={physical}
                             onChange={(v) =>
-                              setCounts((prev) => ({ ...prev, [lv.variant_id]: v }))
+                              setCounts((prev) => ({
+                                ...prev,
+                                [lv.variant_id]: v,
+                              }))
                             }
                             placeholder={String(lv.on_hand)}
                           />
@@ -622,17 +684,25 @@ function StocktakeDrawer({
         <div className="space-y-5 p-1">
           <div className="grid grid-cols-3 gap-4">
             <Card className="p-4 text-center">
-              <p className="text-[11px] text-text-muted uppercase tracking-wider">Lines</p>
+              <p className="text-[11px] text-text-muted uppercase tracking-wider">
+                Lines
+              </p>
               <p className="text-[22px] font-bold tabular-nums text-text-primary">
                 {summary.lineCount}
               </p>
             </Card>
             <Card className="p-4 text-center">
-              <p className="text-[11px] text-text-muted uppercase tracking-wider">Surplus</p>
-              <p className="text-[22px] font-bold tabular-nums text-success">+{summary.surplus}</p>
+              <p className="text-[11px] text-text-muted uppercase tracking-wider">
+                Surplus
+              </p>
+              <p className="text-[22px] font-bold tabular-nums text-success">
+                +{summary.surplus}
+              </p>
             </Card>
             <Card className="p-4 text-center">
-              <p className="text-[11px] text-text-muted uppercase tracking-wider">Write-down</p>
+              <p className="text-[11px] text-text-muted uppercase tracking-wider">
+                Write-down
+              </p>
               <p className="text-[22px] font-bold tabular-nums text-danger">
                 -{summary.writeDown}
               </p>
@@ -641,13 +711,15 @@ function StocktakeDrawer({
 
           {summary.hasWriteDown && (
             <InfoBanner>
-              Write-downs require CEO approval. This adjustment will be submitted for review before
-              stock levels are updated.
+              Write-downs require CEO approval. This adjustment will be
+              submitted for review before stock levels are updated.
             </InfoBanner>
           )}
 
           {summary.lineCount === 0 && (
-            <InfoBanner>No differences detected. Go back and enter physical counts.</InfoBanner>
+            <InfoBanner>
+              No differences detected. Go back and enter physical counts.
+            </InfoBanner>
           )}
         </div>
       )}
@@ -680,7 +752,10 @@ function WriteoffDrawer({
   const locationOptions = useMemo(
     () => [
       { value: "", label: "Select location" },
-      ...locations.map((l) => ({ value: l.location_id, label: l.display_name })),
+      ...locations.map((l) => ({
+        value: l.location_id,
+        label: l.display_name,
+      })),
     ],
     [locations],
   );
@@ -691,7 +766,9 @@ function WriteoffDrawer({
   ];
 
   const updateLine = (idx: number, patch: Partial<WriteoffLineInput>) => {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    setLines((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)),
+    );
   };
 
   const addLine = () => {
@@ -762,12 +839,17 @@ function WriteoffDrawer({
     >
       <div className="space-y-5 p-1">
         <InfoBanner>
-          Write-offs cannot be posted without CEO approval. All items will be submitted for review.
+          Write-offs cannot be posted without CEO approval. All items will be
+          submitted for review.
         </InfoBanner>
 
         <div>
           <FieldLabel>Location</FieldLabel>
-          <Select value={locationId} onChange={setLocationId} options={locationOptions} />
+          <Select
+            value={locationId}
+            onChange={setLocationId}
+            options={locationOptions}
+          />
         </div>
 
         <div>
@@ -815,7 +897,12 @@ function WriteoffDrawer({
               )}
             </div>
           ))}
-          <Button variant="ghost" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={addLine}>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={addLine}
+          >
             Add Line
           </Button>
         </div>

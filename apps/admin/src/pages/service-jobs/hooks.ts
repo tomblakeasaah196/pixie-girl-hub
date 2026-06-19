@@ -12,7 +12,10 @@ export function useServiceTypes(isActive?: boolean) {
   const brand = useBrand();
   return useQuery({
     queryKey: ["service-types", brand, isActive],
-    queryFn: () => api.listServiceTypes(isActive !== undefined ? { is_active: isActive } : undefined),
+    queryFn: () =>
+      api.listServiceTypes(
+        isActive !== undefined ? { is_active: isActive } : undefined,
+      ),
     select: (r) => r.data,
   });
 }
@@ -20,9 +23,13 @@ export function useServiceTypes(isActive?: boolean) {
 export function useServiceTypeMutations() {
   const qc = useQueryClient();
   const brand = useBrand();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["service-types", brand] });
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["service-types", brand] });
   return {
-    create: useMutation({ mutationFn: api.createServiceType, onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: api.createServiceType,
+      onSuccess: invalidate,
+    }),
     update: useMutation({
       mutationFn: ([id, patch]: Parameters<typeof api.updateServiceType>) =>
         api.updateServiceType(id, patch),
@@ -37,7 +44,10 @@ export function useRecipes(isActive?: boolean) {
   const brand = useBrand();
   return useQuery({
     queryKey: ["service-recipes", brand, isActive],
-    queryFn: () => api.listRecipes(isActive !== undefined ? { is_active: isActive } : undefined),
+    queryFn: () =>
+      api.listRecipes(
+        isActive !== undefined ? { is_active: isActive } : undefined,
+      ),
     select: (r) => r.data,
   });
 }
@@ -55,9 +65,13 @@ export function useRecipe(id: string | null) {
 export function useRecipeMutations() {
   const qc = useQueryClient();
   const brand = useBrand();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["service-recipes", brand] });
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["service-recipes", brand] });
   return {
-    create: useMutation({ mutationFn: api.createRecipe, onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: api.createRecipe,
+      onSuccess: invalidate,
+    }),
     update: useMutation({
       mutationFn: ([id, patch]: Parameters<typeof api.updateRecipe>) =>
         api.updateRecipe(id, patch),
@@ -91,7 +105,8 @@ export function useCreateJob() {
   const brand = useBrand();
   return useMutation({
     mutationFn: api.createJob,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["service-jobs", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["service-jobs", brand] }),
   });
 }
 
@@ -104,12 +119,18 @@ export function useJobActions(jobId: string) {
   };
   return {
     update: useMutation({
-      mutationFn: (patch: Parameters<typeof api.updateJob>[1]) => api.updateJob(jobId, patch),
+      mutationFn: (patch: Parameters<typeof api.updateJob>[1]) =>
+        api.updateJob(jobId, patch),
       onSuccess: invalidate,
     }),
     advance: useMutation({
-      mutationFn: ({ status, actual_cost_ngn }: { status: string; actual_cost_ngn?: number }) =>
-        api.advanceJob(jobId, status, actual_cost_ngn),
+      mutationFn: ({
+        status,
+        actual_cost_ngn,
+      }: {
+        status: string;
+        actual_cost_ngn?: number;
+      }) => api.advanceJob(jobId, status, actual_cost_ngn),
       onSuccess: invalidate,
     }),
     assign: useMutation({
@@ -142,13 +163,16 @@ export function useRecordChemical(jobId: string) {
   return useMutation({
     mutationFn: (input: Parameters<typeof api.recordJobChemical>[1]) =>
       api.recordJobChemical(jobId, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["job-chemicals", jobId, brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["job-chemicals", jobId, brand] }),
   });
 }
 
 // ── Reconciliations ────────────────────────────────────────
 
-export function useReconciliations(params?: Parameters<typeof api.listReconciliations>[0]) {
+export function useReconciliations(
+  params?: Parameters<typeof api.listReconciliations>[0],
+) {
   const brand = useBrand();
   return useQuery({
     queryKey: ["chem-reconciliations", params, brand],
@@ -162,6 +186,7 @@ export function useRunReconciliation() {
   const brand = useBrand();
   return useMutation({
     mutationFn: api.runReconciliation,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["chem-reconciliations", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["chem-reconciliations", brand] }),
   });
 }

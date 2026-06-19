@@ -191,14 +191,22 @@ export function ReceiveGoodsModal({ open, onClose, po, onReceived }: Props) {
             const isPartial = w && w.quantity_rejected > 0;
 
             function acceptAll() {
-              setValue(`lines.${i}.quantity_accepted`, remaining, { shouldValidate: true });
-              setValue(`lines.${i}.quantity_rejected`, 0, { shouldValidate: true });
+              setValue(`lines.${i}.quantity_accepted`, remaining, {
+                shouldValidate: true,
+              });
+              setValue(`lines.${i}.quantity_rejected`, 0, {
+                shouldValidate: true,
+              });
               setValue(`lines.${i}.rejection_reason`, "");
             }
 
             function rejectAll() {
-              setValue(`lines.${i}.quantity_accepted`, 0, { shouldValidate: true });
-              setValue(`lines.${i}.quantity_rejected`, remaining, { shouldValidate: true });
+              setValue(`lines.${i}.quantity_accepted`, 0, {
+                shouldValidate: true,
+              });
+              setValue(`lines.${i}.quantity_rejected`, remaining, {
+                shouldValidate: true,
+              });
             }
 
             return (
@@ -292,8 +300,16 @@ export function ReceiveGoodsModal({ open, onClose, po, onReceived }: Props) {
                 )}
                 {/* Quick QC chips — now wired up */}
                 <div className="mt-3 flex gap-2 flex-wrap text-xs">
-                  <QuickChip label="Accept all" tone="sage" onClick={acceptAll} />
-                  <QuickChip label="Reject all" tone="danger" onClick={rejectAll} />
+                  <QuickChip
+                    label="Accept all"
+                    tone="sage"
+                    onClick={acceptAll}
+                  />
+                  <QuickChip
+                    label="Reject all"
+                    tone="danger"
+                    onClick={rejectAll}
+                  />
                 </div>
               </div>
             );

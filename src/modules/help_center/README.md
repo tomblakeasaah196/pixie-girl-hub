@@ -24,17 +24,17 @@ sources for cost-strategy questions. One table satisfies all three.
 
 ## Files
 
-| File                          | Purpose                            |
-| ----------------------------- | ---------------------------------- |
-| `help-center.routes.js`       | Express router                     |
-| `help-center.controller.js`   | HTTP handlers                      |
-| `help-center.service.js`      | List + get + view-count            |
-| `help-center.repo.js`         | Parameterised SQL                  |
+| File                        | Purpose                 |
+| --------------------------- | ----------------------- |
+| `help-center.routes.js`     | Express router          |
+| `help-center.controller.js` | HTTP handlers           |
+| `help-center.service.js`    | List + get + view-count |
+| `help-center.repo.js`       | Parameterised SQL       |
 
 ## Endpoints
 
-| Method | Path                                            |
-| ------ | ----------------------------------------------- |
-| GET    | `/api/v1/help/categories`                       |
-| GET    | `/api/v1/help/articles?module=&category=&q=`    |
-| GET    | `/api/v1/help/articles/:slug`                   |
+| Method | Path                                         |
+| ------ | -------------------------------------------- |
+| GET    | `/api/v1/help/categories`                    |
+| GET    | `/api/v1/help/articles?module=&category=&q=` |
+| GET    | `/api/v1/help/articles/:slug`                |

@@ -376,7 +376,12 @@ export interface Milestone {
   contact_id: string;
   display_name: string;
   priority_level: "vip" | "regular" | "new";
-  event_type: "birthday" | "wedding_anniversary" | "business_anniversary" | "graduation" | "other";
+  event_type:
+    | "birthday"
+    | "wedding_anniversary"
+    | "business_anniversary"
+    | "graduation"
+    | "other";
   event_date: string;
   days_until: number;
   primary_phone: string | null;

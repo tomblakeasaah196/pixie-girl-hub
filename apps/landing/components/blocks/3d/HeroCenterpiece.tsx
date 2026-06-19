@@ -29,7 +29,11 @@ export function HeroCenterpiece({
       style={{ background: "transparent" }}
     >
       <ambientLight intensity={0.3} />
-      <pointLight position={[3, 5, 4]} intensity={1.4} color={surge ? "#E5544E" : "#D85C57"} />
+      <pointLight
+        position={[3, 5, 4]}
+        intensity={1.4}
+        color={surge ? "#E5544E" : "#D85C57"}
+      />
       <pointLight position={[-4, -3, 3]} intensity={0.5} color="#690909" />
       <FloatingScene surge={surge} />
     </Canvas>
@@ -66,7 +70,11 @@ function FloatingScene({ surge }: { surge?: boolean }) {
       <group ref={orbit} position={[2.4, 0, 0]}>
         <mesh position={[1.7, 0, 0]}>
           <sphereGeometry args={[0.07, 16, 16]} />
-          <meshStandardMaterial color="#D85C57" emissive="#D85C57" emissiveIntensity={1.2} />
+          <meshStandardMaterial
+            color="#D85C57"
+            emissive="#D85C57"
+            emissiveIntensity={1.2}
+          />
         </mesh>
       </group>
     </>

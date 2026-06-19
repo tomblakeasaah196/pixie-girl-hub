@@ -19,15 +19,23 @@ function useBrand() {
 }
 
 const K = {
-  rules: (brand: string, params?: unknown) => ["pricing", "rules", brand, params] as const,
-  floors: (brand: string, variantId?: string) => ["pricing", "floors", brand, variantId ?? null] as const,
-  overrides: (brand: string, variantId?: string) => ["pricing", "overrides", brand, variantId ?? null] as const,
-  scenarios: (brand: string, status?: string) => ["pricing", "scenarios", brand, status ?? ""] as const,
-  scenario: (brand: string, id: string | null) => ["pricing", "scenario", brand, id] as const,
-  proposals: (brand: string, status?: string) => ["pricing", "proposals", brand, status ?? ""] as const,
-  proposal: (brand: string, id: string | null) => ["pricing", "proposal", brand, id] as const,
+  rules: (brand: string, params?: unknown) =>
+    ["pricing", "rules", brand, params] as const,
+  floors: (brand: string, variantId?: string) =>
+    ["pricing", "floors", brand, variantId ?? null] as const,
+  overrides: (brand: string, variantId?: string) =>
+    ["pricing", "overrides", brand, variantId ?? null] as const,
+  scenarios: (brand: string, status?: string) =>
+    ["pricing", "scenarios", brand, status ?? ""] as const,
+  scenario: (brand: string, id: string | null) =>
+    ["pricing", "scenario", brand, id] as const,
+  proposals: (brand: string, status?: string) =>
+    ["pricing", "proposals", brand, status ?? ""] as const,
+  proposal: (brand: string, id: string | null) =>
+    ["pricing", "proposal", brand, id] as const,
   config: (brand: string) => ["pricing", "config", brand] as const,
-  history: (brand: string, variantId: string | null) => ["pricing", "history", brand, variantId] as const,
+  history: (brand: string, variantId: string | null) =>
+    ["pricing", "history", brand, variantId] as const,
 };
 
 // ── Advisor ──────────────────────────────────────────────────────────────────
@@ -69,8 +77,13 @@ export function useUpdateConfig() {
 
 export function useSetVariantUsd() {
   return useMutation({
-    mutationFn: ({ variantId, priceUsd }: { variantId: string; priceUsd: number | null }) =>
-      pricingApi.setVariantUsd(variantId, priceUsd),
+    mutationFn: ({
+      variantId,
+      priceUsd,
+    }: {
+      variantId: string;
+      priceUsd: number | null;
+    }) => pricingApi.setVariantUsd(variantId, priceUsd),
   });
 }
 
@@ -96,8 +109,10 @@ export function useCreateScenario() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (input: CreateScenarioInput) => pricingApi.createScenario(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pricing", "scenarios", brand] }),
+    mutationFn: (input: CreateScenarioInput) =>
+      pricingApi.createScenario(input),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["pricing", "scenarios", brand] }),
   });
 }
 
@@ -105,8 +120,13 @@ export function useComputeScenario() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ id, sliders }: { id: string; sliders?: ComputeSliderInput[] }) =>
-      pricingApi.computeScenario(id, sliders),
+    mutationFn: ({
+      id,
+      sliders,
+    }: {
+      id: string;
+      sliders?: ComputeSliderInput[];
+    }) => pricingApi.computeScenario(id, sliders),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: K.scenario(brand, vars.id) });
       qc.invalidateQueries({ queryKey: ["pricing", "scenarios", brand] });
@@ -136,10 +156,12 @@ export function useProposal(id: string | null) {
 export function useProposalMutations() {
   const qc = useQueryClient();
   const brand = useBrand();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["pricing", "proposals", brand] });
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["pricing", "proposals", brand] });
 
   const create = useMutation({
-    mutationFn: (input: CreateProposalInput) => pricingApi.createProposal(input),
+    mutationFn: (input: CreateProposalInput) =>
+      pricingApi.createProposal(input),
     onSuccess: () => {
       invalidate();
       qc.invalidateQueries({ queryKey: ["pricing", "scenarios", brand] });
@@ -176,7 +198,8 @@ export function useRules(params?: { channel?: string; is_active?: boolean }) {
 export function useRuleMutations() {
   const qc = useQueryClient();
   const brand = useBrand();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["pricing", "rules", brand] });
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["pricing", "rules", brand] });
 
   const create = useMutation({
     mutationFn: (input: CreateRuleInput) => pricingApi.createRule(input),
@@ -208,7 +231,8 @@ export function useFloors(variantId?: string) {
 export function useFloorMutations() {
   const qc = useQueryClient();
   const brand = useBrand();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["pricing", "floors", brand] });
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["pricing", "floors", brand] });
 
   const create = useMutation({
     mutationFn: (input: CreateFloorInput) => pricingApi.createFloor(input),
@@ -235,10 +259,12 @@ export function useOverrides(variantId?: string) {
 export function useOverrideMutations() {
   const qc = useQueryClient();
   const brand = useBrand();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["pricing", "overrides", brand] });
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["pricing", "overrides", brand] });
 
   const create = useMutation({
-    mutationFn: (input: CreateOverrideInput) => pricingApi.createOverride(input),
+    mutationFn: (input: CreateOverrideInput) =>
+      pricingApi.createOverride(input),
     onSuccess: invalidate,
   });
   const remove = useMutation({

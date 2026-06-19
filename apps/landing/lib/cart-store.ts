@@ -59,7 +59,9 @@ export const useCart = create<CartState>()(
           if (existing) {
             return {
               items: s.items.map((i) =>
-                i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i,
+                i.id === item.id
+                  ? { ...i, quantity: i.quantity + item.quantity }
+                  : i,
               ),
             };
           }
@@ -69,7 +71,9 @@ export const useCart = create<CartState>()(
       setQuantity(id, qty) {
         if (qty <= 0) return get().remove(id);
         set((s) => ({
-          items: s.items.map((i) => (i.id === id ? { ...i, quantity: qty } : i)),
+          items: s.items.map((i) =>
+            i.id === id ? { ...i, quantity: qty } : i,
+          ),
         }));
       },
       remove(id) {
@@ -99,7 +103,10 @@ export const useCart = create<CartState>()(
         return get().items.reduce((a, i) => a + i.quantity, 0);
       },
       subtotalNgn() {
-        return get().items.reduce((a, i) => a + i.unit_price_ngn * i.quantity, 0);
+        return get().items.reduce(
+          (a, i) => a + i.unit_price_ngn * i.quantity,
+          0,
+        );
       },
       retailSubtotalNgn() {
         return get().items.reduce(

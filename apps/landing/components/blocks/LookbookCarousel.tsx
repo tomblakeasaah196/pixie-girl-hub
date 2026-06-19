@@ -43,7 +43,13 @@ export function LookbookCarousel({ payload }: { payload: LandingPayload }) {
                 key={i}
                 className="relative flex-shrink-0 w-[64vw] md:w-[260px] aspect-[9/16] rounded-[14px] overflow-hidden snap-start bg-[rgb(var(--panel-2))]"
               >
-                <Image src={t.src} alt={t.alt} fill sizes="(min-width:768px) 260px, 64vw" className="object-cover" />
+                <Image
+                  src={t.src}
+                  alt={t.alt}
+                  fill
+                  sizes="(min-width:768px) 260px, 64vw"
+                  className="object-cover"
+                />
               </div>
             ))}
           </div>

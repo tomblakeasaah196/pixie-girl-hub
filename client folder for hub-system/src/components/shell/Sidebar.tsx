@@ -247,10 +247,7 @@ export function Sidebar() {
                         <span className="truncate">
                           More
                           <span className="ml-1.5 text-[0.6rem] text-brand-smoke/70">
-                            {moreGroups.reduce(
-                              (n, g) => n + g.items.length,
-                              0,
-                            )}
+                            {moreGroups.reduce((n, g) => n + g.items.length, 0)}
                           </span>
                         </span>
                       )}

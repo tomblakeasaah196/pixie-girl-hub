@@ -109,7 +109,9 @@ async function main() {
           })
         : img;
 
-    const webp = await pipeline.webp({ quality: QUALITY, effort: 4 }).toBuffer();
+    const webp = await pipeline
+      .webp({ quality: QUALITY, effort: 4 })
+      .toBuffer();
 
     const ratio = ((1 - webp.length / buf.length) * 100).toFixed(1);
     const rel = path.relative(BRANDING_DIR, filePath);
@@ -129,9 +131,7 @@ async function main() {
     compressed++;
   }
 
-  console.log(
-    `\nDone: ${compressed} compressed, ${skipped} skipped (< 10KB)`,
-  );
+  console.log(`\nDone: ${compressed} compressed, ${skipped} skipped (< 10KB)`);
   if (compressed > 0) {
     console.log(
       `Total: ${formatBytes(totalBefore)} → ${formatBytes(totalAfter)} (${((1 - totalAfter / totalBefore) * 100).toFixed(1)}% saved)`,

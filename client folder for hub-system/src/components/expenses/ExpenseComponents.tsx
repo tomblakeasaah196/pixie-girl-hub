@@ -449,8 +449,8 @@ export function RecordPaymentModal({
 
         {watchedAmount > 0 && watchedAmount < balance && (
           <p className="text-xs text-amber-600">
-            Partial payment — {fmtMoney(balance - watchedAmount, currency)}{" "}
-            will remain outstanding.
+            Partial payment — {fmtMoney(balance - watchedAmount, currency)} will
+            remain outstanding.
           </p>
         )}
         {watchedAmount > balance && (

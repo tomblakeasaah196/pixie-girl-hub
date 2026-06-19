@@ -24,7 +24,11 @@ const repo = require("./cost_vault.repo");
 const encryption = require("../../services/encryption.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { AppError, NotFoundError, PermissionDeniedError } = require("../../utils/errors");
+const {
+  AppError,
+  NotFoundError,
+  PermissionDeniedError,
+} = require("../../utils/errors");
 
 // Deprecated plaintext cost columns that must never leave the API for a
 // caller who isn't a vault grantee. price_wholesale_ngn is deliberately
@@ -93,7 +97,9 @@ async function getCost({ brand, user, request_id, variant_id }) {
 
   return {
     variant_id,
-    cost_ngn: row.cost_ngn_enc ? Number(encryption.decrypt(row.cost_ngn_enc)) : null,
+    cost_ngn: row.cost_ngn_enc
+      ? Number(encryption.decrypt(row.cost_ngn_enc))
+      : null,
     cost_native: row.cost_native_enc
       ? JSON.parse(encryption.decrypt(row.cost_native_enc))
       : null,
@@ -108,7 +114,14 @@ async function getCost({ brand, user, request_id, variant_id }) {
 // ── Write a variant's cost (grantee-only, encrypts, audited) ──
 // Client-aware core so callers in an existing transaction (e.g. bulk import)
 // can set cost atomically without nesting a second transaction.
-async function setCostTx({ client, brand, user, request_id, variant_id, input }) {
+async function setCostTx({
+  client,
+  brand,
+  user,
+  request_id,
+  variant_id,
+  input,
+}) {
   const allowed = await canSeeCost({ client, user, brand });
   if (!allowed) {
     throw new PermissionDeniedError("You do not have cost-vault access.");
@@ -122,7 +135,9 @@ async function setCostTx({ client, brand, user, request_id, variant_id, input })
     fields.cost_ngn_enc = encryption.encrypt(String(input.cost_ngn));
   }
   if (input.cost_native) {
-    fields.cost_native_enc = encryption.encrypt(JSON.stringify(input.cost_native));
+    fields.cost_native_enc = encryption.encrypt(
+      JSON.stringify(input.cost_native),
+    );
   }
   const row = await repo.upsertVault({ client, brand, variant_id, fields });
 
@@ -133,7 +148,10 @@ async function setCostTx({ client, brand, user, request_id, variant_id, input })
     target_type: "product_variant_cost_vault",
     target_id: variant_id,
     // Never log the cost itself — only that it changed and the source.
-    after: { cost_source: fields.cost_source, supplier_set: !!fields.supplier_id },
+    after: {
+      cost_source: fields.cost_source,
+      supplier_set: !!fields.supplier_id,
+    },
     request_id,
   });
   return { variant_id, cost_last_refreshed_at: row.cost_last_refreshed_at };
@@ -187,7 +205,13 @@ async function grantAccess({ brand, user, request_id, input }) {
   return g;
 }
 
-async function revokeAccess({ brand, user, request_id, target_user_id, reason }) {
+async function revokeAccess({
+  brand,
+  user,
+  request_id,
+  target_user_id,
+  reason,
+}) {
   requireOwner(user);
   const ok = await transaction((client) =>
     repo.revoke({ client, user_id: target_user_id, business: brand, reason }),

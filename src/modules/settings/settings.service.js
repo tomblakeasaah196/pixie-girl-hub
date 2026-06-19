@@ -37,7 +37,7 @@ const A = (
 function emitSettingsUpdated(payload) {
   try {
     require("../../config/socket").getIo().emit("settings:updated", payload);
-  } catch (_) {
+  } catch {
     /* socket not initialised — non-fatal */
   }
 }

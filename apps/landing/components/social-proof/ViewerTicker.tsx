@@ -18,7 +18,8 @@ import type { LandingPayload } from "@/lib/types";
 export function ViewerTicker({ payload }: { payload: LandingPayload }) {
   // Read live viewer count from the payload props if present, else estimate
   // from total_unique_visitors over the last 15 min (heuristic).
-  const initial = (payload as unknown as { live_viewers?: number }).live_viewers ?? 0;
+  const initial =
+    (payload as unknown as { live_viewers?: number }).live_viewers ?? 0;
   const [viewers, setViewers] = useState<number>(initial);
 
   // Gentle pulse: tiny random walk so the number feels alive without being
@@ -48,7 +49,9 @@ export function ViewerTicker({ payload }: { payload: LandingPayload }) {
             <>
               <Eye className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
               <span className="tabular-nums">{viewers}</span>{" "}
-              <span className="text-[rgb(var(--text-muted))] font-normal">viewing now</span>
+              <span className="text-[rgb(var(--text-muted))] font-normal">
+                viewing now
+              </span>
             </>
           ) : (
             <>

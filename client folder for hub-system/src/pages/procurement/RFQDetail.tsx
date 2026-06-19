@@ -36,7 +36,11 @@ export default function RFQDetail() {
   const [sending, setSending] = useState(false);
 
   // Backend doesn't have GET /rfqs/:id — we look up via list + filter.
-  const { data: rfqList, isLoading, refetch } = useQuery({
+  const {
+    data: rfqList,
+    isLoading,
+    refetch,
+  } = useQuery({
     queryKey: ["purchasing", "rfqs", "all"],
     queryFn: () => listRFQs({ limit: 200 }),
   });

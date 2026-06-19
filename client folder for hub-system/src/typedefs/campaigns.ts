@@ -203,8 +203,8 @@ export interface AudiencePreviewRow {
 }
 
 export interface AudiencePreview {
-  total: number;          // backend returns 'total'
-  count?: number;         // kept for backward compat
+  total: number; // backend returns 'total'
+  count?: number; // kept for backward compat
   sample: AudiencePreviewRow[];
   filter_summary?: string;
 }

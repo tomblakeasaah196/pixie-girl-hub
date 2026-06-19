@@ -115,10 +115,8 @@ function safeHref(href: string | undefined): string {
   return /^https?:\/\/.+/i.test(h) ? esc(h) : "#";
 }
 
-const FONT =
-  "Georgia, 'Times New Roman', serif";
-const FONT_SANS =
-  "Arial, Helvetica, sans-serif";
+const FONT = "Georgia, 'Times New Roman', serif";
+const FONT_SANS = "Arial, Helvetica, sans-serif";
 
 function renderBlock(b: EmailBlock, t: EmailTheme): string {
   const align = b.align || "left";

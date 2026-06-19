@@ -55,9 +55,7 @@ export async function updateArticle(
   return data;
 }
 
-export async function deleteArticle(
-  id: string,
-): Promise<{ deleted: boolean }> {
+export async function deleteArticle(id: string): Promise<{ deleted: boolean }> {
   const { data } = await api.delete<{ deleted: boolean }>(
     `/help/articles/${id}`,
   );

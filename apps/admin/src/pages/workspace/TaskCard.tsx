@@ -12,12 +12,9 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-  } = useDraggable({ id: task.task_id });
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+    id: task.task_id,
+  });
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }

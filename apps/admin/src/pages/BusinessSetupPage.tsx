@@ -1,6 +1,14 @@
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useEffect, useMemo, useState } from "react";
-import { Building2, Eye, EyeOff, FileSignature, Loader2, Palette, Wallet } from "lucide-react";
+import {
+  Building2,
+  Eye,
+  EyeOff,
+  FileSignature,
+  Loader2,
+  Palette,
+  Wallet,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { Card, Pill } from "@/components/ui/primitives";
@@ -40,7 +48,10 @@ const TABS: { key: Tab; label: string }[] = [
  * endpoint exists); the value still never leaves the page in cleartext.
  */
 export function BusinessSetupPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Business Setup" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Business Setup" },
+  ]);
   const biz = useActiveBusiness();
   const cfg = useBusinessConfig();
   const save = useSaveBusinessConfig();
@@ -52,7 +63,12 @@ export function BusinessSetupPage() {
   }, [cfg.data]);
 
   const dirty = useMemo(
-    () => !!(cfg.data && draft && JSON.stringify(cfg.data) !== JSON.stringify(draft)),
+    () =>
+      !!(
+        cfg.data &&
+        draft &&
+        JSON.stringify(cfg.data) !== JSON.stringify(draft)
+      ),
     [cfg.data, draft],
   );
   const set = <K extends keyof BusinessConfig>(k: K, v: BusinessConfig[K]) =>
@@ -77,7 +93,12 @@ export function BusinessSetupPage() {
       </div>
     );
   if (cfg.isError)
-    return <ErrorState message={(cfg.error as Error)?.message} onRetry={() => cfg.refetch()} />;
+    return (
+      <ErrorState
+        message={(cfg.error as Error)?.message}
+        onRetry={() => cfg.refetch()}
+      />
+    );
   if (!draft) return null;
 
   return (
@@ -87,7 +108,9 @@ export function BusinessSetupPage() {
           <Building2 className="w-5 h-5" />
         </span>
         <div>
-          <h2 className="font-display text-[22px] font-medium">Business Setup</h2>
+          <h2 className="font-display text-[22px] font-medium">
+            Business Setup
+          </h2>
           <p className="text-text-muted text-[13px]">
             Profile, financial, identity & policies for{" "}
             <span className="text-text-primary font-semibold">{biz.name}</span>.
@@ -102,7 +125,9 @@ export function BusinessSetupPage() {
             onClick={() => setTab(t.key)}
             className={cn(
               "px-3.5 py-1.5 rounded-[8px] text-[12.5px] font-semibold transition-colors",
-              tab === t.key ? "bg-accent/15 text-accent-glow" : "text-text-muted hover:text-text-primary",
+              tab === t.key
+                ? "bg-accent/15 text-accent-glow"
+                : "text-text-muted hover:text-text-primary",
             )}
           >
             {t.label}
@@ -140,19 +165,62 @@ function ProfileTab({
   return (
     <Card className="p-5 space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Display name"><TextInput value={draft.display_name} onChange={(e) => set("display_name", e.target.value)} /></Field>
-        <Field label="Legal name"><TextInput value={draft.legal_name} onChange={(e) => set("legal_name", e.target.value)} /></Field>
+        <Field label="Display name">
+          <TextInput
+            value={draft.display_name}
+            onChange={(e) => set("display_name", e.target.value)}
+          />
+        </Field>
+        <Field label="Legal name">
+          <TextInput
+            value={draft.legal_name}
+            onChange={(e) => set("legal_name", e.target.value)}
+          />
+        </Field>
       </div>
-      <Field label="Address"><TextInput value={draft.address ?? ""} onChange={(e) => set("address", e.target.value || null)} /></Field>
+      <Field label="Address">
+        <TextInput
+          value={draft.address ?? ""}
+          onChange={(e) => set("address", e.target.value || null)}
+        />
+      </Field>
       <div className="grid grid-cols-3 gap-4">
-        <Field label="Phone"><TextInput value={draft.phone ?? ""} onChange={(e) => set("phone", e.target.value || null)} /></Field>
-        <Field label="Email"><TextInput value={draft.email ?? ""} onChange={(e) => set("email", e.target.value || null)} /></Field>
-        <Field label="Website"><TextInput value={draft.website ?? ""} onChange={(e) => set("website", e.target.value || null)} /></Field>
+        <Field label="Phone">
+          <TextInput
+            value={draft.phone ?? ""}
+            onChange={(e) => set("phone", e.target.value || null)}
+          />
+        </Field>
+        <Field label="Email">
+          <TextInput
+            value={draft.email ?? ""}
+            onChange={(e) => set("email", e.target.value || null)}
+          />
+        </Field>
+        <Field label="Website">
+          <TextInput
+            value={draft.website ?? ""}
+            onChange={(e) => set("website", e.target.value || null)}
+          />
+        </Field>
       </div>
       <div className="grid grid-cols-3 gap-4">
-        <SensitiveField label="TIN" hint="Tax Identification Number" value={draft.tin ?? ""} onChange={(v) => set("tin", v || null)} />
-        <SensitiveField label="CAC number" value={draft.cac_number ?? ""} onChange={(v) => set("cac_number", v || null)} />
-        <SensitiveField label="VAT number" value={draft.vat_number ?? ""} onChange={(v) => set("vat_number", v || null)} />
+        <SensitiveField
+          label="TIN"
+          hint="Tax Identification Number"
+          value={draft.tin ?? ""}
+          onChange={(v) => set("tin", v || null)}
+        />
+        <SensitiveField
+          label="CAC number"
+          value={draft.cac_number ?? ""}
+          onChange={(v) => set("cac_number", v || null)}
+        />
+        <SensitiveField
+          label="VAT number"
+          value={draft.vat_number ?? ""}
+          onChange={(v) => set("vat_number", v || null)}
+        />
       </div>
       <Field label="Mission statement" hint="Shown on the staff portal">
         <textarea
@@ -176,16 +244,30 @@ function FinancialTab({
 }) {
   // vat_rate / wht_rate come as decimal strings from the API
   // (e.g. "0.0750"); we present them as percent and convert on edit.
-  const vatPct = String((parseFloat(draft.vat_rate) * 100).toFixed(2)).replace(/\.?0+$/, "");
-  const whtPct = String((parseFloat(draft.wht_rate) * 100).toFixed(2)).replace(/\.?0+$/, "");
+  const vatPct = String((parseFloat(draft.vat_rate) * 100).toFixed(2)).replace(
+    /\.?0+$/,
+    "",
+  );
+  const whtPct = String((parseFloat(draft.wht_rate) * 100).toFixed(2)).replace(
+    /\.?0+$/,
+    "",
+  );
   return (
     <Card className="p-5 space-y-4">
       <div className="grid grid-cols-3 gap-4">
         <Field label="VAT rate" hint="Percent">
-          <NumberField value={vatPct} onChange={(v) => set("vat_rate", String(Number(v || "0") / 100))} suffix="%" />
+          <NumberField
+            value={vatPct}
+            onChange={(v) => set("vat_rate", String(Number(v || "0") / 100))}
+            suffix="%"
+          />
         </Field>
         <Field label="WHT rate" hint="Percent">
-          <NumberField value={whtPct} onChange={(v) => set("wht_rate", String(Number(v || "0") / 100))} suffix="%" />
+          <NumberField
+            value={whtPct}
+            onChange={(v) => set("wht_rate", String(Number(v || "0") / 100))}
+            suffix="%"
+          />
         </Field>
         <Field label="Fiscal year start">
           <Select<string>
@@ -193,7 +275,9 @@ function FinancialTab({
             onChange={(v) => set("fiscal_year_start", Number(v))}
             options={Array.from({ length: 12 }, (_, i) => ({
               value: String(i + 1),
-              label: new Date(2000, i, 1).toLocaleString("en", { month: "long" }),
+              label: new Date(2000, i, 1).toLocaleString("en", {
+                month: "long",
+              }),
             }))}
           />
         </Field>
@@ -202,22 +286,50 @@ function FinancialTab({
         <Toggle
           checked={draft.allow_staff_recorded_manual_payments}
           onChange={(v) => set("allow_staff_recorded_manual_payments", v)}
-          label={<span className="text-[13px]">Allow staff-recorded manual payments <span className="text-text-faint">(off until Finance hire)</span></span>}
+          label={
+            <span className="text-[13px]">
+              Allow staff-recorded manual payments{" "}
+              <span className="text-text-faint">(off until Finance hire)</span>
+            </span>
+          }
         />
       </div>
       <div className="text-[12px] text-text-muted">
         Currencies, FX rates and per-gateway fees live in their dedicated tiles:
-        <Link to="/settings/currencies" className="ml-1 text-accent-glow hover:underline">Currencies & FX</Link>
+        <Link
+          to="/settings/currencies"
+          className="ml-1 text-accent-glow hover:underline"
+        >
+          Currencies & FX
+        </Link>
         {" · "}
-        <Link to="/settings/payment-gateways" className="text-accent-glow hover:underline">Payment Gateways</Link>
+        <Link
+          to="/settings/payment-gateways"
+          className="text-accent-glow hover:underline"
+        >
+          Payment Gateways
+        </Link>
         {" · "}
-        <Link to="/settings/tax-rates" className="text-accent-glow hover:underline">Tax Rates</Link>
+        <Link
+          to="/settings/tax-rates"
+          className="text-accent-glow hover:underline"
+        >
+          Tax Rates
+        </Link>
         .
       </div>
-      <Field label="Installment defaults" hint="Per-business defaults; products may override">
+      <Field
+        label="Installment defaults"
+        hint="Per-business defaults; products may override"
+      >
         <JsonScalarEditor
           value={draft.installment_settings as Record<string, unknown>}
-          onChange={(v) => set("installment_settings", v as BusinessConfig["installment_settings"])}
+          onChange={(v) =>
+            set(
+              "installment_settings",
+              v as BusinessConfig["installment_settings"],
+            )
+          }
         />
       </Field>
     </Card>
@@ -237,23 +349,35 @@ function IdentityTab({
     <div className="space-y-4">
       <Card className="p-5 space-y-4">
         <div className="micro">Document identity</div>
-        <Field label="Document prefix" hint="Locks on first issued document — manage in Document Numbering">
+        <Field
+          label="Document prefix"
+          hint="Locks on first issued document — manage in Document Numbering"
+        >
           <TextInput value={draft.document_prefix} disabled />
         </Field>
         <div className="text-[12px] text-text-muted">
           Logo, accents, gradients and fonts live in{" "}
-          <Link to="/settings/appearance" className="text-accent-glow hover:underline inline-flex items-center gap-1">
+          <Link
+            to="/settings/appearance"
+            className="text-accent-glow hover:underline inline-flex items-center gap-1"
+          >
             <Palette className="w-3.5 h-3.5" /> Appearance
           </Link>{" "}
           — both the platform skin (Layer A) and per-brand identity (Layer B).
         </div>
         <div className="text-[12px] text-text-muted">
           Document templates live in{" "}
-          <Link to="/settings/document-templates" className="text-accent-glow hover:underline inline-flex items-center gap-1">
+          <Link
+            to="/settings/document-templates"
+            className="text-accent-glow hover:underline inline-flex items-center gap-1"
+          >
             <FileSignature className="w-3.5 h-3.5" /> Document Templates
           </Link>
           ; bank accounts in{" "}
-          <Link to="/settings/bank-accounts" className="text-accent-glow hover:underline inline-flex items-center gap-1">
+          <Link
+            to="/settings/bank-accounts"
+            className="text-accent-glow hover:underline inline-flex items-center gap-1"
+          >
             <Wallet className="w-3.5 h-3.5" /> Bank Accounts
           </Link>
           .
@@ -265,19 +389,26 @@ function IdentityTab({
         <div>
           <div className="micro">Public identity</div>
           <p className="text-[12.5px] text-text-muted mt-1">
-            Dynamic hostnames for this brand's storefront and sales landing page,
-            plus the Praxis voice profile used when drafting campaign copy.
+            Dynamic hostnames for this brand's storefront and sales landing
+            page, plus the Praxis voice profile used when drafting campaign
+            copy.
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Storefront domain" hint="Public site, e.g. pixiegirlglobal.com">
+          <Field
+            label="Storefront domain"
+            hint="Public site, e.g. pixiegirlglobal.com"
+          >
             <TextInput
               value={draft.storefront_domain || ""}
               onChange={(e) => set("storefront_domain", e.target.value || null)}
               placeholder="pixiegirlglobal.com"
             />
           </Field>
-          <Field label="Sales subdomain" hint="Public sales landing host, e.g. sales.pixiegirlglobal.com">
+          <Field
+            label="Sales subdomain"
+            hint="Public sales landing host, e.g. sales.pixiegirlglobal.com"
+          >
             <TextInput
               value={draft.sales_subdomain || ""}
               onChange={(e) => set("sales_subdomain", e.target.value || null)}
@@ -286,9 +417,10 @@ function IdentityTab({
           </Field>
         </div>
         <div className="text-[12px] text-text-muted">
-          Point a DNS <span className="font-mono">CNAME</span> from your sales subdomain to the
-          platform host. The host-based brand resolver reads this column on every request — no
-          code deploy needed when you change the domain.
+          Point a DNS <span className="font-mono">CNAME</span> from your sales
+          subdomain to the platform host. The host-based brand resolver reads
+          this column on every request — no code deploy needed when you change
+          the domain.
         </div>
       </Card>
 
@@ -296,8 +428,8 @@ function IdentityTab({
         <div>
           <div className="micro">Praxis brand voice</div>
           <p className="text-[12.5px] text-text-muted mt-1">
-            Loaded as a system prompt every time Praxis drafts campaign copy. Hard rails always on:
-            no fabricated reviews, no banned superlatives.
+            Loaded as a system prompt every time Praxis drafts campaign copy.
+            Hard rails always on: no fabricated reviews, no banned superlatives.
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -305,11 +437,20 @@ function IdentityTab({
             <Select<string>
               value={voice.tone || "editorial-luxury"}
               onChange={(v) =>
-                set("praxis_voice_profile", { ...(voice as Record<string, unknown>), tone: v })
+                set("praxis_voice_profile", {
+                  ...(voice as Record<string, unknown>),
+                  tone: v,
+                })
               }
               options={[
-                { value: "editorial-luxury", label: "Pixie Global · Editorial luxury" },
-                { value: "confident-beauty-bar", label: "Faitlyn · Confident beauty-bar" },
+                {
+                  value: "editorial-luxury",
+                  label: "Pixie Global · Editorial luxury",
+                },
+                {
+                  value: "confident-beauty-bar",
+                  label: "Faitlyn · Confident beauty-bar",
+                },
                 { value: "warm-curatorial", label: "Warm curatorial" },
                 { value: "playful-energetic", label: "Playful energetic" },
               ]}
@@ -341,7 +482,10 @@ function IdentityTab({
             onChange={(e) =>
               set("praxis_voice_profile", {
                 ...(voice as Record<string, unknown>),
-                banned_words: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                banned_words: e.target.value
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
               })
             }
             placeholder="cheap, amazing deal, guaranteed, best ever"
@@ -365,8 +509,8 @@ function IdentityTab({
         <div>
           <div className="micro">Live viewer ticker default</div>
           <p className="text-[12.5px] text-text-muted mt-1">
-            Default for every new campaign on this brand. Per-campaign override available in the
-            builder.
+            Default for every new campaign on this brand. Per-campaign override
+            available in the builder.
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -374,7 +518,10 @@ function IdentityTab({
             <Select<string>
               value={draft.show_viewer_count_policy || "smart"}
               onChange={(v) =>
-                set("show_viewer_count_policy", v as BusinessConfig["show_viewer_count_policy"])
+                set(
+                  "show_viewer_count_policy",
+                  v as BusinessConfig["show_viewer_count_policy"],
+                )
               }
               options={[
                 { value: "smart", label: "Smart (auto-hide below floor)" },
@@ -414,21 +561,33 @@ function OperationalPoliciesTab({
         <div className="micro">Cancellation</div>
         <JsonScalarEditor
           value={draft.cancellation_settings as Record<string, unknown>}
-          onChange={(v) => set("cancellation_settings", v as BusinessConfig["cancellation_settings"])}
+          onChange={(v) =>
+            set(
+              "cancellation_settings",
+              v as BusinessConfig["cancellation_settings"],
+            )
+          }
         />
       </Card>
       <Card className="p-5 space-y-3">
         <div className="micro">Loyalty defaults</div>
         <JsonScalarEditor
           value={draft.loyalty_settings as Record<string, unknown>}
-          onChange={(v) => set("loyalty_settings", v as BusinessConfig["loyalty_settings"])}
+          onChange={(v) =>
+            set("loyalty_settings", v as BusinessConfig["loyalty_settings"])
+          }
         />
       </Card>
       <Card className="p-5 space-y-3">
         <div className="micro">Intercompany</div>
         <JsonScalarEditor
           value={draft.intercompany_settings as Record<string, unknown>}
-          onChange={(v) => set("intercompany_settings", v as BusinessConfig["intercompany_settings"])}
+          onChange={(v) =>
+            set(
+              "intercompany_settings",
+              v as BusinessConfig["intercompany_settings"],
+            )
+          }
         />
       </Card>
       <Card className="p-5">
@@ -483,7 +642,11 @@ function SensitiveField({
             className="absolute right-2 p-1 rounded text-text-muted hover:text-text-primary"
             aria-label={revealed ? "Hide" : "Reveal"}
           >
-            {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {revealed ? (
+              <EyeOff className="w-4 h-4" />
+            ) : (
+              <Eye className="w-4 h-4" />
+            )}
           </button>
         </div>
       </Field>
@@ -524,7 +687,9 @@ function JsonScalarEditor({
         if (typeof val === "boolean") {
           return (
             <div key={k} className="flex items-center justify-between gap-3">
-              <span className="text-[12.5px] text-text-muted">{k.replace(/_/g, " ")}</span>
+              <span className="text-[12.5px] text-text-muted">
+                {k.replace(/_/g, " ")}
+              </span>
               <Toggle checked={val} onChange={set} />
             </div>
           );
@@ -532,9 +697,14 @@ function JsonScalarEditor({
         if (typeof val === "number") {
           return (
             <div key={k} className="flex items-center justify-between gap-3">
-              <span className="text-[12.5px] text-text-muted">{k.replace(/_/g, " ")}</span>
+              <span className="text-[12.5px] text-text-muted">
+                {k.replace(/_/g, " ")}
+              </span>
               <div className="w-[140px]">
-                <NumberField value={String(val)} onChange={(s) => set(s === "" ? 0 : Number(s))} />
+                <NumberField
+                  value={String(val)}
+                  onChange={(s) => set(s === "" ? 0 : Number(s))}
+                />
               </div>
             </div>
           );
@@ -542,7 +712,9 @@ function JsonScalarEditor({
         if (typeof val === "string") {
           return (
             <div key={k} className="flex items-center justify-between gap-3">
-              <span className="text-[12.5px] text-text-muted">{k.replace(/_/g, " ")}</span>
+              <span className="text-[12.5px] text-text-muted">
+                {k.replace(/_/g, " ")}
+              </span>
               <div className="w-[200px]">
                 <TextInput value={val} onChange={(e) => set(e.target.value)} />
               </div>
@@ -552,7 +724,9 @@ function JsonScalarEditor({
         // Nested object / array — read-only display.
         return (
           <div key={k} className="flex items-start justify-between gap-3">
-            <span className="text-[12.5px] text-text-muted">{k.replace(/_/g, " ")}</span>
+            <span className="text-[12.5px] text-text-muted">
+              {k.replace(/_/g, " ")}
+            </span>
             <code className="text-[11px] text-text-faint font-mono whitespace-pre-wrap text-right max-w-[60%]">
               {JSON.stringify(val)}
             </code>
@@ -561,7 +735,9 @@ function JsonScalarEditor({
       })}
       <p className="text-[11px] text-text-faint pt-2">
         Use{" "}
-        <Pill tone="info" dot={false}>API</Pill>{" "}
+        <Pill tone="info" dot={false}>
+          API
+        </Pill>{" "}
         for nested edits (this editor handles flat primitives).
       </p>
     </div>

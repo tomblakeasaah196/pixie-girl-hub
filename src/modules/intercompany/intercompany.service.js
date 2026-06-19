@@ -194,7 +194,9 @@ async function matchTransaction({ user, request_id, id }) {
     try {
       const stockService = require("../stock/stock.service");
       const stockRepo = require("../stock/stock.repo");
-      const loc = await stockRepo.getDefaultLocation({ brand: txn.buyer_brand });
+      const loc = await stockRepo.getDefaultLocation({
+        brand: txn.buyer_brand,
+      });
       if (loc) {
         await stockService.receiveStock({
           client: null,

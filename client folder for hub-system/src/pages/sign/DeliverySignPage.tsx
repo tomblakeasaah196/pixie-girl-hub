@@ -214,7 +214,9 @@ export default function DeliverySignPage() {
               <p className="font-semibold text-gray-800">
                 {info?.delivery_number}
               </p>
-              <p className="text-xs text-gray-500">From {platform.product_name}</p>
+              <p className="text-xs text-gray-500">
+                From {platform.product_name}
+              </p>
             </div>
             <StepPill current={1} total={2} className="ml-auto" />
           </div>

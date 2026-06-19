@@ -11,7 +11,13 @@
 import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, AlertTriangle, Check, Receipt, Wallet } from "lucide-react";
+import {
+  ChevronLeft,
+  AlertTriangle,
+  Check,
+  Receipt,
+  Wallet,
+} from "lucide-react";
 import { Topbar } from "@components/shell/Topbar";
 import { Breadcrumbs } from "@components/ui/Breadcrumbs";
 import { Button } from "@components/ui/Button";
@@ -209,7 +215,8 @@ export default function BillNew() {
             Supplier bill · 3-way match
           </p>
           <h1 className="font-display font-light text-3xl sm:text-4xl text-brand-cream">
-            Match <span className="italic text-brand-accent">PO + GRN + Bill</span>
+            Match{" "}
+            <span className="italic text-brand-accent">PO + GRN + Bill</span>
           </h1>
         </header>
 
@@ -359,7 +366,9 @@ export default function BillNew() {
                           value={l.quantity}
                           onValueChange={(v) => updateLine(i, { quantity: v })}
                           error={
-                            l.overQty ? `Only ${l.received} received` : undefined
+                            l.overQty
+                              ? `Only ${l.received} received`
+                              : undefined
                           }
                         />
                         <NumberField
@@ -368,7 +377,9 @@ export default function BillNew() {
                           label="Billed unit price"
                           placeholder="0.00"
                           value={l.unit_price}
-                          onValueChange={(v) => updateLine(i, { unit_price: v })}
+                          onValueChange={(v) =>
+                            updateLine(i, { unit_price: v })
+                          }
                         />
                       </div>
                       {l.needsNote && (

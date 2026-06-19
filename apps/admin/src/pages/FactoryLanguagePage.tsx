@@ -10,12 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import {
-  Button,
-  Pill,
-  Skeleton,
-  EmptyState,
-} from "@/components/ui/primitives";
+import { Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -29,7 +24,9 @@ import {
 import { syncFromApi } from "@/i18n";
 import enTranslations from "@/i18n/locales/en.json";
 
-const REQUIRED_KEYS = Object.keys(enTranslations) as (keyof typeof enTranslations)[];
+const REQUIRED_KEYS = Object.keys(
+  enTranslations,
+) as (keyof typeof enTranslations)[];
 
 // ── Language list ──────────────────────────────────────────
 
@@ -65,11 +62,7 @@ function LanguageRow({
         </Pill>
         {canEdit && !isBase && (
           <>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onToggle}
-            >
+            <Button size="sm" variant="ghost" onClick={onToggle}>
               {lang.is_active ? "Deactivate" : "Activate"}
             </Button>
             <Button
@@ -97,7 +90,10 @@ function validateTranslationJson(raw: string): {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { ok: false, errors: ["Invalid JSON — paste the full JSON object from the AI."] };
+    return {
+      ok: false,
+      errors: ["Invalid JSON — paste the full JSON object from the AI."],
+    };
   }
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -131,23 +127,34 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [raw, setRaw] = useState("");
-  const [validation, setValidation] = useState<ReturnType<typeof validateTranslationJson> | null>(null);
+  const [validation, setValidation] = useState<ReturnType<
+    typeof validateTranslationJson
+  > | null>(null);
 
   const create = useMutation({
-    mutationFn: (data: { language_code: string; display_name: string; translations: Record<string, string> }) =>
-      createLanguage(data),
+    mutationFn: (data: {
+      language_code: string;
+      display_name: string;
+      translations: Record<string, string>;
+    }) => createLanguage(data),
     onSuccess: async (newLang) => {
       // Hot-swap translations into i18next immediately
       if (validation?.parsed) {
-        await syncFromApi([{
-          language_code: newLang.language_code,
-          display_name: newLang.display_name,
-          translations: validation.parsed,
-        }]);
+        await syncFromApi([
+          {
+            language_code: newLang.language_code,
+            display_name: newLang.display_name,
+            translations: validation.parsed,
+          },
+        ]);
       }
       qc.invalidateQueries({ queryKey: ["factory-i18n-languages"] });
       qc.invalidateQueries({ queryKey: ["factory-i18n-list"] });
-      setCode(""); setName(""); setRaw(""); setValidation(null); setOpen(false);
+      setCode("");
+      setName("");
+      setRaw("");
+      setValidation(null);
+      setOpen(false);
       onSuccess();
     },
   });
@@ -158,11 +165,19 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
 
   const handleSave = () => {
     if (!validation?.ok || !validation.parsed) return;
-    create.mutate({ language_code: code.trim().toLowerCase(), display_name: name.trim(), translations: validation.parsed });
+    create.mutate({
+      language_code: code.trim().toLowerCase(),
+      display_name: name.trim(),
+      translations: validation.parsed,
+    });
   };
 
   const prettyRaw = () => {
-    try { setRaw(JSON.stringify(JSON.parse(raw), null, 2)); } catch { /* keep as-is */ }
+    try {
+      setRaw(JSON.stringify(JSON.parse(raw), null, 2));
+    } catch {
+      /* keep as-is */
+    }
   };
 
   return (
@@ -177,24 +192,34 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
           </span>
           <div>
             <div className="font-semibold text-sm">Add New Language</div>
-            <div className="text-text-faint text-xs mt-0.5">3-step process — no code required</div>
+            <div className="text-text-faint text-xs mt-0.5">
+              3-step process — no code required
+            </div>
           </div>
         </div>
-        {open ? <ChevronUp className="w-4 h-4 text-text-faint" /> : <ChevronDown className="w-4 h-4 text-text-faint" />}
+        {open ? (
+          <ChevronUp className="w-4 h-4 text-text-faint" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-text-faint" />
+        )}
       </button>
 
       {open && (
         <div className="border-t border-white/[0.06] p-5 space-y-6">
-
           {/* Step 1 — Download guide */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 rounded-full bg-accent/20 text-accent-glow text-[10px] font-bold grid place-items-center shrink-0">1</span>
-              <span className="text-sm font-semibold">Download the translation guide</span>
+              <span className="w-5 h-5 rounded-full bg-accent/20 text-accent-glow text-[10px] font-bold grid place-items-center shrink-0">
+                1
+              </span>
+              <span className="text-sm font-semibold">
+                Download the translation guide
+              </span>
             </div>
             <p className="text-text-faint text-xs mb-3 ml-7">
-              The guide contains all 61 translation keys with context, plus a ready-to-paste AI prompt.
-              Upload it to Claude, ChatGPT, or any AI — it will return the exact JSON you need.
+              The guide contains all 61 translation keys with context, plus a
+              ready-to-paste AI prompt. Upload it to Claude, ChatGPT, or any AI
+              — it will return the exact JSON you need.
             </p>
             <a
               href="/factory-i18n-guide.md"
@@ -209,7 +234,9 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
           {/* Step 2 — Language details */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="w-5 h-5 rounded-full bg-accent/20 text-accent-glow text-[10px] font-bold grid place-items-center shrink-0">2</span>
+              <span className="w-5 h-5 rounded-full bg-accent/20 text-accent-glow text-[10px] font-bold grid place-items-center shrink-0">
+                2
+              </span>
               <span className="text-sm font-semibold">Language details</span>
             </div>
             <div className="ml-7 grid grid-cols-2 gap-3">
@@ -222,7 +249,9 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
                   value={code}
                   onChange={(e) => setCode(e.target.value.toLowerCase())}
                 />
-                <p className="text-text-faint text-[11px] mt-1">2-5 lowercase letters (ISO 639-1)</p>
+                <p className="text-text-faint text-[11px] mt-1">
+                  2-5 lowercase letters (ISO 639-1)
+                </p>
               </div>
               <div>
                 <label className="label">Display name *</label>
@@ -232,7 +261,9 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
-                <p className="text-text-faint text-[11px] mt-1">Name in the native language</p>
+                <p className="text-text-faint text-[11px] mt-1">
+                  Name in the native language
+                </p>
               </div>
             </div>
           </div>
@@ -240,8 +271,12 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
           {/* Step 3 — Paste JSON */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="w-5 h-5 rounded-full bg-accent/20 text-accent-glow text-[10px] font-bold grid place-items-center shrink-0">3</span>
-              <span className="text-sm font-semibold">Paste the AI-generated JSON</span>
+              <span className="w-5 h-5 rounded-full bg-accent/20 text-accent-glow text-[10px] font-bold grid place-items-center shrink-0">
+                3
+              </span>
+              <span className="text-sm font-semibold">
+                Paste the AI-generated JSON
+              </span>
             </div>
             <div className="ml-7 space-y-3">
               <div>
@@ -259,7 +294,10 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
                   className="input w-full h-48 font-mono text-xs resize-y"
                   placeholder={'{\n  "currentBalance": "현재 잔액",\n  ...\n}'}
                   value={raw}
-                  onChange={(e) => { setRaw(e.target.value); setValidation(null); }}
+                  onChange={(e) => {
+                    setRaw(e.target.value);
+                    setValidation(null);
+                  }}
                 />
               </div>
 
@@ -274,21 +312,28 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
 
               {/* Validation result */}
               {validation && (
-                <div className={`rounded-xl p-3 text-xs space-y-2 ${validation.ok ? "bg-success/10 border border-success/20" : "bg-danger/10 border border-danger/20"}`}>
+                <div
+                  className={`rounded-xl p-3 text-xs space-y-2 ${validation.ok ? "bg-success/10 border border-success/20" : "bg-danger/10 border border-danger/20"}`}
+                >
                   {validation.ok ? (
                     <div className="flex items-center gap-2 text-success font-semibold">
                       <CheckCircle2 className="w-4 h-4" />
-                      Valid — {REQUIRED_KEYS.length}/{REQUIRED_KEYS.length} keys present
+                      Valid — {REQUIRED_KEYS.length}/{REQUIRED_KEYS.length} keys
+                      present
                     </div>
                   ) : (
                     <>
                       <div className="flex items-center gap-2 text-danger font-semibold">
                         <AlertTriangle className="w-4 h-4" />
-                        {validation.errors?.join(" ") || `Missing ${validation.missing?.length} keys`}
+                        {validation.errors?.join(" ") ||
+                          `Missing ${validation.missing?.length} keys`}
                       </div>
                       {validation.missing && validation.missing.length > 0 && (
                         <div className="text-text-faint">
-                          Missing: <span className="font-mono">{validation.missing.join(", ")}</span>
+                          Missing:{" "}
+                          <span className="font-mono">
+                            {validation.missing.join(", ")}
+                          </span>
                         </div>
                       )}
                     </>
@@ -306,15 +351,26 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
                     <table className="w-full text-[11px]">
                       <thead>
                         <tr className="border-b border-white/10 text-text-muted">
-                          <th className="text-left px-3 py-2 font-medium">Key</th>
-                          <th className="text-left px-3 py-2 font-medium">English</th>
-                          <th className="text-left px-3 py-2 font-medium text-accent-glow">Translation</th>
+                          <th className="text-left px-3 py-2 font-medium">
+                            Key
+                          </th>
+                          <th className="text-left px-3 py-2 font-medium">
+                            English
+                          </th>
+                          <th className="text-left px-3 py-2 font-medium text-accent-glow">
+                            Translation
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {REQUIRED_KEYS.map((key) => (
-                          <tr key={key} className="border-b border-white/[0.04] last:border-0">
-                            <td className="px-3 py-1.5 font-mono text-text-faint">{key}</td>
+                          <tr
+                            key={key}
+                            className="border-b border-white/[0.04] last:border-0"
+                          >
+                            <td className="px-3 py-1.5 font-mono text-text-faint">
+                              {key}
+                            </td>
                             <td className="px-3 py-1.5 text-text-muted max-w-[150px] truncate">
                               {enTranslations[key]}
                             </td>
@@ -339,7 +395,10 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
             <Button
               onClick={handleSave}
               disabled={
-                !validation?.ok || !code.trim() || !name.trim() || create.isPending
+                !validation?.ok ||
+                !code.trim() ||
+                !name.trim() ||
+                create.isPending
               }
             >
               {create.isPending ? "Saving…" : "Save Language"}
@@ -348,7 +407,8 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
 
           {create.isError && (
             <p className="text-danger text-xs">
-              Failed to save. Check that the language code is not already registered.
+              Failed to save. Check that the language code is not already
+              registered.
             </p>
           )}
         </div>
@@ -368,7 +428,11 @@ export function FactoryLanguagePage() {
   const qc = useQueryClient();
   const canEdit = can("platform_settings", "edit");
 
-  const { data: langs, isLoading, isError } = useQuery({
+  const {
+    data: langs,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["factory-i18n-list"],
     queryFn: listLanguages,
   });
@@ -388,7 +452,12 @@ export function FactoryLanguagePage() {
   });
 
   const handleDelete = (code: string, name: string) => {
-    if (!confirm(`Remove "${name}" (${code})? Factory screens will fall back to English.`)) return;
+    if (
+      !confirm(
+        `Remove "${name}" (${code})? Factory screens will fall back to English.`,
+      )
+    )
+      return;
     remove.mutate(code);
   };
 
@@ -398,21 +467,28 @@ export function FactoryLanguagePage() {
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Globe className="w-5 h-5 text-accent-glow" />
-          <h2 className="font-display text-[22px] font-medium">Factory Languages</h2>
+          <h2 className="font-display text-[22px] font-medium">
+            Factory Languages
+          </h2>
         </div>
         <p className="text-text-muted text-[13px]">
-          Manage translations for China factory-facing screens (ledger, shipments).
-          New languages take effect immediately — no code changes or deploy needed.
+          Manage translations for China factory-facing screens (ledger,
+          shipments). New languages take effect immediately — no code changes or
+          deploy needed.
         </p>
       </div>
 
       {/* Registered languages */}
       <div className="glass rounded-2xl p-5">
-        <h3 className="font-display text-base font-medium mb-4">Registered Languages</h3>
+        <h3 className="font-display text-base font-medium mb-4">
+          Registered Languages
+        </h3>
 
         {isLoading && (
           <div className="space-y-3">
-            {[1, 2].map((i) => <Skeleton key={i} className="h-12" />)}
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-12" />
+            ))}
           </div>
         )}
         {isError && <ErrorState />}
@@ -430,12 +506,20 @@ export function FactoryLanguagePage() {
                 key={lang.language_code}
                 lang={lang}
                 canEdit={canEdit}
-                onToggle={() => toggle.mutate({ code: lang.language_code, is_active: !lang.is_active })}
-                onDelete={() => handleDelete(lang.language_code, lang.display_name)}
+                onToggle={() =>
+                  toggle.mutate({
+                    code: lang.language_code,
+                    is_active: !lang.is_active,
+                  })
+                }
+                onDelete={() =>
+                  handleDelete(lang.language_code, lang.display_name)
+                }
               />
             ))}
             <p className="text-text-faint text-[11px] mt-3">
-              English (en) cannot be removed — it is the fallback language for all users.
+              English (en) cannot be removed — it is the fallback language for
+              all users.
             </p>
           </>
         )}

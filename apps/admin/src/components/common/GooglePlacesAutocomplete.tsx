@@ -180,8 +180,8 @@ export function GooglePlacesAutocomplete({
       {status === "unavailable" && (
         <p className="mt-1.5 text-[10.5px] text-text-faint inline-flex items-center gap-1">
           <AlertCircle className="w-3 h-3" />
-          Map autocomplete not configured — typing works fine, our rider
-          will still find you.
+          Map autocomplete not configured — typing works fine, our rider will
+          still find you.
         </p>
       )}
       {status === "error" && (
@@ -218,7 +218,8 @@ function parsePlace(place: google.maps.places.PlaceResult): PlaceFields {
   const comps = place.address_components ?? [];
   const streetNumber = comp(comps, "street_number");
   const route = comp(comps, "route");
-  const line1 = [streetNumber, route].filter(Boolean).join(" ") ||
+  const line1 =
+    [streetNumber, route].filter(Boolean).join(" ") ||
     (place.name ?? place.formatted_address ?? "");
   const area =
     comp(comps, "sublocality_level_1") ||
@@ -229,8 +230,7 @@ function parsePlace(place: google.maps.places.PlaceResult): PlaceFields {
     comp(comps, "locality") ||
     comp(comps, "administrative_area_level_2") ||
     "Lagos";
-  const state =
-    comp(comps, "administrative_area_level_1") || "Lagos";
+  const state = comp(comps, "administrative_area_level_1") || "Lagos";
   const country = comp(comps, "country") || "Nigeria";
   const country_code = comp(comps, "country", true) || "NG";
   const postal_code = comp(comps, "postal_code");

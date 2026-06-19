@@ -100,7 +100,10 @@ const PRESETS: ReadonlyArray<{
 ] as const;
 
 export function AppearancePage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Appearance" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Appearance" },
+  ]);
   const branding = useBranding();
   const platform = usePlatformSettings(true);
   const fonts = useFontCatalog();
@@ -237,9 +240,7 @@ function LayerASection({
           <Field
             label="Company name"
             value={draft.company_name ?? ""}
-            onChange={(v) =>
-              setDraft({ ...draft, company_name: v || null })
-            }
+            onChange={(v) => setDraft({ ...draft, company_name: v || null })}
           />
           <Field
             label="Tagline"
@@ -299,7 +300,10 @@ function LayerASection({
                 const current = draft.theme?.[p.mode] ?? {};
                 setDraft({
                   ...draft,
-                  theme: { ...draft.theme, [p.mode]: { ...current, ...p.patch } },
+                  theme: {
+                    ...draft.theme,
+                    [p.mode]: { ...current, ...p.patch },
+                  },
                 });
               }}
               className="text-left p-3 rounded-[13px] border hairline bg-text-primary/[0.03] hover:border-accent/40 transition-colors"
@@ -389,17 +393,13 @@ function LayerASection({
         <FontPicker
           label="Display (headlines)"
           value={draft.font_display}
-          fonts={fonts.filter((f) =>
-            ["display", "serif"].includes(f.category),
-          )}
+          fonts={fonts.filter((f) => ["display", "serif"].includes(f.category))}
           onChange={(v) => setDraft({ ...draft, font_display: v })}
         />
         <FontPicker
           label="Body (UI &amp; long-form)"
           value={draft.font_body}
-          fonts={fonts.filter((f) =>
-            ["sans", "serif"].includes(f.category),
-          )}
+          fonts={fonts.filter((f) => ["sans", "serif"].includes(f.category))}
           onChange={(v) => setDraft({ ...draft, font_body: v })}
         />
         <FontPicker
@@ -453,7 +453,9 @@ function LayerBSection() {
   const [grad1, setGrad1] = useState(active.grad1);
   const [grad2, setGrad2] = useState(active.grad2);
   const [website, setWebsite] = useState(row?.website ?? "");
-  const [logoPath, setLogoPath] = useState<string | null>(row?.logo_path ?? null);
+  const [logoPath, setLogoPath] = useState<string | null>(
+    row?.logo_path ?? null,
+  );
   const [faviconPath, setFaviconPath] = useState<string | null>(
     row?.favicon_path ?? null,
   );
@@ -541,7 +543,11 @@ function LayerBSection() {
       <Card className="mt-4 p-5 space-y-4">
         <div className="grid grid-cols-3 gap-3">
           <ColourField label="Accent" value={accent} onChange={setAccent} />
-          <ColourField label="Gradient start" value={grad1} onChange={setGrad1} />
+          <ColourField
+            label="Gradient start"
+            value={grad1}
+            onChange={setGrad1}
+          />
           <ColourField label="Gradient end" value={grad2} onChange={setGrad2} />
         </div>
         <div
@@ -763,7 +769,11 @@ function FontPicker({
   const [open, setOpen] = useState(false);
   const current =
     fonts.find((f) => f.css_value === value) ??
-    ({ family: "Custom", css_value: value, use_hint: "Custom font stack" } as FontCatalogItem);
+    ({
+      family: "Custom",
+      css_value: value,
+      use_hint: "Custom font stack",
+    } as FontCatalogItem);
   return (
     <div className="relative">
       <span className="micro block mb-1.5">{label}</span>
@@ -859,7 +869,9 @@ function FontUrlField({
       {showHelp && (
         <div className="mt-2 p-3 rounded-[10px] bg-text-primary/[0.04] hairline border text-[11.5px] text-text-muted leading-relaxed">
           <p className="mb-1.5">
-            <strong className="text-text-primary">Want a font that isn&rsquo;t in the picker?</strong>
+            <strong className="text-text-primary">
+              Want a font that isn&rsquo;t in the picker?
+            </strong>
           </p>
           <ol className="list-decimal pl-4 space-y-1">
             <li>
@@ -884,9 +896,10 @@ function FontUrlField({
             </li>
           </ol>
           <p className="mt-2 text-text-faint">
-            For safety we only accept https URLs from {FONT_HOST_ALLOWLIST.join(", ")}.
-            Stylesheets carry CSS power — restricting hosts blocks hostile
-            sheets from sneaking in via this field.
+            For safety we only accept https URLs from{" "}
+            {FONT_HOST_ALLOWLIST.join(", ")}. Stylesheets carry CSS power —
+            restricting hosts blocks hostile sheets from sneaking in via this
+            field.
           </p>
         </div>
       )}
@@ -926,7 +939,9 @@ function PreviewSnapshot({
         <span
           className="text-[11px] px-2 py-1 rounded-full"
           style={{
-            background: tokens.accent ? `rgb(${tokens.accent} / 0.15)` : "transparent",
+            background: tokens.accent
+              ? `rgb(${tokens.accent} / 0.15)`
+              : "transparent",
             color: tokens["accent-glow"]
               ? `rgb(${tokens["accent-glow"]})`
               : colour("accent"),
@@ -1005,7 +1020,13 @@ function StickyActions({
         {dirty && !error && (
           <span className="text-[11.5px] text-warn">Unsaved changes</span>
         )}
-        <Button variant="ghost" size="sm" icon={<RotateCcw className="w-4 h-4" />} onClick={onReset} disabled={saving || !dirty}>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<RotateCcw className="w-4 h-4" />}
+          onClick={onReset}
+          disabled={saving || !dirty}
+        >
           Reset
         </Button>
         <Button

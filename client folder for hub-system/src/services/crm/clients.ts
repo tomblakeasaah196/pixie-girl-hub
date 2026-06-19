@@ -31,9 +31,7 @@ export async function getClientsToday(): Promise<TodayFeed> {
   return data;
 }
 
-export async function getClient(
-  contactId: string,
-): Promise<ClientProfileData> {
+export async function getClient(contactId: string): Promise<ClientProfileData> {
   const { data } = await api.get<ClientProfileData>(
     `/crm/clients/${contactId}`,
   );
@@ -51,9 +49,7 @@ export async function listClientPurchases(
   return data;
 }
 
-export async function listClientNotes(
-  contactId: string,
-): Promise<DealNote[]> {
+export async function listClientNotes(contactId: string): Promise<DealNote[]> {
   const { data } = await api.get<{ data: DealNote[] }>(
     `/crm/clients/${contactId}/notes`,
   );

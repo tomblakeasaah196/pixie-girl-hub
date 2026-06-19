@@ -35,11 +35,7 @@ router.get("/search", can("view"), c.searchMessages);
 router.post("/send", can("edit"), v.validateSendToCustomer, c.sendToCustomer);
 
 // ── Customer 360 ───────────────────────────────────────────
-router.get(
-  "/customer-360/:contact_id",
-  can("view"),
-  c.getCustomer360,
-);
+router.get("/customer-360/:contact_id", can("view"), c.getCustomer360);
 
 // ── Order capture (signed pre-fill link sent into a chat) ──
 router.post(
@@ -63,11 +59,7 @@ router.patch(
   v.validateQuickReplyUpdate,
   c.updateQuickReply,
 );
-router.delete(
-  "/quick-replies/:reply_id",
-  can("delete"),
-  c.deleteQuickReply,
-);
+router.delete("/quick-replies/:reply_id", can("delete"), c.deleteQuickReply);
 
 // ── Channels ───────────────────────────────────────────────
 router.get("/channels", can("view"), c.listChannels);

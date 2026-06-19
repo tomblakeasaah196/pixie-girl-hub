@@ -1,4 +1,9 @@
-import { useParams, useNavigate, Link, useSearchParams } from "react-router-dom";
+import {
+  useParams,
+  useNavigate,
+  Link,
+  useSearchParams,
+} from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import {
@@ -46,7 +51,10 @@ const STATUS_TONE: Record<
   cancelled: "danger",
 };
 
-const BILL_TONE: Record<BillStatus, "gold" | "sage" | "rose" | "neutral" | "danger"> = {
+const BILL_TONE: Record<
+  BillStatus,
+  "gold" | "sage" | "rose" | "neutral" | "danger"
+> = {
   pending: "neutral",
   matched: "gold",
   approved: "gold",
@@ -100,7 +108,8 @@ export default function PODetail() {
   // draft is included — the backend has no status check on receiveGoods,
   // and non-tech users should be able to receive immediately after creation.
   const isReceivable =
-    po && ["draft", "sent", "acknowledged", "partially_received"].includes(po.status);
+    po &&
+    ["draft", "sent", "acknowledged", "partially_received"].includes(po.status);
   const totalReceived =
     po?.lines?.reduce((s, l) => s + (l.quantity_received ?? 0), 0) ?? 0;
   const totalOrdered =
@@ -395,7 +404,8 @@ export default function PODetail() {
                         <span>{fmtMoney(b.amount, b.currency)}</span>
                         {(b.amount_outstanding ?? 0) > 0 ? (
                           <span className="text-state-warn">
-                            {fmtMoney(b.amount_outstanding ?? 0, b.currency)} owed
+                            {fmtMoney(b.amount_outstanding ?? 0, b.currency)}{" "}
+                            owed
                           </span>
                         ) : (
                           <span className="text-accent2">Settled</span>
@@ -480,7 +490,9 @@ export default function PODetail() {
               onClose={() => setReceiving(false)}
               po={po}
               onReceived={() =>
-                navigate(`/procurement/bills/new?po_id=${po.po_id}&from=receive`)
+                navigate(
+                  `/procurement/bills/new?po_id=${po.po_id}&from=receive`,
+                )
               }
             />
             <QuickReceiveModal
@@ -488,7 +500,9 @@ export default function PODetail() {
               onClose={() => setQuickReceiving(false)}
               po={po}
               onReceived={() =>
-                navigate(`/procurement/bills/new?po_id=${po.po_id}&from=receive`)
+                navigate(
+                  `/procurement/bills/new?po_id=${po.po_id}&from=receive`,
+                )
               }
             />
           </div>

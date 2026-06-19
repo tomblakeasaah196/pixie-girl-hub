@@ -19,7 +19,9 @@ const path = require("path");
 const { config } = require("../config/env");
 const { authMiddleware } = require("../middleware/auth");
 const { brandContextMiddleware } = require("../middleware/brand-context");
-const { hostBrandResolverMiddleware } = require("../middleware/host-brand-resolver");
+const {
+  hostBrandResolverMiddleware,
+} = require("../middleware/host-brand-resolver");
 const { publicWriteLimiter } = require("../middleware");
 
 // Auth & user-management
@@ -52,7 +54,10 @@ const businessSetupRouter = require("../modules/business_setup/business-setup.ro
 const platformSettingsRouter = require("../modules/platform_settings/platform-settings.routes");
 const settingsRouter = require("../modules/settings/settings.routes");
 const brandingPublicRouter = require("../modules/platform_settings/branding.public.routes");
-const { welcomeRouter: geoPublicRouter, geoRouter } = require("../modules/platform_settings/geo.public.routes");
+const {
+  welcomeRouter: geoPublicRouter,
+  geoRouter,
+} = require("../modules/platform_settings/geo.public.routes");
 const manifestPublicRouter = require("../modules/platform_settings/manifest.public.routes");
 const salesCampaignsRouter = require("../modules/sales_campaigns/campaigns.routes");
 const retentionRouter = require("../modules/retention/retention.routes");

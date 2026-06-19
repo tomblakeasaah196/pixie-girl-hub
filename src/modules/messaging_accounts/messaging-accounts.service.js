@@ -104,11 +104,17 @@ async function removeAccount({ brand, user, request_id, id }) {
 async function testAccount({ id }) {
   const row = await repo.getRaw({ id });
   if (!row) throw new NotFoundError("Messaging account");
-  const token = row.access_token_enc ? crypto.decrypt(row.access_token_enc) : null;
+  const token = row.access_token_enc
+    ? crypto.decrypt(row.access_token_enc)
+    : null;
   const v = config.META_GRAPH_VERSION || "v21.0";
 
   try {
-    if (row.platform === "whatsapp" || row.platform === "instagram" || row.platform === "facebook") {
+    if (
+      row.platform === "whatsapp" ||
+      row.platform === "instagram" ||
+      row.platform === "facebook"
+    ) {
       if (!token) {
         throw new AppError(
           "NO_TOKEN",
@@ -133,12 +139,17 @@ async function testAccount({ id }) {
       // domain's MX record as a sanity check so the CEO knows DNS is
       // pointing at Cloudflare (or wherever the inbound mailbox lives).
       const dns = require("dns").promises;
-      const domain = String(row.external_account_id).split("@")[1] || row.external_account_id;
+      const domain =
+        String(row.external_account_id).split("@")[1] ||
+        row.external_account_id;
       const records = await dns.resolveMx(domain);
       return {
         ok: true,
         platform: "email",
-        mx_records: records.map((r) => ({ exchange: r.exchange, priority: r.priority })),
+        mx_records: records.map((r) => ({
+          exchange: r.exchange,
+          priority: r.priority,
+        })),
       };
     }
   } catch (err) {

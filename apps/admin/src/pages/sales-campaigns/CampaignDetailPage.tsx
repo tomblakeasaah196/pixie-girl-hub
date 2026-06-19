@@ -1,9 +1,28 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Copy, Gift, Pencil, Send, Share2, Sparkles, Trophy, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  Copy,
+  Gift,
+  Pencil,
+  Send,
+  Share2,
+  Sparkles,
+  Trophy,
+  Users,
+} from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
-import { Button, Card, EmptyState, KpiTile, MoneyText, Pill, Skeleton, type Tone } from "@/components/ui/primitives";
+import {
+  Button,
+  Card,
+  EmptyState,
+  KpiTile,
+  MoneyText,
+  Pill,
+  Skeleton,
+  type Tone,
+} from "@/components/ui/primitives";
 import { DeniedState, ErrorState } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
 import { cn } from "@/lib/cn";
@@ -37,7 +56,9 @@ export function CampaignDetailPage() {
   const campaignQ = useCampaign(id);
   const metricsQ = useCampaignMetrics(id);
   const { can } = useAuthStore();
-  const [tab, setTab] = useState<"live" | "signups" | "share" | "vip" | "praxis">("live");
+  const [tab, setTab] = useState<
+    "live" | "signups" | "share" | "vip" | "praxis"
+  >("live");
   useBreadcrumbs([
     { label: "Sales Campaigns", href: "/sales-campaigns" },
     { label: campaignQ.data?.name || "Loading…" },
@@ -45,16 +66,19 @@ export function CampaignDetailPage() {
 
   if (!can("sales_campaigns", "view")) return <DeniedState />;
   if (campaignQ.isLoading) return <Skeleton style={{ height: 280 }} />;
-  if (campaignQ.isError || !campaignQ.data) return <ErrorState onRetry={() => campaignQ.refetch()} />;
+  if (campaignQ.isError || !campaignQ.data)
+    return <ErrorState onRetry={() => campaignQ.refetch()} />;
 
   const campaign = campaignQ.data;
   const rollups = metricsQ.data?.rollups || {};
-  const conversion = rollups.total_unique_visitors > 0
-    ? ((rollups.total_orders || 0) / rollups.total_unique_visitors) * 100
-    : 0;
-  const aov = rollups.total_orders > 0
-    ? Number(rollups.total_revenue_ngn || 0) / Number(rollups.total_orders)
-    : 0;
+  const conversion =
+    rollups.total_unique_visitors > 0
+      ? ((rollups.total_orders || 0) / rollups.total_unique_visitors) * 100
+      : 0;
+  const aov =
+    rollups.total_orders > 0
+      ? Number(rollups.total_revenue_ngn || 0) / Number(rollups.total_orders)
+      : 0;
 
   return (
     <div className="space-y-4">
@@ -62,36 +86,70 @@ export function CampaignDetailPage() {
         <div
           className="absolute -top-12 -right-8 w-[280px] h-[280px] rounded-full pointer-events-none"
           style={{
-            background: "radial-gradient(circle, rgb(var(--accent-deep)/0.45), transparent 70%)",
+            background:
+              "radial-gradient(circle, rgb(var(--accent-deep)/0.45), transparent 70%)",
             filter: "blur(36px)",
           }}
         />
         <div className="relative flex items-center gap-3 flex-wrap">
-          <Link to="/sales-campaigns" className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-muted hover:text-text-primary">
+          <Link
+            to="/sales-campaigns"
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-muted hover:text-text-primary"
+          >
             <ArrowLeft className="w-3.5 h-3.5" /> All campaigns
           </Link>
-          <Pill tone={TONE_FOR[campaign.status]}>{campaign.status.replace("_", " ")}</Pill>
+          <Pill tone={TONE_FOR[campaign.status]}>
+            {campaign.status.replace("_", " ")}
+          </Pill>
           {campaign.ai_assist_pct > 0 && (
             <Pill tone="accent" dot={false}>
-              <Sparkles className="w-3 h-3" /> {Math.round(campaign.ai_assist_pct * 100)}% AI
+              <Sparkles className="w-3 h-3" />{" "}
+              {Math.round(campaign.ai_assist_pct * 100)}% AI
             </Pill>
           )}
-          <Link to={`/sales-campaigns/${campaign.campaign_id}/edit`} className="ml-auto">
-            <Button variant="ghost" icon={<Pencil className="w-4 h-4" />}>Open builder</Button>
+          <Link
+            to={`/sales-campaigns/${campaign.campaign_id}/edit`}
+            className="ml-auto"
+          >
+            <Button variant="ghost" icon={<Pencil className="w-4 h-4" />}>
+              Open builder
+            </Button>
           </Link>
         </div>
         <div className="relative mt-3">
-          <h1 className="font-display text-[28px] md:text-[34px] leading-tight">{campaign.name}</h1>
+          <h1 className="font-display text-[28px] md:text-[34px] leading-tight">
+            {campaign.name}
+          </h1>
           <div className="micro mt-1">/sale/{campaign.slug}</div>
         </div>
       </Card>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiTile label="Visitors" value={String(rollups.total_unique_visitors || 0)} tone="accent" />
-        <KpiTile label="Signups" value={String(rollups.total_signups || 0)} tone="accent" />
-        <KpiTile label="Orders" value={String(rollups.total_orders || 0)} tone="accent" />
-        <KpiTile label="Revenue" value={money(Number(rollups.total_revenue_ngn || 0))} tone="accent" />
-        <KpiTile label="Conversion" value={`${conversion.toFixed(2)}%`} tone="accent" />
+        <KpiTile
+          label="Visitors"
+          value={String(rollups.total_unique_visitors || 0)}
+          tone="accent"
+        />
+        <KpiTile
+          label="Signups"
+          value={String(rollups.total_signups || 0)}
+          tone="accent"
+        />
+        <KpiTile
+          label="Orders"
+          value={String(rollups.total_orders || 0)}
+          tone="accent"
+        />
+        <KpiTile
+          label="Revenue"
+          value={money(Number(rollups.total_revenue_ngn || 0))}
+          tone="accent"
+        />
+        <KpiTile
+          label="Conversion"
+          value={`${conversion.toFixed(2)}%`}
+          tone="accent"
+        />
       </div>
 
       <Card className="p-2">
@@ -108,7 +166,9 @@ export function CampaignDetailPage() {
               onClick={() => setTab(k as typeof tab)}
               className={cn(
                 "px-3 py-2 rounded-[11px] text-[12.5px] font-semibold",
-                tab === k ? "bg-accent-deep text-[#F4E9D9]" : "text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary",
+                tab === k
+                  ? "bg-accent-deep text-[#F4E9D9]"
+                  : "text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary",
               )}
             >
               {l}
@@ -140,15 +200,21 @@ function LivePanel({ campaign, aov }: { campaign: Campaign; aov: number }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
           <div className="micro">AOV</div>
-          <div className="font-display text-[34px] tabular-nums mt-1"><MoneyText ngn={aov} /></div>
+          <div className="font-display text-[34px] tabular-nums mt-1">
+            <MoneyText ngn={aov} />
+          </div>
           <div className="text-[12px] text-text-faint mt-1">
-            Discount given: <span className="font-mono text-accent-glow">{money(Number(campaign.total_discount_given_ngn || 0))}</span>
+            Discount given:{" "}
+            <span className="font-mono text-accent-glow">
+              {money(Number(campaign.total_discount_given_ngn || 0))}
+            </span>
           </div>
         </div>
         <div>
           <div className="micro">Time remaining</div>
           <div className="font-display text-[34px] tabular-nums font-mono mt-1">
-            {String(days).padStart(2, "0")} : {String(hours).padStart(2, "0")} : {String(mins).padStart(2, "0")}
+            {String(days).padStart(2, "0")} : {String(hours).padStart(2, "0")} :{" "}
+            {String(mins).padStart(2, "0")}
           </div>
           <div className="text-[12px] text-text-faint mt-1">
             Starts {start.toLocaleString()} → Ends {end.toLocaleString()}
@@ -167,19 +233,34 @@ function SignupsPanel({ campaignId }: { campaignId: string }) {
   if (!data.length)
     return (
       <Card className="p-2">
-        <EmptyState icon={<Users className="w-7 h-7" />} title="No signups yet" message="Pre-launch signups will appear here once you publish the campaign and visitors opt in." />
+        <EmptyState
+          icon={<Users className="w-7 h-7" />}
+          title="No signups yet"
+          message="Pre-launch signups will appear here once you publish the campaign and visitors opt in."
+        />
       </Card>
     );
   return (
     <Card className="p-4">
       <div className="space-y-1.5">
         {data.map((s: Record<string, unknown>, i) => (
-          <div key={String(s.signup_id || i)} className="grid grid-cols-12 gap-3 items-center p-2.5 rounded-[10px] bg-text-primary/[0.04]">
-            <span className="col-span-4 text-[13px] truncate">{String(s.email || "—")}</span>
-            <span className="col-span-3 text-[12px] text-text-muted">{String(s.phone || "—")}</span>
-            <span className="col-span-2 text-[11px] font-semibold uppercase tracking-wide text-accent-glow">{String(s.notify_via || "email")}</span>
+          <div
+            key={String(s.signup_id || i)}
+            className="grid grid-cols-12 gap-3 items-center p-2.5 rounded-[10px] bg-text-primary/[0.04]"
+          >
+            <span className="col-span-4 text-[13px] truncate">
+              {String(s.email || "—")}
+            </span>
+            <span className="col-span-3 text-[12px] text-text-muted">
+              {String(s.phone || "—")}
+            </span>
+            <span className="col-span-2 text-[11px] font-semibold uppercase tracking-wide text-accent-glow">
+              {String(s.notify_via || "email")}
+            </span>
             <span className="col-span-3 text-[11px] text-text-faint font-mono">
-              {s.signed_up_at ? new Date(String(s.signed_up_at)).toLocaleString() : ""}
+              {s.signed_up_at
+                ? new Date(String(s.signed_up_at)).toLocaleString()
+                : ""}
             </span>
           </div>
         ))}
@@ -205,8 +286,14 @@ function SharePanel({ campaignId }: { campaignId: string }) {
       <div>
         <div className="micro mb-1">Base URL</div>
         <div className="flex gap-2 items-center">
-          <code className="text-[13px] font-mono text-accent-glow truncate flex-1">{kit.base_url}</code>
-          <Button variant="ghost" onClick={() => copy("url", kit.base_url)} icon={<Copy className="w-4 h-4" />}>
+          <code className="text-[13px] font-mono text-accent-glow truncate flex-1">
+            {kit.base_url}
+          </code>
+          <Button
+            variant="ghost"
+            onClick={() => copy("url", kit.base_url)}
+            icon={<Copy className="w-4 h-4" />}
+          >
             {copied === "url" ? "Copied" : "Copy"}
           </Button>
         </div>
@@ -218,9 +305,15 @@ function SharePanel({ campaignId }: { campaignId: string }) {
               <Share2 className="w-3.5 h-3.5 text-accent-glow" />
               <span className="micro">{k.replace(/_/g, " ")}</span>
             </div>
-            <pre className="text-[12.5px] whitespace-pre-wrap text-text-muted leading-relaxed">{v}</pre>
+            <pre className="text-[12.5px] whitespace-pre-wrap text-text-muted leading-relaxed">
+              {v}
+            </pre>
             <div className="flex justify-end">
-              <Button variant="ghost" onClick={() => copy(k, v)} icon={<Copy className="w-3.5 h-3.5" />}>
+              <Button
+                variant="ghost"
+                onClick={() => copy(k, v)}
+                icon={<Copy className="w-3.5 h-3.5" />}
+              >
                 {copied === k ? "Copied" : "Copy"}
               </Button>
             </div>
@@ -244,11 +337,17 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
           <h2 className="font-display text-[22px]">VIP gifts</h2>
           <p className="text-text-muted text-[13px] mt-1">
             Top {campaign.vip_top_n} spenders receive a personal thank-you gift.
-            {campaign.vip_lifetime_threshold_ngn ? ` Anyone above ${money(Number(campaign.vip_lifetime_threshold_ngn))} lifetime spend is promoted to Platinum VIP.` : ""}
+            {campaign.vip_lifetime_threshold_ngn
+              ? ` Anyone above ${money(Number(campaign.vip_lifetime_threshold_ngn))} lifetime spend is promoted to Platinum VIP.`
+              : ""}
           </p>
         </div>
         {campaign.status === "ended" && (
-          <Button variant="primary" icon={<Trophy className="w-4 h-4" />} onClick={() => grant.mutate({})}>
+          <Button
+            variant="primary"
+            icon={<Trophy className="w-4 h-4" />}
+            onClick={() => grant.mutate({})}
+          >
             {grant.isPending ? "Computing…" : "Compute VIP gifts"}
           </Button>
         )}
@@ -263,24 +362,56 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
       )}
       <div className="space-y-1.5">
         {grants.map((g) => (
-          <div key={g.grant_id} className="grid grid-cols-12 gap-3 items-center p-3 rounded-[12px] bg-text-primary/[0.04] border border-line">
-            <span className="col-span-1 font-display text-[16px] tabular-nums text-center">#{g.rank}</span>
+          <div
+            key={g.grant_id}
+            className="grid grid-cols-12 gap-3 items-center p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
+          >
+            <span className="col-span-1 font-display text-[16px] tabular-nums text-center">
+              #{g.rank}
+            </span>
             <div className="col-span-3 min-w-0">
-              <div className="font-medium text-[13px] truncate">{g.first_name} {g.last_name}</div>
-              <div className="text-text-faint text-[11px] truncate">{g.email || g.instagram_handle}</div>
+              <div className="font-medium text-[13px] truncate">
+                {g.first_name} {g.last_name}
+              </div>
+              <div className="text-text-faint text-[11px] truncate">
+                {g.email || g.instagram_handle}
+              </div>
             </div>
-            <div className="col-span-2 text-[12.5px] tabular-nums"><MoneyText ngn={Number(g.total_spend_ngn || 0)} /></div>
-            <div className="col-span-3 text-[12px] text-text-muted truncate">{g.praxis_gift_suggestion}</div>
+            <div className="col-span-2 text-[12.5px] tabular-nums">
+              <MoneyText ngn={Number(g.total_spend_ngn || 0)} />
+            </div>
+            <div className="col-span-3 text-[12px] text-text-muted truncate">
+              {g.praxis_gift_suggestion}
+            </div>
             <div className="col-span-2 flex gap-1 justify-end">
-              <Pill tone={g.gift_status === "delivered" ? "success" : g.gift_status === "dispatched" ? "info" : g.gift_status === "approved" ? "warn" : "neutral"}>
+              <Pill
+                tone={
+                  g.gift_status === "delivered"
+                    ? "success"
+                    : g.gift_status === "dispatched"
+                      ? "info"
+                      : g.gift_status === "approved"
+                        ? "warn"
+                        : "neutral"
+                }
+              >
                 {g.gift_status}
               </Pill>
-              {g.promoted_to_platinum && <Pill tone="accent" dot={false}>Platinum</Pill>}
+              {g.promoted_to_platinum && (
+                <Pill tone="accent" dot={false}>
+                  Platinum
+                </Pill>
+              )}
             </div>
             <div className="col-span-1">
               {g.gift_status === "pending" && (
                 <button
-                  onClick={() => update.mutate({ grantId: g.grant_id, gift_status: "approved" })}
+                  onClick={() =>
+                    update.mutate({
+                      grantId: g.grant_id,
+                      gift_status: "approved",
+                    })
+                  }
                   className="text-[11px] font-semibold text-accent-glow hover:underline"
                 >
                   Approve
@@ -288,7 +419,12 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
               )}
               {g.gift_status === "approved" && (
                 <button
-                  onClick={() => update.mutate({ grantId: g.grant_id, gift_status: "dispatched" })}
+                  onClick={() =>
+                    update.mutate({
+                      grantId: g.grant_id,
+                      gift_status: "dispatched",
+                    })
+                  }
                   className="text-[11px] font-semibold text-accent-glow hover:underline"
                 >
                   Dispatch
@@ -322,20 +458,29 @@ function PraxisPanel({ campaignId }: { campaignId: string }) {
         <h2 className="font-display text-[22px]">Ask Praxis</h2>
       </div>
       <p className="text-text-muted text-[13px]">
-        Natural-language questions about this campaign. Try: "Which bundle made the most yesterday?" or "Why did conversion drop after 3pm?"
+        Natural-language questions about this campaign. Try: "Which bundle made
+        the most yesterday?" or "Why did conversion drop after 3pm?"
       </p>
       <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
         {history.map((m, i) => (
           <div key={i} className="space-y-2">
             <div className="flex justify-end">
-              <div className="bg-accent-deep text-[#F4E9D9] rounded-[14px] rounded-tr-sm px-4 py-2 text-[13px] max-w-[80%]">{m.q}</div>
+              <div className="bg-accent-deep text-[#F4E9D9] rounded-[14px] rounded-tr-sm px-4 py-2 text-[13px] max-w-[80%]">
+                {m.q}
+              </div>
             </div>
             <div className="flex">
-              <div className="dropglass rounded-[14px] rounded-tl-sm px-4 py-2 text-[13px] max-w-[80%] whitespace-pre-wrap">{m.a}</div>
+              <div className="dropglass rounded-[14px] rounded-tl-sm px-4 py-2 text-[13px] max-w-[80%] whitespace-pre-wrap">
+                {m.a}
+              </div>
             </div>
           </div>
         ))}
-        {ask.isPending && <div className="text-[12px] text-text-faint italic">Praxis is thinking…</div>}
+        {ask.isPending && (
+          <div className="text-[12px] text-text-faint italic">
+            Praxis is thinking…
+          </div>
+        )}
       </div>
       <Field label="Ask a question">
         <div className="flex gap-2">
@@ -346,7 +491,12 @@ function PraxisPanel({ campaignId }: { campaignId: string }) {
             placeholder="Which bundle sold most yesterday?"
             className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
           />
-          <Button variant="primary" onClick={send} disabled={ask.isPending} icon={<Send className="w-4 h-4" />}>
+          <Button
+            variant="primary"
+            onClick={send}
+            disabled={ask.isPending}
+            icon={<Send className="w-4 h-4" />}
+          >
             Ask
           </Button>
         </div>

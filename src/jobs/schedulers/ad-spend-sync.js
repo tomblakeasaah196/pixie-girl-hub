@@ -126,7 +126,12 @@ async function runAdSpendSync({ windowDays = SYNC_WINDOW_DAYS } = {}) {
   }
 
   logger.info(
-    { accounts: accounts.length, campaigns: campaignsTouched, spendRows, skipped },
+    {
+      accounts: accounts.length,
+      campaigns: campaignsTouched,
+      spendRows,
+      skipped,
+    },
     "ad spend sync done",
   );
   return {

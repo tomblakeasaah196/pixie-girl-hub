@@ -31,8 +31,12 @@ export function DealDetailPage() {
   const [aiEnabled, setAiEnabled] = useState(false);
 
   const { data: deal, isLoading: dealLoading } = useDeal(id ?? null);
-  const { data: activities = [], isLoading: actLoading } = useDealActivities(id ?? null);
-  const { data: notes = [], isLoading: notesLoading } = useDealNotes(id ?? null);
+  const { data: activities = [], isLoading: actLoading } = useDealActivities(
+    id ?? null,
+  );
+  const { data: notes = [], isLoading: notesLoading } = useDealNotes(
+    id ?? null,
+  );
   const {
     data: aiSummary,
     isLoading: aiLoading,
@@ -88,7 +92,9 @@ export function DealDetailPage() {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="font-display text-2xl text-text-primary leading-tight">{deal.title}</h1>
+            <h1 className="font-display text-2xl text-text-primary leading-tight">
+              {deal.title}
+            </h1>
             <Pill tone={STATUS_TONE[deal.status] ?? "neutral"} dot={false}>
               {deal.status.replace(/_/g, " ")}
             </Pill>
@@ -127,7 +133,9 @@ export function DealDetailPage() {
 
       {/* Description */}
       {deal.description && (
-        <p className="text-[13px] text-text-muted mb-5 leading-relaxed">{deal.description}</p>
+        <p className="text-[13px] text-text-muted mb-5 leading-relaxed">
+          {deal.description}
+        </p>
       )}
 
       {/* AI summary */}
@@ -147,10 +155,15 @@ export function DealDetailPage() {
         <div>
           {/* Tab bar */}
           <div className="flex gap-0.5 mb-4 p-0.5 rounded-[10px] bg-text-primary/[0.04] border hairline w-fit">
-            {([
-              { key: "timeline", label: "Timeline" },
-              { key: "notes", label: `Notes${notes.length ? ` (${notes.length})` : ""}` },
-            ] as { key: TabKey; label: string }[]).map(({ key, label }) => (
+            {(
+              [
+                { key: "timeline", label: "Timeline" },
+                {
+                  key: "notes",
+                  label: `Notes${notes.length ? ` (${notes.length})` : ""}`,
+                },
+              ] as { key: TabKey; label: string }[]
+            ).map(({ key, label }) => (
               <button
                 key={key}
                 type="button"
@@ -187,7 +200,11 @@ export function DealDetailPage() {
             <ActivityFeed activities={activities} isLoading={actLoading} />
           )}
           {tab === "notes" && (
-            <DealNotes dealId={deal.deal_id} notes={notes} isLoading={notesLoading} />
+            <DealNotes
+              dealId={deal.deal_id}
+              notes={notes}
+              isLoading={notesLoading}
+            />
           )}
         </div>
 

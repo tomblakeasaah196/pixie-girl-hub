@@ -32,7 +32,9 @@ export function CataloguePage() {
   const [tab, setTab] = useState("styled");
 
   if (!can("catalogue", "view")) {
-    return <DeniedState message="You don't have access to the Catalogue. Ask an admin in Org & Workflow." />;
+    return (
+      <DeniedState message="You don't have access to the Catalogue. Ask an admin in Org & Workflow." />
+    );
   }
 
   return (

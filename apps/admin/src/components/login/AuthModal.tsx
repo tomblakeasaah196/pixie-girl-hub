@@ -75,7 +75,7 @@ export function AuthModal({
 
   const lastEmail =
     typeof localStorage !== "undefined"
-      ? localStorage.getItem(LAST_EMAIL_KEY) ?? ""
+      ? (localStorage.getItem(LAST_EMAIL_KEY) ?? "")
       : "";
   const [remembered, setRemembered] = useState<RememberedAccount | null>(
     getRemembered,
@@ -103,7 +103,9 @@ export function AuthModal({
     setPin("");
     // Default to the PIN pad only when a PIN was actually set up on this
     // device for the remembered account; otherwise start on password.
-    setTab(pinEnabled && remembered && isPinEnabledLocally() ? "pin" : "password");
+    setTab(
+      pinEnabled && remembered && isPinEnabledLocally() ? "pin" : "password",
+    );
     const t = setTimeout(() => emailRef.current?.focus(), 60);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,7 +415,9 @@ export function AuthModal({
                     value={pin}
                     disabled={loading}
                     onChange={(e) => {
-                      const next = e.target.value.replace(/\D/g, "").slice(0, 6);
+                      const next = e.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 6);
                       setPin(next);
                       if (next.length === 6) submitPin(next);
                     }}
@@ -452,8 +456,8 @@ export function AuthModal({
               // you are, so sign in with a password once to enable it.
               <div className="space-y-4 text-center py-2">
                 <p className="text-text-muted text-[13px]">
-                  Sign in with your password once on this device to enable
-                  Quick PIN.
+                  Sign in with your password once on this device to enable Quick
+                  PIN.
                 </p>
                 <button
                   type="button"
@@ -488,10 +492,9 @@ export function AuthModal({
                 <h2 className="font-display text-[22px]">Check your email</h2>
                 <p className="text-text-muted text-[13px] mt-2 max-w-[320px] mx-auto">
                   If an account exists for{" "}
-                  <span className="text-text-primary font-medium">
-                    {email}
-                  </span>
-                  , we've sent a link to reset your password. It expires shortly.
+                  <span className="text-text-primary font-medium">{email}</span>
+                  , we've sent a link to reset your password. It expires
+                  shortly.
                 </p>
                 <button
                   onClick={onClose}

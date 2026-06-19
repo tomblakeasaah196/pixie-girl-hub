@@ -28,7 +28,8 @@ function getEventTone(
   if (action === "failed_login") return "danger";
   if (action === "login" || action === "logout") return "success";
   if (action === "deactivate_login") return "danger";
-  if (action === "password_change" || action === "secret_rotation") return "warn";
+  if (action === "password_change" || action === "secret_rotation")
+    return "warn";
   if (action === "permission_change") return "accent";
   return "info";
 }
@@ -55,7 +56,9 @@ const columns: Column<SecurityEvent>[] = [
       <div className="min-w-0">
         <div className="text-[13px] font-medium truncate">{r.user_name}</div>
         {r.user_email && (
-          <div className="text-[11px] text-text-faint truncate">{r.user_email}</div>
+          <div className="text-[11px] text-text-faint truncate">
+            {r.user_email}
+          </div>
         )}
       </div>
     ),
@@ -79,7 +82,9 @@ const columns: Column<SecurityEvent>[] = [
     width: "130px",
     render: (r) =>
       r.ip_address ? (
-        <span className="font-mono text-[12px] text-text-muted">{r.ip_address}</span>
+        <span className="font-mono text-[12px] text-text-muted">
+          {r.ip_address}
+        </span>
       ) : (
         <span className="text-text-faint">--</span>
       ),
@@ -141,7 +146,9 @@ export function IamSecurityEventsPage() {
           <Activity className="w-5 h-5" />
         </span>
         <div>
-          <h2 className="font-display text-[22px] font-medium">Security Events</h2>
+          <h2 className="font-display text-[22px] font-medium">
+            Security Events
+          </h2>
           <p className="text-text-muted text-[13px]">
             Logins, password changes, permission updates, and access events
           </p>

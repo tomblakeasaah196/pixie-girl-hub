@@ -40,10 +40,9 @@ export function computeTotals(
       : 0,
   );
 
-  const netAfterDisc = r2(Math.max(
-    0,
-    lineSubtotal - orderDiscAmt - loyaltyDiscAmt,
-  ));
+  const netAfterDisc = r2(
+    Math.max(0, lineSubtotal - orderDiscAmt - loyaltyDiscAmt),
+  );
   const vat = r2(netAfterDisc * vatRate);
   const total = r2(netAfterDisc + vat);
 
@@ -60,7 +59,9 @@ export function computeTotals(
 function computeLineTotal(
   line: Omit<CartLine, "line_total" | "needs_approval" | "low_stock">,
 ): number {
-  return r2(Math.max(0, line.unit_price * line.quantity - line.discount_amount));
+  return r2(
+    Math.max(0, line.unit_price * line.quantity - line.discount_amount),
+  );
 }
 
 // ── Store definition ──────────────────────────────────────────────────────────

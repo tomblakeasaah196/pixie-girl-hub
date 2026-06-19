@@ -50,7 +50,11 @@ export function AppShell() {
         onRefresh={handleRefresh}
         className={cn(
           "h-screen overflow-y-auto transition-[margin] duration-300 ease-brand",
-          isDesktop ? (sidebarCollapsed ? "ml-[var(--side-c)]" : "ml-[var(--side-w)]") : "ml-0",
+          isDesktop
+            ? sidebarCollapsed
+              ? "ml-[var(--side-c)]"
+              : "ml-[var(--side-w)]"
+            : "ml-0",
         )}
       >
         <TopBar />

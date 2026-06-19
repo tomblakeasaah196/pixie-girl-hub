@@ -46,7 +46,9 @@ export function SelectEntityPage() {
         <Particles count={30} />
       </div>
       <div className="relative w-full max-w-[680px] text-center animate-app-in">
-        <div className="micro mb-3">{user?.name ? `Hello, ${user.name}` : "Welcome"}</div>
+        <div className="micro mb-3">
+          {user?.name ? `Hello, ${user.name}` : "Welcome"}
+        </div>
         <h1 className="font-display font-light text-[34px] sm:text-[44px] leading-tight">
           Choose a business
         </h1>

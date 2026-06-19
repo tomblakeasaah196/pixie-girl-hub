@@ -67,7 +67,10 @@ async function loadGoogleMaps() {
   return loaderPromise;
 }
 
-interface Props extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "value"> {
+interface Props extends Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "onChange" | "value"
+> {
   value: string;
   onChange: (raw: string) => void;
   onPlaceSelected: (place: PlaceAddress) => void;
@@ -100,7 +103,9 @@ export function AddressAutocomplete({
     setLoading(true);
     loadGoogleMaps()
       .then(() => setReady(true))
-      .catch(() => {/* key not set or network error — degrade to plain input */})
+      .catch(() => {
+        /* key not set or network error — degrade to plain input */
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -130,7 +135,9 @@ export function AddressAutocomplete({
   // Update country restriction whenever countryCode prop changes
   useEffect(() => {
     if (!acRef.current) return;
-    acRef.current.setComponentRestrictions({ country: countryCode.toLowerCase() });
+    acRef.current.setComponentRestrictions({
+      country: countryCode.toLowerCase(),
+    });
   }, [countryCode]);
 
   const inputClasses = [
@@ -166,7 +173,8 @@ export function AddressAutocomplete({
       )}
       {!MAPS_KEY && (
         <p className="text-[10px] text-warn/80 mt-1">
-          Set <span className="font-mono">VITE_GOOGLE_MAPS_KEY</span> to enable autocomplete.
+          Set <span className="font-mono">VITE_GOOGLE_MAPS_KEY</span> to enable
+          autocomplete.
         </p>
       )}
     </div>

@@ -195,7 +195,9 @@ function parseCloudflareEmail(payload) {
 function stripHtml(html) {
   // Conservative — strip tags only; full sanitisation happens when we
   // render the message back to staff (XSS).
-  return String(html).replace(/<[^>]+>/g, "").trim();
+  return String(html)
+    .replace(/<[^>]+>/g, "")
+    .trim();
 }
 
 /**
@@ -257,9 +259,11 @@ async function resolveOrCreateContact({ client, brand, platform, sender }) {
   const created = await repo.createLeadContact({
     client,
     c: {
-      display_name: sender.display_name || sender.phone || sender.email || "New contact",
+      display_name:
+        sender.display_name || sender.phone || sender.email || "New contact",
       first_name: (sender.display_name || "").split(" ")[0] || null,
-      last_name: (sender.display_name || "").split(" ").slice(1).join(" ") || null,
+      last_name:
+        (sender.display_name || "").split(" ").slice(1).join(" ") || null,
       primary_phone: sender.phone || null,
       whatsapp_number: platform === META_WA_PLATFORM ? sender.phone : null,
       email: sender.email || null,
@@ -333,7 +337,8 @@ async function onWebhookReceived({ webhook_id, source }) {
   try {
     if (source === "meta_whatsapp") events = parseMetaWhatsApp(payload);
     else if (source === "meta_instagram") events = parseMetaInstagram(payload);
-    else if (source === "cloudflare_email") events = parseCloudflareEmail(payload);
+    else if (source === "cloudflare_email")
+      events = parseCloudflareEmail(payload);
   } catch (err) {
     logger.error(
       { err: err.message, source, webhook_id },
@@ -364,11 +369,7 @@ function register() {
   if (registered) return;
   registered = true;
   registerSalesReminder();
-  outbox.register(
-    "webhook.received",
-    "smartcomm-ingest",
-    onWebhookReceived,
-  );
+  outbox.register("webhook.received", "smartcomm-ingest", onWebhookReceived);
   logger.info(
     "smartcomm subscribers registered (sales.payment_reminder, webhook.received)",
   );

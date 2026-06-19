@@ -22,7 +22,16 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
-const A = (brand, user_id, action_key, target_type, target_id, after, request_id, before) =>
+const A = (
+  brand,
+  user_id,
+  action_key,
+  target_type,
+  target_id,
+  after,
+  request_id,
+  before,
+) =>
   audit({
     business: brand,
     user_id,
@@ -34,7 +43,8 @@ const A = (brand, user_id, action_key, target_type, target_id, after, request_id
     request_id,
   });
 
-const num = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
+const num = (v) =>
+  v === null || v === undefined || v === "" ? null : Number(v);
 
 /** Effective retail of a colour×size, or null when the anchor isn't set yet. */
 function computeEffective({ anchor, colour_premium, size_premium, override }) {
@@ -93,7 +103,9 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
           }),
         );
       } else {
-        savedTiers.push(await repo.createSizeTier({ client, brand, input: tier }));
+        savedTiers.push(
+          await repo.createSizeTier({ client, brand, input: tier }),
+        );
       }
     }
     let config = before.config;
@@ -158,9 +170,21 @@ async function createColour({ brand, user, request_id, styled_id, input }) {
   });
 }
 
-async function updateColour({ brand, user, request_id, styled_id, colour_id, patch }) {
+async function updateColour({
+  brand,
+  user,
+  request_id,
+  styled_id,
+  colour_id,
+  patch,
+}) {
   return transaction(async (client) => {
-    const before = await repo.getColour({ client, brand, styled_id, colour_id });
+    const before = await repo.getColour({
+      client,
+      brand,
+      styled_id,
+      colour_id,
+    });
     if (!before) throw new NotFoundError("Colour");
     const colour = await repo.updateColour({
       client,
@@ -170,7 +194,12 @@ async function updateColour({ brand, user, request_id, styled_id, colour_id, pat
       patch,
     });
     if (patch.is_default) {
-      await repo.clearDefaultColours({ client, brand, styled_id, except_id: colour_id });
+      await repo.clearDefaultColours({
+        client,
+        brand,
+        styled_id,
+        except_id: colour_id,
+      });
     }
     await A(
       brand,
@@ -209,17 +238,35 @@ async function listColourImages({ brand, styled_id, colour_id }) {
   return catalogueRepo.listColourImages({ brand, colour_id });
 }
 
-async function addColourImage({ brand, user, request_id, styled_id, colour_id, file, meta }) {
+async function addColourImage({
+  brand,
+  user,
+  request_id,
+  styled_id,
+  colour_id,
+  file,
+  meta,
+}) {
   if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
-    throw new AppError("IMAGE_TOO_LARGE", "Image exceeds the 10 MB limit", 413, {
-      user_message: "Images must be 10 MB or smaller.",
-    });
+    throw new AppError(
+      "IMAGE_TOO_LARGE",
+      "Image exceeds the 10 MB limit",
+      413,
+      {
+        user_message: "Images must be 10 MB or smaller.",
+      },
+    );
   }
   // Compress to high-quality, smaller bytes before storage.
   const shrunk = await compressImage(file.buffer, file.mimetype);
   return transaction(async (client) => {
     const styled = await loadStyled({ client, brand, styled_id });
-    const colour = await repo.getColour({ client, brand, styled_id, colour_id });
+    const colour = await repo.getColour({
+      client,
+      brand,
+      styled_id,
+      colour_id,
+    });
     if (!colour) throw new NotFoundError("Colour");
     const doc = await documents.store({
       client,
@@ -267,10 +314,21 @@ async function addColourImage({ brand, user, request_id, styled_id, colour_id, f
   });
 }
 
-async function removeColourImage({ brand, user, request_id, styled_id, colour_id, image_id }) {
+async function removeColourImage({
+  brand,
+  user,
+  request_id,
+  styled_id,
+  colour_id,
+  image_id,
+}) {
   const colour = await repo.getColour({ brand, styled_id, colour_id });
   if (!colour) throw new NotFoundError("Colour");
-  const ok = await catalogueRepo.removeColourImage({ brand, colour_id, image_id });
+  const ok = await catalogueRepo.removeColourImage({
+    brand,
+    colour_id,
+    image_id,
+  });
   if (!ok) throw new NotFoundError("Image");
   await A(
     brand,
@@ -296,7 +354,13 @@ async function listVariants({ brand, styled_id }) {
  * tier) or an explicit size_codes list. Existing combos are skipped, so it is
  * safe to re-run after adding a colour or a size.
  */
-async function bulkCreateVariants({ brand, user, request_id, styled_id, input }) {
+async function bulkCreateVariants({
+  brand,
+  user,
+  request_id,
+  styled_id,
+  input,
+}) {
   return transaction(async (client) => {
     const styled = await loadStyled({ client, brand, styled_id });
 
@@ -322,7 +386,9 @@ async function bulkCreateVariants({ brand, user, request_id, styled_id, input })
     if (input.all_sizes) {
       sizeCodes = tiers.map((tier) => tier.size_code);
     } else {
-      sizeCodes = (input.size_codes || []).filter((code) => tierByCode.has(code));
+      sizeCodes = (input.size_codes || []).filter((code) =>
+        tierByCode.has(code),
+      );
     }
     if (!sizeCodes.length) {
       throw new AppError("INVALID_SIZES", "Pick at least one valid size", 422);
@@ -380,7 +446,14 @@ async function bulkCreateVariants({ brand, user, request_id, styled_id, input })
   });
 }
 
-async function updateVariant({ brand, user, request_id, styled_id, styled_variant_id, patch }) {
+async function updateVariant({
+  brand,
+  user,
+  request_id,
+  styled_id,
+  styled_variant_id,
+  patch,
+}) {
   return transaction(async (client) => {
     const before = await repo.getVariant({
       client,
@@ -411,7 +484,13 @@ async function updateVariant({ brand, user, request_id, styled_id, styled_varian
   });
 }
 
-async function deleteVariant({ brand, user, request_id, styled_id, styled_variant_id }) {
+async function deleteVariant({
+  brand,
+  user,
+  request_id,
+  styled_id,
+  styled_variant_id,
+}) {
   const ok = await repo.deleteVariant({ brand, styled_id, styled_variant_id });
   if (!ok) throw new NotFoundError("Variant");
   await A(

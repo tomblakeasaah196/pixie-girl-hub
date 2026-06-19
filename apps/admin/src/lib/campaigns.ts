@@ -7,11 +7,7 @@
  * active brand key in their query key so a brand switch refetches.
  */
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
 
@@ -266,7 +262,11 @@ export interface PraxisPricingResult {
     below_floor: boolean;
     breakdown: Record<string, unknown>;
   }>;
-  breaches?: Array<{ label: string; proposed_price_ngn: string; floor_ngn: number | null }>;
+  breaches?: Array<{
+    label: string;
+    proposed_price_ngn: string;
+    floor_ngn: number | null;
+  }>;
   pending_acceptance: boolean;
   drafted_by_ai: boolean;
 }
@@ -275,13 +275,15 @@ export interface PraxisPricingResult {
 // Campaigns — collection + single
 // ════════════════════════════════════════════════════════════
 
-export function useCampaignList(filters: {
-  status?: string;
-  q?: string;
-  active_on?: string;
-  page?: number;
-  page_size?: number;
-} = {}) {
+export function useCampaignList(
+  filters: {
+    status?: string;
+    q?: string;
+    active_on?: string;
+    page?: number;
+    page_size?: number;
+  } = {},
+) {
   const brand = useBrand();
   const qs = new URLSearchParams();
   if (filters.status) qs.set("status", filters.status);
@@ -314,9 +316,18 @@ export function useCreateCampaign() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (body: Partial<Campaign> & { slug: string; name: string; starts_at: string; ends_at: string; discount_type: DiscountType; discount_value: number }) =>
-      api.post<Campaign>("/sales-campaigns", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "list", brand] }),
+    mutationFn: (
+      body: Partial<Campaign> & {
+        slug: string;
+        name: string;
+        starts_at: string;
+        ends_at: string;
+        discount_type: DiscountType;
+        discount_value: number;
+      },
+    ) => api.post<Campaign>("/sales-campaigns", body),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["campaigns", "list", brand] }),
   });
 }
 
@@ -337,8 +348,16 @@ export function useCampaignTransition(id: string | undefined) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (action: "submit" | "approve" | "reject" | "launch" | "pause" | "resume" | "end") =>
-      api.post<Campaign>(`/sales-campaigns/${id}/${action}`, {}),
+    mutationFn: (
+      action:
+        | "submit"
+        | "approve"
+        | "reject"
+        | "launch"
+        | "pause"
+        | "resume"
+        | "end",
+    ) => api.post<Campaign>(`/sales-campaigns/${id}/${action}`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaigns", "one", brand, id] });
       qc.invalidateQueries({ queryKey: ["campaigns", "list", brand] });
@@ -352,7 +371,8 @@ export function useDuplicateCampaign() {
   return useMutation({
     mutationFn: (args: { id: string; name?: string; slug?: string }) =>
       api.post<Campaign>(`/sales-campaigns/${args.id}/duplicate`, args),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "list", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["campaigns", "list", brand] }),
   });
 }
 
@@ -367,7 +387,8 @@ export function useBundleList(q?: string) {
   return useQuery({
     enabled: Boolean(brand),
     queryKey: ["campaigns", "bundles", brand, q || ""],
-    queryFn: () => api.get<{ data: Bundle[] }>(`/sales-campaigns/bundles?${qs}`),
+    queryFn: () =>
+      api.get<{ data: Bundle[] }>(`/sales-campaigns/bundles?${qs}`),
   });
 }
 
@@ -376,7 +397,10 @@ export function useBundle(id: string | undefined) {
   return useQuery({
     enabled: Boolean(brand && id),
     queryKey: ["campaigns", "bundle", brand, id],
-    queryFn: () => api.get<Bundle & { items: BundleItem[] }>(`/sales-campaigns/bundles/${id}`),
+    queryFn: () =>
+      api.get<Bundle & { items: BundleItem[] }>(
+        `/sales-campaigns/bundles/${id}`,
+      ),
   });
 }
 
@@ -386,7 +410,8 @@ export function useCreateBundle() {
   return useMutation({
     mutationFn: (body: Partial<Bundle> & { slug: string; name: string }) =>
       api.post<Bundle>("/sales-campaigns/bundles", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] }),
   });
 }
 
@@ -394,7 +419,8 @@ export function useUpdateBundle(id: string | undefined) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (patch: Partial<Bundle>) => api.patch<Bundle>(`/sales-campaigns/bundles/${id}`, patch),
+    mutationFn: (patch: Partial<Bundle>) =>
+      api.patch<Bundle>(`/sales-campaigns/bundles/${id}`, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaigns", "bundle", brand, id] });
       qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
@@ -408,7 +434,10 @@ export function useAddBundleItem(bundleId: string | undefined) {
   return useMutation({
     mutationFn: (body: Partial<BundleItem>) =>
       api.post<BundleItem>(`/sales-campaigns/bundles/${bundleId}/items`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "bundle", brand, bundleId] }),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "bundle", brand, bundleId],
+      }),
   });
 }
 
@@ -416,8 +445,12 @@ export function useRemoveBundleItem(bundleId: string | undefined) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (itemId: string) => api.delete<void>(`/sales-campaigns/bundles/${bundleId}/items/${itemId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "bundle", brand, bundleId] }),
+    mutationFn: (itemId: string) =>
+      api.delete<void>(`/sales-campaigns/bundles/${bundleId}/items/${itemId}`),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "bundle", brand, bundleId],
+      }),
   });
 }
 
@@ -427,7 +460,9 @@ export function useCampaignBundles(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CampaignBundleLink[] }>(`/sales-campaigns/${campaignId}/bundles`),
+      api.get<{ data: CampaignBundleLink[] }>(
+        `/sales-campaigns/${campaignId}/bundles`,
+      ),
   });
 }
 
@@ -436,8 +471,14 @@ export function useAttachCampaignBundle(campaignId: string | undefined) {
   const brand = useBrand();
   return useMutation({
     mutationFn: (body: Partial<CampaignBundleLink> & { bundle_id: string }) =>
-      api.post<CampaignBundleLink>(`/sales-campaigns/${campaignId}/bundles`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "campaign-bundles", brand, campaignId] }),
+      api.post<CampaignBundleLink>(
+        `/sales-campaigns/${campaignId}/bundles`,
+        body,
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
+      }),
   });
 }
 
@@ -447,7 +488,10 @@ export function useDetachCampaignBundle(campaignId: string | undefined) {
   return useMutation({
     mutationFn: (linkId: string) =>
       api.delete<void>(`/sales-campaigns/${campaignId}/bundles/${linkId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "campaign-bundles", brand, campaignId] }),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
+      }),
   });
 }
 
@@ -459,7 +503,8 @@ export function useCampaignTiers(campaignId: string | undefined) {
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "tiers", brand, campaignId],
-    queryFn: () => api.get<{ data: QuantityTier[] }>(`/sales-campaigns/${campaignId}/tiers`),
+    queryFn: () =>
+      api.get<{ data: QuantityTier[] }>(`/sales-campaigns/${campaignId}/tiers`),
   });
 }
 
@@ -467,9 +512,16 @@ export function useUpsertTier(campaignId: string | undefined) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (body: Partial<QuantityTier> & { min_quantity: number; fixed_discount_ngn: number }) =>
-      api.post<QuantityTier>(`/sales-campaigns/${campaignId}/tiers`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "tiers", brand, campaignId] }),
+    mutationFn: (
+      body: Partial<QuantityTier> & {
+        min_quantity: number;
+        fixed_discount_ngn: number;
+      },
+    ) => api.post<QuantityTier>(`/sales-campaigns/${campaignId}/tiers`, body),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "tiers", brand, campaignId],
+      }),
   });
 }
 
@@ -479,7 +531,10 @@ export function useDeleteTier(campaignId: string | undefined) {
   return useMutation({
     mutationFn: (tierId: string) =>
       api.delete<void>(`/sales-campaigns/${campaignId}/tiers/${tierId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "tiers", brand, campaignId] }),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "tiers", brand, campaignId],
+      }),
   });
 }
 
@@ -491,7 +546,8 @@ export function useCampaignUpsells(campaignId: string | undefined) {
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "upsells", brand, campaignId],
-    queryFn: () => api.get<{ data: CartUpsell[] }>(`/sales-campaigns/${campaignId}/upsells`),
+    queryFn: () =>
+      api.get<{ data: CartUpsell[] }>(`/sales-campaigns/${campaignId}/upsells`),
   });
 }
 
@@ -501,7 +557,10 @@ export function useUpsertUpsell(campaignId: string | undefined) {
   return useMutation({
     mutationFn: (body: Partial<CartUpsell>) =>
       api.post<CartUpsell>(`/sales-campaigns/${campaignId}/upsells`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "upsells", brand, campaignId] }),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "upsells", brand, campaignId],
+      }),
   });
 }
 
@@ -511,7 +570,10 @@ export function useDeleteUpsell(campaignId: string | undefined) {
   return useMutation({
     mutationFn: (upsellId: string) =>
       api.delete<void>(`/sales-campaigns/${campaignId}/upsells/${upsellId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "upsells", brand, campaignId] }),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "upsells", brand, campaignId],
+      }),
   });
 }
 
@@ -525,7 +587,10 @@ export function useAmbassadorContacts(q?: string) {
   return useQuery({
     enabled: Boolean(brand),
     queryKey: ["campaigns", "ambassadors", brand, q || ""],
-    queryFn: () => api.get<{ data: AmbassadorContact[] }>(`/sales-campaigns/ambassadors?${qs}`),
+    queryFn: () =>
+      api.get<{ data: AmbassadorContact[] }>(
+        `/sales-campaigns/ambassadors?${qs}`,
+      ),
   });
 }
 
@@ -533,9 +598,16 @@ export function usePromoteAmbassador() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (args: { contactId: string; profile?: Record<string, unknown> }) =>
-      api.post<AmbassadorContact>(`/sales-campaigns/ambassadors/${args.contactId}/promote`, args.profile || {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "ambassadors", brand] }),
+    mutationFn: (args: {
+      contactId: string;
+      profile?: Record<string, unknown>;
+    }) =>
+      api.post<AmbassadorContact>(
+        `/sales-campaigns/ambassadors/${args.contactId}/promote`,
+        args.profile || {},
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["campaigns", "ambassadors", brand] }),
   });
 }
 
@@ -544,7 +616,10 @@ export function useCampaignAmbassadors(campaignId: string | undefined) {
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "campaign-ambassadors", brand, campaignId],
-    queryFn: () => api.get<{ data: CampaignAmbassador[] }>(`/sales-campaigns/${campaignId}/ambassadors`),
+    queryFn: () =>
+      api.get<{ data: CampaignAmbassador[] }>(
+        `/sales-campaigns/${campaignId}/ambassadors`,
+      ),
   });
 }
 
@@ -552,9 +627,19 @@ export function useAttachAmbassador(campaignId: string | undefined) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (body: { contact_id: string; utm_source: string; commission_pct?: number | null }) =>
-      api.post<CampaignAmbassador>(`/sales-campaigns/${campaignId}/ambassadors`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "campaign-ambassadors", brand, campaignId] }),
+    mutationFn: (body: {
+      contact_id: string;
+      utm_source: string;
+      commission_pct?: number | null;
+    }) =>
+      api.post<CampaignAmbassador>(
+        `/sales-campaigns/${campaignId}/ambassadors`,
+        body,
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "campaign-ambassadors", brand, campaignId],
+      }),
   });
 }
 
@@ -566,7 +651,10 @@ export function useVipGrants(campaignId: string | undefined) {
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "vip", brand, campaignId],
-    queryFn: () => api.get<{ data: VipGrant[] }>(`/sales-campaigns/${campaignId}/vip-grants`),
+    queryFn: () =>
+      api.get<{ data: VipGrant[] }>(
+        `/sales-campaigns/${campaignId}/vip-grants`,
+      ),
   });
 }
 
@@ -575,8 +663,14 @@ export function useGrantVip(campaignId: string | undefined) {
   const brand = useBrand();
   return useMutation({
     mutationFn: (body: { top_n?: number }) =>
-      api.post<{ granted: number; lifetime_promoted: number }>(`/sales-campaigns/${campaignId}/vip-grants`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "vip", brand, campaignId] }),
+      api.post<{ granted: number; lifetime_promoted: number }>(
+        `/sales-campaigns/${campaignId}/vip-grants`,
+        body,
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "vip", brand, campaignId],
+      }),
   });
 }
 
@@ -584,11 +678,20 @@ export function useUpdateGiftStatus(campaignId: string | undefined) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (args: { grantId: string; gift_status: VipGrant["gift_status"] }) =>
-      api.patch<VipGrant>(`/sales-campaigns/${campaignId}/vip-grants/${args.grantId}`, {
-        gift_status: args.gift_status,
+    mutationFn: (args: {
+      grantId: string;
+      gift_status: VipGrant["gift_status"];
+    }) =>
+      api.patch<VipGrant>(
+        `/sales-campaigns/${campaignId}/vip-grants/${args.grantId}`,
+        {
+          gift_status: args.gift_status,
+        },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "vip", brand, campaignId],
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns", "vip", brand, campaignId] }),
   });
 }
 
@@ -597,43 +700,82 @@ export function useUpdateGiftStatus(campaignId: string | undefined) {
 // ════════════════════════════════════════════════════════════
 export function usePraxisDraftCopy(campaignId: string | undefined) {
   return useMutation({
-    mutationFn: (body: { section: string; brief?: string; campaign_theme?: string; product_focus?: string; topics?: string[]; tone_override?: string }) =>
-      api.post<PraxisDraft<Record<string, unknown>>>(`/sales-campaigns/${campaignId}/praxis/draft-copy`, body),
+    mutationFn: (body: {
+      section: string;
+      brief?: string;
+      campaign_theme?: string;
+      product_focus?: string;
+      topics?: string[];
+      tone_override?: string;
+    }) =>
+      api.post<PraxisDraft<Record<string, unknown>>>(
+        `/sales-campaigns/${campaignId}/praxis/draft-copy`,
+        body,
+      ),
   });
 }
 
 export function usePraxisSuggestLayout(campaignId: string | undefined) {
   return useMutation({
-    mutationFn: (body: { campaign_type?: string; duration_hours?: number; product_focus?: string }) =>
-      api.post<PraxisLayout>(`/sales-campaigns/${campaignId}/praxis/suggest-layout`, body),
+    mutationFn: (body: {
+      campaign_type?: string;
+      duration_hours?: number;
+      product_focus?: string;
+    }) =>
+      api.post<PraxisLayout>(
+        `/sales-campaigns/${campaignId}/praxis/suggest-layout`,
+        body,
+      ),
   });
 }
 
 export function usePraxisSuggestPricing(campaignId: string | undefined) {
   return useMutation({
-    mutationFn: (body: { target_margin_pct: number; include_charm_rounding?: boolean; inputs: Array<Record<string, unknown>> }) =>
-      api.post<PraxisPricingResult>(`/sales-campaigns/${campaignId}/praxis/suggest-pricing`, body),
+    mutationFn: (body: {
+      target_margin_pct: number;
+      include_charm_rounding?: boolean;
+      inputs: Array<Record<string, unknown>>;
+    }) =>
+      api.post<PraxisPricingResult>(
+        `/sales-campaigns/${campaignId}/praxis/suggest-pricing`,
+        body,
+      ),
   });
 }
 
 export function usePraxisDryRun(campaignId: string | undefined) {
   return useMutation({
-    mutationFn: (body: { question: string; proposed_price_ngn?: number; floor_ngn?: number }) =>
-      api.post<{ answer: string; citations: string[]; drafted_by_ai: boolean }>(`/sales-campaigns/${campaignId}/praxis/dry-run-pricing`, body),
+    mutationFn: (body: {
+      question: string;
+      proposed_price_ngn?: number;
+      floor_ngn?: number;
+    }) =>
+      api.post<{ answer: string; citations: string[]; drafted_by_ai: boolean }>(
+        `/sales-campaigns/${campaignId}/praxis/dry-run-pricing`,
+        body,
+      ),
   });
 }
 
 export function usePraxisAnalyticsQna(campaignId: string | undefined) {
   return useMutation({
     mutationFn: (body: { question: string }) =>
-      api.post<{ answer: string; metrics: Record<string, unknown>; drafted_by_ai: boolean }>(`/sales-campaigns/${campaignId}/praxis/analytics-qna`, body),
+      api.post<{
+        answer: string;
+        metrics: Record<string, unknown>;
+        drafted_by_ai: boolean;
+      }>(`/sales-campaigns/${campaignId}/praxis/analytics-qna`, body),
   });
 }
 
 export function usePraxisAccept(campaignId: string | undefined) {
   return useMutation({
-    mutationFn: (body: { action_key: string; prompt?: string; draft: unknown; accepted: unknown }) =>
-      api.post<void>(`/sales-campaigns/${campaignId}/praxis/accept`, body),
+    mutationFn: (body: {
+      action_key: string;
+      prompt?: string;
+      draft: unknown;
+      accepted: unknown;
+    }) => api.post<void>(`/sales-campaigns/${campaignId}/praxis/accept`, body),
   });
 }
 
@@ -645,17 +787,22 @@ export function useCampaignMetrics(campaignId: string | undefined) {
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "metrics", brand, campaignId],
-    queryFn: () => api.get<{
-      campaign_id: string;
-      status: CampaignStatus;
-      public_state: PublicState;
-      rollups: Record<string, number>;
-    }>(`/sales-campaigns/${campaignId}/metrics`),
+    queryFn: () =>
+      api.get<{
+        campaign_id: string;
+        status: CampaignStatus;
+        public_state: PublicState;
+        rollups: Record<string, number>;
+      }>(`/sales-campaigns/${campaignId}/metrics`),
     refetchInterval: 15_000,
   });
 }
 
-export function useCampaignDailyMetrics(campaignId: string | undefined, from?: string, to?: string) {
+export function useCampaignDailyMetrics(
+  campaignId: string | undefined,
+  from?: string,
+  to?: string,
+) {
   const brand = useBrand();
   const qs = new URLSearchParams();
   if (from) qs.set("from", from);
@@ -663,7 +810,10 @@ export function useCampaignDailyMetrics(campaignId: string | undefined, from?: s
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "metrics-daily", brand, campaignId, qs.toString()],
-    queryFn: () => api.get<{ data: Array<Record<string, unknown>> }>(`/sales-campaigns/${campaignId}/metrics/daily?${qs}`),
+    queryFn: () =>
+      api.get<{ data: Array<Record<string, unknown>> }>(
+        `/sales-campaigns/${campaignId}/metrics/daily?${qs}`,
+      ),
   });
 }
 
@@ -672,11 +822,12 @@ export function useShareKit(campaignId: string | undefined) {
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "share-kit", brand, campaignId],
-    queryFn: () => api.get<{
-      base_url: string;
-      links: Record<string, string>;
-      copy: Record<string, string>;
-    }>(`/sales-campaigns/${campaignId}/share-kit`),
+    queryFn: () =>
+      api.get<{
+        base_url: string;
+        links: Record<string, string>;
+        copy: Record<string, string>;
+      }>(`/sales-campaigns/${campaignId}/share-kit`),
   });
 }
 
@@ -685,17 +836,21 @@ export function useCampaignSignups(campaignId: string | undefined, page = 1) {
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "signups", brand, campaignId, page],
-    queryFn: () => api.get<{
-      data: Array<Record<string, unknown>>;
-      meta: Record<string, unknown>;
-    }>(`/sales-campaigns/${campaignId}/signups?page=${page}`),
+    queryFn: () =>
+      api.get<{
+        data: Array<Record<string, unknown>>;
+        meta: Record<string, unknown>;
+      }>(`/sales-campaigns/${campaignId}/signups?page=${page}`),
   });
 }
 
 // ════════════════════════════════════════════════════════════
 // Landing image upload (hero / look-book) → returns a public URL
 // ════════════════════════════════════════════════════════════
-export async function uploadCampaignImage(campaignId: string, file: File): Promise<string> {
+export async function uploadCampaignImage(
+  campaignId: string,
+  file: File,
+): Promise<string> {
   const form = new FormData();
   form.append("file", file);
   const { url } = await api.postForm<{ url: string }>(
@@ -712,14 +867,23 @@ export interface PublicLanding {
   slug: string;
   name: string;
   state: PublicState;
-  hero: { title: string | null; subtitle: string | null; image_url: string | null; cta_text: string | null };
+  hero: {
+    title: string | null;
+    subtitle: string | null;
+    image_url: string | null;
+    cta_text: string | null;
+  };
   countdown_to: string | null;
   countdown_message: string | null;
   signup_for_notifications: boolean;
   blocks: LandingBlock[];
   products: Array<Record<string, unknown>>;
   ended: { message: string | null; redirect_to: string | null } | null;
-  seo: { meta_title: string | null; meta_description: string | null; og_image_url: string | null };
+  seo: {
+    meta_title: string | null;
+    meta_description: string | null;
+    og_image_url: string | null;
+  };
 }
 
 /** Public landing payload. `brand` is required when not served from the sales
@@ -773,13 +937,19 @@ export async function subscribeSalesList(
   await api.post(`/newsletter${qs}`, input, "public");
 }
 
-export function useLandingPreview(campaignId: string | undefined, state?: PublicState) {
+export function useLandingPreview(
+  campaignId: string | undefined,
+  state?: PublicState,
+) {
   const brand = useBrand();
   const qs = new URLSearchParams();
   if (state) qs.set("state", state);
   return useQuery({
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "preview", brand, campaignId, state || "auto"],
-    queryFn: () => api.get<Record<string, unknown>>(`/sales-campaigns/${campaignId}/preview?${qs}`),
+    queryFn: () =>
+      api.get<Record<string, unknown>>(
+        `/sales-campaigns/${campaignId}/preview?${qs}`,
+      ),
   });
 }

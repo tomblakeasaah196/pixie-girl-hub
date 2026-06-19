@@ -37,7 +37,11 @@ export function tripletToHex(triplet?: string): string {
   return rgbToHex(parts as [number, number, number]);
 }
 
-function rgbToHsl([r, g, b]: [number, number, number]): [number, number, number] {
+function rgbToHsl([r, g, b]: [number, number, number]): [
+  number,
+  number,
+  number,
+] {
   r /= 255;
   g /= 255;
   b /= 255;
@@ -54,7 +58,11 @@ function rgbToHsl([r, g, b]: [number, number, number]): [number, number, number]
   return [h * 60, s, l];
 }
 
-function hslToRgb([h, s, l]: [number, number, number]): [number, number, number] {
+function hslToRgb([h, s, l]: [number, number, number]): [
+  number,
+  number,
+  number,
+] {
   h = ((h % 360) + 360) % 360;
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
@@ -73,10 +81,9 @@ function hslToRgb([h, s, l]: [number, number, number]): [number, number, number]
 function shade(hex: string, lightness: number, saturation?: number): string {
   const rgb = hexToRgb(hex) ?? [128, 128, 128];
   const [h, s] = rgbToHsl(rgb as [number, number, number]);
-  return hslToRgb([h, saturation ?? s, lightness]).join(" ").replace(
-    /[\d.]+/g,
-    (v) => String(Math.round(parseFloat(v))),
-  );
+  return hslToRgb([h, saturation ?? s, lightness])
+    .join(" ")
+    .replace(/[\d.]+/g, (v) => String(Math.round(parseFloat(v))));
 }
 
 // ── contrast (WCAG 2.x) ──
@@ -89,7 +96,9 @@ function channelLum(v: number): number {
 export function contrastRatio(aTriplet: string, bTriplet: string): number {
   const lum = (t: string) => {
     const [r, g, b] = t.split(" ").map((p) => parseInt(p, 10));
-    return 0.2126 * channelLum(r) + 0.7152 * channelLum(g) + 0.0722 * channelLum(b);
+    return (
+      0.2126 * channelLum(r) + 0.7152 * channelLum(g) + 0.0722 * channelLum(b)
+    );
   };
   const la = lum(aTriplet);
   const lb = lum(bTriplet);
@@ -113,14 +122,34 @@ export function checkTheme(theme: ThemeTokens): ContrastCheck[] {
   ): ContrastCheck | null => {
     if (!a || !b) return null;
     const ratio = contrastRatio(a, b);
-    return { label, ratio: Math.round(ratio * 10) / 10, minimum, ok: ratio >= minimum };
+    return {
+      label,
+      ratio: Math.round(ratio * 10) / 10,
+      minimum,
+      ok: ratio >= minimum,
+    };
   };
   return [
     pair("Primary text on page", theme["brand-cream"], theme["brand-black"], 7),
-    pair("Primary text on cards", theme["brand-cream"], theme["brand-charcoal"], 4.5),
-    pair("Muted text on cards", theme["brand-smoke"], theme["brand-charcoal"], 3),
+    pair(
+      "Primary text on cards",
+      theme["brand-cream"],
+      theme["brand-charcoal"],
+      4.5,
+    ),
+    pair(
+      "Muted text on cards",
+      theme["brand-smoke"],
+      theme["brand-charcoal"],
+      3,
+    ),
     pair("Accent on page", theme["brand-accent"], theme["brand-black"], 3),
-    pair("Text on light surfaces", theme["brand-black"], theme["surface-light"], 7),
+    pair(
+      "Text on light surfaces",
+      theme["brand-black"],
+      theme["surface-light"],
+      7,
+    ),
   ].filter((c): c is ContrastCheck => c !== null);
 }
 
@@ -158,33 +187,53 @@ export function derivePalette(input: DeriveInput): ThemeTokens {
   // Orika scale; light mode flips the roles (black token = page bg).
   const L = dark
     ? {
-        black: 0.035, charcoal: 0.085, graphite: 0.145, ink: 0.205,
-        cream: 0.91, cloud: 0.78, stone: 0.62, smoke: 0.41,
+        black: 0.035,
+        charcoal: 0.085,
+        graphite: 0.145,
+        ink: 0.205,
+        cream: 0.91,
+        cloud: 0.78,
+        stone: 0.62,
+        smoke: 0.41,
       }
     : {
-        black: 0.965, charcoal: 0.925, graphite: 0.86, ink: 0.8,
-        cream: 0.13, cloud: 0.3, stone: 0.56, smoke: 0.44,
+        black: 0.965,
+        charcoal: 0.925,
+        graphite: 0.86,
+        ink: 0.8,
+        cream: 0.13,
+        cloud: 0.3,
+        stone: 0.56,
+        smoke: 0.44,
       };
 
-  const accent2 = input.accent2 || rgbToHex(
-    hslToRgb([accH + 105, Math.min(accS, 0.35), dark ? 0.55 : 0.42]),
-  );
-  const accent3 = input.accent3 || rgbToHex(
-    hslToRgb([accH - 60, Math.min(accS, 0.4), dark ? 0.58 : 0.45]),
-  );
+  const accent2 =
+    input.accent2 ||
+    rgbToHex(hslToRgb([accH + 105, Math.min(accS, 0.35), dark ? 0.55 : 0.42]));
+  const accent3 =
+    input.accent3 ||
+    rgbToHex(hslToRgb([accH - 60, Math.min(accS, 0.4), dark ? 0.58 : 0.45]));
 
   const accentDim = hslToRgb([accH, accS, Math.max(0.15, accL * 0.62)])
-    .map(Math.round).join(" ");
+    .map(Math.round)
+    .join(" ");
   const accentGlow = hslToRgb([accH, accS, Math.min(0.92, accL + 0.13)])
-    .map(Math.round).join(" ");
+    .map(Math.round)
+    .join(" ");
 
   const acc2T = hexToTriplet(accent2)!;
   const acc3T = hexToTriplet(accent3)!;
   const dimGlow = (t: string): [string, string] => {
-    const [h, s, l] = rgbToHsl(t.split(" ").map(Number) as [number, number, number]);
+    const [h, s, l] = rgbToHsl(
+      t.split(" ").map(Number) as [number, number, number],
+    );
     return [
-      hslToRgb([h, s, Math.max(0.15, l * 0.78)]).map(Math.round).join(" "),
-      hslToRgb([h, s, Math.min(0.92, l + 0.12)]).map(Math.round).join(" "),
+      hslToRgb([h, s, Math.max(0.15, l * 0.78)])
+        .map(Math.round)
+        .join(" "),
+      hslToRgb([h, s, Math.min(0.92, l + 0.12)])
+        .map(Math.round)
+        .join(" "),
     ];
   };
   const [a2dim, a2glow] = dimGlow(acc2T);

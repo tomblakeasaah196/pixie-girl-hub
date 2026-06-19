@@ -54,7 +54,10 @@ export default function MyHr() {
           actions={
             <div className="flex items-center gap-2">
               <ClockWidget />
-              <Button onClick={() => setLeaveOpen(true)} leftIcon={<Plane className="h-4 w-4" />}>
+              <Button
+                onClick={() => setLeaveOpen(true)}
+                leftIcon={<Plane className="h-4 w-4" />}
+              >
                 Request leave
               </Button>
             </div>
@@ -68,7 +71,9 @@ export default function MyHr() {
             <Card className="p-5 md:col-span-2">
               <div className="mb-3 flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-accent3" />
-                <h3 className="text-sm font-semibold text-brand-cream">My week</h3>
+                <h3 className="text-sm font-semibold text-brand-cream">
+                  My week
+                </h3>
                 <Badge tone="neutral" size="xs">
                   {data.schedule.work_location_type.replace("_", " ")}
                 </Badge>
@@ -79,23 +84,36 @@ export default function MyHr() {
                 {data.schedule.expected_start_time
                   ? `Expected start ${data.schedule.expected_start_time.slice(0, 5)} · ${data.schedule.grace_minutes}m grace`
                   : "No fixed start time"}
-                {data.schedule.work_location_name ? ` · ${data.schedule.work_location_name}` : ""}
+                {data.schedule.work_location_name
+                  ? ` · ${data.schedule.work_location_name}`
+                  : ""}
               </div>
             </Card>
 
             <Card className="p-5">
-              <h3 className="mb-3 text-sm font-semibold text-brand-cream">Leave balance</h3>
+              <h3 className="mb-3 text-sm font-semibold text-brand-cream">
+                Leave balance
+              </h3>
               {data.leave_balance?.length ? (
                 <div className="space-y-1.5">
                   {data.leave_balance.map((b) => (
-                    <div key={b.leave_type} className="flex justify-between text-xs">
-                      <span className="capitalize text-brand-smoke">{b.leave_type}</span>
-                      <span className="text-brand-cream">{b.days_taken} taken</span>
+                    <div
+                      key={b.leave_type}
+                      className="flex justify-between text-xs"
+                    >
+                      <span className="capitalize text-brand-smoke">
+                        {b.leave_type}
+                      </span>
+                      <span className="text-brand-cream">
+                        {b.days_taken} taken
+                      </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-brand-smoke">No leave taken this year.</p>
+                <p className="text-xs text-brand-smoke">
+                  No leave taken this year.
+                </p>
               )}
             </Card>
           </div>
@@ -105,7 +123,11 @@ export default function MyHr() {
           tabs={[
             { key: "attendance", label: "Attendance" },
             { key: "performance", label: "Performance" },
-            { key: "queries", label: "Queries", badge: openQueries || undefined },
+            {
+              key: "queries",
+              label: "Queries",
+              badge: openQueries || undefined,
+            },
           ]}
           active={tab}
           onChange={setTab}

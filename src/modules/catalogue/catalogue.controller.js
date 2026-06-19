@@ -78,7 +78,10 @@ async function createProduct(req, res) {
 }
 async function bulkImportProducts(req, res) {
   res.status(201).json({
-    data: await service.bulkImportProducts({ ...base(req), rows: req.body.rows }),
+    data: await service.bulkImportProducts({
+      ...base(req),
+      rows: req.body.rows,
+    }),
   });
 }
 async function updateProduct(req, res) {

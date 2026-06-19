@@ -32,11 +32,15 @@ async function setCost(req, res) {
 }
 
 async function myAccess(req, res) {
-  res.json({ data: await service.myAccess({ brand: req.brand, user: req.user }) });
+  res.json({
+    data: await service.myAccess({ brand: req.brand, user: req.user }),
+  });
 }
 
 async function listGrants(req, res) {
-  res.json({ data: await service.listGrants({ brand: req.brand, user: req.user }) });
+  res.json({
+    data: await service.listGrants({ brand: req.brand, user: req.user }),
+  });
 }
 
 async function grantAccess(req, res) {
@@ -54,4 +58,11 @@ async function revokeAccess(req, res) {
   res.status(204).end();
 }
 
-module.exports = { myAccess, getCost, setCost, listGrants, grantAccess, revokeAccess };
+module.exports = {
+  myAccess,
+  getCost,
+  setCost,
+  listGrants,
+  grantAccess,
+  revokeAccess,
+};

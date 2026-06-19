@@ -164,7 +164,9 @@ export default function LogisticsHome() {
                 {deliveries.map((delivery) => (
                   <tr
                     key={delivery.delivery_id}
-                    onClick={() => navigate(`/logistics/${delivery.delivery_id}`)}
+                    onClick={() =>
+                      navigate(`/logistics/${delivery.delivery_id}`)
+                    }
                     className="bg-brand-charcoal hover:bg-brand-graphite/20 transition-colors cursor-pointer"
                   >
                     <td className="px-4 py-3">

@@ -62,10 +62,38 @@ export const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏", "✅"]
 
 // A compact picker set for the composer — common WhatsApp-style emoji.
 export const EMOJI_SET = [
-  "😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎",
-  "🤔", "😅", "😢", "😭", "😡", "🥳", "🤝", "🙌",
-  "👍", "👎", "👏", "🙏", "💪", "👀", "❤️", "🔥",
-  "🎉", "✨", "✅", "❌", "⚠️", "💰", "📦", "🚚",
+  "😀",
+  "😁",
+  "😂",
+  "🤣",
+  "😊",
+  "😍",
+  "😘",
+  "😎",
+  "🤔",
+  "😅",
+  "😢",
+  "😭",
+  "😡",
+  "🥳",
+  "🤝",
+  "🙌",
+  "👍",
+  "👎",
+  "👏",
+  "🙏",
+  "💪",
+  "👀",
+  "❤️",
+  "🔥",
+  "🎉",
+  "✨",
+  "✅",
+  "❌",
+  "⚠️",
+  "💰",
+  "📦",
+  "🚚",
 ];
 
 // ── Channel name fallback ─────────────────────────────────────────────────────
@@ -74,7 +102,9 @@ export function getChannelDisplayName(
   channel: {
     name?: string | null;
     channel_type: string;
-    members?: { user_id?: string | null; display_name?: string | null }[] | null;
+    members?:
+      | { user_id?: string | null; display_name?: string | null }[]
+      | null;
   },
   selfUserId?: string,
 ): string {

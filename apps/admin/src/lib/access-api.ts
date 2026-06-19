@@ -44,17 +44,17 @@ export interface Catalog {
 
 // Action display metadata
 export const ACTION_META: Record<string, { label: string; color: string }> = {
-  view:    { label: "View",    color: "#6b7280" },
-  create:  { label: "Create",  color: "#3b82f6" },
-  edit:    { label: "Edit",    color: "#f59e0b" },
-  delete:  { label: "Delete",  color: "#ef4444" },
+  view: { label: "View", color: "#6b7280" },
+  create: { label: "Create", color: "#3b82f6" },
+  edit: { label: "Edit", color: "#f59e0b" },
+  delete: { label: "Delete", color: "#ef4444" },
   approve: { label: "Approve", color: "#a855f7" },
-  export:  { label: "Export",  color: "#14b8a6" },
+  export: { label: "Export", color: "#14b8a6" },
 };
 
 export const RECORD_SCOPE_LABELS: Record<string, string> = {
-  all:  "All records",
-  own:  "Own records only",
+  all: "All records",
+  own: "Own records only",
   team: "Team records",
 };
 
@@ -64,15 +64,26 @@ export const accessApi = {
   getCatalog: () => api.get<Catalog>("/access/catalog"),
   listRoles: () => api.get<Role[]>("/access/roles"),
   getRole: (id: string) => api.get<Role>(`/access/roles/${id}`),
-  createRole: (body: { role_name: string; description?: string; scope?: "brand" | "system" }) =>
-    api.post<Role>("/access/roles", body),
-  updateRole: (id: string, body: { role_name?: string; description?: string | null }) =>
-    api.patch<Role>(`/access/roles/${id}`, body),
+  createRole: (body: {
+    role_name: string;
+    description?: string;
+    scope?: "brand" | "system";
+  }) => api.post<Role>("/access/roles", body),
+  updateRole: (
+    id: string,
+    body: { role_name?: string; description?: string | null },
+  ) => api.patch<Role>(`/access/roles/${id}`, body),
   deleteRole: (id: string) => api.delete<void>(`/access/roles/${id}`),
-  getRolePermissions: (id: string) => api.get<Permission[]>(`/access/roles/${id}/permissions`),
+  getRolePermissions: (id: string) =>
+    api.get<Permission[]>(`/access/roles/${id}/permissions`),
   // Backend uses PUT to replace the entire permission matrix atomically.
   setRolePermissions: (
     id: string,
-    grants: Array<{ module: string; action: string; record_scope?: string; hidden_fields?: string[] }>,
+    grants: Array<{
+      module: string;
+      action: string;
+      record_scope?: string;
+      hidden_fields?: string[];
+    }>,
   ) => api.put<Permission[]>(`/access/roles/${id}/permissions`, { grants }),
 };

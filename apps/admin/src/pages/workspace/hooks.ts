@@ -111,8 +111,13 @@ export function useToggleSubtask(taskId: string) {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: ({ subtaskId, is_done }: { subtaskId: string; is_done: boolean }) =>
-      ws.toggleSubtask(taskId, subtaskId, is_done),
+    mutationFn: ({
+      subtaskId,
+      is_done,
+    }: {
+      subtaskId: string;
+      is_done: boolean;
+    }) => ws.toggleSubtask(taskId, subtaskId, is_done),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["workspace", biz, "task", taskId] });
       qc.invalidateQueries({ queryKey: ["workspace", biz, "task-board"] });

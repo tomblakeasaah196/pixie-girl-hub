@@ -146,18 +146,27 @@ async function generateIconSet(buffer, { allowKeyOut = true } = {}) {
     }
   }
 
-  const [logo, favicon64, f16, f32, f48, icon192, icon512, maskable512, appleSquare] =
-    await Promise.all([
-      cleanTransparent(source, 1024).toBuffer(),
-      squareTransparent(source, 64).toBuffer(),
-      squareTransparent(source, 16).toBuffer(),
-      squareTransparent(source, 32).toBuffer(),
-      squareTransparent(source, 48).toBuffer(),
-      squareTransparent(source, 192).toBuffer(),
-      squareTransparent(source, 512).toBuffer(),
-      squareTransparent(source, 512, 0.2).toBuffer(),
-      squareTransparent(source, 180, 0.12).toBuffer(),
-    ]);
+  const [
+    logo,
+    favicon64,
+    f16,
+    f32,
+    f48,
+    icon192,
+    icon512,
+    maskable512,
+    appleSquare,
+  ] = await Promise.all([
+    cleanTransparent(source, 1024).toBuffer(),
+    squareTransparent(source, 64).toBuffer(),
+    squareTransparent(source, 16).toBuffer(),
+    squareTransparent(source, 32).toBuffer(),
+    squareTransparent(source, 48).toBuffer(),
+    squareTransparent(source, 192).toBuffer(),
+    squareTransparent(source, 512).toBuffer(),
+    squareTransparent(source, 512, 0.2).toBuffer(),
+    squareTransparent(source, 180, 0.12).toBuffer(),
+  ]);
 
   // iOS wants an opaque, padded square.
   const apple180 = await sharp(appleSquare)

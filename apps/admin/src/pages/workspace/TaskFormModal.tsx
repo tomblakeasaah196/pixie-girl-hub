@@ -5,7 +5,11 @@ import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
 import { Toggle } from "@/components/ui/controls";
 import { useCreateTask, useUpdateTask } from "./hooks";
-import { TASK_STATUS_OPTIONS, TASK_PRIORITY_OPTIONS, REMINDER_OPTIONS } from "./constants";
+import {
+  TASK_STATUS_OPTIONS,
+  TASK_PRIORITY_OPTIONS,
+  REMINDER_OPTIONS,
+} from "./constants";
 import type { Task, TaskCreateInput, TaskStatus, TaskPriority } from "./types";
 
 interface Props {
@@ -46,7 +50,9 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
       setStatus(task.status);
       setPriority(task.priority);
       setDueAt(toDatetimeLocal(task.due_at));
-      setReminderMinutes(task.reminder_minutes != null ? String(task.reminder_minutes) : "");
+      setReminderMinutes(
+        task.reminder_minutes != null ? String(task.reminder_minutes) : "",
+      );
       setIsPersonal(task.is_personal ?? false);
     } else {
       setTitle("");
@@ -81,7 +87,9 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
       status,
       priority,
       ...(dueAt ? { due_at: new Date(dueAt).toISOString() } : {}),
-      ...(reminderMinutes !== "" ? { reminder_minutes: Number(reminderMinutes) } : {}),
+      ...(reminderMinutes !== ""
+        ? { reminder_minutes: Number(reminderMinutes) }
+        : {}),
       is_personal: isPersonal,
     };
 
@@ -93,7 +101,11 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
       }
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
     }
   };
 
@@ -108,7 +120,12 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
           <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" onClick={handleSubmit} disabled={busy}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={busy}
+          >
             {busy ? "Saving..." : isEdit ? "Save Changes" : "Create Task"}
           </Button>
         </>

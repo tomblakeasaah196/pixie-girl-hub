@@ -84,7 +84,8 @@ export const poCreateSchema = z.object({
   other_charges: z.number().min(0).default(0),
   currency: z.string().length(3).default("USD"),
   exchange_rate: z.preprocess(
-    (v) => (v === "" || (typeof v === "number" && Number.isNaN(v)) ? undefined : v),
+    (v) =>
+      v === "" || (typeof v === "number" && Number.isNaN(v)) ? undefined : v,
     z.number().min(0).optional(),
   ),
   notes: z.string().max(2000).optional().or(z.literal("")),

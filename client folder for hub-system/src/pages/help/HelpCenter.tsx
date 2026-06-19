@@ -141,7 +141,8 @@ export default function HelpCenter() {
         return {
           article,
           plain: plainRaw.toLowerCase(),
-          haystack: `${article.title} ${labelFor(article.module)} ${kw} ${plainRaw}`.toLowerCase(),
+          haystack:
+            `${article.title} ${labelFor(article.module)} ${kw} ${plainRaw}`.toLowerCase(),
         };
       }),
     [articles],
@@ -584,7 +585,9 @@ function SearchResults({
           {results.map((r) => {
             const a = r.article;
             const Icon =
-              a.article_type === "faq" ? HelpCircle : MODULE_ICONS[a.module] || BookOpen;
+              a.article_type === "faq"
+                ? HelpCircle
+                : MODULE_ICONS[a.module] || BookOpen;
             return (
               <button
                 key={a.article_id}
@@ -733,11 +736,17 @@ function ArticleView({
     <div>
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-xs text-brand-smoke mb-5 flex-wrap">
-        <button onClick={onHome} className="hover:text-brand-accent transition-colors">
+        <button
+          onClick={onHome}
+          className="hover:text-brand-accent transition-colors"
+        >
           Help Center
         </button>
         <ChevronRight className="w-3 h-3 text-brand-smoke/40" />
-        <button onClick={onBack} className="hover:text-brand-accent transition-colors">
+        <button
+          onClick={onBack}
+          className="hover:text-brand-accent transition-colors"
+        >
           {labelFor(article.module)}
         </button>
         <ChevronRight className="w-3 h-3 text-brand-smoke/40" />
@@ -797,7 +806,10 @@ function ArticleView({
       )}
 
       <div className="mt-6">
-        <BackLink label={`Back to ${labelFor(article.module)}`} onClick={onBack} />
+        <BackLink
+          label={`Back to ${labelFor(article.module)}`}
+          onClick={onBack}
+        />
       </div>
     </div>
   );
@@ -960,9 +972,7 @@ function SupportCard({
         <LifeBuoy className="w-4 h-4 text-brand-accent" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-brand-cream">
-          Still stuck?
-        </p>
+        <p className="text-sm font-medium text-brand-cream">Still stuck?</p>
         <p className="text-xs text-brand-smoke">
           Message your administrator for a hand.
         </p>

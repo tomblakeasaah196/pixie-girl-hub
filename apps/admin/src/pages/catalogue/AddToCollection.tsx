@@ -7,7 +7,11 @@ import {
 } from "@/lib/catalogue";
 
 function slugify(s: string) {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 /**
@@ -28,7 +32,8 @@ export function AddToCollection({ productId }: { productId: string }) {
   useEffect(() => {
     if (!open) return;
     const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
@@ -36,7 +41,9 @@ export function AddToCollection({ productId }: { productId: string }) {
 
   const all = (collections.data ?? []).filter((c) => c.is_active);
   const term = q.trim().toLowerCase();
-  const matches = term ? all.filter((c) => c.name.toLowerCase().includes(term)) : all;
+  const matches = term
+    ? all.filter((c) => c.name.toLowerCase().includes(term))
+    : all;
   const exact = all.some((c) => c.name.toLowerCase() === term);
   const busy = addMember.isPending || createCollection.isPending;
 

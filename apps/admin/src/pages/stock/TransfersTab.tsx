@@ -10,7 +10,12 @@ import {
 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/primitives";
-import { ErrorState, Select, NumberField, ConfirmDialog } from "@/components/ui/controls";
+import {
+  ErrorState,
+  Select,
+  NumberField,
+  ConfirmDialog,
+} from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/stores/auth";
@@ -68,7 +73,9 @@ function CreateTransferDrawer({
   const [fromId, setFromId] = useState("");
   const [toId, setToId] = useState("");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([{ variant_id: "", qty: "" }]);
+  const [lines, setLines] = useState<DraftLine[]>([
+    { variant_id: "", qty: "" },
+  ]);
 
   const { createTransfer } = useStockMutations();
 
@@ -81,7 +88,8 @@ function CreateTransferDrawer({
   );
 
   const allLocationOpts = useMemo(
-    () => locations.map((l) => ({ value: l.location_id, label: l.display_name })),
+    () =>
+      locations.map((l) => ({ value: l.location_id, label: l.display_name })),
     [locations],
   );
 
@@ -89,13 +97,18 @@ function CreateTransferDrawer({
   const isToFba = toLocation?.location_type === "amazon_fba";
 
   const updateLine = (idx: number, patch: Partial<DraftLine>) => {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    setLines((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)),
+    );
   };
 
-  const addLine = () => setLines((prev) => [...prev, { variant_id: "", qty: "" }]);
+  const addLine = () =>
+    setLines((prev) => [...prev, { variant_id: "", qty: "" }]);
 
   const removeLine = (idx: number) => {
-    setLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
+    setLines((prev) =>
+      prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx),
+    );
   };
 
   const canSave =
@@ -155,7 +168,10 @@ function CreateTransferDrawer({
           <Select
             value={fromId}
             onChange={setFromId}
-            options={[{ value: "", label: "Select location" }, ...nonFbaLocations]}
+            options={[
+              { value: "", label: "Select location" },
+              ...nonFbaLocations,
+            ]}
           />
         </div>
         <div>
@@ -163,21 +179,28 @@ function CreateTransferDrawer({
           <Select
             value={toId}
             onChange={setToId}
-            options={[{ value: "", label: "Select location" }, ...allLocationOpts]}
+            options={[
+              { value: "", label: "Select location" },
+              ...allLocationOpts,
+            ]}
           />
         </div>
 
         {isToFba && (
           <InfoBanner>
-            This transfer represents stock moving from your Nigeria warehouse into Amazon FBA.
-            Once dispatched, it will show at the FBA location on your Overview until Amazon reports
-            individual units sold.
+            This transfer represents stock moving from your Nigeria warehouse
+            into Amazon FBA. Once dispatched, it will show at the FBA location
+            on your Overview until Amazon reports individual units sold.
           </InfoBanner>
         )}
 
         <div>
           <FieldLabel>Notes (optional)</FieldLabel>
-          <TextInput value={notes} onChange={setNotes} placeholder="Transfer notes" />
+          <TextInput
+            value={notes}
+            onChange={setNotes}
+            placeholder="Transfer notes"
+          />
         </div>
 
         {/* Line items */}
@@ -188,7 +211,9 @@ function CreateTransferDrawer({
               <div key={idx} className="flex items-end gap-2">
                 <div className="flex-1">
                   {idx === 0 && (
-                    <span className="block text-[11px] text-text-faint mb-1">Variant ID</span>
+                    <span className="block text-[11px] text-text-faint mb-1">
+                      Variant ID
+                    </span>
                   )}
                   <TextInput
                     value={line.variant_id}
@@ -198,7 +223,9 @@ function CreateTransferDrawer({
                 </div>
                 <div className="w-[100px]">
                   {idx === 0 && (
-                    <span className="block text-[11px] text-text-faint mb-1">Qty</span>
+                    <span className="block text-[11px] text-text-faint mb-1">
+                      Qty
+                    </span>
                   )}
                   <NumberField
                     value={line.qty}
@@ -220,7 +247,13 @@ function CreateTransferDrawer({
               </div>
             ))}
           </div>
-          <Button variant="ghost" size="sm" onClick={addLine} className="mt-2" icon={<Plus className="w-3.5 h-3.5" />}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={addLine}
+            className="mt-2"
+            icon={<Plus className="w-3.5 h-3.5" />}
+          >
             Add line
           </Button>
         </div>
@@ -253,7 +286,8 @@ function ReceiveModal({
     return map;
   }, [transfer]);
 
-  const getQty = (lineId: string) => receivedQtys[lineId] ?? seeded[lineId] ?? "0";
+  const getQty = (lineId: string) =>
+    receivedQtys[lineId] ?? seeded[lineId] ?? "0";
 
   const handleConfirm = () => {
     if (!transfer) return;
@@ -274,9 +308,11 @@ function ReceiveModal({
       {transfer ? (
         <div className="flex flex-col gap-3">
           <p className="text-[13px] text-text-muted">
-            {locationMap.get(transfer.from_location_id) ?? transfer.from_location_id.slice(0, 8)}
+            {locationMap.get(transfer.from_location_id) ??
+              transfer.from_location_id.slice(0, 8)}
             <ArrowRight className="inline w-3.5 h-3.5 mx-1 text-text-faint" />
-            {locationMap.get(transfer.to_location_id) ?? transfer.to_location_id.slice(0, 8)}
+            {locationMap.get(transfer.to_location_id) ??
+              transfer.to_location_id.slice(0, 8)}
           </p>
 
           <div className="border border-line rounded-[11px] overflow-hidden">
@@ -284,13 +320,20 @@ function ReceiveModal({
               <thead>
                 <tr className="text-left text-text-faint text-[11px] uppercase tracking-wide">
                   <th className="px-3 py-2 border-b hairline">Variant</th>
-                  <th className="px-3 py-2 border-b hairline text-right">Dispatched</th>
-                  <th className="px-3 py-2 border-b hairline text-right">Received</th>
+                  <th className="px-3 py-2 border-b hairline text-right">
+                    Dispatched
+                  </th>
+                  <th className="px-3 py-2 border-b hairline text-right">
+                    Received
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {transfer.lines.map((line) => (
-                  <tr key={line.line_id} className="border-b hairline last:border-0">
+                  <tr
+                    key={line.line_id}
+                    className="border-b hairline last:border-0"
+                  >
                     <td className="px-3 py-2 font-mono text-text-primary">
                       {line.variant_id.slice(0, 8)}
                     </td>
@@ -301,7 +344,10 @@ function ReceiveModal({
                       <NumberField
                         value={getQty(line.line_id)}
                         onChange={(v) =>
-                          setReceivedQtys((prev) => ({ ...prev, [line.line_id]: v }))
+                          setReceivedQtys((prev) => ({
+                            ...prev,
+                            [line.line_id]: v,
+                          }))
                         }
                         allowDecimal={false}
                         allowNegative={false}
@@ -315,7 +361,9 @@ function ReceiveModal({
           </div>
         </div>
       ) : (
-        <div className="py-6 text-center text-[13px] text-text-muted">Loading...</div>
+        <div className="py-6 text-center text-[13px] text-text-muted">
+          Loading...
+        </div>
       )}
       <div className="flex justify-end gap-2 mt-5">
         <Button variant="ghost" onClick={onClose}>
@@ -352,13 +400,17 @@ function ViewTransferModal({
       {transfer ? (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 text-[13px]">
-            <span className="text-text-muted font-mono">{transfer.transfer_number}</span>
+            <span className="text-text-muted font-mono">
+              {transfer.transfer_number}
+            </span>
             <StatusPill status={transfer.status} />
           </div>
           <p className="text-[13px] text-text-muted">
-            {locationMap.get(transfer.from_location_id) ?? transfer.from_location_id.slice(0, 8)}
+            {locationMap.get(transfer.from_location_id) ??
+              transfer.from_location_id.slice(0, 8)}
             <ArrowRight className="inline w-3.5 h-3.5 mx-1 text-text-faint" />
-            {locationMap.get(transfer.to_location_id) ?? transfer.to_location_id.slice(0, 8)}
+            {locationMap.get(transfer.to_location_id) ??
+              transfer.to_location_id.slice(0, 8)}
           </p>
           {transfer.reason && (
             <p className="text-[12px] text-text-faint">{transfer.reason}</p>
@@ -368,14 +420,23 @@ function ViewTransferModal({
               <thead>
                 <tr className="text-left text-text-faint text-[11px] uppercase tracking-wide">
                   <th className="px-3 py-2 border-b hairline">Variant</th>
-                  <th className="px-3 py-2 border-b hairline text-right">Dispatched</th>
-                  <th className="px-3 py-2 border-b hairline text-right">Received</th>
-                  <th className="px-3 py-2 border-b hairline text-right">Variance</th>
+                  <th className="px-3 py-2 border-b hairline text-right">
+                    Dispatched
+                  </th>
+                  <th className="px-3 py-2 border-b hairline text-right">
+                    Received
+                  </th>
+                  <th className="px-3 py-2 border-b hairline text-right">
+                    Variance
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {transfer.lines.map((line) => (
-                  <tr key={line.line_id} className="border-b hairline last:border-0">
+                  <tr
+                    key={line.line_id}
+                    className="border-b hairline last:border-0"
+                  >
                     <td className="px-3 py-2 font-mono text-text-primary">
                       {line.variant_id.slice(0, 8)}
                     </td>
@@ -395,12 +456,18 @@ function ViewTransferModal({
           </div>
           <div className="text-[12px] text-text-faint">
             Created {fmtDate(transfer.created_at)}
-            {transfer.dispatched_at && <> | Dispatched {fmtDate(transfer.dispatched_at)}</>}
-            {transfer.received_at && <> | Received {fmtDate(transfer.received_at)}</>}
+            {transfer.dispatched_at && (
+              <> | Dispatched {fmtDate(transfer.dispatched_at)}</>
+            )}
+            {transfer.received_at && (
+              <> | Received {fmtDate(transfer.received_at)}</>
+            )}
           </div>
         </div>
       ) : (
-        <div className="py-6 text-center text-[13px] text-text-muted">Loading...</div>
+        <div className="py-6 text-center text-[13px] text-text-muted">
+          Loading...
+        </div>
       )}
     </Modal>
   );
@@ -413,7 +480,9 @@ export default function TransfersTab() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [dispatchTarget, setDispatchTarget] = useState<StockTransfer | null>(null);
+  const [dispatchTarget, setDispatchTarget] = useState<StockTransfer | null>(
+    null,
+  );
   const [receiveTargetId, setReceiveTargetId] = useState<string | null>(null);
   const [viewTargetId, setViewTargetId] = useState<string | null>(null);
 
@@ -485,7 +554,9 @@ export default function TransfersTab() {
         header: "Created",
         width: "140px",
         render: (r) => (
-          <span className="text-[13px] text-text-muted">{fmtDate(r.created_at)}</span>
+          <span className="text-[13px] text-text-muted">
+            {fmtDate(r.created_at)}
+          </span>
         ),
       },
       {
@@ -507,19 +578,20 @@ export default function TransfersTab() {
                 Dispatch
               </Button>
             )}
-            {(r.status === "dispatched" || r.status === "in_transit") && can("stock", "create") && (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<PackageCheck className="w-3.5 h-3.5" />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setReceiveTargetId(r.transfer_id);
-                }}
-              >
-                Receive
-              </Button>
-            )}
+            {(r.status === "dispatched" || r.status === "in_transit") &&
+              can("stock", "create") && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<PackageCheck className="w-3.5 h-3.5" />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setReceiveTargetId(r.transfer_id);
+                  }}
+                >
+                  Receive
+                </Button>
+              )}
             <Button
               variant="ghost"
               size="sm"
@@ -586,7 +658,8 @@ export default function TransfersTab() {
         empty={{
           icon: <ArrowLeftRight className="w-6 h-6" />,
           title: "No transfers",
-          message: "Create a transfer to move stock between locations within the same brand.",
+          message:
+            "Create a transfer to move stock between locations within the same brand.",
         }}
       />
 

@@ -38,21 +38,33 @@ const STATUS_FILTERS = [
 export function PipelineTab() {
   const [view, setView] = useState<ViewMode>("kanban");
   const [filter, setFilter] = useState<DealFilter>({ status: "open" });
-  const [newDealContact, setNewDealContact] = useState<{ id: string; name: string } | null>(null);
+  const [newDealContact, setNewDealContact] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const { data: pipelines = [], isLoading: loadPipelines } = usePipelines();
   const defaultPipeline = pipelines.find((p) => p.is_default) ?? pipelines[0];
-  const activePipelineId = filter.pipeline_id ?? defaultPipeline?.pipeline_id ?? "";
+  const activePipelineId =
+    filter.pipeline_id ?? defaultPipeline?.pipeline_id ?? "";
 
-  const { data: stages = [], isLoading: loadStages } = usePipelineStages(activePipelineId || null);
-  const { data: dealsResult, isLoading: loadDeals, refetch } = usePipelineDeals({
+  const { data: stages = [], isLoading: loadStages } = usePipelineStages(
+    activePipelineId || null,
+  );
+  const {
+    data: dealsResult,
+    isLoading: loadDeals,
+    refetch,
+  } = usePipelineDeals({
     ...filter,
     pipeline_id: activePipelineId,
   });
 
   const deals = dealsResult?.data ?? [];
   const columns = setPipelineBoard(
-    stages.filter((s) => s.is_active).sort((a, b) => a.display_order - b.display_order),
+    stages
+      .filter((s) => s.is_active)
+      .sort((a, b) => a.display_order - b.display_order),
     deals,
   );
 
@@ -67,7 +79,9 @@ export function PipelineTab() {
           <div className="relative">
             <select
               value={activePipelineId}
-              onChange={(e) => setFilter((f) => ({ ...f, pipeline_id: e.target.value }))}
+              onChange={(e) =>
+                setFilter((f) => ({ ...f, pipeline_id: e.target.value }))
+              }
               className="h-[32px] pl-3 pr-7 rounded-[9px] bg-text-primary/[0.04] border border-line text-[12px] text-text-primary appearance-none focus:outline-none focus:border-accent/40 transition-colors"
             >
               {pipelines.map((p) => (
@@ -160,9 +174,15 @@ export function PipelineTab() {
           onAddDeal={() => setNewDealContact({ id: "", name: "New Contact" })}
         />
       )}
-      {view === "table" && <TableView columns={columns} isLoading={isLoading} />}
-      {view === "forecast" && <ForecastView columns={columns} isLoading={isLoading} />}
-      {view === "calendar" && <CalendarView columns={columns} isLoading={isLoading} />}
+      {view === "table" && (
+        <TableView columns={columns} isLoading={isLoading} />
+      )}
+      {view === "forecast" && (
+        <ForecastView columns={columns} isLoading={isLoading} />
+      )}
+      {view === "calendar" && (
+        <CalendarView columns={columns} isLoading={isLoading} />
+      )}
 
       {/* New deal modal — needs a contact; if no context, open contacts drawer to pick */}
       {newDealContact && newDealContact.id && (

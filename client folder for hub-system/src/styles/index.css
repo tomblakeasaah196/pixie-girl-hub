@@ -341,14 +341,26 @@ body {
       rgb(var(--brand-accent) / 0.03) 0%,
       transparent 50%
     ),
-    linear-gradient(180deg, rgb(var(--brand-black)) 0%, rgb(var(--brand-charcoal)) 100%);
+    linear-gradient(
+      180deg,
+      rgb(var(--brand-black)) 0%,
+      rgb(var(--brand-charcoal)) 100%
+    );
 }
 
 /* Animated gold border (used sparingly on premium CTAs) */
 .gold-border {
   background:
-    linear-gradient(rgb(var(--brand-black)), rgb(var(--brand-black))) padding-box,
-    linear-gradient(120deg, rgb(var(--brand-accent-dim)), rgb(var(--brand-accent)), rgb(var(--brand-accent-glow)), rgb(var(--brand-accent)), rgb(var(--brand-accent-dim)))
+    linear-gradient(rgb(var(--brand-black)), rgb(var(--brand-black)))
+      padding-box,
+    linear-gradient(
+        120deg,
+        rgb(var(--brand-accent-dim)),
+        rgb(var(--brand-accent)),
+        rgb(var(--brand-accent-glow)),
+        rgb(var(--brand-accent)),
+        rgb(var(--brand-accent-dim))
+      )
       border-box;
   background-size: 200% 100%;
   border: 1px solid transparent;

@@ -62,7 +62,7 @@ function bottomItemsForRoute(
     const picks = ["contacts", "crm", "messaging", "tasks"];
     const items: BottomItem[] = picks
       .filter((k) => visibleKeys.has(k))
-    .map((k) => HUB_MODULES.find((m) => m.key === k))
+      .map((k) => HUB_MODULES.find((m) => m.key === k))
       .filter((m): m is NonNullable<typeof m> => !!m)
       .map((m) => ({
         key: m.key,
@@ -82,7 +82,7 @@ function bottomItemsForRoute(
     const picks = ["catalogue", "purchasing", "stock", "contacts"];
     const items: BottomItem[] = picks
       .filter((k) => visibleKeys.has(k))
-    .map((k) => HUB_MODULES.find((m) => m.key === k))
+      .map((k) => HUB_MODULES.find((m) => m.key === k))
       .filter((m): m is NonNullable<typeof m> => !!m)
       .map((m) => ({
         key: m.key,
@@ -99,7 +99,7 @@ function bottomItemsForRoute(
     const picks = ["crm", "contacts", "calendar", "sales"];
     const items: BottomItem[] = picks
       .filter((k) => visibleKeys.has(k))
-    .map((k) => HUB_MODULES.find((m) => m.key === k))
+      .map((k) => HUB_MODULES.find((m) => m.key === k))
       .filter((m): m is NonNullable<typeof m> => !!m)
       .map((m) => ({
         key: m.key,

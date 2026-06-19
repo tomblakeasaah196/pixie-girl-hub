@@ -11,16 +11,27 @@ import { cn } from "@lib/cn";
 import type { CampaignLead } from "@typedefs/salesCampaign";
 
 const MONTHS_SHORT = [
-  "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ];
 
 const LEAD_TYPE_META: Record<
   CampaignLead["lead_type"],
   { label: string; dot: string }
 > = {
-  qr_scan: { label: "QR Scan",   dot: "bg-green-400" },
-  form:    { label: "Inquiry",   dot: "bg-blue-400" },
+  qr_scan: { label: "QR Scan", dot: "bg-green-400" },
+  form: { label: "Inquiry", dot: "bg-blue-400" },
   whatsapp_tap: { label: "WhatsApp", dot: "bg-emerald-400" },
 };
 
@@ -44,10 +55,7 @@ export default function CampaignLeads({ campaignId }: Props) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-20 rounded-2xl bg-white/5 animate-pulse"
-          />
+          <div key={i} className="h-20 rounded-2xl bg-white/5 animate-pulse" />
         ))}
       </div>
     );
@@ -83,7 +91,9 @@ export default function CampaignLeads({ campaignId }: Props) {
       {/* Lead cards */}
       <div className="space-y-2">
         {leads.map((lead) => {
-          const meta = LEAD_TYPE_META[lead.lead_type as keyof typeof LEAD_TYPE_META] ?? LEAD_TYPE_META.form;
+          const meta =
+            LEAD_TYPE_META[lead.lead_type as keyof typeof LEAD_TYPE_META] ??
+            LEAD_TYPE_META.form;
           const displayName =
             [lead.first_name, lead.last_name].filter(Boolean).join(" ") ||
             lead.name ||

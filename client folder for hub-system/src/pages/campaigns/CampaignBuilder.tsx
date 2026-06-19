@@ -247,7 +247,9 @@ export default function CampaignBuilder() {
         showToast.success("Campaign scheduled successfully");
       } else {
         await sendNow(campaignId);
-        showToast.success("Campaign is sending — check the campaign detail for live progress");
+        showToast.success(
+          "Campaign is sending — check the campaign detail for live progress",
+        );
       }
       qc.invalidateQueries({ queryKey: ["campaigns"] });
       navigate(`/campaigns/${campaignId}`);
@@ -359,9 +361,13 @@ export default function CampaignBuilder() {
                               form.getValues("subject_line") ?? "";
                             const sep =
                               current && !current.endsWith(" ") ? " " : "";
-                            form.setValue("subject_line", current + sep + v.token, {
-                              shouldDirty: true,
-                            });
+                            form.setValue(
+                              "subject_line",
+                              current + sep + v.token,
+                              {
+                                shouldDirty: true,
+                              },
+                            );
                           }}
                           className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-brand-smoke hover:text-brand-accent hover:border-brand-accent/30 transition-colors font-mono"
                         >
@@ -630,8 +636,8 @@ export default function CampaignBuilder() {
                     Send yourself a test first
                   </p>
                   <p className="text-xs text-brand-smoke">
-                    Sent exactly like the real campaign, with sample data in
-                    the variables. No recipients are touched.
+                    Sent exactly like the real campaign, with sample data in the
+                    variables. No recipients are touched.
                   </p>
                   <div className="flex items-end gap-2">
                     <div className="flex-1">

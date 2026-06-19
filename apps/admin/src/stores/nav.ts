@@ -30,7 +30,9 @@ interface NavState {
 const ANCHOR = "dashboard";
 
 function normalize(keys: string[]): string[] {
-  const valid = keys.filter((k) => MODULES.some((m) => m.key === k) && k !== ANCHOR);
+  const valid = keys.filter(
+    (k) => MODULES.some((m) => m.key === k) && k !== ANCHOR,
+  );
   return [ANCHOR, ...valid];
 }
 
@@ -69,7 +71,9 @@ export const useNavStore = create<NavState>()(
         set({ pinnedBottomNav: normalizeBottomNav(current) });
       },
       unpinFromBottomNav: (key) => {
-        set({ pinnedBottomNav: get().pinnedBottomNav.filter((k) => k !== key) });
+        set({
+          pinnedBottomNav: get().pinnedBottomNav.filter((k) => k !== key),
+        });
       },
       toggleBottomNavPin: (key) => {
         const current = get().pinnedBottomNav;

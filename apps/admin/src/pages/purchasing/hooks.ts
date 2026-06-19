@@ -21,13 +21,19 @@ export function useCreateSupplier() {
   const brand = useBrand();
   return useMutation({
     mutationFn: api.createSupplier,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["suppliers", brand] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["suppliers", brand] });
+    },
   });
 }
 
 // ── Purchase Orders ───────────────────────────────────────
 
-export function usePos(params?: { status?: string; supplier_id?: string; page?: number }) {
+export function usePos(params?: {
+  status?: string;
+  supplier_id?: string;
+  page?: number;
+}) {
   const brand = useBrand();
   return useQuery({
     queryKey: ["purchase-orders", params, brand],
@@ -48,7 +54,9 @@ export function useCreatePo() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.createPo,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["purchase-orders"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+    },
   });
 }
 
@@ -61,8 +69,14 @@ export function usePoActions(poId: string) {
   };
 
   return {
-    submit: useMutation({ mutationFn: () => api.submitPo(poId), onSuccess: invalidate }),
-    approve: useMutation({ mutationFn: () => api.approvePo(poId), onSuccess: invalidate }),
+    submit: useMutation({
+      mutationFn: () => api.submitPo(poId),
+      onSuccess: invalidate,
+    }),
+    approve: useMutation({
+      mutationFn: () => api.approvePo(poId),
+      onSuccess: invalidate,
+    }),
     advance: useMutation({
       mutationFn: ({ status, notes }: { status: string; notes?: string }) =>
         api.advancePo(poId, status, notes),
@@ -89,7 +103,9 @@ export function useCreateGrn() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.createGrn,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["grns"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["grns"] });
+    },
   });
 }
 
@@ -107,7 +123,10 @@ export function usePostGrn(id: string) {
 
 // ── Supplier Invoices ─────────────────────────────────────
 
-export function useSupplierInvoices(params?: { page?: number; status?: string }) {
+export function useSupplierInvoices(params?: {
+  page?: number;
+  status?: string;
+}) {
   const brand = useBrand();
   return useQuery({
     queryKey: ["supplier-invoices", params, brand],
@@ -119,16 +138,25 @@ export function useCreateSupplierInvoice() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.createSupplierInvoice,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["supplier-invoices"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["supplier-invoices"] });
+    },
   });
 }
 
 export function useSupplierInvoiceActions(invoiceId: string) {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["supplier-invoices"] });
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["supplier-invoices"] });
   return {
-    match: useMutation({ mutationFn: () => api.matchSupplierInvoice(invoiceId), onSuccess: invalidate }),
-    approve: useMutation({ mutationFn: () => api.approveSupplierInvoice(invoiceId), onSuccess: invalidate }),
+    match: useMutation({
+      mutationFn: () => api.matchSupplierInvoice(invoiceId),
+      onSuccess: invalidate,
+    }),
+    approve: useMutation({
+      mutationFn: () => api.approveSupplierInvoice(invoiceId),
+      onSuccess: invalidate,
+    }),
     pay: useMutation({
       mutationFn: ({ method, ref }: { method: string; ref?: string }) =>
         api.paySupplierInvoice(invoiceId, method, ref),

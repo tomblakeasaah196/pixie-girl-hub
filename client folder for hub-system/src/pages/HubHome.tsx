@@ -30,7 +30,8 @@ export default function HubHome() {
   const rawFirst =
     (user?.display_name?.trim()?.split(/\s+/)[0] ||
       user?.email?.split("@")[0] ||
-      "") ?? "";
+      "") ??
+    "";
   const firstName = user?.display_name?.trim()
     ? rawFirst
     : rawFirst

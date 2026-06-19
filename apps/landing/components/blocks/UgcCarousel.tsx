@@ -20,7 +20,10 @@ export function UgcCarousel({ payload }: { payload: LandingPayload }) {
   return (
     <section className="section">
       <div className="mx-auto max-w-[1180px]">
-        <SectionHeader eyebrow="From the community" title="They wore it. Their words." />
+        <SectionHeader
+          eyebrow="From the community"
+          title="They wore it. Their words."
+        />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-10">
           {items.slice(0, 8).map((it, i) => (
             <a

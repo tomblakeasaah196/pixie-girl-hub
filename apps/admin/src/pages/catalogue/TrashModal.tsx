@@ -14,7 +14,13 @@ import {
  * restorable. Deleting frees the name (partial-unique), so a restore may come
  * back lightly renamed if the original name was reused — we flag that.
  */
-export function TrashModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function TrashModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const [tab, setTab] = useState<"styled" | "base">("styled");
   return (
     <Modal open={open} onClose={onClose} title="Trash" size="md">
@@ -34,7 +40,11 @@ export function TrashModal({ open, onClose }: { open: boolean; onClose: () => vo
           </button>
         ))}
       </div>
-      {tab === "styled" ? <StyledTrash open={open} /> : <BaseTrash open={open} />}
+      {tab === "styled" ? (
+        <StyledTrash open={open} />
+      ) : (
+        <BaseTrash open={open} />
+      )}
     </Modal>
   );
 }
@@ -105,9 +115,16 @@ function Row({
     <div className="flex items-center gap-3 rounded-[11px] border border-line p-3">
       <div className="flex-1 min-w-0">
         <div className="text-[13.5px] font-semibold truncate">{title}</div>
-        <div className="text-[11px] text-text-faint font-mono truncate">{subtitle}</div>
+        <div className="text-[11px] text-text-faint font-mono truncate">
+          {subtitle}
+        </div>
       </div>
-      <Button size="sm" icon={<Undo2 className="w-3.5 h-3.5" />} disabled={busy} onClick={onRestore}>
+      <Button
+        size="sm"
+        icon={<Undo2 className="w-3.5 h-3.5" />}
+        disabled={busy}
+        onClick={onRestore}
+      >
         {busy ? "Restoring…" : "Restore"}
       </Button>
     </div>
@@ -118,7 +135,10 @@ function Skeleton() {
   return (
     <div className="space-y-2">
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="h-[58px] rounded-[11px] bg-text-primary/[0.04] animate-pulse" />
+        <div
+          key={i}
+          className="h-[58px] rounded-[11px] bg-text-primary/[0.04] animate-pulse"
+        />
       ))}
     </div>
   );

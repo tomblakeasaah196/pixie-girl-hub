@@ -3,7 +3,12 @@ import { Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Field } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
-import { useBaseProducts, useVariants, type BaseProduct, type Variant } from "@/lib/catalogue";
+import {
+  useBaseProducts,
+  useVariants,
+  type BaseProduct,
+  type Variant,
+} from "@/lib/catalogue";
 
 /** Debounce a changing value (default 300ms) — used to throttle search + advisor calls. */
 export function useDebounced<T>(value: T, ms = 300): T {
@@ -40,7 +45,9 @@ export function SearchInput({
 
 export function variantLabel(v: Variant): string {
   const parts = [v.variant_name, v.sku].filter(Boolean);
-  return parts.length ? parts.join(" · ") : (v.variant_id.slice(0, 8) ?? "Variant");
+  return parts.length
+    ? parts.join(" · ")
+    : (v.variant_id.slice(0, 8) ?? "Variant");
 }
 
 /**
@@ -95,8 +102,12 @@ export function ProductVariantPicker({
                 className="w-full px-3 py-2.5 text-left border-b hairline last:border-0 hover:bg-text-primary/[0.04] transition-colors flex items-center gap-2"
               >
                 <span className="flex-1 min-w-0">
-                  <span className="block text-[13px] font-semibold truncate">{p.name}</span>
-                  <span className="block font-mono text-[10.5px] text-text-faint">{p.product_code}</span>
+                  <span className="block text-[13px] font-semibold truncate">
+                    {p.name}
+                  </span>
+                  <span className="block font-mono text-[10.5px] text-text-faint">
+                    {p.product_code}
+                  </span>
                 </span>
               </button>
             ))
@@ -108,7 +119,8 @@ export function ProductVariantPicker({
         <div className="rounded-[12px] border border-line p-3 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12px] text-text-muted">
-              {list.find((p) => p.product_id === productId)?.name ?? "Selected product"}
+              {list.find((p) => p.product_id === productId)?.name ??
+                "Selected product"}
             </span>
             <button
               type="button"
@@ -127,16 +139,24 @@ export function ProductVariantPicker({
             {variants.isLoading ? (
               <div className="h-[42px] rounded-[11px] bg-text-primary/[0.04] animate-pulse" />
             ) : vList.length === 0 ? (
-              <div className="text-[12px] text-text-faint">No variants on this product.</div>
+              <div className="text-[12px] text-text-faint">
+                No variants on this product.
+              </div>
             ) : (
               <Select
                 value={variantId ?? ""}
                 onChange={(id) =>
-                  onVariant(id || null, vList.find((v) => v.variant_id === id) ?? null)
+                  onVariant(
+                    id || null,
+                    vList.find((v) => v.variant_id === id) ?? null,
+                  )
                 }
                 options={[
                   { value: "", label: "Select a variant…" },
-                  ...vList.map((v) => ({ value: v.variant_id, label: variantLabel(v) })),
+                  ...vList.map((v) => ({
+                    value: v.variant_id,
+                    label: variantLabel(v),
+                  })),
                 ]}
               />
             )}
@@ -182,7 +202,12 @@ export function Banner({
     accent: "text-accent-glow bg-accent/10 border-accent/25",
   };
   return (
-    <div className={cn("flex items-start gap-2 text-[13px] rounded-xl p-3 border", tones[tone])}>
+    <div
+      className={cn(
+        "flex items-start gap-2 text-[13px] rounded-xl p-3 border",
+        tones[tone],
+      )}
+    >
       {icon && <span className="shrink-0 mt-0.5">{icon}</span>}
       <div className="leading-relaxed">{children}</div>
     </div>

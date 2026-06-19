@@ -1,6 +1,14 @@
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/primitives";
-import { buildWeekDays, isToday, isSameDay, formatTime, getHours, formatHour, DAY_SHORT } from "./constants";
+import {
+  buildWeekDays,
+  isToday,
+  isSameDay,
+  formatTime,
+  getHours,
+  formatHour,
+  DAY_SHORT,
+} from "./constants";
 import type { CalendarEvent } from "./types";
 
 interface WeekViewProps {
@@ -11,7 +19,13 @@ interface WeekViewProps {
   onCreateEvent: (date: Date) => void;
 }
 
-export function WeekView({ date, events, loading, onSelectEvent, onCreateEvent }: WeekViewProps) {
+export function WeekView({
+  date,
+  events,
+  loading,
+  onSelectEvent,
+  onCreateEvent,
+}: WeekViewProps) {
   const days = buildWeekDays(date);
   const hours = getHours();
 

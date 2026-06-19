@@ -68,12 +68,12 @@ function slugify(s: string): string {
 }
 
 const STEPS = [
-  { id: 1, label: "Details",  desc: "Name, template & copy",  slug: "details"  },
-  { id: 2, label: "Products", desc: "What you're selling",     slug: "products" },
-  { id: 3, label: "Payment",  desc: "Bank accounts",           slug: "payment"  },
-  { id: 4, label: "Settings", desc: "Sharing & sections",      slug: "settings" },
-  { id: 5, label: "Leads",    desc: "Captured contacts",       slug: "leads"    },
-  { id: 6, label: "Orders",   desc: "Customer orders",         slug: "orders"   },
+  { id: 1, label: "Details", desc: "Name, template & copy", slug: "details" },
+  { id: 2, label: "Products", desc: "What you're selling", slug: "products" },
+  { id: 3, label: "Payment", desc: "Bank accounts", slug: "payment" },
+  { id: 4, label: "Settings", desc: "Sharing & sections", slug: "settings" },
+  { id: 5, label: "Leads", desc: "Captured contacts", slug: "leads" },
+  { id: 6, label: "Orders", desc: "Customer orders", slug: "orders" },
 ];
 
 // Map a ?tab= query-param value to a step id.
@@ -1114,8 +1114,8 @@ export default function CampaignBuilder() {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs text-brand-smoke">
-                      Generate a QR code that visitors can scan at your event
-                      to register in seconds.
+                      Generate a QR code that visitors can scan at your event to
+                      register in seconds.
                     </p>
                     <Button
                       size="sm"
@@ -1214,8 +1214,8 @@ export default function CampaignBuilder() {
                 Campaign orders
               </p>
               <p className="text-xs text-brand-smoke mt-0.5">
-                View, confirm, or cancel orders. Proof-submitted orders need your
-                verification before fulfilment.
+                View, confirm, or cancel orders. Proof-submitted orders need
+                your verification before fulfilment.
               </p>
             </div>
           </div>

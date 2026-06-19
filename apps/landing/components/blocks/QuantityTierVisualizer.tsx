@@ -62,10 +62,15 @@ export function QuantityTierVisualizer({
                   Buy {t.min_quantity}+ items
                 </div>
                 <div className="font-display text-[22px] tabular-nums">
-                  {money(t.fixed_discount_ngn)} <span className="text-[12px] font-body text-[rgb(var(--text-faint))]">off</span>
+                  {money(t.fixed_discount_ngn)}{" "}
+                  <span className="text-[12px] font-body text-[rgb(var(--text-faint))]">
+                    off
+                  </span>
                 </div>
                 {t.label && (
-                  <div className="text-[11px] text-[rgb(var(--text-faint))] mt-1.5">{t.label}</div>
+                  <div className="text-[11px] text-[rgb(var(--text-faint))] mt-1.5">
+                    {t.label}
+                  </div>
                 )}
               </div>
             );
@@ -76,17 +81,27 @@ export function QuantityTierVisualizer({
           <div className="mt-7 text-center text-[14px] text-[rgb(var(--text-muted))]">
             {reachedBest ? (
               <>
-                You&apos;ve unlocked <span className="text-[rgb(var(--success))] font-semibold">{money(reachedBest.fixed_discount_ngn)} off</span>
+                You&apos;ve unlocked{" "}
+                <span className="text-[rgb(var(--success))] font-semibold">
+                  {money(reachedBest.fixed_discount_ngn)} off
+                </span>
                 {next && (
                   <>
                     {" — "}add {next.min_quantity - totalQty} more for{" "}
-                    <span className="text-[rgb(var(--accent-glow))] font-semibold">{money(next.fixed_discount_ngn)} off</span>.
+                    <span className="text-[rgb(var(--accent-glow))] font-semibold">
+                      {money(next.fixed_discount_ngn)} off
+                    </span>
+                    .
                   </>
                 )}
               </>
             ) : next ? (
               <>
-                Add {next.min_quantity - totalQty} more to unlock <span className="text-[rgb(var(--accent-glow))] font-semibold">{money(next.fixed_discount_ngn)} off</span>.
+                Add {next.min_quantity - totalQty} more to unlock{" "}
+                <span className="text-[rgb(var(--accent-glow))] font-semibold">
+                  {money(next.fixed_discount_ngn)} off
+                </span>
+                .
               </>
             ) : null}
           </div>

@@ -60,10 +60,20 @@ interface PaymentSplit {
   reference?: string;
 }
 
-const PAYMENT_METHODS: { key: PaymentMethod; label: string; icon: typeof Banknote; requiresRef: boolean }[] = [
+const PAYMENT_METHODS: {
+  key: PaymentMethod;
+  label: string;
+  icon: typeof Banknote;
+  requiresRef: boolean;
+}[] = [
   { key: "cash", label: "Cash", icon: Banknote, requiresRef: false },
   { key: "pos_card", label: "POS Card", icon: CreditCard, requiresRef: true },
-  { key: "bank_transfer", label: "Transfer", icon: ArrowLeftRight, requiresRef: true },
+  {
+    key: "bank_transfer",
+    label: "Transfer",
+    icon: ArrowLeftRight,
+    requiresRef: true,
+  },
 ];
 
 const FOREIGN_CURRENCIES = [
@@ -121,7 +131,9 @@ export default function QuickSaleForm() {
     if (existing) {
       setLines(
         lines.map((l) =>
-          l.product_id === p.product_id ? { ...l, quantity: l.quantity + 1 } : l,
+          l.product_id === p.product_id
+            ? { ...l, quantity: l.quantity + 1 }
+            : l,
         ),
       );
     } else {
@@ -184,7 +196,8 @@ export default function QuickSaleForm() {
         payments: orderPayments,
         fulfilment_type: isDelivery ? "delivery" : "walk_in",
         currency: foreignCurrency || undefined,
-        exchange_rate: foreignCurrency && exchangeRate ? exchangeRate : undefined,
+        exchange_rate:
+          foreignCurrency && exchangeRate ? exchangeRate : undefined,
         apply_vat: applyVat || undefined,
         delivery_address: isDelivery ? deliveryAddress : undefined,
         // Courier is chosen by Logistics, not Sales — the delivery lands in
@@ -345,18 +358,24 @@ export default function QuickSaleForm() {
                   <p className="text-xs text-brand-smoke">
                     Today's rate:{" "}
                     <span className="font-semibold text-brand-accent tabular-nums">
-                      1 {foreignCurrency} = ₦{exchangeRate.toLocaleString("en-NG", { maximumFractionDigits: 2 })}
+                      1 {foreignCurrency} = ₦
+                      {exchangeRate.toLocaleString("en-NG", {
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                     {" · "}
                     Customer pays{" "}
                     <span className="font-semibold text-brand-cream tabular-nums">
-                      {(grandTotal / exchangeRate).toLocaleString("en-NG", { maximumFractionDigits: 2 })}{" "}
+                      {(grandTotal / exchangeRate).toLocaleString("en-NG", {
+                        maximumFractionDigits: 2,
+                      })}{" "}
                       {foreignCurrency}
                     </span>
                   </p>
                 ) : (
                   <p className="text-xs text-red-400">
-                    No exchange rate available for {foreignCurrency}. Check Settings → Currency Rates.
+                    No exchange rate available for {foreignCurrency}. Check
+                    Settings → Currency Rates.
                   </p>
                 )}
               </div>
@@ -431,7 +450,9 @@ export default function QuickSaleForm() {
                       <button
                         key={pm.key}
                         type="button"
-                        onClick={() => updatePayment(split.id, { method: pm.key })}
+                        onClick={() =>
+                          updatePayment(split.id, { method: pm.key })
+                        }
                         className={cn(
                           "flex flex-col items-center gap-1 rounded-lg border px-2 py-2 text-center transition-all",
                           split.method === pm.key
@@ -440,7 +461,9 @@ export default function QuickSaleForm() {
                         )}
                       >
                         <Icon className="h-4 w-4" />
-                        <span className="text-[9px] leading-tight">{pm.label}</span>
+                        <span className="text-[9px] leading-tight">
+                          {pm.label}
+                        </span>
                       </button>
                     );
                   })}
@@ -460,7 +483,8 @@ export default function QuickSaleForm() {
                       className="text-right"
                     />
                   </div>
-                  {PAYMENT_METHODS.find((m) => m.key === split.method)?.requiresRef && (
+                  {PAYMENT_METHODS.find((m) => m.key === split.method)
+                    ?.requiresRef && (
                     <input
                       type="text"
                       placeholder="Ref / terminal #"
@@ -510,7 +534,8 @@ export default function QuickSaleForm() {
           {/* Shortfall warning */}
           {shortfall > 0 && lines.length > 0 && (
             <p className="mt-2 text-xs text-red-400">
-              {fmtMoney(shortfall, baseCurrency)} remaining — add another payment method or adjust amounts.
+              {fmtMoney(shortfall, baseCurrency)} remaining — add another
+              payment method or adjust amounts.
             </p>
           )}
         </Card>

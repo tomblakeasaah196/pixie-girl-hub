@@ -42,14 +42,39 @@ const COUNTRY_CURRENCY_MAP = {
   GH: "GHS",
 
   // Eurozone members (ISO 4217 / EU membership as of 2024)
-  AD: "EUR", AT: "EUR", BE: "EUR", CY: "EUR", EE: "EUR",
-  FI: "EUR", FR: "EUR", DE: "EUR", GR: "EUR", IE: "EUR",
-  IT: "EUR", LV: "EUR", LT: "EUR", LU: "EUR", MT: "EUR",
-  MC: "EUR", ME: "EUR", NL: "EUR", PT: "EUR", SM: "EUR",
-  SK: "EUR", SI: "EUR", ES: "EUR", VA: "EUR", XK: "EUR",
+  AD: "EUR",
+  AT: "EUR",
+  BE: "EUR",
+  CY: "EUR",
+  EE: "EUR",
+  FI: "EUR",
+  FR: "EUR",
+  DE: "EUR",
+  GR: "EUR",
+  IE: "EUR",
+  IT: "EUR",
+  LV: "EUR",
+  LT: "EUR",
+  LU: "EUR",
+  MT: "EUR",
+  MC: "EUR",
+  ME: "EUR",
+  NL: "EUR",
+  PT: "EUR",
+  SM: "EUR",
+  SK: "EUR",
+  SI: "EUR",
+  ES: "EUR",
+  VA: "EUR",
+  XK: "EUR",
 
   // US Dollar — United States and territories
-  US: "USD", PR: "USD", GU: "USD", VI: "USD", AS: "USD", MP: "USD",
+  US: "USD",
+  PR: "USD",
+  GU: "USD",
+  VI: "USD",
+  AS: "USD",
+  MP: "USD",
 };
 
 /** Currency to assign when no mapping exists for the detected country. */
@@ -63,8 +88,13 @@ const DEFAULT_CURRENCY = "USD";
 function geoCurrencyMiddleware(req, _res, next) {
   const isoCode = geoip.lookupCountry(req.ip);
   req.geoCountry = isoCode;
-  req.geoCurrency = (isoCode && COUNTRY_CURRENCY_MAP[isoCode]) || DEFAULT_CURRENCY;
+  req.geoCurrency =
+    (isoCode && COUNTRY_CURRENCY_MAP[isoCode]) || DEFAULT_CURRENCY;
   next();
 }
 
-module.exports = { geoCurrencyMiddleware, COUNTRY_CURRENCY_MAP, DEFAULT_CURRENCY };
+module.exports = {
+  geoCurrencyMiddleware,
+  COUNTRY_CURRENCY_MAP,
+  DEFAULT_CURRENCY,
+};

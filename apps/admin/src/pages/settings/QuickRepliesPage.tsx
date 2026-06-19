@@ -53,8 +53,9 @@ function detectVariables(body: string): string[] {
 
 const qrApi = {
   list: () => api.get<QuickReply[]>("/smartcomm/quick-replies"),
-  create: (input: Omit<QuickReplyDraft, "reply_id"> & { variables?: string[] }) =>
-    api.post<QuickReply>("/smartcomm/quick-replies", input),
+  create: (
+    input: Omit<QuickReplyDraft, "reply_id"> & { variables?: string[] },
+  ) => api.post<QuickReply>("/smartcomm/quick-replies", input),
   update: (
     reply_id: string,
     input: Partial<Omit<QuickReplyDraft, "reply_id" | "scope" | "slug">> & {
@@ -80,8 +81,14 @@ export function QuickRepliesPage() {
     queryFn: () => qrApi.list(),
   });
 
-  const personal = useMemo(() => replies.filter((r) => r.scope === "personal"), [replies]);
-  const brand = useMemo(() => replies.filter((r) => r.scope === "brand"), [replies]);
+  const personal = useMemo(
+    () => replies.filter((r) => r.scope === "personal"),
+    [replies],
+  );
+  const brand = useMemo(
+    () => replies.filter((r) => r.scope === "brand"),
+    [replies],
+  );
 
   const save = useMutation({
     mutationFn: async (draft: QuickReplyDraft) => {
@@ -125,7 +132,9 @@ export function QuickRepliesPage() {
           <MessageCircle className="w-5 h-5" />
         </span>
         <div className="flex-1">
-          <h2 className="font-display text-[22px] font-medium">Quick Replies</h2>
+          <h2 className="font-display text-[22px] font-medium">
+            Quick Replies
+          </h2>
           <p className="text-text-muted text-[13px]">
             Slash-command snippets the team taps into the composer. Use{" "}
             <code className="font-mono text-[11px] bg-panel-2 px-1 rounded">
@@ -211,10 +220,7 @@ function Section({
         {isLoading ? (
           <div className="p-3 space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-12 bg-panel-2 rounded animate-pulse"
-              />
+              <div key={i} className="h-12 bg-panel-2 rounded animate-pulse" />
             ))}
           </div>
         ) : items.length === 0 ? (
@@ -326,7 +332,11 @@ function EditorPanel({
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <>
-                {isNew ? <Save className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                {isNew ? (
+                  <Save className="w-3.5 h-3.5" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
                 {isNew ? "Create" : "Save"}
               </>
             )}
@@ -335,73 +345,69 @@ function EditorPanel({
       }
     >
       <div className="space-y-3">
-          <label className="block">
-            <span className="block text-[11.5px] text-text-muted mb-1">
-              Slash command
-            </span>
-            <div className="flex items-center gap-2 rounded-xl bg-panel-2 border hairline px-3 py-2 focus-within:border-accent/40">
-              <span className="text-accent-glow font-mono">/</span>
-              <input
-                value={draft.slug}
-                onChange={(e) =>
-                  onChange({
-                    ...draft,
-                    slug: e.target.value
-                      .toLowerCase()
-                      .replace(/[^a-z0-9-]/g, ""),
-                  })
-                }
-                disabled={!isNew}
-                placeholder="welcome"
-                className="bg-transparent flex-1 text-[13.5px] focus:outline-none disabled:opacity-60"
-              />
-            </div>
-            {!isNew && (
-              <p className="text-[10.5px] text-text-faint mt-1">
-                Slug can&rsquo;t change after creation (it&rsquo;s the trigger).
-              </p>
-            )}
-          </label>
-          <label className="block">
-            <span className="block text-[11.5px] text-text-muted mb-1">
-              Title
-            </span>
+        <label className="block">
+          <span className="block text-[11.5px] text-text-muted mb-1">
+            Slash command
+          </span>
+          <div className="flex items-center gap-2 rounded-xl bg-panel-2 border hairline px-3 py-2 focus-within:border-accent/40">
+            <span className="text-accent-glow font-mono">/</span>
             <input
-              value={draft.title}
-              onChange={(e) => onChange({ ...draft, title: e.target.value })}
-              placeholder="Friendly welcome"
-              className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40"
+              value={draft.slug}
+              onChange={(e) =>
+                onChange({
+                  ...draft,
+                  slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
+                })
+              }
+              disabled={!isNew}
+              placeholder="welcome"
+              className="bg-transparent flex-1 text-[13.5px] focus:outline-none disabled:opacity-60"
             />
-          </label>
-          <label className="block">
-            <span className="block text-[11.5px] text-text-muted mb-1">
-              Body
-            </span>
-            <textarea
-              value={draft.body}
-              onChange={(e) => onChange({ ...draft, body: e.target.value })}
-              placeholder="Hi {{first_name}} 🌹 Welcome to Pixie Girl! How can we help you today?"
-              rows={5}
-              className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40"
-            />
-            {variables.length > 0 && (
-              <p className="text-[11px] text-text-faint mt-1">
-                Variables detected:{" "}
-                {variables.map((v) => (
-                  <code
-                    key={v}
-                    className="font-mono text-[11px] bg-panel-2 px-1 rounded mr-1"
-                  >{`{{${v}}}`}</code>
-                ))}
-              </p>
-            )}
-          </label>
-          {isError && (
-            <p className="text-[12px] text-danger inline-flex items-center gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5" />
-              Couldn&rsquo;t save. Slug might already exist.
+          </div>
+          {!isNew && (
+            <p className="text-[10.5px] text-text-faint mt-1">
+              Slug can&rsquo;t change after creation (it&rsquo;s the trigger).
             </p>
           )}
+        </label>
+        <label className="block">
+          <span className="block text-[11.5px] text-text-muted mb-1">
+            Title
+          </span>
+          <input
+            value={draft.title}
+            onChange={(e) => onChange({ ...draft, title: e.target.value })}
+            placeholder="Friendly welcome"
+            className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-[11.5px] text-text-muted mb-1">Body</span>
+          <textarea
+            value={draft.body}
+            onChange={(e) => onChange({ ...draft, body: e.target.value })}
+            placeholder="Hi {{first_name}} 🌹 Welcome to Pixie Girl! How can we help you today?"
+            rows={5}
+            className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40"
+          />
+          {variables.length > 0 && (
+            <p className="text-[11px] text-text-faint mt-1">
+              Variables detected:{" "}
+              {variables.map((v) => (
+                <code
+                  key={v}
+                  className="font-mono text-[11px] bg-panel-2 px-1 rounded mr-1"
+                >{`{{${v}}}`}</code>
+              ))}
+            </p>
+          )}
+        </label>
+        {isError && (
+          <p className="text-[12px] text-danger inline-flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5" />
+            Couldn&rsquo;t save. Slug might already exist.
+          </p>
+        )}
       </div>
     </Modal>
   );

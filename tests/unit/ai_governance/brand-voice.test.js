@@ -38,7 +38,11 @@ describe("brand-voice validator", () => {
       },
       faq_markdown: "## Returns\nWe accept returns within 7 days.",
       sample_transcripts: [
-        { label: "Returns enquiry", customer: "Hi can I return?", staff: "Of course." },
+        {
+          label: "Returns enquiry",
+          customer: "Hi can I return?",
+          staff: "Of course.",
+        },
       ],
       primary_emojis: ["🌹", "✨"],
       classify_inbound: false,

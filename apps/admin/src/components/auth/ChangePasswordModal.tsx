@@ -5,7 +5,12 @@ import { cn } from "@/lib/cn";
 import { checkPassword, passwordScore } from "@/lib/password";
 import { changePassword } from "@/lib/auth-api";
 
-const STRENGTH_COLORS = ["bg-danger", "bg-orange-400", "bg-yellow-400", "bg-success"];
+const STRENGTH_COLORS = [
+  "bg-danger",
+  "bg-orange-400",
+  "bg-yellow-400",
+  "bg-success",
+];
 
 export function ChangePasswordModal({
   open,

@@ -39,8 +39,10 @@ async function loadHostMap() {
   );
   const map = new Map();
   for (const r of rows) {
-    if (r.sales_subdomain) map.set(r.sales_subdomain.toLowerCase(), r.business_key);
-    if (r.storefront_domain) map.set(r.storefront_domain.toLowerCase(), r.business_key);
+    if (r.sales_subdomain)
+      map.set(r.sales_subdomain.toLowerCase(), r.business_key);
+    if (r.storefront_domain)
+      map.set(r.storefront_domain.toLowerCase(), r.business_key);
   }
   cachedHostMap = map;
   cacheLoadedAt = now;
@@ -65,7 +67,9 @@ async function hostBrandResolverMiddleware(req, _res, next) {
       return next();
     }
 
-    const rawHost = (req.hostname || req.headers.host || "").toLowerCase().split(":")[0];
+    const rawHost = (req.hostname || req.headers.host || "")
+      .toLowerCase()
+      .split(":")[0];
     if (!rawHost) return next();
     const map = await loadHostMap();
     const brand = map.get(rawHost);

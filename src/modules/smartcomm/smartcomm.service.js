@@ -425,7 +425,11 @@ async function deleteMessage({ brand, user, request_id, message_id }) {
   return transaction(async (client) => {
     const msg = await repo.getMessage({ client, id: message_id });
     if (!msg || msg.is_deleted) throw new NotFoundError("Message");
-    if (msg.sender_user_id && msg.sender_user_id !== user.user_id && !isCeo(user))
+    if (
+      msg.sender_user_id &&
+      msg.sender_user_id !== user.user_id &&
+      !isCeo(user)
+    )
       throw new AppError(
         "NOT_AUTHOR",
         "Only the author can delete this message",
@@ -629,13 +633,7 @@ async function createQuickReply({ brand, user, request_id, input }) {
   return r;
 }
 
-async function updateQuickReply({
-  brand,
-  user,
-  request_id,
-  reply_id,
-  input,
-}) {
+async function updateQuickReply({ brand, user, request_id, reply_id, input }) {
   const r = await repo.updateQuickReply({
     reply_id,
     owner_user_id: user.user_id,
@@ -921,7 +919,10 @@ async function sendToCustomer({
     if (soft) return null;
     throw new AppError("NO_EMAIL", "Contact has no email", 422);
   }
-  if (channel !== "email" && !(contact.whatsapp_number || contact.primary_phone)) {
+  if (
+    channel !== "email" &&
+    !(contact.whatsapp_number || contact.primary_phone)
+  ) {
     if (soft) return null;
     throw new AppError("NO_PHONE", "Contact has no phone/WhatsApp", 422);
   }

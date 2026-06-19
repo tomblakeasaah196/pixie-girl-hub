@@ -558,7 +558,10 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     setLoading(true);
     try {
       await changePassword(current, newPw);
-      showToast.success("Password changed", "You may need to sign in again on other devices.");
+      showToast.success(
+        "Password changed",
+        "You may need to sign in again on other devices.",
+      );
       onClose();
     } catch (err) {
       showToast.error("Failed", errMsg(err));
@@ -606,7 +609,11 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
                 onClick={() => setShowCurrent(!showCurrent)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-smoke hover:text-brand-cream"
               >
-                {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showCurrent ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
@@ -629,7 +636,11 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
                 onClick={() => setShowNew(!showNew)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-smoke hover:text-brand-cream"
               >
-                {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showNew ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             </div>
             {weak && (

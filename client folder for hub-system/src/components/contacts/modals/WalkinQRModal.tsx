@@ -57,7 +57,6 @@ export default function WalkinQRModal({ open, onClose }: Props) {
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="w-full max-w-sm rounded-2xl bg-brand-charcoal border border-white/10 shadow-2xl overflow-hidden">
-
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
             <div className="flex items-center gap-2.5">
@@ -104,9 +103,9 @@ export default function WalkinQRModal({ open, onClose }: Props) {
 
                 {/* Instruction */}
                 <p className="text-xs text-brand-smoke text-center leading-relaxed">
-                  Print and place at your counter or entrance. Clients scan
-                  this once to register — name, phone, email, and optional
-                  location & birthday.
+                  Print and place at your counter or entrance. Clients scan this
+                  once to register — name, phone, email, and optional location &
+                  birthday.
                 </p>
 
                 {/* Link display */}
@@ -118,7 +117,9 @@ export default function WalkinQRModal({ open, onClose }: Props) {
                     onClick={handleCopy}
                     className={cn(
                       "text-xs font-medium shrink-0 transition",
-                      copied ? "text-green-400" : "text-brand-accent hover:underline",
+                      copied
+                        ? "text-green-400"
+                        : "text-brand-accent hover:underline",
                     )}
                   >
                     {copied ? "Copied!" : "Copy"}

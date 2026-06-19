@@ -53,7 +53,6 @@ export function PhotoCropModal({
     return () => el.removeEventListener("wheel", handler);
   }, [minZoom]);
 
-
   const imgStyle = () => {
     if (!imgRef.current) return {};
     const w = imgRef.current.width * zoom;
@@ -98,9 +97,13 @@ export function PhotoCropModal({
     const x = (EXPORT - w) / 2 + offset.x * scale;
     const y = (EXPORT - h) / 2 + offset.y * scale;
     ctx.drawImage(img, x, y, w, h);
-    canvas.toBlob((b) => {
-      if (b) onDone(b);
-    }, "image/jpeg", 0.9);
+    canvas.toBlob(
+      (b) => {
+        if (b) onDone(b);
+      },
+      "image/jpeg",
+      0.9,
+    );
   };
 
   const content = (
@@ -127,11 +130,22 @@ export function PhotoCropModal({
           style={{ width: PREVIEW, height: PREVIEW, position: "relative" }}
           onMouseDown={(e) => startDrag(e.clientX, e.clientY)}
           onMouseMove={(e) => moveDrag(e.clientX, e.clientY)}
-          onMouseUp={() => { dragging.current = false; }}
-          onMouseLeave={() => { dragging.current = false; }}
-          onTouchStart={(e) => startDrag(e.touches[0].clientX, e.touches[0].clientY)}
-          onTouchMove={(e) => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }}
-          onTouchEnd={() => { dragging.current = false; }}
+          onMouseUp={() => {
+            dragging.current = false;
+          }}
+          onMouseLeave={() => {
+            dragging.current = false;
+          }}
+          onTouchStart={(e) =>
+            startDrag(e.touches[0].clientX, e.touches[0].clientY)
+          }
+          onTouchMove={(e) => {
+            e.preventDefault();
+            moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+          }}
+          onTouchEnd={() => {
+            dragging.current = false;
+          }}
         >
           {src && <img src={src} alt="" style={imgStyle()} draggable={false} />}
         </div>

@@ -89,9 +89,7 @@ function toTimelineEvent(r) {
     event_type: `${r.module}.${r.kind}`,
     event_at: r.occurred_at,
     title:
-      r.title ||
-      r.ref ||
-      `${r.module} · ${String(r.kind).replace(/_/g, " ")}`,
+      r.title || r.ref || `${r.module} · ${String(r.kind).replace(/_/g, " ")}`,
     detail: r.status || null,
     metadata: {
       module: r.module,

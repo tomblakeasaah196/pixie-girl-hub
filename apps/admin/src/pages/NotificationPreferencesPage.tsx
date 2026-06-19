@@ -14,36 +14,46 @@ import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { BellRing, Moon, Smartphone } from "lucide-react";
 import { Card } from "@/components/ui/primitives";
 import { ErrorState, Toggle } from "@/components/ui/controls";
-import { useNotifPrefs, useUpsertNotifPref, NOTIF_META, NOTIF_TYPE_LABELS } from "@/lib/notifications-api";
+import {
+  useNotifPrefs,
+  useUpsertNotifPref,
+  NOTIF_META,
+  NOTIF_TYPE_LABELS,
+} from "@/lib/notifications-api";
 import { useNotifStore } from "@/stores/notifications";
-import { pushPermission, requestPushPermission, markPushPrompted, ensurePushSubscription } from "@/lib/push";
+import {
+  pushPermission,
+  requestPushPermission,
+  markPushPrompted,
+  ensurePushSubscription,
+} from "@/lib/push";
 import { useState } from "react";
 
 const CHANNELS = ["in_app", "email", "sms", "push", "whatsapp"] as const;
 
 const CHANNEL_LABEL: Record<(typeof CHANNELS)[number], string> = {
-  in_app:    "In-app",
-  email:     "Email",
-  sms:       "SMS",
-  push:      "Push",
-  whatsapp:  "WhatsApp",
+  in_app: "In-app",
+  email: "Email",
+  sms: "SMS",
+  push: "Push",
+  whatsapp: "WhatsApp",
 };
 
 const CHANNEL_FIELD: Record<(typeof CHANNELS)[number], string> = {
-  in_app:    "in_app",
-  email:     "email_enabled",
-  sms:       "sms_enabled",
-  push:      "push_enabled",
-  whatsapp:  "whatsapp_enabled",
+  in_app: "in_app",
+  email: "email_enabled",
+  sms: "sms_enabled",
+  push: "push_enabled",
+  whatsapp: "whatsapp_enabled",
 };
 
 // Group types by category for display
 const CATEGORIES: Record<string, string> = {
   approvals: "Approvals",
-  sales:     "Sales & Finance",
-  stock:     "Stock & Production",
-  ops:       "Operations & Tasks",
-  system:    "System",
+  sales: "Sales & Finance",
+  stock: "Stock & Production",
+  ops: "Operations & Tasks",
+  system: "System",
 };
 
 const ALL_TYPES = Object.keys(NOTIF_META) as Array<keyof typeof NOTIF_META>;
@@ -53,11 +63,15 @@ function typesByCategory(cat: string) {
 }
 
 export function NotificationPreferencesPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Notifications" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Notifications" },
+  ]);
   const query = useNotifPrefs();
   const upsert = useUpsertNotifPref();
   const { dnd, setDnd } = useNotifStore();
-  const [pushPerm, setPushPerm] = useState<NotificationPermission>(pushPermission());
+  const [pushPerm, setPushPerm] =
+    useState<NotificationPermission>(pushPermission());
   const [requesting, setRequesting] = useState(false);
 
   const prefs = query.data ?? [];
@@ -68,8 +82,15 @@ export function NotificationPreferencesPage() {
     return row ? (row[field as keyof typeof row] as boolean) : true;
   }
 
-  function toggle(type: string, channel: (typeof CHANNELS)[number], enabled: boolean) {
-    upsert.mutate({ notification_type: type, [CHANNEL_FIELD[channel]]: enabled });
+  function toggle(
+    type: string,
+    channel: (typeof CHANNELS)[number],
+    enabled: boolean,
+  ) {
+    upsert.mutate({
+      notification_type: type,
+      [CHANNEL_FIELD[channel]]: enabled,
+    });
   }
 
   async function handleRequestPush() {
@@ -97,9 +118,12 @@ export function NotificationPreferencesPage() {
   return (
     <div className="max-w-[960px] mx-auto space-y-6">
       <div>
-        <h2 className="font-display text-xl font-medium">Notification preferences</h2>
+        <h2 className="font-display text-xl font-medium">
+          Notification preferences
+        </h2>
         <p className="text-[13px] text-text-muted mt-0.5">
-          Control which notifications you receive per channel. Changes are saved immediately.
+          Control which notifications you receive per channel. Changes are saved
+          immediately.
         </p>
       </div>
 
@@ -109,13 +133,15 @@ export function NotificationPreferencesPage() {
           <Smartphone className="w-5 h-5 text-accent" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[13.5px] font-semibold text-text-primary">Push notifications</p>
+          <p className="text-[13.5px] font-semibold text-text-primary">
+            Push notifications
+          </p>
           <p className="text-[12px] text-text-muted mt-0.5">
             {pushPerm === "granted"
               ? "Push is enabled. You'll receive alerts even when the app is closed."
               : pushPerm === "denied"
-              ? "Push was blocked in your browser. Allow it in your browser's site settings."
-              : "Enable push to receive alerts even when the app is closed."}
+                ? "Push was blocked in your browser. Allow it in your browser's site settings."
+                : "Enable push to receive alerts even when the app is closed."}
           </p>
         </div>
         {pushPerm === "default" && (
@@ -128,7 +154,9 @@ export function NotificationPreferencesPage() {
           </button>
         )}
         {pushPerm === "granted" && (
-          <span className="shrink-0 text-[11px] text-success font-semibold">✓ Enabled</span>
+          <span className="shrink-0 text-[11px] text-success font-semibold">
+            ✓ Enabled
+          </span>
         )}
       </Card>
 
@@ -141,9 +169,12 @@ export function NotificationPreferencesPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[13.5px] font-semibold text-text-primary">Do Not Disturb</p>
+                <p className="text-[13.5px] font-semibold text-text-primary">
+                  Do Not Disturb
+                </p>
                 <p className="text-[12px] text-text-muted mt-0.5">
-                  Silence sounds and in-app toasts during these hours. Notifications still accumulate.
+                  Silence sounds and in-app toasts during these hours.
+                  Notifications still accumulate.
                 </p>
               </div>
               <Toggle
@@ -157,7 +188,9 @@ export function NotificationPreferencesPage() {
                   From
                   <select
                     value={dnd.startHour}
-                    onChange={(e) => setDnd({ startHour: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setDnd({ startHour: Number(e.target.value) })
+                    }
                     className="h-8 px-2 rounded-lg bg-text-primary/[0.06] border border-line text-text-primary text-[12px]"
                   >
                     {Array.from({ length: 24 }, (_, i) => (
@@ -171,7 +204,9 @@ export function NotificationPreferencesPage() {
                   Until
                   <select
                     value={dnd.endHour}
-                    onChange={(e) => setDnd({ endHour: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setDnd({ endHour: Number(e.target.value) })
+                    }
                     className="h-8 px-2 rounded-lg bg-text-primary/[0.06] border border-line text-text-primary text-[12px]"
                   >
                     {Array.from({ length: 24 }, (_, i) => (
@@ -215,20 +250,32 @@ export function NotificationPreferencesPage() {
                   <tbody>
                     {query.isLoading
                       ? types.map((_, i) => (
-                          <tr key={i} className="border-b hairline last:border-0">
-                            <td className="p-[0_18px] h-[50px] text-[13px] text-text-faint">…</td>
+                          <tr
+                            key={i}
+                            className="border-b hairline last:border-0"
+                          >
+                            <td className="p-[0_18px] h-[50px] text-[13px] text-text-faint">
+                              …
+                            </td>
                             {CHANNELS.map((ch) => (
                               <td key={ch} className="p-[0_14px] h-[50px]" />
                             ))}
                           </tr>
                         ))
                       : types.map((type) => (
-                          <tr key={type} className="border-b hairline last:border-0 hover:bg-text-primary/[0.02]">
+                          <tr
+                            key={type}
+                            className="border-b hairline last:border-0 hover:bg-text-primary/[0.02]"
+                          >
                             <td className="p-[0_18px] h-[50px] text-[13px] font-medium text-text-primary align-middle">
-                              {NOTIF_TYPE_LABELS[type] ?? type.replace(/_/g, " ")}
+                              {NOTIF_TYPE_LABELS[type] ??
+                                type.replace(/_/g, " ")}
                             </td>
                             {CHANNELS.map((ch) => (
-                              <td key={ch} className="p-[0_14px] h-[50px] align-middle text-center">
+                              <td
+                                key={ch}
+                                className="p-[0_14px] h-[50px] align-middle text-center"
+                              >
                                 <div className="inline-flex">
                                   <Toggle
                                     checked={getValue(type, ch)}

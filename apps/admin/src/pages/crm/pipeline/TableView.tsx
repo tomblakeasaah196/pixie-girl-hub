@@ -7,7 +7,12 @@ import { WonLostModal } from "./WonLostModal";
 import type { Deal } from "@/pages/contacts/types";
 import type { KanbanColumn } from "../types";
 
-type SortKey = "title" | "expected_value_ngn" | "expected_close_date" | "last_activity_at" | "status";
+type SortKey =
+  | "title"
+  | "expected_value_ngn"
+  | "expected_close_date"
+  | "last_activity_at"
+  | "status";
 
 const STATUS_TONE = {
   open: "info",
@@ -82,7 +87,8 @@ export function TableView({ columns, isLoading }: TableViewProps) {
   }
 
   function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <ChevronDown className="w-3 h-3 text-text-faint/40" />;
+    if (sortKey !== col)
+      return <ChevronDown className="w-3 h-3 text-text-faint/40" />;
     return sortDir === "asc" ? (
       <ChevronUp className="w-3 h-3 text-accent" />
     ) : (
@@ -136,7 +142,10 @@ export function TableView({ columns, isLoading }: TableViewProps) {
             <tbody>
               {sorted.map((deal) => {
                 const daysSince = deal.last_activity_at
-                  ? Math.floor((Date.now() - new Date(deal.last_activity_at).getTime()) / 86_400_000)
+                  ? Math.floor(
+                      (Date.now() - new Date(deal.last_activity_at).getTime()) /
+                        86_400_000,
+                    )
                   : null;
 
                 return (
@@ -149,26 +158,38 @@ export function TableView({ columns, isLoading }: TableViewProps) {
                       <div className="text-[12.5px] font-medium text-text-primary truncate">
                         {deal.title}
                       </div>
-                      <div className="text-[10.5px] text-text-faint">{deal.deal_number}</div>
+                      <div className="text-[10.5px] text-text-faint">
+                        {deal.deal_number}
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-[12px] text-text-muted max-w-[140px]">
-                      <span className="truncate block">{deal.contact_name ?? "—"}</span>
+                      <span className="truncate block">
+                        {deal.contact_name ?? "—"}
+                      </span>
                     </td>
                     <td className="px-3 py-2.5">
                       <StagePill
                         stageName={deal.current_stage_name}
-                        stageColour={(deal as typeof deal & { _stageColour?: string })._stageColour}
+                        stageColour={
+                          (deal as typeof deal & { _stageColour?: string })
+                            ._stageColour
+                        }
                       />
                     </td>
                     <td className="px-3 py-2.5">
-                      <Pill tone={STATUS_TONE[deal.status] ?? "neutral"} dot={false}>
+                      <Pill
+                        tone={STATUS_TONE[deal.status] ?? "neutral"}
+                        dot={false}
+                      >
                         {deal.status}
                       </Pill>
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       {deal.expected_value_ngn ? (
                         <span className="text-[12px] font-mono text-text-primary">
-                          <MoneyText ngn={parseFloat(deal.expected_value_ngn)} />
+                          <MoneyText
+                            ngn={parseFloat(deal.expected_value_ngn)}
+                          />
                         </span>
                       ) : (
                         <span className="text-text-faint">—</span>
@@ -176,10 +197,13 @@ export function TableView({ columns, isLoading }: TableViewProps) {
                     </td>
                     <td className="px-3 py-2.5 text-[12px] text-text-muted whitespace-nowrap">
                       {deal.expected_close_date
-                        ? new Date(deal.expected_close_date).toLocaleDateString("en-NG", {
-                            day: "numeric",
-                            month: "short",
-                          })
+                        ? new Date(deal.expected_close_date).toLocaleDateString(
+                            "en-NG",
+                            {
+                              day: "numeric",
+                              month: "short",
+                            },
+                          )
                         : "—"}
                     </td>
                     <td className="px-3 py-2.5 text-[12px] text-text-faint whitespace-nowrap">
@@ -209,7 +233,9 @@ export function TableView({ columns, isLoading }: TableViewProps) {
         </div>
 
         {sorted.length === 0 && (
-          <div className="py-10 text-center text-[13px] text-text-faint">No deals</div>
+          <div className="py-10 text-center text-[13px] text-text-faint">
+            No deals
+          </div>
         )}
       </div>
 

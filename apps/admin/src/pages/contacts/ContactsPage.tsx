@@ -2,7 +2,13 @@ import { useState, useCallback } from "react";
 import { Plus, Users, QrCode, Search, Pencil, UserSquare2 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { Button, Pill, KpiTile, Skeleton, type Tone } from "@/components/ui/primitives";
+import {
+  Button,
+  Pill,
+  KpiTile,
+  Skeleton,
+  type Tone,
+} from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { PageActions } from "@/components/shell/PageActions";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
@@ -99,7 +105,9 @@ function DesktopDetailPane({ contactId }: { contactId: string }) {
 
   const colorIdx = contact
     ? Math.abs(
-        contact.display_name.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0),
+        contact.display_name
+          .split("")
+          .reduce((acc, ch) => acc + ch.charCodeAt(0), 0),
       ) % DETAIL_AVATAR_COLORS.length
     : 0;
 
@@ -123,18 +131,25 @@ function DesktopDetailPane({ contactId }: { contactId: string }) {
               <h2 className="font-display text-xl font-medium leading-tight truncate flex items-center gap-2">
                 {contact?.display_name ?? ""}
                 {contact && (
-                  <Pill tone={DETAIL_PRIORITY_TONE[contact.priority_level]} dot={false}>
+                  <Pill
+                    tone={DETAIL_PRIORITY_TONE[contact.priority_level]}
+                    dot={false}
+                  >
                     {contact.priority_level}
                   </Pill>
                 )}
               </h2>
               {contact && (
                 <div className="micro mt-0.5 flex items-center gap-1.5">
-                  {contact.contact_type.map((t) => DETAIL_TYPE_LABELS[t] ?? t).join(" · ")}
+                  {contact.contact_type
+                    .map((t) => DETAIL_TYPE_LABELS[t] ?? t)
+                    .join(" · ")}
                   {contact.source && (
                     <>
                       <span className="text-text-faint">·</span>
-                      <span className="capitalize">{contact.source.replace(/_/g, " ")}</span>
+                      <span className="capitalize">
+                        {contact.source.replace(/_/g, " ")}
+                      </span>
                     </>
                   )}
                 </div>
@@ -163,7 +178,10 @@ function DesktopDetailPane({ contactId }: { contactId: string }) {
       </div>
 
       {showEdit && contact && (
-        <ContactFormModal contact={contact} onClose={() => setShowEdit(false)} />
+        <ContactFormModal
+          contact={contact}
+          onClose={() => setShowEdit(false)}
+        />
       )}
     </div>
   );
@@ -176,9 +194,12 @@ function SelectContactPrompt() {
         <span className="grid place-items-center w-12 h-12 rounded-xl bg-text-primary/[0.06] text-text-faint mb-3 mx-auto">
           <UserSquare2 className="w-6 h-6" />
         </span>
-        <div className="font-display text-[16px] text-text-primary mb-1">Select a contact</div>
+        <div className="font-display text-[16px] text-text-primary mb-1">
+          Select a contact
+        </div>
         <p className="text-[13px] text-text-muted max-w-[320px]">
-          Pick a contact from the list to see their full 360° profile, timeline, deals and more.
+          Pick a contact from the list to see their full 360° profile, timeline,
+          deals and more.
         </p>
       </div>
     </div>
@@ -212,7 +233,10 @@ export function ContactsPage() {
   const contacts = data?.data ?? [];
   const meta = data?.meta;
 
-  const handleRowClick = useCallback((c: Contact) => setSelectedId(c.contact_id), []);
+  const handleRowClick = useCallback(
+    (c: Contact) => setSelectedId(c.contact_id),
+    [],
+  );
 
   const columns: Column<Contact>[] = [
     {
@@ -226,7 +250,9 @@ export function ContactsPage() {
               {c.display_name}
             </span>
             {c.email && (
-              <span className="text-[11px] text-text-faint truncate">{c.email}</span>
+              <span className="text-[11px] text-text-faint truncate">
+                {c.email}
+              </span>
             )}
           </span>
         </span>
@@ -257,7 +283,9 @@ export function ContactsPage() {
     {
       key: "priority",
       header: "Priority",
-      render: (c) => <Pill tone={PRIORITY_TONE[c.priority_level]}>{c.priority_level}</Pill>,
+      render: (c) => (
+        <Pill tone={PRIORITY_TONE[c.priority_level]}>{c.priority_level}</Pill>
+      ),
     },
     {
       key: "source",
@@ -431,7 +459,10 @@ export function ContactsPage() {
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <KpiTile label="Total contacts" value={meta ? meta.total.toLocaleString() : "—"} />
+        <KpiTile
+          label="Total contacts"
+          value={meta ? meta.total.toLocaleString() : "—"}
+        />
         <KpiTile
           label="VIP clients"
           value="—"
@@ -471,17 +502,11 @@ export function ContactsPage() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <ContactFormModal
-          onClose={() => setShowCreateModal(false)}
-        />
+        <ContactFormModal onClose={() => setShowCreateModal(false)} />
       )}
 
       {/* Quick Add Modal */}
-      {showQuickAdd && (
-        <QuickAddModal
-          onClose={() => setShowQuickAdd(false)}
-        />
-      )}
+      {showQuickAdd && <QuickAddModal onClose={() => setShowQuickAdd(false)} />}
 
       {/* Walk-in QR Modal */}
       {showQR && <WalkInQR onClose={() => setShowQR(false)} />}

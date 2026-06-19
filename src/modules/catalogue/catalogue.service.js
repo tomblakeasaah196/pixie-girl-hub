@@ -31,7 +31,8 @@ function slugify(s) {
 // inserts in a bulk batch are already visible to the probe.
 async function uniqueSlug(client, brand, name, code) {
   const base = slugify(name) || "product";
-  if (!(await repo.productSlugTaken({ client, brand, slug: base }))) return base;
+  if (!(await repo.productSlugTaken({ client, brand, slug: base })))
+    return base;
   return `${base}-${String(code).toLowerCase()}`;
 }
 
@@ -182,7 +183,12 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
 
     for (let idx = 0; idx < rows.length; idx++) {
       const row = rows[idx];
-      const category_id = await resolveCategoryId(client, brand, row.category, user);
+      const category_id = await resolveCategoryId(
+        client,
+        brand,
+        row.category,
+        user,
+      );
 
       // Full base-product fields present in this row (undefined = not supplied).
       const fields = {
@@ -199,7 +205,11 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
       const wantsCost = row.cost_ngn !== undefined && row.cost_ngn !== null;
       if (wantsCost && !canCost) costIgnored = true;
 
-      const existing = await repo.findProductByName({ client, brand, name: row.name });
+      const existing = await repo.findProductByName({
+        client,
+        brand,
+        name: row.name,
+      });
 
       if (existing) {
         // ── UPDATE the matched product (overwrite changed fields only) ──
@@ -209,7 +219,12 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
           if (String(existing[k] ?? "") !== String(v)) patch[k] = v;
         }
         const product = Object.keys(patch).length
-          ? await repo.updateProduct({ client, brand, id: existing.product_id, patch })
+          ? await repo.updateProduct({
+              client,
+              brand,
+              id: existing.product_id,
+              patch,
+            })
           : existing;
 
         let variant = await repo.getDefaultVariant({
@@ -222,11 +237,17 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
         }
 
         const vpatch = {};
-        if (row.wholesale_price_ngn !== undefined &&
-            Number(variant.price_wholesale_ngn ?? NaN) !== Number(row.wholesale_price_ngn)) {
+        if (
+          row.wholesale_price_ngn !== undefined &&
+          Number(variant.price_wholesale_ngn ?? NaN) !==
+            Number(row.wholesale_price_ngn)
+        ) {
           vpatch.price_wholesale_ngn = row.wholesale_price_ngn;
         }
-        if (row.weight_g !== undefined && Number(variant.weight_g ?? NaN) !== Number(row.weight_g)) {
+        if (
+          row.weight_g !== undefined &&
+          Number(variant.weight_g ?? NaN) !== Number(row.weight_g)
+        ) {
           vpatch.weight_g = row.weight_g;
         }
         if (Object.keys(vpatch).length) {
@@ -252,10 +273,21 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
           costApplied = true;
         }
 
-        const changed = Object.keys(patch).length > 0 || Object.keys(vpatch).length > 0 || costApplied;
+        const changed =
+          Object.keys(patch).length > 0 ||
+          Object.keys(vpatch).length > 0 ||
+          costApplied;
         if (changed) {
-          await A(brand, user.user_id, "catalogue.product.update", "product",
-            product.product_id, { source: "bulk_import" }, request_id, existing);
+          await A(
+            brand,
+            user.user_id,
+            "catalogue.product.update",
+            "product",
+            product.product_id,
+            { source: "bulk_import" },
+            request_id,
+            existing,
+          );
           events.emit("product.updated", { brand, id: product.product_id });
         }
         results.push({
@@ -275,7 +307,13 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
           client,
           brand,
           user_id: user.user_id,
-          input: { product_code, name: row.name, slug, product_type: "physical", ...stripUndefined(fields) },
+          input: {
+            product_code,
+            name: row.name,
+            slug,
+            product_type: "physical",
+            ...stripUndefined(fields),
+          },
         });
         const variant = await createDefaultVariant(client, brand, product, row);
 
@@ -292,8 +330,15 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
           costApplied = true;
         }
 
-        await A(brand, user.user_id, "catalogue.product.create", "product",
-          product.product_id, { ...product, source: "bulk_import" }, request_id);
+        await A(
+          brand,
+          user.user_id,
+          "catalogue.product.create",
+          "product",
+          product.product_id,
+          { ...product, source: "bulk_import" },
+          request_id,
+        );
         events.emit("product.created", { brand, id: product.product_id });
         events.emit("variant.created", {
           brand,
@@ -375,10 +420,22 @@ async function resolveCategoryId(client, brand, name, user) {
   const base = slugify(name) || "category";
   let slug = base;
   let n = 2;
-  while (await repo.categorySlugTaken({ client, brand, slug })) slug = `${base}-${n++}`;
-  const created = await repo.createCategory({ client, brand, input: { name, slug } });
-  await A(brand, user.user_id, "catalogue.category.create", "product_category",
-    created.category_id, { source: "bulk_import" }, undefined);
+  while (await repo.categorySlugTaken({ client, brand, slug }))
+    slug = `${base}-${n++}`;
+  const created = await repo.createCategory({
+    client,
+    brand,
+    input: { name, slug },
+  });
+  await A(
+    brand,
+    user.user_id,
+    "catalogue.category.create",
+    "product_category",
+    created.category_id,
+    { source: "bulk_import" },
+    undefined,
+  );
   return created.category_id;
 }
 async function updateProduct({ brand, user, request_id, id, patch }) {
@@ -434,11 +491,19 @@ async function restoreProduct({ brand, user, request_id, id }) {
       slug = `${trashed.slug}-restored-${restoreSuffix()}`;
       renamed = true;
     }
-    if (await repo.productCodeTaken({ client, brand, code: trashed.product_code })) {
+    if (
+      await repo.productCodeTaken({ client, brand, code: trashed.product_code })
+    ) {
       product_code = `${trashed.product_code}-R${restoreSuffix()}`;
       renamed = true;
     }
-    const p = await repo.restoreProduct({ client, brand, id, slug, product_code });
+    const p = await repo.restoreProduct({
+      client,
+      brand,
+      id,
+      slug,
+      product_code,
+    });
     await A(
       brand,
       user.user_id,
@@ -701,9 +766,14 @@ async function addImage({ brand, user, request_id, id, file, meta }) {
   // Server-side ceiling mirroring the client guard (10 MB) — large/video
   // assets belong on the media route + FFmpeg queue, not the image path.
   if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
-    throw new AppError("IMAGE_TOO_LARGE", "Image exceeds the 10 MB limit", 413, {
-      user_message: "Images must be 10 MB or smaller.",
-    });
+    throw new AppError(
+      "IMAGE_TOO_LARGE",
+      "Image exceeds the 10 MB limit",
+      413,
+      {
+        user_message: "Images must be 10 MB or smaller.",
+      },
+    );
   }
   // Re-encode oversized/heavy images to high-quality, smaller bytes before
   // they hit storage — keeps galleries crisp without bloating the CDN.

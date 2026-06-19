@@ -687,7 +687,9 @@ export default function Login() {
                     disabled={isLoading}
                     maxLength={6}
                     onChange={(e) => {
-                      const next = e.target.value.replace(/\D/g, "").slice(0, 6);
+                      const next = e.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 6);
                       setPin(next);
                       if (next.length === 6) handlePinLogin(next);
                     }}
@@ -723,109 +725,109 @@ export default function Login() {
             )}
 
             {loginMode === "password" && (
-            <form onSubmit={handleLogin} noValidate>
-              <div className="mb-5">
-                <label className="block font-medium text-[0.65rem] tracking-widest uppercase text-brand-smoke mb-2 ml-1">
-                  Email address
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-smoke/70" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                    className="w-full bg-white border border-brand-cloud/40 rounded-xl py-3.5 pl-11 pr-4 text-sm font-medium text-brand-black focus:outline-none focus:border-brand-black focus:ring-1 focus:ring-brand-black transition-all placeholder-brand-cloud/70 shadow-sm"
-                    placeholder="you@company.com"
-                  />
+              <form onSubmit={handleLogin} noValidate>
+                <div className="mb-5">
+                  <label className="block font-medium text-[0.65rem] tracking-widest uppercase text-brand-smoke mb-2 ml-1">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-smoke/70" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
+                      className="w-full bg-white border border-brand-cloud/40 rounded-xl py-3.5 pl-11 pr-4 text-sm font-medium text-brand-black focus:outline-none focus:border-brand-black focus:ring-1 focus:ring-brand-black transition-all placeholder-brand-cloud/70 shadow-sm"
+                      placeholder="you@company.com"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="mb-6">
-                <label className="block font-medium text-[0.65rem] tracking-widest uppercase text-brand-smoke mb-2 ml-1">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-smoke/70" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                    className="w-full bg-white border border-brand-cloud/40 rounded-xl py-3.5 pl-11 pr-11 text-sm font-medium text-brand-black focus:outline-none focus:border-brand-black focus:ring-1 focus:ring-brand-black transition-all placeholder-brand-cloud/70 shadow-sm"
-                    placeholder="••••••••"
-                  />
+                <div className="mb-6">
+                  <label className="block font-medium text-[0.65rem] tracking-widest uppercase text-brand-smoke mb-2 ml-1">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-smoke/70" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete="current-password"
+                      className="w-full bg-white border border-brand-cloud/40 rounded-xl py-3.5 pl-11 pr-11 text-sm font-medium text-brand-black focus:outline-none focus:border-brand-black focus:ring-1 focus:ring-brand-black transition-all placeholder-brand-cloud/70 shadow-sm"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-smoke/70 hover:text-brand-black transition-colors"
+                      aria-label="Toggle password visibility"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mb-8 px-1">
+                  <label className="flex items-center gap-2.5 cursor-pointer group">
+                    <div className="relative w-4 h-4 border border-brand-cloud bg-white rounded flex items-center justify-center group-hover:border-brand-black transition-colors">
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                      />
+                      {rememberMe && (
+                        <Check className="w-3 h-3 text-brand-black" />
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-brand-smoke">
+                      Remember me
+                    </span>
+                  </label>
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-smoke/70 hover:text-brand-black transition-colors"
-                    aria-label="Toggle password visibility"
+                    onClick={openForgot}
+                    className="text-xs font-medium text-brand-black hover:text-brand-accent transition-colors"
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
+                    Forgot password?
                   </button>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between mb-8 px-1">
-                <label className="flex items-center gap-2.5 cursor-pointer group">
-                  <div className="relative w-4 h-4 border border-brand-cloud bg-white rounded flex items-center justify-center group-hover:border-brand-black transition-colors">
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                    />
-                    {rememberMe && (
-                      <Check className="w-3 h-3 text-brand-black" />
-                    )}
-                  </div>
-                  <span className="text-xs font-medium text-brand-smoke">
-                    Remember me
-                  </span>
-                </label>
                 <button
-                  type="button"
-                  onClick={openForgot}
-                  className="text-xs font-medium text-brand-black hover:text-brand-accent transition-colors"
+                  type="submit"
+                  disabled={isLoading}
+                  className="relative w-full py-4 rounded-xl bg-brand-black text-brand-cream font-semibold text-sm tracking-widest uppercase overflow-hidden hover:bg-brand-charcoal hover:shadow-lg transition-all disabled:opacity-80 disabled:pointer-events-none login-btn"
                 >
-                  Forgot password?
+                  <span className={isLoading ? "invisible" : ""}>Sign In</span>
+                  <span className="btn-shimmer" />
+                  {isLoading && (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <span className="w-5 h-5 border-2 border-brand-cream/20 border-t-brand-cream rounded-full animate-[spin_0.7s_linear_infinite]" />
+                    </span>
+                  )}
                 </button>
-              </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="relative w-full py-4 rounded-xl bg-brand-black text-brand-cream font-semibold text-sm tracking-widest uppercase overflow-hidden hover:bg-brand-charcoal hover:shadow-lg transition-all disabled:opacity-80 disabled:pointer-events-none login-btn"
-              >
-                <span className={isLoading ? "invisible" : ""}>Sign In</span>
-                <span className="btn-shimmer" />
-                {isLoading && (
-                  <span className="absolute inset-0 flex items-center justify-center">
-                    <span className="w-5 h-5 border-2 border-brand-cream/20 border-t-brand-cream rounded-full animate-[spin_0.7s_linear_infinite]" />
-                  </span>
+                {/* Offer the PIN shortcut when one is set up on this device. */}
+                {remembered && isPinEnabledLocally() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setPin("");
+                      setEmail(remembered.email);
+                      setLoginMode("pin");
+                    }}
+                    className="w-full mt-4 text-xs font-medium text-brand-black hover:text-brand-accent transition-colors"
+                  >
+                    Use 6-digit PIN instead
+                  </button>
                 )}
-              </button>
-
-              {/* Offer the PIN shortcut when one is set up on this device. */}
-              {remembered && isPinEnabledLocally() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setPin("");
-                    setEmail(remembered.email);
-                    setLoginMode("pin");
-                  }}
-                  className="w-full mt-4 text-xs font-medium text-brand-black hover:text-brand-accent transition-colors"
-                >
-                  Use 6-digit PIN instead
-                </button>
-              )}
-            </form>
+              </form>
             )}
           </div>
         </div>

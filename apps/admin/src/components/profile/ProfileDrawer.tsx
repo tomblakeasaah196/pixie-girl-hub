@@ -154,7 +154,9 @@ function EditableField({
           </div>
         </div>
       ) : (
-        <div className={cn("text-[13.5px]", !value && "text-text-faint italic")}>
+        <div
+          className={cn("text-[13.5px]", !value && "text-text-faint italic")}
+        >
           {value || "Not set"}
         </div>
       )}
@@ -251,7 +253,11 @@ function EmailField({
               onClick={() => setShowPw((v) => !v)}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-muted"
             >
-              {showPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {showPw ? (
+                <EyeOff className="w-3.5 h-3.5" />
+              ) : (
+                <Eye className="w-3.5 h-3.5" />
+              )}
             </button>
           </div>
           {/* New email */}
@@ -270,7 +276,11 @@ function EmailField({
               disabled={loading || !password || !newEmail}
               className="flex-1 h-8 rounded-lg bg-accent-deep text-[#F4E9D9] text-[12px] font-semibold hover:bg-accent transition-all disabled:opacity-50 flex items-center justify-center"
             >
-              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Send code"}
+              {loading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                "Send code"
+              )}
             </button>
             <button
               onClick={reset}
@@ -285,14 +295,17 @@ function EmailField({
       {stage === "otp" && (
         <div className="space-y-2 mt-2">
           <p className="text-[11.5px] text-text-muted">
-            A 6-digit code was sent to <strong>{newEmail}</strong>. Enter it below.
+            A 6-digit code was sent to <strong>{newEmail}</strong>. Enter it
+            below.
           </p>
           <input
             type="text"
             inputMode="numeric"
             maxLength={6}
             value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onChange={(e) =>
+              setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+            }
             placeholder="000000"
             onKeyDown={(e) => e.key === "Enter" && otp.length === 6 && verify()}
             className="w-full h-9 bg-text-primary/[0.05] border border-line/60 rounded-lg px-3 text-center text-[18px] font-mono tracking-[0.4em] placeholder:tracking-normal placeholder:text-[13px] focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all"
@@ -304,7 +317,11 @@ function EmailField({
               disabled={loading || otp.length !== 6}
               className="flex-1 h-8 rounded-lg bg-accent-deep text-[#F4E9D9] text-[12px] font-semibold hover:bg-accent transition-all disabled:opacity-50 flex items-center justify-center"
             >
-              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Verify & save"}
+              {loading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                "Verify & save"
+              )}
             </button>
             <button
               onClick={reset}
@@ -340,7 +357,10 @@ export function ProfileDrawer({
   const [loading, setLoading] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
-  const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [toast, setToast] = useState<{
+    type: "ok" | "err";
+    msg: string;
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const showToast = (type: "ok" | "err", msg: string) => {
@@ -401,7 +421,6 @@ export function ProfileDrawer({
     showToast("ok", "Email address updated.");
   };
 
-
   const avatarUrl = profile?.avatar_url;
   const displayName = profile?.display_name ?? user?.name ?? "";
   const av = initials(displayName || "?");
@@ -433,7 +452,9 @@ export function ProfileDrawer({
           <span className="grid place-items-center w-8 h-8 rounded-lg bg-accent/10 text-accent-glow border border-accent/20">
             <User className="w-4 h-4" />
           </span>
-          <h2 className="font-display text-xl font-medium flex-1">My Profile</h2>
+          <h2 className="font-display text-xl font-medium flex-1">
+            My Profile
+          </h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -505,7 +526,9 @@ export function ProfileDrawer({
                 </div>
 
                 <div className="text-center">
-                  <div className="font-display text-lg font-medium">{displayName}</div>
+                  <div className="font-display text-lg font-medium">
+                    {displayName}
+                  </div>
                   <div className="flex items-center justify-center gap-1.5 mt-1">
                     <Shield className="w-3 h-3 text-accent-glow" />
                     <span className="text-[12px] text-text-muted">
@@ -543,7 +566,9 @@ export function ProfileDrawer({
               </div>
 
               {/* HR fields */}
-              {(profile?.job_title || profile?.department || profile?.employee_number) && (
+              {(profile?.job_title ||
+                profile?.department ||
+                profile?.employee_number) && (
                 <div className="mt-4">
                   <div className="text-[11px] font-semibold text-text-faint uppercase tracking-widest mb-2 flex items-center gap-1.5">
                     Employment
@@ -558,7 +583,11 @@ export function ProfileDrawer({
                     <Field label="Department" value={profile.department} />
                   )}
                   {profile.employee_number && (
-                    <Field label="Employee number" value={profile.employee_number} mono />
+                    <Field
+                      label="Employee number"
+                      value={profile.employee_number}
+                      mono
+                    />
                   )}
                 </div>
               )}

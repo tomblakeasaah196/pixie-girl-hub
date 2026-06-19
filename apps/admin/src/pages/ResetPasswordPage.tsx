@@ -167,7 +167,7 @@ export function ResetPasswordPage() {
                 <div className="text-[11px] text-text-faint mt-1.5">
                   {check.ok
                     ? labels[4]
-                    : check.error ?? labels[Math.max(0, score - 1)]}
+                    : (check.error ?? labels[Math.max(0, score - 1)])}
                 </div>
               </div>
             )}

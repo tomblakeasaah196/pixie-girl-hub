@@ -51,17 +51,24 @@ export const getTodayStaleDeals = (staleDays = 14) =>
   );
 
 export const getTodayLapsedContacts = () =>
-  contactsApi.listContacts({ priority_level: "vip", page_size: 50 }).then((r) =>
-    r.data.filter(
-      (c) => ((c as unknown) as { churn_risk_band?: string }).churn_risk_band === "high",
-    ).slice(0, 20),
-  );
+  contactsApi
+    .listContacts({ priority_level: "vip", page_size: 50 })
+    .then((r) =>
+      r.data
+        .filter(
+          (c) =>
+            (c as unknown as { churn_risk_band?: string }).churn_risk_band ===
+            "high",
+        )
+        .slice(0, 20),
+    );
 
 // ── Deal management (thin wrappers for explicit CRM context) ──────────────
 
 export const getDeal = (id: string) => contactsApi.getDeal(id);
 
-export const getDealActivities = (dealId: string) => contactsApi.listActivities(dealId);
+export const getDealActivities = (dealId: string) =>
+  contactsApi.listActivities(dealId);
 
 export const addDealActivity = (
   dealId: string,
@@ -70,8 +77,11 @@ export const addDealActivity = (
 
 export const getDealNotes = (dealId: string) => contactsApi.listNotes(dealId);
 
-export const addDealNote = (dealId: string, body: string, visibility?: string) =>
-  contactsApi.addNote(dealId, body, visibility);
+export const addDealNote = (
+  dealId: string,
+  body: string,
+  visibility?: string,
+) => contactsApi.addNote(dealId, body, visibility);
 
 export const setPipelineBoard = (stages: PipelineStage[], deals: Deal[]) => {
   const grouped = new Map<string, Deal[]>();

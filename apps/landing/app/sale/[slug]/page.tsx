@@ -7,7 +7,11 @@ interface Params {
   slug: string;
 }
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Params;
+}): Promise<Metadata> {
   const payload = await fetchCampaign(params.slug).catch(() => null);
   if (!payload) {
     return { title: "Sale not found" };

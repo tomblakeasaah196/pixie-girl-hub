@@ -480,7 +480,8 @@ async function kpis({ brand }) {
     open_pipeline_ngn: String(k.open_pipeline_ngn),
     won_this_month: Number(k.won_this_month),
     won_value_this_month_ngn: String(k.won_value_this_month_ngn),
-    win_rate: closed > 0 ? Number((Number(k.won_total) / closed).toFixed(4)) : null,
+    win_rate:
+      closed > 0 ? Number((Number(k.won_total) / closed).toFixed(4)) : null,
   };
 }
 

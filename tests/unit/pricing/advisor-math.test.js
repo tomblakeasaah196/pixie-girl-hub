@@ -10,11 +10,16 @@ jest.mock("../../../src/modules/pricing/pricing_advisor.repo", () => ({}));
 jest.mock("../../../src/modules/pricing/pricing.repo", () => ({}));
 jest.mock("../../../src/modules/pricing/pricing.service", () => ({}));
 jest.mock("../../../src/modules/catalogue/cost_vault.service", () => ({}));
-jest.mock("../../../src/modules/pricing/pricing.events", () => ({ emit: jest.fn() }));
+jest.mock("../../../src/modules/pricing/pricing.events", () => ({
+  emit: jest.fn(),
+}));
 jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
 jest.mock("../../../src/config/database", () => ({ transaction: jest.fn() }));
 
-const { roundTo, effectiveVat } = require("../../../src/modules/pricing/pricing_advisor.service");
+const {
+  roundTo,
+  effectiveVat,
+} = require("../../../src/modules/pricing/pricing_advisor.service");
 
 describe("roundTo (clean/charm pricing)", () => {
   test("rounds to the nearest step", () => {
@@ -31,25 +36,42 @@ describe("roundTo (clean/charm pricing)", () => {
 
 describe("effectiveVat (VAT only when set in Settings)", () => {
   test("taxable product + business VAT → applies", () => {
-    expect(effectiveVat({ vat_rate: 0.075 }, { taxable: true, product_vat_rate: null })).toEqual({
+    expect(
+      effectiveVat(
+        { vat_rate: 0.075 },
+        { taxable: true, product_vat_rate: null },
+      ),
+    ).toEqual({
       rate: 0.075,
       applies: true,
     });
   });
   test("a no-VAT business stays no-VAT even for a taxable product", () => {
-    expect(effectiveVat({ vat_rate: 0 }, { taxable: true, product_vat_rate: null })).toEqual({
+    expect(
+      effectiveVat({ vat_rate: 0 }, { taxable: true, product_vat_rate: null }),
+    ).toEqual({
       rate: 0,
       applies: false,
     });
   });
   test("a non-taxable product never gets VAT", () => {
-    expect(effectiveVat({ vat_rate: 0.075 }, { taxable: false, product_vat_rate: null })).toEqual({
+    expect(
+      effectiveVat(
+        { vat_rate: 0.075 },
+        { taxable: false, product_vat_rate: null },
+      ),
+    ).toEqual({
       rate: 0,
       applies: false,
     });
   });
   test("a product VAT override wins over the business default", () => {
-    expect(effectiveVat({ vat_rate: 0.075 }, { taxable: true, product_vat_rate: 0.05 })).toEqual({
+    expect(
+      effectiveVat(
+        { vat_rate: 0.075 },
+        { taxable: true, product_vat_rate: 0.05 },
+      ),
+    ).toEqual({
       rate: 0.05,
       applies: true,
     });

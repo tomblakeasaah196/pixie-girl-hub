@@ -1,10 +1,22 @@
 import { useState } from "react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
-import { Shield, ShieldCheck, ShieldOff, Copy, CheckCircle, AlertTriangle } from "lucide-react";
+import {
+  Shield,
+  ShieldCheck,
+  ShieldOff,
+  Copy,
+  CheckCircle,
+  AlertTriangle,
+} from "lucide-react";
 import { Card } from "@/components/ui/primitives";
 import { ReauthDialog, ErrorState } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
-import { useTotpStatus, useTotpSetup, useTotpVerify, useTotpDisable } from "@/lib/iam";
+import {
+  useTotpStatus,
+  useTotpSetup,
+  useTotpVerify,
+  useTotpDisable,
+} from "@/lib/iam";
 
 type Step = "idle" | "setup" | "verify" | "done";
 
@@ -54,7 +66,10 @@ export function IamMfaPage() {
           setSecret("");
           setUri("");
         },
-        onError: () => setCodeError("Invalid code. Check your authenticator app and try again."),
+        onError: () =>
+          setCodeError(
+            "Invalid code. Check your authenticator app and try again.",
+          ),
       },
     );
   }
@@ -77,7 +92,13 @@ export function IamMfaPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  if (status.isError) return <ErrorState message="Failed to load MFA status" onRetry={() => status.refetch()} />;
+  if (status.isError)
+    return (
+      <ErrorState
+        message="Failed to load MFA status"
+        onRetry={() => status.refetch()}
+      />
+    );
 
   return (
     <div className="max-w-[600px] mx-auto space-y-6">
@@ -87,13 +108,19 @@ export function IamMfaPage() {
           <Shield className="w-5 h-5" />
         </span>
         <div>
-          <h2 className="font-display text-[22px] font-medium">Multi-Factor Authentication</h2>
-          <p className="text-text-muted text-[13px]">Add a second layer of protection to your account</p>
+          <h2 className="font-display text-[22px] font-medium">
+            Multi-Factor Authentication
+          </h2>
+          <p className="text-text-muted text-[13px]">
+            Add a second layer of protection to your account
+          </p>
         </div>
       </div>
 
       {status.isLoading ? (
-        <Card className="p-10 animate-pulse h-40"><span /></Card>
+        <Card className="p-10 animate-pulse h-40">
+          <span />
+        </Card>
       ) : enabled && step !== "setup" && step !== "verify" ? (
         /* ── MFA enabled state ─────────────────────────────── */
         <Card className="p-6">
@@ -102,10 +129,13 @@ export function IamMfaPage() {
               <ShieldCheck className="w-7 h-7 text-success" />
             </div>
             <div className="flex-1">
-              <div className="font-display text-[18px] font-medium">MFA is active</div>
+              <div className="font-display text-[18px] font-medium">
+                MFA is active
+              </div>
               <p className="text-text-muted text-[13px] mt-1">
-                Your account is protected with a time-based one-time password (TOTP).
-                You'll be asked for a code from your authenticator app when logging in.
+                Your account is protected with a time-based one-time password
+                (TOTP). You'll be asked for a code from your authenticator app
+                when logging in.
               </p>
             </div>
           </div>
@@ -125,20 +155,24 @@ export function IamMfaPage() {
         /* ── Just-enabled confirmation ─────────────────────── */
         <Card className="p-8 text-center">
           <CheckCircle className="w-12 h-12 text-success mx-auto mb-4" />
-          <div className="font-display text-[20px] font-medium mb-2">MFA Enabled</div>
+          <div className="font-display text-[20px] font-medium mb-2">
+            MFA Enabled
+          </div>
           <p className="text-text-muted text-[13px] max-w-xs mx-auto">
-            Your account is now protected. Next time you log in, you'll be asked for a code
-            from your authenticator app.
+            Your account is now protected. Next time you log in, you'll be asked
+            for a code from your authenticator app.
           </p>
         </Card>
       ) : step === "setup" ? (
         /* ── QR code step ──────────────────────────────────── */
         <Card className="p-6 space-y-5">
           <div>
-            <div className="font-display text-[16px] font-medium mb-1">Step 1: Scan QR code</div>
+            <div className="font-display text-[16px] font-medium mb-1">
+              Step 1: Scan QR code
+            </div>
             <p className="text-text-muted text-[13px]">
-              Open your authenticator app (Google Authenticator, Authy, 1Password, etc.)
-              and scan this QR code.
+              Open your authenticator app (Google Authenticator, Authy,
+              1Password, etc.) and scan this QR code.
             </p>
           </div>
 
@@ -155,7 +189,9 @@ export function IamMfaPage() {
           </div>
 
           <div>
-            <p className="text-[12px] text-text-faint mb-2">Can't scan? Enter this key manually:</p>
+            <p className="text-[12px] text-text-faint mb-2">
+              Can't scan? Enter this key manually:
+            </p>
             <div className="flex items-center gap-2">
               <code className="flex-1 px-3 py-2 rounded-lg bg-bg border border-border-c text-[13px] font-mono break-all select-all">
                 {secret}
@@ -165,15 +201,22 @@ export function IamMfaPage() {
                 className="p-2 rounded-lg text-text-muted hover:text-text transition-colors"
                 title="Copy secret"
               >
-                {copied ? <CheckCircle className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                {copied ? (
+                  <CheckCircle className="w-4 h-4 text-success" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
 
           <div className="pt-2">
-            <div className="font-display text-[16px] font-medium mb-1">Step 2: Enter verification code</div>
+            <div className="font-display text-[16px] font-medium mb-1">
+              Step 2: Enter verification code
+            </div>
             <p className="text-text-muted text-[13px] mb-3">
-              Enter the 6-digit code from your authenticator app to verify setup.
+              Enter the 6-digit code from your authenticator app to verify
+              setup.
             </p>
             <div className="flex items-center gap-3">
               <input
@@ -191,7 +234,9 @@ export function IamMfaPage() {
                   setCode(v);
                   if (codeError) setCodeError("");
                 }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleVerify(); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleVerify();
+                }}
               />
               <button
                 onClick={handleVerify}
@@ -209,7 +254,12 @@ export function IamMfaPage() {
           </div>
 
           <button
-            onClick={() => { setStep("idle"); setSecret(""); setUri(""); setCode(""); }}
+            onClick={() => {
+              setStep("idle");
+              setSecret("");
+              setUri("");
+              setCode("");
+            }}
             className="text-[13px] text-text-faint hover:text-text-muted transition-colors"
           >
             Cancel setup
@@ -223,10 +273,13 @@ export function IamMfaPage() {
               <ShieldOff className="w-7 h-7 text-warn" />
             </div>
             <div className="flex-1">
-              <div className="font-display text-[18px] font-medium">MFA is not enabled</div>
+              <div className="font-display text-[18px] font-medium">
+                MFA is not enabled
+              </div>
               <p className="text-text-muted text-[13px] mt-1">
-                Add a second factor to protect your account against unauthorized access.
-                You'll use an authenticator app to generate time-based codes.
+                Add a second factor to protect your account against unauthorized
+                access. You'll use an authenticator app to generate time-based
+                codes.
               </p>
             </div>
           </div>
@@ -241,8 +294,9 @@ export function IamMfaPage() {
           </div>
           <div className="mt-4 p-3 rounded-xl bg-info/5 border border-info/20">
             <p className="text-[12px] text-text-muted">
-              <strong className="text-text">Recommended apps:</strong> Google Authenticator,
-              Microsoft Authenticator, Authy, 1Password, or any TOTP-compatible app.
+              <strong className="text-text">Recommended apps:</strong> Google
+              Authenticator, Microsoft Authenticator, Authy, 1Password, or any
+              TOTP-compatible app.
             </p>
           </div>
         </Card>

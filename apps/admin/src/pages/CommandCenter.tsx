@@ -128,7 +128,13 @@ const NOTIF_PRIORITY_TONE: Record<string, string> = {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SectionHead({ title, action }: { title: string; action?: React.ReactNode }) {
+function SectionHead({
+  title,
+  action,
+}: {
+  title: string;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="flex items-center gap-3 mt-8 mb-4">
       <h3 className="font-display text-xl font-medium">{title}</h3>
@@ -142,7 +148,10 @@ function KpiSkeletons() {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-md:gap-2.5 mb-6">
       {[0, 1, 2].map((i) => (
-        <div key={i} className={`glass rounded-[var(--radius)] p-[17px_18px] max-md:p-[12px_14px] space-y-3${i === 2 ? " col-span-2 sm:col-span-1" : ""}`}>
+        <div
+          key={i}
+          className={`glass rounded-[var(--radius)] p-[17px_18px] max-md:p-[12px_14px] space-y-3${i === 2 ? " col-span-2 sm:col-span-1" : ""}`}
+        >
           <Skeleton className="w-24 h-3" />
           <Skeleton className="w-36 h-7 max-md:h-5" />
           <Skeleton className="w-16 h-3" />
@@ -167,8 +176,15 @@ function KpiStrip({
     return (
       <div className="glass rounded-[var(--radius)] p-4 mb-6 text-danger/80 text-sm flex items-center gap-2">
         <AlertTriangle className="w-4 h-4 shrink-0" />
-        Could not load KPIs — {overview.error instanceof Error ? overview.error.message : "check your connection"}.
-        <button onClick={() => overview.refetch()} className="ml-auto text-accent-glow underline underline-offset-2 text-xs">
+        Could not load KPIs —{" "}
+        {overview.error instanceof Error
+          ? overview.error.message
+          : "check your connection"}
+        .
+        <button
+          onClick={() => overview.refetch()}
+          className="ml-auto text-accent-glow underline underline-offset-2 text-xs"
+        >
           Retry
         </button>
       </div>
@@ -216,15 +232,28 @@ function KpiStrip({
         {
           label: "Pending orders",
           value: String(d?.sales.pending_orders ?? 0),
-          tone: (d?.sales.pending_orders ?? 0) > 0 ? ("warn" as const) : ("accent" as const),
+          tone:
+            (d?.sales.pending_orders ?? 0) > 0
+              ? ("warn" as const)
+              : ("accent" as const),
         },
       ];
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-md:gap-2.5 mb-6">
       {tiles.map((t, i) => (
-        <div key={t.label} className={i === tiles.length - 1 ? "col-span-2 sm:col-span-1" : undefined}>
-          <KpiTile label={t.label} value={t.value} delta={t.delta} tone={t.tone} />
+        <div
+          key={t.label}
+          className={
+            i === tiles.length - 1 ? "col-span-2 sm:col-span-1" : undefined
+          }
+        >
+          <KpiTile
+            label={t.label}
+            value={t.value}
+            delta={t.delta}
+            tone={t.tone}
+          />
         </div>
       ))}
     </div>
@@ -235,11 +264,41 @@ function KpiStrip({
 function QuickActions({ can }: { can: (m: string, a: string) => boolean }) {
   const navigate = useNavigate();
   const actions = [
-    { label: "New Sale", icon: ShoppingBag, route: "/sales", module: "sales", action: "create" },
-    { label: "New Invoice", icon: FileText, route: "/invoicing", module: "invoicing", action: "create" },
-    { label: "Check Stock", icon: Boxes, route: "/stock", module: "stock", action: "view" },
-    { label: "View Deliveries", icon: Truck, route: "/logistics", module: "logistics", action: "view" },
-    { label: "Approve Expenses", icon: Receipt, route: "/expenses", module: "expenses", action: "approve" },
+    {
+      label: "New Sale",
+      icon: ShoppingBag,
+      route: "/sales",
+      module: "sales",
+      action: "create",
+    },
+    {
+      label: "New Invoice",
+      icon: FileText,
+      route: "/invoicing",
+      module: "invoicing",
+      action: "create",
+    },
+    {
+      label: "Check Stock",
+      icon: Boxes,
+      route: "/stock",
+      module: "stock",
+      action: "view",
+    },
+    {
+      label: "View Deliveries",
+      icon: Truck,
+      route: "/logistics",
+      module: "logistics",
+      action: "view",
+    },
+    {
+      label: "Approve Expenses",
+      icon: Receipt,
+      route: "/expenses",
+      module: "expenses",
+      action: "approve",
+    },
   ].filter((a) => can(a.module, a.action));
 
   if (actions.length === 0) return null;
@@ -263,7 +322,11 @@ function QuickActions({ can }: { can: (m: string, a: string) => boolean }) {
 }
 
 /** Dismissible alert bar for urgent AI insights. */
-function InsightsAlertBar({ summary }: { summary: ReturnType<typeof useInsightSummary> }) {
+function InsightsAlertBar({
+  summary,
+}: {
+  summary: ReturnType<typeof useInsightSummary>;
+}) {
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
 
@@ -278,10 +341,15 @@ function InsightsAlertBar({ summary }: { summary: ReturnType<typeof useInsightSu
       <AlertTriangle className="w-4 h-4 text-warn shrink-0" />
       <span className="text-[13px] text-warn flex-1">
         {urgent > 0 && (
-          <><b>{urgent} urgent</b> insight{urgent !== 1 ? "s" : ""} need{urgent === 1 ? "s" : ""} attention</>
+          <>
+            <b>{urgent} urgent</b> insight{urgent !== 1 ? "s" : ""} need
+            {urgent === 1 ? "s" : ""} attention
+          </>
         )}
         {urgent > 0 && open > urgent && " · "}
-        {open > urgent && <span className="opacity-75">{open - urgent} other open</span>}
+        {open > urgent && (
+          <span className="opacity-75">{open - urgent} other open</span>
+        )}
       </span>
       <button
         onClick={() => navigate("/dashboard")}
@@ -289,7 +357,10 @@ function InsightsAlertBar({ summary }: { summary: ReturnType<typeof useInsightSu
       >
         View <ArrowRight className="w-3 h-3" />
       </button>
-      <button onClick={() => setDismissed(true)} className="text-warn/50 hover:text-warn transition-colors">
+      <button
+        onClick={() => setDismissed(true)}
+        className="text-warn/50 hover:text-warn transition-colors"
+      >
         <X className="w-3.5 h-3.5" />
       </button>
     </div>
@@ -297,7 +368,11 @@ function InsightsAlertBar({ summary }: { summary: ReturnType<typeof useInsightSu
 }
 
 /** AI Briefing glass widget — shows latest_briefing + link to Praxis. */
-function BriefingWidget({ overview }: { overview: ReturnType<typeof useDashboardOverview> }) {
+function BriefingWidget({
+  overview,
+}: {
+  overview: ReturnType<typeof useDashboardOverview>;
+}) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
 
@@ -323,22 +398,25 @@ function BriefingWidget({ overview }: { overview: ReturnType<typeof useDashboard
       {/* Subtle accent glow */}
       <span
         className="pointer-events-none absolute -right-8 -top-8 w-[120px] h-[120px] rounded-full opacity-30 blur-[28px]"
-        style={{ background: "radial-gradient(circle, rgb(var(--accent-glow)/0.5), transparent 70%)" }}
+        style={{
+          background:
+            "radial-gradient(circle, rgb(var(--accent-glow)/0.5), transparent 70%)",
+        }}
       />
       <div className="relative">
         <div className="flex items-center gap-2 mb-3">
           <Sparkles className="w-4 h-4 text-accent-glow" />
           <span className="micro text-accent-glow">Praxis Briefing</span>
           {briefing.insight_count > 0 && (
-            <Pill tone="accent" dot={false}>{briefing.insight_count} insights</Pill>
+            <Pill tone="accent" dot={false}>
+              {briefing.insight_count} insights
+            </Pill>
           )}
           {!briefing.read_at && (
             <span className="w-1.5 h-1.5 rounded-full bg-accent-glow ml-auto shrink-0" />
           )}
         </div>
-        <p className="text-[13.5px] text-text-muted leading-relaxed">
-          {text}
-        </p>
+        <p className="text-[13.5px] text-text-muted leading-relaxed">{text}</p>
         <div className="flex items-center gap-3 mt-3">
           {hasMore && (
             <button
@@ -351,7 +429,10 @@ function BriefingWidget({ overview }: { overview: ReturnType<typeof useDashboard
           <button
             onClick={() =>
               navigate("/praxis", {
-                state: { briefing_id: briefing.briefing_id, context: briefing.briefing_text },
+                state: {
+                  briefing_id: briefing.briefing_id,
+                  context: briefing.briefing_text,
+                },
               })
             }
             className="ml-auto inline-flex items-center gap-1.5 text-[12px] font-semibold
@@ -371,8 +452,14 @@ function ActivityFeed({ feed }: { feed: ReturnType<typeof useMyAuditFeed> }) {
     return (
       <Card className="overflow-hidden">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0">
-            <Skeleton className="w-[38px] h-[38px] rounded-[11px] shrink-0" style={{ height: 38 }} />
+          <div
+            key={i}
+            className="flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0"
+          >
+            <Skeleton
+              className="w-[38px] h-[38px] rounded-[11px] shrink-0"
+              style={{ height: 38 }}
+            />
             <div className="flex-1 space-y-1.5">
               <Skeleton className="w-2/3 h-3" />
               <Skeleton className="w-1/2 h-2.5" />
@@ -388,7 +475,12 @@ function ActivityFeed({ feed }: { feed: ReturnType<typeof useMyAuditFeed> }) {
       <Card className="p-5 text-sm text-text-muted flex items-center gap-2">
         <AlertTriangle className="w-4 h-4 text-warn" />
         Could not load your activity.
-        <button onClick={() => feed.refetch()} className="ml-auto text-accent-glow underline text-xs">Retry</button>
+        <button
+          onClick={() => feed.refetch()}
+          className="ml-auto text-accent-glow underline text-xs"
+        >
+          Retry
+        </button>
       </Card>
     );
   }
@@ -401,7 +493,11 @@ function ActivityFeed({ feed }: { feed: ReturnType<typeof useMyAuditFeed> }) {
       <EmptyState
         icon={<Clock className="w-7 h-7" />}
         title="No activity yet"
-        message={window === "24h" ? "Nothing logged in the last 24 hours." : "Your actions will appear here."}
+        message={
+          window === "24h"
+            ? "Nothing logged in the last 24 hours."
+            : "Your actions will appear here."
+        }
       />
     );
   }
@@ -410,17 +506,29 @@ function ActivityFeed({ feed }: { feed: ReturnType<typeof useMyAuditFeed> }) {
     <Card className="overflow-hidden">
       {entries.map((e) => {
         const Icon = AUDIT_ICON[e.action] ?? TrendingUp;
-        const tone = AUDIT_TONE[e.action] ?? "bg-text-primary/[0.06] text-text-muted";
+        const tone =
+          AUDIT_TONE[e.action] ?? "bg-text-primary/[0.06] text-text-muted";
         return (
-          <div key={e.log_id} className="flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0 hover:bg-text-primary/[0.03] transition-colors">
-            <span className={`w-[38px] h-[38px] rounded-[11px] grid place-items-center shrink-0 ${tone}`}>
+          <div
+            key={e.log_id}
+            className="flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0 hover:bg-text-primary/[0.03] transition-colors"
+          >
+            <span
+              className={`w-[38px] h-[38px] rounded-[11px] grid place-items-center shrink-0 ${tone}`}
+            >
               <Icon className="w-[17px] h-[17px]" />
             </span>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-text-primary truncate">{humaniseAudit(e)}</div>
-              <div className="text-[11px] text-text-faint capitalize">{e.module?.replace(/_/g, " ")}</div>
+              <div className="text-[13px] font-semibold text-text-primary truncate">
+                {humaniseAudit(e)}
+              </div>
+              <div className="text-[11px] text-text-faint capitalize">
+                {e.module?.replace(/_/g, " ")}
+              </div>
             </div>
-            <div className="text-[11px] text-text-faint tabular-nums whitespace-nowrap">{fmtRelative(e.occurred_at)}</div>
+            <div className="text-[11px] text-text-faint tabular-nums whitespace-nowrap">
+              {fmtRelative(e.occurred_at)}
+            </div>
           </div>
         );
       })}
@@ -441,8 +549,14 @@ function NotificationsFeed({
     return (
       <Card className="overflow-hidden">
         {[0, 1].map((i) => (
-          <div key={i} className="flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0">
-            <Skeleton className="w-[38px] h-[38px] rounded-[11px] shrink-0" style={{ height: 38 }} />
+          <div
+            key={i}
+            className="flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0"
+          >
+            <Skeleton
+              className="w-[38px] h-[38px] rounded-[11px] shrink-0"
+              style={{ height: 38 }}
+            />
             <div className="flex-1 space-y-1.5">
               <Skeleton className="w-3/4 h-3" />
               <Skeleton className="w-1/2 h-2.5" />
@@ -455,7 +569,8 @@ function NotificationsFeed({
 
   if (notifs.isError) return null; // graceful degradation — notifications are non-critical
 
-  const items: AppNotification[] = (notifs.data as { data?: AppNotification[] })?.data ?? [];
+  const items: AppNotification[] =
+    (notifs.data as { data?: AppNotification[] })?.data ?? [];
   const unread = items.filter((n) => !n.is_read);
 
   if (items.length === 0) return null;
@@ -473,7 +588,8 @@ function NotificationsFeed({
         </div>
       )}
       {items.slice(0, 5).map((n) => {
-        const type = Object.keys(NOTIF_ICON).find((k) => n.type?.includes(k)) ?? "message";
+        const type =
+          Object.keys(NOTIF_ICON).find((k) => n.type?.includes(k)) ?? "message";
         const Icon = NOTIF_ICON[type] ?? Bell;
         const tone = NOTIF_PRIORITY_TONE[n.priority] ?? NOTIF_PRIORITY_TONE.low;
         return (
@@ -484,16 +600,28 @@ function NotificationsFeed({
               n.is_read ? "opacity-60" : "hover:bg-text-primary/[0.03]"
             }`}
           >
-            <span className={`w-[38px] h-[38px] rounded-[11px] grid place-items-center shrink-0 ${tone}`}>
+            <span
+              className={`w-[38px] h-[38px] rounded-[11px] grid place-items-center shrink-0 ${tone}`}
+            >
               <Icon className="w-[17px] h-[17px]" />
             </span>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-text-primary truncate">{n.title}</div>
-              {n.body && <div className="text-[11px] text-text-faint truncate">{n.body}</div>}
+              <div className="text-[13px] font-semibold text-text-primary truncate">
+                {n.title}
+              </div>
+              {n.body && (
+                <div className="text-[11px] text-text-faint truncate">
+                  {n.body}
+                </div>
+              )}
             </div>
             <div className="flex flex-col items-end gap-1.5">
-              <span className="text-[11px] text-text-faint tabular-nums whitespace-nowrap">{fmtRelative(n.created_at)}</span>
-              {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-accent-glow" />}
+              <span className="text-[11px] text-text-faint tabular-nums whitespace-nowrap">
+                {fmtRelative(n.created_at)}
+              </span>
+              {!n.is_read && (
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-glow" />
+              )}
             </div>
           </div>
         );
@@ -540,7 +668,9 @@ function PushBanner() {
     <div className="glass rounded-[14px] px-4 py-3 mb-5 flex items-center gap-2.5 border border-accent/20 animate-[slide-up_0.22s_ease-out]">
       <Bell className="w-4 h-4 text-accent shrink-0" />
       <p className="flex-1 min-w-0 text-[12px] text-text-muted truncate">
-        <span className="font-semibold text-text-primary">Enable push notifications</span>
+        <span className="font-semibold text-text-primary">
+          Enable push notifications
+        </span>
         <span className="max-md:hidden"> — approvals, payments &amp; more</span>
       </p>
       <button
@@ -575,8 +705,16 @@ export function CommandCenter() {
   const myFeed = useMyAuditFeed();
   const notifs = useRecentNotifications();
 
-  const hh = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const dd = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const hh = time.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const dd = time.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
 
   // Whether this user has access to dashboard KPIs
   const canSeeDashboard = user?.isCeo || can("dashboards", "view");
@@ -599,21 +737,39 @@ export function CommandCenter() {
               What would you like to{" "}
               <em className="italic text-accent-glow">craft</em> today?
             </h2>
-            <div className="text-text-muted text-sm max-w-[46ch]">{greeting.secondary}</div>
+            <div className="text-text-muted text-sm max-w-[46ch]">
+              {greeting.secondary}
+            </div>
           </div>
           <Card className="relative overflow-hidden w-[min(250px,100%)] p-[18px_20px] text-right">
             <span
               className="pointer-events-none absolute -right-[30px] -top-[40px] w-[140px] h-[140px] rounded-full opacity-50 blur-[22px]"
-              style={{ background: `radial-gradient(circle, color-mix(in srgb, ${biz.grad2} 40%, transparent), transparent 70%)` }}
+              style={{
+                background: `radial-gradient(circle, color-mix(in srgb, ${biz.grad2} 40%, transparent), transparent 70%)`,
+              }}
             />
-            <div className="relative font-display font-medium text-[42px] leading-none tabular-nums">{hh}</div>
-            <div className="relative text-text-muted text-[12.5px] mt-1.5">{dd}</div>
+            <div className="relative font-display font-medium text-[42px] leading-none tabular-nums">
+              {hh}
+            </div>
+            <div className="relative text-text-muted text-[12.5px] mt-1.5">
+              {dd}
+            </div>
             <div className="relative mt-3 pt-3 border-t hairline flex items-center gap-2.5 justify-end">
               <span
                 className="w-6 h-6 rounded-[7px] grid place-items-center text-white font-display font-semibold text-xs overflow-hidden"
-                style={{ background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})` }}
+                style={{
+                  background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})`,
+                }}
               >
-                {biz.logoUrl ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.monogram}
+                {biz.logoUrl ? (
+                  <img
+                    src={biz.logoUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  biz.monogram
+                )}
               </span>
               <span className="font-semibold text-[12.5px]">{biz.name}</span>
             </div>
@@ -632,9 +788,19 @@ export function CommandCenter() {
           <div className="flex items-center gap-1.5 mt-1 text-text-muted text-[12px]">
             <span
               className="w-[18px] h-[18px] rounded-[5px] grid place-items-center text-white font-display font-semibold text-[8px] overflow-hidden shrink-0"
-              style={{ background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})` }}
+              style={{
+                background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})`,
+              }}
             >
-              {biz.logoUrl ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.monogram}
+              {biz.logoUrl ? (
+                <img
+                  src={biz.logoUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                biz.monogram
+              )}
             </span>
             <span className="font-semibold text-text-primary">{biz.name}</span>
             <span className="text-text-faint">&middot;</span>

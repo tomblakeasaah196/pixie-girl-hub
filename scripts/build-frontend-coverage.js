@@ -35,10 +35,18 @@ const STATUS = {
   partial: { weight: 0.5, built: "Partial", md: "🟡 Partial" },
   todo: { weight: 0, built: "No", md: "⬜ To-do" },
 };
-const SYNONYM = { yes: "done", built: "done", complete: "done", no: "todo", "": "todo" };
+const SYNONYM = {
+  yes: "done",
+  built: "done",
+  complete: "done",
+  no: "todo",
+  "": "todo",
+};
 
 function normStatus(s) {
-  const k = String(s || "").toLowerCase().trim();
+  const k = String(s || "")
+    .toLowerCase()
+    .trim();
   const v = SYNONYM[k] || k;
   return STATUS[v] ? v : "todo";
 }
@@ -66,13 +74,17 @@ function applySet(data, spec) {
   }
   if (changed) {
     fs.writeFileSync(JSON_PATH, JSON.stringify(data, null, 2) + "\n");
-    process.stdout.write(`  updated ${changed} module(s) in frontend-modules.json\n`);
+    process.stdout.write(
+      `  updated ${changed} module(s) in frontend-modules.json\n`,
+    );
   }
   return data;
 }
 
 function shortLabel(name) {
-  return String(name).split(/[(/·&]| - /)[0].trim();
+  return String(name)
+    .split(/[(/·&]| - /)[0]
+    .trim();
 }
 
 function tally(modules) {
@@ -152,13 +164,21 @@ function sheetXml(data) {
   const rows = [];
 
   // Row 1 — title (merged across A1:G1)
-  rows.push(`<row r="1" ht="24" customHeight="1">${cellStr(1, 1, 1, data.title)}</row>`);
+  rows.push(
+    `<row r="1" ht="24" customHeight="1">${cellStr(1, 1, 1, data.title)}</row>`,
+  );
 
   // Row 2 — weighted coverage + built count
   rows.push(
     `<row r="2" ht="18" customHeight="1">` +
       cellStr(1, 2, 5, "Weighted coverage") +
-      cellFormula(2, 2, 3, `(COUNTIF(${builtRange},"Yes")+0.5*COUNTIF(${builtRange},"Partial"))/${mods.length}`, t.weighted.toFixed(6)) +
+      cellFormula(
+        2,
+        2,
+        3,
+        `(COUNTIF(${builtRange},"Yes")+0.5*COUNTIF(${builtRange},"Partial"))/${mods.length}`,
+        t.weighted.toFixed(6),
+      ) +
       cellStr(4, 2, 5, "Built (Yes)") +
       cellFormula(5, 2, 5, `COUNTIF(${builtRange},"Yes")`, t.done) +
       `</row>`,
@@ -176,7 +196,15 @@ function sheetXml(data) {
   );
 
   // Row 4 — header
-  const headers = ["#", "Module", "Group", "Primary route", "Connects with", "Built?", "Notes"];
+  const headers = [
+    "#",
+    "Module",
+    "Group",
+    "Primary route",
+    "Connects with",
+    "Built?",
+    "Notes",
+  ];
   rows.push(
     `<row r="4" ht="22" customHeight="1">` +
       headers.map((h, i) => cellStr(i + 1, 4, 2, h)).join("") +
@@ -218,8 +246,7 @@ function sheetXml(data) {
     `<dataValidations count="1">` +
     `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="${builtRange}">` +
     `<formula1>"Yes,Partial,No"</formula1></dataValidation></dataValidations>`;
-  const freeze =
-    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
+  const freeze = `<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -271,7 +298,8 @@ const CRC_TABLE = (() => {
 })();
 function crc32(buf) {
   let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  for (let i = 0; i < buf.length; i++)
+    c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
 
@@ -395,7 +423,9 @@ function main() {
   if (args.includes("--list")) {
     process.stdout.write(
       data.modules
-        .map((m) => `  [${STATUS[m.status].built.padEnd(7)}] ${m.key} — ${m.name}`)
+        .map(
+          (m) => `  [${STATUS[m.status].built.padEnd(7)}] ${m.key} — ${m.name}`,
+        )
         .join("\n") + "\n",
     );
   }

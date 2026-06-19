@@ -34,19 +34,19 @@ otherwise                                     → policy.channel_preference
 
 ## Files
 
-| File                                | Purpose                                       |
-| ----------------------------------- | --------------------------------------------- |
-| `outbound-policy.routes.js`         | Express router                                |
-| `outbound-policy.controller.js`     | HTTP handlers                                 |
-| `outbound-policy.service.js`        | Business logic + audit                        |
-| `outbound-policy.repo.js`           | Parameterised SQL + `resolveChannel` helper   |
-| `outbound-policy.validator.js`      | Zod input schemas                             |
+| File                            | Purpose                                     |
+| ------------------------------- | ------------------------------------------- |
+| `outbound-policy.routes.js`     | Express router                              |
+| `outbound-policy.controller.js` | HTTP handlers                               |
+| `outbound-policy.service.js`    | Business logic + audit                      |
+| `outbound-policy.repo.js`       | Parameterised SQL + `resolveChannel` helper |
+| `outbound-policy.validator.js`  | Zod input schemas                           |
 
 ## Endpoints
 
-| Method | Path                                                  |
-| ------ | ----------------------------------------------------- |
-| GET    | `/api/v1/outbound-policy`                             |
+| Method | Path                                                     |
+| ------ | -------------------------------------------------------- |
+| GET    | `/api/v1/outbound-policy`                                |
 | GET    | `/api/v1/outbound-policy/resolve?event_key=&contact_id=` |
-| GET    | `/api/v1/outbound-policy/:event_key`                  |
-| PUT    | `/api/v1/outbound-policy`                             |
+| GET    | `/api/v1/outbound-policy/:event_key`                     |
+| PUT    | `/api/v1/outbound-policy`                                |

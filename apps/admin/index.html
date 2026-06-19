@@ -2,10 +2,16 @@
 <html lang="en" data-theme="dark" data-density="comfortable">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#0f0809" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Pixie Hub" />
     <!-- Static defaults so there's never a /favicon.ico 404; ThemeProvider
@@ -44,26 +50,52 @@
 
       /* ── Ambient mesh gradient background ─────────────────────── */
       #splash::before {
-        content: '';
+        content: "";
         position: absolute;
         inset: -50%;
         width: 200%;
         height: 200%;
         background:
-          radial-gradient(ellipse 60% 50% at 20% 30%, rgba(105, 9, 9, 0.45) 0%, transparent 70%),
-          radial-gradient(ellipse 50% 60% at 80% 20%, rgba(168, 29, 29, 0.30) 0%, transparent 65%),
-          radial-gradient(ellipse 55% 45% at 60% 80%, rgba(42, 15, 21, 0.55) 0%, transparent 70%),
-          radial-gradient(ellipse 45% 55% at 30% 70%, rgba(105, 9, 9, 0.35) 0%, transparent 60%);
+          radial-gradient(
+            ellipse 60% 50% at 20% 30%,
+            rgba(105, 9, 9, 0.45) 0%,
+            transparent 70%
+          ),
+          radial-gradient(
+            ellipse 50% 60% at 80% 20%,
+            rgba(168, 29, 29, 0.3) 0%,
+            transparent 65%
+          ),
+          radial-gradient(
+            ellipse 55% 45% at 60% 80%,
+            rgba(42, 15, 21, 0.55) 0%,
+            transparent 70%
+          ),
+          radial-gradient(
+            ellipse 45% 55% at 30% 70%,
+            rgba(105, 9, 9, 0.35) 0%,
+            transparent 60%
+          );
         filter: blur(40px);
         animation: splashMeshDrift 26s ease-in-out infinite alternate;
       }
 
       @keyframes splashMeshDrift {
-        0%   { transform: translate(0, 0) rotate(0deg); }
-        25%  { transform: translate(-3%, 2%) rotate(1deg); }
-        50%  { transform: translate(2%, -3%) rotate(-0.5deg); }
-        75%  { transform: translate(-1%, 1%) rotate(0.8deg); }
-        100% { transform: translate(3%, -2%) rotate(-1deg); }
+        0% {
+          transform: translate(0, 0) rotate(0deg);
+        }
+        25% {
+          transform: translate(-3%, 2%) rotate(1deg);
+        }
+        50% {
+          transform: translate(2%, -3%) rotate(-0.5deg);
+        }
+        75% {
+          transform: translate(-1%, 1%) rotate(0.8deg);
+        }
+        100% {
+          transform: translate(3%, -2%) rotate(-1deg);
+        }
       }
 
       /* ── Shared fade+scale entrance ───────────────────────────── */
@@ -99,7 +131,8 @@
       }
 
       @keyframes splashPulse {
-        0%, 100% {
+        0%,
+        100% {
           filter: drop-shadow(0 0 18px rgba(168, 29, 29, 0.5));
           transform: scale(1);
         }
@@ -121,7 +154,7 @@
       }
 
       #splash-bar-wrap::after {
-        content: '';
+        content: "";
         display: block;
         width: 40%;
         height: 100%;
@@ -131,23 +164,33 @@
       }
 
       @keyframes splashBarSlide {
-        0%   { transform: translateX(-100%); }
-        50%  { transform: translateX(300%); }
-        100% { transform: translateX(-100%); }
+        0% {
+          transform: translateX(-100%);
+        }
+        50% {
+          transform: translateX(300%);
+        }
+        100% {
+          transform: translateX(-100%);
+        }
       }
 
       @keyframes splashFadeIn {
-        from { opacity: 0; }
-        to   { opacity: 1; }
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
       }
 
       /* ── Product name ─────────────────────────────────────────── */
       #splash-name {
         margin-top: 20px;
-        font-family: 'Playfair Display', serif;
+        font-family: "Playfair Display", serif;
         font-size: 22px;
         font-weight: 600;
-        color: #F4E9D9;
+        color: #f4e9d9;
         letter-spacing: 0.02em;
         animation: splashFadeIn 400ms 500ms ease forwards;
       }
@@ -159,7 +202,7 @@
       /* ── Tagline ──────────────────────────────────────────────── */
       #splash-tagline {
         margin-top: 8px;
-        font-family: 'Montserrat', sans-serif;
+        font-family: "Montserrat", sans-serif;
         font-size: 11px;
         font-weight: 500;
         text-transform: uppercase;
@@ -172,22 +215,44 @@
   <body>
     <!-- Splash screen: pure CSS, visible before React hydrates -->
     <div id="splash">
-      <svg id="splash-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true">
+      <svg
+        id="splash-logo"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 64 64"
+        aria-hidden="true"
+      >
         <defs>
-          <linearGradient id="splash-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stop-color="#2a0f15"/>
-            <stop offset="1" stop-color="#0f0809"/>
+          <linearGradient
+            id="splash-bg"
+            x1="0"
+            y1="0"
+            x2="64"
+            y2="64"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0" stop-color="#2a0f15" />
+            <stop offset="1" stop-color="#0f0809" />
           </linearGradient>
           <radialGradient id="splash-petal" cx="50%" cy="35%" r="60%">
-            <stop offset="0" stop-color="#e03030"/>
-            <stop offset="0.55" stop-color="#a81d1d"/>
-            <stop offset="1" stop-color="#690909"/>
+            <stop offset="0" stop-color="#e03030" />
+            <stop offset="0.55" stop-color="#a81d1d" />
+            <stop offset="1" stop-color="#690909" />
           </radialGradient>
         </defs>
-        <rect width="64" height="64" rx="16" fill="url(#splash-bg)"/>
+        <rect width="64" height="64" rx="16" fill="url(#splash-bg)" />
         <g transform="translate(32,32)">
-          <ellipse rx="5.5" ry="14" transform="rotate(45)" fill="url(#splash-petal)"/>
-          <ellipse rx="5.5" ry="14" transform="rotate(-45)" fill="url(#splash-petal)"/>
+          <ellipse
+            rx="5.5"
+            ry="14"
+            transform="rotate(45)"
+            fill="url(#splash-petal)"
+          />
+          <ellipse
+            rx="5.5"
+            ry="14"
+            transform="rotate(-45)"
+            fill="url(#splash-petal)"
+          />
         </g>
       </svg>
       <div id="splash-bar-wrap"></div>

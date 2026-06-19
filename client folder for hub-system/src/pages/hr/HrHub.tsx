@@ -49,7 +49,9 @@ function StatCard({
 }) {
   return (
     <Card className="p-4">
-      <div className={`font-display text-3xl ${tone || "text-brand-cream"}`}>{value}</div>
+      <div className={`font-display text-3xl ${tone || "text-brand-cream"}`}>
+        {value}
+      </div>
       <div className="mt-0.5 text-xs text-brand-smoke">{label}</div>
     </Card>
   );
@@ -83,27 +85,45 @@ function LeaveInbox() {
   if (isLoading) return <Skeleton className="h-40 rounded-2xl" />;
   const rows: LeaveRequest[] = data || [];
   if (!rows.length)
-    return <EmptyState icon={<Plane className="h-6 w-6" />} title="No pending leave requests" />;
+    return (
+      <EmptyState
+        icon={<Plane className="h-6 w-6" />}
+        title="No pending leave requests"
+      />
+    );
 
   return (
     <div className="space-y-2">
       {rows.map((l) => (
-        <Card key={l.leave_id} className="flex items-center justify-between gap-3 p-4">
+        <Card
+          key={l.leave_id}
+          className="flex items-center justify-between gap-3 p-4"
+        >
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-brand-cream">{l.staff_name || "Staff"}</span>
-              <Badge tone={l.leave_type === "unpaid" ? "rose" : "neutral"} size="xs">
+              <span className="text-sm text-brand-cream">
+                {l.staff_name || "Staff"}
+              </span>
+              <Badge
+                tone={l.leave_type === "unpaid" ? "rose" : "neutral"}
+                size="xs"
+              >
                 {l.leave_type}
               </Badge>
             </div>
             <div className="text-xs text-brand-smoke">
-              {fmtDate(l.start_date)} – {fmtDate(l.end_date)} · {l.days_requested} day
+              {fmtDate(l.start_date)} – {fmtDate(l.end_date)} ·{" "}
+              {l.days_requested} day
               {l.days_requested > 1 ? "s" : ""}
               {l.reason ? ` · ${l.reason}` : ""}
             </div>
           </div>
           <div className="flex shrink-0 gap-1.5">
-            <Button size="sm" onClick={() => approve.mutate(l.leave_id)} leftIcon={<Check className="h-3.5 w-3.5" />}>
+            <Button
+              size="sm"
+              onClick={() => approve.mutate(l.leave_id)}
+              leftIcon={<Check className="h-3.5 w-3.5" />}
+            >
               Approve
             </Button>
             <Button
@@ -121,7 +141,13 @@ function LeaveInbox() {
   );
 }
 
-function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function RaiseQueryModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
   const { data: staff } = useQuery({
     queryKey: ["staff", "for-query"],
@@ -156,9 +182,11 @@ function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void
 
   const staffOptions = [
     { value: "", label: "— select employee —" },
-    ...((staff?.data as Array<{ profile_id: string; display_name: string }> | undefined) || []).map(
-      (s) => ({ value: s.profile_id, label: s.display_name }),
-    ),
+    ...(
+      (staff?.data as
+        | Array<{ profile_id: string; display_name: string }>
+        | undefined) || []
+    ).map((s) => ({ value: s.profile_id, label: s.display_name })),
   ];
 
   return (
@@ -174,7 +202,9 @@ function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void
           </Button>
           <Button
             onClick={() => mut.mutate()}
-            disabled={!profileId || !subject.trim() || !details.trim() || mut.isPending}
+            disabled={
+              !profileId || !subject.trim() || !details.trim() || mut.isPending
+            }
           >
             {mut.isPending ? "Sending…" : "Send query"}
           </Button>
@@ -182,7 +212,12 @@ function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void
       }
     >
       <div className="space-y-3">
-        <Select label="Employee" options={staffOptions} value={profileId} onChange={(e) => setProfileId(e.target.value)} />
+        <Select
+          label="Employee"
+          options={staffOptions}
+          value={profileId}
+          onChange={(e) => setProfileId(e.target.value)}
+        />
         <div className="grid grid-cols-2 gap-3">
           <Select
             label="Type"
@@ -208,7 +243,11 @@ function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void
             onChange={(e) => setSeverity(e.target.value)}
           />
         </div>
-        <Input label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
+        <Input
+          label="Subject"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+        />
         <Textarea
           label="Details"
           rows={4}
@@ -233,10 +272,15 @@ export default function HrHub() {
   });
 
   const reconcile = useMutation({
-    mutationFn: () => import("@services/hr").then((m) => m.reconcileDay(new Date().toISOString().slice(0, 10))),
+    mutationFn: () =>
+      import("@services/hr").then((m) =>
+        m.reconcileDay(new Date().toISOString().slice(0, 10)),
+      ),
     onSuccess: (r: { records_created: number }) => {
       qc.invalidateQueries({ queryKey: ["hr"] });
-      showToast.success(`Reconciled today — ${r.records_created} record(s) created`);
+      showToast.success(
+        `Reconciled today — ${r.records_created} record(s) created`,
+      );
     },
     onError: (e) => showToast.error(errMsg(e)),
   });
@@ -245,7 +289,10 @@ export default function HrHub() {
 
   return (
     <>
-      <Topbar title="HR & Staff" subtitle="People · Attendance · Leave · Performance" />
+      <Topbar
+        title="HR & Staff"
+        subtitle="People · Attendance · Leave · Performance"
+      />
       <div className="px-4 sm:px-8 py-6 max-w-6xl mx-auto space-y-6">
         <PageHeader
           title="HR & Staff"
@@ -273,9 +320,21 @@ export default function HrHub() {
         <Tabs
           tabs={[
             { key: "overview", label: "Overview" },
-            { key: "leave", label: "Leave", badge: c?.pending_leave || undefined },
-            { key: "attendance", label: "Attendance", badge: c?.pending_justifications || undefined },
-            { key: "queries", label: "Queries", badge: c?.open_queries || undefined },
+            {
+              key: "leave",
+              label: "Leave",
+              badge: c?.pending_leave || undefined,
+            },
+            {
+              key: "attendance",
+              label: "Attendance",
+              badge: c?.pending_justifications || undefined,
+            },
+            {
+              key: "queries",
+              label: "Queries",
+              badge: c?.open_queries || undefined,
+            },
           ]}
           active={tab}
           onChange={setTab}
@@ -288,11 +347,31 @@ export default function HrHub() {
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                 <StatCard label="Total staff" value={c.total_staff} />
-                <StatCard label="Present today" value={c.present_today} tone="text-emerald-400" />
-                <StatCard label="Late today" value={c.late_today} tone="text-amber-400" />
-                <StatCard label="On leave" value={c.on_leave_today} tone="text-purple-300" />
-                <StatCard label="Pending leave" value={c.pending_leave} tone="text-brand-accent" />
-                <StatCard label="Open queries" value={c.open_queries} tone="text-rose-400" />
+                <StatCard
+                  label="Present today"
+                  value={c.present_today}
+                  tone="text-emerald-400"
+                />
+                <StatCard
+                  label="Late today"
+                  value={c.late_today}
+                  tone="text-amber-400"
+                />
+                <StatCard
+                  label="On leave"
+                  value={c.on_leave_today}
+                  tone="text-purple-300"
+                />
+                <StatCard
+                  label="Pending leave"
+                  value={c.pending_leave}
+                  tone="text-brand-accent"
+                />
+                <StatCard
+                  label="Open queries"
+                  value={c.open_queries}
+                  tone="text-rose-400"
+                />
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
@@ -322,7 +401,8 @@ export default function HrHub() {
               {overview.pending_justifications.length > 0 && (
                 <div>
                   <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-brand-cream">
-                    <CalendarCheck className="h-4 w-4 text-amber-400" /> Justifications awaiting review
+                    <CalendarCheck className="h-4 w-4 text-amber-400" />{" "}
+                    Justifications awaiting review
                   </h3>
                   <AttendancePanel mode="manage" />
                 </div>
@@ -350,7 +430,11 @@ export default function HrHub() {
         {tab === "queries" && (
           <div className="space-y-3">
             <div className="flex justify-end">
-              <Button size="sm" onClick={() => setRaiseOpen(true)} leftIcon={<MessageSquareWarning className="h-3.5 w-3.5" />}>
+              <Button
+                size="sm"
+                onClick={() => setRaiseOpen(true)}
+                leftIcon={<MessageSquareWarning className="h-3.5 w-3.5" />}
+              >
                 Query an employee
               </Button>
             </div>

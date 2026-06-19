@@ -55,7 +55,8 @@ async function audit({
   module = null,
 }) {
   if (!config.ENABLE_AUDIT_LOG) return;
-  const mod = module || (action_key ? String(action_key).split(".")[0] : "system");
+  const mod =
+    module || (action_key ? String(action_key).split(".")[0] : "system");
   const meta = { ...(metadata || {}) };
   if (request_id) meta.request_id = request_id;
   try {

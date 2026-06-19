@@ -12,7 +12,13 @@ import {
   Clock,
   PenLine,
 } from "lucide-react";
-import { Button, Pill, Skeleton, MoneyText, type Tone } from "@/components/ui/primitives";
+import {
+  Button,
+  Pill,
+  Skeleton,
+  MoneyText,
+  type Tone,
+} from "@/components/ui/primitives";
 import { StaticMapImage } from "@/components/ui/AddressAutocomplete";
 import {
   useContact,
@@ -29,7 +35,13 @@ import { AddressFormModal } from "./AddressFormModal";
 import { LogActivityModal } from "./LogActivityModal";
 import { LoyaltyTab } from "./LoyaltyTab";
 import { TagPicker } from "./TagPicker";
-import type { Contact, Deal, TimelineEvent, PriorityLevel, ContactType } from "./types";
+import type {
+  Contact,
+  Deal,
+  TimelineEvent,
+  PriorityLevel,
+  ContactType,
+} from "./types";
 
 // ── Helpers (shared with the drawer header) ────────────────────────────────
 
@@ -70,7 +82,11 @@ const DEAL_STATUS_TONE: Record<string, Tone> = {
 };
 
 export const AVATAR_COLORS = [
-  "#8b9d77", "#7a8fa8", "#b76e79", "#9c7ad9", "#5aa0a8",
+  "#8b9d77",
+  "#7a8fa8",
+  "#b76e79",
+  "#9c7ad9",
+  "#5aa0a8",
 ];
 
 export function bigInitials(name: string) {
@@ -90,7 +106,10 @@ function relativeTime(iso: string) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString("en-NG", { day: "numeric", month: "short" });
+  return new Date(iso).toLocaleDateString("en-NG", {
+    day: "numeric",
+    month: "short",
+  });
 }
 
 // ── Message button ────────────────────────────────────────────────────────
@@ -149,7 +168,9 @@ function SummaryStrip({ contactId }: { contactId: string }) {
     { label: "Orders", value: summary.total_orders },
     {
       label: "Last activity",
-      value: summary.last_activity_at ? relativeTime(summary.last_activity_at) : "—",
+      value: summary.last_activity_at
+        ? relativeTime(summary.last_activity_at)
+        : "—",
     },
     {
       label: "Churn risk",
@@ -173,7 +194,9 @@ function SummaryStrip({ contactId }: { contactId: string }) {
           className="p-2.5 rounded-[11px] bg-text-primary/[0.04] border hairline"
         >
           <div className="micro mb-1">{t.label}</div>
-          <div className="font-display text-base text-text-primary tabular-nums">{t.value}</div>
+          <div className="font-display text-base text-text-primary tabular-nums">
+            {t.value}
+          </div>
         </div>
       ))}
     </div>
@@ -189,19 +212,31 @@ const TIMELINE_TABS = [
 ] as const;
 
 function TimelineIcon({ type }: { type: string }) {
-  if (type.includes("order") || type.includes("payment")) return <Package className="w-3.5 h-3.5" />;
-  if (type.includes("deal") || type.includes("activity")) return <Activity className="w-3.5 h-3.5" />;
-  if (type.includes("tag") || type.includes("segment")) return <CheckCircle className="w-3.5 h-3.5" />;
+  if (type.includes("order") || type.includes("payment"))
+    return <Package className="w-3.5 h-3.5" />;
+  if (type.includes("deal") || type.includes("activity"))
+    return <Activity className="w-3.5 h-3.5" />;
+  if (type.includes("tag") || type.includes("segment"))
+    return <CheckCircle className="w-3.5 h-3.5" />;
   return <Clock className="w-3.5 h-3.5" />;
 }
 
-function TimelineTab({ contactId, contactName }: { contactId: string; contactName: string }) {
-  const [activeTab, setActiveTab] = useState<"commercial" | "engagement" | "internal">(
-    "commercial",
-  );
+function TimelineTab({
+  contactId,
+  contactName,
+}: {
+  contactId: string;
+  contactName: string;
+}) {
+  const [activeTab, setActiveTab] = useState<
+    "commercial" | "engagement" | "internal"
+  >("commercial");
   const [showLogActivity, setShowLogActivity] = useState(false);
 
-  const { data, isLoading } = useContactTimeline(contactId, { category: activeTab, page_size: 20 });
+  const { data, isLoading } = useContactTimeline(contactId, {
+    category: activeTab,
+    page_size: 20,
+  });
   const events: TimelineEvent[] = data?.data ?? [];
 
   return (
@@ -209,7 +244,7 @@ function TimelineTab({ contactId, contactName }: { contactId: string; contactNam
       {/* Sub-tabs + Log Activity */}
       <div className="flex items-center gap-2 mb-4">
         <div className="flex-1 flex gap-1 p-1 rounded-[12px] bg-text-primary/[0.04] border hairline">
-            {TIMELINE_TABS.map((t) => (
+          {TIMELINE_TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
@@ -269,9 +304,13 @@ function TimelineTab({ contactId, contactName }: { contactId: string; contactNam
                 <TimelineIcon type={ev.event_type} />
               </span>
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] text-text-primary font-medium">{ev.title}</div>
+                <div className="text-[13px] text-text-primary font-medium">
+                  {ev.title}
+                </div>
                 {ev.detail && (
-                  <div className="text-[11px] text-text-muted mt-0.5">{ev.detail}</div>
+                  <div className="text-[11px] text-text-muted mt-0.5">
+                    {ev.detail}
+                  </div>
                 )}
                 <div className="text-[10.5px] text-text-faint mt-1">
                   {relativeTime(ev.event_at)}
@@ -289,7 +328,10 @@ function TimelineTab({ contactId, contactName }: { contactId: string; contactNam
 // ── Deals tab ─────────────────────────────────────────────────────────────
 
 function DealsTab({ contactId }: { contactId: string }) {
-  const { data, isLoading } = useDeals({ contact_id: contactId, page_size: 10 });
+  const { data, isLoading } = useDeals({
+    contact_id: contactId,
+    page_size: 10,
+  });
   const deals: Deal[] = data?.data ?? [];
 
   if (isLoading) {
@@ -321,14 +363,18 @@ function DealsTab({ contactId }: { contactId: string }) {
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-[13px] font-medium text-text-primary truncate">{d.title}</div>
+              <div className="text-[13px] font-medium text-text-primary truncate">
+                {d.title}
+              </div>
               <div className="text-[11px] text-text-faint mt-0.5">
                 {d.deal_number}
                 {d.current_stage_name ? ` · ${d.current_stage_name}` : ""}
               </div>
             </div>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
-              <Pill tone={DEAL_STATUS_TONE[d.status] ?? "neutral"}>{d.status}</Pill>
+              <Pill tone={DEAL_STATUS_TONE[d.status] ?? "neutral"}>
+                {d.status}
+              </Pill>
               {d.expected_value_ngn && (
                 <span className="text-[12px] font-mono text-text-muted">
                   <MoneyText ngn={parseFloat(d.expected_value_ngn)} />
@@ -384,12 +430,18 @@ function AddressesTab({ contactId }: { contactId: string }) {
                     </span>
                   )}
                 </div>
-                <div className="text-[13px] text-text-primary">{addr.line1}</div>
+                <div className="text-[13px] text-text-primary">
+                  {addr.line1}
+                </div>
                 {addr.line2 && (
-                  <div className="text-[12px] text-text-muted">{addr.line2}</div>
+                  <div className="text-[12px] text-text-muted">
+                    {addr.line2}
+                  </div>
                 )}
                 <div className="text-[12px] text-text-muted">
-                  {[addr.area, addr.city, addr.state].filter(Boolean).join(", ")}
+                  {[addr.area, addr.city, addr.state]
+                    .filter(Boolean)
+                    .join(", ")}
                 </div>
                 {addr.landmark && (
                   <div className="text-[11px] text-text-faint mt-0.5">
@@ -428,7 +480,9 @@ function AddressesTab({ contactId }: { contactId: string }) {
         ))}
 
         {!addresses.length && (
-          <div className="py-6 text-center text-text-faint text-[13px]">No addresses saved</div>
+          <div className="py-6 text-center text-text-faint text-[13px]">
+            No addresses saved
+          </div>
         )}
       </div>
 
@@ -491,25 +545,39 @@ function PreferencesTab({ contactId }: { contactId: string }) {
               <PrefRow label="Densities" values={prefs.preferred_densities} />
             )}
             {prefs.avoid_textures.length > 0 && (
-              <PrefRow label="Avoid textures" values={prefs.avoid_textures} tone="danger" />
+              <PrefRow
+                label="Avoid textures"
+                values={prefs.avoid_textures}
+                tone="danger"
+              />
             )}
             {prefs.avoid_colours.length > 0 && (
-              <PrefRow label="Avoid colours" values={prefs.avoid_colours} tone="danger" />
+              <PrefRow
+                label="Avoid colours"
+                values={prefs.avoid_colours}
+                tone="danger"
+              />
             )}
             {(prefs.budget_min_ngn || prefs.budget_max_ngn) && (
               <div className="p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
                 <div className="micro mb-1">Budget</div>
                 <div className="text-[13px] text-text-primary font-mono">
-                  {prefs.budget_min_ngn && <MoneyText ngn={parseFloat(prefs.budget_min_ngn)} />}
+                  {prefs.budget_min_ngn && (
+                    <MoneyText ngn={parseFloat(prefs.budget_min_ngn)} />
+                  )}
                   {prefs.budget_min_ngn && prefs.budget_max_ngn && " – "}
-                  {prefs.budget_max_ngn && <MoneyText ngn={parseFloat(prefs.budget_max_ngn)} />}
+                  {prefs.budget_max_ngn && (
+                    <MoneyText ngn={parseFloat(prefs.budget_max_ngn)} />
+                  )}
                 </div>
               </div>
             )}
             {prefs.styling_sensitivities && (
               <div className="p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
                 <div className="micro mb-1">Sensitivities</div>
-                <div className="text-[12px] text-text-muted">{prefs.styling_sensitivities}</div>
+                <div className="text-[12px] text-text-muted">
+                  {prefs.styling_sensitivities}
+                </div>
               </div>
             )}
           </div>
@@ -537,18 +605,23 @@ function PreferencesTab({ contactId }: { contactId: string }) {
                 .map(([label, value]) => (
                   <div key={label as string}>
                     <div className="micro">{label as string}</div>
-                    <div className="text-[13px] text-text-primary font-mono">{value} cm</div>
+                    <div className="text-[13px] text-text-primary font-mono">
+                      {value} cm
+                    </div>
                   </div>
                 ))}
             </div>
             {latestMeasurement.measured_at && (
               <div className="text-[10.5px] text-text-faint mt-2">
                 Measured{" "}
-                {new Date(latestMeasurement.measured_at).toLocaleDateString("en-NG", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })}
+                {new Date(latestMeasurement.measured_at).toLocaleDateString(
+                  "en-NG",
+                  {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  },
+                )}
               </div>
             )}
           </div>
@@ -587,28 +660,39 @@ function PrefRow({
 
 // ── Overview tab ─────────────────────────────────────────────────────────
 
-function OverviewTab({ contact }: { contact: Contact; }) {
+function OverviewTab({ contact }: { contact: Contact }) {
   const rows: [string, string | null][] = [
     ["Display name", contact.display_name],
     ["First name", contact.first_name],
     ["Last name", contact.last_name],
     ["Company", contact.company_name],
-    ["Gender", contact.gender ? (GENDER_LABEL[contact.gender] ?? contact.gender) : null],
+    [
+      "Gender",
+      contact.gender ? (GENDER_LABEL[contact.gender] ?? contact.gender) : null,
+    ],
     [
       "Birthday",
       contact.date_of_birth
         ? new Date(contact.date_of_birth).toLocaleDateString("en-NG", {
             day: "numeric",
             month: "long",
-            year: contact.date_of_birth.startsWith("1900") ? undefined : "numeric",
+            year: contact.date_of_birth.startsWith("1900")
+              ? undefined
+              : "numeric",
           })
         : null,
     ],
     ["WhatsApp", contact.whatsapp_number],
     ["Email", contact.email],
-    ["Instagram", contact.instagram_handle ? `@${contact.instagram_handle}` : null],
+    [
+      "Instagram",
+      contact.instagram_handle ? `@${contact.instagram_handle}` : null,
+    ],
     ["TikTok", contact.tiktok_handle ? `@${contact.tiktok_handle}` : null],
-    ["Facebook", contact.facebook_handle ? `@${contact.facebook_handle}` : null],
+    [
+      "Facebook",
+      contact.facebook_handle ? `@${contact.facebook_handle}` : null,
+    ],
     ["Country code", contact.country_code],
     ["TIN", contact.tin],
     ["CAC number", contact.cac_number],
@@ -675,7 +759,9 @@ function OverviewTab({ contact }: { contact: Contact; }) {
       {contact.notes && (
         <div className="mt-4 p-3 rounded-[11px] bg-text-primary/[0.04] border hairline">
           <div className="micro mb-1">Notes</div>
-          <p className="text-[13px] text-text-muted leading-relaxed">{contact.notes}</p>
+          <p className="text-[13px] text-text-muted leading-relaxed">
+            {contact.notes}
+          </p>
         </div>
       )}
     </div>
@@ -702,7 +788,11 @@ type TabKey = (typeof TABS)[number]["key"];
  * supplies its own header/footer (avatar, edit button), so this body only
  * renders the scrollable content.
  */
-export function ContactDetailPanel({ contactId }: { contactId: string | null }) {
+export function ContactDetailPanel({
+  contactId,
+}: {
+  contactId: string | null;
+}) {
   const [tab, setTab] = useState<TabKey>("overview");
   const { data: contact, isLoading } = useContact(contactId);
 
@@ -763,7 +853,9 @@ export function ContactDetailPanel({ contactId }: { contactId: string | null }) 
       )}
       {tab === "deals" && <DealsTab contactId={contact.contact_id} />}
       {tab === "addresses" && <AddressesTab contactId={contact.contact_id} />}
-      {tab === "preferences" && <PreferencesTab contactId={contact.contact_id} />}
+      {tab === "preferences" && (
+        <PreferencesTab contactId={contact.contact_id} />
+      )}
       {tab === "loyalty" && (
         <LoyaltyTab
           contactId={contact.contact_id}

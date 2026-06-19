@@ -175,14 +175,18 @@ async function login({ email, password, ip, user_agent }) {
 
   const sessionId = uuidv4();
   const sessionExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-  iamRepo.createSession({
-    session_id: sessionId,
-    user_id: user.user_id,
-    ip_address: ip || null,
-    user_agent: user_agent || null,
-    device_label: null,
-    expires_at: sessionExpiry.toISOString(),
-  }).catch((err) => logger.error({ err: err.message }, "session record create failed"));
+  iamRepo
+    .createSession({
+      session_id: sessionId,
+      user_id: user.user_id,
+      ip_address: ip || null,
+      user_agent: user_agent || null,
+      device_label: null,
+      expires_at: sessionExpiry.toISOString(),
+    })
+    .catch((err) =>
+      logger.error({ err: err.message }, "session record create failed"),
+    );
 
   audit({
     business: user.default_business_key || "system",
@@ -208,7 +212,11 @@ async function login({ email, password, ip, user_agent }) {
  */
 async function loginPin({ email, pin, ip, user_agent }) {
   if (!email || !pin || !PIN_RE.test(String(pin)))
-    throw new AppError("INVALID_CREDENTIALS", "Email and 6-digit PIN required", 400);
+    throw new AppError(
+      "INVALID_CREDENTIALS",
+      "Email and 6-digit PIN required",
+      400,
+    );
 
   const user = await staffRepo.findByEmail(String(email).toLowerCase());
   // Generic message until the account is confirmed to exist + be active
@@ -249,14 +257,18 @@ async function loginPin({ email, pin, ip, user_agent }) {
 
   const sessionId = uuidv4();
   const sessionExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-  iamRepo.createSession({
-    session_id: sessionId,
-    user_id: user.user_id,
-    ip_address: ip || null,
-    user_agent: user_agent || null,
-    device_label: null,
-    expires_at: sessionExpiry.toISOString(),
-  }).catch((err) => logger.error({ err: err.message }, "session record create failed"));
+  iamRepo
+    .createSession({
+      session_id: sessionId,
+      user_id: user.user_id,
+      ip_address: ip || null,
+      user_agent: user_agent || null,
+      device_label: null,
+      expires_at: sessionExpiry.toISOString(),
+    })
+    .catch((err) =>
+      logger.error({ err: err.message }, "session record create failed"),
+    );
 
   audit({
     business: user.default_business_key || "system",
@@ -440,9 +452,14 @@ async function resetPassword({ token, new_password }) {
 
 async function changePassword({ user_id, current_password, new_password }) {
   const user = await staffRepo.findById(user_id);
-  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+  if (!user) throw new AppError("USER_NOT_FOUND", "User not found", 404);
   const ok = await argon2.verify(user.password_hash, current_password);
-  if (!ok) throw new AppError('INVALID_CREDENTIALS', 'Current password is incorrect', 401);
+  if (!ok)
+    throw new AppError(
+      "INVALID_CREDENTIALS",
+      "Current password is incorrect",
+      401,
+    );
   assertStrongPassword(new_password);
   const hash = await argon2.hash(new_password, hashOptions);
   await staffRepo.updatePassword(user_id, hash);
@@ -450,7 +467,7 @@ async function changePassword({ user_id, current_password, new_password }) {
 
 async function getMe({ user_id }) {
   const user = await staffRepo.findByIdWithProfile(user_id);
-  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+  if (!user) throw new AppError("USER_NOT_FOUND", "User not found", 404);
   return {
     user_id: user.user_id,
     email: user.email,
@@ -466,16 +483,19 @@ async function getMe({ user_id }) {
 
 async function updateMe({ user_id, display_name, phone }) {
   const updates = {};
-  if (display_name !== undefined) updates.display_name = String(display_name).trim().slice(0, 120) || undefined;
-  if (phone !== undefined) updates.phone = String(phone).trim().slice(0, 40) || undefined;
+  if (display_name !== undefined)
+    updates.display_name =
+      String(display_name).trim().slice(0, 120) || undefined;
+  if (phone !== undefined)
+    updates.phone = String(phone).trim().slice(0, 40) || undefined;
   await staffRepo.updateUserProfile(user_id, updates);
   return getMe({ user_id });
 }
 
-const storage = require('../../services/storage.service');
+const storage = require("../../services/storage.service");
 
 async function uploadAvatar({ user_id, buffer, mimetype }) {
-  const ext = mimetype === 'image/png' ? 'png' : 'jpg';
+  const ext = mimetype === "image/png" ? "png" : "jpg";
   const key = `avatars/${user_id}.${ext}`;
   const stored = await storage.put(buffer, { key, contentType: mimetype });
   await staffRepo.updateUserProfile(user_id, { avatar_url: stored.public_url });
@@ -483,39 +503,53 @@ async function uploadAvatar({ user_id, buffer, mimetype }) {
 }
 
 // ── Email change (authed, OTP to new address) ─────────────
-const EMAIL_CHANGE_PREFIX = 'emailchange:';
+const EMAIL_CHANGE_PREFIX = "emailchange:";
 const EMAIL_CHANGE_TTL = 600; // 10 minutes
 
 async function requestEmailChange({ user_id, current_password, new_email }) {
   const user = await staffRepo.findById(user_id);
-  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+  if (!user) throw new AppError("USER_NOT_FOUND", "User not found", 404);
 
   const ok = await argon2.verify(user.password_hash, current_password);
   if (!ok)
-    throw new AppError('INVALID_CREDENTIALS', 'Current password is incorrect', 401);
+    throw new AppError(
+      "INVALID_CREDENTIALS",
+      "Current password is incorrect",
+      401,
+    );
 
-  const email = String(new_email || '').toLowerCase().trim();
+  const email = String(new_email || "")
+    .toLowerCase()
+    .trim();
   if (!email || !/.+@.+\..+/.test(email))
-    throw new AppError('INVALID_EMAIL', 'Enter a valid email address', 422);
+    throw new AppError("INVALID_EMAIL", "Enter a valid email address", 422);
   if (email === user.email)
-    throw new AppError('SAME_EMAIL', 'That is already your current email address', 422);
+    throw new AppError(
+      "SAME_EMAIL",
+      "That is already your current email address",
+      422,
+    );
 
   const existing = await staffRepo.findByEmail(email);
   if (existing)
-    throw new AppError('EMAIL_TAKEN', 'That email address is already in use', 409);
+    throw new AppError(
+      "EMAIL_TAKEN",
+      "That email address is already in use",
+      409,
+    );
 
   const otp = String(Math.floor(100000 + Math.random() * 900000));
   const redis = getRedis();
   await redis.set(
     EMAIL_CHANGE_PREFIX + user_id,
     JSON.stringify({ otp, new_email: email }),
-    'EX',
+    "EX",
     EMAIL_CHANGE_TTL,
   );
 
   await emailService.send({
     to: email,
-    subject: 'Verify your new email — Pixie Girl Hub',
+    subject: "Verify your new email — Pixie Girl Hub",
     html: `<p>Hello,</p>
            <p>Your verification code for the email change is:</p>
            <p style="font-size:30px;font-family:monospace;letter-spacing:0.4em;font-weight:bold;">${otp}</p>
@@ -529,11 +563,15 @@ async function confirmEmailChange({ user_id, otp }) {
   const key = EMAIL_CHANGE_PREFIX + user_id;
   const raw = await redis.get(key);
   if (!raw)
-    throw new AppError('INVALID_OTP', 'Verification code expired or not found', 400);
+    throw new AppError(
+      "INVALID_OTP",
+      "Verification code expired or not found",
+      400,
+    );
 
   const { otp: storedOtp, new_email } = JSON.parse(raw);
   if (String(otp).trim() !== storedOtp)
-    throw new AppError('INVALID_OTP', 'Incorrect verification code', 400);
+    throw new AppError("INVALID_OTP", "Incorrect verification code", 400);
 
   // Read the old email before overwriting it.
   const user = await staffRepo.findById(user_id);
@@ -544,17 +582,24 @@ async function confirmEmailChange({ user_id, otp }) {
 
   // Notify the old address so the account owner can act if this was unauthorised.
   if (old_email) {
-    emailService.send({
-      to: old_email,
-      subject: 'Your Pixie Girl Hub email address was changed',
-      html: `<p>Hello,</p>
+    emailService
+      .send({
+        to: old_email,
+        subject: "Your Pixie Girl Hub email address was changed",
+        html: `<p>Hello,</p>
              <p>The email address on your Pixie Girl Hub account was just changed to
              <strong>${new_email}</strong>.</p>
              <p>If you made this change, you can ignore this message.</p>
              <p>If you did <strong>not</strong> make this change, please contact your
              administrator immediately to secure your account.</p>`,
-      text: `Your Pixie Girl Hub account email was changed to ${new_email}. If you did not do this, contact your administrator immediately.`,
-    }).catch((err) => logger.error({ err: err.message }, 'email-change notification to old address failed'));
+        text: `Your Pixie Girl Hub account email was changed to ${new_email}. If you did not do this, contact your administrator immediately.`,
+      })
+      .catch((err) =>
+        logger.error(
+          { err: err.message },
+          "email-change notification to old address failed",
+        ),
+      );
   }
 
   return { email: new_email };

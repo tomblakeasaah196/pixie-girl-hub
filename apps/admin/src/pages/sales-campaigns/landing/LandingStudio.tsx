@@ -34,21 +34,61 @@ import {
 } from "@/lib/campaigns";
 import { LandingRender, type LandingModel } from "./LandingRender";
 
-const BLOCK_LIBRARY: Array<{ key: string; label: string; description: string }> = [
+const BLOCK_LIBRARY: Array<{
+  key: string;
+  label: string;
+  description: string;
+}> = [
   { key: "hero", label: "Hero", description: "Cinematic top of page" },
   { key: "countdown", label: "Countdown", description: "Live tabular timer" },
-  { key: "bundle_showcase", label: "Bundle Showcase", description: "Curated category bundles" },
-  { key: "quantity_tier_visualiser", label: "Tier Ladder", description: "Buy more, save more" },
-  { key: "featured_products", label: "Featured Products", description: "Individually styled pieces" },
-  { key: "lookbook_carousel", label: "Look Book", description: "Reels-style scroll" },
+  {
+    key: "bundle_showcase",
+    label: "Bundle Showcase",
+    description: "Curated category bundles",
+  },
+  {
+    key: "quantity_tier_visualiser",
+    label: "Tier Ladder",
+    description: "Buy more, save more",
+  },
+  {
+    key: "featured_products",
+    label: "Featured Products",
+    description: "Individually styled pieces",
+  },
+  {
+    key: "lookbook_carousel",
+    label: "Look Book",
+    description: "Reels-style scroll",
+  },
   { key: "brand_story", label: "Brand Story", description: "Why this drop" },
-  { key: "founder_quote", label: "Founder Quote", description: "Trust + intent" },
+  {
+    key: "founder_quote",
+    label: "Founder Quote",
+    description: "Trust + intent",
+  },
   { key: "why_buy", label: "Why Buy", description: "3 value props" },
-  { key: "testimonials", label: "Testimonials", description: "Real customer quotes" },
+  {
+    key: "testimonials",
+    label: "Testimonials",
+    description: "Real customer quotes",
+  },
   { key: "faq", label: "FAQ", description: "Pre-empt friction" },
-  { key: "shipping_returns", label: "Shipping & Returns", description: "DHL + policy" },
-  { key: "newsletter_capture", label: "Newsletter", description: "Email signup" },
-  { key: "vip_signup", label: "VIP Signup", description: "Pre-launch heads-up" },
+  {
+    key: "shipping_returns",
+    label: "Shipping & Returns",
+    description: "DHL + policy",
+  },
+  {
+    key: "newsletter_capture",
+    label: "Newsletter",
+    description: "Email signup",
+  },
+  {
+    key: "vip_signup",
+    label: "VIP Signup",
+    description: "Pre-launch heads-up",
+  },
 ];
 const LIBRARY_LABEL = Object.fromEntries(BLOCK_LIBRARY.map((b) => [b.key, b]));
 const LOOKBOOK_KEY = "lookbook_carousel";
@@ -78,12 +118,22 @@ export function LandingStudio({
   const update = useUpdateCampaign(campaign.campaign_id);
 
   const [heroTitle, setHeroTitle] = useState(campaign.landing_hero_title || "");
-  const [heroSubtitle, setHeroSubtitle] = useState(campaign.landing_hero_subtitle || "");
-  const [heroImage, setHeroImage] = useState(campaign.landing_hero_image_url || "");
-  const [ctaText, setCtaText] = useState(campaign.landing_cta_text || "Shop the drop");
-  const [countdownMsg, setCountdownMsg] = useState(campaign.countdown_message || "");
+  const [heroSubtitle, setHeroSubtitle] = useState(
+    campaign.landing_hero_subtitle || "",
+  );
+  const [heroImage, setHeroImage] = useState(
+    campaign.landing_hero_image_url || "",
+  );
+  const [ctaText, setCtaText] = useState(
+    campaign.landing_cta_text || "Shop the drop",
+  );
+  const [countdownMsg, setCountdownMsg] = useState(
+    campaign.countdown_message || "",
+  );
   const [endedMsg, setEndedMsg] = useState(campaign.ended_message || "");
-  const [endedRedirect, setEndedRedirect] = useState(campaign.ended_redirect_to || "");
+  const [endedRedirect, setEndedRedirect] = useState(
+    campaign.ended_redirect_to || "",
+  );
   const [blocks, setBlocks] = useState<LandingBlock[]>(
     campaign.landing_blocks?.length ? campaign.landing_blocks : defaultBlocks(),
   );
@@ -133,7 +183,9 @@ export function LandingStudio({
     const exists = blocks.some((b) => b.key === LOOKBOOK_KEY);
     const next = exists
       ? blocks.map((b) =>
-          b.key === LOOKBOOK_KEY ? { ...b, enabled: true, props: { ...(b.props || {}), images } } : b,
+          b.key === LOOKBOOK_KEY
+            ? { ...b, enabled: true, props: { ...(b.props || {}), images } }
+            : b,
         )
       : [...blocks, { key: LOOKBOOK_KEY, enabled: true, props: { images } }];
     markDirty(next);
@@ -147,7 +199,10 @@ export function LandingStudio({
       setHeroImage(url);
       setDirty(true);
     } catch (e) {
-      setError((e as Error)?.message || "Image upload failed. Try a smaller JPG or PNG.");
+      setError(
+        (e as Error)?.message ||
+          "Image upload failed. Try a smaller JPG or PNG.",
+      );
     } finally {
       setUploading(null);
     }
@@ -162,7 +217,10 @@ export function LandingStudio({
       }
       setGallery([...gallery, ...urls].slice(0, 12));
     } catch (e) {
-      setError((e as Error)?.message || "Image upload failed. Try a smaller JPG or PNG.");
+      setError(
+        (e as Error)?.message ||
+          "Image upload failed. Try a smaller JPG or PNG.",
+      );
     } finally {
       setUploading(null);
     }
@@ -200,7 +258,10 @@ export function LandingStudio({
       setSavedAt(Date.now());
       setDirty(false);
     } catch (e) {
-      setError((e as Error)?.message || "Couldn't save the landing page. Please try again.");
+      setError(
+        (e as Error)?.message ||
+          "Couldn't save the landing page. Please try again.",
+      );
     } finally {
       setSaving(false);
     }
@@ -210,13 +271,25 @@ export function LandingStudio({
     slug: campaign.slug,
     name: campaign.name,
     state: previewState,
-    hero: { title: heroTitle, subtitle: heroSubtitle, image_url: heroImage, cta_text: ctaText },
+    hero: {
+      title: heroTitle,
+      subtitle: heroSubtitle,
+      image_url: heroImage,
+      cta_text: ctaText,
+    },
     countdown_to:
-      previewState === "before" ? campaign.starts_at : previewState === "live" ? campaign.ends_at : null,
+      previewState === "before"
+        ? campaign.starts_at
+        : previewState === "live"
+          ? campaign.ends_at
+          : null,
     countdown_message: countdownMsg,
     blocks,
     products: [],
-    ended: previewState === "ended" ? { message: endedMsg, redirect_to: endedRedirect } : null,
+    ended:
+      previewState === "ended"
+        ? { message: endedMsg, redirect_to: endedRedirect }
+        : null,
     gallery,
   };
 
@@ -228,8 +301,12 @@ export function LandingStudio({
       <div className="h-14 shrink-0 flex items-center gap-3 px-4 border-b border-line bg-panel/60 backdrop-blur">
         <div className="flex items-center gap-2 min-w-0">
           <Pencil className="w-4 h-4 text-accent-glow" />
-          <span className="font-display text-[16px] truncate">Landing Studio</span>
-          <span className="text-text-faint text-[12px] truncate hidden sm:block">· {campaign.name}</span>
+          <span className="font-display text-[16px] truncate">
+            Landing Studio
+          </span>
+          <span className="text-text-faint text-[12px] truncate hidden sm:block">
+            · {campaign.name}
+          </span>
         </div>
 
         {/* Preview-state toggle */}
@@ -240,7 +317,9 @@ export function LandingStudio({
               onClick={() => setPreviewState(s)}
               className={cn(
                 "px-3 py-1.5 rounded-full text-[12px] font-semibold capitalize transition-colors",
-                previewState === s ? "bg-accent-deep text-[#F4E9D9]" : "text-text-muted hover:text-text-primary",
+                previewState === s
+                  ? "bg-accent-deep text-[#F4E9D9]"
+                  : "text-text-muted hover:text-text-primary",
               )}
             >
               {s}
@@ -250,14 +329,27 @@ export function LandingStudio({
 
         <div className="flex items-center gap-2 ml-auto md:ml-3">
           {dirty ? (
-            <span className="text-[12px] text-text-faint hidden sm:block">Unsaved</span>
+            <span className="text-[12px] text-text-faint hidden sm:block">
+              Unsaved
+            </span>
           ) : savedAt ? (
             <span className="text-[12px] text-success font-semibold hidden sm:inline-flex items-center gap-1">
               <Check className="w-3.5 h-3.5" /> Saved
             </span>
           ) : null}
           {canEdit && (
-            <Button variant="primary" onClick={save} disabled={saving || !dirty} icon={saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}>
+            <Button
+              variant="primary"
+              onClick={save}
+              disabled={saving || !dirty}
+              icon={
+                saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )
+              }
+            >
               {saving ? "Saving…" : "Save"}
             </Button>
           )}
@@ -279,10 +371,16 @@ export function LandingStudio({
             onClick={() => setMobileTab(t)}
             className={cn(
               "flex-1 py-2.5 text-[13px] font-semibold capitalize inline-flex items-center justify-center gap-1.5",
-              mobileTab === t ? "text-accent-glow border-b-2 border-accent" : "text-text-muted",
+              mobileTab === t
+                ? "text-accent-glow border-b-2 border-accent"
+                : "text-text-muted",
             )}
           >
-            {t === "edit" ? <Pencil className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            {t === "edit" ? (
+              <Pencil className="w-3.5 h-3.5" />
+            ) : (
+              <Eye className="w-3.5 h-3.5" />
+            )}
             {t}
           </button>
         ))}
@@ -330,11 +428,17 @@ export function LandingStudio({
                     className="w-16 h-16 rounded-[12px] border border-line bg-text-primary/[0.05] grid place-items-center overflow-hidden shrink-0"
                     style={
                       heroImage
-                        ? { backgroundImage: `url("${heroImage}")`, backgroundSize: "cover", backgroundPosition: "center" }
+                        ? {
+                            backgroundImage: `url("${heroImage}")`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                          }
                         : undefined
                     }
                   >
-                    {!heroImage && <ImagePlus className="w-5 h-5 text-text-faint" />}
+                    {!heroImage && (
+                      <ImagePlus className="w-5 h-5 text-text-faint" />
+                    )}
                   </div>
                   <div className="flex flex-col gap-2">
                     <button
@@ -342,11 +446,18 @@ export function LandingStudio({
                       disabled={!canEdit || uploading === "hero"}
                       className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-accent-glow disabled:opacity-50"
                     >
-                      {uploading === "hero" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      {uploading === "hero" ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5" />
+                      )}
                       {heroImage ? "Replace image" : "Upload image"}
                     </button>
                     {heroImage && canEdit && (
-                      <button onClick={() => touch(setHeroImage)("")} className="text-[12px] text-text-faint hover:text-danger text-left">
+                      <button
+                        onClick={() => touch(setHeroImage)("")}
+                        className="text-[12px] text-text-faint hover:text-danger text-left"
+                      >
                         Remove
                       </button>
                     )}
@@ -356,11 +467,16 @@ export function LandingStudio({
                     type="file"
                     accept="image/*"
                     hidden
-                    onChange={(e) => e.target.files?.[0] && onHeroFile(e.target.files[0])}
+                    onChange={(e) =>
+                      e.target.files?.[0] && onHeroFile(e.target.files[0])
+                    }
                   />
                 </div>
               </Field>
-              <Field label="Image URL (optional)" hint="Or paste a hosted image URL">
+              <Field
+                label="Image URL (optional)"
+                hint="Or paste a hosted image URL"
+              >
                 <input
                   value={heroImage}
                   onChange={(e) => touch(setHeroImage)(e.target.value)}
@@ -370,7 +486,12 @@ export function LandingStudio({
                 />
               </Field>
               <Field label="CTA button text">
-                <input value={ctaText} onChange={(e) => touch(setCtaText)(e.target.value)} disabled={!canEdit} className={inputCls} />
+                <input
+                  value={ctaText}
+                  onChange={(e) => touch(setCtaText)(e.target.value)}
+                  disabled={!canEdit}
+                  className={inputCls}
+                />
               </Field>
             </section>
 
@@ -379,11 +500,23 @@ export function LandingStudio({
               <h3 className="micro">Look book images</h3>
               <div className="grid grid-cols-4 gap-2">
                 {gallery.map((g, i) => (
-                  <div key={i} className="relative aspect-[3/4] rounded-[10px] overflow-hidden group">
-                    <div className="absolute inset-0" style={{ backgroundImage: `url("${g}")`, backgroundSize: "cover", backgroundPosition: "center" }} />
+                  <div
+                    key={i}
+                    className="relative aspect-[3/4] rounded-[10px] overflow-hidden group"
+                  >
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        backgroundImage: `url("${g}")`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }}
+                    />
                     {canEdit && (
                       <button
-                        onClick={() => setGallery(gallery.filter((_, j) => j !== i))}
+                        onClick={() =>
+                          setGallery(gallery.filter((_, j) => j !== i))
+                        }
                         className="absolute top-1 right-1 w-6 h-6 grid place-items-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
                         aria-label="Remove image"
                       >
@@ -398,7 +531,11 @@ export function LandingStudio({
                     disabled={uploading === "look"}
                     className="aspect-[3/4] rounded-[10px] border border-dashed border-line grid place-items-center text-text-faint hover:border-accent/50 hover:text-accent-glow disabled:opacity-50"
                   >
-                    {uploading === "look" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                    {uploading === "look" ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Plus className="w-5 h-5" />
+                    )}
                   </button>
                 )}
                 <input
@@ -407,10 +544,14 @@ export function LandingStudio({
                   accept="image/*"
                   multiple
                   hidden
-                  onChange={(e) => e.target.files?.length && onLookFiles(e.target.files)}
+                  onChange={(e) =>
+                    e.target.files?.length && onLookFiles(e.target.files)
+                  }
                 />
               </div>
-              <p className="text-[11.5px] text-text-faint">Up to 12 images — shown in the Look Book block.</p>
+              <p className="text-[11.5px] text-text-faint">
+                Up to 12 images — shown in the Look Book block.
+              </p>
             </section>
 
             {/* Sections */}
@@ -420,21 +561,40 @@ export function LandingStudio({
                 {blocks.map((b, i) => {
                   const info = LIBRARY_LABEL[b.key || b.type || ""];
                   return (
-                    <div key={(b.key || b.type || "") + i} className="flex items-center gap-2 p-2.5 rounded-[10px] bg-text-primary/[0.04] border border-line">
+                    <div
+                      key={(b.key || b.type || "") + i}
+                      className="flex items-center gap-2 p-2.5 rounded-[10px] bg-text-primary/[0.04] border border-line"
+                    >
                       <div className="flex flex-col">
-                        <button disabled={!canEdit || i === 0} onClick={() => moveBlock(i, -1)} className="text-text-faint hover:text-text-primary disabled:opacity-30">
+                        <button
+                          disabled={!canEdit || i === 0}
+                          onClick={() => moveBlock(i, -1)}
+                          className="text-text-faint hover:text-text-primary disabled:opacity-30"
+                        >
                           <ArrowUp className="w-3.5 h-3.5" />
                         </button>
-                        <button disabled={!canEdit || i === blocks.length - 1} onClick={() => moveBlock(i, 1)} className="text-text-faint hover:text-text-primary disabled:opacity-30">
+                        <button
+                          disabled={!canEdit || i === blocks.length - 1}
+                          onClick={() => moveBlock(i, 1)}
+                          className="text-text-faint hover:text-text-primary disabled:opacity-30"
+                        >
                           <ArrowDown className="w-3.5 h-3.5" />
                         </button>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-semibold truncate">{info?.label || b.key}</div>
-                        <div className="text-[10.5px] text-text-faint truncate">{info?.description}</div>
+                        <div className="text-[13px] font-semibold truncate">
+                          {info?.label || b.key}
+                        </div>
+                        <div className="text-[10.5px] text-text-faint truncate">
+                          {info?.description}
+                        </div>
                       </div>
                       {canEdit && (
-                        <button onClick={() => toggleBlock(b.key || "")} className="text-text-faint hover:text-danger p-1" aria-label="Remove section">
+                        <button
+                          onClick={() => toggleBlock(b.key || "")}
+                          className="text-text-faint hover:text-danger p-1"
+                          aria-label="Remove section"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
@@ -446,7 +606,9 @@ export function LandingStudio({
                 <div>
                   <div className="micro mb-2 mt-3">Add a section</div>
                   <div className="flex flex-wrap gap-1.5">
-                    {BLOCK_LIBRARY.filter((lib) => !blocks.some((b) => b.key === lib.key)).map((lib) => (
+                    {BLOCK_LIBRARY.filter(
+                      (lib) => !blocks.some((b) => b.key === lib.key),
+                    ).map((lib) => (
                       <button
                         key={lib.key}
                         onClick={() => toggleBlock(lib.key)}
@@ -463,21 +625,50 @@ export function LandingStudio({
             {/* States */}
             <section className="space-y-3">
               <h3 className="micro">Countdown & ended state</h3>
-              <Field label="Countdown message" hint="Shown beside the timer (Before / Live)">
-                <input value={countdownMsg} onChange={(e) => touch(setCountdownMsg)(e.target.value)} disabled={!canEdit} placeholder="Doors open in" className={inputCls} />
+              <Field
+                label="Countdown message"
+                hint="Shown beside the timer (Before / Live)"
+              >
+                <input
+                  value={countdownMsg}
+                  onChange={(e) => touch(setCountdownMsg)(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="Doors open in"
+                  className={inputCls}
+                />
               </Field>
               <Field label="Ended message">
-                <input value={endedMsg} onChange={(e) => touch(setEndedMsg)(e.target.value)} disabled={!canEdit} placeholder="The drop has ended — but our shelves are full of beautiful things." className={inputCls} />
+                <input
+                  value={endedMsg}
+                  onChange={(e) => touch(setEndedMsg)(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="The drop has ended — but our shelves are full of beautiful things."
+                  className={inputCls}
+                />
               </Field>
-              <Field label="Ended redirect URL" hint="Where 'Shop our collection' points">
-                <input value={endedRedirect} onChange={(e) => touch(setEndedRedirect)(e.target.value)} disabled={!canEdit} placeholder="https://pixiegirlglobal.com" className={cn(inputCls, "font-mono text-[12px]")} />
+              <Field
+                label="Ended redirect URL"
+                hint="Where 'Shop our collection' points"
+              >
+                <input
+                  value={endedRedirect}
+                  onChange={(e) => touch(setEndedRedirect)(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="https://pixiegirlglobal.com"
+                  className={cn(inputCls, "font-mono text-[12px]")}
+                />
               </Field>
             </section>
           </div>
         </div>
 
         {/* Preview */}
-        <div className={cn("flex-1 min-w-0 bg-bg", mobileTab === "preview" ? "block" : "hidden md:block")}>
+        <div
+          className={cn(
+            "flex-1 min-w-0 bg-bg",
+            mobileTab === "preview" ? "block" : "hidden md:block",
+          )}
+        >
           <div className="h-full flex flex-col">
             <div className="shrink-0 px-4 py-2 border-b border-line/60 flex items-center justify-between md:hidden">
               <span className="text-[12px] text-text-muted">Preview</span>
@@ -488,7 +679,9 @@ export function LandingStudio({
                     onClick={() => setPreviewState(s)}
                     className={cn(
                       "px-2.5 py-1 rounded-full text-[11px] font-semibold capitalize",
-                      previewState === s ? "bg-accent-deep text-[#F4E9D9]" : "text-text-muted",
+                      previewState === s
+                        ? "bg-accent-deep text-[#F4E9D9]"
+                        : "text-text-muted",
                     )}
                   >
                     {s}

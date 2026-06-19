@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
 import * as contactsApi from "./api";
 import type {
@@ -42,7 +47,10 @@ export function useContactSummary(id: string | null) {
   });
 }
 
-export function useContactTimeline(id: string | null, params: contactsApi.TimelineParams = {}) {
+export function useContactTimeline(
+  id: string | null,
+  params: contactsApi.TimelineParams = {},
+) {
   const biz = useBiz();
   return useQuery({
     queryKey: ["contacts", biz, "timeline", id, params],
@@ -74,7 +82,8 @@ export function useUpdateContact(id: string) {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: (input: Partial<ContactCreateInput>) => contactsApi.updateContact(id, input),
+    mutationFn: (input: Partial<ContactCreateInput>) =>
+      contactsApi.updateContact(id, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["contacts", biz] }),
   });
 }
@@ -92,9 +101,12 @@ export function useCreateAddress(contactId: string) {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: (input: AddressCreateInput) => contactsApi.createAddress(contactId, input),
+    mutationFn: (input: AddressCreateInput) =>
+      contactsApi.createAddress(contactId, input),
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["contacts", biz, "addresses", contactId] }),
+      qc.invalidateQueries({
+        queryKey: ["contacts", biz, "addresses", contactId],
+      }),
   });
 }
 
@@ -102,9 +114,12 @@ export function useDeleteAddress(contactId: string) {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: (addressId: string) => contactsApi.deleteAddress(contactId, addressId),
+    mutationFn: (addressId: string) =>
+      contactsApi.deleteAddress(contactId, addressId),
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["contacts", biz, "addresses", contactId] }),
+      qc.invalidateQueries({
+        queryKey: ["contacts", biz, "addresses", contactId],
+      }),
   });
 }
 
@@ -161,8 +176,15 @@ export function useMoveDeal() {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: ({ id, stageId, notes }: { id: string; stageId: string; notes?: string }) =>
-      contactsApi.moveDeal(id, stageId, notes),
+    mutationFn: ({
+      id,
+      stageId,
+      notes,
+    }: {
+      id: string;
+      stageId: string;
+      notes?: string;
+    }) => contactsApi.moveDeal(id, stageId, notes),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crm", biz, "deals"] }),
   });
 }
@@ -203,7 +225,9 @@ export function useUpsertPreferences(contactId: string) {
     mutationFn: (input: Partial<CustomerPreferences>) =>
       contactsApi.upsertPreferences(contactId, input),
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["crm", biz, "preferences", contactId] }),
+      qc.invalidateQueries({
+        queryKey: ["crm", biz, "preferences", contactId],
+      }),
   });
 }
 
@@ -214,6 +238,8 @@ export function useAddMeasurement(contactId: string) {
     mutationFn: (input: Partial<CustomerMeasurement>) =>
       contactsApi.addMeasurement(contactId, input),
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["crm", biz, "measurements", contactId] }),
+      qc.invalidateQueries({
+        queryKey: ["crm", biz, "measurements", contactId],
+      }),
   });
 }

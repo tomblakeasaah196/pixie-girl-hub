@@ -14,7 +14,9 @@ export function SaleFooter({ payload }: { payload: LandingPayload }) {
     <footer className="mt-16 border-t border-[rgb(var(--border-c)/0.08)]">
       <div className="mx-auto max-w-[1180px] px-6 md:px-10 py-10 grid grid-cols-1 md:grid-cols-3 gap-8 text-[13px] text-[rgb(var(--text-muted))]">
         <div>
-          <div className="font-display text-[20px] text-[rgb(var(--text))]">{brand}</div>
+          <div className="font-display text-[20px] text-[rgb(var(--text))]">
+            {brand}
+          </div>
           <p className="mt-2">A house for the women who get it.</p>
         </div>
         <div>
@@ -50,7 +52,8 @@ export function SaleFooter({ payload }: { payload: LandingPayload }) {
         </div>
       </div>
       <div className="border-t border-[rgb(var(--border-c)/0.06)] py-4 text-center text-[11px] text-[rgb(var(--text-faint))]">
-        © {new Date().getFullYear()} {brand}. The drop is real. The hair is real. The girl is you.
+        © {new Date().getFullYear()} {brand}. The drop is real. The hair is
+        real. The girl is you.
       </div>
     </footer>
   );

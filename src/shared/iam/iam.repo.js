@@ -132,7 +132,14 @@ async function getSecurityStats(business) {
 
 // ── User management ─────────────────────────────────────────
 
-async function listUsers({ business, search, status, profile_type, page = 1, limit = 25 }) {
+async function listUsers({
+  business,
+  search,
+  status,
+  profile_type,
+  page = 1,
+  limit = 25,
+}) {
   const where = [];
   const params = [];
   let i = 1;
@@ -262,7 +269,14 @@ async function provisionStaffLogin(
 
 async function provisionExternalUser(
   client,
-  { email, password_hash, display_name, external_label, default_business, permitted_businesses },
+  {
+    email,
+    password_hash,
+    display_name,
+    external_label,
+    default_business,
+    permitted_businesses,
+  },
 ) {
   const { rows } = await client.query(
     `INSERT INTO shared.users
@@ -271,7 +285,14 @@ async function provisionExternalUser(
         profile_type, force_password_reset)
      VALUES ($1, $2, $3, $4, $5, $6, 'active', 'external', true)
      RETURNING user_id, email, display_name, status, profile_type, external_label`,
-    [email, password_hash, display_name, external_label, default_business, permitted_businesses],
+    [
+      email,
+      password_hash,
+      display_name,
+      external_label,
+      default_business,
+      permitted_businesses,
+    ],
   );
   return rows[0];
 }
@@ -285,10 +306,9 @@ async function deactivateUser(client, userId) {
     [userId],
   );
   // Also remove all tracked sessions
-  await client.query(
-    `DELETE FROM shared.user_sessions WHERE user_id = $1`,
-    [userId],
-  );
+  await client.query(`DELETE FROM shared.user_sessions WHERE user_id = $1`, [
+    userId,
+  ]);
   return rows[0] || null;
 }
 
@@ -575,7 +595,11 @@ async function createReviewEntries(client, reviewId, entries) {
   return rows;
 }
 
-async function updateReviewEntry(client, entryId, { decision, reviewer_note, decided_by }) {
+async function updateReviewEntry(
+  client,
+  entryId,
+  { decision, reviewer_note, decided_by },
+) {
   const { rows } = await client.query(
     `UPDATE shared.access_review_entries
         SET decision = $2,

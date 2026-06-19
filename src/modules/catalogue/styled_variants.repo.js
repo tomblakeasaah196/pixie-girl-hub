@@ -117,7 +117,11 @@ async function upsertConfig({ client, brand, patch, user_id }) {
        updated_by = EXCLUDED.updated_by,
        updated_at = now()
      RETURNING *`,
-    [patch.size_guide_title ?? null, patch.head_size_guide_md ?? null, user_id || null],
+    [
+      patch.size_guide_title ?? null,
+      patch.head_size_guide_md ?? null,
+      user_id || null,
+    ],
   );
   return rows[0];
 }
@@ -279,9 +283,16 @@ async function createVariant({ client, brand, styled_id, input }) {
   return rows[0];
 }
 
-async function updateVariant({ client, brand, styled_id, styled_variant_id, patch }) {
+async function updateVariant({
+  client,
+  brand,
+  styled_id,
+  styled_variant_id,
+  patch,
+}) {
   const { f, p, next } = setClause(VARIANT_COLS, patch);
-  if (!f.length) return getVariant({ client, brand, styled_id, styled_variant_id });
+  if (!f.length)
+    return getVariant({ client, brand, styled_id, styled_variant_id });
   p.push(styled_variant_id, styled_id);
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "styled_product_variants")} SET ${f.join(",")}

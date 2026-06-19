@@ -6,7 +6,17 @@
 
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, X, CheckCheck, ArrowRight, AlertTriangle, DollarSign, Package, CheckCircle, Info } from "lucide-react";
+import {
+  Bell,
+  X,
+  CheckCheck,
+  ArrowRight,
+  AlertTriangle,
+  DollarSign,
+  Package,
+  CheckCircle,
+  Info,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   useNotifFeed,
@@ -29,7 +39,11 @@ function NotifIcon({ type }: { type: string }) {
   const cls = "w-4 h-4 shrink-0 mt-0.5";
   if (type.includes("approval") || type.includes("leave"))
     return <AlertTriangle className={cn(cls, "text-warn")} />;
-  if (type.includes("payment") || type.includes("billing") || type.includes("order"))
+  if (
+    type.includes("payment") ||
+    type.includes("billing") ||
+    type.includes("order")
+  )
     return <DollarSign className={cn(cls, "text-success")} />;
   if (type.includes("stock") || type.includes("production"))
     return <Package className={cn(cls, "text-accent-glow")} />;
@@ -54,7 +68,9 @@ export function NotificationBottomSheet({ onClose }: Props) {
 
   // Close on Escape.
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
@@ -95,7 +111,9 @@ export function NotificationBottomSheet({ onClose }: Props) {
         <div className="flex items-center justify-between px-5 py-3 border-b hairline shrink-0">
           <div className="flex items-center gap-2">
             <Bell className="w-4 h-4 text-accent" />
-            <span className="text-[14px] font-semibold text-text-primary">Notifications</span>
+            <span className="text-[14px] font-semibold text-text-primary">
+              Notifications
+            </span>
             {unreadCount > 0 && (
               <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-bold text-accent">
                 {unreadCount}
@@ -139,8 +157,12 @@ export function NotificationBottomSheet({ onClose }: Props) {
           ) : all.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center px-6">
               <Bell className="w-10 h-10 text-text-faint/30 mb-3" />
-              <p className="text-[14px] font-medium text-text-muted">You're all caught up</p>
-              <p className="text-[12px] text-text-faint mt-1">No notifications right now</p>
+              <p className="text-[14px] font-medium text-text-muted">
+                You're all caught up
+              </p>
+              <p className="text-[12px] text-text-faint mt-1">
+                No notifications right now
+              </p>
             </div>
           ) : (
             all.map((n) => (
@@ -160,14 +182,24 @@ export function NotificationBottomSheet({ onClose }: Props) {
                 />
                 <NotifIcon type={n.type} />
                 <div className="flex-1 min-w-0">
-                  <p className={cn("text-[13px] leading-snug line-clamp-2",
-                    n.is_read ? "text-text-muted" : "font-semibold text-text-primary")}>
+                  <p
+                    className={cn(
+                      "text-[13px] leading-snug line-clamp-2",
+                      n.is_read
+                        ? "text-text-muted"
+                        : "font-semibold text-text-primary",
+                    )}
+                  >
                     {n.title}
                   </p>
                   {n.body && (
-                    <p className="text-[11.5px] text-text-faint mt-0.5 line-clamp-2 leading-relaxed">{n.body}</p>
+                    <p className="text-[11.5px] text-text-faint mt-0.5 line-clamp-2 leading-relaxed">
+                      {n.body}
+                    </p>
                   )}
-                  <p className="text-[11px] text-text-faint mt-1">{relTime(n.created_at)}</p>
+                  <p className="text-[11px] text-text-faint mt-1">
+                    {relTime(n.created_at)}
+                  </p>
                 </div>
               </button>
             ))
@@ -177,7 +209,10 @@ export function NotificationBottomSheet({ onClose }: Props) {
         {/* Footer */}
         <div className="border-t hairline px-5 py-3 shrink-0">
           <button
-            onClick={() => { onClose(); navigate("/notifications"); }}
+            onClick={() => {
+              onClose();
+              navigate("/notifications");
+            }}
             className="w-full flex items-center justify-center gap-1.5 h-11 rounded-xl bg-accent/10 text-accent text-[13px] font-semibold hover:bg-accent/20 transition-colors"
           >
             View all notifications <ArrowRight className="w-4 h-4" />

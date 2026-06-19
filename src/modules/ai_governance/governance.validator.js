@@ -57,7 +57,9 @@ const modelUpsert = z
     vendor: z.enum(VENDOR),
     display_name: z.string().min(1).max(160),
     family: z.string().max(60).nullable().optional(),
-    capability: z.enum(["chat", "embedding", "audio", "vision"]).default("chat"),
+    capability: z
+      .enum(["chat", "embedding", "audio", "vision"])
+      .default("chat"),
     context_window: z.coerce.number().int().positive().nullable().optional(),
     supports_tools: z.boolean().optional(),
     supports_streaming: z.boolean().optional(),

@@ -12,14 +12,26 @@ interface CalendarViewProps {
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 export function CalendarView({ columns, isLoading }: CalendarViewProps) {
   const navigate = useNavigate();
   const today = new Date();
-  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [viewDate, setViewDate] = useState(
+    new Date(today.getFullYear(), today.getMonth(), 1),
+  );
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -84,7 +96,10 @@ export function CalendarView({ columns, isLoading }: CalendarViewProps) {
       {/* Day headers */}
       <div className="grid grid-cols-7 mb-1">
         {DAYS.map((d) => (
-          <div key={d} className="text-center text-[10.5px] font-semibold text-text-faint py-1">
+          <div
+            key={d}
+            className="text-center text-[10.5px] font-semibold text-text-faint py-1"
+          >
             {d}
           </div>
         ))}
@@ -107,7 +122,9 @@ export function CalendarView({ columns, isLoading }: CalendarViewProps) {
               key={dateStr}
               className={[
                 "min-h-[80px] p-1.5 rounded-[10px] border hairline",
-                isToday ? "border-accent/40 bg-accent/[0.05]" : "bg-text-primary/[0.02]",
+                isToday
+                  ? "border-accent/40 bg-accent/[0.05]"
+                  : "bg-text-primary/[0.02]",
                 isPast && !isToday ? "opacity-60" : "",
               ].join(" ")}
             >
@@ -140,7 +157,9 @@ export function CalendarView({ columns, isLoading }: CalendarViewProps) {
                   </button>
                 ))}
                 {dayDeals.length > 3 && (
-                  <span className="text-[9px] text-text-faint px-1">+{dayDeals.length - 3}</span>
+                  <span className="text-[9px] text-text-faint px-1">
+                    +{dayDeals.length - 3}
+                  </span>
                 )}
               </div>
             </div>
@@ -154,12 +173,17 @@ export function CalendarView({ columns, isLoading }: CalendarViewProps) {
           {columns
             .filter((c) => c.deals.length > 0)
             .map((col) => (
-              <div key={col.stage.stage_id} className="flex items-center gap-1.5">
+              <div
+                key={col.stage.stage_id}
+                className="flex items-center gap-1.5"
+              >
                 <div
                   className="w-2.5 h-2.5 rounded-full"
                   style={{ backgroundColor: col.stage.colour ?? "#690909" }}
                 />
-                <span className="text-[11px] text-text-faint">{col.stage.display_name}</span>
+                <span className="text-[11px] text-text-faint">
+                  {col.stage.display_name}
+                </span>
               </div>
             ))}
         </div>

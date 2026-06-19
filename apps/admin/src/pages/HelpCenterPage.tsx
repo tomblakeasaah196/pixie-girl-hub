@@ -90,9 +90,9 @@ export function HelpCenterPage() {
           <span className="text-text-primary font-medium">
             Try asking Praxis.
           </span>{" "}
-          Every article here is indexed for Praxis AI, so you can ask
-          questions in plain language like &ldquo;why can&rsquo;t my staff
-          start a WhatsApp chat?&rdquo; and get a grounded answer.
+          Every article here is indexed for Praxis AI, so you can ask questions
+          in plain language like &ldquo;why can&rsquo;t my staff start a
+          WhatsApp chat?&rdquo; and get a grounded answer.
         </div>
       </div>
 

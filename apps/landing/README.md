@@ -98,15 +98,15 @@ tailwind.config.ts                 Token-driven Tailwind (mirrors the admin cano
 
 The page state derives from the campaign's `state` field plus the times.
 
-| State                | Hero variant            | Visible blocks                                            |
-| -------------------- | ----------------------- | --------------------------------------------------------- |
-| `before`             | Countdown ring (3D)     | Countdown + Newsletter + VIP signup + Story/FAQ           |
-| `before_vip_window`  | Countdown ring + VIP pill | Same as before, plus a VIP-access banner                |
-| `live`               | Hero centrepiece (3D)   | Everything — bundles, tiers, products, lookbook, stock    |
-| `live_last_call`     | Surge palette + breathe | Same as live; tickers tick faster                         |
-| `live_sold_out_hold` | Hero centrepiece        | Live blocks; sold-out cards switch to preorder if enabled |
-| `ended`              | Monochrome fade         | Ended farewell + redirect-to-storefront CTA               |
-| `ended_waitlist`     | Monochrome fade         | "Next drop: …" + signup link to the next campaign         |
+| State                | Hero variant              | Visible blocks                                            |
+| -------------------- | ------------------------- | --------------------------------------------------------- |
+| `before`             | Countdown ring (3D)       | Countdown + Newsletter + VIP signup + Story/FAQ           |
+| `before_vip_window`  | Countdown ring + VIP pill | Same as before, plus a VIP-access banner                  |
+| `live`               | Hero centrepiece (3D)     | Everything — bundles, tiers, products, lookbook, stock    |
+| `live_last_call`     | Surge palette + breathe   | Same as live; tickers tick faster                         |
+| `live_sold_out_hold` | Hero centrepiece          | Live blocks; sold-out cards switch to preorder if enabled |
+| `ended`              | Monochrome fade           | Ended farewell + redirect-to-storefront CTA               |
+| `ended_waitlist`     | Monochrome fade           | "Next drop: …" + signup link to the next campaign         |
 
 ## Non-negotiables (canon)
 

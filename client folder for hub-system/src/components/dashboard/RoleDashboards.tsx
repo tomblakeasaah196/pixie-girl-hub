@@ -104,12 +104,43 @@ interface QuickAction {
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: "New Sale", href: "/pos", icon: ShoppingCart, permission: { module: "pos", action: "view" }, primary: true },
-  { label: "Quick Sale", href: "/sales/orders/new", icon: Zap, permission: { module: "sales", action: "create" } },
-  { label: "Check Stock", href: "/stock", icon: Package, permission: { module: "stock", action: "view" } },
-  { label: "View Deliveries", href: "/logistics", icon: Truck, permission: { module: "logistics", action: "view" } },
-  { label: "Approve Expenses", href: "/expenses", icon: ReceiptText, permission: { module: "expenses", action: "approve" } },
-  { label: "View Reports", href: "/reports", icon: BarChart3, permission: { module: "reports", action: "view" } },
+  {
+    label: "New Sale",
+    href: "/pos",
+    icon: ShoppingCart,
+    permission: { module: "pos", action: "view" },
+    primary: true,
+  },
+  {
+    label: "Quick Sale",
+    href: "/sales/orders/new",
+    icon: Zap,
+    permission: { module: "sales", action: "create" },
+  },
+  {
+    label: "Check Stock",
+    href: "/stock",
+    icon: Package,
+    permission: { module: "stock", action: "view" },
+  },
+  {
+    label: "View Deliveries",
+    href: "/logistics",
+    icon: Truck,
+    permission: { module: "logistics", action: "view" },
+  },
+  {
+    label: "Approve Expenses",
+    href: "/expenses",
+    icon: ReceiptText,
+    permission: { module: "expenses", action: "approve" },
+  },
+  {
+    label: "View Reports",
+    href: "/reports",
+    icon: BarChart3,
+    permission: { module: "reports", action: "view" },
+  },
 ];
 
 export function QuickActions({ max = 5 }: { max?: number }) {

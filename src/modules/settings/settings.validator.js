@@ -68,7 +68,10 @@ const secretSet = z
 const slugRegex = /^[a-z][a-z0-9-]*$/;
 const policyCreate = z
   .object({
-    slug: z.string().regex(slugRegex, "lowercase letters / digits / hyphens").max(80),
+    slug: z
+      .string()
+      .regex(slugRegex, "lowercase letters / digits / hyphens")
+      .max(80),
     title: z.string().min(1).max(200),
     policy_type: z.string().min(1).max(40),
     body_html: z.string().max(200_000).optional(),

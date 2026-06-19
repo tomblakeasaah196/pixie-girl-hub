@@ -39,9 +39,7 @@ const styledCreate = z
 
 const styledUpdate = styledCreate.partial().omit({ base_product_id: true });
 
-const unpublish = z
-  .object({ archive: z.boolean().optional() })
-  .strict();
+const unpublish = z.object({ archive: z.boolean().optional() }).strict();
 
 const aiDraft = z
   .object({

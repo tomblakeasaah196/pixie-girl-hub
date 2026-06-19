@@ -42,8 +42,8 @@ export function HelpArticlePage() {
           Article not found
         </h2>
         <p className="text-text-muted text-[13px] mt-2">
-          The article you&rsquo;re looking for may have been moved or
-          retired. Try the Help Center search.
+          The article you&rsquo;re looking for may have been moved or retired.
+          Try the Help Center search.
         </p>
       </div>
     );
@@ -103,8 +103,8 @@ export function HelpArticlePage() {
           <span className="text-text-primary font-medium">
             Want to discuss this with Praxis?
           </span>{" "}
-          Open Praxis AI and ask a follow-up. The agent has read this
-          article and will quote it back in plain English.
+          Open Praxis AI and ask a follow-up. The agent has read this article
+          and will quote it back in plain English.
         </div>
       </div>
     </div>

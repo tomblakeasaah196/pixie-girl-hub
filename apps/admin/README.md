@@ -11,10 +11,12 @@ engineering we cloned-and-simplified is the **hub-system** client.
 > you add the screens.
 
 ## Stack
+
 React 18 · TypeScript · Vite · Tailwind (CSS-variable token system) · Zustand
 (client state) · TanStack Query (server state) · React Router · lucide-react.
 
 ## Run
+
 ```bash
 npm install
 cp .env.example .env   # set VITE_API_URL
@@ -23,6 +25,7 @@ npm run build          # tsc -b && vite build
 ```
 
 ## What's in the foundation
+
 - **Theming (canon §2):** `src/styles/index.css` — "Maroon Noir" tokens, light
   mode, two-layer theming (Layer A platform / Layer B business). `tailwind.config.ts`
   maps tokens. `ThemeProvider` applies theme + business gradient at runtime.
@@ -45,6 +48,7 @@ npm run build          # tsc -b && vite build
   drawer). Every other module route renders `ModulePlaceholder` until built.
 
 ## How a new module slots in
+
 1. Add (or confirm) the module in `src/lib/modules.ts` (it already lists all 25).
 2. Run the canon's **question gate**; search the backend for flaws first.
 3. Create `pages/<module>/…`, compose the primitives, wire TanStack Query to the
@@ -53,6 +57,7 @@ npm run build          # tsc -b && vite build
 5. Run the per-screen Definition of Done (canon §6).
 
 ## Notes / backend dependencies
+
 - Auth, data, and real-time are **stubbed** here (demo user, mock rows). Wire to
   the backend API + Socket.io on integration; keep the access token in memory and
   the refresh token in an httpOnly cookie (never localStorage).

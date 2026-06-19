@@ -106,18 +106,14 @@ export function OrderCapturePublic() {
           });
         }
         setPhone(
-          data.contact.primary_phone ||
-            data.contact.whatsapp_number ||
-            "",
+          data.contact.primary_phone || data.contact.whatsapp_number || "",
         );
         setEmail(data.contact.email ?? "");
         setStage("form");
       } catch (e: unknown) {
         if (cancelled) return;
         setErrMsg(
-          e instanceof Error
-            ? e.message
-            : "We couldn't open this order link.",
+          e instanceof Error ? e.message : "We couldn't open this order link.",
         );
         setStage("error");
       }
@@ -136,8 +132,7 @@ export function OrderCapturePublic() {
     [ctx],
   );
 
-  const canSubmit =
-    !!address.line1 && !!phone && variantItems.length > 0;
+  const canSubmit = !!address.line1 && !!phone && variantItems.length > 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -201,7 +196,9 @@ export function OrderCapturePublic() {
       <Shell>
         <div className="text-center py-12">
           <AlertCircle className="w-8 h-8 mx-auto mb-3 text-danger" />
-          <p className="text-[14px] font-medium">Sorry — link no longer works.</p>
+          <p className="text-[14px] font-medium">
+            Sorry — link no longer works.
+          </p>
           <p className="text-[12.5px] text-text-muted mt-1 max-w-[360px] mx-auto">
             {errMsg ?? "Please ask us for a fresh order link."}
           </p>
@@ -216,8 +213,8 @@ export function OrderCapturePublic() {
           <CheckCircle2 className="w-9 h-9 mx-auto mb-3 text-green-400" />
           <p className="font-display text-[20px] mb-1">Order placed 🌹</p>
           <p className="text-[13px] text-text-muted max-w-[360px] mx-auto">
-            We&rsquo;ll WhatsApp you a payment link in a moment. Once
-            payment lands, your order moves into production.
+            We&rsquo;ll WhatsApp you a payment link in a moment. Once payment
+            lands, your order moves into production.
           </p>
         </div>
       </Shell>
@@ -284,8 +281,8 @@ export function OrderCapturePublic() {
       {unsupportedItems.length > 0 && (
         <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3 mb-5 text-[12px] text-amber-200">
           Some items couldn&rsquo;t be added automatically. They&rsquo;re
-          flagged above — our team will follow up on WhatsApp to finalise
-          those before shipping.
+          flagged above — our team will follow up on WhatsApp to finalise those
+          before shipping.
         </div>
       )}
 
@@ -423,7 +420,9 @@ function Section({
 }
 
 function Row({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{children}</div>;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{children}</div>
+  );
 }
 
 function Field({

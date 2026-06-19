@@ -121,16 +121,15 @@ export function MessageBubble({
             )}
             {message.message_type === "document" && (
               <div className="mb-1.5 text-[11px] opacity-80">
-                📄{" "}
-                {message.attachments?.[0]?.display_name ?? "Document"}
+                📄 {message.attachments?.[0]?.display_name ?? "Document"}
               </div>
             )}
             {message.message_type === "voice_note" && (
-              <div className="mb-1.5 text-[11px] opacity-80">
-                🎤 Voice note
-              </div>
+              <div className="mb-1.5 text-[11px] opacity-80">🎤 Voice note</div>
             )}
-            {message.content && <p className="whitespace-pre-wrap">{message.content}</p>}
+            {message.content && (
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            )}
             <div className="mt-1 flex items-center gap-1 justify-end text-[10px] opacity-70">
               {message.edited_at && <span className="italic">edited</span>}
               <span>{fmtClockTime(message.created_at)}</span>

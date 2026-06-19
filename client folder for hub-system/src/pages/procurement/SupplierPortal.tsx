@@ -85,7 +85,9 @@ export default function SupplierPortal() {
             <div>
               <div className="font-display text-brand-cream text-lg">
                 {nameHead}{" "}
-                {nameTail && <span className="text-brand-accent">{nameTail}</span>}
+                {nameTail && (
+                  <span className="text-brand-accent">{nameTail}</span>
+                )}
               </div>
               <div className="text-[0.6rem] text-brand-smoke uppercase tracking-widest">
                 Supplier Portal

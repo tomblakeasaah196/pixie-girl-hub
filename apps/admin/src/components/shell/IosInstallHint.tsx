@@ -6,7 +6,10 @@ const DISMISSED_KEY = "pixie_ios_install_dismissed";
 
 function isIos(): boolean {
   const ua = navigator.userAgent;
-  return /iPad|iPhone|iPod/.test(ua) || (ua.includes("Mac") && "ontouchend" in document);
+  return (
+    /iPad|iPhone|iPod/.test(ua) ||
+    (ua.includes("Mac") && "ontouchend" in document)
+  );
 }
 
 function isStandalone(): boolean {
@@ -37,9 +40,13 @@ export function IosInstallHint() {
     >
       <Share className="w-4 h-4 shrink-0 text-accent-glow" />
       <p className="min-w-0 text-text-muted">
-        <span className="text-text-primary font-medium">Get alerts on this iPhone:</span>{" "}
+        <span className="text-text-primary font-medium">
+          Get alerts on this iPhone:
+        </span>{" "}
         tap <span className="font-semibold text-text-primary">Share</span> then{" "}
-        <span className="font-semibold text-text-primary">Add to Home Screen</span>
+        <span className="font-semibold text-text-primary">
+          Add to Home Screen
+        </span>
       </p>
       <button
         onClick={dismiss}

@@ -4,7 +4,13 @@ import { Info, Loader2, Percent, Plus } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
-import { ErrorState, MultiSelect, NumberField, Select, Toggle } from "@/components/ui/controls";
+import {
+  ErrorState,
+  MultiSelect,
+  NumberField,
+  Select,
+  Toggle,
+} from "@/components/ui/controls";
 import { Field, TextInput } from "@/components/ui/Form";
 import { useActiveBusiness } from "@/stores/business";
 import {
@@ -37,7 +43,10 @@ type ModuleKey = (typeof MODULE_OPTIONS)[number];
 const MODULE_SELECT = MODULE_OPTIONS.map((m) => ({ value: m, label: m }));
 
 export function TaxRatesPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Tax Rates" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Tax Rates" },
+  ]);
   const active = useActiveBusiness();
   const query = useTaxRates();
   const [adding, setAdding] = useState(false);
@@ -64,7 +73,11 @@ export function TaxRatesPage() {
             Define taxes once; they apply across every module unless excluded.
           </p>
         </div>
-        <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => setAdding(true)}>
+        <Button
+          size="sm"
+          icon={<Plus className="w-4 h-4" />}
+          onClick={() => setAdding(true)}
+        >
           Add tax
         </Button>
       </header>
@@ -83,7 +96,13 @@ export function TaxRatesPage() {
         </Card>
       ) : (
         grouped.map((g) => (
-          <TaxGroup key={g.value} title={g.label} rows={g.rows} loading={query.isLoading} onAdd={() => setAdding(true)} />
+          <TaxGroup
+            key={g.value}
+            title={g.label}
+            rows={g.rows}
+            loading={query.isLoading}
+            onAdd={() => setAdding(true)}
+          />
         ))
       )}
 
@@ -106,18 +125,37 @@ function TaxGroup({
   const update = useUpdateTaxRate();
 
   const columns: Column<TaxRate>[] = [
-    { key: "name", header: "Tax", render: (r) => <span className="font-semibold">{r.tax_name}</span> },
+    {
+      key: "name",
+      header: "Tax",
+      render: (r) => <span className="font-semibold">{r.tax_name}</span>,
+    },
     {
       key: "rate",
       header: "Rate",
       align: "right",
-      render: (r) => <span className="tabular-nums">{(Number(r.rate) * 100).toLocaleString(undefined, { maximumFractionDigits: 4 })}%</span>,
+      render: (r) => (
+        <span className="tabular-nums">
+          {(Number(r.rate) * 100).toLocaleString(undefined, {
+            maximumFractionDigits: 4,
+          })}
+          %
+        </span>
+      ),
     },
-    { key: "applies_to", header: "Applies to", render: (r) => <span className="text-text-muted">{r.applies_to || "—"}</span> },
+    {
+      key: "applies_to",
+      header: "Applies to",
+      render: (r) => (
+        <span className="text-text-muted">{r.applies_to || "—"}</span>
+      ),
+    },
     {
       key: "effective_from",
       header: "Effective from",
-      render: (r) => <span className="text-text-muted">{r.effective_from}</span>,
+      render: (r) => (
+        <span className="text-text-muted">{r.effective_from}</span>
+      ),
     },
     {
       key: "active",
@@ -126,7 +164,9 @@ function TaxGroup({
         <Toggle
           checked={r.is_active}
           disabled={update.isPending}
-          onChange={(v) => update.mutate({ id: r.tax_id, patch: { is_active: v } })}
+          onChange={(v) =>
+            update.mutate({ id: r.tax_id, patch: { is_active: v } })
+          }
         />
       ),
     },
@@ -138,7 +178,9 @@ function TaxGroup({
         <MultiSelect<ModuleKey>
           values={(r.excluded_modules ?? []) as ModuleKey[]}
           options={MODULE_SELECT}
-          onChange={(v) => update.mutate({ id: r.tax_id, patch: { excluded_modules: v } })}
+          onChange={(v) =>
+            update.mutate({ id: r.tax_id, patch: { excluded_modules: v } })
+          }
         />
       ),
     },
@@ -167,7 +209,13 @@ function TaxGroup({
   );
 }
 
-function AddTaxDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AddTaxDrawer({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateTaxRate();
   const [name, setName] = useState("");
   const [type, setType] = useState<TaxRate["tax_type"]>("sales");
@@ -216,7 +264,11 @@ function AddTaxDrawer({ open, onClose }: { open: boolean; onClose: () => void })
             variant="primary"
             disabled={!name.trim() || !ratePct || create.isPending}
             onClick={submit}
-            icon={create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+            icon={
+              create.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : undefined
+            }
           >
             Save tax
           </Button>
@@ -225,23 +277,42 @@ function AddTaxDrawer({ open, onClose }: { open: boolean; onClose: () => void })
     >
       <div className="space-y-4">
         <Field label="Tax name">
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="VAT" />
+          <TextInput
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="VAT"
+          />
         </Field>
         <Field label="Tax type">
           <Select value={type} onChange={setType} options={TAX_TYPES} />
         </Field>
         <Field label="Rate" hint="entered as a percent">
-          <NumberField value={ratePct} onChange={setRatePct} suffix="%" placeholder="7.5" />
+          <NumberField
+            value={ratePct}
+            onChange={setRatePct}
+            suffix="%"
+            placeholder="7.5"
+          />
         </Field>
         <Field label="Applies to">
-          <TextInput value={appliesTo} onChange={(e) => setAppliesTo(e.target.value)} placeholder="All goods & services" />
+          <TextInput
+            value={appliesTo}
+            onChange={(e) => setAppliesTo(e.target.value)}
+            placeholder="All goods & services"
+          />
         </Field>
         <Field label="Effective from">
-          <TextInput type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
+          <TextInput
+            type="date"
+            value={effectiveFrom}
+            onChange={(e) => setEffectiveFrom(e.target.value)}
+          />
         </Field>
         {create.isError && (
           <p className="text-[12px] text-danger">
-            {create.error instanceof Error ? create.error.message : "Could not save tax."}
+            {create.error instanceof Error
+              ? create.error.message
+              : "Could not save tax."}
           </p>
         )}
       </div>

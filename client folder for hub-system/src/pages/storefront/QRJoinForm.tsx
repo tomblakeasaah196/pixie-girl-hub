@@ -12,9 +12,18 @@ import { submitLead } from "@services/salesCampaign";
 import { cn } from "@lib/cn";
 
 const MONTHS = [
-  "January", "February", "March", "April",
-  "May", "June", "July", "August",
-  "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 type FormState = {
@@ -101,22 +110,25 @@ export default function QRJoinForm() {
     setSubmitting(true);
     try {
       await submitLead(business!, slug!, {
-        lead_type:      "qr_scan",
-        first_name:     form.first_name.trim(),
-        last_name:      form.last_name.trim(),
-        phone:          form.phone.trim(),
-        email:          form.email.trim(),
-        address_city:   form.address_city.trim() || undefined,
-        address_state:  form.address_state.trim() || undefined,
+        lead_type: "qr_scan",
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        address_city: form.address_city.trim() || undefined,
+        address_state: form.address_state.trim() || undefined,
         wants_birthday: form.wants_birthday,
-        birthday_month: form.wants_birthday ? parseInt(form.birthday_month) : undefined,
-        birthday_day:   form.wants_birthday ? parseInt(form.birthday_day)   : undefined,
+        birthday_month: form.wants_birthday
+          ? parseInt(form.birthday_month)
+          : undefined,
+        birthday_day: form.wants_birthday
+          ? parseInt(form.birthday_day)
+          : undefined,
       });
       setDone(true);
     } catch (err: any) {
       setError(
-        err?.response?.data?.error ||
-          "Something went wrong. Please try again.",
+        err?.response?.data?.error || "Something went wrong. Please try again.",
       );
     } finally {
       setSubmitting(false);
@@ -130,18 +142,17 @@ export default function QRJoinForm() {
       <div className="min-h-screen bg-[#f9f7f5] flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center space-y-5">
           <div className="flex justify-center">
-            <CheckCircle2 className="w-16 h-16 text-green-500" strokeWidth={1.5} />
+            <CheckCircle2
+              className="w-16 h-16 text-green-500"
+              strokeWidth={1.5}
+            />
           </div>
-          <h1 className="text-2xl font-semibold text-gray-900">
-            You're in!
-          </h1>
+          <h1 className="text-2xl font-semibold text-gray-900">You're in!</h1>
           <p className="text-gray-500 leading-relaxed">
             Thanks for joining us. Check your inbox — we've sent you a welcome
             email with a link to our full collection.
           </p>
-          <p className="text-xs text-gray-400 pt-4">
-            You can close this tab.
-          </p>
+          <p className="text-xs text-gray-400 pt-4">You can close this tab.</p>
         </div>
       </div>
     );
@@ -165,7 +176,6 @@ export default function QRJoinForm() {
       <div className="flex-1 flex items-start justify-center px-4 pt-6 pb-10">
         <div className="w-full max-w-sm">
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
-
             {/* Name row */}
             <div className="grid grid-cols-2 gap-3">
               <Field label="First name" required>
@@ -260,8 +270,18 @@ export default function QRJoinForm() {
                     )}
                   >
                     {form.wants_birthday && (
-                      <svg className="w-3 h-3 text-white" viewBox="0 0 12 10" fill="none">
-                        <path d="M1 5l3.5 4L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <svg
+                        className="w-3 h-3 text-white"
+                        viewBox="0 0 12 10"
+                        fill="none"
+                      >
+                        <path
+                          d="M1 5l3.5 4L11 1"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
                       </svg>
                     )}
                   </div>

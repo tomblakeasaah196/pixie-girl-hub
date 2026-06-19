@@ -56,11 +56,7 @@ export function SmartCommPage() {
         </div>
 
         {/* Thread */}
-        <div
-          className={
-            mobileShowThread ? "h-full" : "hidden md:block h-full"
-          }
-        >
+        <div className={mobileShowThread ? "h-full" : "hidden md:block h-full"}>
           {channelId ? (
             <MessageThread
               channelId={channelId}

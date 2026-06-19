@@ -101,13 +101,19 @@ export default function ContactDetail() {
                           <ScheduleEditor profileId={staff.profile_id} />
                         ),
                         attendance: () => (
-                          <AttendancePanel mode="manage" profileId={staff.profile_id} />
+                          <AttendancePanel
+                            mode="manage"
+                            profileId={staff.profile_id}
+                          />
                         ),
                         performance: () => (
                           <PerformancePanel profileId={staff.profile_id} />
                         ),
                         queries: () => (
-                          <QueriesPanel mode="manage" profileId={staff.profile_id} />
+                          <QueriesPanel
+                            mode="manage"
+                            profileId={staff.profile_id}
+                          />
                         ),
                         contracts: () => (
                           <ContractsTab profileId={staff.profile_id} />

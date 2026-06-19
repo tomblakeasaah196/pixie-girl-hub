@@ -20,7 +20,10 @@ import { Button, Card, Pill } from "@/components/ui/primitives";
 const KEY_RE = /^[a-z][a-z0-9_]+$/;
 
 export function BusinessesPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Businesses" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Businesses" },
+  ]);
   const q = useBusinesses();
   const [adding, setAdding] = useState(false);
 
@@ -33,7 +36,9 @@ export function BusinessesPage() {
     {
       key: "business_key",
       header: "Key",
-      render: (r) => <span className="font-mono text-text-muted">{r.business_key}</span>,
+      render: (r) => (
+        <span className="font-mono text-text-muted">{r.business_key}</span>
+      ),
     },
     {
       key: "legal_name",

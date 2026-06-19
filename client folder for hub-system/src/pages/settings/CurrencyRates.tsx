@@ -69,7 +69,11 @@ export default function CurrencyRates() {
             <div className="flex items-center gap-3">
               <Button
                 variant="secondary"
-                leftIcon={<RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />}
+                leftIcon={
+                  <RefreshCw
+                    className={`w-4 h-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
+                  />
+                }
                 onClick={() => syncMutation.mutate()}
                 loading={syncMutation.isPending}
               >
@@ -195,11 +199,7 @@ function NewRateForm({
   onSuccess: () => void;
   onCancel: () => void;
 }) {
-  const {
-    register,
-    control,
-    handleSubmit,
-  } = useForm<NewRateValues>({
+  const { register, control, handleSubmit } = useForm<NewRateValues>({
     defaultValues: { from_currency: "USD", to_currency: "NGN", rate: 1500 },
   });
   const mutation = useMutation({

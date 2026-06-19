@@ -9,13 +9,28 @@ import {
   CreditCard,
 } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
-import { Button, Card, Pill, MoneyText, MaskedField, Skeleton } from "@/components/ui/primitives";
+import {
+  Button,
+  Card,
+  Pill,
+  MoneyText,
+  MaskedField,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { Timeline } from "@/components/ui/Timeline";
 import { Field, TextInput } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
-import { useCashRequest, useCashRequestHistory, useCashRequestMutations } from "./hooks";
-import { CR_STATUS_META, URGENCY_META, RECIPIENT_TYPE_LABELS } from "./constants";
+import {
+  useCashRequest,
+  useCashRequestHistory,
+  useCashRequestMutations,
+} from "./hooks";
+import {
+  CR_STATUS_META,
+  URGENCY_META,
+  RECIPIENT_TYPE_LABELS,
+} from "./constants";
 import type { CashRequest, CashRequestStatus, Decision } from "./types";
 
 interface Props {
@@ -27,36 +42,67 @@ interface Props {
 /* ── Shared hook: detail data + approval / disbursement state ───────────────
    Drives both the drawer (phone/tablet) and the inline panel (desktop
    master-detail) so the body + footer actions stay byte-identical. */
-function useCashRequestDetail(initial: CashRequest, onClose: () => void, onSettle: (cr: CashRequest) => void) {
+function useCashRequestDetail(
+  initial: CashRequest,
+  onClose: () => void,
+  onSettle: (cr: CashRequest) => void,
+) {
   const can = useAuthStore((s) => s.can);
   const { data: cr } = useCashRequest(initial.cash_request_id);
-  const { data: history, isLoading: historyLoading } = useCashRequestHistory(initial.cash_request_id);
+  const { data: history, isLoading: historyLoading } = useCashRequestHistory(
+    initial.cash_request_id,
+  );
   const mutations = useCashRequestMutations();
 
   const r = cr ?? initial;
 
   const [decisionNotes, setDecisionNotes] = useState("");
   const [showRejectModal, setShowRejectModal] = useState(false);
-  const [disburseForm, setDisburseForm] = useState({ bank_transaction_id: "", bank_name: "", notes: "" });
+  const [disburseForm, setDisburseForm] = useState({
+    bank_transaction_id: "",
+    bank_name: "",
+    notes: "",
+  });
   const [showDisburse, setShowDisburse] = useState(false);
 
   const canApprove = can("expenses", "approve");
-  const isBusy = mutations.finance.isPending || mutations.ceo.isPending || mutations.disburse.isPending || mutations.cancel.isPending;
+  const isBusy =
+    mutations.finance.isPending ||
+    mutations.ceo.isPending ||
+    mutations.disburse.isPending ||
+    mutations.cancel.isPending;
 
   function handleDecision(decision: Decision, stage: "finance" | "ceo" | null) {
     if (!stage) return;
     const id = r.cash_request_id;
     const payload = { id, decision, notes: decisionNotes || undefined };
     if (stage === "finance") {
-      mutations.finance.mutate(payload, { onSuccess: () => { setDecisionNotes(""); onClose(); } });
+      mutations.finance.mutate(payload, {
+        onSuccess: () => {
+          setDecisionNotes("");
+          onClose();
+        },
+      });
     } else {
-      mutations.ceo.mutate(payload, { onSuccess: () => { setDecisionNotes(""); onClose(); } });
+      mutations.ceo.mutate(payload, {
+        onSuccess: () => {
+          setDecisionNotes("");
+          onClose();
+        },
+      });
     }
   }
 
   function handleDisburse() {
     mutations.disburse.mutate(
-      { id: r.cash_request_id, input: { bank_transaction_id: disburseForm.bank_transaction_id, bank_name: disburseForm.bank_name || undefined, disbursement_notes: disburseForm.notes || undefined } },
+      {
+        id: r.cash_request_id,
+        input: {
+          bank_transaction_id: disburseForm.bank_transaction_id,
+          bank_name: disburseForm.bank_name || undefined,
+          disbursement_notes: disburseForm.notes || undefined,
+        },
+      },
       { onSuccess: onClose },
     );
   }
@@ -66,7 +112,11 @@ function useCashRequestDetail(initial: CashRequest, onClose: () => void, onSettl
   }
 
   const activeStage: "finance" | "ceo" | null =
-    r.status === "pending_finance" ? "finance" : r.status === "pending_ceo" ? "ceo" : null;
+    r.status === "pending_finance"
+      ? "finance"
+      : r.status === "pending_ceo"
+        ? "ceo"
+        : null;
 
   // Whether the footer renders any actions at all (mirrors DrawerActions gate).
   const hasActions =
@@ -100,9 +150,22 @@ type CashRequestDetail = ReturnType<typeof useCashRequestDetail>;
 /** Scrollable detail content — shared between drawer + inline panel. */
 function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
   const {
-    r, history, historyLoading, canApprove, isBusy,
-    decisionNotes, setDecisionNotes, showRejectModal, setShowRejectModal,
-    disburseForm, setDisburseForm, showDisburse, setShowDisburse, activeStage, handleDecision, handleDisburse,
+    r,
+    history,
+    historyLoading,
+    canApprove,
+    isBusy,
+    decisionNotes,
+    setDecisionNotes,
+    showRejectModal,
+    setShowRejectModal,
+    disburseForm,
+    setDisburseForm,
+    showDisburse,
+    setShowDisburse,
+    activeStage,
+    handleDecision,
+    handleDisburse,
   } = d;
   const meta = CR_STATUS_META[r.status];
   const urgMeta = URGENCY_META[r.urgency];
@@ -112,8 +175,14 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
       {/* Status + urgency */}
       <div className="flex items-center gap-2 flex-wrap">
         <Pill tone={meta.tone}>{meta.label}</Pill>
-        {r.urgency !== "normal" && <Pill tone={urgMeta.tone}>{urgMeta.label}</Pill>}
-        {r.requires_settlement && <Pill tone="info" dot={false}>Cash Advance</Pill>}
+        {r.urgency !== "normal" && (
+          <Pill tone={urgMeta.tone}>{urgMeta.label}</Pill>
+        )}
+        {r.requires_settlement && (
+          <Pill tone="info" dot={false}>
+            Cash Advance
+          </Pill>
+        )}
       </div>
 
       {/* Financial ribbon */}
@@ -123,7 +192,10 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
         </MiniCard>
         <MiniCard label="Disbursed">
           {r.amount_disbursed_ngn ? (
-            <MoneyText ngn={Number(r.amount_disbursed_ngn)} className="text-lg" />
+            <MoneyText
+              ngn={Number(r.amount_disbursed_ngn)}
+              className="text-lg"
+            />
           ) : (
             <span className="text-text-faint text-sm">—</span>
           )}
@@ -131,14 +203,22 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
         <MiniCard label={r.requires_settlement ? "Unsettled" : "Status"}>
           {r.requires_settlement ? (
             r.unsettled_balance_ngn ? (
-              <MoneyText ngn={Number(r.unsettled_balance_ngn)} className="text-lg text-warn" />
+              <MoneyText
+                ngn={Number(r.unsettled_balance_ngn)}
+                className="text-lg text-warn"
+              />
             ) : r.status === "settled" ? (
               <span className="text-success text-sm font-bold">Settled</span>
             ) : (
               <span className="text-text-faint text-sm">Pending</span>
             )
           ) : (
-            <span className={cn("text-sm font-bold", meta.tone === "success" ? "text-success" : "text-text-muted")}>
+            <span
+              className={cn(
+                "text-sm font-bold",
+                meta.tone === "success" ? "text-success" : "text-text-muted",
+              )}
+            >
               {meta.label}
             </span>
           )}
@@ -150,14 +230,35 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
         <div className="micro mb-2">Details</div>
         <DetailRow label="Category" value={r.category_display} />
         <DetailRow label="Purpose" value={r.purpose} />
-        {r.needed_by_date && <DetailRow label="Needed By" value={new Date(r.needed_by_date).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })} />}
-        <DetailRow label="Recipient" value={RECIPIENT_TYPE_LABELS[r.recipient_type]} />
-        {r.recipient_name && <DetailRow label="Recipient Name" value={r.recipient_name} />}
-        {r.recipient_bank_name && <DetailRow label="Bank" value={r.recipient_bank_name} />}
-        {r.recipient_account_number && (
-          <DetailRow label="Account #" value={<MaskedField value={r.recipient_account_number} />} />
+        {r.needed_by_date && (
+          <DetailRow
+            label="Needed By"
+            value={new Date(r.needed_by_date).toLocaleDateString("en-NG", {
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })}
+          />
         )}
-        {r.recipient_account_name && <DetailRow label="Account Name" value={r.recipient_account_name} />}
+        <DetailRow
+          label="Recipient"
+          value={RECIPIENT_TYPE_LABELS[r.recipient_type]}
+        />
+        {r.recipient_name && (
+          <DetailRow label="Recipient Name" value={r.recipient_name} />
+        )}
+        {r.recipient_bank_name && (
+          <DetailRow label="Bank" value={r.recipient_bank_name} />
+        )}
+        {r.recipient_account_number && (
+          <DetailRow
+            label="Account #"
+            value={<MaskedField value={r.recipient_account_number} />}
+          />
+        )}
+        {r.recipient_account_name && (
+          <DetailRow label="Account Name" value={r.recipient_account_name} />
+        )}
       </Card>
 
       {/* Disbursement info */}
@@ -166,8 +267,17 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
           <div className="micro mb-2">Disbursement</div>
           <DetailRow label="Transaction ID" value={r.bank_transaction_id} />
           {r.bank_name && <DetailRow label="Bank" value={r.bank_name} />}
-          {r.bank_transaction_date && <DetailRow label="Date" value={new Date(r.bank_transaction_date).toLocaleDateString("en-NG")} />}
-          {r.disbursement_notes && <DetailRow label="Notes" value={r.disbursement_notes} />}
+          {r.bank_transaction_date && (
+            <DetailRow
+              label="Date"
+              value={new Date(r.bank_transaction_date).toLocaleDateString(
+                "en-NG",
+              )}
+            />
+          )}
+          {r.disbursement_notes && (
+            <DetailRow label="Notes" value={r.disbursement_notes} />
+          )}
         </Card>
       )}
 
@@ -175,7 +285,11 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
       <Card className="p-4">
         <div className="micro mb-3">Timeline</div>
         {historyLoading ? (
-          <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="w-full h-10" />)}</div>
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="w-full h-10" />
+            ))}
+          </div>
         ) : history && history.length > 0 ? (
           <Timeline
             steps={history.map((h, i) => ({
@@ -185,7 +299,9 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
                 h.decision_snapshot ? `(${h.decision_snapshot})` : null,
                 h.notes,
                 formatRelative(h.changed_at),
-              ].filter(Boolean).join(" · "),
+              ]
+                .filter(Boolean)
+                .join(" · "),
               state: i === history.length - 1 ? "current" : "done",
             }))}
           />
@@ -219,12 +335,21 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
             autoFocus
           />
           <div className="flex gap-2 mt-3 justify-end">
-            <Button size="sm" variant="ghost" onClick={() => setShowRejectModal(false)}>Cancel</Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowRejectModal(false)}
+            >
+              Cancel
+            </Button>
             <Button
               size="sm"
               variant="danger"
               disabled={!decisionNotes.trim() || isBusy}
-              onClick={() => { handleDecision("reject", activeStage); setShowRejectModal(false); }}
+              onClick={() => {
+                handleDecision("reject", activeStage);
+                setShowRejectModal(false);
+              }}
             >
               Confirm Reject
             </Button>
@@ -240,26 +365,41 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
             <Field label="Bank Transaction ID" hint="required">
               <TextInput
                 value={disburseForm.bank_transaction_id}
-                onChange={(e) => setDisburseForm((p) => ({ ...p, bank_transaction_id: e.target.value }))}
+                onChange={(e) =>
+                  setDisburseForm((p) => ({
+                    ...p,
+                    bank_transaction_id: e.target.value,
+                  }))
+                }
                 placeholder="e.g. TRF-2026061500001"
               />
             </Field>
             <Field label="Bank Name">
               <TextInput
                 value={disburseForm.bank_name}
-                onChange={(e) => setDisburseForm((p) => ({ ...p, bank_name: e.target.value }))}
+                onChange={(e) =>
+                  setDisburseForm((p) => ({ ...p, bank_name: e.target.value }))
+                }
                 placeholder="e.g. GTBank"
               />
             </Field>
             <Field label="Notes">
               <TextInput
                 value={disburseForm.notes}
-                onChange={(e) => setDisburseForm((p) => ({ ...p, notes: e.target.value }))}
+                onChange={(e) =>
+                  setDisburseForm((p) => ({ ...p, notes: e.target.value }))
+                }
                 placeholder="Optional disbursement notes"
               />
             </Field>
             <div className="flex gap-2 justify-end">
-              <Button size="sm" variant="ghost" onClick={() => setShowDisburse(false)}>Cancel</Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowDisburse(false)}
+              >
+                Cancel
+              </Button>
               <Button
                 size="sm"
                 variant="primary"
@@ -289,7 +429,9 @@ export function CashRequestDetailPanel({ request, onClose, onSettle }: Props) {
       <div className="flex items-center gap-3 p-5 border-b hairline shrink-0">
         <Banknote className="w-5 h-5 text-accent shrink-0" />
         <div className="min-w-0">
-          <h2 className="font-display text-xl font-medium leading-tight truncate">{d.r.request_number}</h2>
+          <h2 className="font-display text-xl font-medium leading-tight truncate">
+            {d.r.request_number}
+          </h2>
           <div className="micro mt-0.5 truncate">{d.r.purpose}</div>
         </div>
       </div>
@@ -305,10 +447,20 @@ export function CashRequestDetailPanel({ request, onClose, onSettle }: Props) {
   );
 }
 
-export default function CashRequestDetailDrawer({ request: initial, onClose, onSettle }: Props) {
+export default function CashRequestDetailDrawer({
+  request: initial,
+  onClose,
+  onSettle,
+}: Props) {
   const d = useCashRequestDetail(initial, onClose, onSettle);
   return (
-    <Drawer open onClose={onClose} wide title={d.r.request_number} subtitle={d.r.purpose} leading={<Banknote className="w-5 h-5 text-accent" />}
+    <Drawer
+      open
+      onClose={onClose}
+      wide
+      title={d.r.request_number}
+      subtitle={d.r.purpose}
+      leading={<Banknote className="w-5 h-5 text-accent" />}
       footer={<DrawerActions d={d} />}
     >
       <CashRequestDetailContent d={d} />
@@ -318,7 +470,13 @@ export default function CashRequestDetailDrawer({ request: initial, onClose, onS
 
 // ── Sub-components ───────────────────────────────────────
 
-function MiniCard({ label, children }: { label: string; children: React.ReactNode }) {
+function MiniCard({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="glass rounded-xl p-3 text-center">
       <div className="micro mb-1">{label}</div>
@@ -327,7 +485,13 @@ function MiniCard({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="flex justify-between gap-4 text-sm">
       <span className="text-text-muted shrink-0">{label}</span>
@@ -338,26 +502,52 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 function DrawerActions({ d }: { d: CashRequestDetail }) {
   const {
-    r, canApprove, isBusy, activeStage,
-    setShowRejectModal, setShowDisburse, handleDecision, handleCancel, onSettle,
+    r,
+    canApprove,
+    isBusy,
+    activeStage,
+    setShowRejectModal,
+    setShowDisburse,
+    handleDecision,
+    handleCancel,
+    onSettle,
   } = d;
   const status = r.status;
   const requiresSettlement = r.requires_settlement;
 
-  if (!canApprove && !["draft", "sent_back", "disbursed"].includes(status)) return null;
+  if (!canApprove && !["draft", "sent_back", "disbursed"].includes(status))
+    return null;
 
   return (
     <>
       {/* Approval actions */}
       {activeStage && canApprove && (
         <>
-          <Button variant="danger" size="sm" disabled={isBusy} onClick={() => setShowRejectModal(true)} icon={<XCircle className="w-3.5 h-3.5" />}>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={isBusy}
+            onClick={() => setShowRejectModal(true)}
+            icon={<XCircle className="w-3.5 h-3.5" />}
+          >
             Reject
           </Button>
-          <Button variant="secondary" size="sm" disabled={isBusy} onClick={() => handleDecision("send_back", activeStage)} icon={<ArrowLeft className="w-3.5 h-3.5" />}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isBusy}
+            onClick={() => handleDecision("send_back", activeStage)}
+            icon={<ArrowLeft className="w-3.5 h-3.5" />}
+          >
             Send Back
           </Button>
-          <Button variant="primary" size="sm" disabled={isBusy} onClick={() => handleDecision("approve", activeStage)} icon={<CheckCircle className="w-3.5 h-3.5" />}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={isBusy}
+            onClick={() => handleDecision("approve", activeStage)}
+            icon={<CheckCircle className="w-3.5 h-3.5" />}
+          >
             Approve
           </Button>
         </>
@@ -365,21 +555,43 @@ function DrawerActions({ d }: { d: CashRequestDetail }) {
 
       {/* Disbursement action */}
       {status === "approved" && canApprove && (
-        <Button variant="primary" size="sm" disabled={isBusy} onClick={() => setShowDisburse(true)} icon={<Send className="w-3.5 h-3.5" />}>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={isBusy}
+          onClick={() => setShowDisburse(true)}
+          icon={<Send className="w-3.5 h-3.5" />}
+        >
           Disburse
         </Button>
       )}
 
       {/* Settlement action */}
       {status === "disbursed" && requiresSettlement && (
-        <Button variant="primary" size="sm" onClick={() => onSettle(r)} icon={<FileText className="w-3.5 h-3.5" />}>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => onSettle(r)}
+          icon={<FileText className="w-3.5 h-3.5" />}
+        >
           Settle Advance
         </Button>
       )}
 
       {/* Cancel action (pre-disbursement) */}
-      {["draft", "pending_finance", "pending_ceo", "approved", "sent_back"].includes(status) && (
-        <Button variant="ghost" size="sm" disabled={isBusy} onClick={handleCancel}>
+      {[
+        "draft",
+        "pending_finance",
+        "pending_ceo",
+        "approved",
+        "sent_back",
+      ].includes(status) && (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={isBusy}
+          onClick={handleCancel}
+        >
           Cancel Request
         </Button>
       )}

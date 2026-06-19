@@ -70,25 +70,34 @@ export interface NotifPref {
 
 export const NOTIF_META: Record<
   string,
-  { label: string; category: "approvals" | "sales" | "stock" | "ops" | "system" }
+  {
+    label: string;
+    category: "approvals" | "sales" | "stock" | "ops" | "system";
+  }
 > = {
-  approval_required:               { label: "Approval required",          category: "approvals" },
-  discount_approval:               { label: "Discount approval",           category: "approvals" },
-  leave_request:                   { label: "Leave request",               category: "approvals" },
-  intercompany_reconciliation_alert:{ label: "Intercompany alert",         category: "approvals" },
-  order_status_change:             { label: "Order status change",         category: "sales" },
-  payment_due:                     { label: "Payment due",                 category: "sales" },
-  subscription_billing_failed:     { label: "Billing failed",              category: "sales" },
-  sale_campaign_milestone:         { label: "Campaign milestone",          category: "sales" },
-  stock_alert:                     { label: "Stock alert",                 category: "stock" },
-  low_stock_warning:               { label: "Low stock warning",           category: "stock" },
-  production_state_change:         { label: "Production state change",     category: "stock" },
-  delivery_update:                 { label: "Delivery update",             category: "ops" },
-  task_due:                        { label: "Task due",                    category: "ops" },
-  message:                         { label: "Message",                     category: "ops" },
-  stylist_offer:                   { label: "Stylist offer",               category: "ops" },
-  stylist_assignment_accepted:     { label: "Stylist accepted",            category: "ops" },
-  system:                          { label: "System",                      category: "system" },
+  approval_required: { label: "Approval required", category: "approvals" },
+  discount_approval: { label: "Discount approval", category: "approvals" },
+  leave_request: { label: "Leave request", category: "approvals" },
+  intercompany_reconciliation_alert: {
+    label: "Intercompany alert",
+    category: "approvals",
+  },
+  order_status_change: { label: "Order status change", category: "sales" },
+  payment_due: { label: "Payment due", category: "sales" },
+  subscription_billing_failed: { label: "Billing failed", category: "sales" },
+  sale_campaign_milestone: { label: "Campaign milestone", category: "sales" },
+  stock_alert: { label: "Stock alert", category: "stock" },
+  low_stock_warning: { label: "Low stock warning", category: "stock" },
+  production_state_change: {
+    label: "Production state change",
+    category: "stock",
+  },
+  delivery_update: { label: "Delivery update", category: "ops" },
+  task_due: { label: "Task due", category: "ops" },
+  message: { label: "Message", category: "ops" },
+  stylist_offer: { label: "Stylist offer", category: "ops" },
+  stylist_assignment_accepted: { label: "Stylist accepted", category: "ops" },
+  system: { label: "System", category: "system" },
 };
 
 export const NOTIF_TYPE_LABELS: Record<string, string> = Object.fromEntries(
@@ -112,9 +121,13 @@ export async function fetchNotifications(params: {
   return api.get<NotifList>(`/notifications${q ? `?${q}` : ""}`);
 }
 
-export async function fetchUnreadCount(business?: string | null): Promise<number> {
+export async function fetchUnreadCount(
+  business?: string | null,
+): Promise<number> {
   const qs = business ? `?business=${business}` : "";
-  const res = await api.get<{ unread: number }>(`/notifications/unread-count${qs}`);
+  const res = await api.get<{ unread: number }>(
+    `/notifications/unread-count${qs}`,
+  );
   return res.unread;
 }
 
@@ -123,7 +136,10 @@ export async function markReadApi(id: string): Promise<void> {
 }
 
 export async function markAllReadApi(business?: string | null): Promise<void> {
-  await api.post("/notifications/read-all", business ? { business } : undefined);
+  await api.post(
+    "/notifications/read-all",
+    business ? { business } : undefined,
+  );
 }
 
 export async function deleteNotifApi(id: string): Promise<void> {
@@ -136,12 +152,18 @@ export async function bulkDeleteApi(ids: string[]): Promise<void> {
   const brand = (() => {
     try {
       const raw = localStorage.getItem("pgh-business");
-      return raw ? (JSON.parse(raw) as { state?: { activeKey?: string } })?.state?.activeKey ?? null : null;
+      return raw
+        ? ((JSON.parse(raw) as { state?: { activeKey?: string } })?.state
+            ?.activeKey ?? null)
+        : null;
     } catch {
       return null;
     }
   })();
-  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
   const token = getAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (brand) headers["X-Brand-Context"] = brand;
@@ -181,7 +203,9 @@ export function useNotifBusiness(): string | null {
 }
 
 /** Paginated list (for the full /notifications page). */
-export function useNotifications(params: { unread?: boolean; page?: number; page_size?: number } = {}) {
+export function useNotifications(
+  params: { unread?: boolean; page?: number; page_size?: number } = {},
+) {
   const business = useNotifBusiness();
   return useQuery({
     queryKey: ["notifications", business, params],
@@ -282,6 +306,7 @@ export function useUpsertNotifPref() {
       ...body
     }: Partial<NotifPref> & { notification_type: string }) =>
       api.put(`/notifications/preferences/${notification_type}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications:prefs"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["notifications:prefs"] }),
   });
 }

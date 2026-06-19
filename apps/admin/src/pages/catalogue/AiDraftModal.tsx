@@ -4,7 +4,11 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { Field } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
-import { useBaseProducts, useAiDraftStyled, type StyledProduct } from "@/lib/catalogue";
+import {
+  useBaseProducts,
+  useAiDraftStyled,
+  type StyledProduct,
+} from "@/lib/catalogue";
 
 /**
  * AI drafts a STYLED listing over a chosen base (P0-8-safe). The result is
@@ -30,13 +34,20 @@ export function AiDraftModal({
 
   const baseOptions = [
     { value: "", label: "Select a base product…" },
-    ...(bases.data ?? []).map((b) => ({ value: b.product_id, label: `${b.name} · ${b.product_code}` })),
+    ...(bases.data ?? []).map((b) => ({
+      value: b.product_id,
+      label: `${b.name} · ${b.product_code}`,
+    })),
   ];
 
   const submit = () => {
     if (!baseId) return;
     draft.mutate(
-      { base_product_id: baseId, instructions: instructions || undefined, tone: tone || undefined },
+      {
+        base_product_id: baseId,
+        instructions: instructions || undefined,
+        tone: tone || undefined,
+      },
       {
         onSuccess: (res) => {
           onDrafted(res.draft);
@@ -76,7 +87,10 @@ export function AiDraftModal({
       <p className="text-[12.5px] text-text-muted mb-4 leading-relaxed">
         Pick a base product and the AI will draft a storefront listing — name,
         copy, SEO and a styling add-on price. It's saved as a{" "}
-        <span className="text-text-primary font-semibold">draft for your review</span>; nothing goes live until someone publishes it.
+        <span className="text-text-primary font-semibold">
+          draft for your review
+        </span>
+        ; nothing goes live until someone publishes it.
       </p>
       <div className="space-y-4">
         <Field label="Base product">
@@ -101,7 +115,9 @@ export function AiDraftModal({
         </Field>
         {draft.isError && (
           <p className="text-[12px] text-danger">
-            {draft.error instanceof Error ? draft.error.message : "AI drafting failed. Please try again."}
+            {draft.error instanceof Error
+              ? draft.error.message
+              : "AI drafting failed. Please try again."}
           </p>
         )}
       </div>

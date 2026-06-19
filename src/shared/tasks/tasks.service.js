@@ -57,7 +57,13 @@ async function notifyAssignee({ brand, task }) {
   }
 }
 
-const VALID_STATUSES = ["to_do", "in_progress", "in_review", "done", "cancelled"];
+const VALID_STATUSES = [
+  "to_do",
+  "in_progress",
+  "in_review",
+  "done",
+  "cancelled",
+];
 const VALID_PRIORITIES = ["low", "normal", "high", "urgent"];
 
 function listTasks(args) {

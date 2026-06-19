@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Star, Pencil, Archive, ArrowLeft, MessageSquare, ShoppingCart, Briefcase } from "lucide-react";
+import {
+  Star,
+  Pencil,
+  Archive,
+  ArrowLeft,
+  MessageSquare,
+  ShoppingCart,
+  Briefcase,
+} from "lucide-react";
 import { ContactAvatar } from "../shared/ContactAvatar";
 import { ContactTypeBadges } from "../shared/ContactTypeBadges";
 import { QuickActions } from "../shared/QuickActions";
@@ -40,9 +48,13 @@ export function ContactDetailHeader({
 
   const activateSupplierMutation = useMutation({
     mutationFn: () =>
-      api.post(`/purchasing/suppliers/from-contact/${contact.contact_id}`).then(r => r.data),
+      api
+        .post(`/purchasing/suppliers/from-contact/${contact.contact_id}`)
+        .then((r) => r.data),
     onSuccess: () => {
-      showToast.success("Supplier activated — they now appear in PO & RFQ dropdowns.");
+      showToast.success(
+        "Supplier activated — they now appear in PO & RFQ dropdowns.",
+      );
       qc.invalidateQueries({ queryKey: ["purchasing", "suppliers"] });
     },
     onError: (e) => showToast.error("Failed", errMsg(e)),

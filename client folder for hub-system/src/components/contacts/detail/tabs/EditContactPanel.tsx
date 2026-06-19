@@ -18,8 +18,18 @@ import { errMsg } from "@services/api";
 import type { Contact } from "@typedefs/contacts";
 
 const MONTHS = [
-  "January","February","March","April","May","June",
-  "July","August","September","October","November","December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 export function EditContactPanel({

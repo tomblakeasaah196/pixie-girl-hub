@@ -16,7 +16,8 @@ const BASE = "/service-jobs";
 
 export function listServiceTypes(params?: { is_active?: boolean }) {
   const qs = new URLSearchParams();
-  if (params?.is_active !== undefined) qs.set("is_active", String(params.is_active));
+  if (params?.is_active !== undefined)
+    qs.set("is_active", String(params.is_active));
   const q = qs.toString();
   return api.get<{ data: ServiceType[] }>(`${BASE}/types${q ? `?${q}` : ""}`);
 }
@@ -50,9 +51,12 @@ export function updateServiceType(
 
 export function listRecipes(params?: { is_active?: boolean }) {
   const qs = new URLSearchParams();
-  if (params?.is_active !== undefined) qs.set("is_active", String(params.is_active));
+  if (params?.is_active !== undefined)
+    qs.set("is_active", String(params.is_active));
   const q = qs.toString();
-  return api.get<{ data: ChemicalRecipe[] }>(`${BASE}/recipes${q ? `?${q}` : ""}`);
+  return api.get<{ data: ChemicalRecipe[] }>(
+    `${BASE}/recipes${q ? `?${q}` : ""}`,
+  );
 }
 
 export function getRecipe(id: string) {
@@ -79,9 +83,12 @@ export function listJobs(params?: {
 }) {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
-  if (params?.assigned_staff_user_id) qs.set("assigned_staff_user_id", params.assigned_staff_user_id);
-  if (params?.assigned_stylist_id) qs.set("assigned_stylist_id", params.assigned_stylist_id);
-  if (params?.customer_contact_id) qs.set("customer_contact_id", params.customer_contact_id);
+  if (params?.assigned_staff_user_id)
+    qs.set("assigned_staff_user_id", params.assigned_staff_user_id);
+  if (params?.assigned_stylist_id)
+    qs.set("assigned_stylist_id", params.assigned_stylist_id);
+  if (params?.customer_contact_id)
+    qs.set("customer_contact_id", params.customer_contact_id);
   if (params?.page) qs.set("page", String(params.page));
   if (params?.page_size) qs.set("page_size", String(params.page_size));
   const q = qs.toString();
@@ -114,12 +121,21 @@ export function updateJob(
   return api.patch<{ data: ServiceJob }>(`${BASE}/${id}`, patch);
 }
 
-export function advanceJob(id: string, status: string, actual_cost_ngn?: number) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/advance`, { status, actual_cost_ngn });
+export function advanceJob(
+  id: string,
+  status: string,
+  actual_cost_ngn?: number,
+) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/advance`, {
+    status,
+    actual_cost_ngn,
+  });
 }
 
 export function assignStaff(id: string, assigned_staff_user_id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/assign`, { assigned_staff_user_id });
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/assign`, {
+    assigned_staff_user_id,
+  });
 }
 
 export function recordOutcome(
@@ -162,10 +178,14 @@ export function listReconciliations(params?: {
   variance_status?: string;
 }) {
   const qs = new URLSearchParams();
-  if (params?.fiscal_period_id) qs.set("fiscal_period_id", params.fiscal_period_id);
-  if (params?.variance_status) qs.set("variance_status", params.variance_status);
+  if (params?.fiscal_period_id)
+    qs.set("fiscal_period_id", params.fiscal_period_id);
+  if (params?.variance_status)
+    qs.set("variance_status", params.variance_status);
   const q = qs.toString();
-  return api.get<{ data: ChemicalReconciliation[] }>(`${BASE}/chemical-reconciliations${q ? `?${q}` : ""}`);
+  return api.get<{ data: ChemicalReconciliation[] }>(
+    `${BASE}/chemical-reconciliations${q ? `?${q}` : ""}`,
+  );
 }
 
 export function runReconciliation(periodId: string) {

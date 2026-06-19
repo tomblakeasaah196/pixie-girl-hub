@@ -13,8 +13,18 @@ import {
 import { cn } from "@lib/cn";
 
 const MONTHS = [
-  "January","February","March","April","May","June",
-  "July","August","September","October","November","December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 type FormState = {
@@ -85,25 +95,37 @@ export default function WalkinRegisterForm() {
       setError("Please enter your first and last name.");
       return;
     }
-    if (!form.phone.trim()) { setError("Phone number is required."); return; }
-    if (!form.email.trim())  { setError("Email address is required."); return; }
+    if (!form.phone.trim()) {
+      setError("Phone number is required.");
+      return;
+    }
+    if (!form.email.trim()) {
+      setError("Email address is required.");
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      setError("Please enter a valid email address."); return;
+      setError("Please enter a valid email address.");
+      return;
     }
     if (form.wants_birthday && (!form.birthday_month || !form.birthday_day)) {
-      setError("Please select your birth month and day."); return;
+      setError("Please select your birth month and day.");
+      return;
     }
 
     const payload: WalkinRegistrationPayload = {
-      first_name:    form.first_name.trim(),
-      last_name:     form.last_name.trim(),
-      phone:         form.phone.trim(),
-      email:         form.email.trim(),
-      address_city:  form.address_city.trim()  || undefined,
+      first_name: form.first_name.trim(),
+      last_name: form.last_name.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      address_city: form.address_city.trim() || undefined,
       address_state: form.address_state.trim() || undefined,
       wants_birthday: form.wants_birthday,
-      birthday_month: form.wants_birthday ? parseInt(form.birthday_month) : undefined,
-      birthday_day:   form.wants_birthday ? parseInt(form.birthday_day)   : undefined,
+      birthday_month: form.wants_birthday
+        ? parseInt(form.birthday_month)
+        : undefined,
+      birthday_day: form.wants_birthday
+        ? parseInt(form.birthday_day)
+        : undefined,
     };
 
     setSubmitting(true);
@@ -114,9 +136,9 @@ export default function WalkinRegisterForm() {
       const data = err?.response?.data;
       setError(
         data?.message ||
-        data?.errors?.[0]?.msg ||
-        data?.error ||
-        "Something went wrong. Please try again.",
+          data?.errors?.[0]?.msg ||
+          data?.error ||
+          "Something went wrong. Please try again.",
       );
     } finally {
       setSubmitting(false);
@@ -127,7 +149,10 @@ export default function WalkinRegisterForm() {
     return (
       <div className="min-h-screen bg-[#f9f7f5] flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center space-y-5">
-          <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto" strokeWidth={1.5} />
+          <CheckCircle2
+            className="w-16 h-16 text-green-500 mx-auto"
+            strokeWidth={1.5}
+          />
           <h1 className="text-2xl font-semibold text-gray-900">Welcome!</h1>
           <p className="text-gray-500 leading-relaxed">
             You're now in our system. Check your inbox — we've sent you a
@@ -153,7 +178,6 @@ export default function WalkinRegisterForm() {
       <div className="flex-1 flex items-start justify-center px-4 pt-6 pb-10">
         <div className="w-full max-w-sm">
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
-
             <div className="grid grid-cols-2 gap-3">
               <Field label="First name" required>
                 <input
@@ -233,16 +257,27 @@ export default function WalkinRegisterForm() {
                     checked={form.wants_birthday}
                     onChange={(e) => set("wants_birthday", e.target.checked)}
                   />
-                  <div className={cn(
-                    "w-5 h-5 rounded flex items-center justify-center border-2 transition",
-                    form.wants_birthday
-                      ? "bg-gray-900 border-gray-900"
-                      : "border-gray-300 bg-white",
-                  )}>
+                  <div
+                    className={cn(
+                      "w-5 h-5 rounded flex items-center justify-center border-2 transition",
+                      form.wants_birthday
+                        ? "bg-gray-900 border-gray-900"
+                        : "border-gray-300 bg-white",
+                    )}
+                  >
                     {form.wants_birthday && (
-                      <svg className="w-3 h-3 text-white" viewBox="0 0 12 10" fill="none">
-                        <path d="M1 5l3.5 4L11 1" stroke="currentColor" strokeWidth="2"
-                          strokeLinecap="round" strokeLinejoin="round" />
+                      <svg
+                        className="w-3 h-3 text-white"
+                        viewBox="0 0 12 10"
+                        fill="none"
+                      >
+                        <path
+                          d="M1 5l3.5 4L11 1"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
                       </svg>
                     )}
                   </div>
@@ -267,7 +302,9 @@ export default function WalkinRegisterForm() {
                     >
                       <option value="">Month</option>
                       {MONTHS.map((m, i) => (
-                        <option key={m} value={i + 1}>{m}</option>
+                        <option key={m} value={i + 1}>
+                          {m}
+                        </option>
                       ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -280,7 +317,9 @@ export default function WalkinRegisterForm() {
                     >
                       <option value="">Day</option>
                       {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                        <option key={d} value={d}>{d}</option>
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
                       ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -300,7 +339,9 @@ export default function WalkinRegisterForm() {
               disabled={submitting}
               className={cn(
                 "w-full rounded-xl bg-gray-900 text-white py-3.5 text-base font-semibold transition active:scale-[0.98]",
-                submitting ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-800",
+                submitting
+                  ? "opacity-60 cursor-not-allowed"
+                  : "hover:bg-gray-800",
               )}
             >
               {submitting ? "Saving…" : "Register →"}

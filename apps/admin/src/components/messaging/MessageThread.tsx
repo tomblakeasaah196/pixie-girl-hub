@@ -75,9 +75,9 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [costOpen, setCostOpen] = useState(false);
   const [orderCaptureOpen, setOrderCaptureOpen] = useState(false);
   const [praxisDrafted, setPraxisDrafted] = useState(false);
-  const [busy, setBusy] = useState<
-    "sending" | "uploading" | "drafting" | null
-  >(null);
+  const [busy, setBusy] = useState<"sending" | "uploading" | "drafting" | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const canPraxis = useAuthStore((s) => s.can);
@@ -253,7 +253,9 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       });
       invalidate();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not send onboarding link");
+      setError(
+        e instanceof Error ? e.message : "Could not send onboarding link",
+      );
     } finally {
       setBusy(null);
     }
@@ -306,8 +308,9 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const isResolved = channel.status === "resolved";
 
   const typingNames = typingUserIds
-    .map((uid) =>
-      channel.members?.find((m) => m.user_id === uid)?.user_display_name,
+    .map(
+      (uid) =>
+        channel.members?.find((m) => m.user_id === uid)?.user_display_name,
     )
     .filter(Boolean) as string[];
   const subtitle = typingNames.length
@@ -476,14 +479,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         <div className="mx-3 sm:mx-4 mb-1 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-1.5 text-[11.5px] text-text-muted">
           <Sparkles className="w-3.5 h-3.5 text-accent-glow shrink-0" />
           <span className="flex-1">
-            Praxis drafted this — edit before sending, or hit Send if it
-            sounds right.
+            Praxis drafted this — edit before sending, or hit Send if it sounds
+            right.
           </span>
           <button
             onClick={() => {
               setPraxisDrafted(false);
               setContent("");
-              if (textareaRef.current) textareaRef.current.style.height = "auto";
+              if (textareaRef.current)
+                textareaRef.current.style.height = "auto";
             }}
             className="text-text-faint hover:text-text-primary"
             title="Discard draft"
@@ -620,9 +624,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
             </div>
             <button
               onClick={handleSend}
-              disabled={
-                !content.trim() || busy === "sending" || composerLocked
-              }
+              disabled={!content.trim() || busy === "sending" || composerLocked}
               className={cn(
                 "grid place-items-center w-10 h-10 rounded-2xl shrink-0 transition-all",
                 "bg-accent text-bg hover:bg-accent-glow disabled:opacity-40",

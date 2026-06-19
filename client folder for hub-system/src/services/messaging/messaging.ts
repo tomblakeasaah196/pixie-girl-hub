@@ -172,9 +172,12 @@ export async function editMessage(
   messageId: string,
   content: string,
 ): Promise<Message> {
-  const { data } = await api.patch<Message>(`/messaging/messages/${messageId}`, {
-    content,
-  });
+  const { data } = await api.patch<Message>(
+    `/messaging/messages/${messageId}`,
+    {
+      content,
+    },
+  );
   return data;
 }
 

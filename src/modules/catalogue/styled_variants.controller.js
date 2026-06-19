@@ -18,13 +18,18 @@ async function getSizeConfig(req, res) {
 }
 
 async function saveSizeConfig(req, res) {
-  res.json({ data: await service.saveSizeConfig({ ...base(req), input: req.body }) });
+  res.json({
+    data: await service.saveSizeConfig({ ...base(req), input: req.body }),
+  });
 }
 
 // ── Colours ──────────────────────────────────────────────
 async function listColours(req, res) {
   res.json({
-    data: await service.listColours({ brand: req.brand, styled_id: req.params.id }),
+    data: await service.listColours({
+      brand: req.brand,
+      styled_id: req.params.id,
+    }),
   });
 }
 
@@ -99,7 +104,10 @@ async function removeColourImage(req, res) {
 // ── Variants ─────────────────────────────────────────────
 async function listVariants(req, res) {
   res.json({
-    data: await service.listVariants({ brand: req.brand, styled_id: req.params.id }),
+    data: await service.listVariants({
+      brand: req.brand,
+      styled_id: req.params.id,
+    }),
   });
 }
 

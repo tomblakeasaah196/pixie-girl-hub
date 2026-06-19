@@ -198,7 +198,10 @@ export function MessageBubble({
                 isOwn ? "right-full mr-2" : "left-full ml-2",
               )}
             >
-              <HoverAction title="Reply" onClick={() => actions.onReply(message)}>
+              <HoverAction
+                title="Reply"
+                onClick={() => actions.onReply(message)}
+              >
                 <Reply className="h-3 w-3" />
               </HoverAction>
               <HoverAction title="React" onClick={onToggleReactionBar}>

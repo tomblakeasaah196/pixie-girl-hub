@@ -22,14 +22,27 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const AVATAR_COLORS = ["#8b9d77", "#7a8fa8", "#b76e79", "#9c7ad9", "#5aa0a8", "#a8785a"];
+const AVATAR_COLORS = [
+  "#8b9d77",
+  "#7a8fa8",
+  "#b76e79",
+  "#9c7ad9",
+  "#5aa0a8",
+  "#a8785a",
+];
 
 function nameInitials(name: string) {
-  return name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 function avatarColor(name: string) {
-  const idx = Math.abs(name.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length;
+  const idx =
+    Math.abs(name.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) %
+    AVATAR_COLORS.length;
   return AVATAR_COLORS[idx];
 }
 
@@ -85,9 +98,14 @@ function KpiStrip() {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
       {tiles.map((t) => (
-        <div key={t.label} className="p-3 rounded-[13px] bg-text-primary/[0.04] border hairline">
+        <div
+          key={t.label}
+          className="p-3 rounded-[13px] bg-text-primary/[0.04] border hairline"
+        >
           <div className="micro mb-1">{t.label}</div>
-          <div className="font-display text-xl tabular-nums text-text-primary">{t.value}</div>
+          <div className="font-display text-xl tabular-nums text-text-primary">
+            {t.value}
+          </div>
           <div className="text-[10.5px] text-text-faint mt-0.5">{t.sub}</div>
         </div>
       ))}
@@ -123,13 +141,19 @@ function Section({
         >
           <Icon className="w-3 h-3" />
         </div>
-        <span className="text-[13px] font-semibold text-text-primary">{title}</span>
+        <span className="text-[13px] font-semibold text-text-primary">
+          {title}
+        </span>
         {count !== undefined && (
-          <span className="ml-auto text-[11px] text-text-faint">{count} total</span>
+          <span className="ml-auto text-[11px] text-text-faint">
+            {count} total
+          </span>
         )}
       </div>
       {isEmpty ? (
-        <div className="py-4 text-center text-[12px] text-text-faint">{emptyText}</div>
+        <div className="py-4 text-center text-[12px] text-text-faint">
+          {emptyText}
+        </div>
       ) : (
         children
       )}
@@ -169,10 +193,18 @@ function ContactRow({
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-medium text-text-primary truncate">{name}</span>
-          {priority === "vip" && <Pill tone="accent" dot={false}>VIP</Pill>}
+          <span className="text-[13px] font-medium text-text-primary truncate">
+            {name}
+          </span>
+          {priority === "vip" && (
+            <Pill tone="accent" dot={false}>
+              VIP
+            </Pill>
+          )}
         </div>
-        {meta && <div className="text-[11px] text-text-faint mt-0.5">{meta}</div>}
+        {meta && (
+          <div className="text-[11px] text-text-faint mt-0.5">{meta}</div>
+        )}
       </div>
       <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
         {whatsapp && (
@@ -221,14 +253,18 @@ const EVENT_LABELS: Record<string, string> = {
 
 export function TodayTab() {
   const navigate = useNavigate();
-  const { data: milestones = [], isLoading: loadMilestones } = useTodayMilestones();
+  const { data: milestones = [], isLoading: loadMilestones } =
+    useTodayMilestones();
   const { data: newContacts = [], isLoading: loadNew } = useTodayNewContacts();
-  const { data: staleDeals = [], isLoading: loadStale } = useTodayStaleDeals(14);
+  const { data: staleDeals = [], isLoading: loadStale } =
+    useTodayStaleDeals(14);
 
   const todayMs = milestones.filter((m) => m.days_until === 0);
   const upcomingMs = milestones.filter((m) => m.days_until > 0);
 
-  function openContact(id: string) { navigate(`/contacts?open=${id}`); }
+  function openContact(id: string) {
+    navigate(`/contacts?open=${id}`);
+  }
 
   return (
     <div className="animate-fade-in">
@@ -236,7 +272,12 @@ export function TodayTab() {
 
       {/* Today's milestones */}
       {todayMs.length > 0 && (
-        <Section icon={Cake} title="Today 🎉" iconColor="#d4a853" count={todayMs.length}>
+        <Section
+          icon={Cake}
+          title="Today 🎉"
+          iconColor="#d4a853"
+          count={todayMs.length}
+        >
           <div className="flex flex-col gap-2">
             {todayMs.map((m) => {
               const EventIcon = EVENT_ICONS[m.event_type] ?? Calendar;
@@ -279,7 +320,8 @@ export function TodayTab() {
           <div className="flex flex-col gap-2">
             {upcomingMs.slice(0, 8).map((m) => {
               const EventIcon = EVENT_ICONS[m.event_type] ?? Calendar;
-              const daysLabel = m.days_until === 1 ? "Tomorrow" : `In ${m.days_until} days`;
+              const daysLabel =
+                m.days_until === 1 ? "Tomorrow" : `In ${m.days_until} days`;
               return (
                 <ContactRow
                   key={`${m.contact_id}-${m.event_date}`}
@@ -366,7 +408,10 @@ export function TodayTab() {
           <div className="flex flex-col gap-2">
             {staleDeals.slice(0, 8).map((d) => {
               const daysSince = d.last_activity_at
-                ? Math.floor((Date.now() - new Date(d.last_activity_at).getTime()) / 86_400_000)
+                ? Math.floor(
+                    (Date.now() - new Date(d.last_activity_at).getTime()) /
+                      86_400_000,
+                  )
                 : null;
               return (
                 <div
@@ -392,7 +437,9 @@ export function TodayTab() {
                       </span>
                     )}
                     {daysSince !== null && (
-                      <Pill tone="warn" dot={false}>{daysSince}d idle</Pill>
+                      <Pill tone="warn" dot={false}>
+                        {daysSince}d idle
+                      </Pill>
                     )}
                   </div>
                   <ChevronRight className="w-4 h-4 text-text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -407,8 +454,8 @@ export function TodayTab() {
       <div className="flex items-start gap-2 p-3 rounded-[12px] bg-accent/[0.05] border border-accent/15 mt-2">
         <Sparkles className="w-3.5 h-3.5 text-accent mt-0.5 flex-shrink-0" />
         <p className="text-[11.5px] text-accent/80 leading-relaxed">
-          Open any deal to get Praxis AI deal summaries, next-action suggestions, and win-back
-          message drafts.
+          Open any deal to get Praxis AI deal summaries, next-action
+          suggestions, and win-back message drafts.
         </p>
       </div>
     </div>

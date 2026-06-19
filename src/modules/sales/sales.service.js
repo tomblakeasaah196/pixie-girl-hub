@@ -892,11 +892,15 @@ async function markPaid({ client, brand, user, _request_id, order }) {
           );
           if (spRow.rows[0] && spRow.rows[0].style_addon_price_ngn) {
             costForCogs = String(
-              Number(costForCogs || 0) + Number(spRow.rows[0].style_addon_price_ngn),
+              Number(costForCogs || 0) +
+                Number(spRow.rows[0].style_addon_price_ngn),
             );
           }
         } catch (err) {
-          logger.warn({ err, styled_product_id: line.styled_product_id }, "styled addon lookup skipped");
+          logger.warn(
+            { err, styled_product_id: line.styled_product_id },
+            "styled addon lookup skipped",
+          );
         }
       }
       await stockService.deductForSale({

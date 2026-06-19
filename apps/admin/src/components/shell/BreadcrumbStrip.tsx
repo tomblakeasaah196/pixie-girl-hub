@@ -33,28 +33,36 @@ export function BreadcrumbStrip() {
 
   return (
     <nav className="border-b border-[rgb(var(--border-c)/0.5)] bg-[rgb(var(--panel-2)/0.35)] backdrop-blur-md">
-     <div className="mx-auto w-full max-w-[var(--content-max)] flex items-center gap-1.5 px-[34px] py-2">
-      {crumbs.map((crumb, i) => {
-        const isLast = i === crumbs.length - 1;
-        return (
-          <span key={i} className="flex items-center gap-1.5">
-            {i > 0 && <ChevronRight className="w-3.5 h-3.5 text-[rgb(var(--text-faint))]" />}
-            {isLast || !crumb.href ? (
-              <span className={isLast ? "text-[12.5px] font-semibold text-[rgb(var(--text))]" : "text-[12.5px] text-[rgb(var(--text-muted))]"}>
-                {crumb.label}
-              </span>
-            ) : (
-              <Link
-                to={crumb.href}
-                className="text-[12.5px] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--accent-glow))] transition-colors"
-              >
-                {crumb.label}
-              </Link>
-            )}
-          </span>
-        );
-      })}
-     </div>
+      <div className="mx-auto w-full max-w-[var(--content-max)] flex items-center gap-1.5 px-[34px] py-2">
+        {crumbs.map((crumb, i) => {
+          const isLast = i === crumbs.length - 1;
+          return (
+            <span key={i} className="flex items-center gap-1.5">
+              {i > 0 && (
+                <ChevronRight className="w-3.5 h-3.5 text-[rgb(var(--text-faint))]" />
+              )}
+              {isLast || !crumb.href ? (
+                <span
+                  className={
+                    isLast
+                      ? "text-[12.5px] font-semibold text-[rgb(var(--text))]"
+                      : "text-[12.5px] text-[rgb(var(--text-muted))]"
+                  }
+                >
+                  {crumb.label}
+                </span>
+              ) : (
+                <Link
+                  to={crumb.href}
+                  className="text-[12.5px] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--accent-glow))] transition-colors"
+                >
+                  {crumb.label}
+                </Link>
+              )}
+            </span>
+          );
+        })}
+      </div>
     </nav>
   );
 }

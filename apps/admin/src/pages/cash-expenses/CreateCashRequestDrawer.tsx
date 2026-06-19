@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/primitives";
 import { FormSection, Field, TextInput } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
 import { useCashRequestMutations } from "./hooks";
-import { CR_CATEGORY_OPTIONS, URGENCY_OPTIONS, RECIPIENT_TYPE_OPTIONS, SETTLEMENT_REQUIRES_TYPES } from "./constants";
+import {
+  CR_CATEGORY_OPTIONS,
+  URGENCY_OPTIONS,
+  RECIPIENT_TYPE_OPTIONS,
+  SETTLEMENT_REQUIRES_TYPES,
+} from "./constants";
 import type { RecipientType, Urgency } from "./types";
 
 interface Props {
@@ -40,23 +45,33 @@ const INITIAL: FormState = {
 
 export default function CreateCashRequestDrawer({ onClose }: Props) {
   const [form, setForm] = useState<FormState>(INITIAL);
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof FormState, string>>
+  >({});
   const mutations = useCashRequestMutations();
 
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
     setForm((p) => ({ ...p, [key]: val }));
 
-  const categoryLabel = CR_CATEGORY_OPTIONS.find((c) => c.value === form.category_key)?.label ?? form.category_key;
-  const showBankFields = ["self_bank", "third_party_bank", "supplier_direct"].includes(form.recipient_type);
+  const categoryLabel =
+    CR_CATEGORY_OPTIONS.find((c) => c.value === form.category_key)?.label ??
+    form.category_key;
+  const showBankFields = [
+    "self_bank",
+    "third_party_bank",
+    "supplier_direct",
+  ].includes(form.recipient_type);
   const requiresSettlement = SETTLEMENT_REQUIRES_TYPES.has(form.recipient_type);
 
   function validate(): boolean {
     const e: typeof errors = {};
     if (!form.category_key) e.category_key = "Required";
     if (!form.purpose.trim()) e.purpose = "Required";
-    if (!form.amount_requested_ngn || Number(form.amount_requested_ngn) <= 0) e.amount_requested_ngn = "Enter a positive amount";
+    if (!form.amount_requested_ngn || Number(form.amount_requested_ngn) <= 0)
+      e.amount_requested_ngn = "Enter a positive amount";
     if (showBankFields && form.recipient_type !== "self_bank") {
-      if (!form.recipient_account_number.trim()) e.recipient_account_number = "Required for bank transfers";
+      if (!form.recipient_account_number.trim())
+        e.recipient_account_number = "Required for bank transfers";
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -81,7 +96,9 @@ export default function CreateCashRequestDrawer({ onClose }: Props) {
     mutations.create.mutate(input, {
       onSuccess: (created) => {
         if (andSubmit) {
-          mutations.submit.mutate(created.cash_request_id, { onSuccess: onClose });
+          mutations.submit.mutate(created.cash_request_id, {
+            onSuccess: onClose,
+          });
         } else {
           onClose();
         }
@@ -100,10 +117,22 @@ export default function CreateCashRequestDrawer({ onClose }: Props) {
       leading={<Plus className="w-5 h-5 text-accent" />}
       footer={
         <>
-          <Button variant="secondary" size="sm" disabled={isBusy} onClick={() => handleSave(false)} icon={<Save className="w-3.5 h-3.5" />}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isBusy}
+            onClick={() => handleSave(false)}
+            icon={<Save className="w-3.5 h-3.5" />}
+          >
             Save Draft
           </Button>
-          <Button variant="primary" size="sm" disabled={isBusy} onClick={() => handleSave(true)} icon={<Send className="w-3.5 h-3.5" />}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={isBusy}
+            onClick={() => handleSave(true)}
+            icon={<Send className="w-3.5 h-3.5" />}
+          >
             Submit for Approval
           </Button>
         </>
@@ -157,11 +186,14 @@ export default function CreateCashRequestDrawer({ onClose }: Props) {
               placeholder="0.00"
               className="font-mono"
             />
-            {errors.amount_requested_ngn && <ErrText>{errors.amount_requested_ngn}</ErrText>}
+            {errors.amount_requested_ngn && (
+              <ErrText>{errors.amount_requested_ngn}</ErrText>
+            )}
           </Field>
           {Number(form.amount_requested_ngn) >= 100000 && (
             <div className="flex items-center gap-2 p-2.5 rounded-xl bg-warn/10 border border-warn/20 text-xs text-warn">
-              <span className="font-bold">Note:</span> Amounts ≥ ₦100,000 require CEO approval in addition to Finance review.
+              <span className="font-bold">Note:</span> Amounts ≥ ₦100,000
+              require CEO approval in addition to Finance review.
             </div>
           )}
         </FormSection>
@@ -176,7 +208,8 @@ export default function CreateCashRequestDrawer({ onClose }: Props) {
           </Field>
           {requiresSettlement && (
             <div className="flex items-center gap-2 p-2.5 rounded-xl bg-info/10 border border-info/20 text-xs text-info">
-              This is a <strong>cash advance</strong> — you'll need to settle it with receipts after disbursement.
+              This is a <strong>cash advance</strong> — you'll need to settle it
+              with receipts after disbursement.
             </div>
           )}
           {showBankFields && (
@@ -197,18 +230,31 @@ export default function CreateCashRequestDrawer({ onClose }: Props) {
                   placeholder="e.g. GTBank, Access Bank"
                 />
               </Field>
-              <Field label="Account Number" hint={form.recipient_type === "self_bank" ? "auto-filled from your profile" : "required"}>
+              <Field
+                label="Account Number"
+                hint={
+                  form.recipient_type === "self_bank"
+                    ? "auto-filled from your profile"
+                    : "required"
+                }
+              >
                 <TextInput
                   value={form.recipient_account_number}
-                  onChange={(e) => set("recipient_account_number", e.target.value)}
+                  onChange={(e) =>
+                    set("recipient_account_number", e.target.value)
+                  }
                   placeholder="10-digit account number"
                 />
-                {errors.recipient_account_number && <ErrText>{errors.recipient_account_number}</ErrText>}
+                {errors.recipient_account_number && (
+                  <ErrText>{errors.recipient_account_number}</ErrText>
+                )}
               </Field>
               <Field label="Account Name">
                 <TextInput
                   value={form.recipient_account_name}
-                  onChange={(e) => set("recipient_account_name", e.target.value)}
+                  onChange={(e) =>
+                    set("recipient_account_name", e.target.value)
+                  }
                   placeholder="Name on the bank account"
                 />
               </Field>

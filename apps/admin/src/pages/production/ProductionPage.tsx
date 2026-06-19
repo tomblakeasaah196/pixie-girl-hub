@@ -40,10 +40,14 @@ import { RUN_STATUS_META } from "./constants";
 import type { FactoryAccount, ProductionRun } from "./types";
 
 const FactoryAccountLedger = lazy(() =>
-  import("./FactoryAccountLedger").then((m) => ({ default: m.FactoryAccountLedger })),
+  import("./FactoryAccountLedger").then((m) => ({
+    default: m.FactoryAccountLedger,
+  })),
 );
 const FactoryShipmentsPanel = lazy(() =>
-  import("./FactoryShipmentsPanel").then((m) => ({ default: m.FactoryShipmentsPanel })),
+  import("./FactoryShipmentsPanel").then((m) => ({
+    default: m.FactoryShipmentsPanel,
+  })),
 );
 
 type MainTab = "overview" | "factory" | "runs";
@@ -66,7 +70,9 @@ export function ProductionPage() {
 
   const [tab, setTab] = useState<MainTab>("overview");
   const [factoryTab, setFactoryTab] = useState<FactoryTab>("ledger");
-  const [selectedAccount, setSelectedAccount] = useState<FactoryAccount | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<FactoryAccount | null>(
+    null,
+  );
   const [selectedRun, setSelectedRun] = useState<ProductionRun | null>(null);
   const [showCreateRun, setShowCreateRun] = useState(false);
 
@@ -88,9 +94,21 @@ export function ProductionPage() {
   }
 
   const tabs: { key: MainTab; label: string; icon: React.ReactNode }[] = [
-    { key: "overview", label: "Overview", icon: <TrendingUp className="w-4 h-4" /> },
-    { key: "factory", label: "Factory Account", icon: <Wallet className="w-4 h-4" /> },
-    { key: "runs", label: "Production Runs", icon: <Factory className="w-4 h-4" /> },
+    {
+      key: "overview",
+      label: "Overview",
+      icon: <TrendingUp className="w-4 h-4" />,
+    },
+    {
+      key: "factory",
+      label: "Factory Account",
+      icon: <Wallet className="w-4 h-4" />,
+    },
+    {
+      key: "runs",
+      label: "Production Runs",
+      icon: <Factory className="w-4 h-4" />,
+    },
   ];
 
   return (
@@ -105,12 +123,14 @@ export function ProductionPage() {
         </div>
         <div className="flex gap-2">
           {/* Language selector — driven by DB; new languages appear immediately after saving in Settings */}
-          <div className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-semibold border transition-all",
-            i18n.language !== "en"
-              ? "bg-accent/15 border-accent/30 text-accent-glow"
-              : "border-line text-text-muted hover:text-text-primary",
-          )}>
+          <div
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-semibold border transition-all",
+              i18n.language !== "en"
+                ? "bg-accent/15 border-accent/30 text-accent-glow"
+                : "border-line text-text-muted hover:text-text-primary",
+            )}
+          >
             <Globe className="w-3.5 h-3.5 shrink-0" />
             <select
               value={i18n.language}
@@ -118,7 +138,11 @@ export function ProductionPage() {
               className="bg-transparent outline-none cursor-pointer text-inherit font-semibold"
             >
               {Object.entries(languages).map(([code, name]) => (
-                <option key={code} value={code} className="bg-[#1a0808] text-foreground">
+                <option
+                  key={code}
+                  value={code}
+                  className="bg-[#1a0808] text-foreground"
+                >
                   {name}
                 </option>
               ))}
@@ -176,11 +200,17 @@ export function ProductionPage() {
 
       {/* Run detail drawer */}
       {selectedRun && (
-        <RunDetailDrawer run={selectedRun} onClose={() => setSelectedRun(null)} />
+        <RunDetailDrawer
+          run={selectedRun}
+          onClose={() => setSelectedRun(null)}
+        />
       )}
 
       {/* Create run drawer */}
-      <CreateRunDrawer open={showCreateRun} onClose={() => setShowCreateRun(false)} />
+      <CreateRunDrawer
+        open={showCreateRun}
+        onClose={() => setShowCreateRun(false)}
+      />
     </div>
   );
 }
@@ -193,7 +223,8 @@ function OverviewTab() {
   const runs = useProductionRuns({ status: "in_production" });
 
   const totalBalance =
-    accounts.data?.reduce((sum, a) => sum + (a.current_balance_base ?? 0), 0) ?? 0;
+    accounts.data?.reduce((sum, a) => sum + (a.current_balance_base ?? 0), 0) ??
+    0;
   const activeAccounts = accounts.data?.filter((a) => a.is_active).length ?? 0;
   const inTransit = shipments.data?.total ?? 0;
   const activeRuns = runs.data?.total ?? 0;
@@ -224,28 +255,46 @@ function OverviewTab() {
           value={`¥${totalBalance.toLocaleString("en", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           tone="warn"
         />
-        <KpiTile label="Shipments in Transit" value={String(inTransit)} tone="info" />
-        <KpiTile label="Runs in Production" value={String(activeRuns)} tone="accent" />
+        <KpiTile
+          label="Shipments in Transit"
+          value={String(inTransit)}
+          tone="info"
+        />
+        <KpiTile
+          label="Runs in Production"
+          value={String(activeRuns)}
+          tone="accent"
+        />
       </div>
 
       {/* Accounts summary */}
       {accounts.data && accounts.data.length > 0 && (
         <div>
-          <h2 className="font-display text-base font-medium mb-3">Factory Accounts</h2>
+          <h2 className="font-display text-base font-medium mb-3">
+            Factory Accounts
+          </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {accounts.data.map((a) => (
               <Card key={a.account_id} className="p-4">
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="font-semibold text-[14px]">{a.account_name}</div>
-                    <div className="text-[12px] text-text-muted">{a.supplier_name}</div>
+                    <div className="font-semibold text-[14px]">
+                      {a.account_name}
+                    </div>
+                    <div className="text-[12px] text-text-muted">
+                      {a.supplier_name}
+                    </div>
                   </div>
                   <Pill tone={a.is_active ? "success" : "neutral"} dot={false}>
                     {a.is_active ? "Active" : "Inactive"}
                   </Pill>
                 </div>
                 <div className="mt-3 font-mono text-[20px] font-bold">
-                  ¥{(a.current_balance_base ?? 0).toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ¥
+                  {(a.current_balance_base ?? 0).toLocaleString("en", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
                 </div>
               </Card>
             ))}
@@ -273,7 +322,13 @@ function FactoryTab({
   const { data: accounts, isLoading, isError } = useFactoryAccounts();
 
   if (isLoading) return <Skeleton className="h-32 w-full" />;
-  if (isError) return <EmptyState icon={<AlertTriangle className="w-6 h-6" />} title="Failed to load" />;
+  if (isError)
+    return (
+      <EmptyState
+        icon={<AlertTriangle className="w-6 h-6" />}
+        title="Failed to load"
+      />
+    );
   if (!accounts || accounts.length === 0) {
     return (
       <EmptyState
@@ -311,18 +366,34 @@ function FactoryTab({
       {/* Account header */}
       <Card className="p-4 flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <div className="font-display text-lg font-medium">{active.account_name}</div>
-          <div className="text-[13px] text-text-muted">{active.supplier_name} · {active.country}</div>
+          <div className="font-display text-lg font-medium">
+            {active.account_name}
+          </div>
+          <div className="text-[13px] text-text-muted">
+            {active.supplier_name} · {active.country}
+          </div>
         </div>
-        <Pill tone={active.is_active ? "success" : "neutral"}>{active.is_active ? "Active" : "Inactive"}</Pill>
+        <Pill tone={active.is_active ? "success" : "neutral"}>
+          {active.is_active ? "Active" : "Inactive"}
+        </Pill>
       </Card>
 
       {/* Sub-tabs */}
       <div className="flex gap-1 p-1 glass rounded-[14px]">
-        {([
-          { key: "ledger" as const, label: t("ledger"), icon: <Wallet className="w-3.5 h-3.5" /> },
-          { key: "shipments" as const, label: t("shipmentsTab"), icon: <Ship className="w-3.5 h-3.5" /> },
-        ] as const).map((tab) => (
+        {(
+          [
+            {
+              key: "ledger" as const,
+              label: t("ledger"),
+              icon: <Wallet className="w-3.5 h-3.5" />,
+            },
+            {
+              key: "shipments" as const,
+              label: t("shipmentsTab"),
+              icon: <Ship className="w-3.5 h-3.5" />,
+            },
+          ] as const
+        ).map((tab) => (
           <button
             key={tab.key}
             onClick={() => onFactoryTab(tab.key)}
@@ -376,7 +447,9 @@ function RunsTab({
     {
       key: "title",
       header: "Title",
-      render: (r) => <span className="font-semibold text-[13px]">{r.title}</span>,
+      render: (r) => (
+        <span className="font-semibold text-[13px]">{r.title}</span>
+      ),
     },
     {
       key: "status",
@@ -425,7 +498,9 @@ function RunsTab({
       key: "date",
       header: "Created",
       width: "100px",
-      render: (r) => <span className="text-text-muted text-xs">{fmt(r.created_at)}</span>,
+      render: (r) => (
+        <span className="text-text-muted text-xs">{fmt(r.created_at)}</span>
+      ),
     },
   ];
 
@@ -435,7 +510,11 @@ function RunsTab({
         icon={<AlertTriangle className="w-7 h-7" />}
         title="Failed to load"
         message="Could not load production runs."
-        action={<Button size="sm" onClick={() => refetch()}>Retry</Button>}
+        action={
+          <Button size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }
@@ -452,7 +531,11 @@ function RunsTab({
         title: "No production runs",
         message: "Track a production batch from factory to Lagos warehouse.",
         action: canCreate ? (
-          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={onCreate}>
+          <Button
+            variant="primary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={onCreate}
+          >
             New Production Run
           </Button>
         ) : undefined,
@@ -498,7 +581,9 @@ function RunDetailDrawer({
     >
       <div className="space-y-6">
         <div>
-          <h3 className="font-display text-lg font-medium mb-1">{current.title}</h3>
+          <h3 className="font-display text-lg font-medium mb-1">
+            {current.title}
+          </h3>
           <div className="text-[13px] text-text-muted">
             {current.units_received}/{current.units_planned} units received
           </div>
@@ -508,13 +593,19 @@ function RunDetailDrawer({
           {current.total_landed_cost_ngn != null && (
             <div>
               <div className="micro mb-1">Total Cost</div>
-              <MoneyText ngn={current.total_landed_cost_ngn} className="text-[22px]" />
+              <MoneyText
+                ngn={current.total_landed_cost_ngn}
+                className="text-[22px]"
+              />
             </div>
           )}
           {current.per_unit_cost_ngn != null && (
             <div>
               <div className="micro mb-1">Per Unit Cost</div>
-              <MoneyText ngn={current.per_unit_cost_ngn} className="text-[22px]" />
+              <MoneyText
+                ngn={current.per_unit_cost_ngn}
+                className="text-[22px]"
+              />
             </div>
           )}
         </div>
@@ -530,7 +621,9 @@ function RunDetailDrawer({
                 >
                   <div>
                     <div className="font-semibold">{c.cost_type}</div>
-                    <div className="text-xs text-text-faint font-mono">{c.currency}</div>
+                    <div className="text-xs text-text-faint font-mono">
+                      {c.currency}
+                    </div>
                   </div>
                   <MoneyText ngn={c.amount_ngn} className="text-[13px]" />
                 </div>
@@ -551,9 +644,7 @@ function RunDetailDrawer({
                     size="sm"
                     variant={s === "cancelled" ? "danger" : "secondary"}
                     disabled={advance.isPending}
-                    onClick={() =>
-                      advance.mutate(s, { onSuccess: onClose })
-                    }
+                    onClick={() => advance.mutate(s, { onSuccess: onClose })}
                   >
                     → {m?.label ?? s}
                   </Button>
@@ -569,7 +660,13 @@ function RunDetailDrawer({
 
 // ── Create Run Drawer ─────────────────────────────────────
 
-function CreateRunDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreateRunDrawer({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateProductionRun();
   const [title, setTitle] = useState("");
   const [units, setUnits] = useState("0");
@@ -595,8 +692,14 @@ function CreateRunDrawer({ open, onClose }: { open: boolean; onClose: () => void
       title="New Production Run"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={create.isPending || !title} onClick={handleSubmit}>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={create.isPending || !title}
+            onClick={handleSubmit}
+          >
             {create.isPending ? "Creating…" : "Create Run"}
           </Button>
         </>

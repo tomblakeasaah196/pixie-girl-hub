@@ -9,7 +9,10 @@ import { useNavStore } from "@/stores/nav";
 // Each route prefix maps to up to 4 module keys shown alongside the Hub tab.
 
 const CONTEXT_MAP: [test: (p: string) => boolean, keys: string[]][] = [
-  [(p) => p.startsWith("/contacts"), ["contacts", "crm", "smartcomm", "workspace"]],
+  [
+    (p) => p.startsWith("/contacts"),
+    ["contacts", "crm", "smartcomm", "workspace"],
+  ],
   [(p) => p.startsWith("/crm"), ["crm", "contacts", "workspace", "sales"]],
   [
     (p) => p.startsWith("/sales") || p.startsWith("/invoicing"),
@@ -23,8 +26,14 @@ const CONTEXT_MAP: [test: (p: string) => boolean, keys: string[]][] = [
     (p) => p.startsWith("/procurement") || p.startsWith("/purchasing"),
     ["purchasing", "catalogue", "stock", "contacts"],
   ],
-  [(p) => p.startsWith("/logistics"), ["logistics", "sales", "stock", "contacts"]],
-  [(p) => p.startsWith("/expenses"), ["expenses", "purchasing", "invoicing", "contacts"]],
+  [
+    (p) => p.startsWith("/logistics"),
+    ["logistics", "sales", "stock", "contacts"],
+  ],
+  [
+    (p) => p.startsWith("/expenses"),
+    ["expenses", "purchasing", "invoicing", "contacts"],
+  ],
   [
     (p) => p.startsWith("/hr") || p.startsWith("/payroll"),
     ["hr", "workspace", "contacts", "smartcomm"],
@@ -34,8 +43,14 @@ const CONTEXT_MAP: [test: (p: string) => boolean, keys: string[]][] = [
     (p) => p.startsWith("/smartcomm") || p.startsWith("/messaging"),
     ["smartcomm", "contacts", "crm", "workspace"],
   ],
-  [(p) => p.startsWith("/workspace"), ["workspace", "contacts", "crm", "smartcomm"]],
-  [(p) => p.startsWith("/settings"), ["settings", "contacts", "sales", "stock"]],
+  [
+    (p) => p.startsWith("/workspace"),
+    ["workspace", "contacts", "crm", "smartcomm"],
+  ],
+  [
+    (p) => p.startsWith("/settings"),
+    ["settings", "contacts", "sales", "stock"],
+  ],
 ];
 
 // ── Resolve tabs ───────────────────────────────────────────────────────────────
@@ -59,7 +74,11 @@ function resolveModuleTabs(keys: string[]): BottomTab[] {
     }));
 }
 
-function tabsForRoute(pathname: string, pinned: string[], topKeys: string[]): BottomTab[] {
+function tabsForRoute(
+  pathname: string,
+  pinned: string[],
+  topKeys: string[],
+): BottomTab[] {
   // On Command Center (/): show pinned modules or default top-4
   if (pathname === "/") {
     const keys = pinned.length ? pinned : topKeys.slice(0, 4);
@@ -185,7 +204,9 @@ export function MobileBottomNav() {
       const mod = MODULE_BY_KEY[key];
       const label = mod ? mod.label.split(" ")[0] : key;
       setToast({
-        msg: pinned ? `Pinned ${label} to bottom bar` : `Unpinned ${label} from bottom bar`,
+        msg: pinned
+          ? `Pinned ${label} to bottom bar`
+          : `Unpinned ${label} from bottom bar`,
         key: Date.now(),
       });
     },
@@ -230,8 +251,7 @@ export function MobileBottomNav() {
 
           {/* 4 context-aware module tabs */}
           {moduleTabs.slice(0, 4).map((tab) => {
-            const active =
-              pathname.startsWith(tab.route) && tab.route !== "/";
+            const active = pathname.startsWith(tab.route) && tab.route !== "/";
             return (
               <TabItem
                 key={tab.key}

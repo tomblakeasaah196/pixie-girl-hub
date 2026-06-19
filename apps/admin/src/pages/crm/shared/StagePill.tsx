@@ -7,18 +7,26 @@ interface StagePillProps {
   size?: "sm" | "md";
 }
 
-export function StagePill({ stage, stageName, stageColour, size = "sm" }: StagePillProps) {
+export function StagePill({
+  stage,
+  stageName,
+  stageColour,
+  size = "sm",
+}: StagePillProps) {
   const name = stage?.display_name ?? stageName ?? "Unknown";
   const colour = stage?.colour ?? stageColour ?? "#690909";
 
-  const sizeClasses = size === "sm"
-    ? "px-2 py-0.5 text-[10.5px]"
-    : "px-2.5 py-1 text-[12px]";
+  const sizeClasses =
+    size === "sm" ? "px-2 py-0.5 text-[10.5px]" : "px-2.5 py-1 text-[12px]";
 
   return (
     <span
       className={`inline-flex items-center rounded-full font-semibold ${sizeClasses}`}
-      style={{ backgroundColor: `${colour}22`, color: colour, border: `1px solid ${colour}44` }}
+      style={{
+        backgroundColor: `${colour}22`,
+        color: colour,
+        border: `1px solid ${colour}44`,
+      }}
     >
       {name}
     </span>

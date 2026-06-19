@@ -1,10 +1,5 @@
 import { useState } from "react";
-import {
-  Button,
-  Pill,
-  Skeleton,
-  EmptyState,
-} from "@/components/ui/primitives";
+import { Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorState } from "@/components/ui/controls";
 import type { ChemicalRecipe, Ingredient, CreateRecipeInput } from "./types";
@@ -50,7 +45,9 @@ function IngredientRow({
           placeholder="Qty (ml)"
           value={ing.qty_ml ?? ""}
           onChange={(e) =>
-            onChange({ qty_ml: e.target.value ? parseFloat(e.target.value) : undefined })
+            onChange({
+              qty_ml: e.target.value ? parseFloat(e.target.value) : undefined,
+            })
           }
         />
         <input
@@ -61,7 +58,9 @@ function IngredientRow({
           placeholder="Qty (g)"
           value={ing.qty_g ?? ""}
           onChange={(e) =>
-            onChange({ qty_g: e.target.value ? parseFloat(e.target.value) : undefined })
+            onChange({
+              qty_g: e.target.value ? parseFloat(e.target.value) : undefined,
+            })
           }
         />
       </div>
@@ -109,7 +108,10 @@ function RecipeForm({
   };
 
   const addIng = () =>
-    setForm((f) => ({ ...f, ingredients: [...f.ingredients, { chemical_name: "" }] }));
+    setForm((f) => ({
+      ...f,
+      ingredients: [...f.ingredients, { chemical_name: "" }],
+    }));
 
   const removeIng = (i: number) =>
     setForm((f) => ({
@@ -132,7 +134,9 @@ function RecipeForm({
             className="input w-full font-mono"
             placeholder="e.g. warm_brunette_v2"
             value={form.recipe_key}
-            onChange={(e) => setForm((f) => ({ ...f, recipe_key: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, recipe_key: e.target.value }))
+            }
           />
         </div>
         <div>
@@ -141,7 +145,9 @@ function RecipeForm({
             className="input w-full"
             placeholder="e.g. Warm Brunette v2"
             value={form.display_name}
-            onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, display_name: e.target.value }))
+            }
           />
         </div>
       </div>
@@ -152,7 +158,9 @@ function RecipeForm({
           className="input w-full"
           placeholder="e.g. Level 6 Warm Brown"
           value={form.target_shade}
-          onChange={(e) => setForm((f) => ({ ...f, target_shade: e.target.value }))}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, target_shade: e.target.value }))
+          }
         />
       </div>
 
@@ -185,7 +193,9 @@ function RecipeForm({
           className="input w-full h-24 text-sm"
           placeholder="Step-by-step mixing and application instructions…"
           value={form.instructions}
-          onChange={(e) => setForm((f) => ({ ...f, instructions: e.target.value }))}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, instructions: e.target.value }))
+          }
         />
       </div>
 
@@ -203,7 +213,10 @@ function RecipeForm({
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button onClick={() => valid && onSave(form)} disabled={!valid || isSaving}>
+        <Button
+          onClick={() => valid && onSave(form)}
+          disabled={!valid || isSaving}
+        >
           {isSaving ? "Saving…" : "Save Recipe"}
         </Button>
       </div>
@@ -244,7 +257,8 @@ function RecipeCard({
 
       {recipe.target_shade && (
         <p className="text-xs text-muted">
-          Target shade: <span className="text-foreground">{recipe.target_shade}</span>
+          Target shade:{" "}
+          <span className="text-foreground">{recipe.target_shade}</span>
         </p>
       )}
 
@@ -253,7 +267,8 @@ function RecipeCard({
         className="text-xs text-accent hover:underline flex items-center gap-1"
         onClick={() => setExpanded((v) => !v)}
       >
-        {recipe.ingredients.length} ingredient{recipe.ingredients.length !== 1 ? "s" : ""}
+        {recipe.ingredients.length} ingredient
+        {recipe.ingredients.length !== 1 ? "s" : ""}
         <span>{expanded ? "▲" : "▼"}</span>
       </button>
 
@@ -264,9 +279,15 @@ function RecipeCard({
               <span className="text-muted">{i + 1}.</span>
               <span className="font-medium">{ing.chemical_name}</span>
               {ing.brand && <span className="text-muted">({ing.brand})</span>}
-              {ing.qty_ml && <span className="font-mono ml-auto">{ing.qty_ml} ml</span>}
-              {ing.qty_g && <span className="font-mono ml-auto">{ing.qty_g} g</span>}
-              {ing.role && <span className="text-muted italic">{ing.role}</span>}
+              {ing.qty_ml && (
+                <span className="font-mono ml-auto">{ing.qty_ml} ml</span>
+              )}
+              {ing.qty_g && (
+                <span className="font-mono ml-auto">{ing.qty_g} g</span>
+              )}
+              {ing.role && (
+                <span className="text-muted italic">{ing.role}</span>
+              )}
             </div>
           ))}
           {recipe.instructions && (
@@ -285,7 +306,9 @@ function RecipeCard({
 export function RecipesPanel({ canCreate }: { canCreate: boolean }) {
   const { data: recipes = [], isLoading, isError } = useRecipes();
   const { create, update } = useRecipeMutations();
-  const [editingRecipe, setEditingRecipe] = useState<ChemicalRecipe | null>(null);
+  const [editingRecipe, setEditingRecipe] = useState<ChemicalRecipe | null>(
+    null,
+  );
   const [showCreate, setShowCreate] = useState(false);
 
   if (isLoading) {
@@ -318,7 +341,13 @@ export function RecipesPanel({ canCreate }: { canCreate: boolean }) {
           icon={<span className="text-3xl">🧪</span>}
           title="No recipes yet"
           message="Create your first colour recipe"
-          action={canCreate ? <Button size="sm" onClick={() => setShowCreate(true)}>New Recipe</Button> : undefined}
+          action={
+            canCreate ? (
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                New Recipe
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <div className="space-y-3">
@@ -333,7 +362,11 @@ export function RecipesPanel({ canCreate }: { canCreate: boolean }) {
       )}
 
       {showCreate && (
-        <Drawer open onClose={() => setShowCreate(false)} title="New Chemical Recipe">
+        <Drawer
+          open
+          onClose={() => setShowCreate(false)}
+          title="New Chemical Recipe"
+        >
           <RecipeForm
             onSave={(data) =>
               create.mutate(data, { onSuccess: () => setShowCreate(false) })
@@ -361,10 +394,9 @@ export function RecipesPanel({ canCreate }: { canCreate: boolean }) {
               is_active: editingRecipe.is_active,
             }}
             onSave={(data) =>
-              update.mutate(
-                [editingRecipe.recipe_id, data],
-                { onSuccess: () => setEditingRecipe(null) },
-              )
+              update.mutate([editingRecipe.recipe_id, data], {
+                onSuccess: () => setEditingRecipe(null),
+              })
             }
             onCancel={() => setEditingRecipe(null)}
             isSaving={update.isPending}

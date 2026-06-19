@@ -23,7 +23,9 @@ export function CartButton() {
           </span>
           <span className="flex-1 text-left">
             <span className="block text-[13px] text-[rgb(var(--text-muted))]">
-              {totalQty === 0 ? "Your cart is empty" : `${totalQty} item${totalQty === 1 ? "" : "s"}`}
+              {totalQty === 0
+                ? "Your cart is empty"
+                : `${totalQty} item${totalQty === 1 ? "" : "s"}`}
             </span>
             <span className="block font-display tabular-nums text-[15px]">
               {totalQty === 0 ? "Browse the bundles" : money(subtotal)}

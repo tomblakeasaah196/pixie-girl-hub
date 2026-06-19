@@ -101,7 +101,10 @@ export function ChatDock() {
       </div>
       <div className="min-h-0 flex-1">
         {channelId ? (
-          <MessageThread channelId={channelId} onBack={() => setChannel(null)} />
+          <MessageThread
+            channelId={channelId}
+            onBack={() => setChannel(null)}
+          />
         ) : (
           <ChannelList
             activeChannelId={null}

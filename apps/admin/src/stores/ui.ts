@@ -39,7 +39,8 @@ export const useUiStore = create<UiState>()(
       appMenuOffset: { x: 0, y: 0 },
       switchingToBiz: null,
       setTheme: (theme) => set({ theme }),
-      toggleTheme: () => set({ theme: get().theme === "dark" ? "light" : "dark" }),
+      toggleTheme: () =>
+        set({ theme: get().theme === "dark" ? "light" : "dark" }),
       setDensity: (density) => set({ density }),
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
       setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),

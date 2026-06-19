@@ -70,7 +70,10 @@ async function chatCompletion({
   const url =
     `${config.GEMINI_BASE_URL}/v1beta/models/${encodeURIComponent(modelId)}:generateContent` +
     `?key=${encodeURIComponent(config.GEMINI_API_KEY)}`;
-  const { contents, systemInstruction } = toGeminiContents({ system, messages });
+  const { contents, systemInstruction } = toGeminiContents({
+    system,
+    messages,
+  });
   const body = {
     contents,
     systemInstruction,

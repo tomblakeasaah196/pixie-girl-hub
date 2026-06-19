@@ -27,19 +27,66 @@ const imageUpload = multer({
 });
 
 // ── v2: Bundles (catalogue-level) ──────────────────────────
-router.get("/bundles", requirePermission("sales_campaigns", "view"), v2.listBundles);
-router.post("/bundles", requirePermission("sales_campaigns", "create"), validator.validateBundleCreate, v2.createBundle);
-router.get("/bundles/:id", requirePermission("sales_campaigns", "view"), v2.getBundle);
-router.patch("/bundles/:id", requirePermission("sales_campaigns", "edit"), validator.validateBundleUpdate, v2.updateBundle);
-router.delete("/bundles/:id", requirePermission("sales_campaigns", "delete"), v2.archiveBundle);
-router.post("/bundles/:id/items", requirePermission("sales_campaigns", "edit"), validator.validateBundleItem, v2.addBundleItem);
-router.delete("/bundles/:id/items/:itemId", requirePermission("sales_campaigns", "edit"), v2.removeBundleItem);
-router.patch("/bundles/:id/reorder", requirePermission("sales_campaigns", "edit"), v2.reorderBundleItems);
+router.get(
+  "/bundles",
+  requirePermission("sales_campaigns", "view"),
+  v2.listBundles,
+);
+router.post(
+  "/bundles",
+  requirePermission("sales_campaigns", "create"),
+  validator.validateBundleCreate,
+  v2.createBundle,
+);
+router.get(
+  "/bundles/:id",
+  requirePermission("sales_campaigns", "view"),
+  v2.getBundle,
+);
+router.patch(
+  "/bundles/:id",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateBundleUpdate,
+  v2.updateBundle,
+);
+router.delete(
+  "/bundles/:id",
+  requirePermission("sales_campaigns", "delete"),
+  v2.archiveBundle,
+);
+router.post(
+  "/bundles/:id/items",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateBundleItem,
+  v2.addBundleItem,
+);
+router.delete(
+  "/bundles/:id/items/:itemId",
+  requirePermission("sales_campaigns", "edit"),
+  v2.removeBundleItem,
+);
+router.patch(
+  "/bundles/:id/reorder",
+  requirePermission("sales_campaigns", "edit"),
+  v2.reorderBundleItems,
+);
 
 // ── v2: Ambassadors (CRM-level) ─────────────────────────────
-router.get("/ambassadors", requirePermission("sales_campaigns", "view"), v2.listAmbassadorContacts);
-router.post("/ambassadors/:contactId/promote", requirePermission("sales_campaigns", "edit"), v2.promoteContact);
-router.delete("/ambassadors/:contactId", requirePermission("sales_campaigns", "edit"), v2.demoteContact);
+router.get(
+  "/ambassadors",
+  requirePermission("sales_campaigns", "view"),
+  v2.listAmbassadorContacts,
+);
+router.post(
+  "/ambassadors/:contactId/promote",
+  requirePermission("sales_campaigns", "edit"),
+  v2.promoteContact,
+);
+router.delete(
+  "/ambassadors/:contactId",
+  requirePermission("sales_campaigns", "edit"),
+  v2.demoteContact,
+);
 
 // ── Collection ─────────────────────────────────────────────
 router.get("/", requirePermission("sales_campaigns", "view"), controller.list);
@@ -190,34 +237,134 @@ router.get(
 );
 
 // ── v2: Campaign-scoped bundles, tiers, upsells, ambassadors ──
-router.get("/:id/bundles", requirePermission("sales_campaigns", "view"), v2.listCampaignBundles);
-router.post("/:id/bundles", requirePermission("sales_campaigns", "edit"), validator.validateAttachBundle, v2.attachCampaignBundle);
-router.delete("/:id/bundles/:linkId", requirePermission("sales_campaigns", "edit"), v2.detachCampaignBundle);
+router.get(
+  "/:id/bundles",
+  requirePermission("sales_campaigns", "view"),
+  v2.listCampaignBundles,
+);
+router.post(
+  "/:id/bundles",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateAttachBundle,
+  v2.attachCampaignBundle,
+);
+router.delete(
+  "/:id/bundles/:linkId",
+  requirePermission("sales_campaigns", "edit"),
+  v2.detachCampaignBundle,
+);
 
-router.get("/:id/tiers", requirePermission("sales_campaigns", "view"), v2.listTiers);
-router.post("/:id/tiers", requirePermission("sales_campaigns", "edit"), validator.validateTier, v2.upsertTier);
-router.delete("/:id/tiers/:tierId", requirePermission("sales_campaigns", "edit"), v2.deleteTier);
+router.get(
+  "/:id/tiers",
+  requirePermission("sales_campaigns", "view"),
+  v2.listTiers,
+);
+router.post(
+  "/:id/tiers",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateTier,
+  v2.upsertTier,
+);
+router.delete(
+  "/:id/tiers/:tierId",
+  requirePermission("sales_campaigns", "edit"),
+  v2.deleteTier,
+);
 
-router.get("/:id/upsells", requirePermission("sales_campaigns", "view"), v2.listUpsells);
-router.post("/:id/upsells", requirePermission("sales_campaigns", "edit"), validator.validateUpsell, v2.upsertUpsell);
-router.delete("/:id/upsells/:upsellId", requirePermission("sales_campaigns", "edit"), v2.deleteUpsell);
+router.get(
+  "/:id/upsells",
+  requirePermission("sales_campaigns", "view"),
+  v2.listUpsells,
+);
+router.post(
+  "/:id/upsells",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateUpsell,
+  v2.upsertUpsell,
+);
+router.delete(
+  "/:id/upsells/:upsellId",
+  requirePermission("sales_campaigns", "edit"),
+  v2.deleteUpsell,
+);
 
-router.get("/:id/ambassadors", requirePermission("sales_campaigns", "view"), v2.listCampaignAmbassadors);
-router.post("/:id/ambassadors", requirePermission("sales_campaigns", "edit"), validator.validateAttachAmbassador, v2.attachAmbassador);
-router.delete("/:id/ambassadors/:linkId", requirePermission("sales_campaigns", "edit"), v2.detachAmbassador);
+router.get(
+  "/:id/ambassadors",
+  requirePermission("sales_campaigns", "view"),
+  v2.listCampaignAmbassadors,
+);
+router.post(
+  "/:id/ambassadors",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateAttachAmbassador,
+  v2.attachAmbassador,
+);
+router.delete(
+  "/:id/ambassadors/:linkId",
+  requirePermission("sales_campaigns", "edit"),
+  v2.detachAmbassador,
+);
 
 // ── v2: Praxis assist ──────────────────────────────────────
-router.post("/:id/praxis/draft-copy", requirePermission("sales_campaigns", "edit"), validator.validatePraxisDraftCopy, v2.praxisDraftCopy);
-router.post("/:id/praxis/suggest-layout", requirePermission("sales_campaigns", "edit"), validator.validatePraxisSuggestLayout, v2.praxisSuggestLayout);
-router.post("/:id/praxis/suggest-pricing", requirePermission("sales_campaigns", "edit"), validator.validatePraxisSuggestPricing, v2.praxisSuggestPricing);
-router.post("/:id/praxis/dry-run-pricing", requirePermission("sales_campaigns", "view"), validator.validatePraxisDryRun, v2.praxisDryRunPricing);
-router.post("/:id/praxis/analytics-qna", requirePermission("sales_campaigns", "view"), validator.validatePraxisQna, v2.praxisAnalyticsQna);
-router.get("/:id/praxis/daily-briefing", requirePermission("sales_campaigns", "view"), v2.praxisDailyBriefing);
-router.post("/:id/praxis/accept", requirePermission("sales_campaigns", "edit"), validator.validatePraxisAccept, v2.praxisAccept);
+router.post(
+  "/:id/praxis/draft-copy",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validatePraxisDraftCopy,
+  v2.praxisDraftCopy,
+);
+router.post(
+  "/:id/praxis/suggest-layout",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validatePraxisSuggestLayout,
+  v2.praxisSuggestLayout,
+);
+router.post(
+  "/:id/praxis/suggest-pricing",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validatePraxisSuggestPricing,
+  v2.praxisSuggestPricing,
+);
+router.post(
+  "/:id/praxis/dry-run-pricing",
+  requirePermission("sales_campaigns", "view"),
+  validator.validatePraxisDryRun,
+  v2.praxisDryRunPricing,
+);
+router.post(
+  "/:id/praxis/analytics-qna",
+  requirePermission("sales_campaigns", "view"),
+  validator.validatePraxisQna,
+  v2.praxisAnalyticsQna,
+);
+router.get(
+  "/:id/praxis/daily-briefing",
+  requirePermission("sales_campaigns", "view"),
+  v2.praxisDailyBriefing,
+);
+router.post(
+  "/:id/praxis/accept",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validatePraxisAccept,
+  v2.praxisAccept,
+);
 
 // ── v2: VIP grants ─────────────────────────────────────────
-router.get("/:id/vip-grants", requirePermission("sales_campaigns", "view"), v2.listVipGrants);
-router.post("/:id/vip-grants", requirePermission("sales_campaigns", "edit"), validator.validateVipGrant, v2.grantVip);
-router.patch("/:id/vip-grants/:grantId", requirePermission("sales_campaigns", "edit"), validator.validateVipGiftStatus, v2.updateGiftStatus);
+router.get(
+  "/:id/vip-grants",
+  requirePermission("sales_campaigns", "view"),
+  v2.listVipGrants,
+);
+router.post(
+  "/:id/vip-grants",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateVipGrant,
+  v2.grantVip,
+);
+router.patch(
+  "/:id/vip-grants/:grantId",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateVipGiftStatus,
+  v2.updateGiftStatus,
+);
 
 module.exports = router;

@@ -2,7 +2,10 @@ import type { OrderStatus, QuoteStatus, SalesChannel } from "./types";
 
 type Tone = "success" | "warn" | "danger" | "info" | "accent" | "neutral";
 
-interface StatusMeta { label: string; tone: Tone }
+interface StatusMeta {
+  label: string;
+  tone: Tone;
+}
 
 export const ORDER_STATUS: Record<OrderStatus, StatusMeta> = {
   draft: { label: "Draft", tone: "neutral" },
@@ -59,10 +62,16 @@ export const SEND_VIA_OPTIONS = [
 
 export const ORDER_STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
-  ...Object.entries(ORDER_STATUS).map(([v, m]) => ({ value: v, label: m.label })),
+  ...Object.entries(ORDER_STATUS).map(([v, m]) => ({
+    value: v,
+    label: m.label,
+  })),
 ];
 
 export const QUOTE_STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
-  ...Object.entries(QUOTE_STATUS).map(([v, m]) => ({ value: v, label: m.label })),
+  ...Object.entries(QUOTE_STATUS).map(([v, m]) => ({
+    value: v,
+    label: m.label,
+  })),
 ];

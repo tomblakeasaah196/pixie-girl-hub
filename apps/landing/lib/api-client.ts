@@ -17,16 +17,22 @@ export async function postSignup(args: {
   source?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const res = await fetch(`/api/public/sale/${encodeURIComponent(args.slug)}/signup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        email: args.email,
-        phone: args.phone,
-        notify_via: args.notify_via || "email",
-        source: args.source || "landing",
-      }),
-    });
+    const res = await fetch(
+      `/api/public/sale/${encodeURIComponent(args.slug)}/signup`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          email: args.email,
+          phone: args.phone,
+          notify_via: args.notify_via || "email",
+          source: args.source || "landing",
+        }),
+      },
+    );
     if (!res.ok) {
       const err = await res.text();
       return { ok: false, error: err || `HTTP ${res.status}` };
@@ -46,7 +52,11 @@ export async function postCheckout(args: {
     phone: string;
     instagram_handle?: string;
     notes?: string;
-    gift?: { recipient_name: string; recipient_phone?: string; message?: string };
+    gift?: {
+      recipient_name: string;
+      recipient_phone?: string;
+      message?: string;
+    };
     address: {
       line1: string;
       line2?: string;
@@ -72,11 +82,17 @@ export async function postCheckout(args: {
   payment_gateway: "paystack" | "opay" | "nomba" | "stripe";
   client_idempotency_key: string;
 }) {
-  const res = await fetch(`/api/public/sale/${encodeURIComponent(args.slug)}/checkout`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(args),
-  });
+  const res = await fetch(
+    `/api/public/sale/${encodeURIComponent(args.slug)}/checkout`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(args),
+    },
+  );
   if (!res.ok) {
     const err = await res.text().catch(() => "");
     throw new Error(err || `HTTP ${res.status}`);

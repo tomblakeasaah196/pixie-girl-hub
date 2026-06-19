@@ -28,7 +28,12 @@ export function FeaturedProducts({
         />
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-10">
           {products.map((p, i) => (
-            <Card key={p.product_id || i} product={p} index={i} live={state === "live"} />
+            <Card
+              key={p.product_id || i}
+              product={p}
+              index={i}
+              live={state === "live"}
+            />
           ))}
         </div>
       </div>
@@ -36,7 +41,15 @@ export function FeaturedProducts({
   );
 }
 
-function Card({ product, index, live }: { product: LandingProduct; index: number; live: boolean }) {
+function Card({
+  product,
+  index,
+  live,
+}: {
+  product: LandingProduct;
+  index: number;
+  live: boolean;
+}) {
   const add = useCart((s) => s.add);
   const openCart = useCart((s) => s.openCart);
   const [hover, setHover] = useState(false);
@@ -65,10 +78,14 @@ function Card({ product, index, live }: { product: LandingProduct; index: number
         ) : null}
       </div>
       <div className="p-3.5 flex-1 flex flex-col">
-        <div className="text-[13px] font-semibold leading-tight truncate">{product.name}</div>
+        <div className="text-[13px] font-semibold leading-tight truncate">
+          {product.name}
+        </div>
         {price > 0 && (
           <div className="mt-2 flex items-end gap-2">
-            <div className="font-display text-[18px] tabular-nums">{money(price)}</div>
+            <div className="font-display text-[18px] tabular-nums">
+              {money(price)}
+            </div>
             {retail > price && (
               <div className="text-[11px] text-[rgb(var(--text-faint))] line-through font-mono">
                 {money(retail)}

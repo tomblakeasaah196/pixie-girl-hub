@@ -21,24 +21,24 @@ access token, and start receiving DMs in the unified inbox.
 
 ## Files
 
-| File                                       | Purpose                              |
-| ------------------------------------------ | ------------------------------------ |
-| `messaging-accounts.routes.js`             | Express router                       |
-| `messaging-accounts.controller.js`         | HTTP handlers                        |
-| `messaging-accounts.service.js`            | Business logic + audit + provider ping |
-| `messaging-accounts.repo.js`               | Parameterised SQL                    |
-| `messaging-accounts.validator.js`          | Zod input schemas                    |
+| File                               | Purpose                                |
+| ---------------------------------- | -------------------------------------- |
+| `messaging-accounts.routes.js`     | Express router                         |
+| `messaging-accounts.controller.js` | HTTP handlers                          |
+| `messaging-accounts.service.js`    | Business logic + audit + provider ping |
+| `messaging-accounts.repo.js`       | Parameterised SQL                      |
+| `messaging-accounts.validator.js`  | Zod input schemas                      |
 
 ## Endpoints
 
-| Method | Path                                        |
-| ------ | ------------------------------------------- |
-| GET    | `/api/v1/messaging-accounts`                |
-| POST   | `/api/v1/messaging-accounts`                |
-| GET    | `/api/v1/messaging-accounts/:id`            |
-| POST   | `/api/v1/messaging-accounts/:id/active`     |
-| POST   | `/api/v1/messaging-accounts/:id/test`       |
-| DELETE | `/api/v1/messaging-accounts/:id`            |
+| Method | Path                                    |
+| ------ | --------------------------------------- |
+| GET    | `/api/v1/messaging-accounts`            |
+| POST   | `/api/v1/messaging-accounts`            |
+| GET    | `/api/v1/messaging-accounts/:id`        |
+| POST   | `/api/v1/messaging-accounts/:id/active` |
+| POST   | `/api/v1/messaging-accounts/:id/test`   |
+| DELETE | `/api/v1/messaging-accounts/:id`        |
 
 ## Tokens at rest
 
@@ -49,5 +49,6 @@ the ciphertext never leaves the backend.
 ## Test ping
 
 `/:id/test` calls the provider with the saved token to verify config:
+
 - WhatsApp/Instagram/Facebook → Meta Graph `GET /{external_account_id}?fields=id,name`
 - Email → DNS MX record lookup on the inbound domain

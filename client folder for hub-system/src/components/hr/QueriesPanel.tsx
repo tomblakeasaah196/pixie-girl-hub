@@ -38,8 +38,12 @@ export function QueriesPanel({
   const [text, setText] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: mode === "self" ? ["hr", "me", "queries"] : ["hr", "queries", profileId || "all"],
-    queryFn: () => (mode === "self" ? getMyQueries() : listQueries({ profile_id: profileId })),
+    queryKey:
+      mode === "self"
+        ? ["hr", "me", "queries"]
+        : ["hr", "queries", profileId || "all"],
+    queryFn: () =>
+      mode === "self" ? getMyQueries() : listQueries({ profile_id: profileId }),
   });
 
   const respondMut = useMutation({
@@ -54,8 +58,13 @@ export function QueriesPanel({
   });
 
   const resolveMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: "closed" | "escalated" }) =>
-      resolveQuery(id, { status }),
+    mutationFn: ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: "closed" | "escalated";
+    }) => resolveQuery(id, { status }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["hr"] });
       showToast.success("Query updated");
@@ -86,7 +95,9 @@ export function QueriesPanel({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-brand-cream">{q.subject}</span>
+                  <span className="text-sm font-medium text-brand-cream">
+                    {q.subject}
+                  </span>
                   <Badge tone={STATUS_TONE[q.status] || "neutral"} size="xs">
                     {q.status}
                   </Badge>
@@ -97,7 +108,9 @@ export function QueriesPanel({
                   )}
                 </div>
                 {mode === "manage" && q.display_name && (
-                  <div className="text-[0.65rem] text-brand-smoke">{q.display_name}</div>
+                  <div className="text-[0.65rem] text-brand-smoke">
+                    {q.display_name}
+                  </div>
                 )}
                 <p className="mt-1 text-sm text-brand-cloud">{q.details}</p>
                 {q.response && (
@@ -121,7 +134,9 @@ export function QueriesPanel({
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => resolveMut.mutate({ id: q.query_id, status: "closed" })}
+                    onClick={() =>
+                      resolveMut.mutate({ id: q.query_id, status: "closed" })
+                    }
                   >
                     Close
                   </Button>
@@ -142,7 +157,10 @@ export function QueriesPanel({
             <Button variant="secondary" onClick={() => setActive(null)}>
               Cancel
             </Button>
-            <Button onClick={() => respondMut.mutate()} disabled={!text.trim() || respondMut.isPending}>
+            <Button
+              onClick={() => respondMut.mutate()}
+              disabled={!text.trim() || respondMut.isPending}
+            >
               {respondMut.isPending ? "Sending…" : "Send response"}
             </Button>
           </>

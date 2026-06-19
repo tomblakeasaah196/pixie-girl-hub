@@ -45,7 +45,9 @@ export function ForecastView({ columns, isLoading }: ForecastViewProps) {
           <div className="font-display text-xl tabular-nums text-accent">
             <MoneyText ngn={weightedTotal} />
           </div>
-          <div className="text-[10.5px] text-text-faint mt-0.5">by win probability</div>
+          <div className="text-[10.5px] text-text-faint mt-0.5">
+            by win probability
+          </div>
         </div>
       </div>
 
@@ -57,7 +59,10 @@ export function ForecastView({ columns, isLoading }: ForecastViewProps) {
           .map((col) => {
             const prob = col.stage.win_probability_pct ?? 50;
             const weighted = (col.total_value_ngn * prob) / 100;
-            const pct = totalPipeline > 0 ? (col.total_value_ngn / totalPipeline) * 100 : 0;
+            const pct =
+              totalPipeline > 0
+                ? (col.total_value_ngn / totalPipeline) * 100
+                : 0;
 
             return (
               <div
@@ -104,14 +109,19 @@ export function ForecastView({ columns, isLoading }: ForecastViewProps) {
                 {/* Weighted line */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-text-faint">Win probability</span>
+                    <span className="text-[11px] text-text-faint">
+                      Win probability
+                    </span>
                     <span
                       className="text-[11px] font-semibold"
                       style={{ color: col.stage.colour ?? "#690909" }}
                     >
                       {prob}%
                     </span>
-                    <ProbabilityBar probability={prob} colour={col.stage.colour} />
+                    <ProbabilityBar
+                      probability={prob}
+                      colour={col.stage.colour}
+                    />
                   </div>
                   <div className="text-[11.5px] font-display tabular-nums text-text-muted">
                     ≈ <MoneyText ngn={weighted} />
@@ -137,7 +147,10 @@ export function ForecastView({ columns, isLoading }: ForecastViewProps) {
                         <span className="text-[11.5px] text-text-muted truncate flex-1">
                           {d.title}
                           {d.contact_name && (
-                            <span className="text-text-faint"> · {d.contact_name}</span>
+                            <span className="text-text-faint">
+                              {" "}
+                              · {d.contact_name}
+                            </span>
                           )}
                         </span>
                         {d.expected_value_ngn && (

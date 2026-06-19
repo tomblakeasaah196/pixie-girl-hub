@@ -6,7 +6,12 @@ import type { LandingPayload } from "@/lib/types";
 import { deriveState } from "@/lib/state-engine";
 import { useCart } from "@/lib/cart-store";
 import { cn } from "@/lib/cn";
-import { Hero, Countdown, BeforeReveal, EndedFarewell } from "./blocks/HeroAndCountdown";
+import {
+  Hero,
+  Countdown,
+  BeforeReveal,
+  EndedFarewell,
+} from "./blocks/HeroAndCountdown";
 import { BundleShowcase } from "./blocks/BundleShowcase";
 import { QuantityTierVisualizer } from "./blocks/QuantityTierVisualizer";
 import { FeaturedProducts } from "./blocks/FeaturedProducts";
@@ -86,7 +91,13 @@ export function LandingShell({ payload }: { payload: LandingPayload }) {
 
       {/* Block renderers — order is whatever the campaign builder set. */}
       {blocks.map((b, i) => (
-        <BlockRouter key={`${b.key}-${i}`} block={b} payload={payload} state={state} derived={derived} />
+        <BlockRouter
+          key={`${b.key}-${i}`}
+          block={b}
+          payload={payload}
+          state={state}
+          derived={derived}
+        />
       ))}
 
       {isEnded && <EndedFarewell payload={payload} />}
@@ -114,12 +125,21 @@ function BlockRouter({
   state,
   derived,
 }: {
-  block: { key: string; props?: Record<string, unknown>; drafted_by_ai?: boolean; rationale?: string };
+  block: {
+    key: string;
+    props?: Record<string, unknown>;
+    drafted_by_ai?: boolean;
+    rationale?: string;
+  };
   payload: LandingPayload;
   state: "before" | "live" | "ended";
   derived: ReturnType<typeof deriveState>["derived"];
 }) {
-  const onlyOn = block.props?.only_on as "before" | "live" | "ended" | undefined;
+  const onlyOn = block.props?.only_on as
+    | "before"
+    | "live"
+    | "ended"
+    | undefined;
   if (onlyOn && onlyOn !== state) return null;
   switch (block.key) {
     case "countdown":
@@ -154,7 +174,9 @@ function BlockRouter({
     case "shipping_returns":
       return <ShippingReturns payload={payload} />;
     case "newsletter_capture":
-      return state === "before" ? <NewsletterCapture payload={payload} /> : null;
+      return state === "before" ? (
+        <NewsletterCapture payload={payload} />
+      ) : null;
     case "vip_signup":
       return state === "before" ? <VipSignup payload={payload} /> : null;
     default: {

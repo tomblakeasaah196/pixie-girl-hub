@@ -6,12 +6,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { smartcommApi, type ChannelListParams } from "@/lib/smartcomm-api";
-import {
-  getSocket,
-  joinRoom,
-  leaveRoom,
-  rooms,
-} from "@/lib/socket";
+import { getSocket, joinRoom, leaveRoom, rooms } from "@/lib/socket";
 
 /** List the inbox for the current user (active brand). */
 export function useChannels(params: ChannelListParams = {}) {
@@ -172,13 +167,19 @@ export function useTypingIndicator(
       if (p.channel_id !== channelId || !p.user_id || p.user_id === selfUserId)
         return;
       seen.set(p.user_id, Date.now());
-      qc.setQueryData(["smartcomm", "typing", channelId], Array.from(seen.keys()));
+      qc.setQueryData(
+        ["smartcomm", "typing", channelId],
+        Array.from(seen.keys()),
+      );
       window.setTimeout(() => {
         const now = Date.now();
         for (const [uid, ts] of seen.entries()) {
           if (now - ts > TYPING_TTL) seen.delete(uid);
         }
-        qc.setQueryData(["smartcomm", "typing", channelId], Array.from(seen.keys()));
+        qc.setQueryData(
+          ["smartcomm", "typing", channelId],
+          Array.from(seen.keys()),
+        );
       }, TYPING_TTL + 200);
     };
 

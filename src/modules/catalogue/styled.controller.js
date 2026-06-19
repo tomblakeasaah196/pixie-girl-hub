@@ -80,7 +80,9 @@ async function listTrash(req, res) {
 }
 
 async function restore(req, res) {
-  res.json({ data: await service.restore({ ...base(req), id: req.params.id }) });
+  res.json({
+    data: await service.restore({ ...base(req), id: req.params.id }),
+  });
 }
 
 // AI drafts a Styled product over a base — saved as a DRAFT for review.

@@ -29,7 +29,13 @@ export function BundleShowcase({
         />
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mt-10">
           {bundles.map((b, i) => (
-            <BundleCard key={b.link_id} bundle={b} payload={payload} state={state} index={i} />
+            <BundleCard
+              key={b.link_id}
+              bundle={b}
+              payload={payload}
+              state={state}
+              index={i}
+            />
           ))}
         </div>
       </div>
@@ -54,11 +60,14 @@ function BundleCard({
   const tease = state !== "live";
   const stockOut = (bundle.current_stock_snapshot ?? 1) <= 0;
   const showPrice = !tease;
-  const finalPrice = stockOut && bundle.preorder_enabled
-    ? bundle.preorder_price_ngn ?? bundle.campaign_bundle_price_ngn ?? 0
-    : bundle.campaign_bundle_price_ngn ?? 0;
+  const finalPrice =
+    stockOut && bundle.preorder_enabled
+      ? (bundle.preorder_price_ngn ?? bundle.campaign_bundle_price_ngn ?? 0)
+      : (bundle.campaign_bundle_price_ngn ?? 0);
   const retailTotal = bundle.total_retail_ngn ?? null;
-  const savings = bundle.total_savings_ngn ?? (retailTotal ? Math.max(0, retailTotal - finalPrice) : 0);
+  const savings =
+    bundle.total_savings_ngn ??
+    (retailTotal ? Math.max(0, retailTotal - finalPrice) : 0);
 
   function addToCart() {
     if (stockOut && !bundle.preorder_enabled) return;
@@ -82,7 +91,11 @@ function BundleCard({
       initial={{ opacity: 0, y: 30 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
-      transition={{ delay: index * 0.07, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      transition={{
+        delay: index * 0.07,
+        duration: 0.6,
+        ease: [0.16, 1, 0.3, 1],
+      }}
       onMouseEnter={() => setOpened(true)}
       onMouseLeave={() => setOpened(false)}
       className="glass rounded-[var(--radius)] overflow-hidden flex flex-col"
@@ -135,10 +148,14 @@ function BundleCard({
       </div>
 
       <div className="p-5 flex-1 flex flex-col">
-        <h3 className="font-display text-[22px] leading-tight">{bundle.bundle_name}</h3>
+        <h3 className="font-display text-[22px] leading-tight">
+          {bundle.bundle_name}
+        </h3>
         {showPrice ? (
           <div className="mt-4 flex items-end gap-3">
-            <div className="font-display text-[28px] tabular-nums">{money(finalPrice)}</div>
+            <div className="font-display text-[28px] tabular-nums">
+              {money(finalPrice)}
+            </div>
             {retailTotal && retailTotal > finalPrice && (
               <div className="text-[rgb(var(--text-faint))] line-through font-mono">
                 {money(retailTotal)}
@@ -155,7 +172,8 @@ function BundleCard({
         )}
         {stockOut && bundle.preorder_enabled && state === "live" && (
           <div className="text-[12.5px] text-[rgb(var(--warn))] mt-2 inline-flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" /> Pre-order — ships in {bundle.preorder_lead_weeks ?? 3} weeks
+            <Clock className="w-3.5 h-3.5" /> Pre-order — ships in{" "}
+            {bundle.preorder_lead_weeks ?? 3} weeks
           </div>
         )}
 
@@ -206,7 +224,9 @@ export function SectionHeader({
           {title.split(/\s+/).slice(-1)[0]}
         </em>
       </h2>
-      {subtitle && <p className="mt-4 text-[rgb(var(--text-muted))]">{subtitle}</p>}
+      {subtitle && (
+        <p className="mt-4 text-[rgb(var(--text-muted))]">{subtitle}</p>
+      )}
     </div>
   );
 }

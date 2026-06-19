@@ -21,17 +21,25 @@ interface Props {
  * Used from Sales, POS, and other modules where a contact must be found or created inline.
  * The full profile can be expanded later from the Contacts directory.
  */
-export function QuickAddModal({ initialType = "customer", onClose, onSuccess }: Props) {
+export function QuickAddModal({
+  initialType = "customer",
+  onClose,
+  onSuccess,
+}: Props) {
   const createMut = useCreateContact();
 
   const [name, setName] = useState("");
-  const [dialCode, setDialCode] = useState<(typeof DIAL_CODES)[number]>(DIAL_CODES[0]);
+  const [dialCode, setDialCode] = useState<(typeof DIAL_CODES)[number]>(
+    DIAL_CODES[0],
+  );
   const [rawPhone, setRawPhone] = useState("");
   const [email, setEmail] = useState("");
   const [type, setType] = useState<ContactType>(initialType);
   const [error, setError] = useState("");
 
-  const phone = rawPhone.replace(/\D/g, "") ? `${dialCode.dial}${rawPhone.replace(/\D/g, "")}` : "";
+  const phone = rawPhone.replace(/\D/g, "")
+    ? `${dialCode.dial}${rawPhone.replace(/\D/g, "")}`
+    : "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +64,9 @@ export function QuickAddModal({ initialType = "customer", onClose, onSuccess }: 
       onSuccess?.(created.contact_id);
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create contact.");
+      setError(
+        err instanceof Error ? err.message : "Failed to create contact.",
+      );
     }
   };
 
@@ -72,7 +82,12 @@ export function QuickAddModal({ initialType = "customer", onClose, onSuccess }: 
       }
       footer={
         <>
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={createMut.isPending}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            disabled={createMut.isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -94,7 +109,8 @@ export function QuickAddModal({ initialType = "customer", onClose, onSuccess }: 
         )}
 
         <p className="text-[12px] text-text-faint mb-4">
-          Enter the essentials — full profile can be completed later in the Contacts directory.
+          Enter the essentials — full profile can be completed later in the
+          Contacts directory.
         </p>
 
         {/* Type */}
@@ -150,7 +166,8 @@ export function QuickAddModal({ initialType = "customer", onClose, onSuccess }: 
                 className="w-[100px] shrink-0"
                 value={dialCode.code}
                 onChange={(v) => {
-                  const d = DIAL_CODES.find((c) => c.code === v) ?? DIAL_CODES[0];
+                  const d =
+                    DIAL_CODES.find((c) => c.code === v) ?? DIAL_CODES[0];
                   setDialCode(d);
                 }}
                 options={DIAL_CODES.map((d) => ({
@@ -164,7 +181,9 @@ export function QuickAddModal({ initialType = "customer", onClose, onSuccess }: 
                 inputMode="numeric"
                 placeholder="8020868273"
                 value={rawPhone}
-                onChange={(e) => setRawPhone(e.target.value.replace(/[^\d\s\-]/g, ""))}
+                onChange={(e) =>
+                  setRawPhone(e.target.value.replace(/[^\d\s\-]/g, ""))
+                }
               />
             </div>
             {phone && (

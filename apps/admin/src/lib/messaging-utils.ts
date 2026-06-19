@@ -65,8 +65,9 @@ export function getDirectPeer(
 ): ChannelMember | null {
   if (channel.channel_type !== "direct") return null;
   return (
-    (channel.members ?? []).find((m) => m.user_id && m.user_id !== selfUserId) ??
-    null
+    (channel.members ?? []).find(
+      (m) => m.user_id && m.user_id !== selfUserId,
+    ) ?? null
   );
 }
 
@@ -189,7 +190,10 @@ export function fmtCountdown(iso?: string | null): string {
 
 // ── Message preview ──────────────────────────────────────
 
-export function previewFromKind(kind?: string | null, content?: string | null): string {
+export function previewFromKind(
+  kind?: string | null,
+  content?: string | null,
+): string {
   if (!kind && !content) return "No messages yet";
   switch (kind) {
     case "image":
@@ -222,5 +226,6 @@ export const COST_INFO = {
     "Inside Instagram's 24-hour window — every reply is FREE.",
   instagram_window_closed:
     "Instagram window has expired. Only the HUMAN_AGENT tag allows reaching this customer (free, but reserved for genuine service-resolution).",
-  email_free: "Email is free at any volume. Used for receipts, invoices, and confirmations.",
+  email_free:
+    "Email is free at any volume. Used for receipts, invoices, and confirmations.",
 };

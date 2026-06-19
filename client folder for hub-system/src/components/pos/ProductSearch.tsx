@@ -86,10 +86,7 @@ export function ProductSearch({
     if (categoryId && p.category_id !== categoryId) return false;
     if (!deferredQuery) return true;
     const q = deferredQuery.toLowerCase();
-    return (
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q)
-    );
+    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
   });
 
   function handleAdd(product: POSProduct) {

@@ -45,7 +45,9 @@ export function ScheduleEditor({ profileId }: { profileId: string }) {
     if (!data) return;
     setSchedule(data.work_schedule || {});
     setLocationType(data.work_location_type || "on_site");
-    setStartTime(data.expected_start_time ? data.expected_start_time.slice(0, 5) : "");
+    setStartTime(
+      data.expected_start_time ? data.expected_start_time.slice(0, 5) : "",
+    );
     setGrace(String(data.grace_minutes ?? 15));
     setLocationId(data.work_location_id || "");
   }, [data]);
@@ -71,22 +73,28 @@ export function ScheduleEditor({ profileId }: { profileId: string }) {
   return (
     <Card className="p-5 space-y-5">
       <div>
-        <h4 className="mb-2 text-sm font-semibold text-brand-cream">Weekly pattern</h4>
+        <h4 className="mb-2 text-sm font-semibold text-brand-cream">
+          Weekly pattern
+        </h4>
         <p className="mb-3 text-xs text-brand-smoke">
-          Set where this employee works each day. Attendance only expects a clock-in on Office and
-          Remote days; Office days are geofence-checked.
+          Set where this employee works each day. Attendance only expects a
+          clock-in on Office and Remote days; Office days are geofence-checked.
         </p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
           {WEEK_DAYS.map(({ key, label }) => (
             <div key={key} className="rounded-xl border border-white/5 p-2">
-              <div className="mb-1 text-center text-xs font-semibold text-brand-cream">{label}</div>
+              <div className="mb-1 text-center text-xs font-semibold text-brand-cream">
+                {label}
+              </div>
               <div className="flex flex-col gap-1">
                 {MODES.map((m) => {
                   const selected = (schedule[key] || "off") === m.value;
                   return (
                     <button
                       key={m.value}
-                      onClick={() => setSchedule((s) => ({ ...s, [key]: m.value }))}
+                      onClick={() =>
+                        setSchedule((s) => ({ ...s, [key]: m.value }))
+                      }
                       className={cn(
                         "rounded-md px-1.5 py-1 text-[0.65rem] transition-colors",
                         selected
@@ -132,7 +140,10 @@ export function ScheduleEditor({ profileId }: { profileId: string }) {
           label="Office location"
           options={[
             { value: "", label: "— none —" },
-            ...(locations || []).map((l) => ({ value: l.location_id, label: l.name })),
+            ...(locations || []).map((l) => ({
+              value: l.location_id,
+              label: l.name,
+            })),
           ]}
           value={locationId}
           onChange={(e) => setLocationId(e.target.value)}
@@ -140,7 +151,11 @@ export function ScheduleEditor({ profileId }: { profileId: string }) {
       </div>
 
       <div className="flex justify-end">
-        <Button onClick={() => mut.mutate()} disabled={mut.isPending} leftIcon={<Save className="h-4 w-4" />}>
+        <Button
+          onClick={() => mut.mutate()}
+          disabled={mut.isPending}
+          leftIcon={<Save className="h-4 w-4" />}
+        >
           {mut.isPending ? "Saving…" : "Save schedule"}
         </Button>
       </div>

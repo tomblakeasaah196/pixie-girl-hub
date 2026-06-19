@@ -22,7 +22,9 @@ function apiBase(): string {
 }
 
 /** Fetch a campaign by slug. Returns null on 404 so callers can render notFound(). */
-export async function fetchCampaign(slug: string): Promise<LandingPayload | null> {
+export async function fetchCampaign(
+  slug: string,
+): Promise<LandingPayload | null> {
   const host = headers().get("host") || "";
   const hostName = host.split(":")[0];
   const brandHint = headers().get("x-brand-context") || undefined;

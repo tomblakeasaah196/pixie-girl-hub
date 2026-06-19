@@ -17,7 +17,9 @@ async function getAccount(req, res) {
 async function upsertAccount(req, res) {
   res
     .status(201)
-    .json({ data: await service.upsertAccount({ ...ctx(req), input: req.body }) });
+    .json({
+      data: await service.upsertAccount({ ...ctx(req), input: req.body }),
+    });
 }
 async function setActive(req, res) {
   res.json({

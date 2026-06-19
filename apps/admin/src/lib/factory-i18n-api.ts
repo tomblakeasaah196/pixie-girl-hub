@@ -11,8 +11,7 @@ export interface FactoryLanguageWithTranslations extends FactoryLanguage {
   translations: Record<string, string>;
 }
 
-export const listLanguages = () =>
-  api.get<FactoryLanguage[]>("/factory-i18n");
+export const listLanguages = () => api.get<FactoryLanguage[]>("/factory-i18n");
 
 export const listWithTranslations = () =>
   api.get<FactoryLanguageWithTranslations[]>("/factory-i18n/with-translations");

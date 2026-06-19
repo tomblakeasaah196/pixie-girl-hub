@@ -5,7 +5,11 @@ import { ErrorState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
-import { useCollections, useCreateCollection, type Collection } from "@/lib/catalogue";
+import {
+  useCollections,
+  useCreateCollection,
+  type Collection,
+} from "@/lib/catalogue";
 
 /**
  * Collections (manual + rule-based already exist in the backend). v1 lists
@@ -13,7 +17,11 @@ import { useCollections, useCreateCollection, type Collection } from "@/lib/cata
  * so we never imply rule evaluation runs when it doesn't yet.
  */
 function slugify(s: string) {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function CollectionsTab() {
@@ -41,7 +49,10 @@ export function CollectionsTab() {
       {cols.isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="glass rounded-[var(--radius)] h-20 animate-pulse" />
+            <div
+              key={i}
+              className="glass rounded-[var(--radius)] h-20 animate-pulse"
+            />
           ))}
         </div>
       ) : cols.isError ? (
@@ -54,7 +65,11 @@ export function CollectionsTab() {
             message="Curate products into manual or rule-based collections."
             action={
               canCreate ? (
-                <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setOpen(true)}
+                >
                   New collection
                 </Button>
               ) : undefined
@@ -66,12 +81,18 @@ export function CollectionsTab() {
           {(cols.data ?? []).map((c: Collection) => (
             <Card key={c.collection_id} className="p-4">
               <div className="flex items-start justify-between gap-2 mb-1">
-                <div className="font-display text-[15px] truncate">{c.name}</div>
+                <div className="font-display text-[15px] truncate">
+                  {c.name}
+                </div>
                 <Pill tone={c.mode === "rule" ? "info" : "neutral"} dot={false}>
                   {c.mode === "rule" ? "Rule-based" : "Manual"}
                 </Pill>
               </div>
-              {c.description && <div className="text-[12px] text-text-faint">{c.description}</div>}
+              {c.description && (
+                <div className="text-[12px] text-text-faint">
+                  {c.description}
+                </div>
+              )}
             </Card>
           ))}
         </div>
@@ -82,7 +103,13 @@ export function CollectionsTab() {
   );
 }
 
-function CreateCollectionModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreateCollectionModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateCollection();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -90,7 +117,11 @@ function CreateCollectionModal({ open, onClose }: { open: boolean; onClose: () =
   const submit = () => {
     if (!name.trim()) return;
     create.mutate(
-      { name: name.trim(), slug: slugify(name), description: description.trim() || null },
+      {
+        name: name.trim(),
+        slug: slugify(name),
+        description: description.trim() || null,
+      },
       {
         onSuccess: () => {
           setName("");
@@ -111,7 +142,12 @@ function CreateCollectionModal({ open, onClose }: { open: boolean; onClose: () =
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" disabled={!name.trim() || create.isPending} onClick={submit}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!name.trim() || create.isPending}
+            onClick={submit}
+          >
             {create.isPending ? "Creating…" : "Create"}
           </Button>
         </>
@@ -134,7 +170,9 @@ function CreateCollectionModal({ open, onClose }: { open: boolean; onClose: () =
         </Field>
         {create.isError && (
           <p className="text-[12px] text-danger">
-            {create.error instanceof Error ? create.error.message : "Could not create collection."}
+            {create.error instanceof Error
+              ? create.error.message
+              : "Could not create collection."}
           </p>
         )}
       </div>

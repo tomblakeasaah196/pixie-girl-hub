@@ -29,7 +29,13 @@ export function checkPassword(pw: string): PasswordCheck {
   else if (!hasUpper) error = "Must contain an uppercase letter";
   else if (!hasNumber) error = "Must contain a number";
 
-  return { ok: hasLength && hasUpper && hasNumber, hasLength, hasUpper, hasNumber, error };
+  return {
+    ok: hasLength && hasUpper && hasNumber,
+    hasLength,
+    hasUpper,
+    hasNumber,
+    error,
+  };
 }
 
 export function isValidPassword(pw: string): boolean {

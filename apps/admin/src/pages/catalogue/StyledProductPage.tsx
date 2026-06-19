@@ -1,10 +1,21 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Sparkles, Send, Archive, Undo2, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Sparkles,
+  Send,
+  Archive,
+  Undo2,
+  Trash2,
+} from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
-import { ErrorState, ConfirmDialog, NumberField } from "@/components/ui/controls";
+import {
+  ErrorState,
+  ConfirmDialog,
+  NumberField,
+} from "@/components/ui/controls";
 import { FormSection, Field } from "@/components/ui/Form";
 import {
   useStyledProduct,
@@ -20,7 +31,11 @@ import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
 
 function slugify(s: string) {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 /** Detail + create for a styled product. /new renders the create form; an id
@@ -34,7 +49,10 @@ export function StyledProductPage() {
 /* ── Create ─────────────────────────────────────────────── */
 function StyledCreate() {
   const nav = useNavigate();
-  useBreadcrumbs([{ label: "Catalogue", href: "/catalogue" }, { label: "New styled" }]);
+  useBreadcrumbs([
+    { label: "Catalogue", href: "/catalogue" },
+    { label: "New styled" },
+  ]);
   const create = useCreateStyled();
   const [baseId, setBaseId] = useState("");
   const [name, setName] = useState("");
@@ -58,7 +76,10 @@ function StyledCreate() {
       <BackBar label="New styled product" />
       <Card className="p-5">
         <FormSection title="Basics">
-          <Field label="Base product" hint="the raw base this styling sits on — stock is drawn from here">
+          <Field
+            label="Base product"
+            hint="the raw base this styling sits on — stock is drawn from here"
+          >
             <BaseProductPicker value={baseId} onChange={setBaseId} />
           </Field>
           <Field label="Name">
@@ -69,13 +90,18 @@ function StyledCreate() {
               className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
             />
           </Field>
-          <Field label="Retail price" hint="the styled product's own price (size S); add colours & sizes next">
+          <Field
+            label="Retail price"
+            hint="the styled product's own price (size S); add colours & sizes next"
+          >
             <NumberField value={retail} onChange={setRetail} suffix="₦" />
           </Field>
         </FormSection>
         {create.isError && (
           <p className="text-[12px] text-danger mb-3">
-            {create.error instanceof Error ? create.error.message : "Could not create."}
+            {create.error instanceof Error
+              ? create.error.message
+              : "Could not create."}
           </p>
         )}
         <div className="flex justify-end gap-2">
@@ -92,8 +118,9 @@ function StyledCreate() {
           </Button>
         </div>
         <p className="text-[11.5px] text-text-faint mt-3">
-          New styled products start as a <span className="text-text-primary">draft</span>. Publish from
-          the detail screen once reviewed.
+          New styled products start as a{" "}
+          <span className="text-text-primary">draft</span>. Publish from the
+          detail screen once reviewed.
         </p>
       </Card>
     </div>
@@ -114,7 +141,9 @@ function StyledDetail({ id }: { id: string }) {
     return (
       <div className="max-w-[860px]">
         <BackBar label="Styled product" />
-        <Card className="p-6 h-64 animate-pulse"><span /></Card>
+        <Card className="p-6 h-64 animate-pulse">
+          <span />
+        </Card>
       </div>
     );
   }
@@ -127,7 +156,14 @@ function StyledDetail({ id }: { id: string }) {
     );
   }
 
-  return <StyledEditor s={styled.data} canPublish={can("catalogue", "publish")} canEdit={can("catalogue", "edit")} onBack={() => nav("/catalogue")} />;
+  return (
+    <StyledEditor
+      s={styled.data}
+      canPublish={can("catalogue", "publish")}
+      canEdit={can("catalogue", "edit")}
+      onBack={() => nav("/catalogue")}
+    />
+  );
 }
 
 function StyledEditor({
@@ -149,7 +185,9 @@ function StyledEditor({
   const [name, setName] = useState(s.name);
   const [shortDesc, setShortDesc] = useState(s.short_description ?? "");
   const [longDesc, setLongDesc] = useState(s.long_description ?? "");
-  const [retail, setRetail] = useState(s.retail_price_ngn != null ? String(s.retail_price_ngn) : "");
+  const [retail, setRetail] = useState(
+    s.retail_price_ngn != null ? String(s.retail_price_ngn) : "",
+  );
   const [compareAt, setCompareAt] = useState(
     s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "",
   );
@@ -160,7 +198,9 @@ function StyledEditor({
     setShortDesc(s.short_description ?? "");
     setLongDesc(s.long_description ?? "");
     setRetail(s.retail_price_ngn != null ? String(s.retail_price_ngn) : "");
-    setCompareAt(s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "");
+    setCompareAt(
+      s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "",
+    );
   }, [s]);
 
   const dirty =
@@ -168,7 +208,8 @@ function StyledEditor({
     shortDesc !== (s.short_description ?? "") ||
     longDesc !== (s.long_description ?? "") ||
     retail !== (s.retail_price_ngn != null ? String(s.retail_price_ngn) : "") ||
-    compareAt !== (s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "");
+    compareAt !==
+      (s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "");
 
   const save = () =>
     update.mutate({
@@ -182,14 +223,21 @@ function StyledEditor({
   return (
     <div className="max-w-[920px]">
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <Button variant="ghost" size="sm" icon={<ArrowLeft className="w-4 h-4" />} onClick={onBack}>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<ArrowLeft className="w-4 h-4" />}
+          onClick={onBack}
+        >
           Catalogue
         </Button>
         <StyledStatusBadge status={s.status} />
         {s.ai_drafted && (
           <Pill tone="accent" dot={false}>
             <Sparkles className="w-3 h-3" /> AI draft
-            {s.ai_confidence != null ? ` · ${Math.round(s.ai_confidence * 100)}%` : ""}
+            {s.ai_confidence != null
+              ? ` · ${Math.round(s.ai_confidence * 100)}%`
+              : ""}
           </Pill>
         )}
         <div className="ml-auto flex gap-2">
@@ -219,7 +267,9 @@ function StyledEditor({
               size="sm"
               icon={<Archive className="w-3.5 h-3.5" />}
               disabled={unpublish.isPending}
-              onClick={() => unpublish.mutate({ id: s.styled_id, archive: true })}
+              onClick={() =>
+                unpublish.mutate({ id: s.styled_id, archive: true })
+              }
             >
               Archive
             </Button>
@@ -259,10 +309,20 @@ function StyledEditor({
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Retail price" hint="own price at size S">
-                <NumberField value={retail} onChange={setRetail} suffix="₦" disabled={!canEdit} />
+                <NumberField
+                  value={retail}
+                  onChange={setRetail}
+                  suffix="₦"
+                  disabled={!canEdit}
+                />
               </Field>
               <Field label="Compare-at" hint="optional was/now">
-                <NumberField value={compareAt} onChange={setCompareAt} suffix="₦" disabled={!canEdit} />
+                <NumberField
+                  value={compareAt}
+                  onChange={setCompareAt}
+                  suffix="₦"
+                  disabled={!canEdit}
+                />
               </Field>
             </div>
           </FormSection>
@@ -275,7 +335,12 @@ function StyledEditor({
               >
                 <Trash2 className="w-3.5 h-3.5" /> Delete
               </button>
-              <Button variant="primary" size="sm" disabled={!dirty || update.isPending} onClick={save}>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!dirty || update.isPending}
+                onClick={save}
+              >
                 {update.isPending ? "Saving…" : "Save changes"}
               </Button>
             </div>
@@ -288,7 +353,9 @@ function StyledEditor({
             <div className="micro mb-2">Availability</div>
             <AvailabilityPill availability={s.availability} />
             {s.availability.state === "preorder" && s.availability.message && (
-              <p className="text-[11.5px] text-text-faint mt-2">{s.availability.message}</p>
+              <p className="text-[11.5px] text-text-faint mt-2">
+                {s.availability.message}
+              </p>
             )}
           </Card>
           <Card className="p-4">
@@ -306,15 +373,23 @@ function StyledEditor({
             ) : s.retail_price_ngn != null ? (
               <MoneyText ngn={s.retail_price_ngn} className="text-[22px]" />
             ) : (
-              <span className="text-text-faint text-[13px]">Set a retail price</span>
+              <span className="text-text-faint text-[13px]">
+                Set a retail price
+              </span>
             )}
-            <p className="text-[11px] text-text-faint mt-1">across colours &amp; sizes</p>
+            <p className="text-[11px] text-text-faint mt-1">
+              across colours &amp; sizes
+            </p>
           </Card>
           <Card className="p-4">
             <div className="micro mb-1.5">Base product</div>
             <div className="text-[13px]">{s.base_name}</div>
-            <div className="font-mono text-[10.5px] text-accent-glow">{s.base_product_code}</div>
-            <p className="text-[11px] text-text-faint mt-1.5">wholesale base · stock source</p>
+            <div className="font-mono text-[10.5px] text-accent-glow">
+              {s.base_product_code}
+            </div>
+            <p className="text-[11px] text-text-faint mt-1.5">
+              wholesale base · stock source
+            </p>
           </Card>
         </div>
       </div>
@@ -345,7 +420,12 @@ function BackBar({ label }: { label: string }) {
   const nav = useNavigate();
   return (
     <div className="flex items-center gap-3 mb-4">
-      <Button variant="ghost" size="sm" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => nav("/catalogue")}>
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={<ArrowLeft className="w-4 h-4" />}
+        onClick={() => nav("/catalogue")}
+      >
         Catalogue
       </Button>
       <span className="font-display text-lg">{label}</span>

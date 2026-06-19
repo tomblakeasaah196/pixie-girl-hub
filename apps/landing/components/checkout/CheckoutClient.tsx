@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, Check, CreditCard, Gift, Lock, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  CreditCard,
+  Gift,
+  Lock,
+  ShieldCheck,
+} from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { postCheckout } from "@/lib/api-client";
@@ -43,7 +50,8 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [err, setErr] = useState<string | null>(null);
 
   const idemKey = useMemo(
-    () => `pgh-${payload.slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    () =>
+      `pgh-${payload.slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     [payload.slug],
   );
   const empty = items.length === 0;
@@ -101,9 +109,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         payment_gateway: gateway,
         client_idempotency_key: idemKey,
       });
-      const payUrl = (res as { data?: { payment_url?: string }; payment_url?: string })?.data
-        ?.payment_url ??
-        (res as { payment_url?: string }).payment_url;
+      const payUrl =
+        (res as { data?: { payment_url?: string }; payment_url?: string })?.data
+          ?.payment_url ?? (res as { payment_url?: string }).payment_url;
       if (payUrl) {
         window.location.href = payUrl;
       } else {
@@ -142,7 +150,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           <ArrowLeft className="w-3.5 h-3.5" /> Back to the sale
         </Link>
         <h1 className="font-display text-[36px] md:text-[44px] leading-tight mt-3">
-          Almost <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">yours.</em>
+          Almost{" "}
+          <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">
+            yours.
+          </em>
         </h1>
 
         <form
@@ -153,10 +164,20 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             <Section title="Contact">
               <Row>
                 <Field label="First name" required>
-                  <Input value={first} onChange={setFirst} autoComplete="given-name" required />
+                  <Input
+                    value={first}
+                    onChange={setFirst}
+                    autoComplete="given-name"
+                    required
+                  />
                 </Field>
                 <Field label="Last name" required>
-                  <Input value={last} onChange={setLast} autoComplete="family-name" required />
+                  <Input
+                    value={last}
+                    onChange={setLast}
+                    autoComplete="family-name"
+                    required
+                  />
                 </Field>
               </Row>
               <Row>
@@ -170,17 +191,30 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   />
                 </Field>
                 <Field label="Phone (with country code)" required>
-                  <Input value={phone} onChange={setPhone} autoComplete="tel" required />
+                  <Input
+                    value={phone}
+                    onChange={setPhone}
+                    autoComplete="tel"
+                    required
+                  />
                 </Field>
               </Row>
               <Field label="Instagram handle (optional)">
-                <Input value={insta} onChange={setInsta} placeholder="@yourhandle" />
+                <Input
+                  value={insta}
+                  onChange={setInsta}
+                  placeholder="@yourhandle"
+                />
               </Field>
             </Section>
 
             <Section title="Delivery">
               <Field label="Address line 1" required>
-                <Input value={addressLine1} onChange={setAddressLine1} required />
+                <Input
+                  value={addressLine1}
+                  onChange={setAddressLine1}
+                  required
+                />
               </Field>
               <Field label="Address line 2">
                 <Input value={addressLine2} onChange={setAddressLine2} />
@@ -232,20 +266,22 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
 
             <Section title="Pay with">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {(["paystack", "opay", "nomba", "stripe"] as Gateway[]).map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setGateway(g)}
-                    className={`p-3 rounded-xl border text-[13px] font-semibold capitalize ${
-                      gateway === g
-                        ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] text-[rgb(var(--accent-glow))]"
-                        : "border-[rgb(var(--border-c)/0.1)] text-[rgb(var(--text-muted))]"
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
+                {(["paystack", "opay", "nomba", "stripe"] as Gateway[]).map(
+                  (g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setGateway(g)}
+                      className={`p-3 rounded-xl border text-[13px] font-semibold capitalize ${
+                        gateway === g
+                          ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] text-[rgb(var(--accent-glow))]"
+                          : "border-[rgb(var(--border-c)/0.1)] text-[rgb(var(--text-muted))]"
+                      }`}
+                    >
+                      {g}
+                    </button>
+                  ),
+                )}
               </div>
             </Section>
 
@@ -297,7 +333,8 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       <div className="truncate font-semibold">{i.name}</div>
                       {i.preorder && (
                         <div className="text-[11px] text-[rgb(var(--warn))]">
-                          Pre-order · ships in {i.preorder_lead_weeks ?? 3} weeks
+                          Pre-order · ships in {i.preorder_lead_weeks ?? 3}{" "}
+                          weeks
                         </div>
                       )}
                     </div>
@@ -309,25 +346,35 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               </ul>
               <div className="border-t hairline pt-3 space-y-1.5 text-[13px]">
                 <div className="flex justify-between">
-                  <span className="text-[rgb(var(--text-muted))]">Subtotal</span>
-                  <span className="tabular-nums font-mono">{money(subtotal)}</span>
+                  <span className="text-[rgb(var(--text-muted))]">
+                    Subtotal
+                  </span>
+                  <span className="tabular-nums font-mono">
+                    {money(subtotal)}
+                  </span>
                 </div>
                 {savings > 0 && (
                   <div className="flex justify-between text-[rgb(var(--success))]">
                     <span>You save</span>
-                    <span className="tabular-nums font-mono">−{money(savings)}</span>
+                    <span className="tabular-nums font-mono">
+                      −{money(savings)}
+                    </span>
                   </div>
                 )}
                 {savings > 0 && (
                   <div className="flex justify-between text-[12px] text-[rgb(var(--text-faint))]">
                     <span>vs retail</span>
-                    <span className="tabular-nums font-mono line-through">{money(retail)}</span>
+                    <span className="tabular-nums font-mono line-through">
+                      {money(retail)}
+                    </span>
                   </div>
                 )}
               </div>
               <div className="border-t hairline pt-3 flex justify-between">
                 <span className="font-semibold">Total</span>
-                <span className="font-display text-[22px] tabular-nums">{money(subtotal)}</span>
+                <span className="font-display text-[22px] tabular-nums">
+                  {money(subtotal)}
+                </span>
               </div>
               <motion.button
                 type="submit"
@@ -335,15 +382,17 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                 disabled={busy}
                 className="w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen disabled:opacity-60"
               >
-                {busy ? "Securing your order…" : (
+                {busy ? (
+                  "Securing your order…"
+                ) : (
                   <>
                     <Lock className="w-4 h-4" /> Pay {money(subtotal)}
                   </>
                 )}
               </motion.button>
               <div className="text-[11px] text-[rgb(var(--text-faint))] text-center inline-flex items-center justify-center gap-1 w-full">
-                <ShieldCheck className="w-3 h-3 text-[rgb(var(--success))]" /> Secure checkout · DHL rates
-                apply
+                <ShieldCheck className="w-3 h-3 text-[rgb(var(--success))]" />{" "}
+                Secure checkout · DHL rates apply
               </div>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 <CreditCard className="inline w-3 h-3 mr-1" />
@@ -357,7 +406,13 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="glass rounded-[var(--radius)] p-5 space-y-3">
       <h3 className="font-display text-[18px]">{title}</h3>
@@ -367,7 +422,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Row({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>
+  );
 }
 
 function Field({
@@ -382,7 +439,8 @@ function Field({
   return (
     <label className="block">
       <span className="micro mb-1.5 block">
-        {label} {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
+        {label}{" "}
+        {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
       </span>
       {children}
     </label>
@@ -458,8 +516,11 @@ function Toggle({
         className="mt-0.5 accent-[rgb(var(--accent-deep))]"
       />
       <span>
-        {label} {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
-        {checked && <Check className="inline w-3 h-3 text-[rgb(var(--success))] ml-1" />}
+        {label}{" "}
+        {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
+        {checked && (
+          <Check className="inline w-3 h-3 text-[rgb(var(--success))] ml-1" />
+        )}
       </span>
     </label>
   );
@@ -469,7 +530,13 @@ function readUtm(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const p = new URLSearchParams(window.location.search);
   const out: Record<string, string> = {};
-  for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
+  for (const k of [
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_content",
+    "utm_term",
+  ]) {
     const v = p.get(k);
     if (v) out[k] = v;
   }

@@ -1,6 +1,11 @@
 // ── Task types ──────────────────────────────────────────────────────────
 
-export type TaskStatus = "to_do" | "in_progress" | "in_review" | "done" | "cancelled";
+export type TaskStatus =
+  | "to_do"
+  | "in_progress"
+  | "in_review"
+  | "done"
+  | "cancelled";
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
 
 export interface Subtask {

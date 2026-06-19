@@ -75,7 +75,8 @@ function parseMoney(s: string): { value?: number; bad: boolean } {
   if (!s) return { value: undefined, bad: false };
   const cleaned = s.replace(/[^0-9.]/g, "");
   const n = Number(cleaned);
-  if (!cleaned || !Number.isFinite(n) || n < 0) return { value: undefined, bad: true };
+  if (!cleaned || !Number.isFinite(n) || n < 0)
+    return { value: undefined, bad: true };
   return { value: n, bad: false };
 }
 
@@ -116,7 +117,12 @@ async function parseSheet(file: File): Promise<ParsedRow[]> {
       const len = parseNum(pick(raw, ["lengthinches", "length", "inches"]));
       const density = pick(raw, ["density"]);
       const cap = pick(raw, ["capsize", "cap"]);
-      const colour = pick(raw, ["colour", "color", "primarycolour", "primarycolor"]);
+      const colour = pick(raw, [
+        "colour",
+        "color",
+        "primarycolour",
+        "primarycolor",
+      ]);
       const origin = pick(raw, ["origin", "hairorigin"]);
       const desc = pick(raw, ["shortdescription", "description", "desc"]);
       const category = pick(raw, ["category", "categoryname"]);
@@ -125,7 +131,13 @@ async function parseSheet(file: File): Promise<ParsedRow[]> {
       );
       const cost = parseMoney(pick(raw, ["costngn", "cost", "costnaira"]));
       const price = parseMoney(
-        pick(raw, ["wholesalepricengn", "wholesaleprice", "wholesale", "pricengn", "price"]),
+        pick(raw, [
+          "wholesalepricengn",
+          "wholesaleprice",
+          "wholesale",
+          "pricengn",
+          "price",
+        ]),
       );
       let error: string | null = null;
       if (!name) error = "Missing name";
@@ -273,7 +285,9 @@ export function BulkImportModal({
     <div
       className={cn(
         "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
-        open ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none",
+        open
+          ? "opacity-100 visible"
+          : "opacity-0 invisible pointer-events-none",
       )}
       onClick={close}
     >
@@ -300,7 +314,11 @@ export function BulkImportModal({
                   : "Excel (.xlsx) or CSV"}
             </div>
           </div>
-          <IconButton onClick={close} aria-label="Close" disabled={imp.isPending}>
+          <IconButton
+            onClick={close}
+            aria-label="Close"
+            disabled={imp.isPending}
+          >
             <X className="w-[18px] h-[18px]" />
           </IconButton>
         </div>
@@ -485,9 +503,9 @@ function ChooseView({
         </div>
         <p className="mt-3 text-[11.5px] text-text-faint leading-relaxed">
           Product codes are generated automatically from Document Numbering
-          (e.g. <span className="font-mono text-text-muted">FLH001N</span>) — you
-          never type them. Money is always in Naira. Headers are matched loosely,
-          so minor spelling differences are fine. A row whose{" "}
+          (e.g. <span className="font-mono text-text-muted">FLH001N</span>) —
+          you never type them. Money is always in Naira. Headers are matched
+          loosely, so minor spelling differences are fine. A row whose{" "}
           <span className="text-text-muted">Name</span> already exists is{" "}
           <span className="text-text-muted">updated</span>, not duplicated — so
           re-upload with prices filled in to price everything at once.
@@ -602,8 +620,8 @@ function PreviewView({
 
       {rows.length > PREVIEW_CAP && (
         <p className="mt-2 text-[11.5px] text-text-faint">
-          Showing first {PREVIEW_CAP} of {rows.length} rows — all valid rows will
-          be imported.
+          Showing first {PREVIEW_CAP} of {rows.length} rows — all valid rows
+          will be imported.
         </p>
       )}
       {invalidCount > 0 && (
@@ -617,7 +635,10 @@ function PreviewView({
 }
 
 /* ── Result ─────────────────────────────────────────────── */
-const STATUS_META: Record<ImportStatus, { label: string; tone: "success" | "info" | "neutral" }> = {
+const STATUS_META: Record<
+  ImportStatus,
+  { label: string; tone: "success" | "info" | "neutral" }
+> = {
   created: { label: "New", tone: "success" },
   updated: { label: "Updated", tone: "info" },
   up_to_date: { label: "Up to date", tone: "neutral" },
@@ -638,8 +659,8 @@ function ResultView({ result }: { result: BulkImportResult }) {
         <div className="text-[13px] text-text-primary">
           <span className="font-semibold">{result.count}</span> row
           {result.count === 1 ? "" : "s"} processed
-          {parts.length ? ` — ${parts.join(" · ")}.` : "."}{" "}
-          Existing products were updated in place, not duplicated.
+          {parts.length ? ` — ${parts.join(" · ")}.` : "."} Existing products
+          were updated in place, not duplicated.
         </div>
       </div>
 
@@ -666,7 +687,10 @@ function ResultView({ result }: { result: BulkImportResult }) {
               {shown.map((r) => {
                 const meta = STATUS_META[r.status] ?? STATUS_META.updated;
                 return (
-                  <tr key={`${r.product_id}-${r.row}`} className="border-t hairline">
+                  <tr
+                    key={`${r.product_id}-${r.row}`}
+                    className="border-t hairline"
+                  >
                     <td className="px-3 py-2 font-mono text-[11px] text-accent-glow">
                       {r.product_code}
                     </td>

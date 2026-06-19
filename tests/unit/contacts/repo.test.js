@@ -193,7 +193,9 @@ describe("contacts.repo.update", () => {
       patch: {},
     });
     expect(db.query).toHaveBeenCalledTimes(1);
-    expect(db.query.mock.calls[0][0]).toMatch(/^SELECT \* FROM shared\.contacts/);
+    expect(db.query.mock.calls[0][0]).toMatch(
+      /^SELECT \* FROM shared\.contacts/,
+    );
     expect(out.display_name).toBe("Rynna");
   });
 });

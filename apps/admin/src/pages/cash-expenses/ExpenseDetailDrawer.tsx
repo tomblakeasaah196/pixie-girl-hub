@@ -31,7 +31,10 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
   }
   function handleReject() {
     if (!rejectReason.trim()) return;
-    mutations.reject.mutate({ id: e.expense_id, reason: rejectReason }, { onSuccess: onDone });
+    mutations.reject.mutate(
+      { id: e.expense_id, reason: rejectReason },
+      { onSuccess: onDone },
+    );
   }
 
   const showActions = e.status === "pending" && canApprove;
@@ -54,7 +57,15 @@ type ExpenseDetail = ReturnType<typeof useExpenseDetail>;
 
 /** Scrollable detail content — shared between drawer + inline panel. */
 function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
-  const { e, rejectReason, setRejectReason, showReject, setShowReject, isBusy, handleReject } = d;
+  const {
+    e,
+    rejectReason,
+    setRejectReason,
+    showReject,
+    setShowReject,
+    isBusy,
+    handleReject,
+  } = d;
   const meta = EXPENSE_STATUS_META[e.status];
 
   return (
@@ -62,7 +73,9 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
       {/* Status */}
       <div className="flex items-center gap-2">
         <Pill tone={meta.tone}>{meta.label}</Pill>
-        <span className="text-xs text-text-faint capitalize">{e.expense_type.replace(/_/g, " ")}</span>
+        <span className="text-xs text-text-faint capitalize">
+          {e.expense_type.replace(/_/g, " ")}
+        </span>
       </div>
 
       {/* Financial ribbon */}
@@ -71,25 +84,52 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
           <MoneyText ngn={Number(e.total_amount_ngn)} className="text-lg" />
         </MiniCard>
         <MiniCard label="VAT">
-          <span className="font-mono text-sm">{e.vat_amount_ngn ? `₦${Number(e.vat_amount_ngn).toLocaleString("en-NG")}` : "—"}</span>
+          <span className="font-mono text-sm">
+            {e.vat_amount_ngn
+              ? `₦${Number(e.vat_amount_ngn).toLocaleString("en-NG")}`
+              : "—"}
+          </span>
         </MiniCard>
         <MiniCard label="Paid">
-          <span className="font-mono text-sm">{e.amount_paid_ngn ? `₦${Number(e.amount_paid_ngn).toLocaleString("en-NG")}` : "—"}</span>
+          <span className="font-mono text-sm">
+            {e.amount_paid_ngn
+              ? `₦${Number(e.amount_paid_ngn).toLocaleString("en-NG")}`
+              : "—"}
+          </span>
         </MiniCard>
       </div>
 
       {/* Details */}
       <Card className="p-4 space-y-3">
         <div className="micro mb-2">Details</div>
-        <DetailRow label="Category" value={e.category_display || e.category_key} />
+        <DetailRow
+          label="Category"
+          value={e.category_display || e.category_key}
+        />
         <DetailRow label="Type" value={e.expense_type.replace(/_/g, " ")} />
-        <DetailRow label="Date" value={new Date(e.expense_date).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })} />
-        {e.description && <DetailRow label="Description" value={e.description} />}
+        <DetailRow
+          label="Date"
+          value={new Date(e.expense_date).toLocaleDateString("en-NG", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })}
+        />
+        {e.description && (
+          <DetailRow label="Description" value={e.description} />
+        )}
         {e.vendor_name && <DetailRow label="Vendor" value={e.vendor_name} />}
-        {e.submitted_by_name && <DetailRow label="Submitted By" value={e.submitted_by_name} />}
-        {e.approved_by && <DetailRow label="Approved By" value={e.approved_by} />}
+        {e.submitted_by_name && (
+          <DetailRow label="Submitted By" value={e.submitted_by_name} />
+        )}
+        {e.approved_by && (
+          <DetailRow label="Approved By" value={e.approved_by} />
+        )}
         {e.approved_at && (
-          <DetailRow label="Approved At" value={new Date(e.approved_at).toLocaleDateString("en-NG")} />
+          <DetailRow
+            label="Approved At"
+            value={new Date(e.approved_at).toLocaleDateString("en-NG")}
+          />
         )}
       </Card>
 
@@ -115,7 +155,13 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
             autoFocus
           />
           <div className="flex gap-2 mt-3 justify-end">
-            <Button size="sm" variant="ghost" onClick={() => setShowReject(false)}>Cancel</Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowReject(false)}
+            >
+              Cancel
+            </Button>
             <Button
               size="sm"
               variant="danger"
@@ -136,10 +182,22 @@ function ExpenseDetailActions({ d }: { d: ExpenseDetail }) {
   const { isBusy, setShowReject, handleApprove } = d;
   return (
     <>
-      <Button variant="danger" size="sm" disabled={isBusy} onClick={() => setShowReject(true)} icon={<XCircle className="w-3.5 h-3.5" />}>
+      <Button
+        variant="danger"
+        size="sm"
+        disabled={isBusy}
+        onClick={() => setShowReject(true)}
+        icon={<XCircle className="w-3.5 h-3.5" />}
+      >
         Reject
       </Button>
-      <Button variant="primary" size="sm" disabled={isBusy} onClick={handleApprove} icon={<CheckCircle className="w-3.5 h-3.5" />}>
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={isBusy}
+        onClick={handleApprove}
+        icon={<CheckCircle className="w-3.5 h-3.5" />}
+      >
         Approve
       </Button>
     </>
@@ -158,7 +216,9 @@ export function ExpenseDetailPanel({ expense, onClose }: Props) {
       <div className="flex items-center gap-3 p-5 border-b hairline shrink-0">
         <Receipt className="w-5 h-5 text-accent shrink-0" />
         <div className="min-w-0">
-          <h2 className="font-display text-xl font-medium leading-tight truncate">{d.e.expense_number}</h2>
+          <h2 className="font-display text-xl font-medium leading-tight truncate">
+            {d.e.expense_number}
+          </h2>
           <div className="micro mt-0.5 truncate">{d.e.title}</div>
         </div>
       </div>
@@ -174,7 +234,10 @@ export function ExpenseDetailPanel({ expense, onClose }: Props) {
   );
 }
 
-export default function ExpenseDetailDrawer({ expense: initial, onClose }: Props) {
+export default function ExpenseDetailDrawer({
+  expense: initial,
+  onClose,
+}: Props) {
   const d = useExpenseDetail(initial, onClose);
   return (
     <Drawer
@@ -191,7 +254,13 @@ export default function ExpenseDetailDrawer({ expense: initial, onClose }: Props
   );
 }
 
-function MiniCard({ label, children }: { label: string; children: React.ReactNode }) {
+function MiniCard({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="glass rounded-xl p-3 text-center">
       <div className="micro mb-1">{label}</div>
@@ -200,7 +269,13 @@ function MiniCard({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="flex justify-between gap-4 text-sm">
       <span className="text-text-muted shrink-0">{label}</span>

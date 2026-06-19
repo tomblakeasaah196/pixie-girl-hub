@@ -4,18 +4,52 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { Toggle } from "@/components/ui/controls";
-import { AddressAutocomplete, type PlaceAddress } from "@/components/ui/AddressAutocomplete";
+import {
+  AddressAutocomplete,
+  type PlaceAddress,
+} from "@/components/ui/AddressAutocomplete";
 import { useCreateAddress } from "./hooks";
 import type { AddressType, AddressCreateInput } from "./types";
 import { DIAL_CODES } from "./ContactFormModal";
 
 const NG_STATES = [
-  "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue",
-  "Borno", "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu",
-  "FCT", "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina",
-  "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa", "Niger", "Ogun",
-  "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba",
-  "Yobe", "Zamfara",
+  "Abia",
+  "Adamawa",
+  "Akwa Ibom",
+  "Anambra",
+  "Bauchi",
+  "Bayelsa",
+  "Benue",
+  "Borno",
+  "Cross River",
+  "Delta",
+  "Ebonyi",
+  "Edo",
+  "Ekiti",
+  "Enugu",
+  "FCT",
+  "Gombe",
+  "Imo",
+  "Jigawa",
+  "Kaduna",
+  "Kano",
+  "Katsina",
+  "Kebbi",
+  "Kogi",
+  "Kwara",
+  "Lagos",
+  "Nasarawa",
+  "Niger",
+  "Ogun",
+  "Ondo",
+  "Osun",
+  "Oyo",
+  "Plateau",
+  "Rivers",
+  "Sokoto",
+  "Taraba",
+  "Yobe",
+  "Zamfara",
 ];
 
 interface Props {
@@ -51,7 +85,7 @@ export function AddressFormModal({ contactId, onClose }: Props) {
     setCity(place.city);
     // For Nigerian states, match to our list; otherwise use raw
     const matchedState = NG_STATES.find(
-      (s) => s.toLowerCase() === place.state.toLowerCase()
+      (s) => s.toLowerCase() === place.state.toLowerCase(),
     );
     setStateVal(matchedState ?? place.state);
     setCountry(place.country || "Nigeria");
@@ -83,7 +117,9 @@ export function AddressFormModal({ contactId, onClose }: Props) {
       ...(postalCode.trim() ? { postal_code: postalCode.trim() } : {}),
       ...(landmark.trim() ? { landmark: landmark.trim() } : {}),
       ...(recipientName.trim() ? { recipient_name: recipientName.trim() } : {}),
-      ...(recipientPhone.trim() ? { recipient_phone: recipientPhone.trim() } : {}),
+      ...(recipientPhone.trim()
+        ? { recipient_phone: recipientPhone.trim() }
+        : {}),
       ...(mapsUrl.trim() ? { google_maps_url: mapsUrl.trim() } : {}),
       ...(latitude != null ? { latitude } : {}),
       ...(longitude != null ? { longitude } : {}),
@@ -113,7 +149,12 @@ export function AddressFormModal({ contactId, onClose }: Props) {
       }
       footer={
         <>
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={createMut.isPending}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            disabled={createMut.isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -167,7 +208,10 @@ export function AddressFormModal({ contactId, onClose }: Props) {
 
         {/* Country selection drives autocomplete bias */}
         <FormSection>
-          <Field label="Country" hint="Select first — autocomplete adapts to this country">
+          <Field
+            label="Country"
+            hint="Select first — autocomplete adapts to this country"
+          >
             <select
               value={countryCode}
               onChange={(e) => {
@@ -188,7 +232,10 @@ export function AddressFormModal({ contactId, onClose }: Props) {
 
         {/* Google Maps autocomplete for line1 */}
         <FormSection title="Street Address">
-          <Field label="Address line 1 *" hint="Type to search — autocomplete populates all fields">
+          <Field
+            label="Address line 1 *"
+            hint="Type to search — autocomplete populates all fields"
+          >
             <AddressAutocomplete
               value={line1}
               onChange={setLine1}
@@ -229,7 +276,9 @@ export function AddressFormModal({ contactId, onClose }: Props) {
                   className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
                 >
                   {NG_STATES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                   <option value="Other">Other</option>
                 </select>
@@ -245,11 +294,16 @@ export function AddressFormModal({ contactId, onClose }: Props) {
               <TextInput
                 value={postalCode}
                 onChange={(e) => setPostalCode(e.target.value)}
-                placeholder={countryCode === "NG" ? "e.g. 101001" : "e.g. SW1A 1AA"}
+                placeholder={
+                  countryCode === "NG" ? "e.g. 101001" : "e.g. SW1A 1AA"
+                }
               />
             </Field>
           </div>
-          <Field label="Landmark" hint="Nigerian addresses often need a landmark for delivery drivers">
+          <Field
+            label="Landmark"
+            hint="Nigerian addresses often need a landmark for delivery drivers"
+          >
             <TextInput
               value={landmark}
               onChange={(e) => setLandmark(e.target.value)}
@@ -262,7 +316,8 @@ export function AddressFormModal({ contactId, onClose }: Props) {
         {(latitude != null || longitude != null) && (
           <div className="mb-4 px-3 py-2 rounded-[10px] bg-success/[0.08] border border-success/20">
             <p className="text-[11px] text-success/90">
-              📍 Coordinates captured: {latitude?.toFixed(5)}, {longitude?.toFixed(5)} — ready for delivery APIs
+              📍 Coordinates captured: {latitude?.toFixed(5)},{" "}
+              {longitude?.toFixed(5)} — ready for delivery APIs
             </p>
           </div>
         )}
@@ -292,7 +347,11 @@ export function AddressFormModal({ contactId, onClose }: Props) {
           <Toggle
             checked={isDefault}
             onChange={setIsDefault}
-            label={<span className="text-[13px] text-text-muted">Set as default address</span>}
+            label={
+              <span className="text-[13px] text-text-muted">
+                Set as default address
+              </span>
+            }
           />
         </FormSection>
       </form>

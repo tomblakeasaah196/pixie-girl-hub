@@ -45,7 +45,12 @@ export function Hero({ payload, derived, msToEnd }: HeroProps) {
         {/* 2.5D centrepiece: countdown ring (Before) or floating hero (Live). */}
         <div className="hidden md:block absolute inset-0 opacity-90">
           {isBefore && <CountdownRing target={payload.starts_at} />}
-          {isLive && <HeroCenterpiece imageUrl={payload.hero.image_url} surge={surgePulse} />}
+          {isLive && (
+            <HeroCenterpiece
+              imageUrl={payload.hero.image_url}
+              surge={surgePulse}
+            />
+          )}
         </div>
       </div>
 
@@ -72,7 +77,13 @@ export function Hero({ payload, derived, msToEnd }: HeroProps) {
                   <span className="absolute inset-0 rounded-full bg-[rgb(var(--success))] animate-ping" />
                 </span>
               )}
-              {isLive ? (lastCall ? "Last call" : "Live now") : isBefore ? "Coming soon" : "Sale ended"}
+              {isLive
+                ? lastCall
+                  ? "Last call"
+                  : "Live now"
+                : isBefore
+                  ? "Coming soon"
+                  : "Sale ended"}
             </span>
             {derived === "before_vip_window" && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold uppercase tracking-[0.18em] bg-[rgb(var(--accent)/0.15)] text-[rgb(var(--accent-glow))]">
@@ -95,7 +106,9 @@ export function Hero({ payload, derived, msToEnd }: HeroProps) {
               <button
                 type="button"
                 onClick={() => {
-                  document.getElementById("bundles")?.scrollIntoView({ behavior: "smooth" });
+                  document
+                    .getElementById("bundles")
+                    ?.scrollIntoView({ behavior: "smooth" });
                   openCart();
                 }}
                 className={cn(
@@ -111,7 +124,9 @@ export function Hero({ payload, derived, msToEnd }: HeroProps) {
             {isBefore && <BeforeCTA payload={payload} />}
             {isEnded && (
               <Link
-                href={payload.ended?.redirect_to || "https://pixiegirlglobal.com"}
+                href={
+                  payload.ended?.redirect_to || "https://pixiegirlglobal.com"
+                }
                 className="inline-flex items-center justify-center h-12 px-6 rounded-xl font-semibold text-[rgb(var(--text))] bg-[rgb(var(--accent-deep))] cta-sheen"
               >
                 Shop our full collection →
@@ -143,7 +158,9 @@ function renderHeadline(title: string) {
   return (
     <>
       {head}{" "}
-      <em className="not-italic md:italic text-[rgb(var(--accent-glow))] font-medium">{last}</em>
+      <em className="not-italic md:italic text-[rgb(var(--accent-glow))] font-medium">
+        {last}
+      </em>
     </>
   );
 }
@@ -167,7 +184,9 @@ export function Countdown({
   payload: LandingPayload;
   derived: DerivedState;
 }) {
-  const target = derived.startsWith("before") ? new Date(payload.starts_at) : new Date(payload.ends_at);
+  const target = derived.startsWith("before")
+    ? new Date(payload.starts_at)
+    : new Date(payload.ends_at);
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -249,7 +268,9 @@ export function BeforeReveal({ payload }: { payload: LandingPayload }) {
   return (
     <section className="section-tight">
       <div className="mx-auto max-w-[820px] text-center">
-        <p className="text-[rgb(var(--text-muted))] mb-4">Save the date so you don&apos;t miss the moment.</p>
+        <p className="text-[rgb(var(--text-muted))] mb-4">
+          Save the date so you don&apos;t miss the moment.
+        </p>
         <div className="inline-flex flex-wrap gap-2 justify-center">
           {icsHref && (
             <a
@@ -283,14 +304,21 @@ export function EndedFarewell({ payload }: { payload: LandingPayload }) {
           <>
             <div className="micro mb-3">Next drop scheduled</div>
             <h2 className="font-display text-[clamp(34px,5vw,52px)] leading-[1.05]">
-              {payload.next_campaign.name} <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">soon</em>.
+              {payload.next_campaign.name}{" "}
+              <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">
+                soon
+              </em>
+              .
             </h2>
             <p className="mt-3 text-[rgb(var(--text-muted))]">
-              {new Date(payload.next_campaign.starts_at).toLocaleDateString(undefined, {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })}
+              {new Date(payload.next_campaign.starts_at).toLocaleDateString(
+                undefined,
+                {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                },
+              )}
               . Get on the list to be first in.
             </p>
             <Link
@@ -305,7 +333,11 @@ export function EndedFarewell({ payload }: { payload: LandingPayload }) {
             <h2 className="font-display text-[clamp(34px,5vw,52px)] leading-[1.05]">
               {payload.ended?.message || (
                 <>
-                  Thank you for being <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">here</em>.
+                  Thank you for being{" "}
+                  <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">
+                    here
+                  </em>
+                  .
                 </>
               )}
             </h2>

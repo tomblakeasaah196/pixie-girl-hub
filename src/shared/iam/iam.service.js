@@ -71,7 +71,10 @@ function computeTotp(secretBuffer, counter) {
   counterBuf.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
   counterBuf.writeUInt32BE(counter >>> 0, 4);
 
-  const hmac = crypto.createHmac("sha1", secretBuffer).update(counterBuf).digest();
+  const hmac = crypto
+    .createHmac("sha1", secretBuffer)
+    .update(counterBuf)
+    .digest();
   const offset = hmac[hmac.length - 1] & 0x0f;
   const code =
     ((hmac[offset] & 0x7f) << 24) |
@@ -189,7 +192,10 @@ async function provisionStaffLogin(ctx, profileId, input) {
     after: { email: user.email, profile_type: "staff" },
     request_id: ctx.request_id,
   });
-  events.emit("user_provisioned", { business: ctx.business, user_id: user.user_id });
+  events.emit("user_provisioned", {
+    business: ctx.business,
+    user_id: user.user_id,
+  });
 
   return { ...user, temp_password: tempPassword };
 }
@@ -215,10 +221,17 @@ async function provisionExternalUser(ctx, input) {
     action_key: "provision_external",
     target_type: "users",
     target_id: user.user_id,
-    after: { email: user.email, profile_type: "external", external_label: user.external_label },
+    after: {
+      email: user.email,
+      profile_type: "external",
+      external_label: user.external_label,
+    },
     request_id: ctx.request_id,
   });
-  events.emit("user_provisioned", { business: ctx.business, user_id: user.user_id });
+  events.emit("user_provisioned", {
+    business: ctx.business,
+    user_id: user.user_id,
+  });
 
   return { ...user, temp_password: tempPassword };
 }
@@ -230,7 +243,11 @@ async function deactivateUser(ctx, userId) {
     throw new ConflictError("User is already disabled");
   }
   if (existing.is_ceo) {
-    throw new AppError("CANNOT_DEACTIVATE_CEO", "Cannot deactivate the CEO account", 403);
+    throw new AppError(
+      "CANNOT_DEACTIVATE_CEO",
+      "Cannot deactivate the CEO account",
+      403,
+    );
   }
 
   const user = await transaction(async (client) => {
@@ -396,7 +413,9 @@ async function setupTotp(ctx) {
   const user = await repo.findUserById(ctx.user_id);
   if (!user) throw new NotFoundError("User");
   if (user.totp_enabled) {
-    throw new ConflictError("TOTP is already enabled. Disable it first to reconfigure.");
+    throw new ConflictError(
+      "TOTP is already enabled. Disable it first to reconfigure.",
+    );
   }
 
   // Generate 20 random bytes as TOTP secret
@@ -417,7 +436,11 @@ async function setupTotp(ctx) {
 async function verifyTotp(ctx, code) {
   const record = await repo.getTotpSecret(ctx.user_id);
   if (!record || !record.totp_secret_enc) {
-    throw new AppError("TOTP_NOT_SETUP", "TOTP has not been set up. Call setup first.", 400);
+    throw new AppError(
+      "TOTP_NOT_SETUP",
+      "TOTP has not been set up. Call setup first.",
+      400,
+    );
   }
 
   // Decrypt the stored secret
@@ -448,7 +471,11 @@ async function disableTotp(ctx, password) {
   const user = await repo.findUserById(ctx.user_id);
   if (!user) throw new NotFoundError("User");
   if (!user.totp_enabled) {
-    throw new AppError("TOTP_NOT_ENABLED", "TOTP is not currently enabled", 400);
+    throw new AppError(
+      "TOTP_NOT_ENABLED",
+      "TOTP is not currently enabled",
+      400,
+    );
   }
 
   // Verify password before disabling TOTP (security confirmation)
@@ -467,7 +494,10 @@ async function disableTotp(ctx, password) {
     target_id: ctx.user_id,
     request_id: ctx.request_id,
   });
-  events.emit("totp_disabled", { business: ctx.business, user_id: ctx.user_id });
+  events.emit("totp_disabled", {
+    business: ctx.business,
+    user_id: ctx.user_id,
+  });
 
   return { disabled: true };
 }
@@ -531,7 +561,10 @@ async function createAccessReview(ctx, input) {
     after: { title: input.title },
     request_id: ctx.request_id,
   });
-  events.emit("review_created", { business: ctx.business, review_id: result.review_id });
+  events.emit("review_created", {
+    business: ctx.business,
+    review_id: result.review_id,
+  });
 
   return result;
 }
@@ -563,7 +596,10 @@ async function updateReview(ctx, reviewId, patch) {
     after: { status: updated.status },
     request_id: ctx.request_id,
   });
-  events.emit("review_updated", { business: ctx.business, review_id: reviewId });
+  events.emit("review_updated", {
+    business: ctx.business,
+    review_id: reviewId,
+  });
 
   return updated;
 }
@@ -624,7 +660,9 @@ async function exportReview(ctx, reviewId, format) {
 
   const rows = (review.entries || []).map((e) => ({
     ...e,
-    businesses: Array.isArray(e.businesses) ? e.businesses.join("; ") : e.businesses,
+    businesses: Array.isArray(e.businesses)
+      ? e.businesses.join("; ")
+      : e.businesses,
   }));
 
   if (format === "csv") {
@@ -660,7 +698,10 @@ async function getRecordTrail(_ctx, tableName, recordId) {
 }
 
 async function exportAuditLog(ctx, filters) {
-  const rows = await repo.exportAuditLog({ business: ctx.business, ...filters });
+  const rows = await repo.exportAuditLog({
+    business: ctx.business,
+    ...filters,
+  });
 
   const headers = [
     "log_id",

@@ -27,7 +27,9 @@ export function StockPage() {
   const [tab, setTab] = useState("overview");
 
   if (!can("stock", "view")) {
-    return <DeniedState message="You don't have access to Stock & Inventory. Ask an admin in Org & Workflow." />;
+    return (
+      <DeniedState message="You don't have access to Stock & Inventory. Ask an admin in Org & Workflow." />
+    );
   }
 
   return (

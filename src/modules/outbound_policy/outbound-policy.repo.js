@@ -90,8 +90,7 @@ async function resolveChannel({ brand, event_key, contact_id }) {
       channel: "email",
       reason: "no_policy_default_email",
     };
-  if (!p.is_active)
-    return { channel: "disabled", reason: "policy_inactive" };
+  if (!p.is_active) return { channel: "disabled", reason: "policy_inactive" };
   if (p.preferred_channel === "none")
     return { channel: "disabled", reason: "contact_do_not_contact" };
 

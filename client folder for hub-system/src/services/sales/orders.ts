@@ -1,5 +1,11 @@
 import { api } from "@services/api";
-import type { SalesOrder, SalesListResponse, Invoice, PaymentMethod, FulfilmentType } from "@typedefs/sales";
+import type {
+  SalesOrder,
+  SalesListResponse,
+  Invoice,
+  PaymentMethod,
+  FulfilmentType,
+} from "@typedefs/sales";
 import type {
   HandToLogisticsValues,
   GenerateInvoiceValues,

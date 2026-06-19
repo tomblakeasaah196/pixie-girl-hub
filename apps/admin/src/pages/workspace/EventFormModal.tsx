@@ -118,7 +118,11 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
       }
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
     }
   };
 
@@ -133,7 +137,12 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
           <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" onClick={handleSubmit} disabled={busy}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={busy}
+          >
             {busy ? "Saving..." : isEdit ? "Save Changes" : "Create Event"}
           </Button>
         </>
@@ -204,11 +213,7 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
         {/* All Day + Private toggles */}
         <FormSection>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Toggle
-              checked={allDay}
-              onChange={setAllDay}
-              label="All day"
-            />
+            <Toggle checked={allDay} onChange={setAllDay} label="All day" />
             <Toggle
               checked={isPrivate}
               onChange={setIsPrivate}

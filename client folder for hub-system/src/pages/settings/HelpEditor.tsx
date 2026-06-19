@@ -71,10 +71,7 @@ export default function HelpEditor() {
 
   return (
     <>
-      <Topbar
-        title="Help Center Editor"
-        subtitle="Manage guides and FAQs"
-      />
+      <Topbar title="Help Center Editor" subtitle="Manage guides and FAQs" />
       <div className="px-4 sm:px-8 py-6 sm:py-10 max-w-6xl mx-auto">
         <PageHeader
           title="Help Center Editor"
@@ -199,7 +196,9 @@ export default function HelpEditor() {
       <ConfirmationModal
         open={!!deleting}
         onClose={() => setDeleting(null)}
-        onConfirm={async () => { if (deleting) await deleteMutation.mutateAsync(deleting.article_id); }}
+        onConfirm={async () => {
+          if (deleting) await deleteMutation.mutateAsync(deleting.article_id);
+        }}
         title={`Delete "${deleting?.title}"?`}
         message={
           <p>This article will be permanently removed from the Help Center.</p>
@@ -227,9 +226,7 @@ function ArticleModal({
   const [articleType, setArticleType] = useState<"guide" | "faq" | "workflow">(
     article?.article_type || "guide",
   );
-  const [displayOrder, setDisplayOrder] = useState(
-    article?.display_order ?? 0,
-  );
+  const [displayOrder, setDisplayOrder] = useState(article?.display_order ?? 0);
   const [isPublished, setIsPublished] = useState(
     article?.is_published !== false,
   );
@@ -269,7 +266,11 @@ function ArticleModal({
       title={isEdit ? "Edit article" : "New article"}
       footer={
         <>
-          <Button variant="outline-light" onClick={onClose} leftIcon={<X className="w-3.5 h-3.5" />}>
+          <Button
+            variant="outline-light"
+            onClick={onClose}
+            leftIcon={<X className="w-3.5 h-3.5" />}
+          >
             Cancel
           </Button>
           <Button
@@ -295,7 +296,9 @@ function ArticleModal({
           <Select
             label="Type"
             value={articleType}
-            onChange={(e) => setArticleType(e.target.value as "guide" | "faq" | "workflow")}
+            onChange={(e) =>
+              setArticleType(e.target.value as "guide" | "faq" | "workflow")
+            }
             options={TYPE_OPTIONS}
           />
         </div>

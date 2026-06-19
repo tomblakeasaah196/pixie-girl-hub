@@ -33,8 +33,18 @@ import { api, errMsg } from "@services/api";
 import { cn } from "@lib/cn";
 
 const MONTHS = [
-  "January","February","March","April","May","June",
-  "July","August","September","October","November","December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 // Full-form schema combines basic + visibility + multi-type.

@@ -85,9 +85,27 @@ async function getIndex({ brand, brandHint }) {
   });
 
   const [live, scheduled, ended] = await Promise.all([
-    repo.findAll({ brand: targetBrand, filters: { status: "live" }, page: 1, page_size: 4, offset: 0 }),
-    repo.findAll({ brand: targetBrand, filters: { status: "scheduled" }, page: 1, page_size: 3, offset: 0 }),
-    repo.findAll({ brand: targetBrand, filters: { status: "ended" }, page: 1, page_size: 6, offset: 0 }),
+    repo.findAll({
+      brand: targetBrand,
+      filters: { status: "live" },
+      page: 1,
+      page_size: 4,
+      offset: 0,
+    }),
+    repo.findAll({
+      brand: targetBrand,
+      filters: { status: "scheduled" },
+      page: 1,
+      page_size: 3,
+      offset: 0,
+    }),
+    repo.findAll({
+      brand: targetBrand,
+      filters: { status: "ended" },
+      page: 1,
+      page_size: 6,
+      offset: 0,
+    }),
   ]);
 
   // Only surface a live campaign whose window is actually open right now.

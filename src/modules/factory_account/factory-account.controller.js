@@ -12,7 +12,9 @@ async function listAccounts(req, res, next) {
   try {
     const data = await svc.listAccounts({ brand: req.brand });
     res.json({ data });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function createAccount(req, res, next) {
@@ -24,14 +26,21 @@ async function createAccount(req, res, next) {
       input: req.body,
     });
     res.status(201).json({ data: account });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function getAccount(req, res, next) {
   try {
-    const account = await svc.getAccount({ brand: req.brand, id: req.params.accountId });
+    const account = await svc.getAccount({
+      brand: req.brand,
+      id: req.params.accountId,
+    });
     res.json({ data: account });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function updateAccount(req, res, next) {
@@ -44,7 +53,9 @@ async function updateAccount(req, res, next) {
       input: req.body,
     });
     res.json({ data: account });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 // ── Ledger entries ────────────────────────────────────────
@@ -60,7 +71,9 @@ async function listLedger(req, res, next) {
       offset,
     });
     res.json({ data: { entries: result.entries, total: result.total } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function addLedgerEntry(req, res, next) {
@@ -73,7 +86,9 @@ async function addLedgerEntry(req, res, next) {
       input: req.body,
     });
     res.status(201).json({ data: entry });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function reconcileEntries(req, res, next) {
@@ -86,7 +101,9 @@ async function reconcileEntries(req, res, next) {
       entry_ids: req.body.entry_ids,
     });
     res.json({ data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 // ── Shipments ─────────────────────────────────────────────
@@ -103,7 +120,9 @@ async function listShipments(req, res, next) {
       offset,
     });
     res.json({ data: { shipments: result.shipments, total: result.total } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function createShipment(req, res, next) {
@@ -115,14 +134,21 @@ async function createShipment(req, res, next) {
       input: req.body,
     });
     res.status(201).json({ data: shipment });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function getShipment(req, res, next) {
   try {
-    const shipment = await svc.getShipment({ brand: req.brand, id: req.params.shipmentId });
+    const shipment = await svc.getShipment({
+      brand: req.brand,
+      id: req.params.shipmentId,
+    });
     res.json({ data: shipment });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function advanceShipment(req, res, next) {
@@ -135,11 +161,21 @@ async function advanceShipment(req, res, next) {
       input: req.body,
     });
     res.json({ data: shipment });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 module.exports = {
-  listAccounts, createAccount, getAccount, updateAccount,
-  listLedger, addLedgerEntry, reconcileEntries,
-  listShipments, createShipment, getShipment, advanceShipment,
+  listAccounts,
+  createAccount,
+  getAccount,
+  updateAccount,
+  listLedger,
+  addLedgerEntry,
+  reconcileEntries,
+  listShipments,
+  createShipment,
+  getShipment,
+  advanceShipment,
 };

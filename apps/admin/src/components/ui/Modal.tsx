@@ -47,7 +47,9 @@ export function Modal({
     <div
       className={cn(
         "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
-        open ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none",
+        open
+          ? "opacity-100 visible"
+          : "opacity-0 invisible pointer-events-none",
       )}
       onClick={onClose}
     >
@@ -64,7 +66,9 @@ export function Modal({
       >
         {title && (
           <div className="flex items-center gap-3 p-5 border-b hairline shrink-0">
-            <h2 className="font-display text-lg font-medium flex-1 min-w-0 truncate">{title}</h2>
+            <h2 className="font-display text-lg font-medium flex-1 min-w-0 truncate">
+              {title}
+            </h2>
             <IconButton onClick={onClose} aria-label="Close">
               <X className="w-[18px] h-[18px]" />
             </IconButton>
@@ -72,7 +76,9 @@ export function Modal({
         )}
         <div className="p-5 overflow-y-auto">{children}</div>
         {footer && (
-          <div className="p-[14px_20px] border-t hairline flex gap-2 justify-end shrink-0">{footer}</div>
+          <div className="p-[14px_20px] border-t hairline flex gap-2 justify-end shrink-0">
+            {footer}
+          </div>
         )}
       </div>
     </div>,

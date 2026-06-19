@@ -34,11 +34,16 @@ function KanbanColumnUI({
     <div className="flex-shrink-0 w-[260px] flex flex-col">
       {/* Column header */}
       <div className="flex items-center gap-2 mb-3">
-        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: colour }} />
+        <div
+          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+          style={{ backgroundColor: colour }}
+        />
         <span className="text-[12px] font-semibold text-text-primary flex-1 truncate">
           {column.stage.display_name}
         </span>
-        <span className="text-[10.5px] text-text-faint font-mono">{column.deals.length}</span>
+        <span className="text-[10.5px] text-text-faint font-mono">
+          {column.deals.length}
+        </span>
       </div>
 
       {/* Value strip */}
@@ -59,7 +64,11 @@ function KanbanColumnUI({
         ].join(" ")}
       >
         {column.deals.map((deal) => (
-          <DraggableDealCard key={deal.deal_id} deal={deal} onWonLost={onWonLost} />
+          <DraggableDealCard
+            key={deal.deal_id}
+            deal={deal}
+            onWonLost={onWonLost}
+          />
         ))}
 
         {column.deals.length === 0 && !isOver && (
@@ -81,9 +90,10 @@ function DraggableDealCard({
   deal: Deal;
   onWonLost: (deal: Deal) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: deal.deal_id,
-  });
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({
+      id: deal.deal_id,
+    });
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -154,7 +164,9 @@ export function KanbanView({ columns, isLoading, onAddDeal }: KanbanViewProps) {
     <>
       <DndContext
         sensors={sensors}
-        onDragStart={(e: DragStartEvent) => setActiveDealId(e.active.id as string)}
+        onDragStart={(e: DragStartEvent) =>
+          setActiveDealId(e.active.id as string)
+        }
         onDragEnd={onDragEnd}
         onDragCancel={() => setActiveDealId(null)}
       >

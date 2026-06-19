@@ -16,7 +16,13 @@ import { useVisibleModules } from "@hooks/useVisibleModules";
 import { HUB_MODULES } from "@lib/constants/modules";
 
 // Paths that are personal/utility surfaces, never permission-gated.
-const OPEN_PREFIXES = ["/", "/workspace", "/help", "/profile", "/notifications"];
+const OPEN_PREFIXES = [
+  "/",
+  "/workspace",
+  "/help",
+  "/profile",
+  "/notifications",
+];
 
 function moduleForPath(pathname: string) {
   if (OPEN_PREFIXES.includes(pathname)) return null;
@@ -53,8 +59,8 @@ export function PermissionGate({ children }: { children: ReactNode }) {
           No access to {module.label}
         </h1>
         <p className="text-sm text-brand-smoke">
-          Your role doesn't include the {module.label} module. If you need
-          it, ask an administrator to update your role in Security → Roles.
+          Your role doesn't include the {module.label} module. If you need it,
+          ask an administrator to update your role in Security → Roles.
         </p>
         <Link
           to="/"

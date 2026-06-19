@@ -92,7 +92,9 @@ export function OrderCaptureModal({
 
   async function generate() {
     if (!contactId) {
-      setError("This thread isn't linked to a customer. Open the Online QR form first.");
+      setError(
+        "This thread isn't linked to a customer. Open the Online QR form first.",
+      );
       return;
     }
     setError(null);
@@ -150,9 +152,9 @@ export function OrderCaptureModal({
           <div className="flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[12px] text-amber-200">
             <AlertCircle className="w-3.5 h-3.5 mt-[2px] shrink-0" />
             <div>
-              This thread isn&rsquo;t linked to a customer profile yet. Send
-              the Online QR welcome form first so the order can attach to
-              their record.
+              This thread isn&rsquo;t linked to a customer profile yet. Send the
+              Online QR welcome form first so the order can attach to their
+              record.
             </div>
           </div>
         )}
@@ -210,8 +212,8 @@ export function OrderCaptureModal({
         {items.length > 0 && (
           <div>
             <span className="block text-[11px] uppercase tracking-widest text-text-faint mb-1.5">
-              {items.length} item{items.length === 1 ? "" : "s"} ·{" "}
-              {total} unit{total === 1 ? "" : "s"}
+              {items.length} item{items.length === 1 ? "" : "s"} · {total} unit
+              {total === 1 ? "" : "s"}
             </span>
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {items.map((i) => (

@@ -27,7 +27,8 @@ export function getSocket(): Socket {
     autoConnect: true,
     transports: ["websocket", "polling"],
     withCredentials: true,
-    auth: (cb: (data: Record<string, string>) => void) => cb({ token: getAccessToken() ?? "" }),
+    auth: (cb: (data: Record<string, string>) => void) =>
+      cb({ token: getAccessToken() ?? "" }),
   });
 
   // Forward socket events as window CustomEvents so components can subscribe

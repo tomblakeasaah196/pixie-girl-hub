@@ -252,7 +252,8 @@ async function runAction({ brand, rule, execution }) {
       // edit any `send_sms` rules to use `send_email` or `send_whatsapp`.
       return {
         status: "suppressed",
-        failure_reason: "SMS channel removed — switch this rule to email or WhatsApp",
+        failure_reason:
+          "SMS channel removed — switch this rule to email or WhatsApp",
       };
     }
     default:

@@ -27,9 +27,7 @@ function syncRoomVerdict(socket, room) {
 
   const brandMatch = room.match(/^brand:([a-z_]+):/);
   if (brandMatch) {
-    return user.available_businesses.includes(brandMatch[1])
-      ? "allow"
-      : "deny";
+    return user.available_businesses.includes(brandMatch[1]) ? "allow" : "deny";
   }
 
   // channel:<uuid>[:typing] — async DB check below.
@@ -54,7 +52,10 @@ async function isChannelMember(user, channelId) {
     );
     return rows.length > 0;
   } catch (err) {
-    logger.warn({ err: err.message, channelId }, "channel membership check failed");
+    logger.warn(
+      { err: err.message, channelId },
+      "channel membership check failed",
+    );
     return false;
   }
 }

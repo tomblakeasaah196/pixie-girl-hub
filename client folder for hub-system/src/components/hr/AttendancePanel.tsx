@@ -20,7 +20,12 @@ import {
 import { AttendanceStatusBadge } from "./HrShared";
 
 function timeOf(ts: string | null): string {
-  return ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+  return ts
+    ? new Date(ts).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—";
 }
 
 export function AttendancePanel({
@@ -36,7 +41,9 @@ export function AttendancePanel({
 
   const { data, isLoading } = useQuery({
     queryKey:
-      mode === "self" ? ["hr", "me", "attendance"] : ["hr", "attendance", profileId || "all"],
+      mode === "self"
+        ? ["hr", "me", "attendance"]
+        : ["hr", "attendance", profileId || "all"],
     queryFn: () =>
       mode === "self"
         ? getMyAttendance().then((r) => r.data)
@@ -55,11 +62,18 @@ export function AttendancePanel({
   });
 
   const reviewMut = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: "approve" | "reject" }) =>
-      reviewJustification(id, decision),
+    mutationFn: ({
+      id,
+      decision,
+    }: {
+      id: string;
+      decision: "approve" | "reject";
+    }) => reviewJustification(id, decision),
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: ["hr"] });
-      showToast.success(`Justification ${v.decision === "approve" ? "approved" : "rejected"}`);
+      showToast.success(
+        `Justification ${v.decision === "approve" ? "approved" : "rejected"}`,
+      );
     },
     onError: (e) => showToast.error(errMsg(e)),
   });
@@ -84,7 +98,9 @@ export function AttendancePanel({
         <table className="w-full text-sm">
           <thead className="bg-brand-charcoal text-brand-smoke text-xs">
             <tr>
-              {mode === "manage" && <th className="px-3 py-2 text-left">Employee</th>}
+              {mode === "manage" && (
+                <th className="px-3 py-2 text-left">Employee</th>
+              )}
               <th className="px-3 py-2 text-left">Date</th>
               <th className="px-3 py-2 text-left">Status</th>
               <th className="px-3 py-2 text-left">In</th>
@@ -97,7 +113,9 @@ export function AttendancePanel({
           <tbody>
             {rows.map((r) => {
               const needsExplain =
-                (r.status === "absent" || r.status === "late" || r.is_offsite) &&
+                (r.status === "absent" ||
+                  r.status === "late" ||
+                  r.is_offsite) &&
                 r.justification_status !== "approved";
               return (
                 <tr key={r.attendance_id} className="border-t border-white/5">
@@ -106,17 +124,25 @@ export function AttendancePanel({
                       {r.display_name || "—"}
                     </td>
                   )}
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.work_date)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {fmtDate(r.work_date)}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
                       <AttendanceStatusBadge status={r.status} />
                       {r.late_minutes > 0 && (
-                        <span className="text-[0.65rem] text-amber-400">+{r.late_minutes}m</span>
+                        <span className="text-[0.65rem] text-amber-400">
+                          +{r.late_minutes}m
+                        </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{timeOf(r.clock_in_at)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{timeOf(r.clock_out_at)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {timeOf(r.clock_in_at)}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {timeOf(r.clock_out_at)}
+                  </td>
                   <td className="px-3 py-2">
                     {r.is_offsite ? (
                       <span className="inline-flex items-center gap-1 text-rose-400 text-xs">
@@ -137,7 +163,9 @@ export function AttendancePanel({
                   <td className="px-3 py-2 max-w-[14rem]">
                     {r.justification_note ? (
                       <div className="text-xs">
-                        <span className="text-brand-cloud line-clamp-2">{r.justification_note}</span>
+                        <span className="text-brand-cloud line-clamp-2">
+                          {r.justification_note}
+                        </span>
                         {r.justification_status && (
                           <Badge
                             tone={
@@ -158,33 +186,46 @@ export function AttendancePanel({
                     )}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    {mode === "self" && needsExplain && r.justification_status !== "pending" && (
-                      <Button size="sm" variant="secondary" onClick={() => setJustifyRec(r)}>
-                        Explain
-                      </Button>
-                    )}
-                    {mode === "manage" && r.justification_status === "pending" && (
-                      <div className="inline-flex gap-1">
+                    {mode === "self" &&
+                      needsExplain &&
+                      r.justification_status !== "pending" && (
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={() =>
-                            reviewMut.mutate({ id: r.attendance_id, decision: "approve" })
-                          }
+                          onClick={() => setJustifyRec(r)}
                         >
-                          <Check className="w-3.5 h-3.5" />
+                          Explain
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() =>
-                            reviewMut.mutate({ id: r.attendance_id, decision: "reject" })
-                          }
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    )}
+                      )}
+                    {mode === "manage" &&
+                      r.justification_status === "pending" && (
+                        <div className="inline-flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              reviewMut.mutate({
+                                id: r.attendance_id,
+                                decision: "approve",
+                              })
+                            }
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              reviewMut.mutate({
+                                id: r.attendance_id,
+                                decision: "reject",
+                              })
+                            }
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      )}
                   </td>
                 </tr>
               );
@@ -203,7 +244,10 @@ export function AttendancePanel({
             <Button variant="secondary" onClick={() => setJustifyRec(null)}>
               Cancel
             </Button>
-            <Button onClick={() => justifyMut.mutate()} disabled={!note.trim() || justifyMut.isPending}>
+            <Button
+              onClick={() => justifyMut.mutate()}
+              disabled={!note.trim() || justifyMut.isPending}
+            >
               {justifyMut.isPending ? "Submitting…" : "Submit explanation"}
             </Button>
           </>

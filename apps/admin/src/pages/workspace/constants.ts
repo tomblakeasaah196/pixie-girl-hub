@@ -123,7 +123,15 @@ export const DAY_NAMES = [
   "Saturday",
 ] as const;
 
-export const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+export const DAY_SHORT = [
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+] as const;
 
 /** Build the 6-row calendar grid for a given month. Each cell is a Date. */
 export function buildMonthGrid(year: number, month: number): Date[][] {

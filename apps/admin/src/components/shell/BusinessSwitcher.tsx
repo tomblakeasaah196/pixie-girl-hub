@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { useBusinesses, useBusinessStore, useActiveBusiness } from "@/stores/business";
+import {
+  useBusinesses,
+  useBusinessStore,
+  useActiveBusiness,
+} from "@/stores/business";
 import { useUiStore } from "@/stores/ui";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -22,7 +26,8 @@ export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const onDown = (e: MouseEvent) =>
+      !ref.current?.contains(e.target as Node) && setOpen(false);
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
@@ -30,9 +35,22 @@ export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
   const Logo = ({ b, size = 30 }: { b: typeof active; size?: number }) => (
     <span
       className="rounded-[9px] grid place-items-center text-white font-display font-semibold shrink-0 shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]"
-      style={{ width: size, height: size, fontSize: size / 2, background: `linear-gradient(140deg, ${b.grad1}, ${b.grad2})` }}
+      style={{
+        width: size,
+        height: size,
+        fontSize: size / 2,
+        background: `linear-gradient(140deg, ${b.grad1}, ${b.grad2})`,
+      }}
     >
-      {b.logoUrl ? <img src={b.logoUrl} alt="" className="w-full h-full rounded-[9px] object-cover" /> : b.monogram}
+      {b.logoUrl ? (
+        <img
+          src={b.logoUrl}
+          alt=""
+          className="w-full h-full rounded-[9px] object-cover"
+        />
+      ) : (
+        b.monogram
+      )}
     </span>
   );
 
@@ -49,19 +67,34 @@ export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
         <Logo b={active} />
         {!collapsed && (
           <>
-            <span className="flex-1 min-w-0 font-semibold text-sm truncate">{active.name}</span>
-            <ChevronDown className={cn("w-[15px] text-text-faint transition-transform", open && "rotate-180")} />
+            <span className="flex-1 min-w-0 font-semibold text-sm truncate">
+              {active.name}
+            </span>
+            <ChevronDown
+              className={cn(
+                "w-[15px] text-text-faint transition-transform",
+                open && "rotate-180",
+              )}
+            />
           </>
         )}
       </button>
 
       {open && (
-        <div className={cn("absolute z-[60] mt-1.5 p-1.5 rounded-[14px] dropglass animate-fade-in", collapsed ? "left-[10px] w-[210px]" : "left-[14px] right-[14px]")}>
+        <div
+          className={cn(
+            "absolute z-[60] mt-1.5 p-1.5 rounded-[14px] dropglass animate-fade-in",
+            collapsed ? "left-[10px] w-[210px]" : "left-[14px] right-[14px]",
+          )}
+        >
           {businesses.map((b) => (
             <div
               key={b.key}
               onClick={() => {
-                if (b.key === active.key) { setOpen(false); return; }
+                if (b.key === active.key) {
+                  setOpen(false);
+                  return;
+                }
                 setOpen(false);
                 setSwitchingToBiz(b.key);
                 // Transition: set new entity, invalidate all entity-keyed queries,
@@ -75,8 +108,12 @@ export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
               className="flex items-center gap-2.5 p-[9px_10px] rounded-[10px] cursor-pointer hover:bg-text-primary/[0.06]"
             >
               <Logo b={b} size={26} />
-              <span className="flex-1 font-semibold text-[13.5px]">{b.name}</span>
-              {b.key === active.key && <Check className="w-4 h-4 text-accent-glow" />}
+              <span className="flex-1 font-semibold text-[13.5px]">
+                {b.name}
+              </span>
+              {b.key === active.key && (
+                <Check className="w-4 h-4 text-accent-glow" />
+              )}
             </div>
           ))}
         </div>

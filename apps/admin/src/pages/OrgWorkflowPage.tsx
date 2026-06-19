@@ -24,7 +24,13 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { Button, Pill, Skeleton, EmptyState, type Tone } from "@/components/ui/primitives";
+import {
+  Button,
+  Pill,
+  Skeleton,
+  EmptyState,
+  type Tone,
+} from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
 import { Timeline } from "@/components/ui/Timeline";
 import { OrgGraph } from "@/components/hub/OrgGraph";
@@ -51,12 +57,28 @@ import {
 
 type Tab = "org" | "permissions" | "workflows" | "pending";
 
-function TabBar({ active, onChange, pendingCount }: { active: Tab; onChange: (t: Tab) => void; pendingCount: number }) {
+function TabBar({
+  active,
+  onChange,
+  pendingCount,
+}: {
+  active: Tab;
+  onChange: (t: Tab) => void;
+  pendingCount: number;
+}) {
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "org",         label: "Org Chart",    icon: <GitBranch className="w-4 h-4" /> },
-    { key: "permissions", label: "Permissions",  icon: <Shield className="w-4 h-4" /> },
-    { key: "workflows",   label: "Workflows",    icon: <Workflow className="w-4 h-4" /> },
-    { key: "pending",     label: "Pending",      icon: <Clock className="w-4 h-4" /> },
+    { key: "org", label: "Org Chart", icon: <GitBranch className="w-4 h-4" /> },
+    {
+      key: "permissions",
+      label: "Permissions",
+      icon: <Shield className="w-4 h-4" />,
+    },
+    {
+      key: "workflows",
+      label: "Workflows",
+      icon: <Workflow className="w-4 h-4" />,
+    },
+    { key: "pending", label: "Pending", icon: <Clock className="w-4 h-4" /> },
   ];
 
   return (
@@ -93,7 +115,11 @@ function PermDenied() {
       </div>
       <h3 className="font-display text-xl mb-1">Access restricted</h3>
       <p className="text-[rgb(var(--text-muted))] text-sm max-w-xs mx-auto">
-        You need the <code className="text-[rgb(var(--accent-glow))]">org_workflow.view</code> permission to access this module.
+        You need the{" "}
+        <code className="text-[rgb(var(--accent-glow))]">
+          org_workflow.view
+        </code>{" "}
+        permission to access this module.
       </p>
     </div>
   );
@@ -116,10 +142,15 @@ function UnitForm({
 }) {
   const [displayName, setDisplayName] = useState(initial?.display_name ?? "");
   const [unitKey, setUnitKey] = useState(initial?.unit_key ?? "");
-  const [parentId, setParentId] = useState<string>(initial?.parent_unit_id ?? "");
+  const [parentId, setParentId] = useState<string>(
+    initial?.parent_unit_id ?? "",
+  );
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
 
-  const autoKey = displayName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+  const autoKey = displayName
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
 
   return (
     <div className="space-y-4">
@@ -130,7 +161,13 @@ function UnitForm({
           value={displayName}
           onChange={(e) => {
             setDisplayName(e.target.value);
-            if (!initial?.unit_key) setUnitKey(e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""));
+            if (!initial?.unit_key)
+              setUnitKey(
+                e.target.value
+                  .toLowerCase()
+                  .replace(/\s+/g, "_")
+                  .replace(/[^a-z0-9_]/g, ""),
+              );
           }}
           placeholder="e.g. Marketing"
         />
@@ -145,16 +182,22 @@ function UnitForm({
         />
       </div>
       <div>
-        <label className="micro block mb-1.5">Parent department (optional)</label>
+        <label className="micro block mb-1.5">
+          Parent department (optional)
+        </label>
         <select
           className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
           value={parentId}
           onChange={(e) => setParentId(e.target.value)}
         >
           <option value="">— None (top-level) —</option>
-          {units.filter((u) => u.unit_id !== initial?.unit_id).map((u) => (
-            <option key={u.unit_id} value={u.unit_id}>{u.display_name}</option>
-          ))}
+          {units
+            .filter((u) => u.unit_id !== initial?.unit_id)
+            .map((u) => (
+              <option key={u.unit_id} value={u.unit_id}>
+                {u.display_name}
+              </option>
+            ))}
         </select>
       </div>
       {initial?.unit_id && (
@@ -165,7 +208,11 @@ function UnitForm({
             onClick={() => setIsActive((v) => !v)}
             className="text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]"
           >
-            {isActive ? <ToggleRight className="w-6 h-6 text-[rgb(var(--success))]" /> : <ToggleLeft className="w-6 h-6" />}
+            {isActive ? (
+              <ToggleRight className="w-6 h-6 text-[rgb(var(--success))]" />
+            ) : (
+              <ToggleLeft className="w-6 h-6" />
+            )}
           </button>
         </label>
       )}
@@ -182,7 +229,11 @@ function UnitForm({
           })
         }
       >
-        {saving ? "Saving…" : initial?.unit_id ? "Save changes" : "Create department"}
+        {saving
+          ? "Saving…"
+          : initial?.unit_id
+            ? "Save changes"
+            : "Create department"}
       </Button>
     </div>
   );
@@ -204,17 +255,24 @@ function PositionForm({
   const [displayName, setDisplayName] = useState(initial?.display_name ?? "");
   const [posKey, setPosKey] = useState(initial?.position_key ?? "");
   const [unitId, setUnitId] = useState(initial?.unit_id ?? "");
-  const [reportsTo, setReportsTo] = useState(initial?.reports_to_position_id ?? "");
+  const [reportsTo, setReportsTo] = useState(
+    initial?.reports_to_position_id ?? "",
+  );
   const [isMgmt, setIsMgmt] = useState(initial?.is_management ?? false);
   const [isDeputy, setIsDeputy] = useState(initial?.is_deputy ?? false);
   const [deputyCapacities, setDeputyCapacities] = useState(
     (initial?.deputy_capacities ?? []).join(", "),
   );
   const [threshold, setThreshold] = useState<string>(
-    initial?.approval_threshold_ngn != null ? String(initial.approval_threshold_ngn) : "",
+    initial?.approval_threshold_ngn != null
+      ? String(initial.approval_threshold_ngn)
+      : "",
   );
 
-  const autoKey = displayName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+  const autoKey = displayName
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
 
   return (
     <div className="space-y-4">
@@ -225,7 +283,13 @@ function PositionForm({
           value={displayName}
           onChange={(e) => {
             setDisplayName(e.target.value);
-            if (!initial?.position_key) setPosKey(e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""));
+            if (!initial?.position_key)
+              setPosKey(
+                e.target.value
+                  .toLowerCase()
+                  .replace(/\s+/g, "_")
+                  .replace(/[^a-z0-9_]/g, ""),
+              );
           }}
           placeholder="e.g. Head of Finance"
         />
@@ -248,7 +312,9 @@ function PositionForm({
         >
           <option value="">— Select department —</option>
           {units.map((u) => (
-            <option key={u.unit_id} value={u.unit_id}>{u.display_name}</option>
+            <option key={u.unit_id} value={u.unit_id}>
+              {u.display_name}
+            </option>
           ))}
         </select>
       </div>
@@ -260,15 +326,23 @@ function PositionForm({
           onChange={(e) => setReportsTo(e.target.value)}
         >
           <option value="">— None (root position) —</option>
-          {positions.filter((p) => p.position_id !== initial?.position_id).map((p) => (
-            <option key={p.position_id} value={p.position_id}>{p.display_name}</option>
-          ))}
+          {positions
+            .filter((p) => p.position_id !== initial?.position_id)
+            .map((p) => (
+              <option key={p.position_id} value={p.position_id}>
+                {p.display_name}
+              </option>
+            ))}
         </select>
       </div>
       <div>
-        <label className="micro block mb-1.5">Approval threshold (NGN, optional)</label>
+        <label className="micro block mb-1.5">
+          Approval threshold (NGN, optional)
+        </label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--text-faint))] text-sm">₦</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--text-faint))] text-sm">
+            ₦
+          </span>
           <input
             type="number"
             min={0}
@@ -282,20 +356,30 @@ function PositionForm({
       <div className="flex gap-6">
         <label className="flex items-center gap-2 cursor-pointer">
           <button type="button" onClick={() => setIsMgmt((v) => !v)}>
-            {isMgmt ? <ToggleRight className="w-5 h-5 text-[rgb(var(--accent-glow))]" /> : <ToggleLeft className="w-5 h-5 text-[rgb(var(--text-muted))]" />}
+            {isMgmt ? (
+              <ToggleRight className="w-5 h-5 text-[rgb(var(--accent-glow))]" />
+            ) : (
+              <ToggleLeft className="w-5 h-5 text-[rgb(var(--text-muted))]" />
+            )}
           </button>
           <span className="text-[13px]">Management</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <button type="button" onClick={() => setIsDeputy((v) => !v)}>
-            {isDeputy ? <ToggleRight className="w-5 h-5 text-[rgb(var(--info))]" /> : <ToggleLeft className="w-5 h-5 text-[rgb(var(--text-muted))]" />}
+            {isDeputy ? (
+              <ToggleRight className="w-5 h-5 text-[rgb(var(--info))]" />
+            ) : (
+              <ToggleLeft className="w-5 h-5 text-[rgb(var(--text-muted))]" />
+            )}
           </button>
           <span className="text-[13px]">Deputy</span>
         </label>
       </div>
       {isDeputy && (
         <div>
-          <label className="micro block mb-1.5">Deputy capacities (comma-separated)</label>
+          <label className="micro block mb-1.5">
+            Deputy capacities (comma-separated)
+          </label>
           <textarea
             rows={2}
             className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] font-mono resize-none focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
@@ -318,13 +402,20 @@ function PositionForm({
             is_management: isMgmt,
             is_deputy: isDeputy,
             deputy_capacities: isDeputy
-              ? deputyCapacities.split(",").map((s) => s.trim()).filter(Boolean)
+              ? deputyCapacities
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
               : [],
             approval_threshold_ngn: threshold ? parseFloat(threshold) : null,
           })
         }
       >
-        {saving ? "Saving…" : initial?.position_id ? "Save changes" : "Create position"}
+        {saving
+          ? "Saving…"
+          : initial?.position_id
+            ? "Save changes"
+            : "Create position"}
       </Button>
     </div>
   );
@@ -333,11 +424,19 @@ function PositionForm({
 function OrgTab({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
-  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
+  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(
+    null,
+  );
   const [unitDrawer, setUnitDrawer] = useState<"create" | OrgUnit | null>(null);
-  const [posDrawer, setPosDrawer] = useState<"create" | OrgPosition | null>(null);
+  const [posDrawer, setPosDrawer] = useState<"create" | OrgPosition | null>(
+    null,
+  );
 
-  const { data: unitsResp, isLoading: unitsLoading, error: unitsError } = useQuery({
+  const {
+    data: unitsResp,
+    isLoading: unitsLoading,
+    error: unitsError,
+  } = useQuery({
     queryKey: ["org-units"],
     queryFn: () => orgApi.listUnits({ include_inactive: false }),
   });
@@ -348,44 +447,79 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
     queryFn: () => orgApi.listPositions(),
   });
 
-  const selectedUnit = units.find((u) => u.unit_id === selectedUnitId) ?? units[0] ?? null;
-  const unitPositions = allPositions.filter((p) => p.unit_id === selectedUnit?.unit_id);
-  const selectedPosition = allPositions.find((p) => p.position_id === selectedPositionId) ?? null;
+  const selectedUnit =
+    units.find((u) => u.unit_id === selectedUnitId) ?? units[0] ?? null;
+  const unitPositions = allPositions.filter(
+    (p) => p.unit_id === selectedUnit?.unit_id,
+  );
+  const selectedPosition =
+    allPositions.find((p) => p.position_id === selectedPositionId) ?? null;
 
   const createUnitMutation = useMutation({
     mutationFn: (data: Partial<OrgUnit>) => orgApi.createUnit(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["org-units"] }); setUnitDrawer(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-units"] });
+      setUnitDrawer(null);
+    },
   });
   const updateUnitMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<OrgUnit> }) => orgApi.updateUnit(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["org-units"] }); setUnitDrawer(null); },
+    mutationFn: ({ id, data }: { id: string; data: Partial<OrgUnit> }) =>
+      orgApi.updateUnit(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-units"] });
+      setUnitDrawer(null);
+    },
   });
   const createPosMutation = useMutation({
     mutationFn: (data: Partial<OrgPosition>) => orgApi.createPosition(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["org-positions"] }); setPosDrawer(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-positions"] });
+      setPosDrawer(null);
+    },
   });
   const updatePosMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<OrgPosition> }) => orgApi.updatePosition(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["org-positions"] }); setPosDrawer(null); },
+    mutationFn: ({ id, data }: { id: string; data: Partial<OrgPosition> }) =>
+      orgApi.updatePosition(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-positions"] });
+      setPosDrawer(null);
+    },
   });
   const deletePosMutation = useMutation({
     mutationFn: (id: string) => orgApi.deletePosition(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["org-positions"] }); setSelectedPositionId(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-positions"] });
+      setSelectedPositionId(null);
+    },
   });
 
-  if (unitsLoading) return <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>;
-  if (unitsError) return (
-    <div className="py-12 text-center">
-      <AlertTriangle className="w-8 h-8 text-[rgb(var(--danger))] mx-auto mb-3" />
-      <p className="text-[rgb(var(--text-muted))]">Failed to load organisation. Check the connection.</p>
-    </div>
-  );
+  if (unitsLoading)
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-14 rounded-xl" />
+        ))}
+      </div>
+    );
+  if (unitsError)
+    return (
+      <div className="py-12 text-center">
+        <AlertTriangle className="w-8 h-8 text-[rgb(var(--danger))] mx-auto mb-3" />
+        <p className="text-[rgb(var(--text-muted))]">
+          Failed to load organisation. Check the connection.
+        </p>
+      </div>
+    );
 
   return (
     <div>
       {canEdit && (
         <div className="flex justify-end mb-4">
-          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setUnitDrawer("create")}>
+          <Button
+            variant="primary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => setUnitDrawer("create")}
+          >
             New Department
           </Button>
         </div>
@@ -396,7 +530,11 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
         <div className="space-y-2">
           <div className="micro mb-2">Departments</div>
           {units.length === 0 ? (
-            <EmptyState icon={<Layers className="w-6 h-6" />} title="No departments" message="Create your first department to start building the org chart." />
+            <EmptyState
+              icon={<Layers className="w-6 h-6" />}
+              title="No departments"
+              message="Create your first department to start building the org chart."
+            />
           ) : (
             units.map((unit) => (
               <div
@@ -404,7 +542,9 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
                 role="button"
                 tabIndex={0}
                 onClick={() => setSelectedUnitId(unit.unit_id)}
-                onKeyDown={(e) => e.key === "Enter" && setSelectedUnitId(unit.unit_id)}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && setSelectedUnitId(unit.unit_id)
+                }
                 className={cn(
                   "group flex items-center gap-3 p-3.5 rounded-[13px] border cursor-pointer transition-all",
                   "backdrop-blur-[22px] bg-[rgb(var(--panel-2)/0.6)]",
@@ -414,15 +554,26 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
                 )}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold truncate">{unit.display_name}</div>
-                  <div className="font-mono text-[10px] text-[rgb(var(--text-faint))] truncate">{unit.unit_key}</div>
+                  <div className="text-[13px] font-semibold truncate">
+                    {unit.display_name}
+                  </div>
+                  <div className="font-mono text-[10px] text-[rgb(var(--text-faint))] truncate">
+                    {unit.unit_key}
+                  </div>
                 </div>
                 <div className="text-[11px] text-[rgb(var(--text-faint))]">
-                  {allPositions.filter((p) => p.unit_id === unit.unit_id).length} pos.
+                  {
+                    allPositions.filter((p) => p.unit_id === unit.unit_id)
+                      .length
+                  }{" "}
+                  pos.
                 </div>
                 {canEdit && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); setUnitDrawer(unit); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setUnitDrawer(unit);
+                    }}
                     className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-[rgb(var(--text)/0.07)] transition-all"
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -439,8 +590,13 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
             <>
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <div className="font-display text-lg font-medium">{selectedUnit.display_name}</div>
-                  <div className="micro">{unitPositions.length} position{unitPositions.length !== 1 ? "s" : ""}</div>
+                  <div className="font-display text-lg font-medium">
+                    {selectedUnit.display_name}
+                  </div>
+                  <div className="micro">
+                    {unitPositions.length} position
+                    {unitPositions.length !== 1 ? "s" : ""}
+                  </div>
                 </div>
                 {canEdit && (
                   <Button
@@ -454,10 +610,21 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
                 )}
               </div>
               <div className="glass rounded-[var(--radius)] shadow-glass p-4 mb-4 min-h-[220px]">
-                {posLoading
-                  ? <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[90px] rounded-xl" />)}</div>
-                  : <OrgGraph positions={unitPositions} onSelectPosition={(p) => setSelectedPositionId(p.position_id)} selectedId={selectedPositionId} />
-                }
+                {posLoading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} className="h-[90px] rounded-xl" />
+                    ))}
+                  </div>
+                ) : (
+                  <OrgGraph
+                    positions={unitPositions}
+                    onSelectPosition={(p) =>
+                      setSelectedPositionId(p.position_id)
+                    }
+                    selectedId={selectedPositionId}
+                  />
+                )}
               </div>
 
               {/* Selected position detail */}
@@ -465,19 +632,35 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
                 <div className="glass rounded-[var(--radius)] shadow-glass p-5">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <div className="font-display text-lg font-medium">{selectedPosition.display_name}</div>
-                      <div className="font-mono text-[11px] text-[rgb(var(--text-faint))]">{selectedPosition.position_key}</div>
+                      <div className="font-display text-lg font-medium">
+                        {selectedPosition.display_name}
+                      </div>
+                      <div className="font-mono text-[11px] text-[rgb(var(--text-faint))]">
+                        {selectedPosition.position_key}
+                      </div>
                     </div>
                     {canEdit && (
                       <div className="flex gap-1.5">
-                        <Button size="sm" icon={<Pencil className="w-3 h-3" />} onClick={() => setPosDrawer(selectedPosition)}>Edit</Button>
+                        <Button
+                          size="sm"
+                          icon={<Pencil className="w-3 h-3" />}
+                          onClick={() => setPosDrawer(selectedPosition)}
+                        >
+                          Edit
+                        </Button>
                         <Button
                           size="sm"
                           variant="danger"
                           icon={<Trash2 className="w-3 h-3" />}
                           onClick={() => {
-                            if (confirm(`Delete position "${selectedPosition.display_name}"?`)) {
-                              deletePosMutation.mutate(selectedPosition.position_id);
+                            if (
+                              confirm(
+                                `Delete position "${selectedPosition.display_name}"?`,
+                              )
+                            ) {
+                              deletePosMutation.mutate(
+                                selectedPosition.position_id,
+                              );
                             }
                           }}
                         />
@@ -486,26 +669,47 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {[
-                      { label: "Management", value: selectedPosition.is_management ? "Yes" : "No" },
-                      { label: "Deputy", value: selectedPosition.is_deputy ? "Yes" : "No" },
-                      { label: "Approval limit", value: selectedPosition.approval_threshold_ngn != null ? `₦${selectedPosition.approval_threshold_ngn.toLocaleString()}` : "Unlimited" },
+                      {
+                        label: "Management",
+                        value: selectedPosition.is_management ? "Yes" : "No",
+                      },
+                      {
+                        label: "Deputy",
+                        value: selectedPosition.is_deputy ? "Yes" : "No",
+                      },
+                      {
+                        label: "Approval limit",
+                        value:
+                          selectedPosition.approval_threshold_ngn != null
+                            ? `₦${selectedPosition.approval_threshold_ngn.toLocaleString()}`
+                            : "Unlimited",
+                      },
                     ].map(({ label, value }) => (
-                      <div key={label} className="bg-[rgb(var(--text)/0.03)] rounded-xl p-3 border border-[rgb(var(--border-c))]">
+                      <div
+                        key={label}
+                        className="bg-[rgb(var(--text)/0.03)] rounded-xl p-3 border border-[rgb(var(--border-c))]"
+                      >
                         <div className="micro mb-1">{label}</div>
                         <div className="text-[13px] font-semibold">{value}</div>
                       </div>
                     ))}
                   </div>
-                  {selectedPosition.is_deputy && selectedPosition.deputy_capacities.length > 0 && (
-                    <div className="mt-3">
-                      <div className="micro mb-1.5">Deputy capacities</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedPosition.deputy_capacities.map((c) => (
-                          <span key={c} className="font-mono text-[10px] bg-[rgb(var(--info)/0.12)] text-[rgb(var(--info))] px-2 py-0.5 rounded-full">{c}</span>
-                        ))}
+                  {selectedPosition.is_deputy &&
+                    selectedPosition.deputy_capacities.length > 0 && (
+                      <div className="mt-3">
+                        <div className="micro mb-1.5">Deputy capacities</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedPosition.deputy_capacities.map((c) => (
+                            <span
+                              key={c}
+                              className="font-mono text-[10px] bg-[rgb(var(--info)/0.12)] text-[rgb(var(--info))] px-2 py-0.5 rounded-full"
+                            >
+                              {c}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               )}
             </>
@@ -528,7 +732,9 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
           <UnitForm
             initial={unitDrawer === "create" ? undefined : unitDrawer}
             units={units}
-            saving={createUnitMutation.isPending || updateUnitMutation.isPending}
+            saving={
+              createUnitMutation.isPending || updateUnitMutation.isPending
+            }
             onSave={(data) => {
               if (unitDrawer === "create") createUnitMutation.mutate(data);
               else updateUnitMutation.mutate({ id: unitDrawer.unit_id, data });
@@ -545,15 +751,18 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
       >
         {posDrawer !== null && (
           <PositionForm
-            initial={posDrawer === "create"
-              ? { unit_id: selectedUnit?.unit_id }
-              : posDrawer}
+            initial={
+              posDrawer === "create"
+                ? { unit_id: selectedUnit?.unit_id }
+                : posDrawer
+            }
             units={units}
             positions={allPositions}
             saving={createPosMutation.isPending || updatePosMutation.isPending}
             onSave={(data) => {
               if (posDrawer === "create") createPosMutation.mutate(data);
-              else updatePosMutation.mutate({ id: posDrawer.position_id, data });
+              else
+                updatePosMutation.mutate({ id: posDrawer.position_id, data });
             }}
           />
         )}
@@ -567,19 +776,43 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
 // ╚════════════════════════════════════════════════════════════╝
 
 const MODULE_LABELS: Record<string, string> = {
-  accounting: "Accounting", ad_analytics: "Ad Analytics", ai_governance: "AI Gov.",
-  ai_insights: "AI Insights", attendance: "Attendance", audit: "Audit",
-  business_setup: "Biz Setup", calendar: "Calendar", contacts: "Contacts",
-  crm: "CRM", dashboards: "Dashboards", documents: "Documents",
-  email_campaigns: "Email Camp.", expenses: "Expenses", hr_payroll: "HR & Pay",
-  intercompany: "Interco.", invoicing: "Invoicing", logistics: "Logistics",
-  org_workflow: "Org & WF", pos: "POS", praxis_ai: "Praxis AI",
-  pricing: "Pricing", production: "Production", purchasing: "Purchasing",
-  retail_partners: "Retail", retention: "Retention", sales: "Sales",
-  sales_campaigns: "Sales Camp.", service_jobs: "Service", settings: "Settings",
-  smartcomm: "Comm.", social: "Social", stock: "Stock",
-  storefront: "Storefront", storefront_studio: "SF Studio",
-  stylist_programme: "Stylists", tasks: "Tasks",
+  accounting: "Accounting",
+  ad_analytics: "Ad Analytics",
+  ai_governance: "AI Gov.",
+  ai_insights: "AI Insights",
+  attendance: "Attendance",
+  audit: "Audit",
+  business_setup: "Biz Setup",
+  calendar: "Calendar",
+  contacts: "Contacts",
+  crm: "CRM",
+  dashboards: "Dashboards",
+  documents: "Documents",
+  email_campaigns: "Email Camp.",
+  expenses: "Expenses",
+  hr_payroll: "HR & Pay",
+  intercompany: "Interco.",
+  invoicing: "Invoicing",
+  logistics: "Logistics",
+  org_workflow: "Org & WF",
+  pos: "POS",
+  praxis_ai: "Praxis AI",
+  pricing: "Pricing",
+  production: "Production",
+  purchasing: "Purchasing",
+  retail_partners: "Retail",
+  retention: "Retention",
+  sales: "Sales",
+  sales_campaigns: "Sales Camp.",
+  service_jobs: "Service",
+  settings: "Settings",
+  smartcomm: "Comm.",
+  social: "Social",
+  stock: "Stock",
+  storefront: "Storefront",
+  storefront_studio: "SF Studio",
+  stylist_programme: "Stylists",
+  tasks: "Tasks",
 };
 
 const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "export"];
@@ -597,7 +830,9 @@ function RoleEditorDrawer({
 }) {
   const qc = useQueryClient();
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
-  const [pendingGrants, setPendingGrants] = useState<Map<string, Permission>>(new Map());
+  const [pendingGrants, setPendingGrants] = useState<Map<string, Permission>>(
+    new Map(),
+  );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -633,7 +868,13 @@ function RoleEditorDrawer({
     if (next.has(key)) {
       next.delete(key);
     } else {
-      next.set(key, { permission_id: "", module, action, record_scope: "all", hidden_fields: [] });
+      next.set(key, {
+        permission_id: "",
+        module,
+        action,
+        record_scope: "all",
+        hidden_fields: [],
+      });
     }
     setPendingGrants(next);
     setDirty(true);
@@ -644,7 +885,11 @@ function RoleEditorDrawer({
     const key = `${module}.${action}`;
     const next = new Map(dirty ? pendingGrants : permMap);
     const existing = next.get(key);
-    if (existing) next.set(key, { ...existing, record_scope: record_scope as Permission["record_scope"] });
+    if (existing)
+      next.set(key, {
+        ...existing,
+        record_scope: record_scope as Permission["record_scope"],
+      });
     setPendingGrants(next);
     setDirty(true);
   }
@@ -655,7 +900,13 @@ function RoleEditorDrawer({
     const next = new Map(dirty ? pendingGrants : permMap);
     const existing = next.get(key);
     if (existing) {
-      next.set(key, { ...existing, hidden_fields: raw.split(",").map((s) => s.trim()).filter(Boolean) });
+      next.set(key, {
+        ...existing,
+        hidden_fields: raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      });
     }
     setPendingGrants(next);
     setDirty(true);
@@ -688,13 +939,29 @@ function RoleEditorDrawer({
       onClose={onClose}
       wide
       title={isLoading ? "Loading…" : (role?.role_name ?? "Role")}
-      subtitle={isLoading ? "" : `${role?.member_count ?? 0} member${role?.member_count !== 1 ? "s" : ""} · ${role?.permission_count ?? 0} grants`}
-      leading={isSystemRole ? <Lock className="w-4 h-4 text-[rgb(var(--warn))]" /> : <Shield className="w-4 h-4 text-[rgb(var(--accent))]" />}
+      subtitle={
+        isLoading
+          ? ""
+          : `${role?.member_count ?? 0} member${role?.member_count !== 1 ? "s" : ""} · ${role?.permission_count ?? 0} grants`
+      }
+      leading={
+        isSystemRole ? (
+          <Lock className="w-4 h-4 text-[rgb(var(--warn))]" />
+        ) : (
+          <Shield className="w-4 h-4 text-[rgb(var(--accent))]" />
+        )
+      }
       footer={
         canEdit && !isSystemRole ? (
           <>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" disabled={!dirty || saving} onClick={handleSave}>
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!dirty || saving}
+              onClick={handleSave}
+            >
               {saving ? "Saving…" : "Save permissions"}
             </Button>
           </>
@@ -702,24 +969,37 @@ function RoleEditorDrawer({
       }
     >
       {isLoading ? (
-        <div className="space-y-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-xl" />)}</div>
+        <div className="space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 rounded-xl" />
+          ))}
+        </div>
       ) : (
         <>
           {role?.description && (
-            <p className="text-[rgb(var(--text-muted))] text-sm mb-4">{role.description}</p>
+            <p className="text-[rgb(var(--text-muted))] text-sm mb-4">
+              {role.description}
+            </p>
           )}
           {isSystemRole && (
             <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-[rgb(var(--warn)/0.08)] border border-[rgb(var(--warn)/0.25)]">
               <Lock className="w-4 h-4 text-[rgb(var(--warn))] shrink-0" />
-              <span className="text-[12.5px] text-[rgb(var(--warn))]">System role — permissions are read-only</span>
+              <span className="text-[12.5px] text-[rgb(var(--warn))]">
+                System role — permissions are read-only
+              </span>
             </div>
           )}
           <div className="space-y-1.5">
             {catalog.map((cat) => {
-              const modulePerms = ACTION_ORDER.filter((a) => effectiveMap.has(`${cat.module}.${a}`));
+              const modulePerms = ACTION_ORDER.filter((a) =>
+                effectiveMap.has(`${cat.module}.${a}`),
+              );
               const isExp = expandedModule === cat.module;
               return (
-                <div key={cat.module} className="rounded-xl border border-[rgb(var(--border-c))] overflow-hidden">
+                <div
+                  key={cat.module}
+                  className="rounded-xl border border-[rgb(var(--border-c))] overflow-hidden"
+                >
                   <button
                     onClick={() => setExpandedModule(isExp ? null : cat.module)}
                     className="flex w-full items-center gap-3 px-4 py-3 hover:bg-[rgb(var(--text)/0.03)] transition-colors"
@@ -732,19 +1012,29 @@ function RoleEditorDrawer({
                         <span
                           key={a}
                           className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-                          style={{ background: `${ACTION_META[a]?.color}22`, color: ACTION_META[a]?.color }}
+                          style={{
+                            background: `${ACTION_META[a]?.color}22`,
+                            color: ACTION_META[a]?.color,
+                          }}
                         >
                           {a}
                         </span>
                       ))}
                     </div>
-                    <ChevronDown className={cn("w-4 h-4 text-[rgb(var(--text-muted))] transition-transform", isExp && "rotate-180")} />
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 text-[rgb(var(--text-muted))] transition-transform",
+                        isExp && "rotate-180",
+                      )}
+                    />
                   </button>
                   {isExp && (
                     <div className="border-t border-[rgb(var(--border-c))] bg-[rgb(var(--text)/0.02)] px-4 py-3 space-y-3">
                       {/* Action toggles */}
                       <div className="grid grid-cols-3 gap-2">
-                        {ACTION_ORDER.filter((a) => cat.actions.includes(a)).map((action) => {
+                        {ACTION_ORDER.filter((a) =>
+                          cat.actions.includes(a),
+                        ).map((action) => {
                           const key = `${cat.module}.${action}`;
                           const granted = effectiveMap.has(key);
                           const meta = ACTION_META[action];
@@ -755,48 +1045,90 @@ function RoleEditorDrawer({
                               disabled={isSystemRole || !canEdit}
                               className={cn(
                                 "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-[12px] font-medium transition-all",
-                                isSystemRole || !canEdit ? "cursor-default" : "cursor-pointer",
+                                isSystemRole || !canEdit
+                                  ? "cursor-default"
+                                  : "cursor-pointer",
                                 granted
                                   ? "border-transparent"
                                   : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:border-[rgb(var(--text)/0.2)]",
                               )}
-                              style={granted ? { background: `${meta.color}1a`, borderColor: `${meta.color}44`, color: meta.color } : {}}
+                              style={
+                                granted
+                                  ? {
+                                      background: `${meta.color}1a`,
+                                      borderColor: `${meta.color}44`,
+                                      color: meta.color,
+                                    }
+                                  : {}
+                              }
                             >
-                              {granted
-                                ? <Check className="w-3 h-3 shrink-0" />
-                                : <X className="w-3 h-3 shrink-0 opacity-30" />}
+                              {granted ? (
+                                <Check className="w-3 h-3 shrink-0" />
+                              ) : (
+                                <X className="w-3 h-3 shrink-0 opacity-30" />
+                              )}
                               {meta.label}
                             </button>
                           );
                         })}
                       </div>
                       {/* Scope + hidden fields for view grant */}
-                      {effectiveMap.has(`${cat.module}.view`) && canEdit && !isSystemRole && (
-                        <div className="pt-2 border-t border-[rgb(var(--border-c))] space-y-2">
-                          <div className="micro">Data access refinement (view)</div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <label className="text-[12px] text-[rgb(var(--text-muted))]">Scope</label>
-                            <select
-                              value={effectiveMap.get(`${cat.module}.view`)?.record_scope ?? "all"}
-                              onChange={(e) => updateScope(cat.module, "view", e.target.value)}
-                              className="bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1 text-[12px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
-                            >
-                              {Object.entries(RECORD_SCOPE_LABELS).map(([v, lbl]) => (
-                                <option key={v} value={v}>{lbl}</option>
-                              ))}
-                            </select>
+                      {effectiveMap.has(`${cat.module}.view`) &&
+                        canEdit &&
+                        !isSystemRole && (
+                          <div className="pt-2 border-t border-[rgb(var(--border-c))] space-y-2">
+                            <div className="micro">
+                              Data access refinement (view)
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <label className="text-[12px] text-[rgb(var(--text-muted))]">
+                                Scope
+                              </label>
+                              <select
+                                value={
+                                  effectiveMap.get(`${cat.module}.view`)
+                                    ?.record_scope ?? "all"
+                                }
+                                onChange={(e) =>
+                                  updateScope(
+                                    cat.module,
+                                    "view",
+                                    e.target.value,
+                                  )
+                                }
+                                className="bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1 text-[12px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+                              >
+                                {Object.entries(RECORD_SCOPE_LABELS).map(
+                                  ([v, lbl]) => (
+                                    <option key={v} value={v}>
+                                      {lbl}
+                                    </option>
+                                  ),
+                                )}
+                              </select>
+                            </div>
+                            <div className="flex flex-wrap items-start gap-3">
+                              <label className="text-[12px] text-[rgb(var(--text-muted))] pt-1">
+                                Hidden fields
+                              </label>
+                              <input
+                                className="flex-1 min-w-0 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1 text-[11px] font-mono focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+                                placeholder="cost_price, factory_origin (comma-separated)"
+                                value={(
+                                  effectiveMap.get(`${cat.module}.view`)
+                                    ?.hidden_fields ?? []
+                                ).join(", ")}
+                                onChange={(e) =>
+                                  updateHiddenFields(
+                                    cat.module,
+                                    "view",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </div>
                           </div>
-                          <div className="flex flex-wrap items-start gap-3">
-                            <label className="text-[12px] text-[rgb(var(--text-muted))] pt-1">Hidden fields</label>
-                            <input
-                              className="flex-1 min-w-0 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1 text-[11px] font-mono focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
-                              placeholder="cost_price, factory_origin (comma-separated)"
-                              value={(effectiveMap.get(`${cat.module}.view`)?.hidden_fields ?? []).join(", ")}
-                              onChange={(e) => updateHiddenFields(cat.module, "view", e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      )}
+                        )}
                     </div>
                   )}
                 </div>
@@ -809,7 +1141,13 @@ function RoleEditorDrawer({
   );
 }
 
-function NewRoleDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: (r: Role) => void }) {
+function NewRoleDrawer({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (r: Role) => void;
+}) {
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
   const [scope, setScope] = useState<"brand" | "system">("brand");
@@ -820,7 +1158,11 @@ function NewRoleDrawer({ onClose, onCreated }: { onClose: () => void; onCreated:
     setSaving(true);
     setError(null);
     try {
-      const role = await accessApi.createRole({ role_name: roleName.trim().toLowerCase().replace(/\s+/g, "_"), description: description.trim() || undefined, scope });
+      const role = await accessApi.createRole({
+        role_name: roleName.trim().toLowerCase().replace(/\s+/g, "_"),
+        description: description.trim() || undefined,
+        scope,
+      });
       onCreated(role);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to create role");
@@ -895,7 +1237,10 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
       const results = await Promise.all(
         roles.map(async (r) => {
           const perms = await accessApi.getRolePermissions(r.role_id);
-          return { role_id: r.role_id, perms: Array.isArray(perms) ? perms : [] };
+          return {
+            role_id: r.role_id,
+            perms: Array.isArray(perms) ? perms : [],
+          };
         }),
       );
       return new Map(results.map((r) => [r.role_id, r.perms]));
@@ -909,7 +1254,13 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
   const legend = Object.entries(ACTION_META).slice(0, 6);
 
   if (rolesLoading || catLoading) {
-    return <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-xl" />)}</div>;
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-12 rounded-xl" />
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -917,14 +1268,25 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex flex-wrap gap-2">
           {legend.map(([action, meta]) => (
-            <span key={action} className="flex items-center gap-1 text-[10px] font-semibold">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: meta.color }} />
+            <span
+              key={action}
+              className="flex items-center gap-1 text-[10px] font-semibold"
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ background: meta.color }}
+              />
               {meta.label}
             </span>
           ))}
         </div>
         {canEdit && (
-          <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowNewRole(true)}>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => setShowNewRole(true)}
+          >
             New Role
           </Button>
         )}
@@ -940,7 +1302,10 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
                   Role
                 </th>
                 {catalogModules.map((m) => (
-                  <th key={m.module} className="micro p-[10px_8px] border-b border-[rgb(var(--border-c))] text-center min-w-[64px] text-[9px]">
+                  <th
+                    key={m.module}
+                    className="micro p-[10px_8px] border-b border-[rgb(var(--border-c))] text-center min-w-[64px] text-[9px]"
+                  >
                     {(MODULE_LABELS[m.module] ?? m.module).slice(0, 8)}
                   </th>
                 ))}
@@ -949,36 +1314,52 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
             <tbody>
               {roles.map((role) => {
                 const perms = roleDetails?.get(role.role_id) ?? [];
-                const permSet = new Set(perms.map((p) => `${p.module}.${p.action}`));
+                const permSet = new Set(
+                  perms.map((p) => `${p.module}.${p.action}`),
+                );
                 return (
                   <tr
                     key={role.role_id}
                     onClick={() => setSelectedRoleId(role.role_id)}
                     className={cn(
                       "cursor-pointer border-b border-[rgb(var(--border-c))] last:border-0 transition-colors hover:bg-[rgb(var(--text)/0.03)]",
-                      selectedRoleId === role.role_id && "bg-[rgb(var(--accent)/0.05)]",
+                      selectedRoleId === role.role_id &&
+                        "bg-[rgb(var(--accent)/0.05)]",
                     )}
                   >
                     <td className="sticky left-0 z-10 bg-[rgb(var(--panel))] p-[0_18px] h-[48px] border-r border-[rgb(var(--border-c))]">
                       <div className="flex items-center gap-2">
-                        {role.is_system ? <Lock className="w-3 h-3 text-[rgb(var(--warn))] shrink-0" /> : <Shield className="w-3 h-3 text-[rgb(var(--accent))] shrink-0" />}
-                        <span className="text-[12.5px] font-semibold truncate max-w-[130px]">{role.role_name}</span>
-                        {role.is_system && <Crown className="w-3 h-3 text-[rgb(var(--warn))] shrink-0" />}
+                        {role.is_system ? (
+                          <Lock className="w-3 h-3 text-[rgb(var(--warn))] shrink-0" />
+                        ) : (
+                          <Shield className="w-3 h-3 text-[rgb(var(--accent))] shrink-0" />
+                        )}
+                        <span className="text-[12.5px] font-semibold truncate max-w-[130px]">
+                          {role.role_name}
+                        </span>
+                        {role.is_system && (
+                          <Crown className="w-3 h-3 text-[rgb(var(--warn))] shrink-0" />
+                        )}
                       </div>
                     </td>
                     {catalogModules.map((m) => {
                       const hasApprove = permSet.has(`${m.module}.approve`);
-                      const hasEdit = permSet.has(`${m.module}.edit`) || permSet.has(`${m.module}.create`);
+                      const hasEdit =
+                        permSet.has(`${m.module}.edit`) ||
+                        permSet.has(`${m.module}.create`);
                       const hasView = permSet.has(`${m.module}.view`);
                       const color = hasApprove
                         ? ACTION_META.approve.color
                         : hasEdit
-                        ? ACTION_META.edit.color
-                        : hasView
-                        ? ACTION_META.view.color
-                        : null;
+                          ? ACTION_META.edit.color
+                          : hasView
+                            ? ACTION_META.view.color
+                            : null;
                       return (
-                        <td key={m.module} className="p-[0_4px] h-[48px] text-center">
+                        <td
+                          key={m.module}
+                          className="p-[0_4px] h-[48px] text-center"
+                        >
                           {color ? (
                             <span
                               className="inline-block w-2.5 h-2.5 rounded-full"
@@ -1032,10 +1413,31 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
 
 const TRIGGER_ACTIONS = ["submit", "create", "approve", "edit", "delete"];
 const MODULE_KEYS = [
-  "sales","crm","pos","stock","catalogue","logistics","purchasing","production",
-  "retail_partners","invoicing","accounting","expenses","pricing","cash_request",
-  "hr_payroll","contacts","retention","campaigns","social","marketing",
-  "praxis_ai","settings","documents","ai_governance","org_workflow",
+  "sales",
+  "crm",
+  "pos",
+  "stock",
+  "catalogue",
+  "logistics",
+  "purchasing",
+  "production",
+  "retail_partners",
+  "invoicing",
+  "accounting",
+  "expenses",
+  "pricing",
+  "cash_request",
+  "hr_payroll",
+  "contacts",
+  "retention",
+  "campaigns",
+  "social",
+  "marketing",
+  "praxis_ai",
+  "settings",
+  "documents",
+  "ai_governance",
+  "org_workflow",
 ];
 
 function StageEditor({
@@ -1053,24 +1455,33 @@ function StageEditor({
     stage.threshold_ngn_lte != null && stage.threshold_ngn_gt != null
       ? "range"
       : stage.threshold_ngn_lte != null
-      ? "lte"
-      : stage.threshold_ngn_gt != null
-      ? "gt"
-      : "none",
+        ? "lte"
+        : stage.threshold_ngn_gt != null
+          ? "gt"
+          : "none",
   );
 
   function updateApprover(i: number, field: "type" | "value", val: string) {
     const approvers = [...stage.approvers];
-    approvers[i] = { ...approvers[i], [field]: val } as WorkflowStage["approvers"][number];
+    approvers[i] = {
+      ...approvers[i],
+      [field]: val,
+    } as WorkflowStage["approvers"][number];
     onChange({ ...stage, approvers });
   }
 
   function addApprover() {
-    onChange({ ...stage, approvers: [...stage.approvers, { type: "role", value: "" }] });
+    onChange({
+      ...stage,
+      approvers: [...stage.approvers, { type: "role", value: "" }],
+    });
   }
 
   function removeApprover(i: number) {
-    onChange({ ...stage, approvers: stage.approvers.filter((_, idx) => idx !== i) });
+    onChange({
+      ...stage,
+      approvers: stage.approvers.filter((_, idx) => idx !== i),
+    });
   }
 
   function setCondition(type: typeof condType, lte?: number, gt?: number) {
@@ -1087,7 +1498,10 @@ function StageEditor({
     <div className="glass rounded-[var(--radius)] shadow-glass p-4 space-y-3 relative">
       <div className="flex items-center justify-between mb-1">
         <div className="micro">Stage {index + 1}</div>
-        <button onClick={onRemove} className="text-[rgb(var(--danger))] hover:bg-[rgb(var(--danger)/0.1)] p-1 rounded-lg transition-colors">
+        <button
+          onClick={onRemove}
+          className="text-[rgb(var(--danger))] hover:bg-[rgb(var(--danger)/0.1)] p-1 rounded-lg transition-colors"
+        >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -1098,7 +1512,9 @@ function StageEditor({
         <input
           className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
           value={stage.name ?? ""}
-          onChange={(e) => onChange({ ...stage, name: e.target.value || undefined })}
+          onChange={(e) =>
+            onChange({ ...stage, name: e.target.value || undefined })
+          }
           placeholder="e.g. Manager approval"
         />
       </div>
@@ -1107,7 +1523,12 @@ function StageEditor({
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <label className="micro">Approvers</label>
-          <button onClick={addApprover} className="text-[10px] text-[rgb(var(--accent))] hover:underline">+ Add</button>
+          <button
+            onClick={addApprover}
+            className="text-[10px] text-[rgb(var(--accent))] hover:underline"
+          >
+            + Add
+          </button>
         </div>
         <div className="space-y-2">
           {stage.approvers.map((app, i) => (
@@ -1125,9 +1546,18 @@ function StageEditor({
                 className="flex-1 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
                 value={app.value}
                 onChange={(e) => updateApprover(i, "value", e.target.value)}
-                placeholder={app.type === "role" ? "e.g. manager" : app.type === "position" ? "e.g. head_of_finance" : "user_id"}
+                placeholder={
+                  app.type === "role"
+                    ? "e.g. manager"
+                    : app.type === "position"
+                      ? "e.g. head_of_finance"
+                      : "user_id"
+                }
               />
-              <button onClick={() => removeApprover(i)} className="text-[rgb(var(--danger))] p-1 rounded-lg hover:bg-[rgb(var(--danger)/0.1)] transition-colors">
+              <button
+                onClick={() => removeApprover(i)}
+                className="text-[rgb(var(--danger))] p-1 rounded-lg hover:bg-[rgb(var(--danger)/0.1)] transition-colors"
+              >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1142,7 +1572,9 @@ function StageEditor({
           {(["none", "lte", "gt", "range"] as const).map((t) => (
             <button
               key={t}
-              onClick={() => setCondition(t, stage.threshold_ngn_lte, stage.threshold_ngn_gt)}
+              onClick={() =>
+                setCondition(t, stage.threshold_ngn_lte, stage.threshold_ngn_gt)
+              }
               className={cn(
                 "text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors",
                 condType === t
@@ -1150,7 +1582,13 @@ function StageEditor({
                   : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:border-[rgb(var(--text)/0.3)]",
               )}
             >
-              {t === "none" ? "Always applies" : t === "lte" ? "Amount ≤" : t === "gt" ? "Amount >" : "Amount between"}
+              {t === "none"
+                ? "Always applies"
+                : t === "lte"
+                  ? "Amount ≤"
+                  : t === "gt"
+                    ? "Amount >"
+                    : "Amount between"}
             </button>
           ))}
         </div>
@@ -1158,25 +1596,42 @@ function StageEditor({
           <div className="flex gap-3 mt-2 flex-wrap">
             {(condType === "lte" || condType === "range") && (
               <div className="flex items-center gap-1.5">
-                <span className="text-[12px] text-[rgb(var(--text-muted))]">≤ ₦</span>
+                <span className="text-[12px] text-[rgb(var(--text-muted))]">
+                  ≤ ₦
+                </span>
                 <input
                   type="number"
                   min={0}
                   className="w-28 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2 py-1 text-[12px] font-mono focus:outline-none"
                   value={stage.threshold_ngn_lte ?? ""}
-                  onChange={(e) => onChange({ ...stage, threshold_field: "total_ngn", threshold_ngn_lte: parseFloat(e.target.value) || undefined })}
+                  onChange={(e) =>
+                    onChange({
+                      ...stage,
+                      threshold_field: "total_ngn",
+                      threshold_ngn_lte:
+                        parseFloat(e.target.value) || undefined,
+                    })
+                  }
                 />
               </div>
             )}
             {(condType === "gt" || condType === "range") && (
               <div className="flex items-center gap-1.5">
-                <span className="text-[12px] text-[rgb(var(--text-muted))]">{condType === "range" ? "and >" : ">"} ₦</span>
+                <span className="text-[12px] text-[rgb(var(--text-muted))]">
+                  {condType === "range" ? "and >" : ">"} ₦
+                </span>
                 <input
                   type="number"
                   min={0}
                   className="w-28 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2 py-1 text-[12px] font-mono focus:outline-none"
                   value={stage.threshold_ngn_gt ?? ""}
-                  onChange={(e) => onChange({ ...stage, threshold_field: "total_ngn", threshold_ngn_gt: parseFloat(e.target.value) || undefined })}
+                  onChange={(e) =>
+                    onChange({
+                      ...stage,
+                      threshold_field: "total_ngn",
+                      threshold_ngn_gt: parseFloat(e.target.value) || undefined,
+                    })
+                  }
                 />
               </div>
             )}
@@ -1194,7 +1649,12 @@ function StageEditor({
             max={720}
             className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none"
             value={stage.timeout_hours ?? ""}
-            onChange={(e) => onChange({ ...stage, timeout_hours: parseInt(e.target.value) || undefined })}
+            onChange={(e) =>
+              onChange({
+                ...stage,
+                timeout_hours: parseInt(e.target.value) || undefined,
+              })
+            }
             placeholder="48"
           />
         </div>
@@ -1203,7 +1663,12 @@ function StageEditor({
           <select
             className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none"
             value={stage.on_timeout ?? "escalate"}
-            onChange={(e) => onChange({ ...stage, on_timeout: e.target.value as WorkflowStage["on_timeout"] })}
+            onChange={(e) =>
+              onChange({
+                ...stage,
+                on_timeout: e.target.value as WorkflowStage["on_timeout"],
+              })
+            }
             disabled={!stage.timeout_hours}
           >
             <option value="escalate">Escalate</option>
@@ -1215,12 +1680,24 @@ function StageEditor({
 
       {/* Deputy fallback */}
       <label className="flex items-center gap-2 cursor-pointer">
-        <button type="button" onClick={() => onChange({ ...stage, fallback_to_deputy: !stage.fallback_to_deputy })}>
-          {stage.fallback_to_deputy
-            ? <ToggleRight className="w-5 h-5 text-[rgb(var(--info))]" />
-            : <ToggleLeft className="w-5 h-5 text-[rgb(var(--text-muted))]" />}
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              ...stage,
+              fallback_to_deputy: !stage.fallback_to_deputy,
+            })
+          }
+        >
+          {stage.fallback_to_deputy ? (
+            <ToggleRight className="w-5 h-5 text-[rgb(var(--info))]" />
+          ) : (
+            <ToggleLeft className="w-5 h-5 text-[rgb(var(--text-muted))]" />
+          )}
         </button>
-        <span className="text-[12.5px]">Fallback to deputy if approver unavailable</span>
+        <span className="text-[12.5px]">
+          Fallback to deputy if approver unavailable
+        </span>
       </label>
     </div>
   );
@@ -1237,9 +1714,15 @@ function WorkflowBuilderDrawer({
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [triggerModule, setTriggerModule] = useState(initial?.trigger_module ?? "");
-  const [triggerAction, setTriggerAction] = useState(initial?.trigger_action ?? "submit");
-  const [stages, setStages] = useState<WorkflowStage[]>(initial?.definition.stages ?? []);
+  const [triggerModule, setTriggerModule] = useState(
+    initial?.trigger_module ?? "",
+  );
+  const [triggerAction, setTriggerAction] = useState(
+    initial?.trigger_action ?? "submit",
+  );
+  const [stages, setStages] = useState<WorkflowStage[]>(
+    initial?.definition.stages ?? [],
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1251,11 +1734,17 @@ function WorkflowBuilderDrawer({
   }
 
   function updateStage(i: number, s: WorkflowStage) {
-    setStages((prev) => prev.map((st, idx) => (idx === i ? { ...s, order: idx + 1 } : st)));
+    setStages((prev) =>
+      prev.map((st, idx) => (idx === i ? { ...s, order: idx + 1 } : st)),
+    );
   }
 
   function removeStage(i: number) {
-    setStages((prev) => prev.filter((_, idx) => idx !== i).map((s, idx) => ({ ...s, order: idx + 1 })));
+    setStages((prev) =>
+      prev
+        .filter((_, idx) => idx !== i)
+        .map((s, idx) => ({ ...s, order: idx + 1 })),
+    );
   }
 
   function moveStage(i: number, dir: -1 | 1) {
@@ -1300,13 +1789,21 @@ function WorkflowBuilderDrawer({
       title={initial ? `Edit: ${initial.name}` : "New workflow"}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
           <Button
             variant="primary"
-            disabled={!name.trim() || !triggerModule || stages.length === 0 || saving}
+            disabled={
+              !name.trim() || !triggerModule || stages.length === 0 || saving
+            }
             onClick={handleSave}
           >
-            {saving ? "Saving…" : initial ? "Save as new version" : "Create workflow"}
+            {saving
+              ? "Saving…"
+              : initial
+                ? "Save as new version"
+                : "Create workflow"}
           </Button>
         </>
       }
@@ -1335,7 +1832,11 @@ function WorkflowBuilderDrawer({
               onChange={(e) => setTriggerModule(e.target.value)}
             >
               <option value="">— Select module —</option>
-              {MODULE_KEYS.map((k) => <option key={k} value={k}>{MODULE_LABELS[k] ?? k}</option>)}
+              {MODULE_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {MODULE_LABELS[k] ?? k}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -1345,7 +1846,11 @@ function WorkflowBuilderDrawer({
               value={triggerAction}
               onChange={(e) => setTriggerAction(e.target.value)}
             >
-              {TRIGGER_ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+              {TRIGGER_ACTIONS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -1363,7 +1868,13 @@ function WorkflowBuilderDrawer({
         <div>
           <div className="flex items-center justify-between mb-3">
             <div className="micro">Approval stages</div>
-            <Button size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={addStage}>Add stage</Button>
+            <Button
+              size="sm"
+              icon={<Plus className="w-3.5 h-3.5" />}
+              onClick={addStage}
+            >
+              Add stage
+            </Button>
           </div>
           {stages.length === 0 ? (
             <div className="py-8 text-center border border-dashed border-[rgb(var(--border-c))] rounded-xl text-[rgb(var(--text-faint))] text-sm">
@@ -1374,8 +1885,20 @@ function WorkflowBuilderDrawer({
               {stages.map((stage, i) => (
                 <div key={i} className="relative">
                   <div className="flex gap-1 mb-1 justify-end">
-                    <button disabled={i === 0} onClick={() => moveStage(i, -1)} className="text-[10px] px-1.5 py-0.5 rounded disabled:opacity-30 hover:bg-[rgb(var(--text)/0.07)]">▲</button>
-                    <button disabled={i === stages.length - 1} onClick={() => moveStage(i, 1)} className="text-[10px] px-1.5 py-0.5 rounded disabled:opacity-30 hover:bg-[rgb(var(--text)/0.07)]">▼</button>
+                    <button
+                      disabled={i === 0}
+                      onClick={() => moveStage(i, -1)}
+                      className="text-[10px] px-1.5 py-0.5 rounded disabled:opacity-30 hover:bg-[rgb(var(--text)/0.07)]"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      disabled={i === stages.length - 1}
+                      onClick={() => moveStage(i, 1)}
+                      className="text-[10px] px-1.5 py-0.5 rounded disabled:opacity-30 hover:bg-[rgb(var(--text)/0.07)]"
+                    >
+                      ▼
+                    </button>
                   </div>
                   <StageEditor
                     stage={stage}
@@ -1398,7 +1921,9 @@ function WorkflowBuilderDrawer({
 function WorkflowsTab({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const [showInactive, setShowInactive] = useState(false);
-  const [builderOpen, setBuilderOpen] = useState<WorkflowDefinition | "new" | null>(null);
+  const [builderOpen, setBuilderOpen] = useState<
+    WorkflowDefinition | "new" | null
+  >(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["workflow-definitions", showInactive],
@@ -1408,17 +1933,48 @@ function WorkflowsTab({ canEdit }: { canEdit: boolean }) {
   const definitions = Array.isArray(data) ? data : [];
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, active }: { id: string; active: boolean }) => orgApi.setDefinitionActive(id, active),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflow-definitions"] }),
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      orgApi.setDefinitionActive(id, active),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["workflow-definitions"] }),
   });
 
-  const triggerLabel = (m: string, a: string) => `${MODULE_LABELS[m] ?? m} · ${a}`;
+  const triggerLabel = (m: string, a: string) =>
+    `${MODULE_LABELS[m] ?? m} · ${a}`;
 
   const wfColumns: Column<WorkflowDefinition>[] = [
-    { key: "name", header: "Name", render: (w) => <span className="text-[13px] font-semibold">{w.name}</span> },
-    { key: "trigger", header: "Trigger", render: (w) => <span className="font-mono text-[11px] text-[rgb(var(--text-muted))]">{triggerLabel(w.trigger_module, w.trigger_action)}</span> },
-    { key: "stages", header: "Stages", render: (w) => <span className="text-[13px]">{w.definition.stages.length}</span> },
-    { key: "status", header: "Status", render: (w) => <Pill tone={w.is_active ? "success" : "neutral"}>{w.is_active ? "Active" : "Inactive"}</Pill> },
+    {
+      key: "name",
+      header: "Name",
+      render: (w) => (
+        <span className="text-[13px] font-semibold">{w.name}</span>
+      ),
+    },
+    {
+      key: "trigger",
+      header: "Trigger",
+      render: (w) => (
+        <span className="font-mono text-[11px] text-[rgb(var(--text-muted))]">
+          {triggerLabel(w.trigger_module, w.trigger_action)}
+        </span>
+      ),
+    },
+    {
+      key: "stages",
+      header: "Stages",
+      render: (w) => (
+        <span className="text-[13px]">{w.definition.stages.length}</span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (w) => (
+        <Pill tone={w.is_active ? "success" : "neutral"}>
+          {w.is_active ? "Active" : "Inactive"}
+        </Pill>
+      ),
+    },
     {
       key: "actions",
       header: "",
@@ -1427,13 +1983,32 @@ function WorkflowsTab({ canEdit }: { canEdit: boolean }) {
         <div className="flex items-center justify-end gap-2">
           {canEdit && (
             <>
-              <Button size="sm" icon={<Pencil className="w-3 h-3" />} onClick={(e) => { e.stopPropagation(); setBuilderOpen(w); }}>Edit</Button>
+              <Button
+                size="sm"
+                icon={<Pencil className="w-3 h-3" />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBuilderOpen(w);
+                }}
+              >
+                Edit
+              </Button>
               <button
-                onClick={(e) => { e.stopPropagation(); toggleMutation.mutate({ id: w.workflow_id, active: !w.is_active }); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleMutation.mutate({
+                    id: w.workflow_id,
+                    active: !w.is_active,
+                  });
+                }}
                 className="text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))] transition-colors"
                 title={w.is_active ? "Deactivate" : "Activate"}
               >
-                {w.is_active ? <ToggleRight className="w-5 h-5 text-[rgb(var(--success))]" /> : <ToggleLeft className="w-5 h-5" />}
+                {w.is_active ? (
+                  <ToggleRight className="w-5 h-5 text-[rgb(var(--success))]" />
+                ) : (
+                  <ToggleLeft className="w-5 h-5" />
+                )}
               </button>
             </>
           )}
@@ -1442,24 +2017,36 @@ function WorkflowsTab({ canEdit }: { canEdit: boolean }) {
     },
   ];
 
-  if (error) return (
-    <div className="py-12 text-center">
-      <AlertTriangle className="w-8 h-8 text-[rgb(var(--danger))] mx-auto mb-3" />
-      <p className="text-[rgb(var(--text-muted))]">Failed to load workflows.</p>
-    </div>
-  );
+  if (error)
+    return (
+      <div className="py-12 text-center">
+        <AlertTriangle className="w-8 h-8 text-[rgb(var(--danger))] mx-auto mb-3" />
+        <p className="text-[rgb(var(--text-muted))]">
+          Failed to load workflows.
+        </p>
+      </div>
+    );
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <label className="flex items-center gap-2 cursor-pointer text-[13px]">
           <button type="button" onClick={() => setShowInactive((v) => !v)}>
-            {showInactive ? <ToggleRight className="w-5 h-5 text-[rgb(var(--accent-glow))]" /> : <ToggleLeft className="w-5 h-5 text-[rgb(var(--text-muted))]" />}
+            {showInactive ? (
+              <ToggleRight className="w-5 h-5 text-[rgb(var(--accent-glow))]" />
+            ) : (
+              <ToggleLeft className="w-5 h-5 text-[rgb(var(--text-muted))]" />
+            )}
           </button>
           Show inactive
         </label>
         {canEdit && (
-          <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setBuilderOpen("new")}>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => setBuilderOpen("new")}
+          >
             New Workflow
           </Button>
         )}
@@ -1474,7 +2061,15 @@ function WorkflowsTab({ canEdit }: { canEdit: boolean }) {
           icon: <Workflow className="w-8 h-8" />,
           title: "No workflow definitions",
           message: "Create the first approval workflow for this business.",
-          action: canEdit ? <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setBuilderOpen("new")}>New Workflow</Button> : undefined,
+          action: canEdit ? (
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setBuilderOpen("new")}
+            >
+              New Workflow
+            </Button>
+          ) : undefined,
         }}
       />
 
@@ -1507,7 +2102,9 @@ function ApprovalDrawer({
   onClose: () => void;
   onActed: () => void;
 }) {
-  const [actAction, setActAction] = useState<"approve" | "reject" | "request_changes" | null>(null);
+  const [actAction, setActAction] = useState<
+    "approve" | "reject" | "request_changes" | null
+  >(null);
   const [notes, setNotes] = useState("");
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1524,7 +2121,11 @@ function ApprovalDrawer({
     setActing(true);
     setError(null);
     try {
-      await orgApi.act(instance.instance_id, actAction, notes.trim() || undefined);
+      await orgApi.act(
+        instance.instance_id,
+        actAction,
+        notes.trim() || undefined,
+      );
       onActed();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Action failed");
@@ -1553,16 +2154,31 @@ function ApprovalDrawer({
       detail: `${new Date(d.decided_at).toLocaleString()}${d.notes ? ` · "${d.notes}"` : ""}`,
     })),
     ...(inst.status === "pending"
-      ? [{
-          state: "current" as const,
-          title: `Stage ${inst.current_stage}: awaiting approval`,
-          detail: inst.requires_ceo ? "Requires CEO" : inst.stage_timeout_at ? `Deadline: ${new Date(inst.stage_timeout_at).toLocaleString()}` : "",
-        }]
-      : [{
-          state: "done" as const,
-          title: inst.status === "approved" ? "Approved" : inst.status === "rejected" ? "Rejected" : "Cancelled",
-          detail: inst.completed_at ? new Date(inst.completed_at).toLocaleString() : "",
-        }]),
+      ? [
+          {
+            state: "current" as const,
+            title: `Stage ${inst.current_stage}: awaiting approval`,
+            detail: inst.requires_ceo
+              ? "Requires CEO"
+              : inst.stage_timeout_at
+                ? `Deadline: ${new Date(inst.stage_timeout_at).toLocaleString()}`
+                : "",
+          },
+        ]
+      : [
+          {
+            state: "done" as const,
+            title:
+              inst.status === "approved"
+                ? "Approved"
+                : inst.status === "rejected"
+                  ? "Rejected"
+                  : "Cancelled",
+            detail: inst.completed_at
+              ? new Date(inst.completed_at).toLocaleString()
+              : "",
+          },
+        ]),
   ];
 
   return (
@@ -1574,23 +2190,36 @@ function ApprovalDrawer({
       subtitle={`${inst.trigger.module} · ${inst.trigger.action}`}
     >
       {isLoading ? (
-        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-xl" />)}</div>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 rounded-xl" />
+          ))}
+        </div>
       ) : (
         <div className="space-y-5">
           {/* Status + reference */}
           <div className="flex flex-wrap items-center gap-3">
-            <Pill tone={statusTone[inst.status] ?? "neutral"}>{inst.status}</Pill>
+            <Pill tone={statusTone[inst.status] ?? "neutral"}>
+              {inst.status}
+            </Pill>
             {inst.requires_ceo && <Pill tone="accent">CEO required</Pill>}
-            <span className="font-mono text-[11px] text-[rgb(var(--text-faint))]">{inst.reference.table}#{inst.reference.id.slice(0, 8)}</span>
+            <span className="font-mono text-[11px] text-[rgb(var(--text-faint))]">
+              {inst.reference.table}#{inst.reference.id.slice(0, 8)}
+            </span>
           </div>
 
           {/* Context */}
           {Object.keys(inst.context).length > 0 && (
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(inst.context).map(([k, v]) => (
-                <div key={k} className="bg-[rgb(var(--text)/0.03)] rounded-xl p-3 border border-[rgb(var(--border-c))]">
+                <div
+                  key={k}
+                  className="bg-[rgb(var(--text)/0.03)] rounded-xl p-3 border border-[rgb(var(--border-c))]"
+                >
                   <div className="micro mb-0.5">{k}</div>
-                  <div className="text-[13px] font-semibold font-mono">{String(v)}</div>
+                  <div className="text-[13px] font-semibold font-mono">
+                    {String(v)}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1615,23 +2244,50 @@ function ApprovalDrawer({
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                   />
-                  {error && <p className="text-[rgb(var(--danger))] text-sm">{error}</p>}
+                  {error && (
+                    <p className="text-[rgb(var(--danger))] text-sm">{error}</p>
+                  )}
                   <div className="flex gap-2">
-                    <Button variant="ghost" onClick={() => setActAction(null)}>Cancel</Button>
+                    <Button variant="ghost" onClick={() => setActAction(null)}>
+                      Cancel
+                    </Button>
                     <Button
                       variant={actAction === "approve" ? "primary" : "danger"}
                       disabled={acting}
                       onClick={handleAct}
                     >
-                      {acting ? "Processing…" : actAction === "approve" ? "Confirm Approve" : actAction === "reject" ? "Confirm Reject" : "Send for Changes"}
+                      {acting
+                        ? "Processing…"
+                        : actAction === "approve"
+                          ? "Confirm Approve"
+                          : actAction === "reject"
+                            ? "Confirm Reject"
+                            : "Send for Changes"}
                     </Button>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="primary" icon={<CheckCircle2 className="w-4 h-4" />} onClick={() => setActAction("approve")}>Approve</Button>
-                  <Button variant="danger" icon={<XCircle className="w-4 h-4" />} onClick={() => setActAction("reject")}>Reject</Button>
-                  <Button icon={<MessageSquare className="w-4 h-4" />} onClick={() => setActAction("request_changes")}>Request changes</Button>
+                  <Button
+                    variant="primary"
+                    icon={<CheckCircle2 className="w-4 h-4" />}
+                    onClick={() => setActAction("approve")}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    variant="danger"
+                    icon={<XCircle className="w-4 h-4" />}
+                    onClick={() => setActAction("reject")}
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    icon={<MessageSquare className="w-4 h-4" />}
+                    onClick={() => setActAction("request_changes")}
+                  >
+                    Request changes
+                  </Button>
                 </div>
               )}
             </div>
@@ -1644,7 +2300,8 @@ function ApprovalDrawer({
 
 function PendingTab({ canAct }: { canAct: boolean }) {
   const qc = useQueryClient();
-  const [selectedInstance, setSelectedInstance] = useState<WorkflowInstance | null>(null);
+  const [selectedInstance, setSelectedInstance] =
+    useState<WorkflowInstance | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["pending-approvals"],
@@ -1654,7 +2311,12 @@ function PendingTab({ canAct }: { canAct: boolean }) {
 
   const instances = Array.isArray(data) ? data : [];
 
-  const statusTone: Record<string, Tone> = { pending: "warn", approved: "success", rejected: "danger", cancelled: "neutral" };
+  const statusTone: Record<string, Tone> = {
+    pending: "warn",
+    approved: "success",
+    rejected: "danger",
+    cancelled: "neutral",
+  };
 
   const columns: Column<WorkflowInstance>[] = [
     {
@@ -1662,44 +2324,82 @@ function PendingTab({ canAct }: { canAct: boolean }) {
       header: "Reference",
       render: (w) => (
         <div>
-          <div className="font-mono text-[11px] text-[rgb(var(--accent-glow))]">{w.trigger.module} · {w.trigger.action}</div>
-          <div className="font-mono text-[10px] text-[rgb(var(--text-faint))]">{w.reference.id.slice(0, 12)}…</div>
+          <div className="font-mono text-[11px] text-[rgb(var(--accent-glow))]">
+            {w.trigger.module} · {w.trigger.action}
+          </div>
+          <div className="font-mono text-[10px] text-[rgb(var(--text-faint))]">
+            {w.reference.id.slice(0, 12)}…
+          </div>
         </div>
       ),
     },
-    { key: "workflow", header: "Workflow", render: (w) => <span className="text-[13px]">{w.workflow_name}</span> },
-    { key: "stage", header: "Stage", render: (w) => <span className="text-[13px]">{w.current_stage}</span> },
+    {
+      key: "workflow",
+      header: "Workflow",
+      render: (w) => <span className="text-[13px]">{w.workflow_name}</span>,
+    },
+    {
+      key: "stage",
+      header: "Stage",
+      render: (w) => <span className="text-[13px]">{w.current_stage}</span>,
+    },
     {
       key: "submitted",
       header: "By / When",
       render: (w) => (
         <div>
           <div className="text-[12px]">{w.initiated_by.name}</div>
-          <div className="text-[10px] text-[rgb(var(--text-faint))]">{new Date(w.initiated_at).toLocaleDateString()}</div>
+          <div className="text-[10px] text-[rgb(var(--text-faint))]">
+            {new Date(w.initiated_at).toLocaleDateString()}
+          </div>
         </div>
       ),
     },
     {
       key: "ceo",
       header: "CEO req.",
-      render: (w) => w.requires_ceo ? <Pill tone="accent">CEO</Pill> : <span className="text-[rgb(var(--text-faint))] text-xs">—</span>,
+      render: (w) =>
+        w.requires_ceo ? (
+          <Pill tone="accent">CEO</Pill>
+        ) : (
+          <span className="text-[rgb(var(--text-faint))] text-xs">—</span>
+        ),
     },
-    { key: "status", header: "Status", render: (w) => <Pill tone={statusTone[w.status] ?? "neutral"}>{w.status}</Pill> },
+    {
+      key: "status",
+      header: "Status",
+      render: (w) => (
+        <Pill tone={statusTone[w.status] ?? "neutral"}>{w.status}</Pill>
+      ),
+    },
   ];
 
-  if (error) return (
-    <div className="py-12 text-center">
-      <AlertTriangle className="w-8 h-8 text-[rgb(var(--danger))] mx-auto mb-3" />
-      <p className="text-[rgb(var(--text-muted))]">Failed to load approvals.</p>
-      <Button size="sm" className="mt-3" onClick={() => refetch()}>Retry</Button>
-    </div>
-  );
+  if (error)
+    return (
+      <div className="py-12 text-center">
+        <AlertTriangle className="w-8 h-8 text-[rgb(var(--danger))] mx-auto mb-3" />
+        <p className="text-[rgb(var(--text-muted))]">
+          Failed to load approvals.
+        </p>
+        <Button size="sm" className="mt-3" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    );
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div className="micro">{instances.length} pending approval{instances.length !== 1 ? "s" : ""}</div>
-        <Button size="sm" icon={<RefreshCw className="w-3.5 h-3.5" />} onClick={() => refetch()}>Refresh</Button>
+        <div className="micro">
+          {instances.length} pending approval{instances.length !== 1 ? "s" : ""}
+        </div>
+        <Button
+          size="sm"
+          icon={<RefreshCw className="w-3.5 h-3.5" />}
+          onClick={() => refetch()}
+        >
+          Refresh
+        </Button>
       </div>
 
       <DataTable
@@ -1738,8 +2438,16 @@ export function OrgWorkflowPage() {
   const { can, user } = useAuthStore();
   const [tab, setTab] = useState<Tab>("org");
 
-  const tabLabels: Record<Tab, string> = { org: "Org Chart", permissions: "Permissions", workflows: "Workflows", pending: "Pending" };
-  useBreadcrumbs([{ label: "Org & Workflow", href: "/org-workflow" }, { label: tabLabels[tab] }]);
+  const tabLabels: Record<Tab, string> = {
+    org: "Org Chart",
+    permissions: "Permissions",
+    workflows: "Workflows",
+    pending: "Pending",
+  };
+  useBreadcrumbs([
+    { label: "Org & Workflow", href: "/org-workflow" },
+    { label: tabLabels[tab] },
+  ]);
 
   const { data: pendingMeta } = useQuery({
     queryKey: ["pending-approvals-count"],
@@ -1755,16 +2463,16 @@ export function OrgWorkflowPage() {
   if (!can("org_workflow", "view")) return <PermDenied />;
 
   const canEdit = can("org_workflow", "edit") || can("org_workflow", "create");
-  const canAct  = can("org_workflow", "approve");
+  const canAct = can("org_workflow", "approve");
 
   return (
     <div>
       <TabBar active={tab} onChange={setTab} pendingCount={pendingMeta ?? 0} />
 
-      {tab === "org"         && <OrgTab canEdit={canEdit} />}
+      {tab === "org" && <OrgTab canEdit={canEdit} />}
       {tab === "permissions" && <PermissionsTab canEdit={canEdit} />}
-      {tab === "workflows"   && <WorkflowsTab canEdit={canEdit} />}
-      {tab === "pending"     && <PendingTab canAct={canAct} />}
+      {tab === "workflows" && <WorkflowsTab canEdit={canEdit} />}
+      {tab === "pending" && <PendingTab canAct={canAct} />}
     </div>
   );
 }

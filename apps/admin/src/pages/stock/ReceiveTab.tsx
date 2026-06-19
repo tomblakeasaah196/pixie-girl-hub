@@ -20,7 +20,13 @@ import {
   useStockLocations,
   useStockMutations,
 } from "./hooks";
-import { StatusPill, FieldLabel, TextInput, InfoBanner, Pagination } from "./parts";
+import {
+  StatusPill,
+  FieldLabel,
+  TextInput,
+  InfoBanner,
+  Pagination,
+} from "./parts";
 import type { InboundShipment, ShipmentLine, StockLocation } from "./types";
 
 /* ── Constants ── */
@@ -65,7 +71,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 /* ── Stepper ── */
 function ShipmentStepper({ status }: { status: string }) {
-  const currentIdx = STATUS_STEPS.indexOf(status as (typeof STATUS_STEPS)[number]);
+  const currentIdx = STATUS_STEPS.indexOf(
+    status as (typeof STATUS_STEPS)[number],
+  );
   return (
     <div className="flex items-center gap-1 overflow-x-auto py-2">
       {STATUS_STEPS.map((step, i) => {
@@ -92,7 +100,11 @@ function ShipmentStepper({ status }: { status: string }) {
               )}
               <span
                 className={`text-[9px] sm:text-[10px] font-semibold whitespace-nowrap ${
-                  active ? "text-accent-glow" : done ? "text-text-primary" : "text-text-faint"
+                  active
+                    ? "text-accent-glow"
+                    : done
+                      ? "text-text-primary"
+                      : "text-text-faint"
                 }`}
               >
                 {STATUS_LABELS[step]}
@@ -114,7 +126,12 @@ interface DraftLine {
 }
 
 function emptyLine(): DraftLine {
-  return { id: crypto.randomUUID(), variant_id: "", qty_expected: "", unit_cost_ngn: "" };
+  return {
+    id: crypto.randomUUID(),
+    variant_id: "",
+    qty_expected: "",
+    unit_cost_ngn: "",
+  };
 }
 
 /* ── Receive line shape ── */
@@ -137,7 +154,11 @@ export default function ReceiveTab() {
   const pageSize = 20;
 
   /* Queries */
-  const shipmentsQuery = useInboundShipments({ status: statusFilter || undefined, page, page_size: pageSize });
+  const shipmentsQuery = useInboundShipments({
+    status: statusFilter || undefined,
+    page,
+    page_size: pageSize,
+  });
   const locationsQuery = useStockLocations();
   const mutations = useStockMutations();
 
@@ -173,9 +194,13 @@ export default function ReceiveTab() {
   /* Draft line helpers */
   const addLine = () => setDraftLines((prev) => [...prev, emptyLine()]);
   const removeLine = (id: string) =>
-    setDraftLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.id !== id)));
+    setDraftLines((prev) =>
+      prev.length <= 1 ? prev : prev.filter((l) => l.id !== id),
+    );
   const updateLine = (id: string, field: keyof DraftLine, value: string) =>
-    setDraftLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
+    setDraftLines((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)),
+    );
 
   /* Submit create */
   const handleCreateShipment = useCallback(() => {
@@ -200,7 +225,16 @@ export default function ReceiveTab() {
       },
       { onSuccess: () => setCreateOpen(false) },
     );
-  }, [draftLines, originCountry, originPort, carrierName, trackingRef, shippingMethod, destLocationId, mutations.createShipment]);
+  }, [
+    draftLines,
+    originCountry,
+    originPort,
+    carrierName,
+    trackingRef,
+    shippingMethod,
+    destLocationId,
+    mutations.createShipment,
+  ]);
 
   /* ── Receive modal state ── */
   const [receiveLines, setReceiveLines] = useState<ReceiveLine[]>([]);
@@ -234,8 +268,14 @@ export default function ReceiveTab() {
     }
   }, [receiveShipmentQuery.data, receiveLines.length]);
 
-  const updateReceiveLine = (lineId: string, field: "qty_received" | "qty_rejected", value: string) =>
-    setReceiveLines((prev) => prev.map((l) => (l.line_id === lineId ? { ...l, [field]: value } : l)));
+  const updateReceiveLine = (
+    lineId: string,
+    field: "qty_received" | "qty_rejected",
+    value: string,
+  ) =>
+    setReceiveLines((prev) =>
+      prev.map((l) => (l.line_id === lineId ? { ...l, [field]: value } : l)),
+    );
 
   const handleConfirmReceipt = useCallback(() => {
     if (!receiveId) return;
@@ -262,7 +302,11 @@ export default function ReceiveTab() {
   /* ── Detect Amazon FBA destination ── */
   const destLocation = useMemo(() => {
     if (!destLocationId || !locationsQuery.data) return null;
-    return (locationsQuery.data as StockLocation[]).find((l) => l.location_id === destLocationId) ?? null;
+    return (
+      (locationsQuery.data as StockLocation[]).find(
+        (l) => l.location_id === destLocationId,
+      ) ?? null
+    );
   }, [destLocationId, locationsQuery.data]);
 
   const isAmazonFba = destLocation?.location_type === "amazon_fba";
@@ -273,7 +317,11 @@ export default function ReceiveTab() {
       key: "ref",
       header: "Shipment Ref",
       width: "140px",
-      render: (r) => <span className="font-mono text-[12px] font-semibold">{r.shipment_number}</span>,
+      render: (r) => (
+        <span className="font-mono text-[12px] font-semibold">
+          {r.shipment_number}
+        </span>
+      ),
     },
     {
       key: "origin",
@@ -287,7 +335,9 @@ export default function ReceiveTab() {
     {
       key: "carrier",
       header: "Carrier",
-      render: (r) => <span className="text-[13px]">{r.carrier_name || "--"}</span>,
+      render: (r) => (
+        <span className="text-[13px]">{r.carrier_name || "--"}</span>
+      ),
     },
     {
       key: "status",
@@ -316,7 +366,11 @@ export default function ReceiveTab() {
       align: "right",
       render: (r) => (
         <span className="text-[12px] text-text-muted tabular-nums">
-          {new Date(r.created_at).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "2-digit" })}
+          {new Date(r.created_at).toLocaleDateString("en-NG", {
+            day: "2-digit",
+            month: "short",
+            year: "2-digit",
+          })}
         </span>
       ),
     },
@@ -345,7 +399,12 @@ export default function ReceiveTab() {
 
   /* ── Error state ── */
   if (shipmentsQuery.error) {
-    return <ErrorState message={(shipmentsQuery.error as Error).message} onRetry={() => shipmentsQuery.refetch()} />;
+    return (
+      <ErrorState
+        message={(shipmentsQuery.error as Error).message}
+        onRetry={() => shipmentsQuery.refetch()}
+      />
+    );
   }
 
   /* ── Shipment data ── */
@@ -363,9 +422,14 @@ export default function ReceiveTab() {
         empty={{
           icon: <Package className="w-8 h-8" />,
           title: "No shipments yet",
-          message: "Log your first inbound shipment to start tracking inventory arrivals.",
+          message:
+            "Log your first inbound shipment to start tracking inventory arrivals.",
           action: canCreate ? (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={handleOpenCreate}
+            >
               Log New Shipment
             </Button>
           ) : undefined,
@@ -380,11 +444,21 @@ export default function ReceiveTab() {
                 setStatusFilter(v);
                 setPage(1);
               }}
-              options={SHIPMENT_STATUSES as unknown as { value: string; label: string }[]}
+              options={
+                SHIPMENT_STATUSES as unknown as {
+                  value: string;
+                  label: string;
+                }[]
+              }
               className="w-[180px] ml-auto"
             />
             {canCreate && (
-              <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={handleOpenCreate}
+              >
                 Log New Shipment
               </Button>
             )}
@@ -394,7 +468,12 @@ export default function ReceiveTab() {
 
       {/* ── Pagination ── */}
       {meta && (
-        <Pagination page={page} pageSize={pageSize} total={meta.total} onChange={setPage} />
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={meta.total}
+          onChange={setPage}
+        />
       )}
 
       {/* ── Stepper preview for the first visible non-received shipment ── */}
@@ -424,9 +503,14 @@ export default function ReceiveTab() {
             <Button
               variant="primary"
               onClick={handleCreateShipment}
-              disabled={mutations.createShipment.isPending || draftLines.every((l) => !l.variant_id || !l.qty_expected)}
+              disabled={
+                mutations.createShipment.isPending ||
+                draftLines.every((l) => !l.variant_id || !l.qty_expected)
+              }
             >
-              {mutations.createShipment.isPending ? "Saving..." : "Save Shipment"}
+              {mutations.createShipment.isPending
+                ? "Saving..."
+                : "Save Shipment"}
             </Button>
           </div>
         }
@@ -436,11 +520,19 @@ export default function ReceiveTab() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <FieldLabel>Origin Country</FieldLabel>
-              <TextInput value={originCountry} onChange={setOriginCountry} placeholder="e.g. China" />
+              <TextInput
+                value={originCountry}
+                onChange={setOriginCountry}
+                placeholder="e.g. China"
+              />
             </div>
             <div>
               <FieldLabel>Origin Port</FieldLabel>
-              <TextInput value={originPort} onChange={setOriginPort} placeholder="e.g. Guangzhou" />
+              <TextInput
+                value={originPort}
+                onChange={setOriginPort}
+                placeholder="e.g. Guangzhou"
+              />
             </div>
           </div>
 
@@ -448,11 +540,19 @@ export default function ReceiveTab() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <FieldLabel>Carrier Name</FieldLabel>
-              <TextInput value={carrierName} onChange={setCarrierName} placeholder="e.g. DHL" />
+              <TextInput
+                value={carrierName}
+                onChange={setCarrierName}
+                placeholder="e.g. DHL"
+              />
             </div>
             <div>
               <FieldLabel>Tracking Reference</FieldLabel>
-              <TextInput value={trackingRef} onChange={setTrackingRef} placeholder="Tracking #" />
+              <TextInput
+                value={trackingRef}
+                onChange={setTrackingRef}
+                placeholder="Tracking #"
+              />
             </div>
           </div>
 
@@ -463,7 +563,12 @@ export default function ReceiveTab() {
               <Select
                 value={shippingMethod}
                 onChange={setShippingMethod}
-                options={SHIPPING_METHODS as unknown as { value: string; label: string }[]}
+                options={
+                  SHIPPING_METHODS as unknown as {
+                    value: string;
+                    label: string;
+                  }[]
+                }
               />
             </div>
             <div>
@@ -474,7 +579,10 @@ export default function ReceiveTab() {
                 <Select
                   value={destLocationId}
                   onChange={setDestLocationId}
-                  options={[{ value: "", label: "Select location" }, ...locationOptions]}
+                  options={[
+                    { value: "", label: "Select location" },
+                    ...locationOptions,
+                  ]}
                 />
               )}
             </div>
@@ -487,8 +595,9 @@ export default function ReceiveTab() {
                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
                   This shipment targets an <strong>Amazon FBA</strong> location.
-                  Ensure carton labels, FNSKU barcodes, and packing lists comply with Amazon's inbound requirements.
-                  Shipments may be rejected at the fulfilment centre if prep requirements are not met.
+                  Ensure carton labels, FNSKU barcodes, and packing lists comply
+                  with Amazon's inbound requirements. Shipments may be rejected
+                  at the fulfilment centre if prep requirements are not met.
                 </span>
               </div>
             </InfoBanner>
@@ -498,7 +607,12 @@ export default function ReceiveTab() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <FieldLabel>Line Items</FieldLabel>
-              <Button size="sm" variant="ghost" icon={<Plus className="w-3.5 h-3.5" />} onClick={addLine}>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Plus className="w-3.5 h-3.5" />}
+                onClick={addLine}
+              >
                 Add line
               </Button>
             </div>
@@ -509,7 +623,11 @@ export default function ReceiveTab() {
                   className="grid grid-cols-[1fr_100px_120px_36px] gap-2 items-end"
                 >
                   <div>
-                    {idx === 0 && <span className="text-[10px] text-text-faint uppercase">Variant ID</span>}
+                    {idx === 0 && (
+                      <span className="text-[10px] text-text-faint uppercase">
+                        Variant ID
+                      </span>
+                    )}
                     <TextInput
                       value={line.variant_id}
                       onChange={(v) => updateLine(line.id, "variant_id", v)}
@@ -517,7 +635,11 @@ export default function ReceiveTab() {
                     />
                   </div>
                   <div>
-                    {idx === 0 && <span className="text-[10px] text-text-faint uppercase">Qty Expected</span>}
+                    {idx === 0 && (
+                      <span className="text-[10px] text-text-faint uppercase">
+                        Qty Expected
+                      </span>
+                    )}
                     <NumberField
                       value={line.qty_expected}
                       onChange={(v) => updateLine(line.id, "qty_expected", v)}
@@ -526,7 +648,11 @@ export default function ReceiveTab() {
                     />
                   </div>
                   <div>
-                    {idx === 0 && <span className="text-[10px] text-text-faint uppercase">Unit Cost (NGN)</span>}
+                    {idx === 0 && (
+                      <span className="text-[10px] text-text-faint uppercase">
+                        Unit Cost (NGN)
+                      </span>
+                    )}
                     <NumberField
                       value={line.unit_cost_ngn}
                       onChange={(v) => updateLine(line.id, "unit_cost_ngn", v)}
@@ -577,7 +703,9 @@ export default function ReceiveTab() {
               onClick={handleConfirmReceipt}
               disabled={mutations.receiveShipment.isPending}
             >
-              {mutations.receiveShipment.isPending ? "Processing..." : "Confirm Receipt"}
+              {mutations.receiveShipment.isPending
+                ? "Processing..."
+                : "Confirm Receipt"}
             </Button>
           </div>
         }
@@ -585,7 +713,9 @@ export default function ReceiveTab() {
         <div className="p-5 flex flex-col gap-4">
           {/* Stepper for the shipment being received */}
           {receiveShipmentQuery.data && (
-            <ShipmentStepper status={(receiveShipmentQuery.data as InboundShipment).status} />
+            <ShipmentStepper
+              status={(receiveShipmentQuery.data as InboundShipment).status}
+            />
           )}
 
           {receiveShipmentQuery.isLoading && (
@@ -619,13 +749,17 @@ export default function ReceiveTab() {
                   </span>
                   <NumberField
                     value={line.qty_received}
-                    onChange={(v) => updateReceiveLine(line.line_id, "qty_received", v)}
+                    onChange={(v) =>
+                      updateReceiveLine(line.line_id, "qty_received", v)
+                    }
                     allowDecimal={false}
                     className="[&_input]:text-right"
                   />
                   <NumberField
                     value={line.qty_rejected}
-                    onChange={(v) => updateReceiveLine(line.line_id, "qty_rejected", v)}
+                    onChange={(v) =>
+                      updateReceiveLine(line.line_id, "qty_rejected", v)
+                    }
                     allowDecimal={false}
                     placeholder="0"
                     className="[&_input]:text-right"

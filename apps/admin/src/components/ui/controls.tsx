@@ -132,7 +132,10 @@ export function Select<T extends string>({
   useEffect(() => {
     if (!open) return;
     const handle = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     };
@@ -142,7 +145,10 @@ export function Select<T extends string>({
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (disabled) return;
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((o) => !o); }
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setOpen((o) => !o);
+    }
     if (e.key === "Escape") setOpen(false);
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -181,10 +187,15 @@ export function Select<T extends string>({
             <button
               key={o.value}
               type="button"
-              onClick={() => { onChange(o.value); setOpen(false); }}
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
               className={cn(
                 "w-full px-[11px] py-[9px] text-[13px] text-left transition-colors hover:bg-text-primary/[0.06]",
-                o.value === value ? "text-accent-glow font-semibold" : "text-text-primary",
+                o.value === value
+                  ? "text-accent-glow font-semibold"
+                  : "text-text-primary",
               )}
             >
               {o.label}
@@ -207,7 +218,9 @@ export function MultiSelect<T extends string>({
   options: { value: T; label: string }[];
 }) {
   const toggle = (v: T) =>
-    onChange(values.includes(v) ? values.filter((x) => x !== v) : [...values, v]);
+    onChange(
+      values.includes(v) ? values.filter((x) => x !== v) : [...values, v],
+    );
   return (
     <div className="flex flex-wrap gap-1.5">
       {options.map((o) => {
@@ -254,7 +267,9 @@ export function ConfirmDialog({
 }) {
   return (
     <Modal open={open} onClose={onClose} title={title}>
-      <div className="text-[13px] text-text-muted leading-relaxed">{message}</div>
+      <div className="text-[13px] text-text-muted leading-relaxed">
+        {message}
+      </div>
       <div className="flex justify-end gap-2 mt-5">
         <button
           onClick={onClose}
@@ -267,7 +282,9 @@ export function ConfirmDialog({
           disabled={busy}
           className={cn(
             "h-9 px-4 rounded-[10px] text-[13px] font-semibold text-white disabled:opacity-50",
-            tone === "danger" ? "bg-danger hover:brightness-110" : "bg-accent-deep hover:bg-accent",
+            tone === "danger"
+              ? "bg-danger hover:brightness-110"
+              : "bg-accent-deep hover:bg-accent",
           )}
         >
           {busy ? "Working…" : confirmLabel}
@@ -370,7 +387,8 @@ export function DeniedState({ message }: { message?: string }) {
       </span>
       <div className="font-display text-[16px] mb-1">No access</div>
       <div className="text-[13px] text-text-muted max-w-[360px]">
-        {message ?? "You don't have permission to view this. Ask an admin to grant access in Org & Workflow."}
+        {message ??
+          "You don't have permission to view this. Ask an admin to grant access in Org & Workflow."}
       </div>
     </div>
   );

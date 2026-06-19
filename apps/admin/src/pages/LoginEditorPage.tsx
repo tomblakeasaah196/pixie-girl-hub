@@ -41,11 +41,27 @@ const CONTINENTS: ReadonlyArray<{ code: string; label: string }> = [
   { code: "AN", label: "Antarctica / afar" },
 ];
 
-const TOGGLE_FIELDS: ReadonlyArray<{ key: keyof NonNullable<LoginConfig["toggles"]>; label: string; hint: string }> = [
+const TOGGLE_FIELDS: ReadonlyArray<{
+  key: keyof NonNullable<LoginConfig["toggles"]>;
+  label: string;
+  hint: string;
+}> = [
   { key: "splash", label: "Splash screen", hint: "Brief logo splash on load" },
-  { key: "particles", label: "Ambient particles", hint: "Drifting accent motes" },
-  { key: "geo_welcome", label: "Regional welcome", hint: "Greet by visitor location" },
-  { key: "business_badges", label: "Business badges", hint: "Show active houses" },
+  {
+    key: "particles",
+    label: "Ambient particles",
+    hint: "Drifting accent motes",
+  },
+  {
+    key: "geo_welcome",
+    label: "Regional welcome",
+    hint: "Greet by visitor location",
+  },
+  {
+    key: "business_badges",
+    label: "Business badges",
+    hint: "Show active houses",
+  },
   { key: "quotes", label: "House quotes", hint: "Rotating quote carousel" },
   { key: "standards", label: "The Standard", hint: "Four pillar cards" },
   { key: "website_links", label: "Website links", hint: "Link to brand sites" },
@@ -83,7 +99,10 @@ function Field({
 }
 
 export function LoginEditorPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Login Editor" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Login Editor" },
+  ]);
   const platform = usePlatformSettings(true);
   const save = useSavePlatformSettings();
 
@@ -100,16 +119,19 @@ export function LoginEditorPage() {
         ...(c.region_messages ?? {}),
       },
       toggles: { ...LOGIN_CONFIG_FALLBACK.toggles, ...(c.toggles ?? {}) },
-      background: { ...LOGIN_CONFIG_FALLBACK.background, ...(c.background ?? {}) },
+      background: {
+        ...LOGIN_CONFIG_FALLBACK.background,
+        ...(c.background ?? {}),
+      },
     };
   }, [platform.data]);
 
   const [draft, setDraft] = useState<LoginConfig | null>(null);
   const cfg = draft ?? initial;
-  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(initial);
+  const dirty =
+    draft !== null && JSON.stringify(draft) !== JSON.stringify(initial);
 
-  const patch = (next: Partial<LoginConfig>) =>
-    setDraft({ ...cfg, ...next });
+  const patch = (next: Partial<LoginConfig>) => setDraft({ ...cfg, ...next });
 
   if (platform.isLoading && !platform.data) {
     return (
@@ -120,10 +142,7 @@ export function LoginEditorPage() {
   }
 
   const onSave = () =>
-    save.mutate(
-      { login_config: cfg },
-      { onSuccess: () => setDraft(null) },
-    );
+    save.mutate({ login_config: cfg }, { onSuccess: () => setDraft(null) });
 
   return (
     <div className="max-w-[820px] space-y-7 pb-28">
@@ -148,7 +167,9 @@ export function LoginEditorPage() {
           <input
             className={input}
             value={cfg.hero?.eyebrow ?? ""}
-            onChange={(e) => patch({ hero: { ...cfg.hero, eyebrow: e.target.value } })}
+            onChange={(e) =>
+              patch({ hero: { ...cfg.hero, eyebrow: e.target.value } })
+            }
           />
         </Field>
         <Field label="Headline">
@@ -408,7 +429,10 @@ export function LoginEditorPage() {
           {CONTINENTS.map(({ code, label }) => {
             const rm = cfg.region_messages?.[code] ?? { welcome: "", note: "" };
             return (
-              <div key={code} className="grid grid-cols-[120px_1fr] gap-3 items-start">
+              <div
+                key={code}
+                className="grid grid-cols-[120px_1fr] gap-3 items-start"
+              >
                 <div className="text-[12.5px] font-semibold text-text-muted pt-2">
                   {label}
                 </div>
@@ -448,8 +472,8 @@ export function LoginEditorPage() {
 
       <p className="text-text-faint text-[12px]">
         Business names, logos and website links come from each business's setup
-        (Settings → Appearance / Business). Fill a business's website to show its
-        link on the login screen.
+        (Settings → Appearance / Business). Fill a business's website to show
+        its link on the login screen.
       </p>
 
       {/* Sticky save bar */}

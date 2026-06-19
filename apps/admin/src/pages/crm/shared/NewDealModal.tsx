@@ -34,10 +34,17 @@ interface Props {
   onCreated?: (dealId: string) => void;
 }
 
-export function NewDealModal({ contactId, contactName, onClose, onCreated }: Props) {
+export function NewDealModal({
+  contactId,
+  contactName,
+  onClose,
+  onCreated,
+}: Props) {
   const { data: pipelines = [] } = usePipelines();
   const defaultPipeline = pipelines.find((p) => p.is_default) ?? pipelines[0];
-  const [pipelineId, setPipelineId] = useState(defaultPipeline?.pipeline_id ?? "");
+  const [pipelineId, setPipelineId] = useState(
+    defaultPipeline?.pipeline_id ?? "",
+  );
   const { data: _stages = [] } = usePipelineStages(pipelineId || null);
 
   const [title, setTitle] = useState(`${contactName} — Deal`);
@@ -76,12 +83,18 @@ export function NewDealModal({ contactId, contactName, onClose, onCreated }: Pro
       title={`New Deal · ${contactName}`}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
           <Button
             variant="primary"
             onClick={handleSubmit}
             disabled={!title.trim() || !pipelineId || createDeal.isPending}
-            icon={createDeal.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : undefined}
+            icon={
+              createDeal.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : undefined
+            }
           >
             Create deal
           </Button>
@@ -116,7 +129,10 @@ export function NewDealModal({ contactId, contactName, onClose, onCreated }: Pro
               <Select
                 value={pipelineId}
                 onChange={setPipelineId}
-                options={pipelines.map((p) => ({ value: p.pipeline_id, label: p.display_name }))}
+                options={pipelines.map((p) => ({
+                  value: p.pipeline_id,
+                  label: p.display_name,
+                }))}
               />
             </Field>
           </FormSection>

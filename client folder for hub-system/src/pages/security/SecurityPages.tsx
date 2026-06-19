@@ -900,11 +900,9 @@ import { checkPassword, PASSWORD_RULES_TEXT } from "@lib/passwordPolicy";
 const acceptSchema = z
   .object({
     display_name: z.string().min(2, "Your name is required"),
-    password: z
-      .string()
-      .refine((pw) => checkPassword(pw).ok, {
-        message: PASSWORD_RULES_TEXT,
-      }),
+    password: z.string().refine((pw) => checkPassword(pw).ok, {
+      message: PASSWORD_RULES_TEXT,
+    }),
     confirm_password: z.string(),
   })
   .refine((d) => d.password === d.confirm_password, {
@@ -1022,9 +1020,7 @@ export function AcceptInvitePage() {
           </p>
           <p className="text-xs text-brand-smoke/50 mt-0.5">
             Access:{" "}
-            {tokenData.businesses
-              .map((b) => businessLabel(b) || b)
-              .join(", ")}
+            {tokenData.businesses.map((b) => businessLabel(b) || b).join(", ")}
           </p>
         </div>
 
@@ -1104,7 +1100,8 @@ export function AcceptInvitePage() {
         </div>
 
         <p className="text-center text-xs text-brand-smoke/40">
-          By creating an account you agree to {platform.product_name}'s terms of use.
+          By creating an account you agree to {platform.product_name}'s terms of
+          use.
         </p>
       </div>
     </div>

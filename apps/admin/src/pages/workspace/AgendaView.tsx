@@ -11,7 +11,9 @@ interface AgendaViewProps {
 }
 
 /** Group events by date, sorted chronologically. */
-function groupByDate(events: CalendarEvent[]): { date: Date; events: CalendarEvent[] }[] {
+function groupByDate(
+  events: CalendarEvent[],
+): { date: Date; events: CalendarEvent[] }[] {
   const sorted = [...events].sort(
     (a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
   );
@@ -28,7 +30,11 @@ function groupByDate(events: CalendarEvent[]): { date: Date; events: CalendarEve
   return groups;
 }
 
-export function AgendaView({ events, loading, onSelectEvent }: AgendaViewProps) {
+export function AgendaView({
+  events,
+  loading,
+  onSelectEvent,
+}: AgendaViewProps) {
   if (loading) {
     return (
       <div className="space-y-4">

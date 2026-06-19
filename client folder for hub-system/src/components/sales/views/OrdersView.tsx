@@ -35,7 +35,10 @@ export function OrdersView() {
   const PAGE_SIZE = 50;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["sales-orders", { status, source, fulfilment_type: fulfilmentType, page }],
+    queryKey: [
+      "sales-orders",
+      { status, source, fulfilment_type: fulfilmentType, page },
+    ],
     queryFn: () =>
       listOrders({
         status: status || undefined,
@@ -74,7 +77,10 @@ export function OrdersView() {
           {ORDER_FILTER_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              onClick={() => { setStatus(opt.value); setPage(1); }}
+              onClick={() => {
+                setStatus(opt.value);
+                setPage(1);
+              }}
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 status === opt.value
@@ -113,7 +119,10 @@ export function OrdersView() {
         {SOURCE_FILTER_OPTIONS.map((opt) => (
           <button
             key={`src-${opt.value}`}
-            onClick={() => { setSource(opt.value); setPage(1); }}
+            onClick={() => {
+              setSource(opt.value);
+              setPage(1);
+            }}
             className={cn(
               "rounded-full px-3 py-1 text-[10px] font-medium transition-colors border",
               source === opt.value
@@ -128,7 +137,10 @@ export function OrdersView() {
         {FULFILMENT_FILTER_OPTIONS.map((opt) => (
           <button
             key={`ful-${opt.value}`}
-            onClick={() => { setFulfilmentType(opt.value); setPage(1); }}
+            onClick={() => {
+              setFulfilmentType(opt.value);
+              setPage(1);
+            }}
             className={cn(
               "rounded-full px-3 py-1 text-[10px] font-medium transition-colors border",
               fulfilmentType === opt.value

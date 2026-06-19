@@ -232,11 +232,28 @@ async function reserveForCart({
   reference_id,
   user_id,
 }) {
-  const m = await reserveForOrder({ client, brand, variant_id, location_id, quantity, reference_id, user_id });
+  const m = await reserveForOrder({
+    client,
+    brand,
+    variant_id,
+    location_id,
+    quantity,
+    reference_id,
+    user_id,
+  });
   const { enqueue } = require("../../jobs/queue-producer");
-  await enqueue("cart-ttl", "release-cart-reservation", {
-    brand, variant_id, location_id, quantity, reference_id,
-  }, { delay: 20 * 60 * 1000, attempts: 1 });
+  await enqueue(
+    "cart-ttl",
+    "release-cart-reservation",
+    {
+      brand,
+      variant_id,
+      location_id,
+      quantity,
+      reference_id,
+    },
+    { delay: 20 * 60 * 1000, attempts: 1 },
+  );
   return m;
 }
 
@@ -388,9 +405,25 @@ async function submitAdjustment({ brand, user, request_id, id }) {
   const adj = await repo.getAdjustment({ brand, id });
   if (!adj) throw new NotFoundError("Adjustment");
   if (adj.status !== "draft")
-    throw new AppError("INVALID_STATE", `Cannot submit a '${adj.status}' adjustment`, 409);
-  const updated = await repo.setAdjustmentStatus({ brand, id, status: "submitted" });
-  await A(brand, user.user_id, "stock.adjustment.submit", "stock_adjustment", id, { status: "submitted" }, request_id);
+    throw new AppError(
+      "INVALID_STATE",
+      `Cannot submit a '${adj.status}' adjustment`,
+      409,
+    );
+  const updated = await repo.setAdjustmentStatus({
+    brand,
+    id,
+    status: "submitted",
+  });
+  await A(
+    brand,
+    user.user_id,
+    "stock.adjustment.submit",
+    "stock_adjustment",
+    id,
+    { status: "submitted" },
+    request_id,
+  );
   events.emit("adjustment.submitted", { brand, id });
   return updated;
 }
@@ -400,9 +433,26 @@ async function approveAdjustment({ brand, user, request_id, id }) {
   const adj = await repo.getAdjustment({ brand, id });
   if (!adj) throw new NotFoundError("Adjustment");
   if (adj.status !== "submitted")
-    throw new AppError("INVALID_STATE", `Cannot approve a '${adj.status}' adjustment`, 409);
-  const updated = await repo.setAdjustmentStatus({ brand, id, status: "approved", approved_by: user.user_id });
-  await A(brand, user.user_id, "stock.adjustment.approve", "stock_adjustment", id, { status: "approved" }, request_id);
+    throw new AppError(
+      "INVALID_STATE",
+      `Cannot approve a '${adj.status}' adjustment`,
+      409,
+    );
+  const updated = await repo.setAdjustmentStatus({
+    brand,
+    id,
+    status: "approved",
+    approved_by: user.user_id,
+  });
+  await A(
+    brand,
+    user.user_id,
+    "stock.adjustment.approve",
+    "stock_adjustment",
+    id,
+    { status: "approved" },
+    request_id,
+  );
   events.emit("adjustment.approved", { brand, id });
   return updated;
 }
@@ -412,9 +462,25 @@ async function rejectAdjustment({ brand, user, request_id, id }) {
   const adj = await repo.getAdjustment({ brand, id });
   if (!adj) throw new NotFoundError("Adjustment");
   if (adj.status !== "submitted")
-    throw new AppError("INVALID_STATE", `Cannot reject a '${adj.status}' adjustment`, 409);
-  const updated = await repo.setAdjustmentStatus({ brand, id, status: "rejected" });
-  await A(brand, user.user_id, "stock.adjustment.reject", "stock_adjustment", id, { status: "rejected" }, request_id);
+    throw new AppError(
+      "INVALID_STATE",
+      `Cannot reject a '${adj.status}' adjustment`,
+      409,
+    );
+  const updated = await repo.setAdjustmentStatus({
+    brand,
+    id,
+    status: "rejected",
+  });
+  await A(
+    brand,
+    user.user_id,
+    "stock.adjustment.reject",
+    "stock_adjustment",
+    id,
+    { status: "rejected" },
+    request_id,
+  );
   events.emit("adjustment.rejected", { brand, id });
   return updated;
 }
@@ -424,17 +490,36 @@ async function postAdjustment({ brand, user, request_id, id }) {
     const adj = await repo.getAdjustment({ client, brand, id });
     if (!adj) throw new NotFoundError("Adjustment");
     // GAP-2: write-downs (physical < system) require approval before posting
-    const hasWriteDown = adj.lines.some((l) => l.physical_count - l.system_count < 0);
+    const hasWriteDown = adj.lines.some(
+      (l) => l.physical_count - l.system_count < 0,
+    );
     if (hasWriteDown && adj.status !== "approved") {
-      throw new AppError("APPROVAL_REQUIRED", "Write-downs require CEO approval before posting", 409, {
-        user_message: "This adjustment contains write-downs and must be approved before posting.",
-      });
+      throw new AppError(
+        "APPROVAL_REQUIRED",
+        "Write-downs require CEO approval before posting",
+        409,
+        {
+          user_message:
+            "This adjustment contains write-downs and must be approved before posting.",
+        },
+      );
     }
-    if (!hasWriteDown && !["draft", "submitted", "approved"].includes(adj.status)) {
-      throw new AppError("INVALID_STATE", `Cannot post a '${adj.status}' adjustment`, 409);
+    if (
+      !hasWriteDown &&
+      !["draft", "submitted", "approved"].includes(adj.status)
+    ) {
+      throw new AppError(
+        "INVALID_STATE",
+        `Cannot post a '${adj.status}' adjustment`,
+        409,
+      );
     }
     if (hasWriteDown && adj.status !== "approved") {
-      throw new AppError("INVALID_STATE", `Cannot post a '${adj.status}' adjustment with write-downs`, 409);
+      throw new AppError(
+        "INVALID_STATE",
+        `Cannot post a '${adj.status}' adjustment with write-downs`,
+        409,
+      );
     }
     for (const line of adj.lines) {
       const delta = line.physical_count - line.system_count;

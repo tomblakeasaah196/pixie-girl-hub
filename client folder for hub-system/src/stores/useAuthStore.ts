@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import { getUser, getToken, storeUser, clearToken, fetchMe } from "@services/auth";
+import {
+  getUser,
+  getToken,
+  storeUser,
+  clearToken,
+  fetchMe,
+} from "@services/auth";
 import type { AuthUser } from "@typedefs/common";
 
 interface AuthState {

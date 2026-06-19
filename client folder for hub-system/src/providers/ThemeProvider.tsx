@@ -14,13 +14,7 @@
 // synchronously on mount, so returning users never see a flash of
 // default styling while the fetch is in flight.
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "@services/api";
 import { useBusinessStore } from "@stores/useBusinessStore";
 
@@ -104,8 +98,7 @@ function shiftTriplet(triplet: string, amount: number): string {
     .split(" ")
     .map((c) => {
       const v = parseInt(c, 10);
-      const shifted =
-        amount > 0 ? v + (255 - v) * amount : v + v * amount;
+      const shifted = amount > 0 ? v + (255 - v) * amount : v + v * amount;
       return Math.max(0, Math.min(255, Math.round(shifted)));
     })
     .join(" ");
@@ -163,7 +156,8 @@ function applyPlatform(platform: PlatformBranding) {
 function buildGoogleFontsUrl(families: string[]): string | null {
   if (!families.length) return null;
   const parts = families.map(
-    (f) => `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@300;400;500;600;700`,
+    (f) =>
+      `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@300;400;500;600;700`,
   );
   return `https://fonts.googleapis.com/css2?${parts.join("&")}&display=swap`;
 }

@@ -156,7 +156,10 @@ export function PriorityAppGrid({ badges = {}, badgeTones = {} }: Props) {
             )}
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-brand-black/40 flex items-center justify-center text-brand-smoke group-hover:text-brand-accent transition-colors">
               {moreOpen ? (
-                <ChevronUp className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={1.5} />
+                <ChevronUp
+                  className="w-6 h-6 sm:w-7 sm:h-7"
+                  strokeWidth={1.5}
+                />
               ) : (
                 <MoreIcon className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={1.5} />
               )}

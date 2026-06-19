@@ -72,7 +72,10 @@ function Dot({ on }: { on: boolean }) {
 }
 
 export function CustomFieldsPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Custom Fields" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Custom Fields" },
+  ]);
   const active = useActiveBusiness();
   const [entity, setEntity] = useState<Entity>("product");
   const q = useCustomFields(entity);
@@ -89,7 +92,9 @@ export function CustomFieldsPage() {
     {
       key: "field_key",
       header: "Key",
-      render: (r) => <span className="font-mono text-text-muted">{r.field_key}</span>,
+      render: (r) => (
+        <span className="font-mono text-text-muted">{r.field_key}</span>
+      ),
     },
     {
       key: "field_type",

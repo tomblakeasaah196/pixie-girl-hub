@@ -2,7 +2,12 @@ import { useState, useMemo, useCallback } from "react";
 import { ArrowUpDown, Download, Plus } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/primitives";
-import { ErrorState, MultiSelect, Select, NumberField } from "@/components/ui/controls";
+import {
+  ErrorState,
+  MultiSelect,
+  Select,
+  NumberField,
+} from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -95,7 +100,9 @@ function exportCsv(rows: StockMovement[], locationMap: Map<string, string>) {
     r.performed_by ?? "",
   ]);
   const csv = [header, ...lines]
-    .map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+    .map((row) =>
+      row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","),
+    )
     .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -126,7 +133,8 @@ function LogMovementModal({
   const { recordMovement } = useStockMutations();
 
   const locationOpts = useMemo(
-    () => locations.map((l) => ({ value: l.location_id, label: l.display_name })),
+    () =>
+      locations.map((l) => ({ value: l.location_id, label: l.display_name })),
     [locations],
   );
 
@@ -227,7 +235,9 @@ function LogMovementModal({
         <Button
           variant="primary"
           onClick={handleSubmit}
-          disabled={!variantId || !locationId || !qty || recordMovement.isPending}
+          disabled={
+            !variantId || !locationId || !qty || recordMovement.isPending
+          }
         >
           {recordMovement.isPending ? "Saving..." : "Save Movement"}
         </Button>
@@ -250,8 +260,7 @@ export default function MovementsTab() {
   /* The API accepts a single movement_type, so when multiple are selected
      we fetch all and filter client-side. When exactly one is selected,
      we pass it to the API for efficiency. */
-  const apiMovementType =
-    typeFilters.length === 1 ? typeFilters[0] : undefined;
+  const apiMovementType = typeFilters.length === 1 ? typeFilters[0] : undefined;
 
   const {
     data: movementsData,
@@ -275,7 +284,10 @@ export default function MovementsTab() {
   const locationOpts = useMemo(
     () => [
       { value: "", label: "All locations" },
-      ...locations.map((l) => ({ value: l.location_id, label: l.display_name })),
+      ...locations.map((l) => ({
+        value: l.location_id,
+        label: l.display_name,
+      })),
     ],
     [locations],
   );
@@ -296,8 +308,7 @@ export default function MovementsTab() {
       const q = search.trim().toLowerCase();
       rows = rows.filter((r) => {
         const sku = r.sku ?? "";
-        const variantName =
-          r.variant_name ?? "";
+        const variantName = r.variant_name ?? "";
         const ref = r.notes ?? r.reference_id ?? "";
         return (
           sku.toLowerCase().includes(q) ||
@@ -322,7 +333,10 @@ export default function MovementsTab() {
         header: "Date / Time",
         width: "140px",
         render: (r) => (
-          <span title={fmtDate(r.performed_at)} className="text-[13px] text-text-primary">
+          <span
+            title={fmtDate(r.performed_at)}
+            className="text-[13px] text-text-primary"
+          >
             {relativeTime(r.performed_at)}
           </span>
         ),
@@ -338,8 +352,7 @@ export default function MovementsTab() {
         header: "Product / Variant",
         render: (r) => {
           const sku = r.sku ?? "";
-          const variantName =
-            r.variant_name ?? "";
+          const variantName = r.variant_name ?? "";
           return (
             <div className="flex flex-col gap-0.5">
               <span className="text-[13px] text-text-primary font-medium truncate max-w-[220px]">
@@ -451,12 +464,22 @@ export default function MovementsTab() {
           />
           <div className="flex-1" />
           {can("stock", "view") && (
-            <Button variant="secondary" size="sm" icon={<Download className="w-4 h-4" />} onClick={handleExport}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Download className="w-4 h-4" />}
+              onClick={handleExport}
+            >
               Export CSV
             </Button>
           )}
           {isCeo && (
-            <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setModalOpen(true)}
+            >
               Log Movement
             </Button>
           )}
@@ -472,7 +495,8 @@ export default function MovementsTab() {
         empty={{
           icon: <ArrowUpDown className="w-6 h-6" />,
           title: "No stock movements",
-          message: "Movements will appear here as stock is received, sold, transferred, or adjusted.",
+          message:
+            "Movements will appear here as stock is received, sold, transferred, or adjusted.",
         }}
       />
 

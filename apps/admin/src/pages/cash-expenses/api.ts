@@ -62,8 +62,15 @@ export function submitCashRequest(id: string) {
   return api.post<CashRequest>(`${CR}/${id}/submit`);
 }
 
-export function financeDecision(id: string, decision: Decision, notes?: string) {
-  return api.post<CashRequest>(`${CR}/${id}/finance-decision`, { decision, notes });
+export function financeDecision(
+  id: string,
+  decision: Decision,
+  notes?: string,
+) {
+  return api.post<CashRequest>(`${CR}/${id}/finance-decision`, {
+    decision,
+    notes,
+  });
 }
 
 export function ceoDecision(id: string, decision: Decision, notes?: string) {

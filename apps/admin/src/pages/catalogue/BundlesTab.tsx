@@ -1,7 +1,19 @@
 import { useState } from "react";
 import { Plus, Gift, X } from "lucide-react";
-import { Button, Card, EmptyState, MoneyText, Pill } from "@/components/ui/primitives";
-import { ErrorState, DeniedState, Toggle, Select, NumberField } from "@/components/ui/controls";
+import {
+  Button,
+  Card,
+  EmptyState,
+  MoneyText,
+  Pill,
+} from "@/components/ui/primitives";
+import {
+  ErrorState,
+  DeniedState,
+  Toggle,
+  Select,
+  NumberField,
+} from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
@@ -27,7 +39,12 @@ const PRICING_MODELS = [
 ];
 
 function code(name: string) {
-  return name.toUpperCase().trim().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  return name
+    .toUpperCase()
+    .trim()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
 }
 
 export function BundlesTab() {
@@ -63,7 +80,10 @@ export function BundlesTab() {
       {bundles.isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="glass rounded-[var(--radius)] h-24 animate-pulse" />
+            <div
+              key={i}
+              className="glass rounded-[var(--radius)] h-24 animate-pulse"
+            />
           ))}
         </div>
       ) : bundles.isError ? (
@@ -76,7 +96,11 @@ export function BundlesTab() {
             message="Bundle styled products into a promotional offer."
             action={
               canCreate ? (
-                <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setOpen(true)}
+                >
                   New bundle
                 </Button>
               ) : undefined
@@ -89,13 +113,19 @@ export function BundlesTab() {
             <Card key={b.bundle_id} className="p-4">
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="min-w-0">
-                  <div className="font-display text-[15px] truncate">{b.display_name}</div>
-                  <div className="font-mono text-[10.5px] text-accent-glow">{b.bundle_code}</div>
+                  <div className="font-display text-[15px] truncate">
+                    {b.display_name}
+                  </div>
+                  <div className="font-mono text-[10.5px] text-accent-glow">
+                    {b.bundle_code}
+                  </div>
                 </div>
                 {canEdit ? (
                   <Toggle
                     checked={b.is_active}
-                    onChange={(v) => toggle.mutate({ id: b.bundle_id, is_active: v })}
+                    onChange={(v) =>
+                      toggle.mutate({ id: b.bundle_id, is_active: v })
+                    }
                   />
                 ) : (
                   <Pill tone={b.is_active ? "success" : "neutral"} dot={false}>
@@ -104,8 +134,12 @@ export function BundlesTab() {
                 )}
               </div>
               <div className="flex items-center gap-2 mt-2">
-                <Pill tone="info" dot={false}>{b.pricing_model.replace(/_/g, " ")}</Pill>
-                {b.bundle_price_ngn != null && <MoneyText ngn={b.bundle_price_ngn} className="text-[14px]" />}
+                <Pill tone="info" dot={false}>
+                  {b.pricing_model.replace(/_/g, " ")}
+                </Pill>
+                {b.bundle_price_ngn != null && (
+                  <MoneyText ngn={b.bundle_price_ngn} className="text-[14px]" />
+                )}
               </div>
             </Card>
           ))}
@@ -117,14 +151,22 @@ export function BundlesTab() {
   );
 }
 
-function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreateBundleModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateBundle();
   const bases = useBaseProducts();
   const [name, setName] = useState("");
   const [model, setModel] = useState("fixed_bundle_price");
   const [amount, setAmount] = useState("");
   // A bundle MUST have ≥1 component (server-enforced). We pick base products.
-  const [components, setComponents] = useState<{ product_id: string; name: string; quantity: number }[]>([]);
+  const [components, setComponents] = useState<
+    { product_id: string; name: string; quantity: number }[]
+  >([]);
   const [pick, setPick] = useState("");
 
   const reset = () => {
@@ -136,16 +178,22 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
   };
 
   const addComponent = (productId: string) => {
-    if (!productId || components.some((c) => c.product_id === productId)) return;
+    if (!productId || components.some((c) => c.product_id === productId))
+      return;
     const b = (bases.data ?? []).find((p) => p.product_id === productId);
     if (!b) return;
-    setComponents((prev) => [...prev, { product_id: productId, name: b.name, quantity: 1 }]);
+    setComponents((prev) => [
+      ...prev,
+      { product_id: productId, name: b.name, quantity: 1 },
+    ]);
     setPick("");
   };
 
   const setQty = (productId: string, qty: number) =>
     setComponents((prev) =>
-      prev.map((c) => (c.product_id === productId ? { ...c, quantity: Math.max(1, qty) } : c)),
+      prev.map((c) =>
+        c.product_id === productId ? { ...c, quantity: Math.max(1, qty) } : c,
+      ),
     );
 
   const removeComponent = (productId: string) =>
@@ -188,7 +236,10 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
     { value: "", label: "Add a product…" },
     ...(bases.data ?? [])
       .filter((b) => !components.some((c) => c.product_id === b.product_id))
-      .map((b) => ({ value: b.product_id, label: `${b.name} · ${b.product_code}` })),
+      .map((b) => ({
+        value: b.product_id,
+        label: `${b.name} · ${b.product_code}`,
+      })),
   ];
 
   return (
@@ -201,7 +252,12 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" disabled={!canSubmit} onClick={submit}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!canSubmit}
+            onClick={submit}
+          >
             {create.isPending ? "Creating…" : "Create"}
           </Button>
         </>
@@ -219,10 +275,16 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
           <Select value={model} onChange={setModel} options={PRICING_MODELS} />
         </Field>
         <Field
-          label={model === "fixed_bundle_price" ? "Bundle price" : "Discount value"}
+          label={
+            model === "fixed_bundle_price" ? "Bundle price" : "Discount value"
+          }
           hint={model === "pct_off" ? "percent" : "NGN"}
         >
-          <NumberField value={amount} onChange={setAmount} suffix={model === "pct_off" ? "%" : "₦"} />
+          <NumberField
+            value={amount}
+            onChange={setAmount}
+            suffix={model === "pct_off" ? "%" : "₦"}
+          />
         </Field>
 
         <Field label="Products in this bundle" hint="at least one">
@@ -235,7 +297,9 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
                 key={c.product_id}
                 className="flex items-center gap-2 rounded-[11px] border border-line bg-text-primary/[0.03] px-3 py-2"
               >
-                <span className="flex-1 min-w-0 truncate text-[13px]">{c.name}</span>
+                <span className="flex-1 min-w-0 truncate text-[13px]">
+                  {c.name}
+                </span>
                 <input
                   type="number"
                   min={1}
@@ -257,13 +321,16 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
         )}
         {components.length === 0 && (
           <p className="text-[11.5px] text-text-faint">
-            Pick the base products this bundle includes. A bundle needs at least one.
+            Pick the base products this bundle includes. A bundle needs at least
+            one.
           </p>
         )}
 
         {create.isError && (
           <p className="text-[12px] text-danger">
-            {create.error instanceof Error ? create.error.message : "Could not create bundle."}
+            {create.error instanceof Error
+              ? create.error.message
+              : "Could not create bundle."}
           </p>
         )}
       </div>

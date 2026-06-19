@@ -154,7 +154,9 @@ export default function CalendarGrid({
                           onSelectEvent(ev);
                         }}
                       >
-                        {ev.all_day ? ev.title : `${formatTime(ev.start_at)} ${ev.title}`}
+                        {ev.all_day
+                          ? ev.title
+                          : `${formatTime(ev.start_at)} ${ev.title}`}
                       </div>
                     );
                   })}

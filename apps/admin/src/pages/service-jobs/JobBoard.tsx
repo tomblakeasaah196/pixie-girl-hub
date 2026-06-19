@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Button, Pill, Skeleton, EmptyState, MoneyText } from "@/components/ui/primitives";
+import {
+  Button,
+  Pill,
+  Skeleton,
+  EmptyState,
+  MoneyText,
+} from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
@@ -26,11 +32,18 @@ import {
 
 // ── Star rating display ────────────────────────────────────
 
-function StarRating({ value, max = 5 }: { value: number | null; max?: number }) {
+function StarRating({
+  value,
+  max = 5,
+}: {
+  value: number | null;
+  max?: number;
+}) {
   if (!value) return <span className="text-muted text-sm">Not rated</span>;
   return (
     <span className="text-sm font-mono">
-      {"★".repeat(value)}{"☆".repeat(max - value)}
+      {"★".repeat(value)}
+      {"☆".repeat(max - value)}
       <span className="text-muted ml-1">({RATING_LABELS[value]})</span>
     </span>
   );
@@ -72,7 +85,9 @@ function JobCard({
   serviceTypes: ServiceType[];
   onClick: () => void;
 }) {
-  const st = serviceTypes.find((t) => t.service_type_id === job.service_type_id);
+  const st = serviceTypes.find(
+    (t) => t.service_type_id === job.service_type_id,
+  );
   const icon = st ? (SERVICE_KEY_ICON[st.service_key] ?? "🔧") : "🔧";
   const isPocketing =
     job.status === "completed" &&
@@ -88,7 +103,10 @@ function JobCard({
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs text-muted">{job.job_number}</span>
         {isPocketing && (
-          <span className="text-danger text-xs font-semibold" title="Completed without linked sale">
+          <span
+            className="text-danger text-xs font-semibold"
+            title="Completed without linked sale"
+          >
             ⚠ No Sale
           </span>
         )}
@@ -107,8 +125,8 @@ function JobCard({
           {job.assigned_staff_user_id
             ? "Staff assigned"
             : job.assigned_stylist_id
-            ? "Stylist assigned"
-            : "Unassigned"}
+              ? "Stylist assigned"
+              : "Unassigned"}
         </span>
         {job.scheduled_for && (
           <span className="text-xs font-mono text-muted">
@@ -119,9 +137,7 @@ function JobCard({
           </span>
         )}
       </div>
-      {job.quality_rating !== null && (
-        <StarRating value={job.quality_rating} />
-      )}
+      {job.quality_rating !== null && <StarRating value={job.quality_rating} />}
     </button>
   );
 }
@@ -153,7 +169,14 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
       },
       {
         onSuccess: () =>
-          setForm({ chemical_name: "", chemical_brand: "", qty_used: "", unit: "ml", cost_ngn: "", notes: "" }),
+          setForm({
+            chemical_name: "",
+            chemical_brand: "",
+            qty_used: "",
+            unit: "ml",
+            cost_ngn: "",
+            notes: "",
+          }),
       },
     );
   };
@@ -165,7 +188,11 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
       {isLoading ? (
         <Skeleton className="h-24" />
       ) : chemicals.length === 0 ? (
-        <EmptyState icon={<span className="text-2xl">🧴</span>} title="No chemicals recorded" message="Add below" />
+        <EmptyState
+          icon={<span className="text-2xl">🧴</span>}
+          title="No chemicals recorded"
+          message="Add below"
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -182,11 +209,21 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
               {chemicals.map((c) => (
                 <tr key={c.consumption_id} className="border-b border-white/5">
                   <td className="py-1.5 pr-3 font-medium">{c.chemical_name}</td>
-                  <td className="py-1.5 pr-3 text-muted">{c.chemical_brand ?? "—"}</td>
-                  <td className="py-1.5 pr-3 text-right font-mono">{c.qty_used}</td>
-                  <td className="py-1.5 pr-3 text-right text-muted">{c.unit}</td>
+                  <td className="py-1.5 pr-3 text-muted">
+                    {c.chemical_brand ?? "—"}
+                  </td>
+                  <td className="py-1.5 pr-3 text-right font-mono">
+                    {c.qty_used}
+                  </td>
+                  <td className="py-1.5 pr-3 text-right text-muted">
+                    {c.unit}
+                  </td>
                   <td className="py-1.5 text-right">
-                    {c.cost_ngn ? <MoneyText ngn={parseFloat(c.cost_ngn)} /> : "—"}
+                    {c.cost_ngn ? (
+                      <MoneyText ngn={parseFloat(c.cost_ngn)} />
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
               ))}
@@ -196,19 +233,25 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
       )}
 
       <div className="border-t border-white/10 pt-4">
-        <p className="text-xs text-muted mb-3 font-semibold uppercase tracking-wide">Add chemical</p>
+        <p className="text-xs text-muted mb-3 font-semibold uppercase tracking-wide">
+          Add chemical
+        </p>
         <div className="grid grid-cols-2 gap-2">
           <input
             className="input col-span-2"
             placeholder="Chemical name *"
             value={form.chemical_name}
-            onChange={(e) => setForm((f) => ({ ...f, chemical_name: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, chemical_name: e.target.value }))
+            }
           />
           <input
             className="input"
             placeholder="Brand"
             value={form.chemical_brand}
-            onChange={(e) => setForm((f) => ({ ...f, chemical_brand: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, chemical_brand: e.target.value }))
+            }
           />
           <input
             className="input"
@@ -223,7 +266,9 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             step="0.001"
             placeholder="Quantity *"
             value={form.qty_used}
-            onChange={(e) => setForm((f) => ({ ...f, qty_used: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, qty_used: e.target.value }))
+            }
           />
           <Select
             value={form.unit}
@@ -236,7 +281,9 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             min="0"
             placeholder="Cost (NGN)"
             value={form.cost_ngn}
-            onChange={(e) => setForm((f) => ({ ...f, cost_ngn: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, cost_ngn: e.target.value }))
+            }
           />
         </div>
         <Button
@@ -311,7 +358,9 @@ function RecipeCard({ recipeId }: { recipeId: string }) {
     <div className="glass p-3 rounded-lg space-y-2">
       <p className="text-sm font-semibold">{recipe.display_name}</p>
       {recipe.target_shade && (
-        <p className="text-xs text-muted">Target shade: {recipe.target_shade}</p>
+        <p className="text-xs text-muted">
+          Target shade: {recipe.target_shade}
+        </p>
       )}
       <div className="space-y-1">
         {recipe.ingredients.map((ing, i) => (
@@ -329,7 +378,9 @@ function RecipeCard({ recipeId }: { recipeId: string }) {
         ))}
       </div>
       {recipe.instructions && (
-        <p className="text-xs text-muted border-t border-white/10 pt-2">{recipe.instructions}</p>
+        <p className="text-xs text-muted border-t border-white/10 pt-2">
+          {recipe.instructions}
+        </p>
       )}
     </div>
   );
@@ -348,7 +399,9 @@ function JobDetailDrawer({
 }) {
   const { data: job, isLoading } = useJob(jobId);
   const actions = useJobActions(jobId);
-  const [tab, setTab] = useState<"details" | "chemicals" | "outcome">("details");
+  const [tab, setTab] = useState<"details" | "chemicals" | "outcome">(
+    "details",
+  );
   const [costInput, setCostInput] = useState("");
 
   if (isLoading) {
@@ -367,9 +420,13 @@ function JobDetailDrawer({
 
   const meta = JOB_STATUS_META[job.status];
   const nextStates = JOB_NEXT_STATES[job.status] ?? [];
-  const st = serviceTypes.find((t) => t.service_type_id === job.service_type_id);
+  const st = serviceTypes.find(
+    (t) => t.service_type_id === job.service_type_id,
+  );
   const isPocketing =
-    job.status === "completed" && !job.sales_order_id && !job.intercompany_transaction_id;
+    job.status === "completed" &&
+    !job.sales_order_id &&
+    !job.intercompany_transaction_id;
 
   return (
     <Drawer open onClose={onClose} title={job.job_number}>
@@ -402,7 +459,11 @@ function JobDetailDrawer({
               }`}
               onClick={() => setTab(t)}
             >
-              {t === "details" ? "Details" : t === "chemicals" ? "Chemicals" : "Outcome"}
+              {t === "details"
+                ? "Details"
+                : t === "chemicals"
+                  ? "Chemicals"
+                  : "Outcome"}
             </button>
           ))}
         </div>
@@ -429,7 +490,9 @@ function JobDetailDrawer({
                 <>
                   <span className="text-muted">Due</span>
                   <span className="font-mono">
-                    {new Date(job.expected_completion_at).toLocaleString("en-NG")}
+                    {new Date(job.expected_completion_at).toLocaleString(
+                      "en-NG",
+                    )}
                   </span>
                 </>
               )}
@@ -541,7 +604,9 @@ function CreateJobDrawer({
         recipe_id: form.recipe_id || undefined,
         scheduled_for: form.scheduled_for || undefined,
         expected_completion_at: form.expected_completion_at || undefined,
-        agreed_cost_ngn: form.agreed_cost_ngn ? parseFloat(form.agreed_cost_ngn) : undefined,
+        agreed_cost_ngn: form.agreed_cost_ngn
+          ? parseFloat(form.agreed_cost_ngn)
+          : undefined,
       },
       { onSuccess: onClose },
     );
@@ -568,7 +633,9 @@ function CreateJobDrawer({
             className="input w-full"
             placeholder="e.g. 22in Body Wave 150% - Unit #A023"
             value={form.hair_description}
-            onChange={(e) => setForm((f) => ({ ...f, hair_description: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, hair_description: e.target.value }))
+            }
           />
         </div>
 
@@ -580,7 +647,10 @@ function CreateJobDrawer({
               onChange={(v) => setForm((f) => ({ ...f, recipe_id: v }))}
               options={[
                 { value: "", label: "None" },
-                ...recipes.map((r) => ({ value: r.recipe_id, label: r.display_name })),
+                ...recipes.map((r) => ({
+                  value: r.recipe_id,
+                  label: r.display_name,
+                })),
               ]}
             />
           </div>
@@ -593,7 +663,9 @@ function CreateJobDrawer({
               type="datetime-local"
               className="input w-full"
               value={form.scheduled_for}
-              onChange={(e) => setForm((f) => ({ ...f, scheduled_for: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, scheduled_for: e.target.value }))
+              }
             />
           </div>
           <div>
@@ -602,7 +674,12 @@ function CreateJobDrawer({
               type="datetime-local"
               className="input w-full"
               value={form.expected_completion_at}
-              onChange={(e) => setForm((f) => ({ ...f, expected_completion_at: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  expected_completion_at: e.target.value,
+                }))
+              }
             />
           </div>
         </div>
@@ -615,7 +692,9 @@ function CreateJobDrawer({
             min="0"
             placeholder="Leave blank to use service type default"
             value={form.agreed_cost_ngn}
-            onChange={(e) => setForm((f) => ({ ...f, agreed_cost_ngn: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, agreed_cost_ngn: e.target.value }))
+            }
           />
         </div>
 
@@ -644,13 +723,17 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
   const [showCreate, setShowCreate] = useState(false);
 
   const { data, isLoading, isError } = useJobs(
-    statusFilter ? { status: statusFilter, page_size: 200 } : { page_size: 200 },
+    statusFilter
+      ? { status: statusFilter, page_size: 200 }
+      : { page_size: 200 },
   );
   const jobs = data?.data ?? [];
 
   const pocketingCount = jobs.filter(
     (j) =>
-      j.status === "completed" && !j.sales_order_id && !j.intercompany_transaction_id,
+      j.status === "completed" &&
+      !j.sales_order_id &&
+      !j.intercompany_transaction_id,
   ).length;
 
   if (isLoading) {
@@ -706,40 +789,49 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
         <EmptyState
           icon={<span className="text-3xl">📋</span>}
           title="No service jobs"
-          message={statusFilter ? `No jobs with status "${statusFilter}"` : "Create your first job above"}
-          action={canCreate ? <Button size="sm" onClick={() => setShowCreate(true)}>New Job</Button> : undefined}
+          message={
+            statusFilter
+              ? `No jobs with status "${statusFilter}"`
+              : "Create your first job above"
+          }
+          action={
+            canCreate ? (
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                New Job
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {(statusFilter
-            ? [statusFilter as JobStatus]
-            : BOARD_COLUMNS
-          ).map((col) => {
-            const m = JOB_STATUS_META[col];
-            const colJobs = jobs.filter((j) => j.status === col);
-            return (
-              <div key={col} className="space-y-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <Pill tone={m.tone}>{m.label}</Pill>
-                  <span className="text-xs text-muted">{colJobs.length}</span>
-                </div>
-                {colJobs.length === 0 ? (
-                  <div className="text-xs text-muted text-center py-6 border border-dashed border-white/10 rounded-lg">
-                    Empty
+          {(statusFilter ? [statusFilter as JobStatus] : BOARD_COLUMNS).map(
+            (col) => {
+              const m = JOB_STATUS_META[col];
+              const colJobs = jobs.filter((j) => j.status === col);
+              return (
+                <div key={col} className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Pill tone={m.tone}>{m.label}</Pill>
+                    <span className="text-xs text-muted">{colJobs.length}</span>
                   </div>
-                ) : (
-                  colJobs.map((job) => (
-                    <JobCard
-                      key={job.job_id}
-                      job={job}
-                      serviceTypes={serviceTypes}
-                      onClick={() => setDetailJobId(job.job_id)}
-                    />
-                  ))
-                )}
-              </div>
-            );
-          })}
+                  {colJobs.length === 0 ? (
+                    <div className="text-xs text-muted text-center py-6 border border-dashed border-white/10 rounded-lg">
+                      Empty
+                    </div>
+                  ) : (
+                    colJobs.map((job) => (
+                      <JobCard
+                        key={job.job_id}
+                        job={job}
+                        serviceTypes={serviceTypes}
+                        onClick={() => setDetailJobId(job.job_id)}
+                      />
+                    ))
+                  )}
+                </div>
+              );
+            },
+          )}
         </div>
       )}
 

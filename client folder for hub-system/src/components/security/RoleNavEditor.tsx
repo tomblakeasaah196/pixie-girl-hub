@@ -136,9 +136,7 @@ export function RoleNavEditor({ roleId, initial }: Props) {
                 dragKey === k && "opacity-40",
               )}
             >
-              {!locked && (
-                <GripVertical className="w-3 h-3 text-brand-smoke" />
-              )}
+              {!locked && <GripVertical className="w-3 h-3 text-brand-smoke" />}
               <span className="text-brand-smoke tabular-nums">{i + 1}.</span>
               {m.label}
               {!locked && (

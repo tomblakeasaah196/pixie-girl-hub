@@ -290,7 +290,13 @@ async function softDeleteProduct({ client, brand, id }) {
   return rowCount > 0;
 }
 // ── Trash + Restore ──────────────────────────────────────
-async function listTrashedProducts({ client, brand, page = 1, page_size = 25, offset = 0 }) {
+async function listTrashedProducts({
+  client,
+  brand,
+  page = 1,
+  page_size = 25,
+  offset = 0,
+}) {
   const run = ex(client);
   const { rows: c } = await run(
     `SELECT COUNT(*)::int AS total FROM ${t(brand, "products")} WHERE is_deleted = true`,
@@ -302,7 +308,12 @@ async function listTrashedProducts({ client, brand, page = 1, page_size = 25, of
   );
   return {
     data: rows,
-    meta: { page, page_size, total: c[0].total, has_more: offset + rows.length < c[0].total },
+    meta: {
+      page,
+      page_size,
+      total: c[0].total,
+      has_more: offset + rows.length < c[0].total,
+    },
   };
 }
 async function getTrashedProductById({ client, brand, id }) {

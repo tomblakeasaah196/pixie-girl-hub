@@ -1,0 +1,132 @@
+-- ============================================================
+-- TEMPLATE 000042 — Pricing advisor: config, fixed USD, styling
+-- cost, and industry scenario/sensitivity seeds.
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}}. Applied to NEW brands by bootstrap (runs after
+-- 000026 pricing + 000041 catalogue) and to EXISTING brands by
+-- repair-business-schema.js. Every statement is idempotent.
+--
+-- WHY (owner directives, June 2026):
+--   • Pricing is an ADVISORY engine — the catalogue owns the live prices; the
+--     advisor recommends. It must ground recommendations in TRUE landed cost
+--     (the encrypted Cost Vault), offer a target-margin slider, and apply with
+--     THRESHOLD governance (small changes instant, large → CEO proposal).
+--   • Seed industry scenarios + sensitivity sliders for the hair business.
+--   • Fixed manual USD price per product (never auto-converts).
+--   • Channel fees become configurable (were hard-coded in the admin).
+-- ============================================================
+
+-- ── pricing_config (singleton) — the advisor's knobs ─────
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.pricing_config (
+  singleton                   BOOLEAN     PRIMARY KEY DEFAULT true CHECK (singleton),
+  -- Price changes within ±this percent (and not below a floor) apply instantly
+  -- for users with pricing.edit; anything larger routes to a CEO proposal.
+  instant_apply_threshold_pct NUMERIC(6,2) NOT NULL DEFAULT 10
+                              CHECK (instant_apply_threshold_pct >= 0),
+  -- Advisor's default target margin when none is chosen.
+  default_target_margin_pct   NUMERIC(6,2) NOT NULL DEFAULT 55,
+  -- Round suggestions to the nearest N naira (charm/clean pricing). 0 = off.
+  round_to_ngn                NUMERIC(12,2) NOT NULL DEFAULT 500
+                              CHECK (round_to_ngn >= 0),
+  -- Configurable marketplace/gateway fees, used to gross-up so the target
+  -- margin is hit AFTER the channel's cut. Array of
+  -- {channel,label,pct,fixed_ngn}.
+  channel_fees                JSONB       NOT NULL DEFAULT '[
+    {"channel":"website","label":"Website","pct":0.029,"fixed_ngn":100},
+    {"channel":"instagram","label":"Instagram","pct":0,"fixed_ngn":500},
+    {"channel":"jumia","label":"Jumia","pct":0.12,"fixed_ngn":0},
+    {"channel":"konga","label":"Konga","pct":0.10,"fixed_ngn":0},
+    {"channel":"wholesale","label":"Wholesale","pct":0,"fixed_ngn":0}
+  ]'::jsonb,
+  updated_by                  UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_pricing_config_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.pricing_config
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+-- ── Fixed manual USD price (never auto-converts) ─────────
+-- A second sticker price for diaspora customers who prefer to shop in dollars.
+-- Set by hand; the risk/benefit of FX drift is accepted by the owner.
+ALTER TABLE {{BUSINESS}}.product_variants
+  ADD COLUMN IF NOT EXISTS price_usd NUMERIC(14,2)
+    CHECK (price_usd IS NULL OR price_usd >= 0);
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  ADD COLUMN IF NOT EXISTS price_usd NUMERIC(14,2)
+    CHECK (price_usd IS NULL OR price_usd >= 0);
+
+-- ── Styling cost on a styled product (advisor input) ─────
+-- The advisor grounds a styled retail price in: base landed cost (Cost Vault)
+-- + this styling cost (colour/materials + cap/closure + labour). Sensitive-ish
+-- but operational (not the encrypted supplier cost), so a plain column here.
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS styling_cost_ngn NUMERIC(14,2)
+    CHECK (styling_cost_ngn IS NULL OR styling_cost_ngn >= 0);
+
+-- ── Seed: pricing_config singleton ───────────────────────
+INSERT INTO {{BUSINESS}}.pricing_config (singleton) VALUES (true)
+ON CONFLICT (singleton) DO NOTHING;
+
+-- ── Seed: a charm-rounding pass-through layer (was unused) ──
+INSERT INTO {{BUSINESS}}.cost_pass_through_rules
+  (rule_name, description, layer_type, config, channel, apply_order, is_active)
+SELECT 'Charm rounding', 'Round storefront prices to a clean figure',
+       'charm_rounding', '{"round_to_ngn":500}'::jsonb, 'storefront', 10, true
+WHERE NOT EXISTS (
+  SELECT 1 FROM {{BUSINESS}}.cost_pass_through_rules
+   WHERE layer_type = 'charm_rounding' AND channel = 'storefront'
+);
+
+-- ── Seed: industry scenarios + sensitivity sliders ───────
+-- Ready-to-run "what-if"s for an importer of China hair. Each is scope
+-- 'all_active' so it evaluates the whole catalogue when computed. Sliders are
+-- the sensitivity drivers (FX, freight, raw cost) the advisor flexes.
+DO $$
+DECLARE sid UUID;
+BEGIN
+  -- 1) Naira devaluation — FX weakens, landed cost rises.
+  IF NOT EXISTS (SELECT 1 FROM {{BUSINESS}}.pricing_scenarios WHERE scenario_name = 'Naira devaluation (+15% FX)') THEN
+    INSERT INTO {{BUSINESS}}.pricing_scenarios
+      (scenario_name, description, scope_type, goal_type, goal_value, channel, cost_basis)
+    VALUES ('Naira devaluation (+15% FX)',
+            'Hold a 55% margin if the naira weakens 15% against the dollar.',
+            'all_active', 'target_margin', 55, 'storefront', 'latest')
+    RETURNING scenario_id INTO sid;
+    INSERT INTO {{BUSINESS}}.pricing_scenario_sliders
+      (scenario_id, slider_key, baseline_value, scenario_value, notes, display_order)
+    VALUES (sid, 'fx_rate', 1600, 1840, 'NGN per USD', 1);
+  END IF;
+
+  -- 2) Freight shock — shipping spikes.
+  IF NOT EXISTS (SELECT 1 FROM {{BUSINESS}}.pricing_scenarios WHERE scenario_name = 'Freight shock (+20%)') THEN
+    INSERT INTO {{BUSINESS}}.pricing_scenarios
+      (scenario_name, description, scope_type, goal_type, goal_value, channel, cost_basis)
+    VALUES ('Freight shock (+20%)',
+            'Absorb or pass on a 20% jump in inbound freight.',
+            'all_active', 'target_margin', 55, 'storefront', 'latest')
+    RETURNING scenario_id INTO sid;
+    INSERT INTO {{BUSINESS}}.pricing_scenario_sliders
+      (scenario_id, slider_key, baseline_value, scenario_value, notes, display_order)
+    VALUES (sid, 'freight', 100, 120, 'Inbound freight index', 1);
+  END IF;
+
+  -- 3) Festive peak — push margin in high season.
+  IF NOT EXISTS (SELECT 1 FROM {{BUSINESS}}.pricing_scenarios WHERE scenario_name = 'Festive peak (60% margin)') THEN
+    INSERT INTO {{BUSINESS}}.pricing_scenarios
+      (scenario_name, description, scope_type, goal_type, goal_value, channel, assumed_monthly_units, cost_basis)
+    VALUES ('Festive peak (60% margin)',
+            'Detember demand — lift the target margin to 60%.',
+            'all_active', 'target_margin', 60, 'storefront', 300, 'latest')
+    RETURNING scenario_id INTO sid;
+    INSERT INTO {{BUSINESS}}.pricing_scenario_sliders
+      (scenario_id, slider_key, baseline_value, scenario_value, notes, display_order)
+    VALUES (sid, 'cost', 100, 100, 'Raw cost index (steady)', 1);
+  END IF;
+END $$;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT instant_apply_threshold_pct, channel_fees FROM {{BUSINESS}}.pricing_config;
+--   SELECT scenario_name FROM {{BUSINESS}}.pricing_scenarios ORDER BY created_at;
+-- ============================================================

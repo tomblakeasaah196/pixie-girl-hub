@@ -1,124 +1,146 @@
-export type RuleType =
-  | "markup_pct"
-  | "target_margin_pct"
-  | "fixed_price"
-  | "discount_pct"
-  | "min_price"
-  | "cost_pass_through"
-  | "tiered_quantity";
+// ── Pricing Engine Types — mirror the REAL backend contract (/pricing). ──────
+// Every money field is a STRING (e.g. "111111.11"); render with
+// <MoneyText ngn={Number(x)} />. List endpoints return a plain array.
 
-export type FloorType = "min_price_ngn" | "min_margin_pct" | "min_markup_pct";
+export type Channel =
+  | "storefront"
+  | "pos"
+  | "wholesale"
+  | "partner"
+  | "intercompany"
+  | "instagram";
 
-export type ProposalStatus = "pending_approval" | "approved" | "rejected" | "applied" | "reverted";
+export type Basis = "margin" | "markup" | "price";
 
-export type GoalType = "target_margin" | "target_price" | "target_revenue" | "sensitivity_only";
+export type CostSource = "vault" | "operational" | "override" | "none";
 
-// ── Pricing Rule ──────────────────────────────────────────────────────────────
+// ── Advisor (centerpiece) ────────────────────────────────────────────────────
 
-export interface PricingRule {
-  rule_id: string;
-  rule_name: string;
-  description: string | null;
-  rule_type: RuleType;
-  rule_value: number | null;
-  rule_config: Record<string, any> | null;
-  channel: string;
-  is_active: boolean;
-  priority: number;
-  valid_from: string | null;
-  valid_to: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateRuleInput {
-  rule_name: string;
-  description?: string;
-  category_id?: string;
-  product_id?: string;
-  variant_id?: string;
+export interface RecommendInput {
+  variant_id: string;
   channel?: string;
-  rule_type: RuleType;
-  rule_value?: number;
-  rule_config?: Record<string, any>;
-  applies_to_currency?: string;
-  priority?: number;
-  valid_from?: string;
-  valid_to?: string;
+  basis?: Basis;
+  target_value?: number;
+  cost_override_ngn?: number;
+  net_of_channel_fee?: boolean;
 }
 
-export interface UpdateRuleInput extends Partial<CreateRuleInput> {
-  is_active?: boolean;
+export interface ChannelFeeInfo {
+  pct: number;
+  fixed_ngn: number;
 }
 
-// ── Price Floor ───────────────────────────────────────────────────────────────
-
-export interface PriceFloor {
-  floor_id: string;
-  variant_id: string | null;
-  product_id: string | null;
-  category_id: string | null;
+export interface Recommendation {
+  variant_id: string;
   channel: string;
-  floor_type: FloorType;
-  floor_value: number;
-  reason: string | null;
-  is_intercompany_floor: boolean;
-  is_active: boolean;
-  expires_at: string | null;
-  set_at: string;
+  basis: Basis;
+  product_name: string;
+  sku: string | null;
+  variant_name: string | null;
+  cost_ngn: string;
+  cost_source: CostSource;
+  current_price_ngn: string | null;
+  suggested_price_ngn: string;
+  net_ngn: string;
+  margin_pct: number;
+  markup_pct: number;
+  floor_ngn: string | null;
+  floor_breached: boolean;
+  channel_fee: ChannelFeeInfo | null;
+  vat_rate: number; // percent
+  vat_amount_ngn: string;
+  rounded: boolean;
+  price_usd: string | null;
+  delta_pct: number | null;
+  within_threshold: boolean;
+  threshold_pct: number;
 }
 
-export interface CreateFloorInput {
-  variant_id?: string;
-  product_id?: string;
-  category_id?: string;
+export interface ApplyInput {
+  variant_id: string;
   channel?: string;
-  floor_type: FloorType;
-  floor_value: number;
+  new_price_ngn: number;
   reason?: string;
-  is_intercompany_floor?: boolean;
-  expires_at?: string;
 }
 
-// ── Scenarios ─────────────────────────────────────────────────────────────────
+export interface ApplyResult {
+  applied: boolean;
+  variant_id: string;
+  channel: string;
+  new_price_ngn?: string;
+  delta_pct: number | null;
+  // Present only when applied === false.
+  reason?: "over_threshold" | "below_floor";
+  proposal_id?: string;
+  proposal_number?: string;
+}
+
+// ── Config / Settings ────────────────────────────────────────────────────────
+
+export interface ConfigChannelFee {
+  channel: string;
+  label: string;
+  pct: number;
+  fixed_ngn: number;
+}
+
+export interface PricingConfig {
+  instant_apply_threshold_pct: number;
+  default_target_margin_pct: number;
+  round_to_ngn: number;
+  channel_fees: ConfigChannelFee[];
+  updated_at: string | null;
+}
+
+export interface UpdateConfigInput {
+  instant_apply_threshold_pct?: number;
+  default_target_margin_pct?: number;
+  round_to_ngn?: number;
+  channel_fees?: ConfigChannelFee[];
+}
+
+// ── Scenarios ────────────────────────────────────────────────────────────────
+
+export type ScopeType =
+  | "all_active"
+  | "category"
+  | "specific_products"
+  | "specific_variants";
+
+export type GoalType =
+  | "target_margin"
+  | "target_price"
+  | "target_revenue"
+  | "sensitivity_only";
+
+export type ScenarioStatus =
+  | "draft"
+  | "computed"
+  | "proposed"
+  | "applied"
+  | "rejected"
+  | "archived";
 
 export interface Scenario {
   scenario_id: string;
   scenario_name: string;
   description: string | null;
-  scope_type: string;
+  scope_type: ScopeType;
   goal_type: GoalType;
   goal_value: number | null;
-  status: "draft" | "computed" | "proposed" | "applied";
+  channel: string | null;
+  status: ScenarioStatus;
+  assumed_monthly_units: number | null;
+  computed_units_analysed: number | null;
+  computed_avg_new_price_ngn: string | null;
+  computed_avg_margin_pct: number | null;
+  computed_projected_revenue_ngn: string | null;
+  computed_at: string | null;
   created_at: string;
 }
 
-export interface CreateScenarioInput {
-  scenario_name: string;
-  description?: string;
-  scope_type?: "all_active" | "category" | "specific_products" | "specific_variants";
-  category_ids?: string[];
-  variant_ids?: string[];
-  goal_type: GoalType;
-  goal_value?: number;
-  goal_currency?: string;
-  channel?: string;
-  assumed_monthly_units?: number;
-  cost_basis?: "latest" | "average" | "last_run" | "custom";
-  custom_cost_ngn?: number;
-}
-
-export interface ComputeScenarioInput {
-  sliders?: {
-    slider_key: string;
-    baseline_value: number;
-    scenario_value: number;
-    notes?: string;
-  }[];
-}
-
-export interface ScenarioResultItem {
+export interface ScenarioResult {
+  result_id: string;
   variant_id: string;
   cost_ngn: string;
   current_price_ngn: string | null;
@@ -126,20 +148,62 @@ export interface ScenarioResultItem {
   proposed_price_ngn: string;
   proposed_margin_pct: number;
   proposed_markup_pct: number;
-  margin_at_cost_minus_10: number;
-  margin_at_cost_plus_10: number;
-  margin_at_fx_minus_10: number;
-  margin_at_fx_plus_10: number;
+  margin_at_cost_minus_10: number | null;
+  margin_at_cost_plus_10: number | null;
+  margin_at_fx_minus_10: number | null;
+  margin_at_fx_plus_10: number | null;
   floor_breached: boolean;
   floor_breach_notes: string | null;
+  projected_monthly_units: number | null;
+  projected_monthly_revenue_ngn: string | null;
 }
 
-export interface ScenarioResultResponse extends Scenario {
-  results: ScenarioResultItem[];
-  sliders: any[];
+export interface Slider {
+  slider_id: string;
+  slider_key: string;
+  baseline_value: number;
+  scenario_value: number;
+  delta_pct: number;
+  notes: string | null;
+  display_order: number;
 }
 
-// ── Pricing Proposal ──────────────────────────────────────────────────────────
+export interface ScenarioDetail extends Scenario {
+  results: ScenarioResult[];
+  sliders: Slider[];
+}
+
+export interface CreateScenarioInput {
+  scenario_name: string;
+  description?: string;
+  scope_type?: ScopeType;
+  category_ids?: string[];
+  variant_ids?: string[];
+  goal_type: GoalType;
+  goal_value?: number;
+  channel?: string;
+  assumed_monthly_units?: number;
+  cost_basis?: string;
+  custom_cost_ngn?: number;
+}
+
+export interface ComputeSliderInput {
+  slider_key: string;
+  baseline_value: number;
+  scenario_value: number;
+  notes?: string;
+}
+
+// ── Proposals ────────────────────────────────────────────────────────────────
+
+export type ProposalStatus =
+  | "draft"
+  | "pending_approval"
+  | "approved"
+  | "rejected"
+  | "applied"
+  | "reverted"
+  | "expired";
 
 export interface Proposal {
   proposal_id: string;
@@ -147,15 +211,20 @@ export interface Proposal {
   scenario_id: string | null;
   title: string;
   description: string | null;
-  effective_from: string | null;
-  effective_to: string | null;
-  variants_count: number;
   status: ProposalStatus;
-  submitted_by: string;
-  approved_by: string | null;
+  variants_count: number;
+  effective_from: string | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  applied_at: string | null;
+  rejected_at: string | null;
   rejection_reason: string | null;
-  reversion_reason: string | null;
+  reverted_at: string | null;
   created_at: string;
+}
+
+export interface ProposalDetail extends Proposal {
+  results: ScenarioResult[];
 }
 
 export interface CreateProposalInput {
@@ -166,11 +235,110 @@ export interface CreateProposalInput {
   effective_to?: string;
 }
 
-// ── Paginated response (shared) ───────────────────────────────────────────────
+// ── Rules ────────────────────────────────────────────────────────────────────
 
-export interface PaginatedResponse<T> {
-  data: T[];
-  page: number;
-  page_size: number;
-  total: number;
+export type RuleType =
+  | "markup_pct"
+  | "target_margin_pct"
+  | "fixed_price"
+  | "discount_pct"
+  | "min_price"
+  | "cost_pass_through"
+  | "tiered_quantity";
+
+export interface Rule {
+  rule_id: string;
+  rule_name: string;
+  description: string | null;
+  category_id: string | null;
+  product_id: string | null;
+  variant_id: string | null;
+  channel: string | null;
+  rule_type: RuleType;
+  rule_value: number | null;
+  priority: number;
+  valid_from: string | null;
+  valid_to: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CreateRuleInput {
+  rule_name: string;
+  rule_type: RuleType;
+  rule_value?: number;
+  channel?: string;
+  priority?: number;
+  description?: string;
+  valid_from?: string;
+  valid_to?: string;
+}
+
+export type UpdateRuleInput = Partial<CreateRuleInput> & { is_active?: boolean };
+
+// ── Floors ───────────────────────────────────────────────────────────────────
+
+export type FloorType = "min_price_ngn" | "min_margin_pct" | "min_markup_pct";
+
+export interface Floor {
+  floor_id: string;
+  variant_id: string | null;
+  product_id: string | null;
+  category_id: string | null;
+  channel: string | null;
+  floor_type: FloorType;
+  floor_value: number;
+  reason: string | null;
+  is_active: boolean;
+  set_at: string;
+  expires_at: string | null;
+}
+
+export interface CreateFloorInput {
+  floor_type: FloorType;
+  floor_value: number;
+  variant_id?: string;
+  product_id?: string;
+  category_id?: string;
+  channel?: string;
+  reason?: string;
+  expires_at?: string;
+}
+
+// ── Overrides ────────────────────────────────────────────────────────────────
+
+export interface Override {
+  override_id: string;
+  variant_id: string;
+  channel: string;
+  override_price_ngn: string;
+  reason: string | null;
+  effective_from: string | null;
+  effective_to: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CreateOverrideInput {
+  variant_id: string;
+  channel: Channel;
+  override_price_ngn: number;
+  reason: string;
+  effective_from?: string;
+  effective_to?: string;
+}
+
+// ── History ──────────────────────────────────────────────────────────────────
+
+export interface HistoryRow {
+  history_id: string;
+  channel: string;
+  old_price_ngn: string | null;
+  new_price_ngn: string | null;
+  delta_pct: number | null;
+  cost_at_change_ngn: string | null;
+  margin_at_change_pct: number | null;
+  source: string | null;
+  effective_from: string | null;
+  created_at: string;
 }

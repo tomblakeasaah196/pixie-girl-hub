@@ -12,10 +12,27 @@
 const express = require("express");
 const c = require("./pricing.controller");
 const v = require("./pricing.validator");
+const adv = require("./pricing_advisor.controller");
+const advV = require("./pricing_advisor.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
 const can = (action) => requirePermission("pricing", action);
+
+// ── Product-centric advisor (the easy-to-use heart) ────────
+// recommend = read-only suggestion; apply = threshold governance (instant for
+// small changes, else a CEO proposal); config = the advisor's knobs +
+// configurable channel fees; usd = the fixed manual dollar price.
+router.post("/recommend", can("view"), advV.validateRecommend, adv.recommend);
+router.post("/apply", can("edit"), advV.validateApply, adv.apply);
+router.get("/config", can("view"), adv.getConfig);
+router.put("/config", can("edit"), advV.validateConfig, adv.updateConfig);
+router.put(
+  "/variants/:variant_id/usd",
+  can("edit"),
+  advV.validateUsd,
+  adv.setUsd,
+);
 
 // ── Effective price + history (literals before any :id) ────
 router.get("/effective/:variant_id", can("view"), c.effectivePrice);

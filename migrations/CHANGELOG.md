@@ -11,6 +11,39 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-19 — Pricing advisor: cost-grounded, governed, seeded
+
+**Source:** Owner directive — "make the pricing module very easy to use"; it is
+an ADVISORY engine (the catalogue owns the live prices), it must ground
+recommendations in TRUE landed cost, seed industry scenarios + sensitivity, take
+a fixed manual USD price, and apply with threshold governance.
+
+**Migration `template/000042_business_pricing_advisor.sql.template` (NEW,
+additive).** Applied to existing brands by `db:repair`; all statements idempotent.
+
+- **NEW** `pricing_config` (singleton): `instant_apply_threshold_pct` (small
+  changes apply instantly, larger → CEO proposal), `default_target_margin_pct`,
+  `round_to_ngn` (clean-figure rounding), and configurable `channel_fees` JSONB
+  (were hard-coded in the admin).
+- `product_variants` + `styled_product_variants` gain `price_usd` (fixed manual
+  dollar price — never auto-converts); `styled_products` gains `styling_cost_ngn`
+  (advisor input for a styled retail = base landed cost + styling cost).
+- **Seeds:** the config singleton, a `charm_rounding` pass-through layer (the
+  `cost_pass_through_rules` table existed but was unused), and three ready-to-run
+  industry scenarios — Naira devaluation (+15% FX), Freight shock (+20%), Festive
+  peak (60% margin) — each with a sensitivity slider.
+
+**App layer:** new `pricing_advisor` module — `POST /pricing/recommend`
+(cost-vault-grounded suggestion: target margin/markup/price → price, channel-fee
+gross-up, VAT only when the business charges it, floor clamp, rounding, real
+kept-margin), `POST /pricing/apply` (threshold governance: instant write +
+price_history, or a one-variant CEO proposal via the existing scenario flow),
+`GET/PUT /pricing/config`, `PUT /pricing/variants/:id/usd`. Scenario sensitivity
+sliders (FX/freight/raw cost) now actually flex the cost basis (were
+informational). Cost is never leaked to a non-Cost-Vault user.
+
+---
+
 ## 2026-06-18 — Catalogue: Styled colour×size variants, size pricing, trash
 
 **Source:** Owner directives (June 2026) — base products are RAW China hair

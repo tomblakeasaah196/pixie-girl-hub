@@ -52,6 +52,36 @@ export async function fetchCampaign(
   return (json?.data ?? (json as unknown as LandingPayload)) || null;
 }
 
+/** Fetch the sales index (storefront root). Returns the active/upcoming/past campaign summaries. */
+export async function fetchSalesIndex(): Promise<{
+  brand: string;
+  active: { slug: string; name: string; hero_image_url?: string; state: "before" | "live" | "ended" } | null;
+  upcoming: Array<{ slug: string; name: string; hero_image_url?: string; state: "before" | "live" | "ended"; starts_at: string }>;
+  past: Array<{ slug: string; name: string; hero_image_url?: string; state: "before" | "live" | "ended"; ends_at: string }>;
+} | null> {
+  const host = headers().get("host") || "";
+  const hostName = host.split(":")[0];
+  const brandHint = headers().get("x-brand-context") || undefined;
+  const url = `${apiBase()}/api/public/sale`;
+  const init: RequestInit = {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Host: hostName,
+      "X-Forwarded-Host": hostName,
+      ...(brandHint ? { "X-Brand-Context": brandHint } : {}),
+    },
+    next: { revalidate: 5 },
+  };
+  const res = await fetch(url, init);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Hub returned ${res.status} for /api/public/sale`);
+  }
+  const json = (await res.json()) as { data?: any };
+  return json?.data ?? null;
+}
+
 export function apiBaseUrl(): string {
   return apiBase();
 }

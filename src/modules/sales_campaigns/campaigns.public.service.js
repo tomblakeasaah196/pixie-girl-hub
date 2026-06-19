@@ -14,13 +14,43 @@
 const repo = require("./campaigns.repo");
 const main = require("./campaigns.service");
 const events = require("./campaigns.events");
-const { transaction } = require("../../config/database");
+const { transaction, query } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
 const { BRANDS } = require("../../config/brands");
 
 // Statuses that are publicly visible (the landing page exists for these).
 const PUBLIC_STATUSES = new Set(["scheduled", "live", "paused", "ended"]);
+
+// Fetch brand public identity info for the landing payload.
+async function getBrandPublic(brand) {
+  const { rows } = await query(
+    `SELECT business_key, display_name, storefront_domain, sales_subdomain,
+            support_email, praxis_voice_profile, show_viewer_count_policy, viewer_count_floor
+       FROM shared.business_config
+      WHERE business_key = $1 AND is_active = true`,
+    [brand],
+  );
+  return rows[0] || null;
+}
+
+// Attach brand public info to a landing payload.
+function withBrandInfo(payload, brandInfo) {
+  if (!brandInfo) return payload;
+  return {
+    ...payload,
+    brand: {
+      business_key: brandInfo.business_key,
+      display_name: brandInfo.display_name,
+      storefront_domain: brandInfo.storefront_domain,
+      sales_subdomain: brandInfo.sales_subdomain,
+      support_email: brandInfo.support_email,
+      praxis_voice_profile: brandInfo.praxis_voice_profile,
+      show_viewer_count_policy: brandInfo.show_viewer_count_policy,
+      viewer_count_floor: brandInfo.viewer_count_floor,
+    },
+  };
+}
 
 /**
  * Resolve the campaign for a slug to a single brand.
@@ -54,11 +84,13 @@ async function getLanding({ slug, brand, brandHint }) {
     brand: resolvedBrand,
     campaign_id: campaign.campaign_id,
   });
-  return main.buildLandingPayload(
+  const payload = main.buildLandingPayload(
     campaign,
     products,
     main.resolveState(campaign),
   );
+  const brandInfo = await getBrandPublic(resolvedBrand);
+  return withBrandInfo(payload, brandInfo);
 }
 
 /**
@@ -184,11 +216,53 @@ async function signup({ slug, brand, brandHint, input, ip, user_agent }) {
     if (existing) {
       return { already_signed_up: true, signup_id: existing.signup_id };
     }
+
+    // Find or create a CRM contact for this signup. Unlike the newsletter form
+    // which requires both email and phone, campaign signups accept either alone.
+    let contactId = null;
+    if (input.email || input.phone) {
+      const email = (input.email || "").toLowerCase().trim() || null;
+      const phone = (input.phone || "").trim() || null;
+
+      // Try to find an existing contact by email or phone.
+      const { rows: existing_contact } = await client.query(
+        `SELECT contact_id FROM shared.contacts
+           WHERE is_deleted = false AND (
+             (email = $1 AND $1 IS NOT NULL) OR
+             (primary_phone = $2 AND $2 IS NOT NULL)
+           )
+           LIMIT 1`,
+        [email, phone],
+      );
+
+      if (existing_contact[0]) {
+        contactId = existing_contact[0].contact_id;
+      } else {
+        // Create a new contact with source='website' (same as newsletter signups).
+        const { rows: created_contact } = await client.query(
+          `INSERT INTO shared.contacts
+             (contact_type, display_name, email, primary_phone, source, visible_to)
+           VALUES (ARRAY['lead'], $1, $2, $3, 'website', ARRAY[$4])
+           RETURNING contact_id`,
+          [
+            email || "Lead from campaign signup",
+            email,
+            phone,
+            resolvedBrand,
+          ],
+        );
+        if (created_contact[0]) {
+          contactId = created_contact[0].contact_id;
+        }
+      }
+    }
+
     const created = await repo.createSignup({
       client,
       brand: resolvedBrand,
       campaign_id: campaign.campaign_id,
       input,
+      contact_id: contactId,
       ip,
       user_agent,
     });

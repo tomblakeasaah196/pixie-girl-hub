@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { fetchCampaign } from "@/lib/api";
 import { LandingShell } from "@/components/LandingShell";
+import { IntroOverlay } from "@/components/IntroOverlay";
 
 interface Params {
   slug: string;
@@ -38,5 +39,10 @@ export async function generateMetadata({
 export default async function Page({ params }: { params: Params }) {
   const payload = await fetchCampaign(params.slug);
   if (!payload) notFound();
-  return <LandingShell payload={payload} />;
+  return (
+    <>
+      <IntroOverlay brand={payload.brand?.business_key} campaignName={payload.name} />
+      <LandingShell payload={payload} />
+    </>
+  );
 }

@@ -68,6 +68,28 @@ function priceForTargetMarkup(cost, targetMarkupPct) {
   );
 }
 
+// Sensitivity-driver sliders (FX rate, freight, raw cost…) flex the cost basis
+// so a scenario's goal-seek + margins actually move with them — not just
+// stored for show. Each driver's % move is summed onto the cost.
+const COST_DRIVER_KEYS = new Set([
+  "fx_rate",
+  "freight",
+  "cost",
+  "raw_cost",
+  "duty",
+  "landing",
+]);
+function sliderCostDelta(sliders) {
+  let d = 0;
+  for (const s of sliders || []) {
+    if (!COST_DRIVER_KEYS.has(s.slider_key)) continue;
+    const base = Number(s.baseline_value);
+    const scn = Number(s.scenario_value);
+    if (base) d += (scn - base) / base;
+  }
+  return d;
+}
+
 // ════════════════════════════════════════════════════════════
 // Rules
 // ════════════════════════════════════════════════════════════
@@ -363,13 +385,20 @@ async function computeScenario({ brand, user, request_id, id, sliders }) {
     if (sliders && sliders.length)
       await repo.replaceSliders({ client, brand, scenario_id: id, sliders });
 
+    // Flex the cost basis by the sensitivity drivers (persisted or just-sent).
+    const effSliders =
+      sliders && sliders.length
+        ? sliders
+        : await repo.scenarioSliders({ brand, scenario_id: id });
+    const costMult = new Decimal(1).plus(sliderCostDelta(effSliders));
+
     let sumPrice = money(0);
     let sumMargin = money(0);
     let sumRevenue = money(0);
     let analysed = 0;
 
     for (const v of variants) {
-      const cost = costForBasis(v, scenario);
+      const cost = costForBasis(v, scenario).times(costMult);
       const current = v.price_storefront_ngn;
       const proposed = proposedPrice(cost, scenario, current);
       const pm = marginPct(proposed, cost);
@@ -768,6 +797,11 @@ function priceHistory({ brand, variant_id, limit }) {
 }
 
 module.exports = {
+  // math (reused by the advisor)
+  marginPct,
+  markupPct,
+  priceForTargetMargin,
+  priceForTargetMarkup,
   // rules
   listRules,
   createRule,

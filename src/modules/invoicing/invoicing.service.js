@@ -202,6 +202,7 @@ async function createManual({ brand, user, request_id, input }) {
         issue_date: input.issue_date || todayISO(),
         due_date: input.due_date,
         payment_terms: input.payment_terms,
+        issued_by: user.user_id,
       },
     });
     for (const lr of lineRows)
@@ -502,14 +503,14 @@ async function scheduleRemindersForInvoice({ client, brand, invoice }) {
   // Resolve recipient contact address
   const { query } = require("../../config/database");
   const { rows: contacts } = await (client ? client.query.bind(client) : query)(
-    `SELECT email, phone, display_name FROM shared.contacts WHERE contact_id = $1`,
+    `SELECT email, primary_phone, display_name FROM shared.contacts WHERE contact_id = $1`,
     [invoice.contact_id],
   );
   const contact = contacts[0];
   if (!contact) return;
   const channel = invoice.sent_via === "whatsapp" ? "whatsapp" : "email";
   const recipientAddress =
-    channel === "whatsapp" ? contact.phone : contact.email;
+    channel === "whatsapp" ? contact.primary_phone : contact.email;
   if (!recipientAddress) return;
 
   for (const sched of REMINDER_SCHEDULE) {

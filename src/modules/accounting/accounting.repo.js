@@ -214,7 +214,7 @@ async function insertEntry({ client, brand, entry }) {
     `INSERT INTO ${t(brand, "journal_entries")}
        (entry_number, source_type, source_table, source_id, fiscal_period_id, posting_date,
         transaction_currency, fx_rate_used, description, reference, idempotency_key, status)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'NGN'),COALESCE($8,1),$9,$10,$11,'draft')
+     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'NGN'),COALESCE($8,1::numeric),$9,$10,$11,'draft')
      ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
      RETURNING *`,
     [
@@ -237,7 +237,7 @@ async function insertLine({ client, brand, line }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "journal_lines")}
        (entry_id, account_id, description, debit_ngn, credit_ngn, contact_id, invoice_id, cost_centre, project, display_order)
-     VALUES ($1,$2,$3,COALESCE($4,0),COALESCE($5,0),$6,$7,$8,$9,COALESCE($10,0)) RETURNING *`,
+     VALUES ($1,$2,$3,COALESCE($4,0::numeric),COALESCE($5,0::numeric),$6,$7,$8,$9,COALESCE($10,0)) RETURNING *`,
     [
       line.entry_id,
       line.account_id,

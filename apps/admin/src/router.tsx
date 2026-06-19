@@ -72,6 +72,7 @@ const ModelsAndVendorsPage = lazyWithRetry(() => import("@/pages/ai-control/Mode
 const ChannelPolicyPage = lazyWithRetry(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
 const QuickRepliesPage = lazyWithRetry(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
 const WorkspacePage = lazyWithRetry(() => import("@/pages/workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
+const InvoicingPage = lazyWithRetry(() => import("@/pages/invoicing/InvoicingPage").then((m) => ({ default: m.InvoicingPage })));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -205,6 +206,8 @@ export const router = createBrowserRouter(
             { path: "pricing", element: <Suspense fallback={null}><PricingPage /></Suspense> },
             // Purchasing (PO lifecycle + GRN + invoices)
             { path: "purchasing", element: <Suspense fallback={null}><PurchasingPage /></Suspense> },
+            // Invoicing & Billing (V2.2 §6.5) — invoices, credit notes, AR ageing.
+            { path: "invoicing", element: <Suspense fallback={null}><InvoicingPage /></Suspense> },
 
             // Settings — landing + sub-pages.
             { path: "settings", element: <SettingsHome /> },

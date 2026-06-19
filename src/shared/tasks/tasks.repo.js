@@ -16,7 +16,9 @@ const ex = (c) => (c ? c.query.bind(c) : query);
 // ── Tasks ──────────────────────────────────────────────────
 async function createTask({ client, task }) {
   const remind_at =
-    task.reminder_minutes != null && task.due_at
+    task.reminder_minutes !== null &&
+    task.reminder_minutes !== undefined &&
+    task.due_at
       ? new Date(new Date(task.due_at).getTime() - task.reminder_minutes * 60000).toISOString()
       : null;
   const { rows } = await ex(client)(

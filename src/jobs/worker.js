@@ -152,7 +152,6 @@ async function startWorkers() {
     runChemicalReconciliation,
   } = require("./schedulers/chemical-reconciliation");
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
-  const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
   const {
     runGeoIpDatabaseUpdate,
   } = require("./schedulers/geoip-updater");
@@ -222,7 +221,6 @@ async function startWorkers() {
     "30 3 2 * *",
     runChemicalReconciliation,
   );
-  scheduleCron("ad-spend-sync", "30 4 * * *", runAdSpendSync);
   scheduleCron(
     "geoip-db-update",
     config.CRON_GEOIP_DB_UPDATE,

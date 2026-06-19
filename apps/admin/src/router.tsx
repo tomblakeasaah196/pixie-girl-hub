@@ -130,6 +130,16 @@ const CampaignBundlesPage = lazyWithRetry(() =>
     default: m.CampaignBundlesPage,
   })),
 );
+const LandingStudioPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/landing/LandingStudioPage").then((m) => ({
+    default: m.LandingStudioPage,
+  })),
+);
+const LandingPreviewPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/landing/LandingPreviewPage").then((m) => ({
+    default: m.LandingPreviewPage,
+  })),
+);
 const SaleLandingPublic = lazyWithRetry(() =>
   import("@/pages/sales-campaigns/public/SaleLandingPublic").then((m) => ({
     default: m.SaleLandingPublic,
@@ -253,6 +263,25 @@ export const router = createBrowserRouter(
       element: <RequireAuth />,
       children: [
         { path: "/select-entity", element: <SelectEntityPage /> },
+        // Landing Studio — standalone full-screen editor + chrome-less
+        // preview tab. Authed (session restored by RequireAuth) but outside
+        // the AppShell so it owns the whole viewport.
+        {
+          path: "/landing-studio",
+          element: (
+            <Suspense fallback={null}>
+              <LandingStudioPage />
+            </Suspense>
+          ),
+        },
+        {
+          path: "/landing-studio/preview",
+          element: (
+            <Suspense fallback={null}>
+              <LandingPreviewPage />
+            </Suspense>
+          ),
+        },
         {
           path: "/",
           element: <AppShell />,

@@ -7,6 +7,7 @@ import {
   TrendingUp,
   Sparkles,
   CalendarRange,
+  LayoutTemplate,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
@@ -141,17 +142,29 @@ export function SalesCampaignsListPage() {
               sales subdomain, and watch the dashboard convert in real time.
             </p>
           </div>
-          {canCreate && (
-            <Button
-              size="md"
-              variant="primary"
-              className="md:ml-auto cta-breathe"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => setCreateOpen(true)}
-            >
-              New campaign
-            </Button>
-          )}
+          <div className="md:ml-auto flex flex-wrap items-center gap-2">
+            {can("sales_campaigns", "view") && (
+              <Button
+                size="md"
+                variant="ghost"
+                icon={<LayoutTemplate className="w-4 h-4" />}
+                onClick={() => navigate("/landing-studio")}
+              >
+                Landing Studio
+              </Button>
+            )}
+            {canCreate && (
+              <Button
+                size="md"
+                variant="primary"
+                className="cta-breathe"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setCreateOpen(true)}
+              >
+                New campaign
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 

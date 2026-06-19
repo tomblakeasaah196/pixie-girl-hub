@@ -133,7 +133,12 @@ const deleteAddress = async (req, res) => {
   res.status(204).end();
 };
 
+async function milestones(req, res) {
+  res.json({ data: await service.milestones({ days: req.query.days }) });
+}
+
 module.exports = {
+  milestones,
   list,
   getById,
   getTimeline,

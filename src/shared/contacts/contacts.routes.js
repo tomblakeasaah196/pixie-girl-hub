@@ -9,9 +9,18 @@ const express = require("express");
 const c = require("./contacts.controller");
 const v = require("./contacts.validator");
 const { requirePermission } = require("../../middleware/rbac");
+const { NotFoundError } = require("../../utils/errors");
 
 const router = express.Router();
 const can = (a) => requirePermission("contacts", a);
+
+// Any :id that isn't a UUID → clean 404 (avoids a 500 from a bad uuid cast).
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+router.param("id", (req, res, next, val) => {
+  if (!UUID_RE.test(val)) return next(new NotFoundError("Contact"));
+  next();
+});
 
 // Segments (brand-scoped)
 router.get("/segments", can("view"), c.listSegments);
@@ -33,6 +42,8 @@ router.delete("/segments/:segId", can("delete"), c.deleteSegment);
 // Contacts (global)
 router.get("/", can("view"), c.list);
 router.post("/", can("create"), v.validateCreate, c.create);
+// Literal — declared before /:id so "milestones" isn't captured as an id.
+router.get("/milestones", can("view"), c.milestones);
 router.get("/:id", can("view"), c.getById);
 router.patch("/:id", can("edit"), v.validateUpdate, c.update);
 router.delete("/:id", can("delete"), c.remove);

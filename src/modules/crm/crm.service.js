@@ -471,7 +471,21 @@ async function recordChurnScore({
   return score;
 }
 
+/** CRM dashboard KPIs (open pipeline, monthly wins, win rate). */
+async function kpis({ brand }) {
+  const k = await repo.kpis({ brand });
+  const closed = Number(k.closed_total) || 0;
+  return {
+    open_deals: Number(k.open_deals),
+    open_pipeline_ngn: String(k.open_pipeline_ngn),
+    won_this_month: Number(k.won_this_month),
+    won_value_this_month_ngn: String(k.won_value_this_month_ngn),
+    win_rate: closed > 0 ? Number((Number(k.won_total) / closed).toFixed(4)) : null,
+  };
+}
+
 module.exports = {
+  kpis,
   listPipelines,
   createPipeline,
   updatePipeline,

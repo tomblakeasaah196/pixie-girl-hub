@@ -139,7 +139,7 @@ async function listLevels({
     `SELECT sl.*, pv.sku, pv.variant_name FROM ${t(brand, "stock_levels")} sl
        LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
        ${w} ORDER BY sl.updated_at DESC LIMIT $${i++} OFFSET $${i++}`,
-    [...params, page, page_size, offset],
+    [...params, page_size, offset],
   );
   return rows;
 }

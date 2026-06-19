@@ -12,6 +12,7 @@ const { audit } = require("../../middleware/audit");
 const { money, toCurrencyString } = require("../../utils/money");
 const wf = require("../../workflows/engine");
 const repo = require("./purchasing.repo");
+const contactsRepo = require("../../shared/contacts/contacts.repo");
 const events = require("./purchasing.events");
 const {
   NotFoundError,
@@ -56,6 +57,30 @@ const PO_FLOW = {
 // ── Suppliers ────────────────────────────────────────────
 async function createSupplier({ brand, user, request_id, input }) {
   return transaction(async (client) => {
+    // Inline create: no contact_id → spin up a 'supplier' contact from the
+    // inline fields, then link it. Otherwise an existing contact_id is required.
+    let contact_id = input.contact_id;
+    let display_name = input.display_name;
+    if (!contact_id) {
+      if (!input.supplier_name)
+        throw new ValidationError(
+          "Provide contact_id, or supplier_name to create a new supplier contact",
+        );
+      const contact = await contactsRepo.create({
+        client,
+        user_id: user?.user_id,
+        input: {
+          contact_type: ["supplier"],
+          display_name: input.supplier_name,
+          email: input.email || undefined,
+        },
+      });
+      contact_id = contact.contact_id;
+      display_name = display_name || input.supplier_name;
+    } else if (!display_name) {
+      const existing = await contactsRepo.findById({ id: contact_id });
+      display_name = existing ? existing.display_name : null;
+    }
     const supplier_code = await repo.nextNumber({
       client,
       brand,
@@ -64,7 +89,15 @@ async function createSupplier({ brand, user, request_id, input }) {
     const supplier = await repo.createSupplier({
       client,
       brand,
-      row: { ...input, supplier_code, created_by: user?.user_id },
+      row: {
+        ...input,
+        contact_id,
+        display_name,
+        country_of_origin: input.country_of_origin || input.country,
+        default_currency: input.default_currency || input.currency,
+        supplier_code,
+        created_by: user?.user_id,
+      },
     });
     if (input.products) {
       for (const p of input.products)

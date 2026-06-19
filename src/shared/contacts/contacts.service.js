@@ -270,7 +270,14 @@ async function deleteAddress({ brand, user, request_id, id, address_id }) {
   );
 }
 
+/** Upcoming contact birthdays within `days` days (default 7, clamped 1..366). */
+function milestones({ days }) {
+  const d = Math.min(Math.max(Number(days) || 7, 1), 366);
+  return repo.upcomingMilestones({ days: d });
+}
+
 module.exports = {
+  milestones,
   list,
   getById,
   getTimeline,

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { ShoppingBag, Search } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText } from "@/components/ui/primitives";

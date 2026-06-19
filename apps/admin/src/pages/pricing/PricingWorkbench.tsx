@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Calculator, AlertTriangle, TrendingUp, Layers, Play, CheckCircle, Database } from "lucide-react";
-import { Button, Card, Pill, MoneyText, Skeleton } from "@/components/ui/primitives";
+import { Calculator, AlertTriangle, TrendingUp, Play, CheckCircle, Database } from "lucide-react";
+import { Button, Card, Pill, Skeleton } from "@/components/ui/primitives";
 import { Field } from "@/components/ui/Form";
 import { NumberField, Select } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -220,7 +220,7 @@ function ScenarioBuilder() {
     queryKey: ["scenario-detail", activeId],
     queryFn: () => getScenario(activeId!),
     enabled: !!activeId,
-    refetchInterval: (d) => (d?.status === "draft" ? 2000 : false),
+    refetchInterval: (d) => (d.state.data?.status === "draft" ? 2000 : false),
   });
 
   const handleRun = () => {

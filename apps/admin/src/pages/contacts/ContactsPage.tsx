@@ -10,7 +10,6 @@ import {
   type Tone,
 } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
-import { PageActions } from "@/components/shell/PageActions";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useContact, useContacts } from "./hooks";
 import { ContactDetailDrawer } from "./ContactDetailDrawer";
@@ -437,7 +436,8 @@ export function ContactsPage() {
             </p>
           )}
         </div>
-        <PageActions>
+        {/* Primary CTAs live in the page header (not teleported to the top bar). */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Button
             variant="ghost"
             size="sm"
@@ -454,7 +454,7 @@ export function ContactsPage() {
           >
             New Contact
           </Button>
-        </PageActions>
+        </div>
       </div>
 
       {/* KPI strip */}

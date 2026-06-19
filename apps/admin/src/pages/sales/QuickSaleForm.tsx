@@ -10,6 +10,9 @@ import { FormSection, FormGrid, Field, TextInput } from "@/components/ui/Form";
 import { AddressAutocomplete, type PlaceAddress } from "@/components/ui/AddressAutocomplete";
 import { SALES_CHANNELS, FULFILMENT_OPTIONS } from "./constants";
 import { useCreateOrder, useCreatePaymentLink } from "./hooks";
+import { useToastStore } from "@/components/notifications/NotificationToast";
+import { onboardingApi } from "@/lib/smartcomm-api";
+import { useBusinessStore } from "@/stores/business";
 import * as salesApi from "./api";
 import type {
   SalesChannel,
@@ -80,6 +83,30 @@ export function QuickSaleForm() {
   const [sendVia, setSendVia] = useState<"email" | "whatsapp">("email");
   const [submitting, setSubmitting] = useState(false);
   const [sentOrderId, setSentOrderId] = useState<string | null>(null);
+  const [bundleId, setBundleId] = useState<string | null>(null);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [captureUrl, setCaptureUrl] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const toast = useToastStore();
+  const activeBiz = useBusinessStore((s) => s.activeKey);
+
+  const fireToast = (title: string, body: string, type = "order", priority: "normal" | "high" = "normal") => {
+    toast.add({
+      notification_id: crypto.randomUUID(),
+      user_id: "",
+      business: null,
+      type,
+      priority,
+      title,
+      body,
+      reference_type: null,
+      reference_id: null,
+      action_url: null,
+      is_read: false,
+      read_at: null,
+      created_at: new Date().toISOString(),
+    });
+  };
 
   const subtotal = useMemo(
     () => cart.reduce((sum, l) => sum + l.unit_price * l.quantity, 0),
@@ -173,23 +200,55 @@ export function QuickSaleForm() {
         }
       } catch { /* toast error */ }
     } else if (productType === "styled") {
-      setCart((prev) => [...prev, {
-        id: crypto.randomUUID(),
-        variant_id: r.id,
-        label: r.label,
-        sku: r.sub.split(" · ")[0],
-        unit_price: Number(r.sub.match(/₦([\d,]+)/)?.[1]?.replace(/,/g, "") ?? 0),
-        quantity: 1,
-      }]);
+      try {
+        const sp = await salesApi.getStyledProduct(r.id);
+        setCart((prev) => {
+          if (prev.find((l) => l.variant_id === sp.base_variant_id)) return prev;
+          return [...prev, {
+            id: crypto.randomUUID(),
+            variant_id: sp.base_variant_id,
+            label: sp.name,
+            sku: r.sub.split(" · ")[0],
+            unit_price: Number(sp.retail_price_ngn ?? 0),
+            quantity: 1,
+          }];
+        });
+      } catch { fireToast("Error", "Failed to load styled product", "order", "high"); }
     } else {
-      setCart((prev) => [...prev, {
-        id: crypto.randomUUID(),
-        variant_id: r.id,
-        label: r.label,
-        sku: r.sub.split(" · ")[0],
-        unit_price: Number(r.sub.match(/₦([\d,]+)/)?.[1]?.replace(/,/g, "") ?? 0),
-        quantity: 1,
-      }]);
+      try {
+        const bundle = await salesApi.getBundle(r.id);
+        setBundleId(bundle.bundle_id);
+        for (const comp of bundle.components) {
+          let variantId = comp.variant_id;
+          let variantName = comp.role;
+          let variantSku = "";
+          let price = Number(bundle.bundle_price_ngn ?? 0) / (bundle.components.length || 1);
+          if (comp.product_id) {
+            const variants = await salesApi.getProductVariants(comp.product_id);
+            const match = comp.variant_id
+              ? variants.find((v) => v.variant_id === comp.variant_id)
+              : variants.find((v) => v.is_active);
+            if (match) {
+              variantId = match.variant_id;
+              variantName = match.variant_name;
+              variantSku = match.sku;
+              price = Number(match.price_storefront_ngn ?? match.price_pos_ngn ?? price);
+            }
+          }
+          if (!variantId) continue;
+          setCart((prev) => {
+            if (prev.find((l) => l.variant_id === variantId)) return prev;
+            return [...prev, {
+              id: crypto.randomUUID(),
+              variant_id: variantId!,
+              label: `${bundle.display_name} — ${variantName}`,
+              sku: variantSku || comp.bundle_product_id.slice(0, 8),
+              unit_price: price,
+              quantity: comp.quantity,
+            }];
+          });
+        }
+      } catch { fireToast("Error", "Failed to load bundle", "order", "high"); }
     }
   };
 
@@ -210,8 +269,9 @@ export function QuickSaleForm() {
         lines: cart.map((l) => ({
           variant_id: l.variant_id,
           quantity: l.quantity,
-          unit_price_ngn: l.unit_price,
+          unit_price_ngn: l.unit_price || undefined,
         })),
+        bundle_id: bundleId || undefined,
         coupon_code: coupon || undefined,
         shipping_fee_ngn: shipping || undefined,
       };
@@ -220,12 +280,12 @@ export function QuickSaleForm() {
         amount_ngn: Number(order.balance_due_ngn),
         currency: currency !== "NGN" ? currency : undefined,
       });
+      setPaymentUrl(link.checkout_url);
       setSentOrderId(order.order_id);
       setStep(6);
-      // eslint-disable-next-line no-console
-      console.log("Payment link:", link.checkout_url);
+      fireToast("Order Created", `Order ${order.order_number} created — payment link sent.`);
     } catch {
-      // error shown via mutation state
+      fireToast("Order Failed", "Failed to create order. Please try again.", "order", "high");
     } finally {
       setSubmitting(false);
     }
@@ -246,6 +306,10 @@ export function QuickSaleForm() {
     setAddress(null);
     setShippingFee("");
     setSentOrderId(null);
+    setBundleId(null);
+    setPaymentUrl(null);
+    setCaptureUrl(null);
+    setShowQr(false);
   };
 
   // ── Render ───────────────────────────────────────────────
@@ -316,18 +380,30 @@ export function QuickSaleForm() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="secondary" size="sm" icon={<QrCode className="w-3.5 h-3.5" />} onClick={() => setShowQr(!showQr)}>
-                  QR Code
+                <Button variant="secondary" size="sm" icon={<QrCode className="w-3.5 h-3.5" />} onClick={async () => {
+                  if (captureUrl) { setShowQr(!showQr); return; }
+                  setQrLoading(true);
+                  try {
+                    const res = await onboardingApi.createLink({ business: activeBiz ?? "pixiegirl", source: "walkin" });
+                    setCaptureUrl(res.url);
+                    setShowQr(true);
+                  } catch { fireToast("Error", "Failed to generate capture link", "order", "high"); }
+                  finally { setQrLoading(false); }
+                }} disabled={qrLoading}>
+                  {qrLoading ? "Generating…" : "QR Code"}
                 </Button>
               </div>
-              {showQr && (
+              {showQr && captureUrl && (
                 <div className="p-4 rounded-[11px] bg-text-primary/[0.03] border border-line text-center">
                   <p className="text-[12px] text-text-muted mb-2">
                     Share the order capture link — customer fills their details and is auto-selected.
                   </p>
                   <div className="flex items-center gap-2 justify-center">
-                    <code className="text-[11px] text-text-faint font-mono">/order/capture/:token</code>
-                    <Button variant="ghost" size="sm" icon={<Copy className="w-3 h-3" />} onClick={() => { /* copy link */ }}>
+                    <code className="text-[11px] text-text-faint font-mono break-all">{captureUrl}</code>
+                    <Button variant="ghost" size="sm" icon={<Copy className="w-3 h-3" />} onClick={() => {
+                      navigator.clipboard.writeText(captureUrl);
+                      fireToast("Copied", "Capture link copied to clipboard");
+                    }}>
                       Copy
                     </Button>
                   </div>
@@ -572,6 +648,20 @@ export function QuickSaleForm() {
           <p className="text-[13px] text-text-muted mb-4">
             Payment link has been sent to the customer. The order will be confirmed once payment is received via the gateway.
           </p>
+          {paymentUrl && (
+            <div className="mb-4 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line">
+              <div className="text-[11px] text-text-faint mb-1">Payment Link</div>
+              <div className="flex items-center gap-2 justify-center">
+                <code className="text-[11px] text-accent-glow font-mono break-all">{paymentUrl}</code>
+                <Button variant="ghost" size="sm" icon={<Copy className="w-3 h-3" />} onClick={() => {
+                  navigator.clipboard.writeText(paymentUrl);
+                  fireToast("Copied", "Payment link copied to clipboard");
+                }}>
+                  Copy
+                </Button>
+              </div>
+            </div>
+          )}
           <Button variant="primary" onClick={reset}>New Quick Sale</Button>
         </Card>
       )}

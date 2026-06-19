@@ -63,13 +63,21 @@ export function QuotationsView() {
 
   const { data, isLoading } = useQuotations({
     status: status || undefined,
-    search: search || undefined,
     page,
     page_size: 25,
   });
 
-  const quotes = data?.data ?? [];
+  const allQuotes = data?.data ?? [];
   const meta = data?.meta;
+  const quotes = search
+    ? allQuotes.filter((q) => {
+        const term = search.toLowerCase();
+        return (
+          q.quotation_number.toLowerCase().includes(term) ||
+          (q.contact_name ?? "").toLowerCase().includes(term)
+        );
+      })
+    : allQuotes;
 
   return (
     <>

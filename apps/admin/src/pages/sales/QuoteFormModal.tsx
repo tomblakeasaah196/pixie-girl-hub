@@ -5,6 +5,7 @@ import { Button, MoneyText } from "@/components/ui/primitives";
 import { Select, NumberField } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
 import { useCreateQuotation } from "./hooks";
+import { useToastStore } from "@/components/notifications/NotificationToast";
 import * as salesApi from "./api";
 import { FULFILMENT_OPTIONS } from "./constants";
 import type { FulfilmentType, QuotationCreateInput } from "./types";
@@ -22,6 +23,10 @@ interface ContactHit { id: string; label: string; sub: string }
 
 export function QuoteFormModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateQuotation();
+  const toast = useToastStore();
+  const fireToast = (title: string, body: string, type = "order", priority: "normal" | "high" = "normal") => {
+    toast.add({ notification_id: crypto.randomUUID(), user_id: "", business: null, type, priority, title, body, reference_type: null, reference_id: null, action_url: null, is_read: false, read_at: null, created_at: new Date().toISOString() });
+  };
   const [formStep, setFormStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Step 1: Customer
@@ -105,8 +110,11 @@ export function QuoteFormModal({ open, onClose }: { open: boolean; onClose: () =
       delivery_type: deliveryType,
       shipping_fee_ngn: Number(shippingFee) || undefined,
     };
-    await create.mutateAsync(input);
-    handleClose();
+    try {
+      await create.mutateAsync(input);
+      fireToast("Quotation Created", "Quotation has been created successfully.");
+      handleClose();
+    } catch { fireToast("Quotation Failed", "Failed to create quotation.", "order", "high"); }
   };
 
   const handleClose = () => {

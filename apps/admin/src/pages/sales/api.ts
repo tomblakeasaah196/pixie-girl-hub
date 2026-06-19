@@ -136,3 +136,26 @@ export const searchBundles = (_search: string) =>
     bundle_price_ngn: string | null;
     pricing_model: string;
   }>>(`/retention/bundles?active=true`);
+
+export const getStyledProduct = (id: string) =>
+  api.get<{
+    styled_product_id: string;
+    base_product_id: string;
+    base_variant_id: string;
+    name: string;
+    retail_price_ngn: string | null;
+  }>(`/catalogue/styled-products/${id}`);
+
+export const getBundle = (id: string) =>
+  api.get<{
+    bundle_id: string;
+    display_name: string;
+    bundle_price_ngn: string | null;
+    components: Array<{
+      bundle_product_id: string;
+      product_id: string | null;
+      variant_id: string | null;
+      quantity: number;
+      role: string;
+    }>;
+  }>(`/retention/bundles/${id}`);

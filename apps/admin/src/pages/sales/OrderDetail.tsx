@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/ui/controls";
 import { FormSection, FormGrid, Field } from "@/components/ui/Form";
 import { NumberField, Select, ConfirmDialog } from "@/components/ui/controls";
 import { useOrder, useOrderTimeline, useAddPayment, useCreatePaymentLink, useCancelOrder } from "./hooks";
+import { useToastStore } from "@/components/notifications/NotificationToast";
 import { ORDER_STATUS, SALES_CHANNELS } from "./constants";
 import type { PaymentMethod, OrderPayment } from "./types";
 
@@ -34,33 +35,46 @@ export function OrderDetail({ orderId, onClose }: { orderId: string | null; onCl
   const [payAmount, setPayAmount] = useState("");
   const [payRef, setPayRef] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const toast = useToastStore();
+  const fireToast = (title: string, body: string, type = "order", priority: "normal" | "high" = "normal") => {
+    toast.add({ notification_id: crypto.randomUUID(), user_id: "", business: null, type, priority, title, body, reference_type: null, reference_id: null, action_url: null, is_read: false, read_at: null, created_at: new Date().toISOString() });
+  };
 
   const handleAddPayment = async () => {
     if (!payAmount || !orderId) return;
-    await addPayment.mutateAsync({
-      method: payMethod,
-      amount_ngn: Number(payAmount),
-      provider_reference: payRef || undefined,
-      payment_path: "staff_recorded",
-    });
-    setShowPayForm(false);
-    setPayAmount("");
-    setPayRef("");
+    try {
+      await addPayment.mutateAsync({
+        method: payMethod,
+        amount_ngn: Number(payAmount),
+        provider_reference: payRef || undefined,
+        payment_path: "staff_recorded",
+      });
+      setShowPayForm(false);
+      setPayAmount("");
+      setPayRef("");
+      fireToast("Payment Recorded", `₦${Number(payAmount).toLocaleString()} recorded successfully.`);
+    } catch { fireToast("Payment Failed", "Failed to record payment.", "payment", "high"); }
   };
 
   const handlePayLink = async () => {
     if (!orderId || !order) return;
-    const res = await createLink.mutateAsync({
-      amount_ngn: Number(order.balance_due_ngn),
-    });
-    await navigator.clipboard.writeText(res.checkout_url);
+    try {
+      const res = await createLink.mutateAsync({
+        amount_ngn: Number(order.balance_due_ngn),
+      });
+      await navigator.clipboard.writeText(res.checkout_url);
+      fireToast("Link Copied", "Payment link copied to clipboard.");
+    } catch { fireToast("Link Failed", "Failed to generate payment link.", "payment", "high"); }
   };
 
   const handleCancel = async () => {
     if (!orderId) return;
-    await cancelOrder.mutateAsync(orderId);
-    setConfirmCancel(false);
-    onClose();
+    try {
+      await cancelOrder.mutateAsync(orderId);
+      setConfirmCancel(false);
+      onClose();
+      fireToast("Order Cancelled", "The order has been cancelled.");
+    } catch { fireToast("Cancel Failed", "Failed to cancel order.", "order", "high"); }
   };
 
   const statusMeta = order ? ORDER_STATUS[order.status] : null;

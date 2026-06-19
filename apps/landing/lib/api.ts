@@ -82,6 +82,30 @@ export async function fetchSalesIndex(): Promise<{
   return json?.data ?? null;
 }
 
+/** Fetch the published landing page config. Returns null on 404 if never published. */
+export async function fetchPublishedLanding(brandKey?: string) {
+  const host = headers().get("host") || "";
+  const hostName = host.split(":")[0];
+  const url = `${apiBase()}/api/public/landing${brandKey ? `?brand=${encodeURIComponent(brandKey)}` : ""}`;
+  const init: RequestInit = {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Host: hostName,
+      "X-Forwarded-Host": hostName,
+      ...(brandKey ? { "X-Brand-Context": brandKey } : {}),
+    },
+    next: { revalidate: 60 },
+  };
+  const res = await fetch(url, init);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Hub returned ${res.status} for /api/public/landing`);
+  }
+  const json = (await res.json()) as { data?: any };
+  return json?.data ?? null;
+}
+
 export function apiBaseUrl(): string {
   return apiBase();
 }

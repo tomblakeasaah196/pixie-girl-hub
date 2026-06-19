@@ -1,18 +1,12 @@
-/**
- * AtelierRevealPreview — the cinematic "velvet drapes" intro, config-driven.
- *
- * Two drapes meet at a seam of light, the welcome headline holds, then the
- * drapes part to reveal the page beneath. Colours come from the LandingConfig
- * (theme.three hex values). Supports 3D brand reveals via Three.js when enabled.
- */
+"use client";
 
-import { AnimatePresence, motion, useReducedMotion, useMotionValue } from "framer-motion";
+import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import type { LandingConfig } from "@/lib/landing-studio";
+import type { LandingConfig } from "@/lib/types";
 
-const ThreeDTextReveal = dynamic(() => import("@/components/ThreeDTextReveal").then((m) => ({ default: m.ThreeDTextReveal })), { ssr: false });
-const ThreeDLogoReveal = dynamic(() => import("@/components/ThreeDLogoReveal").then((m) => ({ default: m.ThreeDLogoReveal })), { ssr: false });
+const ThreeDTextReveal = dynamic(() => import("./ThreeDTextReveal").then((m) => ({ default: m.ThreeDTextReveal })), { ssr: false });
+const ThreeDLogoReveal = dynamic(() => import("./ThreeDLogoReveal").then((m) => ({ default: m.ThreeDLogoReveal })), { ssr: false });
 
 const DISPLAY_FONT = '"Fraunces", "Playfair Display", Georgia, serif';
 
@@ -21,13 +15,12 @@ type Phase = "seam" | "part" | "hold" | "exit" | "done";
 export function AtelierRevealPreview({
   config,
   campaignName,
-  replayKey,
+  replayKey = "reveal",
   onComplete,
 }: {
   config: LandingConfig;
   campaignName?: string | null;
-  /** change this to replay the reveal (e.g. studio "Replay" button) */
-  replayKey: string | number;
+  replayKey?: string | number;
   onComplete?: () => void;
 }) {
   const reduceMotion = useReducedMotion();
@@ -72,7 +65,7 @@ export function AtelierRevealPreview({
       {phase !== "done" && (
         <motion.div
           key={replayKey}
-          className="absolute inset-0 z-[60] overflow-hidden cursor-pointer"
+          className="fixed inset-0 z-[60] overflow-hidden cursor-pointer"
           style={{ backgroundColor: ink }}
           onClick={skip}
           initial={{ opacity: 1 }}
@@ -93,6 +86,7 @@ export function AtelierRevealPreview({
               boxShadow: `inset -40px 0 80px ${ink}, inset 0 0 200px rgba(0,0,0,0.6)`,
             }}
           />
+
           {/* Right drape */}
           <motion.div
             className="absolute inset-y-0 right-0 w-1/2 origin-left"
@@ -162,7 +156,9 @@ export function AtelierRevealPreview({
                       exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
                     >
-                      <div className="text-[10px] tracking-[0.5em] uppercase mb-4" style={{ color: accent, opacity: 0.7 }}>{config.reveal.tagline}</div>
+                      <div className="text-[10px] tracking-[0.5em] uppercase mb-4" style={{ color: accent, opacity: 0.7 }}>
+                        {config.reveal.tagline}
+                      </div>
                       <h1 className="text-3xl md:text-5xl lg:text-6xl font-light tracking-tight" style={{ color: accent, fontFamily: DISPLAY_FONT }}>
                         {headline.split(" ").map((w, i) => (
                           <motion.span
@@ -185,7 +181,10 @@ export function AtelierRevealPreview({
 
           {/* Skip */}
           <motion.button
-            onClick={(e) => { e.stopPropagation(); skip(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              skip();
+            }}
             initial={{ opacity: 0 }}
             animate={{ opacity: phase === "hold" ? 0.5 : 0 }}
             className="absolute bottom-6 right-6 text-[10px] tracking-[0.3em] uppercase text-white/70 hover:text-white transition-colors"

@@ -117,7 +117,7 @@ export function ThreeDLogoReveal({
     <Canvas
       camera={{ position: [0, 0, 3], fov: 50 }}
       style={{ background: "transparent", width: "100%", height: "100%" }}
-      gl={{ transparent: true, antialias: true }}
+      gl={{ alpha: true, antialias: true }}
     >
       <ambientLight intensity={0.9} />
       <pointLight position={[5, 5, 5]} intensity={1.4} color={accentColor} />

@@ -18,6 +18,13 @@ const can = (action) => requirePermission("intercompany", action);
 router.get("/", can("view"), controller.list);
 router.post("/", can("create"), validator.validateRecord, controller.record);
 router.get("/:id", can("view"), controller.getById);
+router.post("/:id/approve", can("approve"), controller.approve);
+router.post(
+  "/:id/reject",
+  can("approve"),
+  validator.validateReject,
+  controller.reject,
+);
 router.post("/:id/match", can("approve"), controller.match);
 router.post("/:id/settle", can("approve"), controller.settle);
 router.post(

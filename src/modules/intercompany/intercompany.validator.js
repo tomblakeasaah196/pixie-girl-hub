@@ -30,6 +30,12 @@ const recordSchema = z
   })
   .strict();
 
+const rejectSchema = z
+  .object({
+    reason: z.string().max(2000).optional(),
+  })
+  .strict();
+
 const reconciliationSchema = z
   .object({
     discrepancy_type: z.enum([
@@ -51,5 +57,6 @@ const mk = (schema) => (req, _res, next) => {
 
 module.exports = {
   validateRecord: mk(recordSchema),
+  validateReject: mk(rejectSchema),
   validateReconciliation: mk(reconciliationSchema),
 };

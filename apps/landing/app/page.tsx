@@ -5,6 +5,7 @@ import { fetchSalesIndex } from "@/lib/api";
 import { getBrand } from "@/lib/brand";
 import { JoinTheListForm } from "@/components/JoinTheListForm";
 import { IntroOverlay } from "@/components/IntroOverlay";
+import { ScrollIndicator } from "@/components/ScrollIndicator";
 
 /**
  * Root index for the sales subdomain (apex page).
@@ -61,7 +62,7 @@ async function IndexContent() {
   return (
     <main className="min-h-screen">
       {/* Hero: "Between drops" messaging */}
-      <section className="relative overflow-hidden min-h-[60vh] flex items-center justify-center px-6 py-20">
+      <section className="relative overflow-hidden min-h-[40vh] flex items-center justify-center px-6">
         <div
           className="absolute inset-0 -z-10"
           style={{
@@ -87,7 +88,7 @@ async function IndexContent() {
       </section>
 
       {/* Join the list form */}
-      <section className="px-6 py-16 md:py-20">
+      <section className="px-6 py-8 md:py-10">
         <div className="mx-auto max-w-[480px]">
           <JoinTheListForm />
         </div>
@@ -95,7 +96,7 @@ async function IndexContent() {
 
       {/* Upcoming campaigns */}
       {hasUpcoming && (
-        <section className="px-6 py-16 md:py-20 border-t border-[rgb(var(--border-c)/0.1)]">
+        <section className="px-6 py-8 md:py-10 border-t border-[rgb(var(--border-c)/0.1)]">
           <div className="mx-auto max-w-[1200px]">
             <div className="mb-12">
               <div className="micro mb-2">Next up</div>
@@ -143,7 +144,7 @@ async function IndexContent() {
 
       {/* Past campaigns archive */}
       {hasPast && (
-        <section className="px-6 py-16 md:py-20 border-t border-[rgb(var(--border-c)/0.1)]">
+        <section className="px-6 py-8 md:py-10 border-t border-[rgb(var(--border-c)/0.1)]">
           <div className="mx-auto max-w-[1200px]">
             <div className="mb-12">
               <div className="micro mb-2">Past drops</div>
@@ -189,7 +190,7 @@ async function IndexContent() {
       )}
 
       {/* CTA: Visit storefront */}
-      <section className="px-6 py-16 md:py-20 border-t border-[rgb(var(--border-c)/0.1)] text-center">
+      <section className="px-6 py-8 md:py-10 border-t border-[rgb(var(--border-c)/0.1)] text-center">
         <div className="mx-auto max-w-[560px]">
           <p className="text-[rgb(var(--text-muted))] mb-6">
             In the meantime, shop our full collection on the main storefront.
@@ -208,7 +209,7 @@ async function IndexContent() {
 
 function DefaultFallback() {
   return (
-    <main className="min-h-screen grid place-items-center px-6 py-16">
+    <main className="min-h-screen grid place-items-center px-6 py-10">
       <div className="glass rounded-[var(--radius)] p-8 max-w-md text-center space-y-4">
         <div className="micro">No live sale right now</div>
         <h1 className="font-display text-3xl leading-tight">
@@ -243,6 +244,7 @@ export default function Page() {
       <Suspense fallback={<DefaultFallback />}>
         <IndexContent />
       </Suspense>
+      <ScrollIndicator />
     </>
   );
 }

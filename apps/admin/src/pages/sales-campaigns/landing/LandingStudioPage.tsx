@@ -349,7 +349,60 @@ function Editor({
         <Toggle label="Cinematic reveal enabled" checked={config.reveal.enabled} onChange={(v) => update((d) => { d.reveal.enabled = v; })} />
         <Toggle label="Show scarcity counter" checked={config.reveal.showScarcity} onChange={(v) => update((d) => { d.reveal.showScarcity = v; })} />
         <Text label="Reveal tagline" value={config.reveal.tagline} onChange={(v) => update((d) => { d.reveal.tagline = v; })} />
-        <button onClick={onReplay} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border hairline text-[13px] font-semibold text-text-muted hover:text-text-primary"><Play className="w-4 h-4" /> Play reveal</button>
+
+        {config.reveal.threeD && (
+          <>
+            <div className="pt-2 mt-2 border-t border-border-c/10">
+              <Toggle label="3D brand animation enabled" checked={config.reveal.threeD.enabled} onChange={(v) => update((d) => { if (d.reveal.threeD) d.reveal.threeD.enabled = v; })} />
+
+              {config.reveal.threeD.enabled && (
+                <>
+                  <div className="mt-3">
+                    <label className="text-[12px] font-semibold block mb-1.5">3D Variant</label>
+                    <select
+                      value={config.reveal.threeD.variant}
+                      onChange={(e) => update((d) => { if (d.reveal.threeD) d.reveal.threeD.variant = e.target.value as "text-dual" | "logo-static"; })}
+                      className="input-sm w-full"
+                    >
+                      <option value="text-dual">Text (Pixie Girl + Global)</option>
+                      <option value="logo-static">Logo (Faitlyn Hair)</option>
+                    </select>
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="text-[12px] font-semibold block mb-1.5">Rotation Speed</label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="3"
+                      step="0.1"
+                      value={config.reveal.threeD.rotationSpeed}
+                      onChange={(e) => update((d) => { if (d.reveal.threeD) d.reveal.threeD.rotationSpeed = parseFloat(e.target.value); })}
+                      className="w-full"
+                    />
+                    <span className="text-[11px] text-text-muted">{config.reveal.threeD.rotationSpeed.toFixed(1)}x</span>
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="text-[12px] font-semibold block mb-1.5">Glow Intensity</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      value={config.reveal.threeD.glowIntensity}
+                      onChange={(e) => update((d) => { if (d.reveal.threeD) d.reveal.threeD.glowIntensity = parseFloat(e.target.value); })}
+                      className="w-full"
+                    />
+                    <span className="text-[11px] text-text-muted">{config.reveal.threeD.glowIntensity.toFixed(1)}x</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        <button onClick={onReplay} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border hairline text-[13px] font-semibold text-text-muted hover:text-text-primary mt-3"><Play className="w-4 h-4" /> Play reveal</button>
       </Section>
 
       <div className="pt-2 border-t hairline">

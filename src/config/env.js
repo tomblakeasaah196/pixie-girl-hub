@@ -290,6 +290,12 @@ const schema = z.object({
   TRANSCRIPTION_MODEL: z.string().optional(),
   MEDIA_BASE_URL: z.string().optional(),
 
+  // Web Push (VAPID) — browser push notifications. All three unset → push is
+  // inert (push.service isConfigured() false). Generate keys with web-push.
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_EMAIL: z.string().optional(),
+
   // Cron schedules (worker). Overridable; defaults preserve the built-in
   // cadence. Operational sweeps (queues, reminders) stay literal in worker.js.
   CRON_DAILY_AI_BRIEFING: z.string().default("0 7 * * *"),

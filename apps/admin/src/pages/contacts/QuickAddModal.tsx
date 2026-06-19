@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Zap } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
+import { Select } from "@/components/ui/controls";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { useCreateContact } from "./hooks";
 import { DIAL_CODES } from "./ContactFormModal";
@@ -145,21 +146,18 @@ export function QuickAddModal({ initialType = "customer", onClose, onSuccess }: 
             hint="Include country code for WhatsApp API accuracy"
           >
             <div className="flex gap-2">
-              <select
-                value={dialCode.dial}
-                onChange={(e) => {
-                  const d = DIAL_CODES.find((c) => c.dial === e.target.value) ?? DIAL_CODES[0];
+              <Select
+                className="w-[100px] shrink-0"
+                value={dialCode.code}
+                onChange={(v) => {
+                  const d = DIAL_CODES.find((c) => c.code === v) ?? DIAL_CODES[0];
                   setDialCode(d);
                 }}
-                className="h-[42px] px-2 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
-                style={{ width: 90 }}
-              >
-                {DIAL_CODES.map((d) => (
-                  <option key={`${d.code}-${d.dial}`} value={d.dial}>
-                    {d.flag} {d.dial}
-                  </option>
-                ))}
-              </select>
+                options={DIAL_CODES.map((d) => ({
+                  value: d.code,
+                  label: `${d.flag} ${d.dial}`,
+                }))}
+              />
               <TextInput
                 className="flex-1"
                 type="tel"

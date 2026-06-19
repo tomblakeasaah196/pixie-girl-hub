@@ -13,6 +13,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useActiveBusiness } from "@/stores/business";
 import { Card } from "@/components/ui/primitives";
+import { Modal } from "@/components/ui/Modal";
 import { api } from "@/lib/api";
 import type { QuickReply } from "@/lib/smartcomm-types";
 
@@ -304,23 +305,36 @@ function EditorPanel({
   const canSave =
     !!draft.title.trim() && !!draft.body.trim() && !!draft.slug.trim();
   return (
-    <div className="fixed inset-0 z-[95] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px]">
-      <div
-        className="w-[min(560px,94vw)] dropglass rounded-2xl overflow-hidden border hairline"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-5 border-b hairline flex items-center gap-2">
-          <h3 className="font-display text-[17px] flex-1">
-            {isNew ? "New" : "Edit"} {draft.scope} quick reply
-          </h3>
+    <Modal
+      open
+      onClose={onCancel}
+      title={`${isNew ? "New" : "Edit"} ${draft.scope} quick reply`}
+      footer={
+        <>
           <button
             onClick={onCancel}
-            className="text-text-muted hover:text-text-primary text-[18px]"
+            className="rounded-xl bg-panel-2 border hairline px-4 py-2 text-[13px] text-text-muted hover:text-text-primary"
           >
-            ×
+            Cancel
           </button>
-        </div>
-        <div className="p-5 space-y-3">
+          <button
+            onClick={onSave}
+            disabled={!canSave || isPending}
+            className="rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <>
+                {isNew ? <Save className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                {isNew ? "Create" : "Save"}
+              </>
+            )}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
           <label className="block">
             <span className="block text-[11.5px] text-text-muted mb-1">
               Slash command
@@ -388,30 +402,7 @@ function EditorPanel({
               Couldn&rsquo;t save. Slug might already exist.
             </p>
           )}
-        </div>
-        <div className="p-4 border-t hairline flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-xl bg-panel-2 border hairline px-4 py-2 text-[13px] text-text-muted hover:text-text-primary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={!canSave || isPending}
-            className="rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 inline-flex items-center gap-1.5"
-          >
-            {isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <>
-                {isNew ? <Save className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                {isNew ? "Create" : "Save"}
-              </>
-            )}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

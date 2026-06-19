@@ -16,6 +16,7 @@
 
 const { query } = require("../../config/database");
 const { logger } = require("../../config/logger");
+const { config } = require("../../config/env");
 
 let webpush = null;
 
@@ -30,13 +31,13 @@ function getWebPush() {
 }
 
 function isConfigured() {
-  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL } = process.env;
+  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL } = config;
   return !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY && VAPID_EMAIL);
 }
 
 /** Return the VAPID public key for the frontend to subscribe with. */
 function getPublicKey() {
-  return process.env.VAPID_PUBLIC_KEY || null;
+  return config.VAPID_PUBLIC_KEY || null;
 }
 
 /** Store or refresh a push subscription for a user. */
@@ -63,7 +64,7 @@ async function sendToUser({ user_id, title, body, url, tag }) {
   const wp = getWebPush();
   if (!wp || !isConfigured()) return;
 
-  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL } = process.env;
+  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL } = config;
   wp.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
   const { rows } = await query(

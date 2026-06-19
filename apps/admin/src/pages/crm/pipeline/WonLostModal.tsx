@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Trophy, XCircle, PauseCircle, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { useSetDealStatus } from "../hooks";
@@ -35,7 +36,7 @@ export function WonLostModal({ deal, onClose }: Props) {
       { key: "on_hold", label: "Put On Hold", icon: PauseCircle, color: "text-warn", bg: "bg-warn/[0.08] border-warn/25 hover:bg-warn/[0.14]" },
     ];
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-sm lg:max-w-md glass rounded-[22px] p-5 shadow-glass">
         <div className="text-[14px] font-semibold text-text-primary mb-0.5">Update deal status</div>
@@ -132,6 +133,7 @@ export function WonLostModal({ deal, onClose }: Props) {
           </Button>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

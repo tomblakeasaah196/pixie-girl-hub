@@ -4,6 +4,7 @@ import Image from "next/image";
 import { fetchSalesIndex } from "@/lib/api";
 import { getBrand } from "@/lib/brand";
 import { JoinTheListForm } from "@/components/JoinTheListForm";
+import { IntroOverlay } from "@/components/IntroOverlay";
 
 /**
  * Root index for the sales subdomain (apex page).
@@ -235,8 +236,11 @@ function getStorefrontUrl(brand: string): string {
 
 export default function Page() {
   return (
-    <Suspense fallback={<DefaultFallback />}>
-      <IndexContent />
-    </Suspense>
+    <>
+      <IntroOverlay brand={getBrand()} />
+      <Suspense fallback={<DefaultFallback />}>
+        <IndexContent />
+      </Suspense>
+    </>
   );
 }

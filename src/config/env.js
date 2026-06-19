@@ -110,6 +110,14 @@ const schema = z.object({
   NOMBA_CLIENT_ID: z.string().optional(),
   NOMBA_ACCOUNT_ID: z.string().optional(),
   NOMBA_BASE_URL: z.string().url().default("https://api.nomba.com"),
+  // Nomba is per-brand: each business has its own Nomba account. The unprefixed
+  // NOMBA_* above stays as a legacy single-tenant fallback.
+  PIXIE_NOMBA_CLIENT_ID: z.string().optional(),
+  PIXIE_NOMBA_API_KEY: z.string().optional(),
+  PIXIE_NOMBA_ACCOUNT_ID: z.string().optional(),
+  FAITLYN_NOMBA_CLIENT_ID: z.string().optional(),
+  FAITLYN_NOMBA_API_KEY: z.string().optional(),
+  FAITLYN_NOMBA_ACCOUNT_ID: z.string().optional(),
   // Stripe
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),

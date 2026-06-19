@@ -61,7 +61,23 @@ function verifyOpay(rawBody, headers) {
   return opay.verifyWebhookSignature(rawBody, headers || {});
 }
 function verifyNomba(rawBody, headers) {
-  return nomba.verifyWebhookSignature(rawBody, headers || {});
+  // Per-brand Nomba → try each brand's client secret (+ legacy fallback). Valid
+  // against any one → accept; present-but-invalid for all → reject.
+  const secrets = [
+    config.PIXIE_NOMBA_API_KEY,
+    config.FAITLYN_NOMBA_API_KEY,
+    config.NOMBA_API_KEY,
+  ].filter(Boolean);
+  if (!secrets.length) return null;
+  let invalid = false;
+  for (const client_secret of secrets) {
+    const r = nomba.verifyWebhookSignature(rawBody, headers || {}, {
+      client_secret,
+    });
+    if (r === true) return true;
+    if (r === false) invalid = true;
+  }
+  return invalid ? false : null;
 }
 // Stripe verifies + parses in one step (constructEvent over the raw body).
 function verifyStripe(rawBody, headers) {
@@ -392,7 +408,30 @@ async function confirmNombaCharge(log) {
     (evt.data && (evt.data.transaction || evt.data.order || evt.data)) || {};
   const reference = d.orderReference || d.merchantTxRef;
   if (!reference) throw new Error("nomba webhook missing order reference");
-  const res = await nomba.verifyTransaction(reference);
+  // Per-brand Nomba: discover the owning brand by re-verifying against each
+  // configured account (only the owner returns the transaction).
+  const gateways = require("./payment-gateways.service");
+  let res = null;
+  let resolvedBrand = metaOf(d).brand || null;
+  const tryBrands = resolvedBrand ? [resolvedBrand] : VALID_BRANDS;
+  for (const b of tryBrands) {
+    const creds = await gateways.resolveCredentials({
+      brand: b,
+      provider: "nomba",
+    });
+    if (!creds) continue;
+    try {
+      const r = await nomba.verifyTransaction(reference, creds);
+      const tx0 = (r && r.data && (r.data.transaction || r.data)) || {};
+      if (tx0.status || tx0.orderReference || tx0.id) {
+        res = r;
+        resolvedBrand = b;
+        break;
+      }
+    } catch {
+      // not this brand's transaction — try the next
+    }
+  }
   const tx = (res && res.data && (res.data.transaction || res.data)) || {};
   const success = (tx.status || d.status || "").toLowerCase() === "success";
   if (!success) return;
@@ -404,9 +443,22 @@ async function confirmNombaCharge(log) {
   // Nomba is POS-first (§6.21). Treat as a terminal payment unless the metadata
   // explicitly flags an online checkout (hybrid scenario).
   const method = meta.channel === "online" ? "nomba_online" : "nomba_terminal";
+  // We don't pass custom metadata to Nomba, so recover the order from the
+  // reference (`nomba-<order_number>-<ts>`) when the payload didn't carry it.
+  let order_id = meta.order_id;
+  if (!order_id && resolvedBrand) {
+    const noPrefix = String(reference).replace(/^nomba-/, "");
+    const cut = noPrefix.lastIndexOf("-");
+    const orderNumber = cut > 0 ? noPrefix.slice(0, cut) : noPrefix;
+    const order = await salesRepo.findByOrderNumber({
+      brand: resolvedBrand,
+      order_number: orderNumber,
+    });
+    if (order) order_id = order.order_id;
+  }
   await recordGatewayPayment({
-    brand: meta.brand,
-    order_id: meta.order_id,
+    brand: meta.brand || resolvedBrand,
+    order_id,
     reference,
     amount_ngn,
     method,

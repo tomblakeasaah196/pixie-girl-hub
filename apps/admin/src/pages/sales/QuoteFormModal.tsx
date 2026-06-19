@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { Search, X, Plus, Minus } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button, MoneyText } from "@/components/ui/primitives";
@@ -84,32 +84,28 @@ export function QuoteFormModal({
     [lines],
   );
 
-  const searchContacts = useCallback(async (q: string) => {
+  const contactDebounce = useRef<ReturnType<typeof setTimeout>>();
+  const handleContactSearch = useCallback((q: string) => {
     setContactSearch(q);
+    clearTimeout(contactDebounce.current);
     if (q.length < 2) {
       setContactHits([]);
       return;
     }
-    try {
-      const { data } = await import("@/lib/api").then((m) =>
-        m.api.get<{
-          data: Array<{
-            contact_id: string;
-            display_name: string;
-            email: string | null;
-          }>;
-        }>(`/contacts?q=${encodeURIComponent(q)}&page_size=6`),
-      );
-      setContactHits(
-        data.map((c) => ({
-          id: c.contact_id,
-          label: c.display_name,
-          sub: c.email ?? "",
-        })),
-      );
-    } catch {
-      setContactHits([]);
-    }
+    contactDebounce.current = setTimeout(async () => {
+      try {
+        const res = await salesApi.searchContacts(q);
+        setContactHits(
+          (res.data ?? []).map((c) => ({
+            id: c.contact_id,
+            label: c.display_name,
+            sub: [c.primary_phone, c.email].filter(Boolean).join(" · ") || "",
+          })),
+        );
+      } catch {
+        setContactHits([]);
+      }
+    }, 300);
   }, []);
 
   const searchProducts = useCallback(async (q: string) => {
@@ -254,7 +250,7 @@ export function QuoteFormModal({
                 autoFocus
                 placeholder="Search customer…"
                 value={contactSearch}
-                onChange={(e) => searchContacts(e.target.value)}
+                onChange={(e) => handleContactSearch(e.target.value)}
                 className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
               />
               {contactHits.length > 0 && (

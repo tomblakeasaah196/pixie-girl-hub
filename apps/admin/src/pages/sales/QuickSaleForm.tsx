@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   Search,
   User,
@@ -134,32 +134,28 @@ export function QuickSaleForm() {
   const total = subtotal + vatAmount + shipping;
 
   // ── Contact search ───────────────────────────────────────
-  const searchContacts = useCallback(async (q: string) => {
+  const contactDebounce = useRef<ReturnType<typeof setTimeout>>();
+  const handleContactSearch = useCallback((q: string) => {
     setContactSearch(q);
+    clearTimeout(contactDebounce.current);
     if (q.length < 2) {
       setContactResults([]);
       return;
     }
-    try {
-      const { data } = await import("@/lib/api").then((m) =>
-        m.api.get<{
-          data: Array<{
-            contact_id: string;
-            display_name: string;
-            email: string | null;
-          }>;
-        }>(`/contacts?q=${encodeURIComponent(q)}&page_size=6`),
-      );
-      setContactResults(
-        data.map((c) => ({
-          id: c.contact_id,
-          label: c.display_name,
-          sub: c.email ?? "",
-        })),
-      );
-    } catch {
-      setContactResults([]);
-    }
+    contactDebounce.current = setTimeout(async () => {
+      try {
+        const res = await salesApi.searchContacts(q);
+        setContactResults(
+          (res.data ?? []).map((c) => ({
+            id: c.contact_id,
+            label: c.display_name,
+            sub: [c.primary_phone, c.email].filter(Boolean).join(" · ") || "",
+          })),
+        );
+      } catch {
+        setContactResults([]);
+      }
+    }, 300);
   }, []);
 
   const pickContact = (r: SearchResult) => {
@@ -455,7 +451,7 @@ export function QuickSaleForm() {
                 <input
                   placeholder="Search by name, email, or phone…"
                   value={contactSearch}
-                  onChange={(e) => searchContacts(e.target.value)}
+                  onChange={(e) => handleContactSearch(e.target.value)}
                   className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
                 />
                 {contactResults.length > 0 && (

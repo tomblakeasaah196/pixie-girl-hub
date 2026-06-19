@@ -116,6 +116,13 @@ export const requestCancellation = (
 
 export const getSalesKpis = () => api.get<SalesKpis>(`/dashboards/kpis/sales`);
 
+// ── Contact search ─────────────────────────────────────────
+
+export const searchContacts = (q: string, limit = 6) =>
+  api.get<PaginatedResponse<{ contact_id: string; display_name: string; email: string | null; primary_phone: string | null }>>(
+    `/contacts?q=${encodeURIComponent(q)}&page_size=${limit}`
+  );
+
 // ── Catalogue helpers (for product picker) ──────────────────
 
 export const searchProducts = (search: string) =>

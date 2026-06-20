@@ -56,7 +56,7 @@ const BODY_FONT =
  *  at a high optical size with a hint of SOFT — this mirrors the reference's
  *  `.font-display { font-variation-settings: "opsz" 144, "SOFT" 30 }`. */
 const DISPLAY = {
-  ...DISPLAY,
+  fontFamily: DISPLAY_FONT,
   fontVariationSettings: '"opsz" 144, "SOFT" 30',
 } as const;
 

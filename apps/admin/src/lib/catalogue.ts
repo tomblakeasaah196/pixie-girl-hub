@@ -296,20 +296,44 @@ function qs(params: Record<string, string | undefined>): string {
   );
 }
 
+/**
+ * A paginated list envelope. Backend list controllers that call
+ * `parsePagination` respond with `{ data, meta }` instead of a bare array,
+ * and lib/api.ts passes that envelope through untouched when `meta` is present
+ * (the rest of the app reads it as PaginatedResponse). List hooks below
+ * normalise to the inner array with `toList`, so a paginated response never
+ * reaches a component as a non-array (the cause of "map is not a function").
+ */
+export interface Paginated<T> {
+  data: T[];
+  meta?: { page: number; page_size: number; total: number; has_more: boolean };
+}
+
+/** Normalise a list response to an array, whether it came back bare or as a
+ *  `{ data, meta }` envelope. Defensive against both shapes. */
+function toList<T>(res: Paginated<T> | T[] | null | undefined): T[] {
+  if (Array.isArray(res)) return res;
+  return res?.data ?? [];
+}
+
 export function useBaseProducts(filters: BaseFilters = {}) {
   const brand = useBrand();
   return useQuery<BaseProduct[]>({
     queryKey: ["catalogue", "base", brand, filters],
     queryFn: () =>
-      api.get<BaseProduct[]>(
-        `/catalogue/products${qs({
-          q: filters.q,
-          category_id: filters.category_id,
-          visible:
-            filters.visible === undefined ? undefined : String(filters.visible),
-          page_size: "100",
-        })}`,
-      ),
+      api
+        .get<Paginated<BaseProduct> | BaseProduct[]>(
+          `/catalogue/products${qs({
+            q: filters.q,
+            category_id: filters.category_id,
+            visible:
+              filters.visible === undefined
+                ? undefined
+                : String(filters.visible),
+            page_size: "100",
+          })}`,
+        )
+        .then(toList),
   });
 }
 
@@ -464,15 +488,17 @@ export function useStyledProducts(filters: StyledFilters = {}) {
   return useQuery<StyledProduct[]>({
     queryKey: ["catalogue", "styled", brand, filters],
     queryFn: () =>
-      api.get<StyledProduct[]>(
-        `/catalogue/styled-products${qs({
-          q: filters.q,
-          status: filters.status,
-          base_product_id: filters.base_product_id,
-          category_id: filters.category_id,
-          page_size: "100",
-        })}`,
-      ),
+      api
+        .get<Paginated<StyledProduct> | StyledProduct[]>(
+          `/catalogue/styled-products${qs({
+            q: filters.q,
+            status: filters.status,
+            base_product_id: filters.base_product_id,
+            category_id: filters.category_id,
+            page_size: "100",
+          })}`,
+        )
+        .then(toList),
   });
 }
 
@@ -1078,7 +1104,11 @@ export function useProductTrash(enabled = true) {
   return useQuery<BaseProduct[]>({
     queryKey: ["catalogue", "trash", "products", brand],
     queryFn: () =>
-      api.get<BaseProduct[]>("/catalogue/products/trash?page_size=100"),
+      api
+        .get<Paginated<BaseProduct> | BaseProduct[]>(
+          "/catalogue/products/trash?page_size=100",
+        )
+        .then(toList),
     enabled,
   });
 }
@@ -1103,9 +1133,11 @@ export function useStyledTrash(enabled = true) {
   return useQuery<StyledProduct[]>({
     queryKey: ["catalogue", "trash", "styled", brand],
     queryFn: () =>
-      api.get<StyledProduct[]>(
-        "/catalogue/styled-products/trash?page_size=100",
-      ),
+      api
+        .get<Paginated<StyledProduct> | StyledProduct[]>(
+          "/catalogue/styled-products/trash?page_size=100",
+        )
+        .then(toList),
     enabled,
   });
 }

@@ -15,6 +15,7 @@ const router = express.Router();
 router.get("/products", controller.listProducts);
 router.get("/products/:slug", controller.getProduct);
 router.get("/categories", controller.listCategories);
+router.get("/bundles", controller.listBundles);
 router.get("/collections/:slug", controller.getCollection);
 router.get("/content/:type/:slug", controller.getContent);
 

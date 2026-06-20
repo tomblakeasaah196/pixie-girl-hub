@@ -21,6 +21,7 @@ const can = (action) => requirePermission("storefront", action);
 router.get("/products", can("view"), controller.listProducts);
 router.get("/products/:slug", can("view"), controller.getProduct);
 router.get("/categories", can("view"), controller.listCategories);
+router.get("/bundles", can("view"), controller.listBundles);
 router.get("/collections/:slug", can("view"), controller.getCollection);
 
 module.exports = router;

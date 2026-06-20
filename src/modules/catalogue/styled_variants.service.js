@@ -231,7 +231,12 @@ async function deleteColour({ brand, user, request_id, styled_id, colour_id }) {
   events.emit("styled.updated", { brand, id: styled_id });
 }
 
-// ── Per-colour images (2–3 pictures per colour) ──────────
+// ── Per-colour images (gallery per colour / variant) ─────
+// Each colour (the visual variant a shopper picks) carries its own gallery.
+// The minimum is 2–3 for a good storefront card, but there is a generous
+// ceiling so merchandisers can show a wig from many angles + on-model shots.
+const MAX_COLOUR_IMAGES = 10;
+
 async function listColourImages({ brand, styled_id, colour_id }) {
   const colour = await repo.getColour({ brand, styled_id, colour_id });
   if (!colour) throw new NotFoundError("Colour");
@@ -268,6 +273,22 @@ async function addColourImage({
       colour_id,
     });
     if (!colour) throw new NotFoundError("Colour");
+    // Cap the gallery so a single colour can't accumulate unbounded uploads.
+    const existing = await catalogueRepo.listColourImages({
+      client,
+      brand,
+      colour_id,
+    });
+    if (existing.length >= MAX_COLOUR_IMAGES) {
+      throw new AppError(
+        "IMAGE_LIMIT_REACHED",
+        `A colour can hold at most ${MAX_COLOUR_IMAGES} pictures`,
+        422,
+        {
+          user_message: `Each colour can have up to ${MAX_COLOUR_IMAGES} pictures. Remove one to add another.`,
+        },
+      );
+    }
     const doc = await documents.store({
       client,
       brand,

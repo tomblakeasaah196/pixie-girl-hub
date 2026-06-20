@@ -58,8 +58,11 @@ const productCreate = z
     care_instructions: z.string().max(2000).nullable().optional(),
     product_type: z.enum(["physical", "service", "digital"]).optional(),
     is_custom: z.boolean().optional(),
-    is_visible_storefront: z.boolean().optional(),
-    visible_on_channels: z.array(z.string()).optional(),
+    // NOTE: storefront visibility is intentionally NOT accepted here. A base
+    // product is the China-origin, stock-bearing record — it must never be
+    // published to the storefront. Only Styled products carry a storefront
+    // lifecycle (draft → live). Sending `is_visible_storefront` /
+    // `visible_on_channels` on a base product is rejected by `.strict()`.
     brand_name: z.string().max(120).nullable().optional(),
     meta_title: z.string().max(200).nullable().optional(),
     meta_description: z.string().max(500).nullable().optional(),

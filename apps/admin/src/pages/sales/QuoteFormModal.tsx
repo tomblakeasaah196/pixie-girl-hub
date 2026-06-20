@@ -4,6 +4,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Button, MoneyText } from "@/components/ui/primitives";
 import { Select, NumberField } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
+import { ProductPicker } from "@/components/catalogue/ProductPicker";
+import { resolvePick, type ProductHit } from "@/lib/product-search";
 import { useCreateQuotation } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import * as salesApi from "./api";
@@ -65,10 +67,6 @@ export function QuoteFormModal({
   const [contactHits, setContactHits] = useState<ContactHit[]>([]);
 
   // Step 2: Products
-  const [productSearch, setProductSearch] = useState("");
-  const [productHits, setProductHits] = useState<
-    { id: string; label: string; sub: string }[]
-  >([]);
   const [lines, setLines] = useState<QuoteLine[]>([]);
 
   // Step 3: Terms
@@ -108,47 +106,38 @@ export function QuoteFormModal({
     }, 300);
   }, []);
 
-  const searchProducts = useCallback(async (q: string) => {
-    setProductSearch(q);
-    if (q.length < 2) {
-      setProductHits([]);
-      return;
-    }
+  const handlePick = async (hit: ProductHit) => {
     try {
-      const res = await salesApi.searchProducts(q);
-      setProductHits(
-        res.data.map((p) => ({ id: p.product_id, label: p.name, sub: p.slug })),
-      );
-    } catch {
-      setProductHits([]);
-    }
-  }, []);
-
-  const addProduct = async (r: { id: string; label: string }) => {
-    setProductSearch("");
-    setProductHits([]);
-    try {
-      const variants = await salesApi.getProductVariants(r.id);
-      for (const v of variants.filter((vr) => vr.is_active)) {
-        setLines((prev) => {
-          if (prev.find((l) => l.variant_id === v.variant_id)) return prev;
-          return [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              variant_id: v.variant_id,
-              label: `${r.label} — ${v.variant_name}`,
-              quantity: 1,
-              unit_price: Number(
-                v.price_storefront_ngn ?? v.price_pos_ngn ?? 0,
-              ),
-              discount: 0,
-            },
-          ];
-        });
+      const { lines: resolved } = await resolvePick(hit);
+      if (resolved.length === 0) {
+        fireToast(
+          "Nothing to add",
+          "That product has no active variant to quote.",
+          "order",
+          "high",
+        );
+        return;
       }
+      setLines((prev) => {
+        const next = [...prev];
+        for (const l of resolved) {
+          const i = next.findIndex((x) => x.variant_id === l.variant_id);
+          if (i >= 0)
+            next[i] = { ...next[i], quantity: next[i].quantity + l.quantity };
+          else
+            next.push({
+              id: crypto.randomUUID(),
+              variant_id: l.variant_id,
+              label: l.label,
+              quantity: l.quantity,
+              unit_price: l.unit_price,
+              discount: 0,
+            });
+        }
+        return next;
+      });
     } catch {
-      fireToast("Error", "Failed to load product variants", "order", "high");
+      fireToast("Error", "Failed to add product", "order", "high");
     }
   };
 
@@ -295,31 +284,7 @@ export function QuoteFormModal({
       {/* Step 2: Products */}
       {formStep === 2 && (
         <div className="space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
-            <input
-              autoFocus
-              placeholder="Search products…"
-              value={productSearch}
-              onChange={(e) => searchProducts(e.target.value)}
-              className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
-            />
-            {productHits.length > 0 && (
-              <div className="absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] dropglass py-1 max-h-[200px] overflow-y-auto">
-                {productHits.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => addProduct(r)}
-                    className="w-full px-4 py-2.5 text-left hover:bg-text-primary/[0.06]"
-                  >
-                    <div className="text-[13px] font-semibold">{r.label}</div>
-                    <div className="text-[11px] text-text-faint">{r.sub}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <ProductPicker onPick={handlePick} autoFocus />
 
           {lines.length > 0 && (
             <div className="space-y-2">

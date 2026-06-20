@@ -50,6 +50,10 @@ async function getCollection(req, res) {
   });
 }
 
+async function listBundles(req, res) {
+  res.json({ data: await service.listBundles({ brand: brandHint(req) }) });
+}
+
 async function getContent(req, res) {
   res.json({
     data: await service.getContent({
@@ -110,6 +114,7 @@ module.exports = {
   getProduct,
   listCategories,
   getCollection,
+  listBundles,
   getContent,
   submitOrderForm,
   startSession,

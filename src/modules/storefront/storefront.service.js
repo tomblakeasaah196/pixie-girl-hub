@@ -37,6 +37,10 @@ async function getCollection({ brand, slug }) {
   return collection;
 }
 
+function listBundles({ brand }) {
+  return repo.listBundles({ brand });
+}
+
 async function getContent({ brand, type, slug }) {
   const post = await repo.getContentPost({ brand, type, slug });
   if (!post) throw new NotFoundError("Content");
@@ -175,6 +179,7 @@ module.exports = {
   getProduct,
   listCategories,
   getCollection,
+  listBundles,
   getContent,
   submitOrderForm,
   startSession,

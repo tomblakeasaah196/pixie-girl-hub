@@ -1,6 +1,19 @@
 # syntax=docker/dockerfile:1.7
 FROM node:20-alpine AS base
-RUN apk add --no-cache ffmpeg postgresql-client tini
+# chromium + shared libs/fonts: PDF rendering (invoices, reports, payslips) goes
+# through src/services/pdf.service.js (Puppeteer) from both the API process
+# (runtime) and the BullMQ worker (report-processor.js), so both stages need a
+# working headless Chromium. Alpine's puppeteer-bundled Chromium download is
+# glibc-only and fails to launch on musl, so we install the distro package
+# instead and point Puppeteer at it (PUPPETEER_EXECUTABLE_PATH below) while
+# skipping its own download during `npm ci`. ttf-freefont gives PDF output
+# (e.g. the ₦ Naira sign in pdf.templates.js) broad glyph coverage.
+RUN apk add --no-cache \
+      ffmpeg postgresql-client tini \
+      chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 WORKDIR /app
 
 FROM base AS deps

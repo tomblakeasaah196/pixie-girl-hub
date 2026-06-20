@@ -143,6 +143,10 @@ CREATE TABLE {{BUSINESS}}.journal_entries (
   -- Description (shown on reports)
   description           TEXT        NOT NULL,
   reference             TEXT,                                   -- invoice no, PO no, etc.
+  -- Opt-in posting idempotency key (P1-3): callers that must post exactly once
+  -- (re-delivered events, retried requests) pass their own globally-unique key;
+  -- see journal_entries_idempotency_uidx in 000033_business_indexes.
+  idempotency_key       TEXT,
   -- Totals (NGN) — must equal sum of debit/credit lines (trigger-enforced)
   total_debit_ngn       NUMERIC(14,2) NOT NULL DEFAULT 0,
   total_credit_ngn      NUMERIC(14,2) NOT NULL DEFAULT 0,

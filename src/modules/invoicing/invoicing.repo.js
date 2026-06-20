@@ -34,6 +34,7 @@ const INV_COLS = [
   "issue_date",
   "due_date",
   "payment_terms",
+  "issued_by",
 ];
 const LINE_COLS = [
   "invoice_id",
@@ -96,7 +97,10 @@ async function insertLine({ client, brand, line }) {
 }
 async function findById({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "invoices")} WHERE invoice_id = $1`,
+    `SELECT i.*, c.display_name AS contact_name
+       FROM ${t(brand, "invoices")} i
+       LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+      WHERE i.invoice_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
@@ -129,30 +133,34 @@ async function listInvoices({
   const params = [];
   let i = 1;
   if (filters.status) {
-    where.push(`status = $${i++}`);
+    where.push(`i.status = $${i++}`);
     params.push(filters.status);
   }
   if (filters.contact_id) {
-    where.push(`contact_id = $${i++}`);
+    where.push(`i.contact_id = $${i++}`);
     params.push(filters.contact_id);
   }
   if (filters.order_id) {
-    where.push(`order_id = $${i++}`);
+    where.push(`i.order_id = $${i++}`);
     params.push(filters.order_id);
   }
   if (filters.overdue) {
     where.push(
-      `status NOT IN ('paid','void','refunded') AND due_date < CURRENT_DATE`,
+      `i.status NOT IN ('paid','void','refunded') AND i.due_date < CURRENT_DATE`,
     );
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "invoices")} ${w}`,
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "invoices")} i ${w}`,
     params,
   );
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "invoices")} ${w} ORDER BY issue_date DESC, created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+    `SELECT i.*, c.display_name AS contact_name
+       FROM ${t(brand, "invoices")} i
+       LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+       ${w}
+      ORDER BY i.issue_date DESC, i.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {
@@ -236,7 +244,11 @@ async function insertCreditNoteLine({ client, brand, line }) {
 }
 async function findCreditNoteById({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "credit_notes")} WHERE credit_note_id = $1`,
+    `SELECT cn.*, i.invoice_number, c.display_name AS contact_name
+       FROM ${t(brand, "credit_notes")} cn
+       LEFT JOIN ${t(brand, "invoices")} i ON i.invoice_id = cn.invoice_id
+       LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+      WHERE cn.credit_note_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
@@ -258,21 +270,26 @@ async function listCreditNotes({
   const params = [];
   let i = 1;
   if (filters.status) {
-    where.push(`status = $${i++}`);
+    where.push(`cn.status = $${i++}`);
     params.push(filters.status);
   }
   if (filters.invoice_id) {
-    where.push(`invoice_id = $${i++}`);
+    where.push(`cn.invoice_id = $${i++}`);
     params.push(filters.invoice_id);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "credit_notes")} ${w}`,
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "credit_notes")} cn ${w}`,
     params,
   );
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "credit_notes")} ${w} ORDER BY issue_date DESC, created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+    `SELECT cn.*, i.invoice_number, c.display_name AS contact_name
+       FROM ${t(brand, "credit_notes")} cn
+       LEFT JOIN ${t(brand, "invoices")} i ON i.invoice_id = cn.invoice_id
+       LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+       ${w}
+      ORDER BY cn.issue_date DESC, cn.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {

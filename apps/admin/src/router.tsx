@@ -170,6 +170,11 @@ const WorkspacePage = lazyWithRetry(() =>
     default: m.WorkspacePage,
   })),
 );
+const InvoicingPage = lazyWithRetry(() =>
+  import("@/pages/invoicing/InvoicingPage").then((m) => ({
+    default: m.InvoicingPage,
+  })),
+);
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -403,6 +408,15 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <PurchasingPage />
+                </Suspense>
+              ),
+            },
+            // Invoicing & Billing (V2.2 §6.5) — invoices, credit notes, AR ageing.
+            {
+              path: "invoicing",
+              element: (
+                <Suspense fallback={null}>
+                  <InvoicingPage />
                 </Suspense>
               ),
             },

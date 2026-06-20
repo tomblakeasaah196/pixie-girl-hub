@@ -29,14 +29,19 @@ export function LoginPage() {
   const toggleTheme = useUiStore((s) => s.toggleTheme);
 
   // A returning visitor with a live refresh cookie shouldn't see the door.
+  // Same multi-business check as AuthModal's post-login redirect, so this
+  // can't race it to the wrong destination for CEO/multi-brand accounts.
   const status = useAuthStore((s) => s.status);
+  const user = useAuthStore((s) => s.user);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
   useEffect(() => {
-    if (status === "authed") navigate("/", { replace: true });
-  }, [status, navigate]);
+    if (status !== "authed") return;
+    const multi = user?.isCeo || (user?.availableBusinesses.length ?? 0) > 1;
+    navigate(multi ? "/select-entity" : "/", { replace: true });
+  }, [status, user, navigate]);
 
   const platform = branding?.platform;
   const productName = platform?.product_name ?? "Pixie Hub";

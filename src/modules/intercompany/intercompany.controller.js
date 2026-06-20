@@ -28,6 +28,24 @@ async function record(req, res) {
     data: await service.recordTransaction({ ...base(req), input: req.body }),
   });
 }
+async function approve(req, res) {
+  res.json({
+    data: await service.approveTransaction({
+      ...base(req),
+      id: req.params.id,
+      notes: req.body.notes,
+    }),
+  });
+}
+async function reject(req, res) {
+  res.json({
+    data: await service.rejectTransaction({
+      ...base(req),
+      id: req.params.id,
+      reason: req.body.reason,
+    }),
+  });
+}
 async function match(req, res) {
   res.json({
     data: await service.matchTransaction({ ...base(req), id: req.params.id }),
@@ -48,4 +66,13 @@ async function openReconciliation(req, res) {
   });
 }
 
-module.exports = { list, getById, record, match, settle, openReconciliation };
+module.exports = {
+  list,
+  getById,
+  record,
+  approve,
+  reject,
+  match,
+  settle,
+  openReconciliation,
+};

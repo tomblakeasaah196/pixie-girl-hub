@@ -7,12 +7,11 @@
  */
 
 import { AnimatePresence, motion, useReducedMotion, useMotionValue } from "framer-motion";
-import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
+import { Suspense, lazy, useEffect, useState } from "react";
 import type { LandingConfig } from "@/lib/landing-studio";
 
-const ThreeDTextReveal = dynamic(() => import("@/components/ThreeDTextReveal").then((m) => ({ default: m.ThreeDTextReveal })), { ssr: false });
-const ThreeDLogoReveal = dynamic(() => import("@/components/ThreeDLogoReveal").then((m) => ({ default: m.ThreeDLogoReveal })), { ssr: false });
+const ThreeDTextReveal = lazy(() => import("@/components/ThreeDTextReveal").then((m) => ({ default: m.ThreeDTextReveal })));
+const ThreeDLogoReveal = lazy(() => import("@/components/ThreeDLogoReveal").then((m) => ({ default: m.ThreeDLogoReveal })));
 
 const DISPLAY_FONT = '"Fraunces", "Playfair Display", Georgia, serif';
 
@@ -128,26 +127,26 @@ export function AtelierRevealPreview({
                     transition={{ duration: 0.6 }}
                     className="w-full h-[400px] flex items-center justify-center"
                   >
-                    {config.reveal.threeD.variant === "text-dual" ? (
-                      <ThreeDTextReveal
-                        brandType="pixiegirl"
-                        text1="Pixie Girl"
-                        text2="Global"
-                        phase={phaseMotion}
-                        glowIntensity={config.reveal.threeD.glowIntensity}
-                        primaryColor={config.three.primary}
-                        accentColor={config.three.accent}
-                        inkColor={config.three.ink}
-                      />
-                    ) : (
-                      <ThreeDLogoReveal
-                        rotationSpeed={config.reveal.threeD.rotationSpeed}
-                        glowIntensity={config.reveal.threeD.glowIntensity}
-                        primaryColor={config.three.primary}
-                        accentColor={config.three.accent}
-                        phase={phaseMotion}
-                      />
-                    )}
+                    <Suspense fallback={null}>
+                      {config.reveal.threeD.variant === "text-dual" ? (
+                        <ThreeDTextReveal
+                          text1="Pixie Girl"
+                          text2="Global"
+                          phase={phaseMotion}
+                          glowIntensity={config.reveal.threeD.glowIntensity}
+                          primaryColor={config.three.primary}
+                          accentColor={config.three.accent}
+                        />
+                      ) : (
+                        <ThreeDLogoReveal
+                          rotationSpeed={config.reveal.threeD.rotationSpeed}
+                          glowIntensity={config.reveal.threeD.glowIntensity}
+                          primaryColor={config.three.primary}
+                          accentColor={config.three.accent}
+                          phase={phaseMotion}
+                        />
+                      )}
+                    </Suspense>
                   </motion.div>
                 )}
               </AnimatePresence>

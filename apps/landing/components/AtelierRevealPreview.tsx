@@ -124,14 +124,12 @@ export function AtelierRevealPreview({
                   >
                     {config.reveal.threeD.variant === "text-dual" ? (
                       <ThreeDTextReveal
-                        brandType="pixiegirl"
                         text1="Pixie Girl"
                         text2="Global"
                         phase={phaseMotion}
                         glowIntensity={config.reveal.threeD.glowIntensity}
                         primaryColor={config.three.primary}
                         accentColor={config.three.accent}
-                        inkColor={config.three.ink}
                       />
                     ) : (
                       <ThreeDLogoReveal

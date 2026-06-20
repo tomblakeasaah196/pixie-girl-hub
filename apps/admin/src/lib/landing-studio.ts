@@ -270,7 +270,7 @@ export function withDefaults(brandKey: string, cfg: Partial<LandingConfig> | nul
     reveal: {
       ...d.reveal,
       ...(cfg.reveal ?? {}),
-      threeD: { ...d.reveal.threeD, ...(cfg.reveal?.threeD ?? {}) },
+      threeD: { ...(d.reveal.threeD as RevealThreeD), ...(cfg.reveal?.threeD ?? {}) },
     },
   };
 }

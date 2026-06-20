@@ -1,123 +1,60 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Sphere } from "@react-three/drei";
-import { useRef, useEffect, useState } from "react";
+import { Text } from "@react-three/drei";
+import { useRef, useState } from "react";
 import { MotionValue, useMotionValueEvent } from "framer-motion";
 import * as THREE from "three";
 
 interface ThreeDTextRevealProps {
-  brandType: "pixiegirl" | "faitlynhair";
   text1: string;
   text2?: string;
   phase: MotionValue<"reveal" | "done" | "seam" | "part" | "untie">;
   glowIntensity: number;
   primaryColor: string;
   accentColor: string;
-  inkColor: string;
 }
 
-function TextBubbles({
-  text1,
-  text2,
+function AnimatedWord({
+  children,
+  position,
+  color,
+  fontSize,
+  floatOffset,
   phase,
-  delay = 0,
-  glowIntensity,
-  primaryColor,
-  accentColor,
 }: {
-  text1: string;
-  text2?: string;
+  children: string;
+  position: [number, number, number];
+  color: string;
+  fontSize: number;
+  floatOffset: number;
   phase: MotionValue<"reveal" | "done" | "seam" | "part" | "untie">;
-  delay?: number;
-  glowIntensity: number;
-  primaryColor: string;
-  accentColor: string;
 }) {
-  const group1Ref = useRef<THREE.Group>(null);
-  const group2Ref = useRef<THREE.Group>(null);
+  const ref = useRef<THREE.Group>(null);
   const [isRevealing, setIsRevealing] = useState(false);
 
   useMotionValueEvent(phase, "change", (latest) => {
     setIsRevealing(latest === "reveal");
   });
 
-  useFrame(() => {
-    if (group1Ref.current) {
-      group1Ref.current.rotation.y += 0.003;
-      group1Ref.current.rotation.x += 0.001;
-      if (isRevealing) {
-        group1Ref.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
-      } else {
-        group1Ref.current.scale.lerp(new THREE.Vector3(0.3, 0.3, 0.3), 0.1);
-      }
-    }
-    if (group2Ref.current && text2) {
-      group2Ref.current.rotation.y -= 0.002;
-      group2Ref.current.rotation.x -= 0.0015;
-      if (isRevealing) {
-        group2Ref.current.scale.lerp(new THREE.Vector3(0.7, 0.7, 0.7), 0.1);
-      } else {
-        group2Ref.current.scale.lerp(new THREE.Vector3(0.2, 0.2, 0.2), 0.1);
-      }
-    }
+  useFrame((state) => {
+    if (!ref.current) return;
+    ref.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.4 + floatOffset) * 0.25;
+    ref.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 0.8 + floatOffset) * 0.06;
+    const target = isRevealing ? 1 : 0.001;
+    ref.current.scale.lerp(new THREE.Vector3(target, target, target), 0.12);
   });
 
   return (
-    <>
-      <group ref={group1Ref} position={[0, 0.5, 0]}>
-        <Sphere args={[1, 64, 64]}>
-          <meshStandardMaterial
-            color={primaryColor}
-            emissive={primaryColor}
-            emissiveIntensity={glowIntensity * 0.5}
-            roughness={0.3}
-            metalness={0.7}
-            transparent
-            opacity={isRevealing ? 1 : 0}
-          />
-        </Sphere>
-        <mesh>
-          <sphereGeometry args={[1.05, 64, 64]} />
-          <meshBasicMaterial
-            color={accentColor}
-            transparent
-            opacity={isRevealing ? 0.3 : 0}
-            wireframe={false}
-          />
-        </mesh>
-      </group>
-
-      {text2 && (
-        <group ref={group2Ref} position={[0, -0.5, 0]}>
-          <Sphere args={[0.7, 64, 64]}>
-            <meshStandardMaterial
-              color={accentColor}
-              emissive={accentColor}
-              emissiveIntensity={glowIntensity * 0.4}
-              roughness={0.3}
-              metalness={0.7}
-              transparent
-              opacity={isRevealing ? 1 : 0}
-            />
-          </Sphere>
-          <mesh>
-            <sphereGeometry args={[0.75, 64, 64]} />
-            <meshBasicMaterial
-              color={primaryColor}
-              transparent
-              opacity={isRevealing ? 0.2 : 0}
-              wireframe={false}
-            />
-          </mesh>
-        </group>
-      )}
-    </>
+    <group ref={ref} position={position}>
+      <Text fontSize={fontSize} color={color} anchorX="center" anchorY="middle" letterSpacing={0.02}>
+        {children}
+      </Text>
+    </group>
   );
 }
 
 export function ThreeDTextReveal({
-  brandType,
   text1,
   text2,
   phase,
@@ -127,24 +64,23 @@ export function ThreeDTextReveal({
 }: ThreeDTextRevealProps) {
   return (
     <Canvas
-      camera={{ position: [0, 0, 4], fov: 50 }}
-      style={{ background: "transparent", width: "100%", height: "100%" }}
-      gl={{ transparent: true, antialias: true }}
+      camera={{ position: [0, 0, 5], fov: 50 }}
+      style={{ width: "100%", height: "100%" }}
+      gl={{ alpha: true, antialias: true }}
     >
-      <ambientLight intensity={0.8} />
-      <pointLight position={[5, 5, 5]} intensity={1.2} color={accentColor} />
+      <ambientLight intensity={0.9} />
+      <pointLight position={[5, 5, 5]} intensity={1.2 * (1 + glowIntensity)} color={accentColor} />
       <pointLight position={[-5, -5, 3]} intensity={0.6} color={primaryColor} />
-      <pointLight position={[0, 0, 8]} intensity={0.4} />
 
-      <TextBubbles
-        text1={text1}
-        text2={text2}
-        phase={phase}
-        delay={0}
-        glowIntensity={glowIntensity}
-        primaryColor={primaryColor}
-        accentColor={accentColor}
-      />
+      <AnimatedWord position={[0, 0.7, 0]} color={primaryColor} fontSize={1} floatOffset={0} phase={phase}>
+        {text1}
+      </AnimatedWord>
+
+      {text2 && (
+        <AnimatedWord position={[0, -0.7, 0]} color={accentColor} fontSize={0.7} floatOffset={1.5} phase={phase}>
+          {text2}
+        </AnimatedWord>
+      )}
     </Canvas>
   );
 }

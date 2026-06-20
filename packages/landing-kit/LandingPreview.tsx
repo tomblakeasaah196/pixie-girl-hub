@@ -44,23 +44,41 @@ import {
 import type { LandingConfig } from "./config";
 import { hexToTriplet } from "./config";
 
-const DISPLAY_FONT = '"Fraunces", "Playfair Display", Georgia, serif';
-const BODY_FONT = '"Inter Tight", "Montserrat", system-ui, sans-serif';
+// The Atelier faces are loaded by the host app (admin index.html / landing
+// layout.tsx) and exposed as --font-atelier-*; we consume them here with a
+// hard fallback chain so the kit never depends on a runtime font fetch.
+const DISPLAY_FONT =
+  'var(--font-atelier-display, "Fraunces", "Playfair Display", Georgia, serif)';
+const BODY_FONT =
+  'var(--font-atelier-body, "Inter Tight", "Montserrat", system-ui, sans-serif)';
 
-/** Inject the preview fonts + marquee keyframes once. */
+/** Spread onto every display heading. Fraunces reads as the Lovable face only
+ *  at a high optical size with a hint of SOFT — this mirrors the reference's
+ *  `.font-display { font-variation-settings: "opsz" 144, "SOFT" 30 }`. */
+const DISPLAY = {
+  ...DISPLAY,
+  fontVariationSettings: '"opsz" 144, "SOFT" 30',
+} as const;
+
+/** Shared easing — the slow, settled curve the whole reference moves on. */
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+/** Quiet, season-ahead launch month (≈ one quarter out) — the reference never
+ *  shows precise digits. Authors write "{season}" in the hero footnote and we
+ *  swap in this month, so the copy stays editable but reads live by default. */
+const LAUNCH_SEASON = (() => {
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+  return target.toLocaleString("en-US", { month: "long" });
+})();
+
+/** Inject the marquee keyframes once (self-contained; no Tailwind dependency). */
 function usePreviewAssets() {
   useEffect(() => {
-    const id = "landing-preview-assets";
+    const id = "landing-preview-keyframes";
     if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    link.href =
-      "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,300&family=Inter+Tight:wght@300;400;500;600;700&display=swap";
-    document.head.appendChild(link);
-
     const style = document.createElement("style");
-    style.id = "landing-preview-keyframes";
+    style.id = id;
     style.textContent = `
       @keyframes lp-marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
       .lp-marquee { animation: lp-marquee 40s linear infinite; }
@@ -124,7 +142,7 @@ function LogoMark({
     return (
       <div
         style={{
-          fontFamily: DISPLAY_FONT,
+          ...DISPLAY,
           fontSize: baseH * 0.5,
           letterSpacing: "0.04em",
           color: tint || "rgb(var(--brand-paper))",
@@ -171,15 +189,23 @@ function Field({
   value,
   onChange,
   placeholder,
+  delay = 0,
 }: {
   label: string;
   type?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  delay?: number;
 }) {
   return (
-    <div className="group relative">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay, duration: 0.7, ease: EASE }}
+      className="group relative"
+    >
       <label
         className="absolute -top-2 left-4 px-2 z-10 text-[9px] uppercase tracking-[0.35em] transition-colors"
         style={{ background: "rgb(var(--brand-primary-deep))", color: "rgb(var(--brand-paper) / 0.45)" }}
@@ -191,14 +217,14 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-xl px-5 py-4 outline-none transition-all"
+        className="w-full rounded-xl px-5 py-4 outline-none transition-all focus:bg-white/[0.08]"
         style={{
           background: "rgb(255 255 255 / 0.05)",
           border: "1px solid rgb(255 255 255 / 0.1)",
           color: "rgb(var(--brand-paper))",
         }}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -321,6 +347,14 @@ export function LandingPreview({
     }
   };
 
+  // Pre-built WhatsApp share for the success ritual — carries the new member's
+  // referral code so the invite-three loop actually closes.
+  const waShare = submitted
+    ? `https://wa.me/?text=${encodeURIComponent(
+        `I just got my seat at ${config.brandName}'s private launch — quiet, curated, and up to 30% off for the list. Use my code ${submitted.code} when you join: ${config.domain}`,
+      )}`
+    : "#";
+
   const gallery = config.gallery.length
     ? config.gallery
     : config.hero.imageUrl
@@ -329,7 +363,7 @@ export function LandingPreview({
 
   return (
     <main
-      style={{ ...brandVars, background: "rgb(var(--brand-paper))", color: "rgb(var(--brand-primary-deep))", fontFamily: BODY_FONT }}
+      style={{ ...brandVars, background: "rgb(var(--brand-paper))", color: "rgb(var(--brand-primary-deep))", fontFamily: BODY_FONT, fontFeatureSettings: '"ss01", "cv11"' }}
       className="min-h-screen"
     >
       {/* ─── HERO ─── */}
@@ -355,7 +389,7 @@ export function LandingPreview({
         <motion.div aria-hidden style={{ x: monoX, y: monoY }} className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div
             className="select-none leading-none"
-            style={{ fontFamily: DISPLAY_FONT, fontStyle: "italic", color: "rgb(255 255 255 / 0.045)", fontSize: "clamp(18rem, 38vw, 36rem)", letterSpacing: "-0.04em" }}
+            style={{ ...DISPLAY, fontStyle: "italic", color: "rgb(255 255 255 / 0.045)", fontSize: "clamp(18rem, 38vw, 36rem)", letterSpacing: "-0.04em" }}
           >
             {config.brandName.charAt(0)}
           </div>
@@ -397,7 +431,7 @@ export function LandingPreview({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4, duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
             className="text-[clamp(2.5rem,8vw,6.5rem)] font-semibold leading-[0.92] tracking-[-0.025em] text-white max-w-4xl"
-            style={{ fontFamily: DISPLAY_FONT }}
+            style={DISPLAY}
           >
             {config.hero.headline}{" "}
             <em className="italic font-light">{config.hero.headlineAccent}</em>
@@ -410,14 +444,25 @@ export function LandingPreview({
           >
             {config.hero.body}
           </motion.p>
-          <a href="#lp-invitation" className="mt-10 inline-flex items-center gap-3 text-white text-xs tracking-[0.3em] uppercase group w-fit">
+          <motion.a
+            href="#lp-invitation"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1, duration: 1 }}
+            className="mt-10 inline-flex items-center gap-3 text-white text-xs tracking-[0.3em] uppercase group w-fit"
+          >
             <span className="border-b border-white/40 pb-1 group-hover:border-white transition-colors">{config.hero.ctaLabel}</span>
             <span aria-hidden className="transition-transform group-hover:translate-x-1">↓</span>
-          </a>
-          <p className="mt-6 text-[10px] tracking-[0.4em] uppercase text-white/40">
+          </motion.a>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.4, duration: 1.2 }}
+            className="mt-6 text-[10px] tracking-[0.4em] uppercase text-white/40"
+          >
             <span aria-hidden className="mr-2">◦</span>
-            {config.hero.launchSeasonLabel}
-          </p>
+            {(config.hero.launchSeasonLabel || "").replace(/\{season\}/gi, LAUNCH_SEASON)}
+          </motion.p>
         </div>
       </section>
 
@@ -436,7 +481,7 @@ export function LandingPreview({
             <div className="text-[10px] tracking-[0.4em] uppercase mb-6 inline-flex items-center gap-2" style={{ color: "rgb(var(--brand-primary))" }}>
               <span aria-hidden>✨</span> {config.invitation.eyebrow}
             </div>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-[-0.02em] leading-[0.98]" style={{ fontFamily: DISPLAY_FONT }}>
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-[-0.02em] leading-[0.98]" style={DISPLAY}>
               {config.invitation.heading} <em className="italic font-light">{config.invitation.headingAccent}</em>
             </h2>
             <p className="mt-8 text-base md:text-lg leading-relaxed max-w-md" style={{ color: "rgb(var(--brand-muted))" }}>
@@ -445,7 +490,7 @@ export function LandingPreview({
             <div className="mt-10 grid grid-cols-3 gap-6">
               {config.invitation.perks.map((p) => (
                 <div key={p.numeral}>
-                  <div className="text-2xl italic" style={{ fontFamily: DISPLAY_FONT, color: "rgb(var(--brand-primary))" }}>{p.numeral}</div>
+                  <div className="text-2xl italic" style={{ ...DISPLAY, color: "rgb(var(--brand-primary))" }}>{p.numeral}</div>
                   <div className="mt-2 text-xs tracking-wider uppercase" style={{ color: "rgb(var(--brand-muted))" }}>{p.label}</div>
                 </div>
               ))}
@@ -456,7 +501,15 @@ export function LandingPreview({
                 <div className="flex items-baseline justify-between text-[10px] tracking-[0.35em] uppercase mb-3" style={{ color: "rgb(var(--brand-muted))" }}>
                   <span>Seats claimed</span>
                   <span style={{ color: "rgb(var(--brand-primary))" }} className="tabular-nums">
-                    {seatsClaimed}
+                    <motion.span
+                      key={seatsClaimed}
+                      initial={{ opacity: 0.4, y: -2 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.6 }}
+                      className="inline-block"
+                    >
+                      {seatsClaimed}
+                    </motion.span>
                     <span style={{ color: "rgb(var(--brand-primary-deep)/0.3)" }}> / {seatsTotal}</span>
                   </span>
                 </div>
@@ -478,6 +531,21 @@ export function LandingPreview({
 
           {/* Glass form card */}
           <div className="relative">
+            {/* Frame border glow — the accent→primary hairline that rims the card */}
+            <div
+              aria-hidden
+              className="absolute -inset-px rounded-[2.5rem] pointer-events-none z-10"
+              style={{
+                background:
+                  "linear-gradient(140deg, rgb(var(--brand-accent)/0.6), transparent 40%, rgb(var(--brand-primary)/0.5))",
+                WebkitMask:
+                  "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+                mask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+                WebkitMaskComposite: "xor",
+                maskComposite: "exclude",
+                padding: 1,
+              }}
+            />
             <AnimatePresence mode="wait" initial={false}>
               {!submitted ? (
                 <motion.form
@@ -493,15 +561,15 @@ export function LandingPreview({
                   <div aria-hidden className="absolute inset-0 pointer-events-none rounded-[2.5rem]" style={{ background: "linear-gradient(140deg, rgb(var(--brand-paper)/0.08), transparent 35%, rgb(0 0 0 / 0.25))" }} />
                   <div className="relative">
                     <div className="text-[10px] tracking-[0.3em] uppercase font-medium mb-3" style={{ color: "rgb(var(--brand-paper)/0.5)" }}>{config.invitation.formEyebrow}</div>
-                    <h3 className="text-3xl md:text-4xl leading-[1.1]" style={{ fontFamily: DISPLAY_FONT, color: "rgb(var(--brand-paper))" }}>
+                    <h3 className="text-3xl md:text-4xl leading-[1.1]" style={{ ...DISPLAY, color: "rgb(var(--brand-paper))" }}>
                       {config.invitation.formTitle} <em className="italic font-light" style={{ color: "rgb(var(--brand-paper)/0.8)" }}>{config.invitation.formTitleAccent}</em>
                     </h3>
                   </div>
 
                   <div className="relative space-y-6">
-                    {config.form.collectName && <Field label="Name" value={name} onChange={setName} placeholder="Julianne Moore" />}
-                    {config.form.collectEmail && <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="julianne@studio.com" />}
-                    {config.form.collectWhatsapp && <Field label="WhatsApp" type="tel" value={whatsapp} onChange={setWhatsapp} placeholder="+234 7700 900000" />}
+                    {config.form.collectName && <Field label="Name" value={name} onChange={setName} placeholder="Julianne Moore" delay={0.1} />}
+                    {config.form.collectEmail && <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="julianne@studio.com" delay={0.2} />}
+                    {config.form.collectWhatsapp && <Field label="WhatsApp" type="tel" value={whatsapp} onChange={setWhatsapp} placeholder="+234 7700 900000" delay={0.3} />}
 
                     {config.form.collectReferral && (
                       <div className="rounded-2xl p-4" style={{ border: "1px dashed rgb(var(--brand-accent)/0.35)", background: "rgb(var(--brand-accent)/0.05)" }}>
@@ -541,15 +609,16 @@ export function LandingPreview({
                     {formError && <p className="text-[12px]" style={{ color: "rgb(var(--brand-accent))" }}>{formError}</p>}
 
                     <div className="pt-2">
-                      <button
+                      <motion.button
                         type="submit"
                         disabled={submitting}
-                        className="w-full flex items-center justify-center gap-3 py-5 rounded-2xl text-xs font-semibold uppercase tracking-[0.2em] shadow-xl transition-all disabled:opacity-70"
+                        whileTap={{ scale: 0.98 }}
+                        className="w-full group flex items-center justify-center gap-3 py-5 rounded-2xl text-xs font-semibold uppercase tracking-[0.2em] shadow-xl transition-all hover:brightness-105 disabled:opacity-70"
                         style={{ background: "rgb(var(--brand-paper))", color: "rgb(var(--brand-primary-deep))" }}
                       >
                         <span>{submitting ? "One moment…" : config.form.submitLabel}</span>
-                        <span aria-hidden className="opacity-50">→</span>
-                      </button>
+                        <span aria-hidden className="opacity-50 transition-transform group-hover:translate-x-1">→</span>
+                      </motion.button>
                       <p className="text-center text-[10px] mt-6 leading-relaxed" style={{ color: "rgb(var(--brand-paper)/0.3)" }}>{config.form.footnote}</p>
                     </div>
                   </div>
@@ -565,15 +634,21 @@ export function LandingPreview({
                 >
                   <div aria-hidden className="absolute inset-0 pointer-events-none rounded-[2.5rem]" style={{ background: "radial-gradient(80% 60% at 50% 0%, rgb(var(--brand-accent)/0.25), transparent 60%)" }} />
                   <div className="relative text-center">
-                    <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6" style={{ border: "1px solid rgb(var(--brand-accent)/0.5)", boxShadow: "0 0 30px rgb(var(--brand-accent)/0.35)" }}>
+                    <motion.div
+                      initial={{ scale: 0.6, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: 0.2, duration: 0.8, ease: EASE }}
+                      className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6"
+                      style={{ border: "1px solid rgb(var(--brand-accent)/0.5)", boxShadow: "0 0 30px rgb(var(--brand-accent)/0.35)" }}
+                    >
                       <Check className="w-7 h-7" style={{ color: "rgb(var(--brand-accent))" }} strokeWidth={1.5} />
-                    </div>
+                    </motion.div>
                     <div className="text-[10px] tracking-[0.35em] uppercase mb-4" style={{ color: "rgb(var(--brand-accent))" }}>Welcome to the Inner Circle</div>
-                    <h3 className="text-3xl md:text-4xl leading-[1.1]" style={{ fontFamily: DISPLAY_FONT, color: "rgb(var(--brand-paper))" }}>
+                    <h3 className="text-3xl md:text-4xl leading-[1.1]" style={{ ...DISPLAY, color: "rgb(var(--brand-paper))" }}>
                       You&apos;re in, <em className="italic font-light" style={{ color: "rgb(var(--brand-paper)/0.85)" }}>{submitted.name}.</em>
                     </h3>
                     <p className="mt-5 text-sm md:text-base leading-relaxed max-w-sm mx-auto" style={{ color: "rgb(var(--brand-paper)/0.6)" }}>
-                      We&apos;ll knock quietly when the doors open. Until then — your private code is below.
+                      We&apos;ll knock quietly when the doors open. Until then — your private code is below. Pass it to three friends and unlock an extra layer of the launch.
                     </p>
                   </div>
                   <div className="relative mt-8">
@@ -584,21 +659,33 @@ export function LandingPreview({
                       className="w-full flex items-center justify-between gap-4 rounded-2xl px-5 py-4 transition-colors"
                       style={{ border: "1px dashed rgb(var(--brand-accent)/0.45)", background: "rgb(var(--brand-accent)/0.06)" }}
                     >
-                      <span className="text-xl md:text-2xl tracking-[0.15em]" style={{ fontFamily: DISPLAY_FONT, color: "rgb(var(--brand-paper))" }}>{submitted.code}</span>
+                      <span className="text-xl md:text-2xl tracking-[0.15em]" style={{ ...DISPLAY, color: "rgb(var(--brand-paper))" }}>{submitted.code}</span>
                       <span className="flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase" style={{ color: "rgb(var(--brand-paper)/0.55)" }}>
                         {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         {copied ? "Copied" : "Copy"}
                       </span>
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { setSubmitted(null); setName(""); setEmail(""); setWhatsapp(""); setReferral(""); }}
-                    className="w-full text-center text-[10px] tracking-[0.3em] uppercase py-4 mt-2 transition-colors"
-                    style={{ color: "rgb(var(--brand-paper)/0.35)" }}
-                  >
-                    Add another name
-                  </button>
+                  <div className="relative mt-6 space-y-3">
+                    <a
+                      href={waShare}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full group flex items-center justify-center gap-3 py-4 rounded-2xl text-xs font-semibold uppercase tracking-[0.2em] shadow-xl transition-all hover:brightness-105"
+                      style={{ background: "#25D366", color: "#ffffff" }}
+                    >
+                      <MessageCircle className="w-4 h-4" strokeWidth={2} />
+                      <span>Share on WhatsApp</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => { setSubmitted(null); setName(""); setEmail(""); setWhatsapp(""); setReferral(""); }}
+                      className="w-full text-center text-[10px] tracking-[0.3em] uppercase py-2 transition-colors"
+                      style={{ color: "rgb(var(--brand-paper)/0.35)" }}
+                    >
+                      Add another name
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -613,7 +700,7 @@ export function LandingPreview({
             <div className="text-[10px] tracking-[0.4em] uppercase mb-4 inline-flex items-center gap-2" style={{ color: "rgb(var(--brand-primary))" }}>
               <span aria-hidden>⚡</span> {config.galleryEyebrow}
             </div>
-            <h3 className="text-3xl md:text-5xl font-semibold tracking-[-0.02em] leading-[0.98]" style={{ fontFamily: DISPLAY_FONT }}>{config.galleryHeading}</h3>
+            <h3 className="text-3xl md:text-5xl font-semibold tracking-[-0.02em] leading-[0.98]" style={DISPLAY}>{config.galleryHeading}</h3>
           </div>
           <div className="lp-marquee-wrap relative overflow-hidden" style={{ maskImage: "linear-gradient(90deg,transparent,black 8%,black 92%,transparent)", WebkitMaskImage: "linear-gradient(90deg,transparent,black 8%,black 92%,transparent)" }}>
             <div className="lp-marquee flex gap-6 w-max">
@@ -627,6 +714,17 @@ export function LandingPreview({
               ))}
             </div>
           </div>
+
+          {/* Second row — reversed direction, slower drift (reference detail). */}
+          <div className="lp-marquee-wrap relative overflow-hidden mt-6" style={{ maskImage: "linear-gradient(90deg,transparent,black 8%,black 92%,transparent)", WebkitMaskImage: "linear-gradient(90deg,transparent,black 8%,black 92%,transparent)" }}>
+            <div className="lp-marquee-slow flex gap-6 w-max" style={{ animationDirection: "reverse" }}>
+              {gallery.slice().reverse().concat(gallery).concat(gallery).map((g, i) => (
+                <div key={`r2-${i}`} className="relative shrink-0 w-[56vw] md:w-[300px] aspect-[3/4] overflow-hidden">
+                  <img src={g.url} alt="" className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
       )}
 
@@ -635,8 +733,8 @@ export function LandingPreview({
         <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-12 md:gap-20">
           {config.pillars.map((p, i) => (
             <div key={`${p.numeral}-${i}`} className="pt-8" style={{ borderTop: "1px solid rgb(var(--brand-accent)/0.3)" }}>
-              <div className="text-3xl italic" style={{ fontFamily: DISPLAY_FONT, color: "rgb(var(--brand-primary))" }}>{p.numeral}</div>
-              <h4 className="text-2xl md:text-3xl mt-2" style={{ fontFamily: DISPLAY_FONT }}>{p.title}</h4>
+              <div className="text-3xl italic" style={{ ...DISPLAY, color: "rgb(var(--brand-primary))" }}>{p.numeral}</div>
+              <h4 className="text-2xl md:text-3xl mt-2" style={DISPLAY}>{p.title}</h4>
               {/* primary-deep @ 0.8 (not the faint --brand-muted) so the pillar
                   body copy is actually legible on the light paper background. */}
               <p className="mt-4 leading-relaxed" style={{ color: "rgb(var(--brand-primary-deep) / 0.8)" }}>{p.body}</p>
@@ -654,7 +752,7 @@ export function LandingPreview({
           </div>
           <div className="space-y-3">
             <div className="text-[10px] tracking-[0.35em] uppercase" style={{ color: "rgb(var(--brand-primary))" }}>The Studio</div>
-            <div className="text-lg" style={{ fontFamily: DISPLAY_FONT, color: "rgb(var(--brand-primary-deep))" }}>{config.legalName}</div>
+            <div className="text-lg" style={{ ...DISPLAY, color: "rgb(var(--brand-primary-deep))" }}>{config.legalName}</div>
             <p className="text-sm leading-relaxed not-italic" style={{ color: "rgb(var(--brand-muted))" }}>{config.address}</p>
           </div>
           <div className="space-y-4">

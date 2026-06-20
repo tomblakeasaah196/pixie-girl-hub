@@ -35,6 +35,7 @@
     "check:factory-manager": "node scripts/check-factory-manager.js",
     "db:verify": "node scripts/verify-schema.js",
     "db:create-admin": "node scripts/create-admin.js",
+    "catalogue:wipe": "node scripts/wipe-catalogue.js",
     "workers:start": "node src/jobs/worker.js",
     "coverage:frontend": "node scripts/build-frontend-coverage.js",
     "build:action-catalogue": "node scripts/build-action-catalogue.js",

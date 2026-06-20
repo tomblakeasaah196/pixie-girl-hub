@@ -19,6 +19,13 @@ const adminRouter = express.Router();
 const P = (action) => requirePermission("hr_payroll", action);
 adminRouter.get("/", P("view"), controller.list);
 adminRouter.post("/", P("create"), validate.validateCreate, controller.create);
+// Instant provisioning — creates the login now and returns a temp password once.
+adminRouter.post(
+  "/provision",
+  P("create"),
+  validate.validateCreate,
+  controller.provision,
+);
 adminRouter.post("/:id/revoke", P("edit"), controller.revoke);
 
 // ── Public ─────────────────────────────────────────────────

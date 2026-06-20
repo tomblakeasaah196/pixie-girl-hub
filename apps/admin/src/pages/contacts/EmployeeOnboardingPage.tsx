@@ -9,6 +9,7 @@ import {
   X,
   Sparkles,
   AlertTriangle,
+  Copy,
   UserPlus,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -105,9 +106,9 @@ export function EmployeeOnboardingPage() {
   const [done, setDone] = useState<{
     contactId: string;
     employeeNumber: string;
-    invited: boolean;
-    inviteEmail?: string;
+    credentials?: { email: string; temp_password: string } | null;
   } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // ── Person ──────────────────────────────────────────────
   const [linked, setLinked] = useState<Contact | null>(null);
@@ -261,28 +262,30 @@ export function EmployeeOnboardingPage() {
         work_grace_minutes: Number(grace) || 0,
       });
 
-      // 3. Optionally provision a Hub login (staff invitation).
-      let invited = false;
-      const inviteEmail = email.trim() || linked?.email || "";
-      if (createLogin && inviteEmail) {
+      // 3. Optionally provision a Hub login instantly — returns a one-time
+      //    temporary password to hand to the new hire.
+      let credentials: { email: string; temp_password: string } | null = null;
+      const loginEmail = email.trim() || linked?.email || "";
+      if (createLogin && loginEmail) {
         try {
-          await api.post("/staff-invitations", {
-            email: inviteEmail,
+          credentials = await api.post<{
+            email: string;
+            temp_password: string;
+          }>("/staff-invitations/provision", {
+            email: loginEmail,
             display_name: displayName,
             business_keys: permitted.length ? permitted : [business],
             staff_profile_id: profile.profile_id,
           });
-          invited = true;
         } catch {
-          /* invitation is best-effort; HR can resend from the invites screen */
+          /* provisioning is best-effort; HR can create the login later */
         }
       }
 
       setDone({
         contactId: contactId!,
         employeeNumber: profile.employee_number,
-        invited,
-        inviteEmail: invited ? inviteEmail : undefined,
+        credentials,
       });
     } catch (e) {
       setError(
@@ -532,7 +535,7 @@ export function EmployeeOnboardingPage() {
             <div className="space-y-6">
               <StepHeader
                 title="Access"
-                subtitle="Optionally provision a Hub login. An invitation is emailed so they set their own password."
+                subtitle="Optionally provision a Hub login now. A temporary password is generated and shown once."
               />
               <label className="flex items-start gap-3 p-4 rounded-[12px] bg-text-primary/[0.04] border hairline cursor-pointer">
                 <input
@@ -556,8 +559,8 @@ export function EmployeeOnboardingPage() {
                 <>
                   {!(email.trim() || linked?.email) && (
                     <div className="px-3 py-2.5 rounded-[10px] bg-warn/[0.1] border border-warn/30 text-[12px] text-warn">
-                      No email captured in step 1 — add one so the invitation can
-                      be sent.
+                      No email captured in step 1 — add one so a login can be
+                      provisioned.
                     </div>
                   )}
                   <div>
@@ -669,20 +672,52 @@ export function EmployeeOnboardingPage() {
               </span>{" "}
               created with their work schedule.
             </p>
-            {done.invited ? (
-              <div className="px-3 py-2.5 rounded-[10px] bg-success/[0.1] border border-success/30 text-[12px] text-text-muted flex items-start gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-success mt-0.5 shrink-0" />
-                <span>
-                  A Hub login invitation was emailed to{" "}
-                  <span className="text-text-primary">{done.inviteEmail}</span>.
-                  They&rsquo;ll set their own password on first sign-in.
-                </span>
+            {done.credentials ? (
+              <div className="space-y-3">
+                <div className="px-3 py-2.5 rounded-[10px] bg-warn/[0.1] border border-warn/30 text-[12px] text-warn flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Temporary password — shown once. Share it securely; they
+                    must set a new one at first sign-in.
+                  </span>
+                </div>
+                <div>
+                  <div className="micro mb-1">Email</div>
+                  <code className="block px-3 py-2 rounded-[10px] bg-text-primary/[0.04] border hairline text-[13px] text-text-primary">
+                    {done.credentials.email}
+                  </code>
+                </div>
+                <div>
+                  <div className="micro mb-1">Temporary password</div>
+                  <div className="relative">
+                    <code className="block px-3 py-2 pr-11 rounded-[10px] bg-text-primary/[0.04] border hairline text-[13px] font-mono tracking-wider text-text-primary">
+                      {done.credentials.temp_password}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(
+                          done.credentials!.temp_password,
+                        );
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]"
+                      aria-label="Copy password"
+                    >
+                      {copied ? (
+                        <Check className="w-4 h-4 text-success" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="px-3 py-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline text-[12px] text-text-muted flex items-start gap-2">
                 <AlertTriangle className="w-3.5 h-3.5 text-warn mt-0.5 shrink-0" />
                 <span>
-                  No login was provisioned. You can invite them later from HR.
+                  No login was provisioned. You can create one later from HR.
                 </span>
               </div>
             )}

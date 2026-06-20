@@ -13,11 +13,22 @@ import {
   Trash2,
   History,
   ArrowUpRight,
+  Sparkles,
+  Cake,
+  Gem,
+  MessageCircle,
+  ShieldAlert,
 } from "lucide-react";
 import { api, getAccessToken } from "@/lib/api";
-import { Button, Pill, Skeleton, MoneyText } from "@/components/ui/primitives";
+import {
+  Button,
+  Pill,
+  Skeleton,
+  MoneyText,
+  type Tone,
+} from "@/components/ui/primitives";
 import { useBusinessStore } from "@/stores/business";
-import { useUpdateContact } from "./hooks";
+import { useUpdateContact, usePreferences, useContactSummary } from "./hooks";
 import type { Contact } from "./types";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -527,6 +538,166 @@ export function AuditTab({ contactId }: { contactId: string }) {
           ))
         )}
       </Rows>
+    </div>
+  );
+}
+
+// ── Concierge (clients) — curated VIP-care panel ────────────────────────────
+
+const RISK_TONE: Record<string, Tone> = {
+  low: "success",
+  medium: "warn",
+  high: "danger",
+  critical: "danger",
+};
+
+function birthdayLabel(c: Contact): string | null {
+  if (!c.date_of_birth) return null;
+  const d = new Date(c.date_of_birth);
+  const yearKnown = !c.date_of_birth.startsWith("1900");
+  return d.toLocaleDateString("en-NG", {
+    day: "numeric",
+    month: "long",
+    ...(yearKnown ? { year: "numeric" } : {}),
+  });
+}
+
+function PrefChips({ label, values }: { label: string; values?: string[] }) {
+  if (!values || values.length === 0) return null;
+  return (
+    <div className="p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
+      <div className="micro mb-1.5">{label}</div>
+      <div className="flex flex-wrap gap-1">
+        {values.map((v) => (
+          <Pill key={v} tone="neutral" dot={false}>
+            {v}
+          </Pill>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ConciergeTab({ contact }: { contact: Contact }) {
+  const { data: prefs, isLoading: prefsLoading } = usePreferences(
+    contact.contact_id,
+  );
+  const { data: summary } = useContactSummary(contact.contact_id);
+  const wa = contact.whatsapp_number?.replace(/\D/g, "");
+  const bday = birthdayLabel(contact);
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <TabHeader
+        icon={<Sparkles className="w-3.5 h-3.5" />}
+        title="Concierge"
+        action={
+          wa ? (
+            <a
+              href={`https://wa.me/${wa}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 h-[33px] px-3 rounded-[10px] bg-[#25D366]/10 border border-[#25D366]/30 text-[12px] font-semibold text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              WhatsApp
+            </a>
+          ) : undefined
+        }
+      />
+
+      {/* Care signals */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3 rounded-[11px] bg-text-primary/[0.04] border hairline">
+          <div className="micro mb-1">Tier</div>
+          <Pill tone={contact.priority_level === "vip" ? "accent" : "neutral"}>
+            {contact.priority_level}
+          </Pill>
+        </div>
+        <div className="p-3 rounded-[11px] bg-text-primary/[0.04] border hairline">
+          <div className="micro mb-1 inline-flex items-center gap-1">
+            <ShieldAlert className="w-3 h-3" /> Churn risk
+          </div>
+          {summary?.churn_risk_band ? (
+            <Pill tone={RISK_TONE[summary.churn_risk_band] ?? "neutral"}>
+              {summary.churn_risk_band}
+            </Pill>
+          ) : (
+            <span className="text-[13px] text-text-faint">—</span>
+          )}
+        </div>
+        <div className="p-3 rounded-[11px] bg-text-primary/[0.04] border hairline">
+          <div className="micro mb-1">Lifetime value</div>
+          <div className="text-[13px] text-text-primary">
+            <MoneyText ngn={Number(summary?.lifetime_value_ngn ?? 0)} />
+          </div>
+        </div>
+        <div className="p-3 rounded-[11px] bg-text-primary/[0.04] border hairline">
+          <div className="micro mb-1">Loyalty points</div>
+          <div className="text-[13px] text-text-primary tabular-nums">
+            {summary?.loyalty_points ?? 0}
+          </div>
+        </div>
+      </div>
+
+      {/* Important dates */}
+      <div>
+        <h4 className="text-[11px] tracking-widest uppercase text-accent-glow inline-flex items-center gap-1.5 mb-2">
+          <Cake className="w-3.5 h-3.5" /> Important dates
+        </h4>
+        {bday ? (
+          <div className="p-3 rounded-[10px] bg-text-primary/[0.04] border hairline flex items-center justify-between">
+            <span className="text-[13px] text-text-primary">Birthday</span>
+            <span className="text-[13px] text-text-muted">{bday}</span>
+          </div>
+        ) : (
+          <p className="text-[12.5px] text-text-faint">
+            No birthday on file — add one from Edit to enable reminders.
+          </p>
+        )}
+      </div>
+
+      {/* Preferences */}
+      <div>
+        <h4 className="text-[11px] tracking-widest uppercase text-accent-glow inline-flex items-center gap-1.5 mb-2">
+          <Gem className="w-3.5 h-3.5" /> Preferences
+        </h4>
+        {prefsLoading ? (
+          <Skeleton className="h-16 rounded-[10px]" />
+        ) : prefs ? (
+          <div className="grid sm:grid-cols-2 gap-2">
+            <PrefChips label="Textures" values={prefs.preferred_textures} />
+            <PrefChips label="Colours" values={prefs.preferred_colours} />
+            <PrefChips
+              label="Lengths (in)"
+              values={prefs.preferred_lengths_in?.map(String)}
+            />
+            <PrefChips label="Lace types" values={prefs.preferred_lace_types} />
+            {(prefs.budget_min_ngn || prefs.budget_max_ngn) && (
+              <div className="p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline">
+                <div className="micro mb-1.5">Budget</div>
+                <div className="text-[13px] text-text-primary">
+                  <MoneyText ngn={Number(prefs.budget_min_ngn ?? 0)} /> –{" "}
+                  <MoneyText ngn={Number(prefs.budget_max_ngn ?? 0)} />
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-[12.5px] text-text-faint">
+            No preferences captured yet — set them in the{" "}
+            <span className="text-text-muted">Preferences</span> tab.
+          </p>
+        )}
+      </div>
+
+      <Link
+        to="/crm"
+        className="inline-flex items-center gap-1.5 h-[33px] px-3 rounded-[10px] bg-text-primary/[0.04] border hairline text-[12px] font-semibold text-text-muted hover:text-text-primary transition-colors"
+      >
+        Open CRM
+        <ArrowUpRight className="w-3.5 h-3.5" />
+      </Link>
     </div>
   );
 }

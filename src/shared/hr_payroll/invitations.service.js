@@ -226,10 +226,98 @@ function safeInvite(i) {
   return rest;
 }
 
+// ── Instant provisioning ───────────────────────────────────
+// Generate a compliant temp password: 16 chars guaranteeing an uppercase, a
+// digit and a special char (auth.service.assertStrongPassword rules).
+function generateTempPassword() {
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghijkmnpqrstuvwxyz";
+  const digit = "23456789";
+  const special = "!@#$%&*?";
+  const all = upper + lower + digit + special;
+  const pick = (set) => set[crypto.randomInt(set.length)];
+  const chars = [pick(upper), pick(digit), pick(special)];
+  while (chars.length < 16) chars.push(pick(all));
+  // Fisher–Yates shuffle so the guaranteed chars aren't always leading.
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
+}
+
+/**
+ * Provision a Hub login immediately (no email round-trip): create the user with
+ * a generated temporary password (force_password_reset = true), grant the
+ * requested roles per business, and return the plaintext password exactly once
+ * so the admin can hand it to the new hire.
+ */
+async function provisionLogin({ user, request_id, input }) {
+  const emailAddr = String(input.email || "").trim();
+  if (!emailAddr) throw new AppError("EMAIL_REQUIRED", "Email is required", 422);
+
+  const temp_password = generateTempPassword();
+  const password_hash = await argon2.hash(temp_password, hashOptions);
+  const businessKeys = input.business_keys || [];
+
+  const created = await transaction(async (client) => {
+    if (await repo.userExistsByEmail({ client, email: emailAddr }))
+      throw new ConflictError("An account with this email already exists");
+
+    const newUser = await repo.createUser({
+      client,
+      user: {
+        email: emailAddr,
+        password_hash,
+        display_name: input.display_name || null,
+        is_ceo: input.is_ceo || false,
+        default_business: input.default_business || businessKeys[0] || null,
+        permitted_businesses: businessKeys,
+        force_password_reset: true,
+        staff_profile_id: input.staff_profile_id || null,
+      },
+    });
+
+    const businesses = businessKeys.length ? businessKeys : ["*"];
+    for (const role_id of input.role_ids || []) {
+      for (const business of businesses) {
+        await repo.assignRole({
+          client,
+          user_id: newUser.user_id,
+          role_id,
+          business,
+          granted_by: user ? user.user_id : null,
+        });
+      }
+    }
+
+    await audit({
+      business: null,
+      user_id: user ? user.user_id : newUser.user_id,
+      action_key: "hr_payroll.staff_login.provision",
+      target_type: "users",
+      target_id: newUser.user_id,
+      after: { user_id: newUser.user_id, email: emailAddr },
+      request_id,
+      is_sensitive: true,
+    });
+    return newUser;
+  });
+
+  events.emit("staff_login_provisioned", {
+    user_id: created.user_id,
+    email: emailAddr,
+  });
+
+  // Plaintext password returned ONCE — never stored or logged.
+  return { email: created.email, temp_password, force_password_reset: true };
+}
+
 module.exports = {
   createInvitation,
   listInvitations,
   revokeInvitation,
   getByToken,
   acceptInvitation,
+  provisionLogin,
 };

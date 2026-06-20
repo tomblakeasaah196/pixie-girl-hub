@@ -42,6 +42,7 @@ import {
   NotesTab,
   DocumentsTab,
   AuditTab,
+  ConciergeTab,
 } from "./contactTabs";
 import type {
   Contact,
@@ -920,6 +921,7 @@ export function ContactDetailPanel({
       {activeTab === "invoices" && (
         <InvoicesTab contactId={contact.contact_id} />
       )}
+      {activeTab === "concierge" && <ConciergeTab contact={contact} />}
       {activeTab === "notes" && <NotesTab contact={contact} />}
       {activeTab === "documents" && (
         <DocumentsTab contactId={contact.contact_id} />

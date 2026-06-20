@@ -37,6 +37,7 @@ export type ProfileTabKey =
   // client-only
   | "deals"
   | "invoices"
+  | "concierge"
   | "preferences"
   | "loyalty"
   // employee-only
@@ -103,7 +104,7 @@ export const STAKEHOLDERS: Record<string, StakeholderDef> = {
     blurb: "The people you sell to — their orders, preferences and loyalty.",
     quickAdd: true,
     createMode: "modal",
-    profileTabs: ["deals", "invoices", "preferences", "loyalty"],
+    profileTabs: ["deals", "invoices", "concierge", "preferences", "loyalty"],
     phase1: true,
   },
   staff: {
@@ -243,6 +244,7 @@ export const PROFILE_TAB_LABELS: Record<ProfileTabKey, string> = {
   audit: "Audit",
   deals: "Deals",
   invoices: "Invoices",
+  concierge: "Concierge",
   preferences: "Preferences",
   loyalty: "Loyalty",
   employment: "Employment",

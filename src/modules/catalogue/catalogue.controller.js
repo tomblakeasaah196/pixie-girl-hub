@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./catalogue.service");
+const io = require("./catalogue-io.service");
 const mediaService = require("../../services/media.service");
 const { parsePagination } = require("../../utils/pagination");
 
@@ -13,6 +14,82 @@ const base = (req) => ({
   user: req.user,
   request_id: req.request_id,
 });
+
+function sendXlsx(res, buffer, filename) {
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
+}
+
+function requireFile(req, res) {
+  if (req.file) return true;
+  res.status(400).json({
+    error: { code: "NO_FILE", message: "Multipart field 'file' is required" },
+    request_id: req.request_id,
+  });
+  return false;
+}
+
+// ── Import / Export: Styled ──────────────────────────────
+async function styledTemplate(req, res) {
+  sendXlsx(
+    res,
+    await io.styledTemplate({ brand: req.brand }),
+    "styled-import-template.xlsx",
+  );
+}
+async function exportStyled(req, res) {
+  sendXlsx(
+    res,
+    await io.exportStyled({ brand: req.brand }),
+    `styled-${req.brand}.xlsx`,
+  );
+}
+async function importStyled(req, res) {
+  if (!requireFile(req, res)) return;
+  res
+    .status(201)
+    .json({ data: await io.importStyled({ ...base(req), buffer: req.file.buffer }) });
+}
+
+// ── Import / Export: Collections ─────────────────────────
+async function collectionsTemplate(_req, res) {
+  sendXlsx(res, await io.collectionsTemplate(), "collections-import-template.xlsx");
+}
+async function exportCollections(req, res) {
+  sendXlsx(
+    res,
+    await io.exportCollections({ brand: req.brand }),
+    `collections-${req.brand}.xlsx`,
+  );
+}
+async function importCollections(req, res) {
+  if (!requireFile(req, res)) return;
+  res.status(201).json({
+    data: await io.importCollections({ ...base(req), buffer: req.file.buffer }),
+  });
+}
+
+// ── Import / Export: Bundles ─────────────────────────────
+async function bundlesTemplate(_req, res) {
+  sendXlsx(res, await io.bundlesTemplate(), "bundles-import-template.xlsx");
+}
+async function exportBundles(req, res) {
+  sendXlsx(
+    res,
+    await io.exportBundles({ brand: req.brand }),
+    `bundles-${req.brand}.xlsx`,
+  );
+}
+async function importBundles(req, res) {
+  if (!requireFile(req, res)) return;
+  res
+    .status(201)
+    .json({ data: await io.importBundles({ ...base(req), buffer: req.file.buffer }) });
+}
 
 // Categories
 async function listCategories(req, res) {
@@ -411,4 +488,14 @@ module.exports = {
   listRelated,
   addRelated,
   removeRelated,
+  // Import / export engine (PR-B)
+  styledTemplate,
+  exportStyled,
+  importStyled,
+  collectionsTemplate,
+  exportCollections,
+  importCollections,
+  bundlesTemplate,
+  exportBundles,
+  importBundles,
 };

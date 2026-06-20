@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Playfair_Display, Montserrat, JetBrains_Mono, Italiana } from "next/font/google";
 import { headers } from "next/headers";
+import { getBrand } from "@/lib/brand";
 import "@/styles/globals.css";
 
 const playfair = Playfair_Display({
@@ -53,7 +54,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const brand = headers().get("x-brand") ?? "pixiegirl";
+  const brand = getBrand();
 
   return (
     <html

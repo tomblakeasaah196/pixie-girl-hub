@@ -12,6 +12,7 @@ import {
   type Collection,
 } from "@/lib/catalogue";
 import { CoverImageEditor } from "./CoverImageEditor";
+import { ImportExportControls } from "@/components/catalogue/ImportExportControls";
 
 /**
  * Collections (manual + rule-based already exist in the backend). v1 lists
@@ -36,7 +37,16 @@ export function CollectionsTab() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center">
+      <div className="flex items-center gap-2 flex-wrap">
+        {canCreate && (
+          <ImportExportControls
+            label="Collections"
+            templatePath="/catalogue/collections/import-template"
+            exportPath="/catalogue/collections/export"
+            importPath="/catalogue/collections/import"
+            onImported={() => cols.refetch()}
+          />
+        )}
         {canCreate && (
           <Button
             size="sm"

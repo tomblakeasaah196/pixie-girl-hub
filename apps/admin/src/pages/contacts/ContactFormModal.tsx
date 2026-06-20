@@ -148,12 +148,15 @@ function TypeChips({
   value: ContactType[];
   onChange: (v: ContactType[]) => void;
 }) {
+  // Employees are created through full onboarding, never this modal — but the
+  // chip stays available so editing an existing employee never silently drops
+  // the "staff" type.
   const ALL: { key: ContactType; label: string }[] = [
-    { key: "customer", label: "Customer" },
+    { key: "customer", label: "Client" },
     { key: "supplier", label: "Supplier" },
-    { key: "staff", label: "Staff" },
-    { key: "retail_partner", label: "Retail Partner" },
-    { key: "stylist_partner", label: "Stylist" },
+    { key: "subscriber", label: "Subscriber" },
+    { key: "staff", label: "Employee" },
+    { key: "stylist_partner", label: "Stylist Partner" },
   ];
 
   const toggle = (k: ContactType) => {
@@ -257,6 +260,14 @@ export function ContactFormModal({
   onSuccess,
 }: Props) {
   const isEdit = !!contact;
+  // Field gating: clients (customers) get the personal / social fields;
+  // suppliers & partners get the business-identifier fields. Employees never
+  // reach this modal for creation (full onboarding instead).
+  const showClientFields = (types: ContactType[]) => types.includes("customer");
+  const showBusinessFields = (types: ContactType[]) =>
+    types.includes("supplier") ||
+    types.includes("retail_partner") ||
+    types.includes("stylist_partner");
 
   const createMut = useCreateContact();
   const updateMut = useUpdateContact(contact?.contact_id ?? "");
@@ -448,8 +459,7 @@ export function ContactFormModal({
                   />
                 </Field>
               </div>
-              {(types.includes("supplier") ||
-                types.includes("retail_partner")) && (
+              {showBusinessFields(types) && (
                 <Field label="Company / Organisation">
                   <TextInput
                     value={company}
@@ -482,26 +492,30 @@ export function ContactFormModal({
                   placeholder="amara@example.com"
                 />
               </Field>
-              <SocialHandleField
-                label="Instagram"
-                value={instagram}
-                onChange={setInstagram}
-                placeholder="amara.style"
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <SocialHandleField
-                  label="TikTok"
-                  value={tiktok}
-                  onChange={setTiktok}
-                  placeholder="amara.style"
-                />
-                <SocialHandleField
-                  label="Facebook"
-                  value={facebook}
-                  onChange={setFacebook}
-                  placeholder="amara.style"
-                />
-              </div>
+              {showClientFields(types) && (
+                <>
+                  <SocialHandleField
+                    label="Instagram"
+                    value={instagram}
+                    onChange={setInstagram}
+                    placeholder="amara.style"
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <SocialHandleField
+                      label="TikTok"
+                      value={tiktok}
+                      onChange={setTiktok}
+                      placeholder="amara.style"
+                    />
+                    <SocialHandleField
+                      label="Facebook"
+                      value={facebook}
+                      onChange={setFacebook}
+                      placeholder="amara.style"
+                    />
+                  </div>
+                </>
+              )}
             </FormSection>
           </div>
 
@@ -509,13 +523,15 @@ export function ContactFormModal({
             {/* Personal */}
             <FormSection title="Personal">
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Gender">
-                  <Select
-                    value={gender}
-                    onChange={setGender}
-                    options={GENDER_OPTS}
-                  />
-                </Field>
+                {showClientFields(types) && (
+                  <Field label="Gender">
+                    <Select
+                      value={gender}
+                      onChange={setGender}
+                      options={GENDER_OPTS}
+                    />
+                  </Field>
+                )}
                 <Field label="Country">
                   <Select
                     value={countryCode}
@@ -525,7 +541,8 @@ export function ContactFormModal({
                 </Field>
               </div>
 
-              {/* Birthday: month + day (year optional) */}
+              {/* Birthday: month + day (year optional) — clients only */}
+              {showClientFields(types) && (
               <Field
                 label="Birthday (month & day)"
                 hint="Used for birthday reminders. Year is optional."
@@ -555,6 +572,7 @@ export function ContactFormModal({
                   />
                 </div>
               </Field>
+              )}
             </FormSection>
 
             {/* Classification */}
@@ -578,9 +596,7 @@ export function ContactFormModal({
             </FormSection>
 
             {/* Business identifiers (for suppliers/retail) */}
-            {(types.includes("supplier") ||
-              types.includes("retail_partner") ||
-              types.includes("staff")) && (
+            {showBusinessFields(types) && (
               <FormSection title="Business Identifiers">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="TIN">

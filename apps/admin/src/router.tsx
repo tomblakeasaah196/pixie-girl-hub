@@ -5,6 +5,8 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { CommandCenter } from "@/pages/CommandCenter";
 
 import { ContactsPage } from "@/pages/contacts/ContactsPage";
+import { ContactProfilePage } from "@/pages/contacts/ContactProfilePage";
+import { EmployeeOnboardingPage } from "@/pages/contacts/EmployeeOnboardingPage";
 import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
 import { ContactTagsPage } from "@/pages/ContactTagsPage";
 import { CrmPage } from "@/pages/crm/CrmPage";
@@ -290,6 +292,8 @@ export const router = createBrowserRouter(
             { path: "sales", element: <SalesPage /> },
             { path: "contacts", element: <ContactsPage /> },
             { path: "contacts/milestones", element: <MilestonesPage /> },
+            { path: "contacts/staff/new", element: <EmployeeOnboardingPage /> },
+            { path: "contacts/:id", element: <ContactProfilePage /> },
             { path: "crm", element: <CrmPage /> },
             { path: "crm/deals/:id", element: <DealDetailPage /> },
             {

@@ -119,9 +119,9 @@ export function QuickAddModal({
             <div className="flex gap-2">
               {(
                 [
-                  { key: "customer", label: "Customer" },
+                  { key: "customer", label: "Client" },
                   { key: "supplier", label: "Supplier" },
-                  { key: "staff", label: "Staff" },
+                  { key: "subscriber", label: "Subscriber" },
                 ] as { key: ContactType; label: string }[]
               ).map(({ key, label }) => (
                 <button

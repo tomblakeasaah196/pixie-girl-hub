@@ -8,12 +8,27 @@
 
 import { api } from "@/lib/api";
 
+// Auto-heal: when a freshly deployed service worker takes control of the
+// page (its `activate` runs `clients.claim()`), reload once so the tab
+// drops the old JS bundles and loads the new build. The guard prevents a
+// reload loop. Without this, a user can sit on a stale shell indefinitely
+// even after a successful deploy — the bug class PR #100 closes for good.
+let swReloading = false;
+if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swReloading) return;
+    swReloading = true;
+    window.location.reload();
+  });
+}
+
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   try {
     const reg = await navigator.serviceWorker.register("/sw.js", {
       scope: "/",
     });
+    // Check for a newer worker immediately on every load.
     reg.update();
     return reg;
   } catch {

@@ -244,6 +244,50 @@ export function CustomerSidebar({ channel }: Props) {
           ))
         )}
       </Section>
+
+      {/* Comms log — "did she get her receipt?" */}
+      <Section
+        title="Comms log"
+        icon={<Send className="w-3.5 h-3.5" />}
+        count={data.comms?.length ?? 0}
+      >
+        {!data.comms || data.comms.length === 0 ? (
+          <Empty>No emails or notifications sent yet</Empty>
+        ) : (
+          data.comms.slice(0, 6).map((m) => (
+            <div
+              key={m.log_id}
+              className="flex items-center gap-2 rounded-lg px-3 py-1.5"
+            >
+              <span
+                className={`grid place-items-center w-5 h-5 rounded-full shrink-0 ${
+                  m.status === "failed"
+                    ? "bg-danger/15 text-danger"
+                    : "bg-accent/15 text-accent-glow"
+                }`}
+              >
+                {m.channel === "email" ? (
+                  <Mail className="w-3 h-3" />
+                ) : (
+                  <Send className="w-3 h-3" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] text-text-primary truncate">
+                  {m.subject || m.event_key || m.channel}
+                </div>
+                <div className="text-[10px] text-text-faint">
+                  {new Date(m.created_at).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                  {m.status === "failed" && " · failed"}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </Section>
     </div>
   );
 }

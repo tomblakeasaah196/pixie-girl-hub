@@ -129,6 +129,10 @@ export function ChannelPolicyPage() {
         </div>
       </div>
 
+      {!isLoading && policies.length > 0 && (
+        <CostProjector policies={policies} />
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -366,5 +370,109 @@ function BlockToggle({
         />
       </span>
     </button>
+  );
+}
+
+// Per-message WhatsApp rates for Nigerian numbers (early-2026 estimate).
+// Email / Instagram / in-app are free; only business-initiated WhatsApp
+// templates are billed. Marketing templates cost ~8x a utility template.
+const WA_UTILITY_NGN = 11;
+const WA_MARKETING_NGN = 88;
+
+/**
+ * Live cost projector — turns the channel choices above into a monthly ₦
+ * estimate. Only events routed to WhatsApp incur cost; tweak the assumed
+ * monthly volume per event to see the bill move. Pure UI, no backend.
+ */
+function CostProjector({ policies }: { policies: OutboundPolicy[] }) {
+  const waEvents = useMemo(
+    () =>
+      policies.filter(
+        (p) =>
+          p.is_active &&
+          p.channel_preference === "whatsapp" &&
+          !p.block_whatsapp,
+      ),
+    [policies],
+  );
+
+  const [volumes, setVolumes] = useState<Record<string, number>>({});
+
+  const rateFor = (eventKey: string) =>
+    EVENT_META[eventKey]?.category === "Marketing"
+      ? WA_MARKETING_NGN
+      : WA_UTILITY_NGN;
+  const defaultVol = (eventKey: string) =>
+    EVENT_META[eventKey]?.category === "Marketing" ? 500 : 100;
+
+  const total = waEvents.reduce((sum, p) => {
+    const vol = volumes[p.event_key] ?? defaultVol(p.event_key);
+    return sum + vol * rateFor(p.event_key);
+  }, 0);
+
+  return (
+    <Card className="mb-5 p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-display text-[15px] font-medium">
+          Monthly cost projection
+        </h3>
+        <span className="font-mono text-[18px] font-semibold text-accent-glow">
+          ≈ ₦{total.toLocaleString()}
+          <span className="text-[11px] text-text-faint">/mo</span>
+        </span>
+      </div>
+      <p className="text-[12px] text-text-muted mb-3">
+        Email, Instagram & in-app are free — only WhatsApp templates are billed
+        (utility ≈ ₦{WA_UTILITY_NGN}, marketing ≈ ₦{WA_MARKETING_NGN} each).
+        Adjust the assumed monthly volume to project the bill.
+      </p>
+
+      {waEvents.length === 0 ? (
+        <div className="rounded-lg bg-green-400/5 border border-green-400/20 px-3 py-2 text-[12.5px] text-green-300">
+          ✓ Every outbound event is on a free channel — ₦0/mo projected for
+          WhatsApp.
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {waEvents.map((p) => {
+            const vol = volumes[p.event_key] ?? defaultVol(p.event_key);
+            const rate = rateFor(p.event_key);
+            const meta = EVENT_META[p.event_key];
+            return (
+              <div
+                key={p.event_key}
+                className="flex items-center gap-3 text-[12.5px]"
+              >
+                <span className="flex-1 truncate">
+                  {meta?.label ?? p.event_key}
+                  <span className="text-text-faint">
+                    {" "}
+                    · {meta?.category === "Marketing"
+                      ? "marketing"
+                      : "utility"}{" "}
+                    @ ₦{rate}
+                  </span>
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  value={vol}
+                  onChange={(e) =>
+                    setVolumes((m) => ({
+                      ...m,
+                      [p.event_key]: Math.max(0, Number(e.target.value) || 0),
+                    }))
+                  }
+                  className="w-20 rounded-md bg-panel-2 border hairline px-2 py-1 text-[12px] text-right focus:outline-none focus:border-accent/40"
+                />
+                <span className="w-24 text-right font-mono text-text-primary">
+                  ₦{(vol * rate).toLocaleString()}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }

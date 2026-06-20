@@ -941,12 +941,28 @@ async function customer360({ contact_id, brand }) {
       WHERE contact_id = $1`,
     [contact_id],
   );
+  // Outbound comms audit ("did she get her receipt?") — best-effort; the
+  // table arrives in 000229 so guard against running before the migration.
+  let comms = [];
+  try {
+    const cl = await query(
+      `SELECT log_id, channel, event_key, subject, recipient, status, created_at
+         FROM shared.outbound_comms_log
+        WHERE contact_id = $1
+        ORDER BY created_at DESC LIMIT 10`,
+      [contact_id],
+    );
+    comms = cl.rows;
+  } catch {
+    comms = [];
+  }
   return {
     contact: contactRow.rows[0],
     handles: handles.rows,
     orders,
     invoices,
     deliveries,
+    comms,
   };
 }
 

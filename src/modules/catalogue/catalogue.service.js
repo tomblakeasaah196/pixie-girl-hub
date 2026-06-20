@@ -843,6 +843,41 @@ async function addImage({ brand, user, request_id, id, file, meta }) {
     return { ...image, document_id: doc.document_id };
   });
 }
+
+/**
+ * Generic cover-image upload (collections / bundles). Compresses + stores the
+ * file and hands back a CDN url — the caller saves it onto the entity's
+ * hero_image_url. No product_images row: a cover isn't tied to a product.
+ */
+async function uploadCoverImage({
+  brand,
+  user,
+  request_id,
+  file,
+  reference_type,
+  reference_id,
+}) {
+  if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
+    throw new AppError("IMAGE_TOO_LARGE", "Image exceeds the 10 MB limit", 413, {
+      user_message: "Images must be 10 MB or smaller.",
+    });
+  }
+  const shrunk = await compressImage(file.buffer, file.mimetype);
+  const doc = await documents.store({
+    brand,
+    user_id: user.user_id,
+    buffer: shrunk.buffer,
+    filename: file.originalname,
+    mime_type: shrunk.mime_type,
+    document_type: "cover_image",
+    title: file.originalname,
+    reference_type: reference_type || null,
+    reference_id: reference_id || null,
+    request_id,
+  });
+  return { cdn_url: doc.url, document_id: doc.document_id };
+}
+
 async function updateImage({ brand, user, request_id, id, image_id, patch }) {
   const img = await repo.updateImage({
     brand,
@@ -1088,6 +1123,7 @@ module.exports = {
   removeCollectionMember,
   listImages,
   addImage,
+  uploadCoverImage,
   updateImage,
   removeImage,
   listVideos,

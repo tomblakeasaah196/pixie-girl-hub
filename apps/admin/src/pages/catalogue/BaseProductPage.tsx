@@ -4,7 +4,12 @@ import { ArrowLeft, Plus, Boxes, Factory } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
-import { ErrorState, NumberField, Toggle } from "@/components/ui/controls";
+import {
+  ErrorState,
+  NumberField,
+  Toggle,
+  MultiSelect,
+} from "@/components/ui/controls";
 import { FormSection, Field } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
 import {
@@ -13,6 +18,7 @@ import {
   useUpdateBaseProduct,
   useVariants,
   useAddVariant,
+  useSizeConfig,
   type BaseProduct,
   type Variant,
 } from "@/lib/catalogue";
@@ -345,6 +351,7 @@ function BaseEditor({
               </Button>
             )}
           </Card>
+          <LaceCard p={p} canEdit={canEdit} />
           {canEdit && (
             <Card className="p-4">
               <AddToCollection productId={p.product_id} />
@@ -361,6 +368,61 @@ function BaseEditor({
         />
       )}
     </div>
+  );
+}
+
+/** Supported lace constructions on the base — the styled products built on it
+ *  inherit this set as their lace axis (and may narrow it). */
+function LaceCard({ p, canEdit }: { p: BaseProduct; canEdit: boolean }) {
+  const update = useUpdateBaseProduct(p.product_id);
+  const cfg = useSizeConfig();
+  const ladder = (cfg.data?.lace_sizes ?? []).filter((l) => l.is_active);
+  const [codes, setCodes] = useState<string[]>(p.lace_size_codes ?? []);
+
+  useEffect(() => setCodes(p.lace_size_codes ?? []), [p]);
+
+  const dirty =
+    JSON.stringify([...codes].sort()) !==
+    JSON.stringify([...(p.lace_size_codes ?? [])].sort());
+
+  if (!ladder.length && !codes.length) {
+    return (
+      <Card className="p-4">
+        <div className="micro mb-1">Lace</div>
+        <p className="text-[11.5px] text-text-faint">
+          No lace ladder set up yet. Add lace sizes under Catalogue → Config to
+          offer 13×4, 360, etc.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="micro mb-2">Supported lace</div>
+      <MultiSelect
+        values={codes}
+        onChange={setCodes}
+        options={ladder.map((l) => ({ value: l.lace_code, label: l.label }))}
+      />
+      <p className="text-[11px] text-text-faint mt-2">
+        Styled products on this base offer these lace constructions; each one
+        becomes part of the colour × size × lace matrix.
+      </p>
+      {canEdit && (
+        <Button
+          variant="primary"
+          size="sm"
+          className="mt-3 w-full"
+          disabled={!dirty || update.isPending}
+          onClick={() =>
+            update.mutate({ lace_size_codes: codes } as Partial<BaseProduct>)
+          }
+        >
+          {update.isPending ? "Saving…" : "Save lace"}
+        </Button>
+      )}
+    </Card>
   );
 }
 

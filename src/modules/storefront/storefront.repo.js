@@ -102,18 +102,21 @@ async function getProductBySlug({ brand, slug }) {
       [product.styled_id],
     ),
     query(
-      `SELECT v.styled_variant_id, v.colour_id, v.size_code, v.sku,
+      `SELECT v.styled_variant_id, v.colour_id, v.size_code, v.lace_code, v.sku,
               v.compare_at_price_ngn, v.is_default,
               c.name AS colour_name, c.hex AS colour_hex,
               st.label AS size_label, st.display_order AS size_order,
+              ls.label AS lace_label, ls.display_order AS lace_order,
               COALESCE(v.price_override_ngn,
-                       sp.retail_price_ngn + c.premium_ngn + st.premium_ngn) AS price_ngn
+                       sp.retail_price_ngn + c.premium_ngn + st.premium_ngn
+                         + COALESCE(ls.premium_ngn, 0)) AS price_ngn
          FROM ${t(brand, "styled_product_variants")} v
          JOIN ${t(brand, "styled_product_colours")} c ON c.colour_id = v.colour_id
          JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = v.size_code
+         LEFT JOIN ${t(brand, "styled_lace_sizes")} ls ON ls.lace_code = v.lace_code
          JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = v.styled_id
         WHERE v.styled_id = $1 AND v.is_active = true AND c.is_active = true
-        ORDER BY c.display_order, st.display_order`,
+        ORDER BY c.display_order, st.display_order, ls.display_order`,
       [product.styled_id],
     ),
     query(

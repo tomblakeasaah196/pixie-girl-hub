@@ -18,6 +18,23 @@ const t = (b, tbl) => {
 };
 const ex = (c) => (c ? c.query.bind(c) : query);
 
+// Resolve a styled product's module-card hero, in priority order: the explicit
+// primary_image_id → the default colour's first picture → any picture on the
+// styled product. Used by list + detail so the module shows imagery, not just
+// the website.
+function primaryImageSql(brand, alias) {
+  return `COALESCE(
+    (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+      WHERE pi.image_id = ${alias}.primary_image_id),
+    (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+       JOIN ${t(brand, "styled_product_colours")} col ON col.colour_id = pi.styled_colour_id
+      WHERE col.styled_id = ${alias}.styled_id
+      ORDER BY col.is_default DESC, col.display_order, pi.display_order LIMIT 1),
+    (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+      WHERE pi.styled_id = ${alias}.styled_id
+      ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1))`;
+}
+
 const STYLED_COLS = [
   "base_product_id",
   "base_variant_id",
@@ -35,6 +52,10 @@ const STYLED_COLS = [
   "meta_title",
   "meta_description",
   "search_keywords",
+  // Lace constructions this styled offers (NULL/empty = inherit the base set).
+  "lace_size_codes",
+  // Explicit module-card hero (NULL = default colour's first picture).
+  "primary_image_id",
 ];
 
 function insert(cols, src, extra = {}) {
@@ -123,7 +144,8 @@ async function list({
     `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
             b.preorder_enabled, b.expected_ready_date, b.production_lead_days,
             COALESCE(av.available, 0) AS base_available,
-            pr.price_storefront_ngn AS base_price_storefront_ngn
+            pr.price_storefront_ngn AS base_price_storefront_ngn,
+            ${primaryImageSql(brand, "s")} AS primary_image_url
        FROM ${t(brand, "styled_products")} s
        JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
        LEFT JOIN LATERAL (
@@ -163,7 +185,9 @@ async function list({
 async function getById({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
-            b.preorder_enabled, b.expected_ready_date, b.production_lead_days
+            b.preorder_enabled, b.expected_ready_date, b.production_lead_days,
+            b.lace_size_codes AS base_lace_size_codes,
+            ${primaryImageSql(brand, "s")} AS primary_image_url
        FROM ${t(brand, "styled_products")} s
        JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
       WHERE s.styled_id = $1 AND s.is_deleted = false`,
@@ -175,7 +199,8 @@ async function getById({ client, brand, id }) {
 async function baseProduct({ client, brand, base_product_id }) {
   const { rows } = await ex(client)(
     `SELECT product_id, name, product_code, is_deleted, track_stock,
-            preorder_enabled, expected_ready_date, production_lead_days
+            preorder_enabled, expected_ready_date, production_lead_days,
+            lace_size_codes
        FROM ${t(brand, "products")} WHERE product_id = $1`,
     [base_product_id],
   );

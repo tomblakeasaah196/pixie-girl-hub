@@ -227,6 +227,22 @@ async function addImage(req, res) {
     }),
   });
 }
+async function uploadCoverImage(req, res) {
+  if (!req.file)
+    return res.status(400).json({
+      error: { code: "NO_FILE", message: "Multipart field 'file' is required" },
+      request_id: req.request_id,
+    });
+  res.status(201).json({
+    data: await service.uploadCoverImage({
+      ...base(req),
+      file: req.file,
+      reference_type: req.body.reference_type,
+      reference_id: req.body.reference_id,
+    }),
+  });
+}
+
 const updateImage = async (req, res) =>
   res.json({
     data: await service.updateImage({
@@ -378,6 +394,7 @@ module.exports = {
   removeCollectionMember,
   listImages,
   addImage,
+  uploadCoverImage,
   updateImage,
   removeImage,
   listVideos,

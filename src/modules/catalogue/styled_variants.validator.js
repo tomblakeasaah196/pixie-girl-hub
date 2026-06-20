@@ -31,11 +31,34 @@ const tier = z
   })
   .strict();
 
+const laceCode = z
+  .string()
+  .min(1)
+  .max(8)
+  .regex(
+    /^[A-Z0-9]+$/,
+    "lace code must be UPPERCASE letters/digits (e.g. 13X4, 360)",
+  );
+
+const laceTier = z
+  .object({
+    lace_code: laceCode,
+    label: z.string().min(1).max(60).optional(),
+    premium_ngn: money.optional(),
+    description: z.string().max(500).nullable().optional(),
+    display_order: z.coerce.number().int().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
+
 const sizeConfig = z
   .object({
     tiers: z.array(tier).max(20).optional(),
+    lace_sizes: z.array(laceTier).max(20).optional(),
     size_guide_title: z.string().max(160).nullable().optional(),
     head_size_guide_md: z.string().max(8000).nullable().optional(),
+    // One-click Categories toggle (Products → Config).
+    categories_enabled: z.boolean().optional(),
   })
   .strict();
 
@@ -64,6 +87,9 @@ const variantBulkCreate = z
     colour_ids: z.array(z.string().uuid()).optional(),
     all_sizes: z.boolean().optional(),
     size_codes: z.array(sizeCode).optional(),
+    // Lace axis (optional): generate colour × size × lace. Omit for no lace.
+    all_lace: z.boolean().optional(),
+    lace_codes: z.array(laceCode).optional(),
   })
   .strict()
   .refine((v) => v.all_sizes || (v.size_codes && v.size_codes.length), {

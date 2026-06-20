@@ -298,6 +298,15 @@ router.patch(
 );
 router.delete("/products/:id/images/:imageId", can("edit"), c.removeImage);
 
+// Generic cover-image upload for collections/bundles (compress → store → url).
+// The caller saves the returned cdn_url onto the entity's hero_image_url.
+router.post(
+  "/cover-image",
+  can("edit"),
+  upload.single("file"),
+  c.uploadCoverImage,
+);
+
 // Self-hosted media upload → stored + queued for FFmpeg processing (W-13).
 router.post("/media", can("edit"), upload.single("file"), c.uploadMedia);
 

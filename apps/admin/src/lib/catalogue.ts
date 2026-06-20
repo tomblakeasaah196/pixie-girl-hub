@@ -50,6 +50,9 @@ export interface BaseProduct {
   is_visible_storefront: boolean;
   brand_name: string | null;
   track_stock: boolean;
+  // Controlled lace constructions the base supports (drives the styled lace
+  // axis); distinct from the legacy free-text `lace_type` above.
+  lace_size_codes: string[] | null;
   // Pre-order / production timeline (P0-7).
   preorder_enabled: boolean;
   expected_ready_date: string | null;
@@ -112,6 +115,13 @@ export interface StyledProduct {
   meta_title: string | null;
   meta_description: string | null;
   search_keywords: string[] | null;
+  // Lace constructions this styled offers (NULL/empty = inherit base set).
+  lace_size_codes?: string[] | null;
+  // The base's supported lace (joined on detail) — used as the inherit default.
+  base_lace_size_codes?: string[] | null;
+  // Module-card hero: explicit override id + the resolved url (list + detail).
+  primary_image_id?: string | null;
+  primary_image_url?: string | null;
   // AI provenance (P0-8).
   ai_drafted?: boolean;
   ai_model?: string | null;
@@ -154,6 +164,8 @@ export interface StyledVariant {
   styled_id: string;
   colour_id: string;
   size_code: string;
+  // Third axis (optional): lace construction. NULL = no lace dimension.
+  lace_code: string | null;
   sku: string;
   price_override_ngn: number | null;
   compare_at_price_ngn: number | null;
@@ -166,6 +178,8 @@ export interface StyledVariant {
   colour_premium_ngn: number;
   size_label: string;
   size_premium_ngn: number;
+  lace_label: string | null;
+  lace_premium_ngn: number | null;
   anchor_price_ngn: number | null;
   effective_price_ngn: number | null;
 }
@@ -184,12 +198,25 @@ export interface SizeTier {
   display_order: number;
   is_active: boolean;
 }
+/** Brand-wide lace ladder (4×4, 13×4, 360…) — the third variant axis. */
+export interface LaceSize {
+  lace_id?: string;
+  lace_code: string;
+  label: string;
+  premium_ngn: number;
+  description: string | null;
+  display_order: number;
+  is_active: boolean;
+}
 export interface CatalogueConfig {
   size_guide_title: string;
   head_size_guide_md: string | null;
+  // One-click Categories toggle — off by default, restored from Config.
+  categories_enabled: boolean;
 }
 export interface SizeConfig {
   tiers: SizeTier[];
+  lace_sizes: LaceSize[];
   config: CatalogueConfig | null;
 }
 
@@ -199,6 +226,8 @@ export interface ProductImage {
   alt_text: string | null;
   caption: string | null;
   display_order: number;
+  is_primary?: boolean;
+  styled_colour_id?: string | null;
 }
 
 export interface Category {
@@ -222,6 +251,9 @@ export interface Collection {
   mode: "manual" | "rule";
   is_visible_storefront: boolean;
   is_active: boolean;
+  // Cover imagery — pick a member's picture or upload a custom one.
+  hero_image_url?: string | null;
+  display_image_url?: string | null;
 }
 
 /** A service offering (Service Catalogue) — revamps, installs, repairs.
@@ -276,6 +308,7 @@ export interface Bundle {
   is_visible_storefront: boolean;
   is_active: boolean;
   display_order: number;
+  hero_image_url?: string | null;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -650,6 +683,42 @@ export function useCreateCollection() {
   });
 }
 
+export function useUpdateCollection() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<Collection> }) =>
+      api.patch<Collection>(`/catalogue/collections/${id}`, patch),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] }),
+  });
+}
+
+/** Upload a cover image (collection/bundle) → returns its CDN url. The caller
+ *  then saves the url onto the entity's hero_image_url. */
+export function useUploadCoverImage() {
+  return useMutation({
+    mutationFn: ({
+      file,
+      reference_type,
+      reference_id,
+    }: {
+      file: File;
+      reference_type?: string;
+      reference_id?: string;
+    }) => {
+      const form = new FormData();
+      form.append("file", file);
+      if (reference_type) form.append("reference_type", reference_type);
+      if (reference_id) form.append("reference_id", reference_id);
+      return api.postForm<{ cdn_url: string; document_id: string }>(
+        "/catalogue/cover-image",
+        form,
+      );
+    },
+  });
+}
+
 // ════════════════════════════════════════════════════════════
 // Service Catalogue (revamps, installs, repairs) — /service-catalogue
 // ════════════════════════════════════════════════════════════
@@ -844,6 +913,17 @@ export function useToggleBundle() {
   });
 }
 
+export function useUpdateBundle() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<Bundle> }) =>
+      api.patch<Bundle>(`/retention/bundles/${id}`, patch),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
+  });
+}
+
 // ════════════════════════════════════════════════════════════
 // Real-time: live availability via the stock room
 // ════════════════════════════════════════════════════════════
@@ -913,8 +993,17 @@ export function useSizeConfig() {
 
 export interface SaveSizeConfigInput {
   tiers?: Partial<SizeTier>[];
+  lace_sizes?: Partial<LaceSize>[];
   size_guide_title?: string | null;
   head_size_guide_md?: string | null;
+  categories_enabled?: boolean;
+}
+
+/** Convenience: is the Categories feature switched on? Defaults to false while
+ *  the config loads, so category UI stays hidden until we know it's enabled. */
+export function useCategoriesEnabled(): boolean {
+  const { data } = useSizeConfig();
+  return data?.config?.categories_enabled ?? false;
 }
 export function useSaveSizeConfig() {
   const qc = useQueryClient();
@@ -1053,6 +1142,9 @@ export interface BulkVariantInput {
   colour_ids?: string[];
   all_sizes?: boolean;
   size_codes?: string[];
+  // Optional lace axis — generate colour × size × lace. Omit for no lace.
+  all_lace?: boolean;
+  lace_codes?: string[];
 }
 export function useBulkCreateVariants(styledId: string) {
   const qc = useQueryClient();

@@ -10,6 +10,7 @@
 
 const crypto = require("crypto");
 const repo = require("./landing.repo");
+const { withDefaults } = require("./landing.defaults");
 const storage = require("../../services/storage.service");
 const { audit } = require("../../middleware/audit");
 const { AppError, NotFoundError } = require("../../utils/errors");
@@ -39,14 +40,16 @@ async function getStudio({ brand }) {
   };
 }
 
-/** Public read: the published config only. 404 when never published. */
+/** Public read: the published config only. 404 when never published.
+ *  Merged with brand defaults so a snapshot published before a field existed
+ *  (e.g. reveal.threeD) still serves a complete, on-brand config. */
 async function getPublished({ brand }) {
   if (!brand) throw new NotFoundError("Landing page");
   const row = await repo.findPublished(brand);
   if (!row || !row.is_published || !row.published_config) {
     throw new NotFoundError("Landing page");
   }
-  return { business_key: brand, ...row.published_config };
+  return { business_key: brand, ...withDefaults(brand, row.published_config) };
 }
 
 async function saveDraft({ brand, user, request_id, config, ip, user_agent }) {
@@ -81,9 +84,21 @@ async function saveDraft({ brand, user, request_id, config, ip, user_agent }) {
 }
 
 async function publish({ brand, user, request_id, ip, user_agent }) {
+  const existing = await repo.findByBrand(brand);
+  if (!existing) {
+    throw new AppError(
+      "NOTHING_TO_PUBLISH",
+      "No landing page draft exists for this brand yet — save a draft first.",
+      409,
+    );
+  }
+  // Store a complete snapshot: merge the draft over the brand defaults so the
+  // published config can never be partial, regardless of the client.
+  const merged = withDefaults(brand, existing.draft_config);
   const published = await repo.publish({
     brand,
     user_id: user?.user_id || user?.id || null,
+    config: merged,
   });
   if (!published) {
     throw new AppError(

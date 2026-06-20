@@ -54,19 +54,23 @@ async function saveDraft({ brand, config, user_id }) {
   return rows[0];
 }
 
-/** Publish: copy the current draft into published_config + stamp it. */
-async function publish({ brand, user_id }) {
+/**
+ * Publish: write the provided (defaults-merged) config into published_config
+ * + stamp it. The service merges brand defaults before calling this so the
+ * stored published snapshot is always complete.
+ */
+async function publish({ brand, user_id, config }) {
   const { rows } = await query(
     `UPDATE shared.landing_pages
-        SET published_config = draft_config,
+        SET published_config = $2::jsonb,
             is_published     = true,
             published_at     = now(),
-            published_by     = $2,
+            published_by     = $3,
             updated_at       = now()
       WHERE business_key = $1
       RETURNING landing_id, business_key, draft_config, published_config,
                 is_published, published_at, updated_at`,
-    [brand, user_id || null],
+    [brand, JSON.stringify(config), user_id || null],
   );
   return rows[0] || null;
 }

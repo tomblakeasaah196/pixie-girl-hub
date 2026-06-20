@@ -1,7 +1,18 @@
 import { useState } from "react";
 import { Plus, Scissors, Clock } from "lucide-react";
-import { Button, Card, EmptyState, MoneyText, Pill } from "@/components/ui/primitives";
-import { ErrorState, DeniedState, Toggle, NumberField } from "@/components/ui/controls";
+import {
+  Button,
+  Card,
+  EmptyState,
+  MoneyText,
+  Pill,
+} from "@/components/ui/primitives";
+import {
+  ErrorState,
+  DeniedState,
+  Toggle,
+  NumberField,
+} from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
@@ -18,7 +29,11 @@ import {
  * permission key is `service_catalogue`.
  */
 function slugify(s: string) {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function ServicesTab() {
@@ -54,7 +69,10 @@ export function ServicesTab() {
       {services.isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="glass rounded-[var(--radius)] h-24 animate-pulse" />
+            <div
+              key={i}
+              className="glass rounded-[var(--radius)] h-24 animate-pulse"
+            />
           ))}
         </div>
       ) : services.isError ? (
@@ -67,7 +85,11 @@ export function ServicesTab() {
             message="Revamps, installs, custom styles and repairs live here. Add one to offer it."
             action={
               canCreate ? (
-                <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setOpen(true)}
+                >
                   New service
                 </Button>
               ) : undefined
@@ -77,18 +99,27 @@ export function ServicesTab() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(services.data ?? []).map((s: ServiceOffering) => (
-            <Card key={s.service_id} className={`p-4 ${s.is_active ? "" : "opacity-60"}`}>
+            <Card
+              key={s.service_id}
+              className={`p-4 ${s.is_active ? "" : "opacity-60"}`}
+            >
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="min-w-0">
-                  <div className="font-display text-[15px] truncate">{s.name}</div>
+                  <div className="font-display text-[15px] truncate">
+                    {s.name}
+                  </div>
                   {s.category && (
-                    <div className="font-mono text-[10.5px] text-accent-glow">{s.category}</div>
+                    <div className="font-mono text-[10.5px] text-accent-glow">
+                      {s.category}
+                    </div>
                   )}
                 </div>
                 {canEdit ? (
                   <Toggle
                     checked={s.is_active}
-                    onChange={(v) => toggle.mutate({ id: s.service_id, is_active: v })}
+                    onChange={(v) =>
+                      toggle.mutate({ id: s.service_id, is_active: v })
+                    }
                   />
                 ) : (
                   <Pill tone={s.is_active ? "success" : "neutral"} dot={false}>
@@ -97,7 +128,9 @@ export function ServicesTab() {
                 )}
               </div>
               {s.description && (
-                <div className="text-[12px] text-text-faint line-clamp-2 mb-2">{s.description}</div>
+                <div className="text-[12px] text-text-faint line-clamp-2 mb-2">
+                  {s.description}
+                </div>
               )}
               <div className="flex items-center gap-3 mt-2">
                 {s.base_price_ngn != null && (
@@ -119,7 +152,13 @@ export function ServicesTab() {
   );
 }
 
-function CreateServiceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreateServiceModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateService();
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -158,7 +197,12 @@ function CreateServiceModal({ open, onClose }: { open: boolean; onClose: () => v
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" disabled={!name.trim() || create.isPending} onClick={submit}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!name.trim() || create.isPending}
+            onClick={submit}
+          >
             {create.isPending ? "Creating…" : "Create"}
           </Button>
         </>
@@ -178,7 +222,12 @@ function CreateServiceModal({ open, onClose }: { open: boolean; onClose: () => v
             <NumberField value={price} onChange={setPrice} suffix="₦" />
           </Field>
           <Field label="Duration" hint="optional">
-            <NumberField value={duration} onChange={setDuration} allowDecimal={false} suffix="min" />
+            <NumberField
+              value={duration}
+              onChange={setDuration}
+              allowDecimal={false}
+              suffix="min"
+            />
           </Field>
         </div>
         <Field label="Category" hint="optional · e.g. revamp, install, repair">
@@ -190,7 +239,9 @@ function CreateServiceModal({ open, onClose }: { open: boolean; onClose: () => v
         </Field>
         {create.isError && (
           <p className="text-[12px] text-danger">
-            {create.error instanceof Error ? create.error.message : "Could not create service."}
+            {create.error instanceof Error
+              ? create.error.message
+              : "Could not create service."}
           </p>
         )}
       </div>

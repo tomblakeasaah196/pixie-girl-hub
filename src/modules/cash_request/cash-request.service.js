@@ -511,7 +511,15 @@ async function cancel({ brand, user, request_id, id, reason }) {
 }
 
 // ── Documents ─────────────────────────────────────────────
-async function addDocument({ brand, user, request_id, id, document_id, document_role, notes }) {
+async function addDocument({
+  brand,
+  user,
+  request_id,
+  id,
+  document_id,
+  document_role,
+  notes,
+}) {
   const cr = await load({ brand, id });
   const doc = await repo.insertDocument({
     cash_request_id: cr.cash_request_id,
@@ -520,7 +528,14 @@ async function addDocument({ brand, user, request_id, id, document_id, document_
     uploaded_by: user.user_id,
     notes,
   });
-  await A(brand, user, "cash_request.document.add", cr.cash_request_id, { document_id, document_role }, request_id);
+  await A(
+    brand,
+    user,
+    "cash_request.document.add",
+    cr.cash_request_id,
+    { document_id, document_role },
+    request_id,
+  );
   return doc;
 }
 

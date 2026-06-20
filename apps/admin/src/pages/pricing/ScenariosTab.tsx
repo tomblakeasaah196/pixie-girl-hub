@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { Plus, FlaskConical, Play, Send, AlertTriangle } from "lucide-react";
-import { Button, Card, Pill, MoneyText, Skeleton } from "@/components/ui/primitives";
+import {
+  Button,
+  Card,
+  Pill,
+  MoneyText,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field, TextInput } from "@/components/ui/Form";
@@ -32,9 +38,17 @@ import type {
   ScopeType,
 } from "./types";
 
-export function ScenariosTab({ canEdit, onGoToProposals }: { canEdit: boolean; onGoToProposals: () => void }) {
+export function ScenariosTab({
+  canEdit,
+  onGoToProposals,
+}: {
+  canEdit: boolean;
+  onGoToProposals: () => void;
+}) {
   const [status, setStatus] = useState("");
-  const { data, isLoading, isError, refetch } = useScenarios(status || undefined);
+  const { data, isLoading, isError, refetch } = useScenarios(
+    status || undefined,
+  );
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -45,7 +59,9 @@ export function ScenariosTab({ canEdit, onGoToProposals }: { canEdit: boolean; o
       render: (s) => (
         <div>
           <div className="font-semibold text-[13px]">{s.scenario_name}</div>
-          <div className="text-[11px] text-text-faint">{GOAL_TYPE_LABELS[s.goal_type]}</div>
+          <div className="text-[11px] text-text-faint">
+            {GOAL_TYPE_LABELS[s.goal_type]}
+          </div>
         </div>
       ),
     },
@@ -59,7 +75,8 @@ export function ScenariosTab({ canEdit, onGoToProposals }: { canEdit: boolean; o
           <span className="text-text-faint">—</span>
         ) : (
           <span className="font-mono text-[13px]">
-            {s.goal_type === "target_price" || s.goal_type === "target_revenue" ? (
+            {s.goal_type === "target_price" ||
+            s.goal_type === "target_revenue" ? (
               <MoneyText ngn={Number(s.goal_value)} className="text-[13px]" />
             ) : (
               `${s.goal_value}%`
@@ -73,7 +90,9 @@ export function ScenariosTab({ canEdit, onGoToProposals }: { canEdit: boolean; o
       align: "right",
       width: "90px",
       render: (s) => (
-        <span className="font-mono text-xs text-text-muted">{s.computed_units_analysed ?? "—"}</span>
+        <span className="font-mono text-xs text-text-muted">
+          {s.computed_units_analysed ?? "—"}
+        </span>
       ),
     },
     {
@@ -85,7 +104,12 @@ export function ScenariosTab({ canEdit, onGoToProposals }: { canEdit: boolean; o
         s.computed_avg_margin_pct == null ? (
           <span className="text-text-faint">—</span>
         ) : (
-          <span className={cn("font-mono text-[13px]", metricColor(s.computed_avg_margin_pct))}>
+          <span
+            className={cn(
+              "font-mono text-[13px]",
+              metricColor(s.computed_avg_margin_pct),
+            )}
+          >
             {fmtPct(s.computed_avg_margin_pct)}
           </span>
         ),
@@ -99,7 +123,10 @@ export function ScenariosTab({ canEdit, onGoToProposals }: { canEdit: boolean; o
         s.computed_projected_revenue_ngn == null ? (
           <span className="text-text-faint">—</span>
         ) : (
-          <MoneyText ngn={Number(s.computed_projected_revenue_ngn)} className="text-[13px]" />
+          <MoneyText
+            ngn={Number(s.computed_projected_revenue_ngn)}
+            className="text-[13px]"
+          />
         ),
     },
     {
@@ -118,9 +145,18 @@ export function ScenariosTab({ canEdit, onGoToProposals }: { canEdit: boolean; o
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <StatusTabs tabs={SCENARIO_STATUS_TABS} value={status} onChange={setStatus} />
+        <StatusTabs
+          tabs={SCENARIO_STATUS_TABS}
+          value={status}
+          onChange={setStatus}
+        />
         {canEdit && (
-          <Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setCreating(true)}>
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => setCreating(true)}
+          >
             New scenario
           </Button>
         )}
@@ -135,9 +171,14 @@ export function ScenariosTab({ canEdit, onGoToProposals }: { canEdit: boolean; o
         empty={{
           icon: <FlaskConical className="w-7 h-7" />,
           title: "No scenarios",
-          message: "Model a margin/price/revenue goal across products, run sensitivity, then promote to a proposal.",
+          message:
+            "Model a margin/price/revenue goal across products, run sensitivity, then promote to a proposal.",
           action: canEdit ? (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setCreating(true)}
+            >
               New scenario
             </Button>
           ) : undefined,
@@ -246,13 +287,25 @@ function ScenarioDrawer({
         data ? (
           <>
             {canEdit && (
-              <Button variant="secondary" disabled={compute.isPending} onClick={recompute} icon={<Play className="w-4 h-4" />}>
+              <Button
+                variant="secondary"
+                disabled={compute.isPending}
+                onClick={recompute}
+                icon={<Play className="w-4 h-4" />}
+              >
                 {compute.isPending ? "Computing…" : "Recompute"}
               </Button>
             )}
             {canEdit && data.status === "computed" && (
-              <Button variant="primary" disabled={createProposal.isPending} onClick={promote} icon={<Send className="w-4 h-4" />}>
-                {createProposal.isPending ? "Promoting…" : "Promote to proposal"}
+              <Button
+                variant="primary"
+                disabled={createProposal.isPending}
+                onClick={promote}
+                icon={<Send className="w-4 h-4" />}
+              >
+                {createProposal.isPending
+                  ? "Promoting…"
+                  : "Promote to proposal"}
               </Button>
             )}
           </>
@@ -272,9 +325,13 @@ function ScenarioDrawer({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Mini label="Goal">{GOAL_TYPE_LABELS[data.goal_type]}</Mini>
             <Mini label="Channel">{data.channel ?? "All"}</Mini>
-            <Mini label="Units analysed">{data.computed_units_analysed ?? "—"}</Mini>
+            <Mini label="Units analysed">
+              {data.computed_units_analysed ?? "—"}
+            </Mini>
             <Mini label="Avg margin">
-              <span className={metricColor(data.computed_avg_margin_pct)}>{fmtPct(data.computed_avg_margin_pct)}</span>
+              <span className={metricColor(data.computed_avg_margin_pct)}>
+                {fmtPct(data.computed_avg_margin_pct)}
+              </span>
             </Mini>
           </div>
 
@@ -282,8 +339,13 @@ function ScenarioDrawer({
             <div className="flex items-center gap-2 text-[13px] rounded-xl p-3 border text-accent-glow bg-accent/10 border-accent/25">
               <Send className="w-4 h-4" />
               <span>
-                Proposal <span className="font-mono font-semibold">{promoted}</span> created.{" "}
-                <button onClick={onGoToProposals} className="font-semibold underline">
+                Proposal{" "}
+                <span className="font-mono font-semibold">{promoted}</span>{" "}
+                created.{" "}
+                <button
+                  onClick={onGoToProposals}
+                  className="font-semibold underline"
+                >
                   Open Proposals
                 </button>
               </span>
@@ -301,7 +363,9 @@ function ScenarioDrawer({
                     slider={s}
                     value={sliderVals[s.slider_key] ?? s.scenario_value}
                     disabled={!canEdit}
-                    onChange={(v) => setSliderVals((p) => ({ ...p, [s.slider_key]: v }))}
+                    onChange={(v) =>
+                      setSliderVals((p) => ({ ...p, [s.slider_key]: v }))
+                    }
                   />
                 ))}
               </div>
@@ -333,14 +397,22 @@ function SliderRow({
   const max = Math.round((slider.baseline_value + span) * 100) / 100;
   const delta =
     slider.baseline_value !== 0
-      ? ((value - slider.baseline_value) / Math.abs(slider.baseline_value)) * 100
+      ? ((value - slider.baseline_value) / Math.abs(slider.baseline_value)) *
+        100
       : 0;
 
   return (
     <div>
       <div className="flex items-center justify-between text-[12px] mb-1.5">
-        <span className="font-semibold capitalize">{slider.slider_key.replace(/_/g, " ")}</span>
-        <span className={cn("font-mono", delta >= 0 ? "text-success" : "text-danger")}>
+        <span className="font-semibold capitalize">
+          {slider.slider_key.replace(/_/g, " ")}
+        </span>
+        <span
+          className={cn(
+            "font-mono",
+            delta >= 0 ? "text-success" : "text-danger",
+          )}
+        >
           {delta >= 0 ? "+" : ""}
           {delta.toFixed(1)}%
         </span>
@@ -356,9 +428,13 @@ function SliderRow({
           onChange={(e) => onChange(Number(e.target.value))}
           className="flex-1 accent-[rgb(var(--accent-deep))] h-2 rounded-full cursor-pointer disabled:opacity-50"
         />
-        <span className="font-mono text-[12px] w-[90px] text-right tabular-nums">{value.toLocaleString("en-NG")}</span>
+        <span className="font-mono text-[12px] w-[90px] text-right tabular-nums">
+          {value.toLocaleString("en-NG")}
+        </span>
       </div>
-      {slider.notes && <div className="text-[11px] text-text-faint mt-1">{slider.notes}</div>}
+      {slider.notes && (
+        <div className="text-[11px] text-text-faint mt-1">{slider.notes}</div>
+      )}
     </div>
   );
 }
@@ -367,13 +443,16 @@ function ResultsTable({ results }: { results: ScenarioResult[] }) {
   if (results.length === 0) {
     return (
       <Card className="p-5 text-center text-[13px] text-text-muted">
-        No results yet — run <span className="font-semibold">Recompute</span> to evaluate this scenario.
+        No results yet — run <span className="font-semibold">Recompute</span> to
+        evaluate this scenario.
       </Card>
     );
   }
   return (
     <Card className="overflow-hidden">
-      <div className="p-3 border-b hairline text-[13px] font-semibold">Results · {results.length} variants</div>
+      <div className="p-3 border-b hairline text-[13px] font-semibold">
+        Results · {results.length} variants
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-[12.5px]">
           <thead>
@@ -381,7 +460,9 @@ function ResultsTable({ results }: { results: ScenarioResult[] }) {
               <th className="p-[8px_12px] font-semibold">Variant</th>
               <th className="p-[8px_12px] font-semibold text-right">Cost</th>
               <th className="p-[8px_12px] font-semibold text-right">Current</th>
-              <th className="p-[8px_12px] font-semibold text-right">Proposed</th>
+              <th className="p-[8px_12px] font-semibold text-right">
+                Proposed
+              </th>
               <th className="p-[8px_12px] font-semibold text-right">Margin</th>
               <th className="p-[8px_12px] font-semibold text-center">Floor</th>
             </tr>
@@ -389,30 +470,47 @@ function ResultsTable({ results }: { results: ScenarioResult[] }) {
           <tbody>
             {results.map((r) => (
               <tr key={r.result_id} className="border-b hairline last:border-0">
-                <td className="p-[8px_12px] font-mono text-[10.5px] text-text-faint">{r.variant_id.slice(0, 8)}…</td>
+                <td className="p-[8px_12px] font-mono text-[10.5px] text-text-faint">
+                  {r.variant_id.slice(0, 8)}…
+                </td>
                 <td className="p-[8px_12px] text-right">
                   <MoneyText ngn={Number(r.cost_ngn)} className="text-[12px]" />
                 </td>
                 <td className="p-[8px_12px] text-right">
                   {r.current_price_ngn != null ? (
-                    <MoneyText ngn={Number(r.current_price_ngn)} className="text-[12px] text-text-muted" />
+                    <MoneyText
+                      ngn={Number(r.current_price_ngn)}
+                      className="text-[12px] text-text-muted"
+                    />
                   ) : (
                     <span className="text-text-faint">—</span>
                   )}
                 </td>
                 <td className="p-[8px_12px] text-right">
-                  <MoneyText ngn={Number(r.proposed_price_ngn)} className="text-[12px] text-accent-glow" />
+                  <MoneyText
+                    ngn={Number(r.proposed_price_ngn)}
+                    className="text-[12px] text-accent-glow"
+                  />
                 </td>
-                <td className={cn("p-[8px_12px] text-right font-mono", metricColor(r.proposed_margin_pct))}>
+                <td
+                  className={cn(
+                    "p-[8px_12px] text-right font-mono",
+                    metricColor(r.proposed_margin_pct),
+                  )}
+                >
                   {fmtPct(r.proposed_margin_pct)}
                 </td>
                 <td className="p-[8px_12px] text-center">
                   {r.floor_breached ? (
                     <span title={r.floor_breach_notes ?? "Floor breached"}>
-                      <Pill tone="danger" dot={false}>Breach</Pill>
+                      <Pill tone="danger" dot={false}>
+                        Breach
+                      </Pill>
                     </span>
                   ) : (
-                    <Pill tone="success" dot={false}>OK</Pill>
+                    <Pill tone="success" dot={false}>
+                      OK
+                    </Pill>
                   )}
                 </td>
               </tr>
@@ -424,7 +522,13 @@ function ResultsTable({ results }: { results: ScenarioResult[] }) {
   );
 }
 
-function Mini({ label, children }: { label: string; children: React.ReactNode }) {
+function Mini({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-[11px] border border-line p-3">
       <div className="micro mb-1">{label}</div>
@@ -434,7 +538,13 @@ function Mini({ label, children }: { label: string; children: React.ReactNode })
 }
 
 // ── New scenario form ────────────────────────────────────────────────────────
-function NewScenarioDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+function NewScenarioDrawer({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateScenario();
   const [name, setName] = useState("");
   const [goalType, setGoalType] = useState<GoalType>("target_margin");
@@ -454,7 +564,8 @@ function NewScenarioDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   }, [open]);
 
   const needsValue = goalType !== "sensitivity_only";
-  const valueIsNgn = goalType === "target_price" || goalType === "target_revenue";
+  const valueIsNgn =
+    goalType === "target_price" || goalType === "target_revenue";
 
   const submit = () => {
     if (!name.trim()) return;
@@ -462,7 +573,8 @@ function NewScenarioDrawer({ open, onClose }: { open: boolean; onClose: () => vo
       {
         scenario_name: name.trim(),
         goal_type: goalType,
-        goal_value: needsValue && goalValue.trim() !== "" ? Number(goalValue) : undefined,
+        goal_value:
+          needsValue && goalValue.trim() !== "" ? Number(goalValue) : undefined,
         channel,
         scope_type: scopeType,
         assumed_monthly_units: units.trim() !== "" ? Number(units) : undefined,
@@ -481,7 +593,11 @@ function NewScenarioDrawer({ open, onClose }: { open: boolean; onClose: () => vo
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={create.isPending || !name.trim()} onClick={submit}>
+          <Button
+            variant="primary"
+            disabled={create.isPending || !name.trim()}
+            onClick={submit}
+          >
             {create.isPending ? "Creating…" : "Create scenario"}
           </Button>
         </>
@@ -491,28 +607,59 @@ function NewScenarioDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         {create.isError && (
           <div className="flex items-start gap-2 text-[12.5px] text-danger bg-danger/10 border border-danger/25 rounded-xl p-3">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            {create.error instanceof Error ? create.error.message : "Could not create scenario."}
+            {create.error instanceof Error
+              ? create.error.message
+              : "Could not create scenario."}
           </div>
         )}
         <Field label="Scenario name">
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Q3 margin reset" />
+          <TextInput
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Q3 margin reset"
+          />
         </Field>
         <Field label="Goal type">
-          <Select value={goalType} onChange={(v) => setGoalType(v)} options={GOAL_TYPE_OPTIONS} />
+          <Select
+            value={goalType}
+            onChange={(v) => setGoalType(v)}
+            options={GOAL_TYPE_OPTIONS}
+          />
         </Field>
         {needsValue && (
           <Field label={valueIsNgn ? "Goal value (₦)" : "Goal value (%)"}>
-            <NumberField value={goalValue} onChange={setGoalValue} suffix={valueIsNgn ? "₦" : "%"} placeholder="0" />
+            <NumberField
+              value={goalValue}
+              onChange={setGoalValue}
+              suffix={valueIsNgn ? "₦" : "%"}
+              placeholder="0"
+            />
           </Field>
         )}
         <Field label="Channel">
-          <Select value={channel} onChange={setChannel} options={CHANNEL_OPTIONS} />
+          <Select
+            value={channel}
+            onChange={setChannel}
+            options={CHANNEL_OPTIONS}
+          />
         </Field>
         <Field label="Scope">
-          <Select value={scopeType} onChange={(v) => setScopeType(v)} options={SCOPE_TYPE_OPTIONS} />
+          <Select
+            value={scopeType}
+            onChange={(v) => setScopeType(v)}
+            options={SCOPE_TYPE_OPTIONS}
+          />
         </Field>
-        <Field label="Assumed monthly units" hint="optional — for revenue projection">
-          <NumberField value={units} onChange={setUnits} allowDecimal={false} placeholder="0" />
+        <Field
+          label="Assumed monthly units"
+          hint="optional — for revenue projection"
+        >
+          <NumberField
+            value={units}
+            onChange={setUnits}
+            allowDecimal={false}
+            placeholder="0"
+          />
         </Field>
       </div>
     </Drawer>

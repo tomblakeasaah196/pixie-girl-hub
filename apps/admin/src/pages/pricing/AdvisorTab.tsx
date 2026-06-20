@@ -69,7 +69,8 @@ export function AdvisorTab({
   const payload = useMemo(() => {
     if (!variantId) return null;
     const targetNum = target.trim() === "" ? undefined : Number(target);
-    const costNum = costOverride.trim() === "" ? undefined : Number(costOverride);
+    const costNum =
+      costOverride.trim() === "" ? undefined : Number(costOverride);
     return {
       variant_id: variantId,
       channel,
@@ -129,13 +130,22 @@ export function AdvisorTab({
       {
         onSuccess: (res) => {
           if (res.applied) {
-            setApplyMsg({ kind: "applied", price: Number(res.new_price_ngn ?? rec.suggested_price_ngn) });
+            setApplyMsg({
+              kind: "applied",
+              price: Number(res.new_price_ngn ?? rec.suggested_price_ngn),
+            });
           } else {
-            setApplyMsg({ kind: "proposed", number: res.proposal_number ?? "—" });
+            setApplyMsg({
+              kind: "proposed",
+              number: res.proposal_number ?? "—",
+            });
           }
         },
         onError: (e) =>
-          setApplyMsg({ kind: "error", text: e instanceof Error ? e.message : "Could not apply." }),
+          setApplyMsg({
+            kind: "error",
+            text: e instanceof Error ? e.message : "Could not apply.",
+          }),
       },
     );
   };
@@ -157,7 +167,9 @@ export function AdvisorTab({
       <Card className="p-5 space-y-4 self-start">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-accent-glow" />
-          <span className="font-display text-[15px] font-medium">Price advisor</span>
+          <span className="font-display text-[15px] font-medium">
+            Price advisor
+          </span>
         </div>
 
         <ProductVariantPicker
@@ -168,7 +180,11 @@ export function AdvisorTab({
         />
 
         <Field label="Channel">
-          <Select value={channel} onChange={setChannel} options={CHANNEL_OPTIONS} />
+          <Select
+            value={channel}
+            onChange={setChannel}
+            options={CHANNEL_OPTIONS}
+          />
         </Field>
 
         <Field label="Basis">
@@ -201,17 +217,29 @@ export function AdvisorTab({
                 max={bounds.max}
                 step={bounds.step}
               />
-              <NumberField value={target} onChange={setTarget} suffix="%" className="w-24" />
+              <NumberField
+                value={target}
+                onChange={setTarget}
+                suffix="%"
+                className="w-24"
+              />
             </div>
           </Field>
         ) : (
           <Field label="Target price (NGN)">
-            <NumberField value={target} onChange={setTarget} suffix="₦" placeholder="0.00" />
+            <NumberField
+              value={target}
+              onChange={setTarget}
+              suffix="₦"
+              placeholder="0.00"
+            />
           </Field>
         )}
 
         <label className="flex items-center justify-between gap-2 cursor-pointer">
-          <span className="text-[12.5px] text-text-primary">Price net of channel fee</span>
+          <span className="text-[12.5px] text-text-primary">
+            Price net of channel fee
+          </span>
           <input
             type="checkbox"
             checked={netOfFee}
@@ -222,7 +250,12 @@ export function AdvisorTab({
 
         {costNoneNeedsInput && (
           <Field label="Cost override (NGN)" hint="cost is hidden">
-            <NumberField value={costOverride} onChange={setCostOverride} suffix="₦" placeholder="Enter a cost" />
+            <NumberField
+              value={costOverride}
+              onChange={setCostOverride}
+              suffix="₦"
+              placeholder="Enter a cost"
+            />
           </Field>
         )}
       </Card>
@@ -234,15 +267,19 @@ export function AdvisorTab({
             <div className="w-[64px] h-[64px] rounded-[20px] mx-auto mb-4 grid place-items-center text-accent-glow bg-accent/10 border border-accent/20">
               <Sparkles className="w-7 h-7" />
             </div>
-            <h3 className="font-display text-lg font-medium mb-1">Pick a product</h3>
+            <h3 className="font-display text-lg font-medium mb-1">
+              Pick a product
+            </h3>
             <p className="text-text-muted text-[13px] max-w-[340px] mx-auto">
-              Search a product and choose a variant. The advisor suggests a price from your cost,
-              target, channel fees and floors.
+              Search a product and choose a variant. The advisor suggests a
+              price from your cost, target, channel fees and floors.
             </p>
           </Card>
         ) : recommend.isError ? (
           <Banner tone="danger" icon={<AlertTriangle className="w-4 h-4" />}>
-            {recommend.error instanceof Error ? recommend.error.message : "Could not compute a price."}
+            {recommend.error instanceof Error
+              ? recommend.error.message
+              : "Could not compute a price."}
           </Banner>
         ) : !rec ? (
           <Card className="p-8">
@@ -250,7 +287,10 @@ export function AdvisorTab({
             <div className="h-10 w-56 rounded bg-text-primary/[0.08] animate-pulse mb-5" />
             <div className="grid grid-cols-3 gap-4">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-16 rounded bg-text-primary/[0.05] animate-pulse" />
+                <div
+                  key={i}
+                  className="h-16 rounded bg-text-primary/[0.05] animate-pulse"
+                />
               ))}
             </div>
           </Card>
@@ -261,7 +301,8 @@ export function AdvisorTab({
         {/* Cost-hidden note */}
         {rec && costNoneNeedsInput && (
           <Banner tone="info" icon={<ShieldAlert className="w-4 h-4" />}>
-            Cost is hidden — enter a cost on the left or ask for Cost-Vault access to see margins.
+            Cost is hidden — enter a cost on the left or ask for Cost-Vault
+            access to see margins.
           </Banner>
         )}
 
@@ -275,7 +316,12 @@ export function AdvisorTab({
                 ) : (
                   <span>
                     Change vs current:{" "}
-                    <span className={cn("font-mono font-bold", rec.delta_pct >= 0 ? "text-success" : "text-danger")}>
+                    <span
+                      className={cn(
+                        "font-mono font-bold",
+                        rec.delta_pct >= 0 ? "text-success" : "text-danger",
+                      )}
+                    >
                       {rec.delta_pct >= 0 ? "+" : ""}
                       {rec.delta_pct.toFixed(1)}%
                     </span>
@@ -294,27 +340,41 @@ export function AdvisorTab({
 
             {!canEdit && (
               <p className="text-[11.5px] text-text-faint">
-                You can preview prices but need <span className="font-semibold">pricing.edit</span> to apply.
+                You can preview prices but need{" "}
+                <span className="font-semibold">pricing.edit</span> to apply.
               </p>
             )}
 
             {applyMsg?.kind === "applied" && (
               <Banner tone="accent" icon={<Check className="w-4 h-4" />}>
                 Applied instantly — new price{" "}
-                <MoneyText ngn={applyMsg.price} className="text-[14px] text-accent-glow" />.
+                <MoneyText
+                  ngn={applyMsg.price}
+                  className="text-[14px] text-accent-glow"
+                />
+                .
               </Banner>
             )}
             {applyMsg?.kind === "proposed" && (
               <Banner tone="warn" icon={<ArrowRight className="w-4 h-4" />}>
                 Sent for CEO approval — proposal{" "}
-                <span className="font-mono font-semibold">{applyMsg.number}</span>.{" "}
-                <button onClick={onGoToProposals} className="font-semibold underline">
+                <span className="font-mono font-semibold">
+                  {applyMsg.number}
+                </span>
+                .{" "}
+                <button
+                  onClick={onGoToProposals}
+                  className="font-semibold underline"
+                >
                   View in Proposals
                 </button>
               </Banner>
             )}
             {applyMsg?.kind === "error" && (
-              <Banner tone="danger" icon={<AlertTriangle className="w-4 h-4" />}>
+              <Banner
+                tone="danger"
+                icon={<AlertTriangle className="w-4 h-4" />}
+              >
                 {applyMsg.text}
               </Banner>
             )}
@@ -327,7 +387,13 @@ export function AdvisorTab({
             <div className="flex items-end gap-3 flex-wrap">
               <Field label="USD price (storefront $)" hint="optional">
                 <div className="w-[180px]">
-                  <NumberField value={usd} onChange={setUsdInput} suffix="$" placeholder="—" disabled={!canEdit} />
+                  <NumberField
+                    value={usd}
+                    onChange={setUsdInput}
+                    suffix="$"
+                    placeholder="—"
+                    disabled={!canEdit}
+                  />
                 </div>
               </Field>
               <Button
@@ -338,7 +404,9 @@ export function AdvisorTab({
               >
                 {setUsd.isPending ? "Saving…" : "Save USD"}
               </Button>
-              {usdSaved && <span className="text-[12px] text-success mb-2.5">Saved.</span>}
+              {usdSaved && (
+                <span className="text-[12px] text-success mb-2.5">Saved.</span>
+              )}
             </div>
           </Card>
         )}
@@ -355,13 +423,19 @@ function ResultCard({ rec }: { rec: Recommendation }) {
       <div className="p-5 border-b hairline">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold truncate">{rec.product_name}</div>
+            <div className="text-[13px] font-semibold truncate">
+              {rec.product_name}
+            </div>
             <div className="font-mono text-[11px] text-text-faint">
               {[rec.variant_name, rec.sku].filter(Boolean).join(" · ") || "—"}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {rec.rounded && <Pill tone="neutral" dot={false}>Rounded</Pill>}
+            {rec.rounded && (
+              <Pill tone="neutral" dot={false}>
+                Rounded
+              </Pill>
+            )}
             <Pill tone={rec.within_threshold ? "success" : "warn"}>
               {rec.within_threshold ? "Within threshold" : "Needs approval"}
             </Pill>
@@ -371,12 +445,18 @@ function ResultCard({ rec }: { rec: Recommendation }) {
         <div className="mt-4 flex items-end gap-3 flex-wrap">
           <div>
             <div className="micro mb-1">Suggested price</div>
-            <MoneyText ngn={Number(rec.suggested_price_ngn)} className="text-[34px] text-accent-glow leading-none" />
+            <MoneyText
+              ngn={Number(rec.suggested_price_ngn)}
+              className="text-[34px] text-accent-glow leading-none"
+            />
           </div>
           {rec.current_price_ngn != null && (
             <div className="pb-1">
               <div className="micro mb-1">Current</div>
-              <MoneyText ngn={Number(rec.current_price_ngn)} className="text-[16px] text-text-muted" />
+              <MoneyText
+                ngn={Number(rec.current_price_ngn)}
+                className="text-[16px] text-text-muted"
+              />
             </div>
           )}
         </div>
@@ -384,7 +464,10 @@ function ResultCard({ rec }: { rec: Recommendation }) {
         {rec.floor_breached && (
           <div className="mt-3">
             <Pill tone="danger">
-              Floor breached{rec.floor_ngn != null ? ` · min ₦${Number(rec.floor_ngn).toLocaleString("en-NG")}` : ""}
+              Floor breached
+              {rec.floor_ngn != null
+                ? ` · min ₦${Number(rec.floor_ngn).toLocaleString("en-NG")}`
+                : ""}
             </Pill>
           </div>
         )}
@@ -394,17 +477,27 @@ function ResultCard({ rec }: { rec: Recommendation }) {
       <div className="grid grid-cols-3 divide-x divide-[rgb(var(--text)/0.06)]">
         <div className="p-4">
           <div className="micro mb-1">Margin</div>
-          <div className={cn("font-mono text-[20px] font-bold", metricColor(rec.margin_pct))}>
+          <div
+            className={cn(
+              "font-mono text-[20px] font-bold",
+              metricColor(rec.margin_pct),
+            )}
+          >
             {fmtPct(rec.margin_pct)}
           </div>
         </div>
         <div className="p-4">
           <div className="micro mb-1">Markup</div>
-          <div className="font-mono text-[20px] font-bold">{fmtPct(rec.markup_pct)}</div>
+          <div className="font-mono text-[20px] font-bold">
+            {fmtPct(rec.markup_pct)}
+          </div>
         </div>
         <div className="p-4">
           <div className="micro mb-1 flex items-center gap-1.5">
-            Cost <Pill tone={cs.tone} dot={false}>{cs.label}</Pill>
+            Cost{" "}
+            <Pill tone={cs.tone} dot={false}>
+              {cs.label}
+            </Pill>
           </div>
           <div className="font-mono text-[16px]">
             {rec.cost_source === "none" ? (
@@ -421,18 +514,28 @@ function ResultCard({ rec }: { rec: Recommendation }) {
         <Line label="Net (after channel fee)">
           <MoneyText ngn={Number(rec.net_ngn)} className="text-[13px]" />
         </Line>
-        {rec.channel_fee && (rec.channel_fee.pct > 0 || rec.channel_fee.fixed_ngn > 0) && (
-          <Line label="Channel fee">
-            <span className="font-mono text-text-muted">
-              {rec.channel_fee.pct > 0 ? `${rec.channel_fee.pct.toFixed(1)}%` : ""}
-              {rec.channel_fee.pct > 0 && rec.channel_fee.fixed_ngn > 0 ? " + " : ""}
-              {rec.channel_fee.fixed_ngn > 0 ? `₦${rec.channel_fee.fixed_ngn.toLocaleString("en-NG")}` : ""}
-            </span>
-          </Line>
-        )}
+        {rec.channel_fee &&
+          (rec.channel_fee.pct > 0 || rec.channel_fee.fixed_ngn > 0) && (
+            <Line label="Channel fee">
+              <span className="font-mono text-text-muted">
+                {rec.channel_fee.pct > 0
+                  ? `${rec.channel_fee.pct.toFixed(1)}%`
+                  : ""}
+                {rec.channel_fee.pct > 0 && rec.channel_fee.fixed_ngn > 0
+                  ? " + "
+                  : ""}
+                {rec.channel_fee.fixed_ngn > 0
+                  ? `₦${rec.channel_fee.fixed_ngn.toLocaleString("en-NG")}`
+                  : ""}
+              </span>
+            </Line>
+          )}
         {rec.vat_rate > 0 && (
           <Line label={`VAT (${rec.vat_rate.toFixed(1)}%)`}>
-            <MoneyText ngn={Number(rec.vat_amount_ngn)} className="text-[13px] text-text-muted" />
+            <MoneyText
+              ngn={Number(rec.vat_amount_ngn)}
+              className="text-[13px] text-text-muted"
+            />
           </Line>
         )}
         {rec.price_usd != null && (
@@ -445,7 +548,13 @@ function ResultCard({ rec }: { rec: Recommendation }) {
   );
 }
 
-function Line({ label, children }: { label: string; children: React.ReactNode }) {
+function Line({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-text-muted">{label}</span>

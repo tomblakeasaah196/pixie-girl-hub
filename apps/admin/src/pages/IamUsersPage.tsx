@@ -51,7 +51,10 @@ const PROFILE_OPTIONS = [
   { value: "external", label: "External" },
 ] as const;
 
-const STATUS_TONES: Record<string, "success" | "warn" | "danger" | "neutral" | "info"> = {
+const STATUS_TONES: Record<
+  string,
+  "success" | "warn" | "danger" | "neutral" | "info"
+> = {
   active: "success",
   invited: "info",
   suspended: "warn",
@@ -291,7 +294,8 @@ function ExternalDrawer({
         </Field>
         {provisionExternal.isError && (
           <p className="text-[12px] text-danger">
-            {(provisionExternal.error as Error)?.message ?? "Provisioning failed."}
+            {(provisionExternal.error as Error)?.message ??
+              "Provisioning failed."}
           </p>
         )}
       </div>
@@ -482,11 +486,7 @@ function ResetPasswordModal({
               disabled={sendLink.isPending || linkSent}
               onClick={handleSendLink}
             >
-              {sendLink.isPending
-                ? "Sending..."
-                : linkSent
-                  ? "Sent"
-                  : "Send"}
+              {sendLink.isPending ? "Sending..." : linkSent ? "Sent" : "Send"}
             </Button>
           </div>
           {sendLink.isError && (
@@ -771,13 +771,23 @@ export function IamUsersPage() {
                 <Select
                   value={statusFilter}
                   onChange={setStatusFilter}
-                  options={STATUS_OPTIONS as unknown as { value: string; label: string }[]}
+                  options={
+                    STATUS_OPTIONS as unknown as {
+                      value: string;
+                      label: string;
+                    }[]
+                  }
                   className="w-[150px] !h-9 text-[12px]"
                 />
                 <Select
                   value={profileFilter}
                   onChange={setProfileFilter}
-                  options={PROFILE_OPTIONS as unknown as { value: string; label: string }[]}
+                  options={
+                    PROFILE_OPTIONS as unknown as {
+                      value: string;
+                      label: string;
+                    }[]
+                  }
                   className="w-[140px] !h-9 text-[12px]"
                 />
                 <span className="text-text-faint text-[12px] ml-auto">
@@ -860,9 +870,8 @@ export function IamUsersPage() {
         title="Deactivate user?"
         message={
           <>
-            This will disable{" "}
-            <strong>{deactivateUser?.display_name}</strong>&apos;s access. They
-            will not be able to log in.
+            This will disable <strong>{deactivateUser?.display_name}</strong>
+            &apos;s access. They will not be able to log in.
           </>
         }
         confirmLabel="Deactivate"

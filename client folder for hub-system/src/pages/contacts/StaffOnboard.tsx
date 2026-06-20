@@ -197,12 +197,7 @@ export default function StaffOnboard() {
 
   const STEP_FIELDS: Record<string, Array<keyof StaffOnboardValues>> = {
     person: ["contact_id", "first_name", "last_name", "primary_phone", "email"],
-    employment: [
-      "business",
-      "job_title",
-      "employment_type",
-      "start_date",
-    ],
+    employment: ["business", "job_title", "employment_type", "start_date"],
     financial: ["base_salary"],
     access: ["create_login", "permitted_businesses"],
   };
@@ -314,9 +309,9 @@ export default function StaffOnboard() {
                     label="Link to existing contact (optional)"
                   />
                   <p className="mt-2 text-[0.65rem] text-text-on-light-muted">
-                    Pick someone already in the directory (a converted
-                    customer, for example) — or leave empty and fill the
-                    fields below to create them fresh.
+                    Pick someone already in the directory (a converted customer,
+                    for example) — or leave empty and fill the fields below to
+                    create them fresh.
                   </p>
                 </div>
 
@@ -425,7 +420,10 @@ export default function StaffOnboard() {
                   </p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
                     {WEEK_DAYS.map(({ key, label }) => (
-                      <div key={key} className="rounded-xl border border-white/5 p-2">
+                      <div
+                        key={key}
+                        className="rounded-xl border border-white/5 p-2"
+                      >
                         <div className="mb-1 text-center text-xs font-semibold text-brand-cream">
                           {label}
                         </div>
@@ -437,13 +435,17 @@ export default function StaffOnboard() {
                               { value: "off", label: "Off" },
                             ] as { value: DayMode; label: string }[]
                           ).map((m) => {
-                            const selected = (workSchedule[key] || "off") === m.value;
+                            const selected =
+                              (workSchedule[key] || "off") === m.value;
                             return (
                               <button
                                 key={m.value}
                                 type="button"
                                 onClick={() =>
-                                  setWorkSchedule((s) => ({ ...s, [key]: m.value }))
+                                  setWorkSchedule((s) => ({
+                                    ...s,
+                                    [key]: m.value,
+                                  }))
                                 }
                                 className={
                                   "rounded-md px-1.5 py-1 text-[0.65rem] transition-colors " +

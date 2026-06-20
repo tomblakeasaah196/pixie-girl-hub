@@ -29,7 +29,14 @@ import { cn } from "@/lib/cn";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { Button, Card, KpiTile, Skeleton, EmptyState, Pill } from "@/components/ui/primitives";
+import {
+  Button,
+  Card,
+  KpiTile,
+  Skeleton,
+  EmptyState,
+  Pill,
+} from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 
 import { useTaskBoard, useCalendarEvents, useMoveTask } from "./hooks";
@@ -52,7 +59,12 @@ import {
   formatTime,
   toISODate,
 } from "./constants";
-import type { WorkspaceTab, CalendarViewMode, Task, CalendarEvent } from "./types";
+import type {
+  WorkspaceTab,
+  CalendarViewMode,
+  Task,
+  CalendarEvent,
+} from "./types";
 
 // ── Tab config ───────────────────────────────────────────────────────────
 
@@ -91,7 +103,9 @@ function KanbanColumn({
         <span className="text-[12px] font-semibold text-text-primary flex-1 truncate">
           {meta?.label ?? status}
         </span>
-        <span className="text-[10.5px] text-text-faint font-mono">{tasks.length}</span>
+        <span className="text-[10.5px] text-text-faint font-mono">
+          {tasks.length}
+        </span>
         <button
           onClick={onAddTask}
           className="w-6 h-6 grid place-items-center rounded-md text-text-faint hover:text-accent-glow hover:bg-accent/10 transition-colors"
@@ -109,7 +123,11 @@ function KanbanColumn({
         )}
       >
         {tasks.map((task) => (
-          <DraggableTaskCard key={task.task_id} task={task} onClick={() => onSelectTask(task)} />
+          <DraggableTaskCard
+            key={task.task_id}
+            task={task}
+            onClick={() => onSelectTask(task)}
+          />
         ))}
         {tasks.length === 0 && !isOver && (
           <div className="flex-1 grid place-items-center text-[11px] text-text-faint italic py-6">
@@ -121,10 +139,17 @@ function KanbanColumn({
   );
 }
 
-function DraggableTaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: task.task_id,
-  });
+function DraggableTaskCard({
+  task,
+  onClick,
+}: {
+  task: Task;
+  onClick: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({
+      id: task.task_id,
+    });
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
@@ -160,7 +185,9 @@ export function WorkspacePage() {
 
   // Selection state
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
+    null,
+  );
 
   // Modal state
   const [showCreateTask, setShowCreateTask] = useState(false);
@@ -213,7 +240,8 @@ export function WorkspacePage() {
       events
         .filter((e) => isSameDay(new Date(e.start_at), today))
         .sort(
-          (a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+          (a, b) =>
+            new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
         ),
     [events, todayStr],
   );
@@ -229,7 +257,14 @@ export function WorkspacePage() {
   }, [board]);
 
   const dueTodayTasks = useMemo(
-    () => allTasks.filter((t) => t.due_at && isSameDay(new Date(t.due_at), today) && t.status !== "done" && t.status !== "cancelled"),
+    () =>
+      allTasks.filter(
+        (t) =>
+          t.due_at &&
+          isSameDay(new Date(t.due_at), today) &&
+          t.status !== "done" &&
+          t.status !== "cancelled",
+      ),
     [allTasks, todayStr],
   );
 
@@ -329,7 +364,6 @@ export function WorkspacePage() {
     <div className="animate-fade-in">
       {/* Tab bar — top on all sizes; mobile gets shell bottom nav */}
       <div className="flex items-center gap-2 mb-6">
-
         <div className="flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
@@ -418,8 +452,8 @@ export function WorkspacePage() {
             />
           )}
 
-          {activeTab === "tasks" && (
-            isMobile ? (
+          {activeTab === "tasks" &&
+            (isMobile ? (
               <TaskListMobile
                 board={filteredBoard}
                 loading={boardLoading}
@@ -440,7 +474,9 @@ export function WorkspacePage() {
                 onRetry={refetchBoard}
                 sensors={sensors}
                 activeDragTask={activeDragTask ?? null}
-                onDragStart={(e: DragStartEvent) => setActiveDragId(e.active.id as string)}
+                onDragStart={(e: DragStartEvent) =>
+                  setActiveDragId(e.active.id as string)
+                }
                 onDragEnd={onDragEnd}
                 onDragCancel={() => setActiveDragId(null)}
                 onSelectTask={(t) => setSelectedTaskId(t.task_id)}
@@ -448,8 +484,7 @@ export function WorkspacePage() {
                   openCreateTaskForDate();
                 }}
               />
-            )
-          )}
+            ))}
         </div>
 
         {/* Detail panel (desktop only) */}
@@ -466,24 +501,29 @@ export function WorkspacePage() {
       </div>
 
       {/* Mobile: show task detail as modal-like overlay */}
-      {isMobile && selectedTaskId && createPortal(
-        <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-[3px]" onClick={() => setSelectedTaskId(null)}>
+      {isMobile &&
+        selectedTaskId &&
+        createPortal(
           <div
-            className="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto dropglass rounded-t-[22px] animate-slide-up"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-[3px]"
+            onClick={() => setSelectedTaskId(null)}
           >
-            <TaskDetailPanel
-              taskId={selectedTaskId}
-              onClose={() => setSelectedTaskId(null)}
-              onEdit={() => {
-                const t = allTasks.find((x) => x.task_id === selectedTaskId);
-                if (t) setEditTask(t);
-              }}
-            />
-          </div>
-        </div>,
-        document.body,
-      )}
+            <div
+              className="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto dropglass rounded-t-[22px] animate-slide-up"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <TaskDetailPanel
+                taskId={selectedTaskId}
+                onClose={() => setSelectedTaskId(null)}
+                onEdit={() => {
+                  const t = allTasks.find((x) => x.task_id === selectedTaskId);
+                  if (t) setEditTask(t);
+                }}
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* Event detail overlay (mobile + tablet) */}
       {selectedEvent && (
@@ -625,13 +665,25 @@ function MyDayView({
         <Card className="overflow-hidden">
           <div className="flex items-center gap-2 p-4 border-b hairline">
             <Clock className="w-4 h-4 text-accent-glow" />
-            <span className="text-[13px] font-semibold flex-1">Today's Schedule</span>
-            <Button variant="ghost" size="sm" icon={<Plus className="w-3 h-3" />} onClick={onCreateEvent}>
+            <span className="text-[13px] font-semibold flex-1">
+              Today's Schedule
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Plus className="w-3 h-3" />}
+              onClick={onCreateEvent}
+            >
               Event
             </Button>
           </div>
           <div className="p-3">
-            {eventsError && <ErrorState message="Could not load events." onRetry={onRetryEvents} />}
+            {eventsError && (
+              <ErrorState
+                message="Could not load events."
+                onRetry={onRetryEvents}
+              />
+            )}
             {eventsLoading && (
               <div className="space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -645,7 +697,12 @@ function MyDayView({
                 title="No events today"
                 message="Your day is clear."
                 action={
-                  <Button variant="primary" size="sm" icon={<Plus className="w-3 h-3" />} onClick={onCreateEvent}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={<Plus className="w-3 h-3" />}
+                    onClick={onCreateEvent}
+                  >
                     New Event
                   </Button>
                 }
@@ -665,7 +722,9 @@ function MyDayView({
                       {ev.title}
                     </div>
                     <div className="text-[11px] text-text-faint">
-                      {ev.all_day ? "All day" : `${formatTime(ev.start_at)} - ${formatTime(ev.end_at)}`}
+                      {ev.all_day
+                        ? "All day"
+                        : `${formatTime(ev.start_at)} - ${formatTime(ev.end_at)}`}
                     </div>
                   </div>
                 </button>
@@ -678,12 +737,22 @@ function MyDayView({
           <div className="flex items-center gap-2 p-4 border-b hairline">
             <ListTodo className="w-4 h-4 text-accent-glow" />
             <span className="text-[13px] font-semibold flex-1">Tasks Due</span>
-            <Button variant="ghost" size="sm" icon={<Plus className="w-3 h-3" />} onClick={onCreateTask}>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Plus className="w-3 h-3" />}
+              onClick={onCreateTask}
+            >
               Task
             </Button>
           </div>
           <div className="p-3">
-            {boardError && <ErrorState message="Could not load tasks." onRetry={onRetryBoard} />}
+            {boardError && (
+              <ErrorState
+                message="Could not load tasks."
+                onRetry={onRetryBoard}
+              />
+            )}
             {boardLoading && (
               <div className="space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -691,18 +760,26 @@ function MyDayView({
                 ))}
               </div>
             )}
-            {!boardLoading && !boardError && overdueTasks.length === 0 && dueTodayTasks.length === 0 && (
-              <EmptyState
-                icon={<CheckCircle2 className="w-6 h-6" />}
-                title="All caught up"
-                message="No tasks due today."
-                action={
-                  <Button variant="primary" size="sm" icon={<Plus className="w-3 h-3" />} onClick={onCreateTask}>
-                    New Task
-                  </Button>
-                }
-              />
-            )}
+            {!boardLoading &&
+              !boardError &&
+              overdueTasks.length === 0 &&
+              dueTodayTasks.length === 0 && (
+                <EmptyState
+                  icon={<CheckCircle2 className="w-6 h-6" />}
+                  title="All caught up"
+                  message="No tasks due today."
+                  action={
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={<Plus className="w-3 h-3" />}
+                      onClick={onCreateTask}
+                    >
+                      New Task
+                    </Button>
+                  }
+                />
+              )}
             {!boardLoading && !boardError && (
               <>
                 {overdueTasks.length > 0 && (
@@ -711,7 +788,12 @@ function MyDayView({
                       <AlertTriangle className="w-3 h-3" /> Overdue
                     </div>
                     {overdueTasks.map((t) => (
-                      <TaskRow key={t.task_id} task={t} overdue onClick={() => onSelectTask(t)} />
+                      <TaskRow
+                        key={t.task_id}
+                        task={t}
+                        overdue
+                        onClick={() => onSelectTask(t)}
+                      />
                     ))}
                   </div>
                 )}
@@ -721,7 +803,11 @@ function MyDayView({
                       Due Today
                     </div>
                     {dueTodayTasks.map((t) => (
-                      <TaskRow key={t.task_id} task={t} onClick={() => onSelectTask(t)} />
+                      <TaskRow
+                        key={t.task_id}
+                        task={t}
+                        onClick={() => onSelectTask(t)}
+                      />
                     ))}
                   </div>
                 )}
@@ -752,10 +838,20 @@ function TaskRow({
       <Pill tone={TASK_PRIORITY_META[task.priority].tone} dot={false}>
         {TASK_PRIORITY_META[task.priority].label}
       </Pill>
-      <span className="text-[13px] text-text-primary flex-1 truncate">{task.title}</span>
+      <span className="text-[13px] text-text-primary flex-1 truncate">
+        {task.title}
+      </span>
       {task.due_at && (
-        <span className={cn("text-[10px] font-mono", overdue ? "text-danger" : "text-text-faint")}>
-          {new Date(task.due_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+        <span
+          className={cn(
+            "text-[10px] font-mono",
+            overdue ? "text-danger" : "text-text-faint",
+          )}
+        >
+          {new Date(task.due_at).toLocaleDateString([], {
+            month: "short",
+            day: "numeric",
+          })}
         </span>
       )}
     </button>
@@ -791,14 +887,22 @@ function CalendarTab({
   onCreateEvent: (d: Date) => void;
   onSelectDay: (d: Date) => void;
 }) {
-  if (error) return <ErrorState message="Could not load calendar events." onRetry={onRetry} />;
+  if (error)
+    return (
+      <ErrorState message="Could not load calendar events." onRetry={onRetry} />
+    );
 
   const title =
     calView === "month"
       ? `${MONTH_NAMES[calDate.getMonth()]} ${calDate.getFullYear()}`
       : calView === "week"
         ? `Week of ${calDate.toLocaleDateString([], { month: "short", day: "numeric" })}`
-        : calDate.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+        : calDate.toLocaleDateString([], {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          });
 
   return (
     <div>
@@ -875,7 +979,11 @@ function CalendarTab({
         />
       )}
       {calView === "agenda" && (
-        <AgendaView events={events} loading={loading} onSelectEvent={onSelectEvent} />
+        <AgendaView
+          events={events}
+          loading={loading}
+          onSelectEvent={onSelectEvent}
+        />
       )}
     </div>
   );
@@ -912,7 +1020,8 @@ function TasksKanban({
   onSelectTask: (t: Task) => void;
   onAddTask: (status: string) => void;
 }) {
-  if (error) return <ErrorState message="Could not load tasks." onRetry={onRetry} />;
+  if (error)
+    return <ErrorState message="Could not load tasks." onRetry={onRetry} />;
 
   return (
     <div>
@@ -964,7 +1073,9 @@ function TasksKanban({
             ))}
           </div>
           <DragOverlay>
-            {activeDragTask ? <TaskCard task={activeDragTask} isDragging /> : null}
+            {activeDragTask ? (
+              <TaskCard task={activeDragTask} isDragging />
+            ) : null}
           </DragOverlay>
         </DndContext>
       )}
@@ -993,7 +1104,8 @@ function TaskListMobile({
   onSelectTask: (t: Task) => void;
   onCreateTask: () => void;
 }) {
-  if (error) return <ErrorState message="Could not load tasks." onRetry={onRetry} />;
+  if (error)
+    return <ErrorState message="Could not load tasks." onRetry={onRetry} />;
 
   const allTasks = board
     ? [...board.to_do, ...board.in_progress, ...board.in_review, ...board.done]
@@ -1034,10 +1146,19 @@ function TaskListMobile({
         <EmptyState
           icon={<ListTodo className="w-6 h-6" />}
           title="No tasks"
-          message={search ? "No tasks match your search." : "Create your first task to get started."}
+          message={
+            search
+              ? "No tasks match your search."
+              : "Create your first task to get started."
+          }
           action={
             !search ? (
-              <Button variant="primary" size="sm" icon={<Plus className="w-3 h-3" />} onClick={onCreateTask}>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Plus className="w-3 h-3" />}
+                onClick={onCreateTask}
+              >
                 New Task
               </Button>
             ) : undefined
@@ -1062,7 +1183,10 @@ function TaskListMobile({
                     <Pill tone={TASK_STATUS_META[task.status].tone} dot={false}>
                       {TASK_STATUS_META[task.status].label}
                     </Pill>
-                    <Pill tone={TASK_PRIORITY_META[task.priority].tone} dot={false}>
+                    <Pill
+                      tone={TASK_PRIORITY_META[task.priority].tone}
+                      dot={false}
+                    >
                       {TASK_PRIORITY_META[task.priority].label}
                     </Pill>
                   </div>
@@ -1103,7 +1227,10 @@ function EventDetailOverlay({
   onEdit: () => void;
 }) {
   return createPortal(
-    <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-[3px]" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-[3px]"
+      onClick={onClose}
+    >
       <div
         className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-y-auto dropglass rounded-t-[22px] p-5 lg:absolute lg:bottom-auto lg:top-1/2 lg:left-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 lg:w-[min(460px,94vw)] lg:rounded-[18px]"
         onClick={(e) => e.stopPropagation()}
@@ -1111,7 +1238,9 @@ function EventDetailOverlay({
         <div className="flex items-start gap-3 mb-4">
           <div className="flex-1">
             <h3 className="font-display text-lg font-medium">{event.title}</h3>
-            <p className="text-[12px] text-text-muted mt-0.5">{event.event_type}</p>
+            <p className="text-[12px] text-text-muted mt-0.5">
+              {event.event_type}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -1142,8 +1271,12 @@ function EventDetailOverlay({
           )}
           {event.description && (
             <div>
-              <div className="text-text-faint text-[12px] mb-1">Description</div>
-              <p className="text-text-muted whitespace-pre-wrap">{event.description}</p>
+              <div className="text-text-faint text-[12px] mb-1">
+                Description
+              </div>
+              <p className="text-text-muted whitespace-pre-wrap">
+                {event.description}
+              </p>
             </div>
           )}
           {event.created_by_name && (

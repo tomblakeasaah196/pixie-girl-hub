@@ -26,7 +26,10 @@ const { publicWriteLimiter } = require("../../middleware");
 const { authMiddleware } = require("../../middleware/auth");
 const { brandContextMiddleware } = require("../../middleware/brand-context");
 const multer = require("multer");
-const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 const router = express.Router();
 
@@ -57,8 +60,17 @@ router.post("/reset-password", publicWriteLimiter, controller.resetPassword);
 router.post("/change-password", authMiddleware, controller.changePassword);
 router.get("/me", authMiddleware, controller.getMe);
 router.patch("/me", authMiddleware, controller.updateMe);
-router.post("/me/avatar", authMiddleware, avatarUpload.single("avatar"), controller.uploadAvatar);
+router.post(
+  "/me/avatar",
+  authMiddleware,
+  avatarUpload.single("avatar"),
+  controller.uploadAvatar,
+);
 router.post("/change-email", authMiddleware, controller.requestEmailChange);
-router.post("/verify-email-change", authMiddleware, controller.confirmEmailChange);
+router.post(
+  "/verify-email-change",
+  authMiddleware,
+  controller.confirmEmailChange,
+);
 
 module.exports = router;

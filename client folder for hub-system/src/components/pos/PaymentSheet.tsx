@@ -129,7 +129,8 @@ export function PaymentSheet({
         <div className="flex items-center justify-between gap-3">
           {change > 0 && (
             <span className="text-sm font-semibold text-green-400">
-              Change: {symbol}{change.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+              Change: {symbol}
+              {change.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
             </span>
           )}
           <div className="flex gap-3 ml-auto">
@@ -236,30 +237,30 @@ export function PaymentSheet({
               <div key={split.id} className="space-y-2">
                 {/* Method selector */}
                 <div className="grid grid-cols-3 gap-1.5">
-                  {(
-                    Object.keys(POS_PAYMENT_META) as POSPaymentMethod[]
-                  ).map((method) => {
-                    const m = POS_PAYMENT_META[method];
-                    const M = m.icon;
-                    return (
-                      <button
-                        key={method}
-                        type="button"
-                        onClick={() => updateSplit(split.id, { method })}
-                        className={cn(
-                          "flex flex-col items-center gap-1 rounded-lg border px-2 py-2 text-center transition-all",
-                          split.method === method
-                            ? "border-brand-accent/60 bg-brand-accent/5 text-brand-accent"
-                            : "border-black/10 text-brand-smoke hover:border-black/20",
-                        )}
-                      >
-                        <M className="h-4 w-4" />
-                        <span className="text-[9px] leading-tight">
-                          {m.label}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  {(Object.keys(POS_PAYMENT_META) as POSPaymentMethod[]).map(
+                    (method) => {
+                      const m = POS_PAYMENT_META[method];
+                      const M = m.icon;
+                      return (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => updateSplit(split.id, { method })}
+                          className={cn(
+                            "flex flex-col items-center gap-1 rounded-lg border px-2 py-2 text-center transition-all",
+                            split.method === method
+                              ? "border-brand-accent/60 bg-brand-accent/5 text-brand-accent"
+                              : "border-black/10 text-brand-smoke hover:border-black/20",
+                          )}
+                        >
+                          <M className="h-4 w-4" />
+                          <span className="text-[9px] leading-tight">
+                            {m.label}
+                          </span>
+                        </button>
+                      );
+                    },
+                  )}
                 </div>
 
                 {/* Amount + optional ref */}
@@ -312,7 +313,9 @@ export function PaymentSheet({
           >
             <Plus className="h-3.5 w-3.5" />
             Add payment method — {symbol}
-            {shortfall.toLocaleString("en-NG", { minimumFractionDigits: 2 })}{" "}
+            {shortfall.toLocaleString("en-NG", {
+              minimumFractionDigits: 2,
+            })}{" "}
             remaining
           </button>
         )}
@@ -358,7 +361,9 @@ export function PaymentSheet({
                   ? `Give ${symbol}${change.toLocaleString("en-NG", { minimumFractionDigits: 2 })} back to the customer.`
                   : `Give change back — recorded as ₦${(
                       change * (exchangeRate || 1)
-                    ).toLocaleString("en-NG", { minimumFractionDigits: 2 })} equivalent.`
+                    ).toLocaleString("en-NG", {
+                      minimumFractionDigits: 2,
+                    })} equivalent.`
                 : "Overpayment is retained and booked as other income."}
             </p>
           </div>

@@ -22,7 +22,9 @@ interface RecentOrder {
 export function JustBoughtTicker({ payload }: { payload: LandingPayload }) {
   // Backend exposes recent_orders as optional in the public landing payload
   // (a follow-up may wire socket events). For now, derive from the payload.
-  const recent: RecentOrder[] = ((payload as unknown as { recent_orders?: RecentOrder[] }).recent_orders) ?? [];
+  const recent: RecentOrder[] =
+    (payload as unknown as { recent_orders?: RecentOrder[] }).recent_orders ??
+    [];
   const [cursor, setCursor] = useState(0);
   const [visible, setVisible] = useState(false);
 
@@ -57,7 +59,9 @@ export function JustBoughtTicker({ payload }: { payload: LandingPayload }) {
               <ShoppingBag className="w-3.5 h-3.5" />
             </span>
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold truncate">{current.bundle_name}</div>
+              <div className="text-[12px] font-semibold truncate">
+                {current.bundle_name}
+              </div>
               <div className="text-[11px] text-[rgb(var(--text-muted))]">
                 Just bought from {current.city}
               </div>

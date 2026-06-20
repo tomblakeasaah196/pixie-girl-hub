@@ -113,8 +113,7 @@ export function ModelsAndVendorsPage() {
         <div className="flex items-center justify-between mb-2.5">
           <h3 className="font-display text-[16px]">Configured vendors</h3>
           <p className="text-[11px] text-text-faint">
-            Primary:{" "}
-            <code className="font-mono">deepseek</code> · Fallback:{" "}
+            Primary: <code className="font-mono">deepseek</code> · Fallback:{" "}
             <code className="font-mono">gemini</code>
           </p>
         </div>
@@ -182,8 +181,8 @@ export function ModelsAndVendorsPage() {
                           {
                             value: "",
                             label:
-                              (chatModels.find((m) => m.is_default)?.display_name ??
-                                "Default") + " (auto)",
+                              (chatModels.find((m) => m.is_default)
+                                ?.display_name ?? "Default") + " (auto)",
                           },
                           ...chatModels.map((m) => ({
                             value: m.model_id,
@@ -233,10 +232,7 @@ export function ModelsAndVendorsPage() {
               <Loader2 className="w-4 h-4 animate-spin text-text-faint" />
             </div>
           ) : (
-            <ModelsTable
-              models={modelsQ.data ?? []}
-              onEdit={setEditingModel}
-            />
+            <ModelsTable models={modelsQ.data ?? []} onEdit={setEditingModel} />
           )}
         </Card>
         <p className="mt-2 text-[11px] text-text-faint">
@@ -283,12 +279,8 @@ function ModelsTable({
             <th className="text-left px-3 py-2 font-semibold">Model</th>
             <th className="text-left px-3 py-2 font-semibold">Vendor</th>
             <th className="text-left px-3 py-2 font-semibold">Capability</th>
-            <th className="text-right px-3 py-2 font-semibold">
-              ₦/1M in
-            </th>
-            <th className="text-right px-3 py-2 font-semibold">
-              ₦/1M out
-            </th>
+            <th className="text-right px-3 py-2 font-semibold">₦/1M in</th>
+            <th className="text-right px-3 py-2 font-semibold">₦/1M out</th>
             <th className="text-center px-3 py-2 font-semibold">Default</th>
             <th className="text-center px-3 py-2 font-semibold">Active</th>
             <th className="px-3 py-2"></th>
@@ -301,12 +293,16 @@ function ModelsTable({
               className="border-t hairline hover:bg-panel-2/40"
             >
               <td className="px-3 py-2">
-                <div className="font-medium text-text-primary">{m.display_name}</div>
+                <div className="font-medium text-text-primary">
+                  {m.display_name}
+                </div>
                 <code className="text-[10.5px] text-text-faint font-mono">
                   {m.model_id}
                 </code>
               </td>
-              <td className="px-3 py-2 font-mono text-accent-glow">{m.vendor}</td>
+              <td className="px-3 py-2 font-mono text-accent-glow">
+                {m.vendor}
+              </td>
               <td className="px-3 py-2 text-text-muted">{m.capability}</td>
               <td className="px-3 py-2 text-right tabular-nums">
                 {Number(m.input_cost_per_1m_ngn).toLocaleString()}
@@ -412,115 +408,121 @@ function ModelEditor({
       }
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FieldText
-            label="Model ID"
-            value={m.model_id}
-            disabled={!isNew}
-            onChange={(v) => setM({ ...m, model_id: v })}
+        <FieldText
+          label="Model ID"
+          value={m.model_id}
+          disabled={!isNew}
+          onChange={(v) => setM({ ...m, model_id: v })}
+        />
+        <label className="block">
+          <span className="block text-[11.5px] text-text-muted mb-1">
+            Vendor
+          </span>
+          <Select
+            value={m.vendor}
+            onChange={(v) => setM({ ...m, vendor: v as AiVendor })}
+            options={[
+              { value: "deepseek", label: "DeepSeek" },
+              { value: "gemini", label: "Gemini" },
+              { value: "openai", label: "OpenAI" },
+              { value: "groq", label: "Groq" },
+              { value: "self_hosted", label: "Self-hosted" },
+              { value: "other", label: "Other" },
+            ]}
           />
-          <label className="block">
-            <span className="block text-[11.5px] text-text-muted mb-1">Vendor</span>
-            <Select
-              value={m.vendor}
-              onChange={(v) => setM({ ...m, vendor: v as AiVendor })}
-              options={[
-                { value: "deepseek", label: "DeepSeek" },
-                { value: "gemini", label: "Gemini" },
-                { value: "openai", label: "OpenAI" },
-                { value: "groq", label: "Groq" },
-                { value: "self_hosted", label: "Self-hosted" },
-                { value: "other", label: "Other" },
-              ]}
-            />
-          </label>
-          <FieldText
-            label="Display name"
-            value={m.display_name}
-            onChange={(v) => setM({ ...m, display_name: v })}
+        </label>
+        <FieldText
+          label="Display name"
+          value={m.display_name}
+          onChange={(v) => setM({ ...m, display_name: v })}
+        />
+        <label className="block">
+          <span className="block text-[11.5px] text-text-muted mb-1">
+            Capability
+          </span>
+          <Select
+            value={m.capability}
+            onChange={(v) =>
+              setM({ ...m, capability: v as AiModel["capability"] })
+            }
+            options={[
+              { value: "chat", label: "Chat" },
+              { value: "embedding", label: "Embedding" },
+              { value: "audio", label: "Audio (Whisper-style)" },
+              { value: "vision", label: "Vision" },
+            ]}
           />
-          <label className="block">
-            <span className="block text-[11.5px] text-text-muted mb-1">Capability</span>
-            <Select
-              value={m.capability}
-              onChange={(v) => setM({ ...m, capability: v as AiModel["capability"] })}
-              options={[
-                { value: "chat", label: "Chat" },
-                { value: "embedding", label: "Embedding" },
-                { value: "audio", label: "Audio (Whisper-style)" },
-                { value: "vision", label: "Vision" },
-              ]}
-            />
-          </label>
-          <FieldNumber
-            label="₦ per 1M input tokens"
-            value={Number(m.input_cost_per_1m_ngn)}
-            onChange={(v) => setM({ ...m, input_cost_per_1m_ngn: v })}
+        </label>
+        <FieldNumber
+          label="₦ per 1M input tokens"
+          value={Number(m.input_cost_per_1m_ngn)}
+          onChange={(v) => setM({ ...m, input_cost_per_1m_ngn: v })}
+        />
+        <FieldNumber
+          label="₦ per 1M output tokens"
+          value={Number(m.output_cost_per_1m_ngn)}
+          onChange={(v) => setM({ ...m, output_cost_per_1m_ngn: v })}
+        />
+        <FieldNumber
+          label="₦ per audio minute (Whisper)"
+          value={Number(m.cost_per_audio_minute_ngn)}
+          onChange={(v) => setM({ ...m, cost_per_audio_minute_ngn: v })}
+        />
+        <FieldNumber
+          label="Context window (tokens)"
+          value={m.context_window ?? 0}
+          onChange={(v) => setM({ ...m, context_window: v })}
+        />
+        <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
+          <input
+            type="checkbox"
+            checked={m.is_default}
+            onChange={(e) => setM({ ...m, is_default: e.target.checked })}
+            className="accent-accent"
           />
-          <FieldNumber
-            label="₦ per 1M output tokens"
-            value={Number(m.output_cost_per_1m_ngn)}
-            onChange={(v) => setM({ ...m, output_cost_per_1m_ngn: v })}
+          Default for this (vendor, capability)
+        </label>
+        <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
+          <input
+            type="checkbox"
+            checked={m.is_active}
+            onChange={(e) => setM({ ...m, is_active: e.target.checked })}
+            className="accent-accent"
           />
-          <FieldNumber
-            label="₦ per audio minute (Whisper)"
-            value={Number(m.cost_per_audio_minute_ngn)}
-            onChange={(v) => setM({ ...m, cost_per_audio_minute_ngn: v })}
+          Active (selectable)
+        </label>
+        <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
+          <input
+            type="checkbox"
+            checked={m.supports_tools}
+            onChange={(e) => setM({ ...m, supports_tools: e.target.checked })}
+            className="accent-accent"
           />
-          <FieldNumber
-            label="Context window (tokens)"
-            value={m.context_window ?? 0}
-            onChange={(v) => setM({ ...m, context_window: v })}
+          Supports tools / function calling
+        </label>
+        <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
+          <input
+            type="checkbox"
+            checked={m.supports_streaming}
+            onChange={(e) =>
+              setM({ ...m, supports_streaming: e.target.checked })
+            }
+            className="accent-accent"
           />
-          <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
-            <input
-              type="checkbox"
-              checked={m.is_default}
-              onChange={(e) => setM({ ...m, is_default: e.target.checked })}
-              className="accent-accent"
-            />
-            Default for this (vendor, capability)
-          </label>
-          <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
-            <input
-              type="checkbox"
-              checked={m.is_active}
-              onChange={(e) => setM({ ...m, is_active: e.target.checked })}
-              className="accent-accent"
-            />
-            Active (selectable)
-          </label>
-          <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
-            <input
-              type="checkbox"
-              checked={m.supports_tools}
-              onChange={(e) => setM({ ...m, supports_tools: e.target.checked })}
-              className="accent-accent"
-            />
-            Supports tools / function calling
-          </label>
-          <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
-            <input
-              type="checkbox"
-              checked={m.supports_streaming}
-              onChange={(e) =>
-                setM({ ...m, supports_streaming: e.target.checked })
-              }
-              className="accent-accent"
-            />
-            Supports streaming
-          </label>
-          <div className="col-span-1 sm:col-span-2">
-            <span className="block text-[11.5px] text-text-muted mb-1">
-              Notes
-            </span>
-            <textarea
-              value={m.notes ?? ""}
-              onChange={(e) => setM({ ...m, notes: e.target.value })}
-              rows={2}
-              className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[12.5px] focus:outline-none focus:border-accent/40"
-            />
-          </div>
+          Supports streaming
+        </label>
+        <div className="col-span-1 sm:col-span-2">
+          <span className="block text-[11.5px] text-text-muted mb-1">
+            Notes
+          </span>
+          <textarea
+            value={m.notes ?? ""}
+            onChange={(e) => setM({ ...m, notes: e.target.value })}
+            rows={2}
+            className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[12.5px] focus:outline-none focus:border-accent/40"
+          />
         </div>
+      </div>
       {save.isError && (
         <div className="px-0 pt-2 text-[12px] text-danger inline-flex items-center gap-1.5">
           <AlertCircle className="w-3.5 h-3.5" />

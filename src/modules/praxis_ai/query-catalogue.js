@@ -67,7 +67,8 @@ const QUERIES = [
       properties: {
         status: {
           type: "string",
-          description: "Filter by specific status (optional). One of: pending_finance, pending_ceo, approved, disbursed, settled.",
+          description:
+            "Filter by specific status (optional). One of: pending_finance, pending_ceo, approved, disbursed, settled.",
         },
       },
     },

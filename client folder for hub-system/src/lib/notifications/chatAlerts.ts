@@ -11,7 +11,11 @@
 // `recipient` block (own mute flag); copies without it (the business-room
 // broadcast) are cache-refresh only and must never alert.
 
-import { unreadTone, UNREAD_TONE_HEX, formatUnread } from "@lib/constants/unread";
+import {
+  unreadTone,
+  UNREAD_TONE_HEX,
+  formatUnread,
+} from "@lib/constants/unread";
 
 export interface ChatMessageEvent {
   channelId: string;

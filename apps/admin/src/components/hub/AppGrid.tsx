@@ -5,7 +5,8 @@ import { MODULE_BY_KEY, GROUP_ORDER, GROUP_LABELS } from "@/lib/modules";
 import { useNavStore, moreKeys } from "@/stores/nav";
 import { AppTile } from "./AppTile";
 
-const GRID = "grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5";
+const GRID =
+  "grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5";
 
 /**
  * Command Center app grid (canon §3.3): top-10 with drag-to-reorder + pin-off,
@@ -41,16 +42,35 @@ export function AppGrid({ badges = {} }: { badges?: Record<string, number> }) {
               key={key}
               draggable={!anchor}
               onDragStart={() => setDragKey(key)}
-              onDragEnd={() => { setDragKey(null); setOverKey(null); }}
-              onDragOver={(e) => { e.preventDefault(); setOverKey(key); }}
-              onDrop={(e) => { e.preventDefault(); onDrop(key); setDragKey(null); setOverKey(null); }}
-              className={cn("transition-transform", dragKey === key && "opacity-40", overKey === key && dragKey !== key && "scale-[1.04]")}
+              onDragEnd={() => {
+                setDragKey(null);
+                setOverKey(null);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setOverKey(key);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                onDrop(key);
+                setDragKey(null);
+                setOverKey(null);
+              }}
+              className={cn(
+                "transition-transform",
+                dragKey === key && "opacity-40",
+                overKey === key && dragKey !== key && "scale-[1.04]",
+              )}
             >
               <AppTile
                 module={m}
                 index={i}
                 badge={m.badgeKey ? badges[m.badgeKey] : undefined}
-                pin={anchor ? undefined : { mode: "unpin", onClick: () => unpin(key) }}
+                pin={
+                  anchor
+                    ? undefined
+                    : { mode: "unpin", onClick: () => unpin(key) }
+                }
               />
             </div>
           );
@@ -62,10 +82,18 @@ export function AppGrid({ badges = {} }: { badges?: Record<string, number> }) {
             className="group flex flex-col items-center text-center gap-[13px] p-[24px_16px] rounded-[20px] border border-dashed hairline bg-surface/[0.28] transition-all hover:-translate-y-1 hover:border-accent/40 animate-tile-in"
           >
             <span className="w-[54px] h-[54px] rounded-[16px] grid place-items-center text-text-muted group-hover:text-accent-glow transition-colors">
-              {moreOpen ? <ChevronUp className="w-6 h-6" /> : <LayoutGrid className="w-6 h-6" />}
+              {moreOpen ? (
+                <ChevronUp className="w-6 h-6" />
+              ) : (
+                <LayoutGrid className="w-6 h-6" />
+              )}
             </span>
-            <span className="font-display font-medium text-base">{moreOpen ? "Less" : "More"}</span>
-            <span className="text-[10.5px] text-text-faint">{more.length} more apps</span>
+            <span className="font-display font-medium text-base">
+              {moreOpen ? "Less" : "More"}
+            </span>
+            <span className="text-[10.5px] text-text-faint">
+              {more.length} more apps
+            </span>
           </button>
         )}
       </div>
@@ -86,7 +114,11 @@ export function AppGrid({ badges = {} }: { badges?: Record<string, number> }) {
                     key={key}
                     module={MODULE_BY_KEY[key]!}
                     index={i}
-                    badge={MODULE_BY_KEY[key]!.badgeKey ? badges[MODULE_BY_KEY[key]!.badgeKey!] : undefined}
+                    badge={
+                      MODULE_BY_KEY[key]!.badgeKey
+                        ? badges[MODULE_BY_KEY[key]!.badgeKey!]
+                        : undefined
+                    }
                     pin={{ mode: "pin", onClick: () => pin(key) }}
                   />
                 ))}

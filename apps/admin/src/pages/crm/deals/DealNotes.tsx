@@ -20,7 +20,9 @@ interface DealNotesProps {
 
 export function DealNotes({ dealId, notes, isLoading }: DealNotesProps) {
   const [body, setBody] = useState("");
-  const [visibility, setVisibility] = useState<"team" | "managers_only" | "author_only">("team");
+  const [visibility, setVisibility] = useState<
+    "team" | "managers_only" | "author_only"
+  >("team");
   const addNote = useAddDealNote(dealId);
 
   const sorted = [...notes].sort((a, b) => {
@@ -85,7 +87,9 @@ export function DealNotes({ dealId, notes, isLoading }: DealNotesProps) {
           ))}
         </div>
       ) : sorted.length === 0 ? (
-        <div className="py-6 text-center text-text-faint text-[13px]">No notes yet</div>
+        <div className="py-6 text-center text-text-faint text-[13px]">
+          No notes yet
+        </div>
       ) : (
         <div className="flex flex-col gap-2">
           {sorted.map((note) => (
@@ -99,7 +103,9 @@ export function DealNotes({ dealId, notes, isLoading }: DealNotesProps) {
               ].join(" ")}
             >
               <div className="flex items-start gap-2">
-                {note.is_pinned && <Pin className="w-3 h-3 text-accent mt-0.5 flex-shrink-0" />}
+                {note.is_pinned && (
+                  <Pin className="w-3 h-3 text-accent mt-0.5 flex-shrink-0" />
+                )}
                 <p className="text-[12.5px] text-text-primary leading-relaxed whitespace-pre-wrap flex-1">
                   {note.body}
                 </p>
@@ -107,7 +113,9 @@ export function DealNotes({ dealId, notes, isLoading }: DealNotesProps) {
               <div className="text-[10.5px] text-text-faint mt-2">
                 {note.created_by_name ?? "Unknown"} · {relTime(note.created_at)}
                 {note.visibility !== "team" && (
-                  <span className="ml-1 capitalize">· {note.visibility.replace(/_/g, " ")}</span>
+                  <span className="ml-1 capitalize">
+                    · {note.visibility.replace(/_/g, " ")}
+                  </span>
                 )}
               </div>
             </div>

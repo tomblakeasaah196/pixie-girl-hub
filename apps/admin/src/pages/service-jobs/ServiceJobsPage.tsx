@@ -50,7 +50,8 @@ function ServiceTypeDrawer({
     display_name: initial?.display_name ?? "",
     description: initial?.description ?? "",
     standard_cost_ngn: initial?.standard_cost_ngn ?? "",
-    standard_turnaround_days: initial?.standard_turnaround_days?.toString() ?? "",
+    standard_turnaround_days:
+      initial?.standard_turnaround_days?.toString() ?? "",
     display_order: initial?.display_order?.toString() ?? "0",
     is_active: initial?.is_active ?? true,
   });
@@ -69,7 +70,9 @@ function ServiceTypeDrawer({
               className="input w-full font-mono"
               placeholder="e.g. installation"
               value={form.service_key}
-              onChange={(e) => setForm((f) => ({ ...f, service_key: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, service_key: e.target.value }))
+              }
               disabled={!!initial}
             />
           </div>
@@ -79,7 +82,9 @@ function ServiceTypeDrawer({
               className="input w-full"
               placeholder="e.g. Installation"
               value={form.display_name}
-              onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, display_name: e.target.value }))
+              }
             />
           </div>
         </div>
@@ -89,7 +94,9 @@ function ServiceTypeDrawer({
           <textarea
             className="input w-full h-20 text-sm"
             value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, description: e.target.value }))
+            }
           />
         </div>
 
@@ -101,7 +108,9 @@ function ServiceTypeDrawer({
               type="number"
               min="0"
               value={form.standard_cost_ngn}
-              onChange={(e) => setForm((f) => ({ ...f, standard_cost_ngn: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, standard_cost_ngn: e.target.value }))
+              }
             />
           </div>
           <div>
@@ -112,7 +121,10 @@ function ServiceTypeDrawer({
               min="0"
               value={form.standard_turnaround_days}
               onChange={(e) =>
-                setForm((f) => ({ ...f, standard_turnaround_days: e.target.value }))
+                setForm((f) => ({
+                  ...f,
+                  standard_turnaround_days: e.target.value,
+                }))
               }
             />
           </div>
@@ -124,7 +136,9 @@ function ServiceTypeDrawer({
             className="input w-24"
             type="number"
             value={form.display_order}
-            onChange={(e) => setForm((f) => ({ ...f, display_order: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, display_order: e.target.value }))
+            }
           />
         </div>
 
@@ -134,7 +148,9 @@ function ServiceTypeDrawer({
               type="checkbox"
               className="w-4 h-4 accent-accent"
               checked={form.is_active}
-              onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, is_active: e.target.checked }))
+              }
             />
             <span className="text-sm">Active</span>
           </label>
@@ -157,7 +173,9 @@ function ServiceTypeDrawer({
                 standard_turnaround_days: form.standard_turnaround_days
                   ? parseInt(form.standard_turnaround_days)
                   : undefined,
-                display_order: form.display_order ? parseInt(form.display_order) : undefined,
+                display_order: form.display_order
+                  ? parseInt(form.display_order)
+                  : undefined,
                 is_active: form.is_active,
               });
             }}
@@ -186,7 +204,8 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted">
-          Define the services Faitlyn offers (Installation, Revamping, Colour Creation…)
+          Define the services Faitlyn offers (Installation, Revamping, Colour
+          Creation…)
         </p>
         {canCreate && (
           <Button onClick={() => setShowCreate(true)}>+ New Type</Button>
@@ -194,7 +213,11 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
       </div>
 
       {types.length === 0 ? (
-        <EmptyState icon={<span className="text-3xl">⚙️</span>} title="No service types" message="Create your first service type" />
+        <EmptyState
+          icon={<span className="text-3xl">⚙️</span>}
+          title="No service types"
+          message="Create your first service type"
+        />
       ) : (
         <DataTable<ServiceType>
           rows={types}
@@ -208,7 +231,11 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
                 </span>
               ),
             },
-            { key: "display_name", header: "Name", render: (t) => t.display_name },
+            {
+              key: "display_name",
+              header: "Name",
+              render: (t) => t.display_name,
+            },
             {
               key: "standard_cost_ngn",
               header: "Std Cost",
@@ -261,10 +288,9 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
         <ServiceTypeDrawer
           initial={editing}
           onSave={(data) =>
-            update.mutate(
-              [editing.service_type_id, data],
-              { onSuccess: () => setEditing(null) },
-            )
+            update.mutate([editing.service_type_id, data], {
+              onSuccess: () => setEditing(null),
+            })
           }
           onClose={() => setEditing(null)}
           isSaving={update.isPending}
@@ -278,7 +304,11 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
 
 function ReconciliationTab() {
   const [varFilter, setVarFilter] = useState("");
-  const { data: rows = [], isLoading, isError } = useReconciliations(
+  const {
+    data: rows = [],
+    isLoading,
+    isError,
+  } = useReconciliations(
     varFilter ? { variance_status: varFilter } : undefined,
   );
   const run = useRunReconciliation();
@@ -293,7 +323,8 @@ function ReconciliationTab() {
         <div>
           <h3 className="font-display text-lg">Chemical Reconciliation</h3>
           <p className="text-sm text-muted">
-            Month-end: purchased vs consumed. Negative variance = anti-pocketing flag.
+            Month-end: purchased vs consumed. Negative variance = anti-pocketing
+            flag.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -322,7 +353,10 @@ function ReconciliationTab() {
             className={`pill-btn ${varFilter === v ? "active" : ""}`}
             onClick={() => setVarFilter(v)}
           >
-            {v === "" ? "All" : VARIANCE_STATUS_META[v as keyof typeof VARIANCE_STATUS_META]?.label ?? v}
+            {v === ""
+              ? "All"
+              : (VARIANCE_STATUS_META[v as keyof typeof VARIANCE_STATUS_META]
+                  ?.label ?? v)}
           </button>
         ))}
       </div>
@@ -359,11 +393,19 @@ function ReconciliationTab() {
                   >
                     <td className="py-2 pr-3 font-medium">
                       {r.chemical_name}
-                      <span className="text-muted ml-1 text-xs">({r.unit})</span>
+                      <span className="text-muted ml-1 text-xs">
+                        ({r.unit})
+                      </span>
                     </td>
-                    <td className="py-2 pr-3 text-right font-mono">{r.qty_purchased}</td>
-                    <td className="py-2 pr-3 text-right font-mono">{r.qty_consumed}</td>
-                    <td className="py-2 pr-3 text-right font-mono">{r.qty_disposed}</td>
+                    <td className="py-2 pr-3 text-right font-mono">
+                      {r.qty_purchased}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono">
+                      {r.qty_consumed}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono">
+                      {r.qty_disposed}
+                    </td>
                     <td
                       className={`py-2 pr-3 text-right font-mono font-semibold ${
                         varNegative ? "text-danger" : "text-success"
@@ -402,7 +444,9 @@ function KpiStrip() {
   ).length;
   const pocketing = jobs.filter(
     (j) =>
-      j.status === "completed" && !j.sales_order_id && !j.intercompany_transaction_id,
+      j.status === "completed" &&
+      !j.sales_order_id &&
+      !j.intercompany_transaction_id,
   ).length;
 
   return (
@@ -433,7 +477,9 @@ export function ServiceJobsPage() {
       <div className="p-6">
         <div className="glass rounded-xl p-6 text-center space-y-2">
           <p className="text-lg font-semibold">Access Restricted</p>
-          <p className="text-muted text-sm">You don't have permission to view Service Jobs.</p>
+          <p className="text-muted text-sm">
+            You don't have permission to view Service Jobs.
+          </p>
         </div>
       </div>
     );
@@ -456,7 +502,8 @@ export function ServiceJobsPage() {
         <div>
           <h1 className="font-display text-2xl">Service Jobs</h1>
           <p className="text-muted text-sm">
-            Faitlyn Hair Assignment Register — installation, revamping, colour, customisation
+            Faitlyn Hair Assignment Register — installation, revamping, colour,
+            customisation
           </p>
         </div>
       </div>

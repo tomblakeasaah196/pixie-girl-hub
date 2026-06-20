@@ -49,30 +49,132 @@ function lazyWithRetry<T extends ComponentType<any>>( // eslint-disable-line @ty
   });
 }
 
-const CashExpensesHome = lazyWithRetry(() => import("@/pages/cash-expenses/CashExpensesHome"));
-const ProductionPage = lazyWithRetry(() => import("@/pages/production/ProductionPage").then((m) => ({ default: m.ProductionPage })));
-const PricingPage = lazyWithRetry(() => import("@/pages/pricing/PricingPage").then((m) => ({ default: m.PricingPage })));
-const PurchasingPage = lazyWithRetry(() => import("@/pages/purchasing/PurchasingPage").then((m) => ({ default: m.PurchasingPage })));
-const ServiceJobsPage = lazyWithRetry(() => import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({ default: m.ServiceJobsPage })));
-const FactoryLanguagePage = lazyWithRetry(() => import("@/pages/FactoryLanguagePage").then((m) => ({ default: m.FactoryLanguagePage })));
-const SmartCommPage = lazyWithRetry(() => import("@/pages/smartcomm/SmartCommPage").then((m) => ({ default: m.SmartCommPage })));
-const MessagingAccountsPage = lazyWithRetry(() => import("@/pages/settings/MessagingAccountsPage").then((m) => ({ default: m.MessagingAccountsPage })));
-const CustomerOnboardingPublic = lazyWithRetry(() => import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({ default: m.CustomerOnboardingPublic })));
-const OrderCapturePublic = lazyWithRetry(() => import("@/pages/order-capture/OrderCapturePublic").then((m) => ({ default: m.OrderCapturePublic })));
-const AiControlPage = lazyWithRetry(() => import("@/pages/ai-control/AiControlPage").then((m) => ({ default: m.AiControlPage })));
-const BrandVoicePage = lazyWithRetry(() => import("@/pages/ai-control/BrandVoicePage").then((m) => ({ default: m.BrandVoicePage })));
-const StockPage = lazyWithRetry(() => import("@/pages/stock/StockPage").then((m) => ({ default: m.StockPage })));
-const SalesCampaignsListPage = lazyWithRetry(() => import("@/pages/sales-campaigns/SalesCampaignsListPage").then((m) => ({ default: m.SalesCampaignsListPage })));
-const CampaignBuilderPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignBuilderPage").then((m) => ({ default: m.CampaignBuilderPage })));
-const CampaignDetailPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignDetailPage").then((m) => ({ default: m.CampaignDetailPage })));
-const CampaignBundlesPage = lazyWithRetry(() => import("@/pages/sales-campaigns/CampaignBundlesPage").then((m) => ({ default: m.CampaignBundlesPage })));
-const SaleLandingPublic = lazyWithRetry(() => import("@/pages/sales-campaigns/public/SaleLandingPublic").then((m) => ({ default: m.SaleLandingPublic })));
-const SalesIndexPublic = lazyWithRetry(() => import("@/pages/sales-campaigns/public/SalesIndexPublic").then((m) => ({ default: m.SalesIndexPublic })));
-const ModelsAndVendorsPage = lazyWithRetry(() => import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({ default: m.ModelsAndVendorsPage })));
-const ChannelPolicyPage = lazyWithRetry(() => import("@/pages/settings/ChannelPolicyPage").then((m) => ({ default: m.ChannelPolicyPage })));
-const QuickRepliesPage = lazyWithRetry(() => import("@/pages/settings/QuickRepliesPage").then((m) => ({ default: m.QuickRepliesPage })));
-const WorkspacePage = lazyWithRetry(() => import("@/pages/workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
-const InvoicingPage = lazyWithRetry(() => import("@/pages/invoicing/InvoicingPage").then((m) => ({ default: m.InvoicingPage })));
+const CashExpensesHome = lazyWithRetry(
+  () => import("@/pages/cash-expenses/CashExpensesHome"),
+);
+const ProductionPage = lazyWithRetry(() =>
+  import("@/pages/production/ProductionPage").then((m) => ({
+    default: m.ProductionPage,
+  })),
+);
+const PricingPage = lazyWithRetry(() =>
+  import("@/pages/pricing/PricingPage").then((m) => ({
+    default: m.PricingPage,
+  })),
+);
+const PurchasingPage = lazyWithRetry(() =>
+  import("@/pages/purchasing/PurchasingPage").then((m) => ({
+    default: m.PurchasingPage,
+  })),
+);
+const ServiceJobsPage = lazyWithRetry(() =>
+  import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({
+    default: m.ServiceJobsPage,
+  })),
+);
+const FactoryLanguagePage = lazyWithRetry(() =>
+  import("@/pages/FactoryLanguagePage").then((m) => ({
+    default: m.FactoryLanguagePage,
+  })),
+);
+const SmartCommPage = lazyWithRetry(() =>
+  import("@/pages/smartcomm/SmartCommPage").then((m) => ({
+    default: m.SmartCommPage,
+  })),
+);
+const MessagingAccountsPage = lazyWithRetry(() =>
+  import("@/pages/settings/MessagingAccountsPage").then((m) => ({
+    default: m.MessagingAccountsPage,
+  })),
+);
+const CustomerOnboardingPublic = lazyWithRetry(() =>
+  import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({
+    default: m.CustomerOnboardingPublic,
+  })),
+);
+const OrderCapturePublic = lazyWithRetry(() =>
+  import("@/pages/order-capture/OrderCapturePublic").then((m) => ({
+    default: m.OrderCapturePublic,
+  })),
+);
+const AiControlPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/AiControlPage").then((m) => ({
+    default: m.AiControlPage,
+  })),
+);
+const BrandVoicePage = lazyWithRetry(() =>
+  import("@/pages/ai-control/BrandVoicePage").then((m) => ({
+    default: m.BrandVoicePage,
+  })),
+);
+const StockPage = lazyWithRetry(() =>
+  import("@/pages/stock/StockPage").then((m) => ({ default: m.StockPage })),
+);
+const SalesCampaignsListPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/SalesCampaignsListPage").then((m) => ({
+    default: m.SalesCampaignsListPage,
+  })),
+);
+const CampaignBuilderPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/CampaignBuilderPage").then((m) => ({
+    default: m.CampaignBuilderPage,
+  })),
+);
+const CampaignDetailPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/CampaignDetailPage").then((m) => ({
+    default: m.CampaignDetailPage,
+  })),
+);
+const CampaignBundlesPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/CampaignBundlesPage").then((m) => ({
+    default: m.CampaignBundlesPage,
+  })),
+);
+const LandingStudioPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/landing/LandingStudioPage").then((m) => ({
+    default: m.LandingStudioPage,
+  })),
+);
+const LandingPreviewPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/landing/LandingPreviewPage").then((m) => ({
+    default: m.LandingPreviewPage,
+  })),
+);
+const SaleLandingPublic = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/public/SaleLandingPublic").then((m) => ({
+    default: m.SaleLandingPublic,
+  })),
+);
+const SalesIndexPublic = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/public/SalesIndexPublic").then((m) => ({
+    default: m.SalesIndexPublic,
+  })),
+);
+const ModelsAndVendorsPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({
+    default: m.ModelsAndVendorsPage,
+  })),
+);
+const ChannelPolicyPage = lazyWithRetry(() =>
+  import("@/pages/settings/ChannelPolicyPage").then((m) => ({
+    default: m.ChannelPolicyPage,
+  })),
+);
+const QuickRepliesPage = lazyWithRetry(() =>
+  import("@/pages/settings/QuickRepliesPage").then((m) => ({
+    default: m.QuickRepliesPage,
+  })),
+);
+const WorkspacePage = lazyWithRetry(() =>
+  import("@/pages/workspace/WorkspacePage").then((m) => ({
+    default: m.WorkspacePage,
+  })),
+);
+const InvoicingPage = lazyWithRetry(() =>
+  import("@/pages/invoicing/InvoicingPage").then((m) => ({
+    default: m.InvoicingPage,
+  })),
+);
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -166,6 +268,25 @@ export const router = createBrowserRouter(
       element: <RequireAuth />,
       children: [
         { path: "/select-entity", element: <SelectEntityPage /> },
+        // Landing Studio — standalone full-screen editor + chrome-less
+        // preview tab. Authed (session restored by RequireAuth) but outside
+        // the AppShell so it owns the whole viewport.
+        {
+          path: "/landing-studio",
+          element: (
+            <Suspense fallback={null}>
+              <LandingStudioPage />
+            </Suspense>
+          ),
+        },
+        {
+          path: "/landing-studio/preview",
+          element: (
+            <Suspense fallback={null}>
+              <LandingPreviewPage />
+            </Suspense>
+          ),
+        },
         {
           path: "/",
           element: <AppShell />,
@@ -176,8 +297,22 @@ export const router = createBrowserRouter(
             { path: "contacts/milestones", element: <MilestonesPage /> },
             { path: "crm", element: <CrmPage /> },
             { path: "crm/deals/:id", element: <DealDetailPage /> },
-            { path: "expenses", element: <Suspense fallback={null}><CashExpensesHome defaultTab="expenses" /></Suspense> },
-            { path: "cash-requests", element: <Suspense fallback={null}><CashExpensesHome defaultTab="my-requests" /></Suspense> },
+            {
+              path: "expenses",
+              element: (
+                <Suspense fallback={null}>
+                  <CashExpensesHome defaultTab="expenses" />
+                </Suspense>
+              ),
+            },
+            {
+              path: "cash-requests",
+              element: (
+                <Suspense fallback={null}>
+                  <CashExpensesHome defaultTab="my-requests" />
+                </Suspense>
+              ),
+            },
 
             // Catalogue — base/styled product model, categories, collections,
             // bundles. Detail/create live on their own routes.
@@ -186,28 +321,105 @@ export const router = createBrowserRouter(
             { path: "catalogue/styled/:id", element: <StyledProductPage /> },
 
             // Workspace (Tasks + Calendar + My Day)
-            { path: "workspace", element: <Suspense fallback={null}><WorkspacePage /></Suspense> },
+            {
+              path: "workspace",
+              element: (
+                <Suspense fallback={null}>
+                  <WorkspacePage />
+                </Suspense>
+              ),
+            },
 
             // Stock & Inventory
-            { path: "stock", element: <Suspense fallback={null}><StockPage /></Suspense> },
+            {
+              path: "stock",
+              element: (
+                <Suspense fallback={null}>
+                  <StockPage />
+                </Suspense>
+              ),
+            },
 
             // Sales Campaigns & Landing Pages (V2.2 §6.22).
-            { path: "sales-campaigns", element: <Suspense fallback={null}><SalesCampaignsListPage /></Suspense> },
-            { path: "sales-campaigns/bundles", element: <Suspense fallback={null}><CampaignBundlesPage /></Suspense> },
-            { path: "sales-campaigns/:id", element: <Suspense fallback={null}><CampaignDetailPage /></Suspense> },
-            { path: "sales-campaigns/:id/edit", element: <Suspense fallback={null}><CampaignBuilderPage /></Suspense> },
+            {
+              path: "sales-campaigns",
+              element: (
+                <Suspense fallback={null}>
+                  <SalesCampaignsListPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "sales-campaigns/bundles",
+              element: (
+                <Suspense fallback={null}>
+                  <CampaignBundlesPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "sales-campaigns/:id",
+              element: (
+                <Suspense fallback={null}>
+                  <CampaignDetailPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "sales-campaigns/:id/edit",
+              element: (
+                <Suspense fallback={null}>
+                  <CampaignBuilderPage />
+                </Suspense>
+              ),
+            },
 
             // Service Jobs (Faitlyn hair assignment register)
-            { path: "service-jobs", element: <Suspense fallback={null}><ServiceJobsPage /></Suspense> },
+            {
+              path: "service-jobs",
+              element: (
+                <Suspense fallback={null}>
+                  <ServiceJobsPage />
+                </Suspense>
+              ),
+            },
 
             // Production (China factory account + production runs)
-            { path: "production", element: <Suspense fallback={null}><ProductionPage /></Suspense> },
+            {
+              path: "production",
+              element: (
+                <Suspense fallback={null}>
+                  <ProductionPage />
+                </Suspense>
+              ),
+            },
             // Pricing Engine
-            { path: "pricing", element: <Suspense fallback={null}><PricingPage /></Suspense> },
+            {
+              path: "pricing",
+              element: (
+                <Suspense fallback={null}>
+                  <PricingPage />
+                </Suspense>
+              ),
+            },
             // Purchasing (PO lifecycle + GRN + invoices)
-            { path: "purchasing", element: <Suspense fallback={null}><PurchasingPage /></Suspense> },
+            {
+              path: "purchasing",
+              element: (
+                <Suspense fallback={null}>
+                  <PurchasingPage />
+                </Suspense>
+              ),
+            },
             // Invoicing & Billing (V2.2 §6.5) — invoices, credit notes, AR ageing.
-            { path: "invoicing", element: <Suspense fallback={null}><InvoicingPage /></Suspense> },
+            {
+              path: "invoicing",
+              element: (
+                <Suspense fallback={null}>
+                  <InvoicingPage />
+                </Suspense>
+              ),
+            },
 
             // Settings — landing + sub-pages.
             { path: "settings", element: <SettingsHome /> },
@@ -217,19 +429,50 @@ export const router = createBrowserRouter(
             { path: "settings/businesses", element: <BusinessesPage /> },
             { path: "settings/currencies", element: <CurrenciesPage /> },
             { path: "settings/tax-rates", element: <TaxRatesPage /> },
-            { path: "settings/payment-gateways", element: <PaymentGatewaysPage /> },
+            {
+              path: "settings/payment-gateways",
+              element: <PaymentGatewaysPage />,
+            },
             { path: "settings/bank-accounts", element: <BankAccountsPage /> },
-            { path: "settings/document-numbering", element: <DocumentNumberingPage /> },
+            {
+              path: "settings/document-numbering",
+              element: <DocumentNumberingPage />,
+            },
             { path: "settings/custom-fields", element: <CustomFieldsPage /> },
-            { path: "settings/pipeline-stages", element: <PipelineStagesPage /> },
-            { path: "settings/document-templates", element: <DocumentTemplatesPage /> },
-            { path: "settings/email-signatures", element: <EmailSignaturesPage /> },
-            { path: "settings/notifications", element: <NotificationPreferencesPage /> },
-            { path: "settings/scheduled-reports", element: <ScheduledReportsPage /> },
-            { path: "settings/integration-secrets", element: <IntegrationSecretsPage /> },
+            {
+              path: "settings/pipeline-stages",
+              element: <PipelineStagesPage />,
+            },
+            {
+              path: "settings/document-templates",
+              element: <DocumentTemplatesPage />,
+            },
+            {
+              path: "settings/email-signatures",
+              element: <EmailSignaturesPage />,
+            },
+            {
+              path: "settings/notifications",
+              element: <NotificationPreferencesPage />,
+            },
+            {
+              path: "settings/scheduled-reports",
+              element: <ScheduledReportsPage />,
+            },
+            {
+              path: "settings/integration-secrets",
+              element: <IntegrationSecretsPage />,
+            },
             { path: "settings/policies", element: <BusinessPoliciesPage /> },
             { path: "settings/contact-tags", element: <ContactTagsPage /> },
-            { path: "settings/factory-languages", element: <Suspense fallback={null}><FactoryLanguagePage /></Suspense> },
+            {
+              path: "settings/factory-languages",
+              element: (
+                <Suspense fallback={null}>
+                  <FactoryLanguagePage />
+                </Suspense>
+              ),
+            },
 
             // Org & Workflow (roles / approvals / permission matrix).
             { path: "org-workflow", element: <OrgWorkflowPage /> },
@@ -251,17 +494,66 @@ export const router = createBrowserRouter(
             { path: "help/:slug", element: <HelpArticlePage /> },
 
             // Smart Comm (Messaging).
-            { path: "smartcomm", element: <Suspense fallback={null}><SmartCommPage /></Suspense> },
+            {
+              path: "smartcomm",
+              element: (
+                <Suspense fallback={null}>
+                  <SmartCommPage />
+                </Suspense>
+              ),
+            },
 
             // AI Control + Brand Voice editor (PR 3).
-            { path: "ai-control", element: <Suspense fallback={null}><AiControlPage /></Suspense> },
-            { path: "ai-control/brand-voice", element: <Suspense fallback={null}><BrandVoicePage /></Suspense> },
-            { path: "ai-control/vendors", element: <Suspense fallback={null}><ModelsAndVendorsPage /></Suspense> },
+            {
+              path: "ai-control",
+              element: (
+                <Suspense fallback={null}>
+                  <AiControlPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/brand-voice",
+              element: (
+                <Suspense fallback={null}>
+                  <BrandVoicePage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/vendors",
+              element: (
+                <Suspense fallback={null}>
+                  <ModelsAndVendorsPage />
+                </Suspense>
+              ),
+            },
 
             // Channel Policy + Quick Replies (PR 3 — Settings).
-            { path: "settings/channel-policy", element: <Suspense fallback={null}><ChannelPolicyPage /></Suspense> },
-            { path: "settings/quick-replies", element: <Suspense fallback={null}><QuickRepliesPage /></Suspense> },
-            { path: "settings/messaging-accounts", element: <Suspense fallback={null}><MessagingAccountsPage /></Suspense> },
+            {
+              path: "settings/channel-policy",
+              element: (
+                <Suspense fallback={null}>
+                  <ChannelPolicyPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "settings/quick-replies",
+              element: (
+                <Suspense fallback={null}>
+                  <QuickRepliesPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "settings/messaging-accounts",
+              element: (
+                <Suspense fallback={null}>
+                  <MessagingAccountsPage />
+                </Suspense>
+              ),
+            },
 
             { path: "*", element: <ModulePlaceholder /> },
           ],

@@ -73,9 +73,17 @@ const landingBlocksArray = z.array(landingBlock).max(40);
 // Shared by both create and update so the two stay in lock-step.
 const v2CampaignFields = {
   voice_profile_override: z.record(z.any()).nullable().optional(),
-  show_viewer_count_policy: z.enum(["smart", "on", "off"]).nullable().optional(),
+  show_viewer_count_policy: z
+    .enum(["smart", "on", "off"])
+    .nullable()
+    .optional(),
   viewer_count_floor: z.coerce.number().int().min(0).nullable().optional(),
-  vip_early_access_minutes: z.coerce.number().int().min(0).max(10080).optional(),
+  vip_early_access_minutes: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10080)
+    .optional(),
   last_call_surge_minutes: z.coerce.number().int().min(0).max(10080).optional(),
   vip_top_n: z.coerce.number().int().min(1).max(100).optional(),
   vip_lifetime_threshold_ngn: moneyNgn.nullable().optional(),
@@ -285,7 +293,13 @@ const attachBundleSchema = z
     campaign_bundle_price_ngn: moneyNgn.nullable().optional(),
     preorder_enabled: z.boolean().optional(),
     preorder_loss_pct: z.coerce.number().min(0).max(1).nullable().optional(),
-    preorder_lead_weeks: z.coerce.number().int().min(1).max(52).nullable().optional(),
+    preorder_lead_weeks: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(52)
+      .nullable()
+      .optional(),
     starting_stock: z.coerce.number().int().min(0).nullable().optional(),
     is_featured: z.boolean().optional(),
     display_order: z.coerce.number().int().min(0).optional(),
@@ -389,7 +403,8 @@ const praxisDryRunSchema = z
   .strict();
 
 const praxisQnaSchema = z
-  .object({ question: z.string().min(1).max(1000) }).strict();
+  .object({ question: z.string().min(1).max(1000) })
+  .strict();
 
 const praxisAcceptSchema = z
   .object({
@@ -401,11 +416,18 @@ const praxisAcceptSchema = z
   .strict();
 
 const vipGrantSchema = z
-  .object({ top_n: z.coerce.number().int().min(1).max(100).optional() }).strict();
+  .object({ top_n: z.coerce.number().int().min(1).max(100).optional() })
+  .strict();
 
 const vipGiftStatusSchema = z
   .object({
-    gift_status: z.enum(["pending", "approved", "dispatched", "delivered", "rejected"]),
+    gift_status: z.enum([
+      "pending",
+      "approved",
+      "dispatched",
+      "delivered",
+      "rejected",
+    ]),
   })
   .strict();
 

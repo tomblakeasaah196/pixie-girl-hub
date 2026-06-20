@@ -22,12 +22,14 @@ import { cn } from "@lib/cn";
 export function AppShell() {
   const { sidebarCollapsed } = useUiStore();
   const isDesktop = useIsDesktop();
-  const { user, isHydrated, hydrate, refreshFromServer } = useAuthStore((s) => ({
-    user: s.user,
-    isHydrated: s.isHydrated,
-    hydrate: s.hydrate,
-    refreshFromServer: s.refreshFromServer,
-  }));
+  const { user, isHydrated, hydrate, refreshFromServer } = useAuthStore(
+    (s) => ({
+      user: s.user,
+      isHydrated: s.isHydrated,
+      hydrate: s.hydrate,
+      refreshFromServer: s.refreshFromServer,
+    }),
+  );
 
   // Proactively detect an expired session (e.g. after the laptop slept past the
   // token's 24h life) so we can show a friendly "logged out" screen with a

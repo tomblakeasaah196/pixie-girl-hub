@@ -59,7 +59,10 @@ export function ExitIntent({ payload }: { payload: LandingPayload }) {
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[70] grid place-items-center px-4"
         >
-          <div className="absolute inset-0 bg-black/65 backdrop-blur-[4px]" onClick={() => setOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/65 backdrop-blur-[4px]"
+            onClick={() => setOpen(false)}
+          />
           <motion.div
             initial={{ y: 30, opacity: 0, scale: 0.96 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
@@ -77,9 +80,12 @@ export function ExitIntent({ payload }: { payload: LandingPayload }) {
             <span className="grid place-items-center w-14 h-14 rounded-2xl bg-[rgb(var(--accent)/0.15)] text-[rgb(var(--accent-glow))] mx-auto mb-3">
               <Gift className="w-6 h-6" />
             </span>
-            <h3 className="font-display text-[26px] leading-tight">Wait — a small gift before you go.</h3>
+            <h3 className="font-display text-[26px] leading-tight">
+              Wait — a small gift before you go.
+            </h3>
             <p className="mt-2 text-[rgb(var(--text-muted))]">
-              Use this code at checkout for {money(amount)} off — only good this session.
+              Use this code at checkout for {money(amount)} off — only good this
+              session.
             </p>
             <div className="mt-5 inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] font-mono text-[rgb(var(--accent-glow))] font-bold tracking-[0.18em]">
               {code}

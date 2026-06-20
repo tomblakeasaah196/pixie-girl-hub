@@ -104,9 +104,7 @@ async function welcomeUrl(brand, token) {
  */
 async function orderCaptureUrl(brand, token) {
   const base = await publicBaseUrl(brand);
-  return base
-    ? `${base}/order/capture/${token}`
-    : `/order/capture/${token}`;
+  return base ? `${base}/order/capture/${token}` : `/order/capture/${token}`;
 }
 
 /**

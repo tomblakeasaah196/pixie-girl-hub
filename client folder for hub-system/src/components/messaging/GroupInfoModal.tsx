@@ -205,9 +205,7 @@ export function GroupInfoModal({
                     <button
                       type="button"
                       title="Remove from group"
-                      onClick={() =>
-                        removeMutation.mutate(m.user_id as string)
-                      }
+                      onClick={() => removeMutation.mutate(m.user_id as string)}
                       className="text-brand-black/30 hover:text-red-500"
                     >
                       <Trash2 className="h-3.5 w-3.5" />

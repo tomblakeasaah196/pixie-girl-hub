@@ -40,7 +40,10 @@ export function NotificationManager() {
   // Register service worker and ensure push subscription on mount.
   useEffect(() => {
     registerServiceWorker().then(() => {
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted"
+      ) {
         ensurePushSubscription();
       }
     });
@@ -64,14 +67,23 @@ export function NotificationManager() {
       if (isDndActive()) return;
 
       // Priority-aware sound (socket payload uses `id`; DB rows use `notification_id`).
-      const soundId = (notif as { id?: string }).id ?? notif.notification_id ?? String(Date.now());
+      const soundId =
+        (notif as { id?: string }).id ??
+        notif.notification_id ??
+        String(Date.now());
       playOnce(notif.priority ?? "normal", soundId);
 
       // Normalise socket payload to AppNotification shape for the toast.
-      const socketPayload = notif as { id?: string; notification_id?: string } & typeof notif;
+      const socketPayload = notif as {
+        id?: string;
+        notification_id?: string;
+      } & typeof notif;
       const toastNotif = {
         ...notif,
-        notification_id: socketPayload.notification_id ?? socketPayload.id ?? String(Date.now()),
+        notification_id:
+          socketPayload.notification_id ??
+          socketPayload.id ??
+          String(Date.now()),
       };
       addToast(toastNotif);
     };

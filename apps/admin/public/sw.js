@@ -20,9 +20,7 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys
-            .filter((k) => k !== CACHE_NAME)
-            .map((k) => caches.delete(k)),
+          keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)),
         ),
       )
       .then(() => self.clients.claim()),
@@ -51,7 +49,9 @@ self.addEventListener("fetch", (event) => {
   // For cached shell assets, try cache first then network
   if (SHELL_ASSETS.some((asset) => url.pathname === asset)) {
     event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request)),
+      caches
+        .match(event.request)
+        .then((cached) => cached || fetch(event.request)),
     );
     return;
   }
@@ -67,7 +67,12 @@ self.addEventListener("push", (event) => {
   } catch {
     payload = { title: "Pixie Hub", body: event.data.text() };
   }
-  const { title = "Pixie Hub", body = "", url = "/notifications", tag } = payload;
+  const {
+    title = "Pixie Hub",
+    body = "",
+    url = "/notifications",
+    tag,
+  } = payload;
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
@@ -84,7 +89,10 @@ self.addEventListener("notificationclick", (event) => {
   const url = event.notification.data?.url || "/notifications";
   event.waitUntil(
     (async () => {
-      const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const all = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
       for (const client of all) {
         if ("focus" in client) {
           await client.focus();

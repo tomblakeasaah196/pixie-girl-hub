@@ -10,7 +10,13 @@ import { useVaultGrants, useGrantVault, useRevokeVault } from "@/lib/catalogue";
  * may see true landed cost + supplier identity. The server enforces is_ceo;
  * this UI is only rendered for the owner.
  */
-export function CostVaultGrants({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CostVaultGrants({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const grants = useVaultGrants(open);
   const grant = useGrantVault();
   const revoke = useRevokeVault();
@@ -59,7 +65,9 @@ export function CostVaultGrants({ open, onClose }: { open: boolean; onClose: () 
       </Field>
       {grant.isError && (
         <p className="text-[12px] text-danger mt-1.5">
-          {grant.error instanceof Error ? grant.error.message : "Could not grant access."}
+          {grant.error instanceof Error
+            ? grant.error.message
+            : "Could not grant access."}
         </p>
       )}
 
@@ -67,7 +75,9 @@ export function CostVaultGrants({ open, onClose }: { open: boolean; onClose: () 
       {grants.isLoading ? (
         <div className="text-[12px] text-text-faint py-3">Loading…</div>
       ) : (grants.data ?? []).length === 0 ? (
-        <div className="text-[12px] text-text-faint py-3">No one else has access.</div>
+        <div className="text-[12px] text-text-faint py-3">
+          No one else has access.
+        </div>
       ) : (
         <ul className="space-y-1.5">
           {(grants.data ?? []).map((g) => (
@@ -76,8 +86,12 @@ export function CostVaultGrants({ open, onClose }: { open: boolean; onClose: () 
               className="flex items-center gap-3 p-2.5 rounded-[11px] bg-text-primary/[0.04] border hairline"
             >
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] truncate">{g.user_email ?? g.user_id}</div>
-                <div className="text-[10.5px] text-text-faint font-mono truncate">{g.user_id}</div>
+                <div className="text-[13px] truncate">
+                  {g.user_email ?? g.user_id}
+                </div>
+                <div className="text-[10.5px] text-text-faint font-mono truncate">
+                  {g.user_id}
+                </div>
               </div>
               <button
                 onClick={() => revoke.mutate({ userId: g.user_id })}

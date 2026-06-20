@@ -17,8 +17,14 @@ async function createAccount({ client, brand, data }) {
     `INSERT INTO ${t(brand, "factory_accounts")}
        (supplier_id, account_name, base_currency, credit_alert_threshold, notes, created_by)
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [data.supplier_id, data.account_name, data.base_currency ?? "CNY",
-     data.credit_alert_threshold ?? null, data.notes ?? null, data.created_by ?? null],
+    [
+      data.supplier_id,
+      data.account_name,
+      data.base_currency ?? "CNY",
+      data.credit_alert_threshold ?? null,
+      data.notes ?? null,
+      data.created_by ?? null,
+    ],
   );
   return rows[0];
 }
@@ -65,7 +71,8 @@ async function updateAccount({ client, brand, id, data }) {
 // ── Ledger entries ────────────────────────────────────────
 
 async function addLedgerEntry({ client, brand, data }) {
-  const amountBase = parseFloat(data.amount_original) * parseFloat(data.fx_rate_to_base ?? 1);
+  const amountBase =
+    parseFloat(data.amount_original) * parseFloat(data.fx_rate_to_base ?? 1);
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "factory_account_ledger")}
        (account_id, entry_type, direction, amount_original, original_currency,
@@ -74,19 +81,33 @@ async function addLedgerEntry({ client, brand, data }) {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,CURRENT_DATE),$12,$13,$14,$15)
      RETURNING *`,
     [
-      data.account_id, data.entry_type, data.direction,
-      data.amount_original, data.original_currency ?? "CNY",
-      data.fx_rate_to_base ?? 1, amountBase,
-      data.reference_type ?? null, data.reference_id ?? null,
-      data.description ?? null, data.entry_date ?? null,
-      data.payment_method ?? null, data.paid_by ?? null,
-      data.recorded_by ?? null, data.notes ?? null,
+      data.account_id,
+      data.entry_type,
+      data.direction,
+      data.amount_original,
+      data.original_currency ?? "CNY",
+      data.fx_rate_to_base ?? 1,
+      amountBase,
+      data.reference_type ?? null,
+      data.reference_id ?? null,
+      data.description ?? null,
+      data.entry_date ?? null,
+      data.payment_method ?? null,
+      data.paid_by ?? null,
+      data.recorded_by ?? null,
+      data.notes ?? null,
     ],
   );
   return rows[0];
 }
 
-async function listLedgerEntries({ client, brand, account_id, limit = 50, offset = 0 }) {
+async function listLedgerEntries({
+  client,
+  brand,
+  account_id,
+  limit = 50,
+  offset = 0,
+}) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "factory_account_ledger")}
      WHERE account_id = $1
@@ -134,13 +155,18 @@ async function createShipment({ client, brand, data }) {
         status, shipped_at, estimated_arrival, notes, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'dispatched',$9,$10,$11,$12) RETURNING *`,
     [
-      data.shipment_ref, data.account_id, data.supplier_id,
-      data.courier, data.tracking_number ?? null,
+      data.shipment_ref,
+      data.account_id,
+      data.supplier_id,
+      data.courier,
+      data.tracking_number ?? null,
       data.courier_fee_original ?? null,
       data.courier_fee_currency ?? "CNY",
       courierFeeBase,
-      data.shipped_at ?? null, data.estimated_arrival ?? null,
-      data.notes ?? null, data.created_by ?? null,
+      data.shipped_at ?? null,
+      data.estimated_arrival ?? null,
+      data.notes ?? null,
+      data.created_by ?? null,
     ],
   );
   return rows[0];
@@ -183,12 +209,25 @@ async function getShipment({ client, brand, id }) {
   return { ...rows[0], items };
 }
 
-async function listShipments({ client, brand, account_id, status, limit = 50, offset = 0 }) {
+async function listShipments({
+  client,
+  brand,
+  account_id,
+  status,
+  limit = 50,
+  offset = 0,
+}) {
   const conditions = ["1=1"];
   const params = [];
   let idx = 1;
-  if (account_id) { conditions.push(`fs.account_id = $${idx++}`); params.push(account_id); }
-  if (status) { conditions.push(`fs.status = $${idx++}`); params.push(status); }
+  if (account_id) {
+    conditions.push(`fs.account_id = $${idx++}`);
+    params.push(account_id);
+  }
+  if (status) {
+    conditions.push(`fs.status = $${idx++}`);
+    params.push(status);
+  }
 
   const { rows } = await ex(client)(
     `SELECT fs.*, fa.account_name, s.display_name AS supplier_name
@@ -212,8 +251,14 @@ async function listShipments({ client, brand, account_id, status, limit = 50, of
 async function advanceShipment({ client, brand, id, data }) {
   const sets = ["status = $1", "updated_at = NOW()"];
   const params = [data.status];
-  if (data.arrived_at) { sets.push(`arrived_at = $${params.length + 1}`); params.push(data.arrived_at); }
-  if (data.notes) { sets.push(`notes = $${params.length + 1}`); params.push(data.notes); }
+  if (data.arrived_at) {
+    sets.push(`arrived_at = $${params.length + 1}`);
+    params.push(data.arrived_at);
+  }
+  if (data.notes) {
+    sets.push(`notes = $${params.length + 1}`);
+    params.push(data.notes);
+  }
   params.push(id);
 
   const { rows } = await ex(client)(
@@ -243,9 +288,19 @@ async function linkShipmentToGrn({ client, brand, shipment_id, grn_id }) {
 }
 
 module.exports = {
-  createAccount, getAccount, listAccounts, updateAccount,
-  addLedgerEntry, listLedgerEntries, reconcileEntries,
-  nextShipmentRef, createShipment, addShipmentItems,
-  getShipment, listShipments, advanceShipment,
-  linkShipmentToPo, linkShipmentToGrn,
+  createAccount,
+  getAccount,
+  listAccounts,
+  updateAccount,
+  addLedgerEntry,
+  listLedgerEntries,
+  reconcileEntries,
+  nextShipmentRef,
+  createShipment,
+  addShipmentItems,
+  getShipment,
+  listShipments,
+  advanceShipment,
+  linkShipmentToPo,
+  linkShipmentToGrn,
 };

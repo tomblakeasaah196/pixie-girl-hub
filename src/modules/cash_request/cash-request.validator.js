@@ -63,14 +63,23 @@ const cancelSchema = z
   .object({ reason: z.string().max(2000).optional() })
   .strict();
 
-const documentSchema = z.object({
-  document_id: z.string().uuid(),
-  document_role: z.enum([
-    "quote", "pro_forma_invoice", "screenshot", "authorisation",
-    "bank_transfer_receipt", "settlement_receipt", "other",
-  ]).optional(),
-  notes: z.string().max(500).optional(),
-}).strict();
+const documentSchema = z
+  .object({
+    document_id: z.string().uuid(),
+    document_role: z
+      .enum([
+        "quote",
+        "pro_forma_invoice",
+        "screenshot",
+        "authorisation",
+        "bank_transfer_receipt",
+        "settlement_receipt",
+        "other",
+      ])
+      .optional(),
+    notes: z.string().max(500).optional(),
+  })
+  .strict();
 
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});

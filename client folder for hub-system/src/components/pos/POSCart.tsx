@@ -88,7 +88,15 @@ export function POSCart({ currency = "NGN" }: POSCartProps) {
             <div className="flex-1">
               <div className="relative">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 z-10 text-xs text-brand-smoke">
-                  {currency === "NGN" ? "₦" : currency === "USD" ? "$" : currency === "GBP" ? "£" : currency === "EUR" ? "€" : currency}
+                  {currency === "NGN"
+                    ? "₦"
+                    : currency === "USD"
+                      ? "$"
+                      : currency === "GBP"
+                        ? "£"
+                        : currency === "EUR"
+                          ? "€"
+                          : currency}
                 </span>
                 <NumberField
                   decimal

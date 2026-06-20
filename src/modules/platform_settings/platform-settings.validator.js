@@ -22,22 +22,35 @@ const { z } = require("zod");
 
 // "R G B" — three 0..255 ints space-separated. Used by every Tailwind
 // rgb(var(--token) / alpha) call in apps/admin/src/styles/index.css.
-const RGB_TRIPLET = /^(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]) (?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]) (?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/;
+const RGB_TRIPLET =
+  /^(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]) (?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]) (?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/;
 
 const COLOUR_TOKENS = [
-  "bg", "panel", "panel-2",
-  "text", "text-muted", "text-faint",
+  "bg",
+  "panel",
+  "panel-2",
+  "text",
+  "text-muted",
+  "text-faint",
   "border-c",
-  "accent", "accent-deep", "accent-glow",
-  "sage", "rose", "info",
-  "success", "warn", "danger",
+  "accent",
+  "accent-deep",
+  "accent-glow",
+  "sage",
+  "rose",
+  "info",
+  "success",
+  "warn",
+  "danger",
 ];
 const SCALAR_TOKENS = ["panel-alpha", "border-alpha", "mesh-op"];
 
-const colourValue = z.string().regex(
-  RGB_TRIPLET,
-  'colour tokens must be an "R G B" triplet (e.g. "168 29 29")',
-);
+const colourValue = z
+  .string()
+  .regex(
+    RGB_TRIPLET,
+    'colour tokens must be an "R G B" triplet (e.g. "168 29 29")',
+  );
 // Alpha / opacity scalars: a decimal in 0..1 as a string (we keep
 // strings so the JSONB round-trip matches what the browser reads).
 const scalarValue = z
@@ -70,17 +83,20 @@ const fontCssUrl = z
   .string()
   .url()
   .max(500)
-  .refine((u) => {
-    try {
-      const url = new URL(u);
-      return (
-        url.protocol === "https:" &&
-        FONT_HOST_ALLOWLIST.includes(url.hostname.toLowerCase())
-      );
-    } catch {
-      return false;
-    }
-  }, `font_css_url must be an https URL on a trusted host (${FONT_HOST_ALLOWLIST.join(", ")})`);
+  .refine(
+    (u) => {
+      try {
+        const url = new URL(u);
+        return (
+          url.protocol === "https:" &&
+          FONT_HOST_ALLOWLIST.includes(url.hostname.toLowerCase())
+        );
+      } catch {
+        return false;
+      }
+    },
+    `font_css_url must be an https URL on a trusted host (${FONT_HOST_ALLOWLIST.join(", ")})`,
+  );
 
 // ── login_config ─────────────────────────────────────────
 // The login-page content bag (hero / quotes / standards / region
@@ -127,13 +143,15 @@ const regionMessageSchema = z
 const imageUrl = z
   .string()
   .max(2000)
-  .refine(
-    (v) => {
-      if (v.startsWith("/media/")) return true;
-      try { new URL(v); return true; } catch { return false; }
-    },
-    "must be an https URL or a /media/ relative path",
-  );
+  .refine((v) => {
+    if (v.startsWith("/media/")) return true;
+    try {
+      new URL(v);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "must be an https URL or a /media/ relative path");
 
 const backgroundSchema = z
   .object({

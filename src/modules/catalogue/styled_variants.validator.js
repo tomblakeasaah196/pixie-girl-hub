@@ -11,7 +11,10 @@ const sizeCode = z
   .string()
   .min(1)
   .max(8)
-  .regex(/^[A-Z0-9]+$/, "size code must be UPPERCASE letters/digits (e.g. S, XL)");
+  .regex(
+    /^[A-Z0-9]+$/,
+    "size code must be UPPERCASE letters/digits (e.g. S, XL)",
+  );
 
 const tier = z
   .object({

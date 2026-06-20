@@ -11,7 +11,9 @@ import { api } from "@/lib/api";
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    const reg = await navigator.serviceWorker.register("/sw.js", {
+      scope: "/",
+    });
     reg.update();
     return reg;
   } catch {
@@ -20,8 +22,13 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 }
 
 export async function ensurePushSubscription(): Promise<boolean> {
-  if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  if (
+    typeof Notification === "undefined" ||
+    Notification.permission !== "granted"
+  )
+    return false;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window))
+    return false;
   try {
     const reg =
       (await navigator.serviceWorker.getRegistration()) ??
@@ -62,7 +69,9 @@ export async function requestPushPermission(): Promise<NotificationPermission> {
 }
 
 export function pushPermission(): NotificationPermission {
-  return typeof Notification === "undefined" ? "denied" : Notification.permission;
+  return typeof Notification === "undefined"
+    ? "denied"
+    : Notification.permission;
 }
 
 const PUSH_PROMPT_KEY = "pgh_push_prompted";

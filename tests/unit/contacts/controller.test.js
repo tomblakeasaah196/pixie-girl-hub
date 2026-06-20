@@ -104,7 +104,10 @@ describe("contacts controller — response envelope", () => {
   });
 
   test("create returns 201 with a wrapped contact", async () => {
-    service.create.mockResolvedValueOnce({ contact_id: "x", display_name: "Rynna" });
+    service.create.mockResolvedValueOnce({
+      contact_id: "x",
+      display_name: "Rynna",
+    });
     const req = {
       body: { display_name: "Rynna", primary_phone: "+2349020868023" },
       brand: "pixiegirl",

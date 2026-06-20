@@ -28,7 +28,9 @@ export const Button = forwardRef<HTMLButtonElement, BtnProps>(function Button(
       ref={ref}
       className={cn(
         "inline-flex items-center justify-center gap-2 font-semibold rounded-xl border transition-all duration-300 active:translate-y-px disabled:opacity-50 disabled:pointer-events-none",
-        size === "sm" ? "h-[33px] px-3 text-xs rounded-[10px]" : "h-10 px-4 text-[13px]",
+        size === "sm"
+          ? "h-[33px] px-3 text-xs rounded-[10px]"
+          : "h-10 px-4 text-[13px]",
         variant === "primary" &&
           "bg-accent-deep border-accent-deep text-[#F4E9D9] hover:bg-accent hover:shadow-[0_8px_26px_rgb(var(--accent-deep)/0.5)]",
         variant === "secondary" &&
@@ -48,33 +50,52 @@ export const Button = forwardRef<HTMLButtonElement, BtnProps>(function Button(
 });
 
 /* ── IconButton ── */
-export const IconButton = forwardRef<HTMLButtonElement, BtnProps & { dot?: boolean }>(
-  function IconButton({ className, children, dot, ...rest }, ref) {
-    return (
-      <button
-        ref={ref}
-        className={cn(
-          "relative grid place-items-center w-[38px] h-[38px] rounded-[11px] border-0 bg-text-primary/[0.05] text-text-muted cursor-pointer transition-all duration-300 hover:bg-text-primary/10 hover:text-text-primary",
-          className,
-        )}
-        {...rest}
-      >
-        {children}
-        {dot && (
-          <span className="absolute top-2 right-[9px] w-[7px] h-[7px] rounded-full bg-accent border-2 border-surface" />
-        )}
-      </button>
-    );
-  },
-);
+export const IconButton = forwardRef<
+  HTMLButtonElement,
+  BtnProps & { dot?: boolean }
+>(function IconButton({ className, children, dot, ...rest }, ref) {
+  return (
+    <button
+      ref={ref}
+      className={cn(
+        "relative grid place-items-center w-[38px] h-[38px] rounded-[11px] border-0 bg-text-primary/[0.05] text-text-muted cursor-pointer transition-all duration-300 hover:bg-text-primary/10 hover:text-text-primary",
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+      {dot && (
+        <span className="absolute top-2 right-[9px] w-[7px] h-[7px] rounded-full bg-accent border-2 border-surface" />
+      )}
+    </button>
+  );
+});
 
 /* ── Card / Section ── */
-export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("glass rounded-[var(--radius)] shadow-glass", className)}>{children}</div>;
+export function Card({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn("glass rounded-[var(--radius)] shadow-glass", className)}
+    >
+      {children}
+    </div>
+  );
 }
 
 /* ── Pill / StatusPill ── */
-export type Tone = "success" | "warn" | "danger" | "info" | "accent" | "neutral";
+export type Tone =
+  | "success"
+  | "warn"
+  | "danger"
+  | "info"
+  | "accent"
+  | "neutral";
 const TONE: Record<Tone, string> = {
   success: "text-success bg-success/[0.13]",
   warn: "text-warn bg-warn/[0.14]",
@@ -83,9 +104,22 @@ const TONE: Record<Tone, string> = {
   accent: "text-accent-glow bg-accent/[0.12]",
   neutral: "text-text-muted bg-text-primary/[0.06]",
 };
-export function Pill({ tone = "neutral", children, dot = true }: { tone?: Tone; children: ReactNode; dot?: boolean }) {
+export function Pill({
+  tone = "neutral",
+  children,
+  dot = true,
+}: {
+  tone?: Tone;
+  children: ReactNode;
+  dot?: boolean;
+}) {
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide px-[11px] py-1 rounded-full", TONE[tone])}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide px-[11px] py-1 rounded-full",
+        TONE[tone],
+      )}
+    >
       {dot && <span className="w-1.5 h-1.5 rounded-full bg-current" />}
       {children}
     </span>
@@ -132,7 +166,9 @@ export function EmptyState({
         {icon}
       </div>
       <h3 className="font-display text-xl font-medium mb-1.5">{title}</h3>
-      {message && <p className="text-text-muted max-w-[360px] mx-auto mb-4">{message}</p>}
+      {message && (
+        <p className="text-text-muted max-w-[360px] mx-auto mb-4">{message}</p>
+      )}
       {action}
     </div>
   );
@@ -157,9 +193,16 @@ export function KpiTile({
       style={{ borderLeftColor: edge }}
     >
       <div className="micro">{label}</div>
-      <div className="font-display font-medium text-[28px] max-md:text-[22px] mt-2 max-md:mt-1.5 tabular-nums">{value}</div>
+      <div className="font-display font-medium text-[28px] max-md:text-[22px] mt-2 max-md:mt-1.5 tabular-nums">
+        {value}
+      </div>
       {delta && (
-        <div className={cn("text-[11px] font-bold mt-1.5", delta.up ? "text-success" : "text-danger")}>
+        <div
+          className={cn(
+            "text-[11px] font-bold mt-1.5",
+            delta.up ? "text-success" : "text-danger",
+          )}
+        >
           {delta.up ? "▲" : "▼"} {delta.text}
         </div>
       )}
@@ -179,18 +222,34 @@ export function MoneyText({
   currency?: string;
   className?: string;
 }) {
-  const primary = display != null && currency !== "NGN" ? fmtMoney(display, currency) : fmtMoney(ngn, "NGN");
-  const secondary = display != null && currency !== "NGN" ? fmtMoney(ngn, "NGN") : null;
+  const primary =
+    display != null && currency !== "NGN"
+      ? fmtMoney(display, currency)
+      : fmtMoney(ngn, "NGN");
+  const secondary =
+    display != null && currency !== "NGN" ? fmtMoney(ngn, "NGN") : null;
   return (
     <span className={cn("font-display font-medium tabular-nums", className)}>
       {primary}
-      {secondary && <span className="block font-mono text-text-faint text-[10px]">{secondary}</span>}
+      {secondary && (
+        <span className="block font-mono text-text-faint text-[10px]">
+          {secondary}
+        </span>
+      )}
     </span>
   );
 }
 
 /* ── MaskedField — keys/PINs/account numbers never render raw ── */
-export function MaskedField({ value, visibleTail = 4 }: { value: string; visibleTail?: number }) {
-  const masked = "•".repeat(Math.max(0, value.length - visibleTail)) + value.slice(-visibleTail);
+export function MaskedField({
+  value,
+  visibleTail = 4,
+}: {
+  value: string;
+  visibleTail?: number;
+}) {
+  const masked =
+    "•".repeat(Math.max(0, value.length - visibleTail)) +
+    value.slice(-visibleTail);
   return <span className="font-mono text-text-muted">{masked}</span>;
 }

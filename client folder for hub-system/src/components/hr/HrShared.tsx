@@ -1,7 +1,12 @@
 import { Badge } from "@components/ui/Badge";
 import { Card } from "@components/ui/Card";
 import { cn } from "@lib/cn";
-import type { AttendanceStatus, Kpi, WorkSchedule, DayMode } from "@services/hr";
+import type {
+  AttendanceStatus,
+  Kpi,
+  WorkSchedule,
+  DayMode,
+} from "@services/hr";
 
 export const WEEK_DAYS: { key: keyof WorkSchedule; label: string }[] = [
   { key: "mon", label: "Mon" },
@@ -13,17 +18,22 @@ export const WEEK_DAYS: { key: keyof WorkSchedule; label: string }[] = [
   { key: "sun", label: "Sun" },
 ];
 
-const ATT_TONE: Record<AttendanceStatus, Parameters<typeof Badge>[0]["tone"]> = {
-  present: "sage",
-  remote: "info",
-  late: "gold",
-  absent: "rose",
-  off: "neutral",
-  on_leave: "plum",
-  holiday: "neutral",
-};
+const ATT_TONE: Record<AttendanceStatus, Parameters<typeof Badge>[0]["tone"]> =
+  {
+    present: "sage",
+    remote: "info",
+    late: "gold",
+    absent: "rose",
+    off: "neutral",
+    on_leave: "plum",
+    holiday: "neutral",
+  };
 
-export function AttendanceStatusBadge({ status }: { status: AttendanceStatus }) {
+export function AttendanceStatusBadge({
+  status,
+}: {
+  status: AttendanceStatus;
+}) {
   return (
     <Badge tone={ATT_TONE[status] || "neutral"} size="xs">
       {status.replace("_", " ")}
@@ -88,7 +98,9 @@ export function KpiGrid({ kpis }: { kpis: Kpi[] }) {
               </span>
             )}
           </div>
-          <div className={cn("mt-1 font-display text-2xl", scoreColor(k.score))}>
+          <div
+            className={cn("mt-1 font-display text-2xl", scoreColor(k.score))}
+          >
             {k.value == null
               ? "—"
               : k.unit === "%"
@@ -126,13 +138,19 @@ export function OverallScore({
                 : "border-rose-500/40 text-rose-400",
         )}
       >
-        <span className="font-display text-2xl leading-none">{score ?? "—"}</span>
-        <span className="text-[0.55rem] uppercase tracking-wider opacity-70">score</span>
+        <span className="font-display text-2xl leading-none">
+          {score ?? "—"}
+        </span>
+        <span className="text-[0.55rem] uppercase tracking-wider opacity-70">
+          score
+        </span>
       </div>
       <div>
         <div className="text-sm text-brand-cream">Overall performance</div>
         <div className="text-xs text-brand-smoke">
-          {rating != null ? `${rating.toFixed(1)} / 5.0 rating` : "Not enough data yet"}
+          {rating != null
+            ? `${rating.toFixed(1)} / 5.0 rating`
+            : "Not enough data yet"}
         </div>
       </div>
     </div>

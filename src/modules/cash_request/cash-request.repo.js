@@ -194,7 +194,14 @@ async function insertStateHistory({
   );
 }
 
-async function insertDocument({ client, cash_request_id, document_id, document_role, uploaded_by, notes }) {
+async function insertDocument({
+  client,
+  cash_request_id,
+  document_id,
+  document_role,
+  uploaded_by,
+  notes,
+}) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.cash_request_documents
        (cash_request_id, document_id, document_role, uploaded_by, notes)

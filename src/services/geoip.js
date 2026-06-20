@@ -52,7 +52,10 @@ async function init() {
     logger.info({ dbPath: DB_PATH }, "GeoIP: database loaded");
     return true;
   } catch (err) {
-    logger.error({ err: err.message, dbPath: DB_PATH }, "GeoIP: failed to open database");
+    logger.error(
+      { err: err.message, dbPath: DB_PATH },
+      "GeoIP: failed to open database",
+    );
     _reader = null;
     return false;
   }
@@ -87,9 +90,7 @@ function lookupCountry(ip) {
   try {
     const result = _reader.get(addr);
     return (
-      result?.country?.iso_code ||
-      result?.registered_country?.iso_code ||
-      null
+      result?.country?.iso_code || result?.registered_country?.iso_code || null
     );
   } catch {
     // Malformed or private address — silently return null.

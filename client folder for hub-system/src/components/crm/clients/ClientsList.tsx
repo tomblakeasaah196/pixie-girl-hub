@@ -15,12 +15,7 @@ import { useActiveBusiness } from "@hooks/useActiveBusiness";
 import { listClients, type ClientListParams } from "@services/crm/clients";
 import { fmtMoney, fmtRelative } from "@lib/format";
 import { cn } from "@lib/cn";
-import {
-  ClientAvatar,
-  QuickReach,
-  SegmentBadge,
-  VipStar,
-} from "./ClientBits";
+import { ClientAvatar, QuickReach, SegmentBadge, VipStar } from "./ClientBits";
 
 const SEGMENT_CHIPS: Array<{ key: string; label: string }> = [
   { key: "", label: "All clients" },
@@ -193,7 +188,10 @@ export function ClientsList({
                       {c.purchase_count === 1 ? "" : "s"}
                     </div>
                   </div>
-                  <QuickReach phone={c.primary_phone} whatsapp={c.whatsapp_number} />
+                  <QuickReach
+                    phone={c.primary_phone}
+                    whatsapp={c.whatsapp_number}
+                  />
                 </div>
               );
             })}

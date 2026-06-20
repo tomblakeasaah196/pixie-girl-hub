@@ -1,7 +1,12 @@
 import { useRef, useState } from "react";
 import { Plus, Trash2, ImagePlus, Wand2, Palette } from "lucide-react";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
-import { NumberField, Toggle, MultiSelect, ConfirmDialog } from "@/components/ui/controls";
+import {
+  NumberField,
+  Toggle,
+  MultiSelect,
+  ConfirmDialog,
+} from "@/components/ui/controls";
 import {
   useStyledColours,
   useCreateColour,
@@ -41,7 +46,11 @@ export function StyledVariantsManager({
 
   return (
     <div className="space-y-4">
-      <ColoursCard styledId={styledId} canEdit={canEdit} colours={colours.data ?? []} />
+      <ColoursCard
+        styledId={styledId}
+        canEdit={canEdit}
+        colours={colours.data ?? []}
+      />
       <VariantsCard
         styledId={styledId}
         canEdit={canEdit}
@@ -98,14 +107,19 @@ function ColoursCard({
 
       {colours.length === 0 && (
         <p className="text-[12.5px] text-text-muted my-3">
-          No colours yet. Add the first colour (e.g. <em>Natural Black</em>), then upload 2–3
-          pictures for it.
+          No colours yet. Add the first colour (e.g. <em>Natural Black</em>),
+          then upload 2–3 pictures for it.
         </p>
       )}
 
       <div className="space-y-3 mt-3">
         {colours.map((c) => (
-          <ColourRow key={c.colour_id} styledId={styledId} colour={c} canEdit={canEdit} />
+          <ColourRow
+            key={c.colour_id}
+            styledId={styledId}
+            colour={c}
+            canEdit={canEdit}
+          />
         ))}
       </div>
 
@@ -131,7 +145,12 @@ function ColoursCard({
               />
             </div>
             <div className="w-[150px]">
-              <NumberField value={premium} onChange={setPremium} suffix="₦+" placeholder="Colour premium" />
+              <NumberField
+                value={premium}
+                onChange={setPremium}
+                suffix="₦+"
+                placeholder="Colour premium"
+              />
             </div>
             <Button
               size="sm"
@@ -144,8 +163,9 @@ function ColoursCard({
             </Button>
           </div>
           <p className="text-[11px] text-text-faint mt-2">
-            Leave the premium at 0 to price a colour the same as the rest. Set it (e.g. blonde,
-            highlights) to charge more for that colour across every size.
+            Leave the premium at 0 to price a colour the same as the rest. Set
+            it (e.g. blonde, highlights) to charge more for that colour across
+            every size.
           </p>
         </div>
       )}
@@ -192,7 +212,9 @@ function ColourRow({
             {colour.name}
             {colour.is_default && <Pill tone="neutral">default</Pill>}
             {Number(colour.premium_ngn) > 0 && (
-              <span className="text-[11px] text-accent-glow">+₦{Number(colour.premium_ngn).toLocaleString()}</span>
+              <span className="text-[11px] text-accent-glow">
+                +₦{Number(colour.premium_ngn).toLocaleString()}
+              </span>
             )}
           </div>
           <div className="text-[11px] text-text-faint">
@@ -269,17 +291,29 @@ function ColourRow({
           <div className="flex flex-wrap items-center gap-4">
             <Toggle
               checked={colour.is_default}
-              onChange={(v) => update.mutate({ colourId: colour.colour_id, patch: { is_default: v } })}
+              onChange={(v) =>
+                update.mutate({
+                  colourId: colour.colour_id,
+                  patch: { is_default: v },
+                })
+              }
               label="Default colour"
             />
             <Toggle
               checked={colour.is_active}
-              onChange={(v) => update.mutate({ colourId: colour.colour_id, patch: { is_active: v } })}
+              onChange={(v) =>
+                update.mutate({
+                  colourId: colour.colour_id,
+                  patch: { is_active: v },
+                })
+              }
               label="Active"
             />
           </div>
           <div>
-            <label className="micro block mb-1">Video / Instagram link (optional)</label>
+            <label className="micro block mb-1">
+              Video / Instagram link (optional)
+            </label>
             <div className="flex gap-2">
               <input
                 value={igUrl}
@@ -307,7 +341,11 @@ function ColourRow({
       <ConfirmDialog
         open={confirmDel}
         onClose={() => setConfirmDel(false)}
-        onConfirm={() => del.mutate(colour.colour_id, { onSuccess: () => setConfirmDel(false) })}
+        onConfirm={() =>
+          del.mutate(colour.colour_id, {
+            onSuccess: () => setConfirmDel(false),
+          })
+        }
         title={`Delete "${colour.name}"?`}
         message="This removes the colour, its pictures, and any size variants generated for it."
         confirmLabel="Delete colour"
@@ -373,8 +411,8 @@ function VariantsCard({
 
       {anchorPrice == null && (
         <p className="text-[12.5px] text-warn my-2">
-          Set the styled <strong>retail price</strong> above first — variant prices are built from
-          it plus the size premium.
+          Set the styled <strong>retail price</strong> above first — variant
+          prices are built from it plus the size premium.
         </p>
       )}
 
@@ -382,19 +420,30 @@ function VariantsCard({
       {canEdit && (
         <div className="rounded-[12px] border border-line p-3 my-3">
           <div className="flex flex-wrap items-center gap-3">
-            <Toggle checked={allSizes} onChange={setAllSizes} label="All sizes" />
+            <Toggle
+              checked={allSizes}
+              onChange={setAllSizes}
+              label="All sizes"
+            />
             {!allSizes && (
               <MultiSelect
                 values={pickedSizes}
                 onChange={setPickedSizes}
-                options={tiers.map((t) => ({ value: t.size_code, label: t.size_code }))}
+                options={tiers.map((t) => ({
+                  value: t.size_code,
+                  label: t.size_code,
+                }))}
               />
             )}
             <Button
               size="sm"
               variant="primary"
               icon={<Wand2 className="w-3.5 h-3.5" />}
-              disabled={!colours.length || bulk.isPending || (!allSizes && !pickedSizes.length)}
+              disabled={
+                !colours.length ||
+                bulk.isPending ||
+                (!allSizes && !pickedSizes.length)
+              }
               onClick={generate}
               className="ml-auto"
             >
@@ -402,11 +451,13 @@ function VariantsCard({
             </Button>
           </div>
           <p className="text-[11px] text-text-faint mt-2">
-            Creates a SKU for every colour × size. Existing combinations are skipped, so it's safe
-            to run again after adding a colour or size.
+            Creates a SKU for every colour × size. Existing combinations are
+            skipped, so it's safe to run again after adding a colour or size.
           </p>
           {!colours.length && (
-            <p className="text-[11.5px] text-warn mt-1">Add at least one colour first.</p>
+            <p className="text-[11.5px] text-warn mt-1">
+              Add at least one colour first.
+            </p>
           )}
         </div>
       )}
@@ -430,7 +481,12 @@ function VariantsCard({
             </thead>
             <tbody>
               {variants.map((v) => (
-                <VariantRow key={v.styled_variant_id} styledId={styledId} v={v} canEdit={canEdit} />
+                <VariantRow
+                  key={v.styled_variant_id}
+                  styledId={styledId}
+                  v={v}
+                  canEdit={canEdit}
+                />
               ))}
             </tbody>
           </table>
@@ -458,7 +514,10 @@ function VariantRow({
   const saveOverride = () => {
     const next = override.trim() === "" ? null : Number(override);
     if (next === (v.price_override_ngn ?? null)) return;
-    update.mutate({ variantId: v.styled_variant_id, patch: { price_override_ngn: next } });
+    update.mutate({
+      variantId: v.styled_variant_id,
+      patch: { price_override_ngn: next },
+    });
   };
 
   return (
@@ -476,7 +535,10 @@ function VariantRow({
       <td className="py-2 font-mono text-[10.5px] text-text-faint">{v.sku}</td>
       <td className="py-2 text-right">
         {v.effective_price_ngn != null ? (
-          <MoneyText ngn={Number(v.effective_price_ngn)} className="text-[12.5px]" />
+          <MoneyText
+            ngn={Number(v.effective_price_ngn)}
+            className="text-[12.5px]"
+          />
         ) : (
           <span className="text-text-faint">—</span>
         )}
@@ -491,7 +553,10 @@ function VariantRow({
               suffix="₦"
               className="[&_input]:h-[34px]"
             />
-            {override !== (v.price_override_ngn != null ? String(v.price_override_ngn) : "") && (
+            {override !==
+              (v.price_override_ngn != null
+                ? String(v.price_override_ngn)
+                : "") && (
               <button
                 onClick={saveOverride}
                 className="text-[10.5px] text-accent-glow font-semibold mt-0.5"
@@ -501,7 +566,10 @@ function VariantRow({
             )}
           </div>
         ) : v.price_override_ngn != null ? (
-          <MoneyText ngn={Number(v.price_override_ngn)} className="text-[12.5px]" />
+          <MoneyText
+            ngn={Number(v.price_override_ngn)}
+            className="text-[12.5px]"
+          />
         ) : (
           <span className="text-text-faint">—</span>
         )}
@@ -511,7 +579,10 @@ function VariantRow({
           checked={v.is_active}
           disabled={!canEdit}
           onChange={(val) =>
-            update.mutate({ variantId: v.styled_variant_id, patch: { is_active: val } })
+            update.mutate({
+              variantId: v.styled_variant_id,
+              patch: { is_active: val },
+            })
           }
         />
       </td>

@@ -44,7 +44,13 @@ const productCreate = z
     long_description: z.string().max(8000).nullable().optional(),
     texture_type: z.string().max(40).nullable().optional(),
     lace_type: z.string().max(40).nullable().optional(),
-    hair_length_inches: z.coerce.number().int().min(0).max(60).nullable().optional(),
+    hair_length_inches: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(60)
+      .nullable()
+      .optional(),
     density: z.string().max(20).nullable().optional(),
     cap_size: z.string().max(40).nullable().optional(),
     primary_colour: z.string().max(60).nullable().optional(),
@@ -69,7 +75,13 @@ const productCreate = z
     // and pre-order is enabled, styled listings show production-framed copy.
     preorder_enabled: z.boolean().optional(),
     expected_ready_date: z.string().date().nullable().optional(),
-    production_lead_days: z.coerce.number().int().min(0).max(365).nullable().optional(),
+    production_lead_days: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(365)
+      .nullable()
+      .optional(),
   })
   .strict();
 
@@ -101,7 +113,9 @@ const bulkImportRow = z
     weight_g: emptyToUndef(z.coerce.number().int().min(0).max(1000000)),
     // Money — always Naira. cost is only applied for Cost-Vault holders.
     cost_ngn: emptyToUndef(z.coerce.number().min(0).max(1000000000000)),
-    wholesale_price_ngn: emptyToUndef(z.coerce.number().min(0).max(1000000000000)),
+    wholesale_price_ngn: emptyToUndef(
+      z.coerce.number().min(0).max(1000000000000),
+    ),
   })
   .strict();
 

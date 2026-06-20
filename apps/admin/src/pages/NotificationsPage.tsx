@@ -39,16 +39,31 @@ import { useBreadcrumbs } from "@/stores/breadcrumbs";
 
 // ── Filter categories ─────────────────────────────────────────────────────────
 
-type FilterKey = "all" | "unread" | "approvals" | "sales" | "stock" | "ops" | "system";
+type FilterKey =
+  | "all"
+  | "unread"
+  | "approvals"
+  | "sales"
+  | "stock"
+  | "ops"
+  | "system";
 
 const FILTERS: { key: FilterKey; label: string; icon: React.ReactNode }[] = [
-  { key: "all",       label: "All",       icon: <Bell className="w-4 h-4" /> },
-  { key: "unread",    label: "Unread",    icon: <Clock className="w-4 h-4" /> },
-  { key: "approvals", label: "Approvals", icon: <AlertTriangle className="w-4 h-4" /> },
-  { key: "sales",     label: "Sales",     icon: <DollarSign className="w-4 h-4" /> },
-  { key: "stock",     label: "Stock",     icon: <Package className="w-4 h-4" /> },
-  { key: "ops",       label: "Operations",icon: <CheckCircle className="w-4 h-4" /> },
-  { key: "system",    label: "System",    icon: <Cog className="w-4 h-4" /> },
+  { key: "all", label: "All", icon: <Bell className="w-4 h-4" /> },
+  { key: "unread", label: "Unread", icon: <Clock className="w-4 h-4" /> },
+  {
+    key: "approvals",
+    label: "Approvals",
+    icon: <AlertTriangle className="w-4 h-4" />,
+  },
+  { key: "sales", label: "Sales", icon: <DollarSign className="w-4 h-4" /> },
+  { key: "stock", label: "Stock", icon: <Package className="w-4 h-4" /> },
+  {
+    key: "ops",
+    label: "Operations",
+    icon: <CheckCircle className="w-4 h-4" />,
+  },
+  { key: "system", label: "System", icon: <Cog className="w-4 h-4" /> },
 ];
 
 function filterMatches(n: AppNotification, key: FilterKey): boolean {
@@ -62,13 +77,13 @@ function filterMatches(n: AppNotification, key: FilterKey): boolean {
 
 function priorityBorder(p: string) {
   if (p === "urgent") return "border-l-[3px] border-l-danger";
-  if (p === "high")   return "border-l-[3px] border-l-warn";
+  if (p === "high") return "border-l-[3px] border-l-warn";
   return "";
 }
 
 function priorityDot(p: string) {
   if (p === "urgent") return "bg-danger";
-  if (p === "high")   return "bg-warn";
+  if (p === "high") return "bg-warn";
   if (p === "normal") return "bg-accent";
   return "bg-text-faint";
 }
@@ -78,7 +93,11 @@ function NotifIcon({ type, size = 16 }: { type: string; size?: number }) {
   const s = { width: size, height: size };
   if (type.includes("approval") || type.includes("leave"))
     return <AlertTriangle style={s} className={cn(cls, "text-warn")} />;
-  if (type.includes("payment") || type.includes("billing") || type.includes("order"))
+  if (
+    type.includes("payment") ||
+    type.includes("billing") ||
+    type.includes("order")
+  )
     return <DollarSign style={s} className={cn(cls, "text-success")} />;
   if (type.includes("stock") || type.includes("production"))
     return <Package style={s} className={cn(cls, "text-accent-glow")} />;
@@ -125,12 +144,17 @@ function NotifRow({
       className={cn(
         "flex items-start gap-3 px-5 py-4 border-b hairline last:border-0 transition-colors group",
         priorityBorder(n.priority),
-        n.is_read ? "hover:bg-text-primary/[0.02]" : "bg-accent/[0.03] hover:bg-accent/[0.06]",
+        n.is_read
+          ? "hover:bg-text-primary/[0.02]"
+          : "bg-accent/[0.03] hover:bg-accent/[0.06]",
         selected && "bg-accent/[0.08]",
       )}
     >
       {/* Checkbox */}
-      <label className="flex items-center mt-1 cursor-pointer shrink-0" onClick={(e) => e.stopPropagation()}>
+      <label
+        className="flex items-center mt-1 cursor-pointer shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
         <input
           type="checkbox"
           checked={selected}
@@ -154,10 +178,7 @@ function NotifRow({
       </span>
 
       {/* Content */}
-      <button
-        onClick={handleClick}
-        className="flex-1 min-w-0 text-left"
-      >
+      <button onClick={handleClick} className="flex-1 min-w-0 text-left">
         <div className="flex items-start justify-between gap-4">
           <p
             className={cn(
@@ -167,7 +188,9 @@ function NotifRow({
           >
             {n.title}
           </p>
-          <span className="text-[10.5px] text-text-faint shrink-0 mt-0.5">{relTime(n.created_at)}</span>
+          <span className="text-[10.5px] text-text-faint shrink-0 mt-0.5">
+            {relTime(n.created_at)}
+          </span>
         </div>
         {n.body && (
           <p className="text-[11.5px] text-text-faint mt-0.5 line-clamp-2 leading-relaxed">
@@ -179,7 +202,9 @@ function NotifRow({
             <span
               className={cn(
                 "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
-                n.priority === "urgent" ? "bg-danger/15 text-danger" : "bg-warn/15 text-warn",
+                n.priority === "urgent"
+                  ? "bg-danger/15 text-danger"
+                  : "bg-warn/15 text-warn",
               )}
             >
               {n.priority}
@@ -241,13 +266,15 @@ export function NotificationsPage() {
   const bulkMarkRead = useBulkMarkRead();
 
   const all = query.data?.data ?? [];
-  const visible = filter === "all" || filter === "unread"
-    ? all
-    : all.filter((n) => filterMatches(n, filter));
+  const visible =
+    filter === "all" || filter === "unread"
+      ? all
+      : all.filter((n) => filterMatches(n, filter));
 
   const totalPages = Math.ceil((query.data?.total ?? 0) / PAGE_SIZE);
   const unreadCount = (query.data?.data ?? []).filter((n) => !n.is_read).length;
-  const selAll = visible.length > 0 && visible.every((n) => selected.has(n.notification_id));
+  const selAll =
+    visible.length > 0 && visible.every((n) => selected.has(n.notification_id));
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -265,9 +292,12 @@ export function NotificationsPage() {
     }
   }
 
-  const handleNavigate = useCallback((url: string | null) => {
-    navigate(url ?? "/notifications");
-  }, [navigate]);
+  const handleNavigate = useCallback(
+    (url: string | null) => {
+      navigate(url ?? "/notifications");
+    },
+    [navigate],
+  );
 
   return (
     <div className="flex gap-5 max-lg:flex-col max-w-[1100px] mx-auto">
@@ -278,7 +308,11 @@ export function NotificationsPage() {
             {FILTERS.map((f) => (
               <button
                 key={f.key}
-                onClick={() => { setFilter(f.key); setPage(1); setSelected(new Set()); }}
+                onClick={() => {
+                  setFilter(f.key);
+                  setPage(1);
+                  setSelected(new Set());
+                }}
                 className={cn(
                   "w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] transition-colors text-left",
                   filter === f.key
@@ -287,7 +321,12 @@ export function NotificationsPage() {
                 )}
                 aria-current={filter === f.key ? "page" : undefined}
               >
-                <span className={cn("shrink-0", filter === f.key ? "text-accent" : "text-text-faint")}>
+                <span
+                  className={cn(
+                    "shrink-0",
+                    filter === f.key ? "text-accent" : "text-text-faint",
+                  )}
+                >
                   {f.icon}
                 </span>
                 {f.label}
@@ -314,12 +353,17 @@ export function NotificationsPage() {
 
           {selected.size > 0 ? (
             <div className="flex items-center gap-2 animate-[fade-in_0.15s_ease-out]">
-              <span className="text-[12px] text-text-muted">{selected.size} selected</span>
+              <span className="text-[12px] text-text-muted">
+                {selected.size} selected
+              </span>
               <Button
                 size="sm"
                 variant="secondary"
                 icon={<CheckCheck className="w-3.5 h-3.5" />}
-                onClick={() => { bulkMarkRead.mutate(Array.from(selected)); setSelected(new Set()); }}
+                onClick={() => {
+                  bulkMarkRead.mutate(Array.from(selected));
+                  setSelected(new Set());
+                }}
                 disabled={bulkMarkRead.isPending}
               >
                 Mark read
@@ -353,7 +397,14 @@ export function NotificationsPage() {
               <Button
                 size="sm"
                 variant="ghost"
-                icon={<RefreshCw className={cn("w-3.5 h-3.5", query.isFetching && "animate-spin")} />}
+                icon={
+                  <RefreshCw
+                    className={cn(
+                      "w-3.5 h-3.5",
+                      query.isFetching && "animate-spin",
+                    )}
+                  />
+                }
                 onClick={() => query.refetch()}
                 aria-label="Refresh"
               />
@@ -364,15 +415,24 @@ export function NotificationsPage() {
         <Card className="overflow-hidden">
           {query.isError ? (
             <div className="p-8 text-center">
-              <p className="text-[13px] text-text-muted mb-3">Couldn't load notifications.</p>
-              <Button variant="secondary" size="sm" onClick={() => query.refetch()}>
+              <p className="text-[13px] text-text-muted mb-3">
+                Couldn't load notifications.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => query.refetch()}
+              >
                 Retry
               </Button>
             </div>
           ) : query.isLoading ? (
             <div className="divide-y hairline">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="flex items-start gap-3 px-5 py-4 animate-pulse">
+                <div
+                  key={i}
+                  className="flex items-start gap-3 px-5 py-4 animate-pulse"
+                >
                   <div className="w-4 h-4 rounded bg-text-primary/[0.08] mt-1" />
                   <div className="w-2 h-2 rounded-full bg-text-primary/[0.08] mt-2" />
                   <div className="flex-1 space-y-2">
@@ -386,7 +446,11 @@ export function NotificationsPage() {
             <div className="py-20">
               <EmptyState
                 icon={<Bell className="w-8 h-8" />}
-                title={filter === "unread" ? "No unread notifications" : "No notifications"}
+                title={
+                  filter === "unread"
+                    ? "No unread notifications"
+                    : "No notifications"
+                }
                 message={
                   filter !== "all" && filter !== "unread"
                     ? `No ${filter} notifications yet.`
@@ -413,7 +477,8 @@ export function NotificationsPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-3 text-[12px] text-text-muted">
             <span>
-              Page {page} of {totalPages} · {query.data?.total ?? 0} notifications
+              Page {page} of {totalPages} · {query.data?.total ?? 0}{" "}
+              notifications
             </span>
             <div className="flex items-center gap-1">
               <button

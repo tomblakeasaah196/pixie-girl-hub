@@ -16,15 +16,40 @@ import { useBusinessStore } from "@/stores/business";
 import * as contactsApi from "./api";
 import type { ActivityType, ActivityOutcome } from "./types";
 
-const ACTIVITY_TYPES: { key: ActivityType; label: string; icon: typeof Phone; color: string }[] = [
+const ACTIVITY_TYPES: {
+  key: ActivityType;
+  label: string;
+  icon: typeof Phone;
+  color: string;
+}[] = [
   { key: "call", label: "Call", icon: Phone, color: "text-success" },
-  { key: "whatsapp_msg", label: "WhatsApp", icon: MessageCircle, color: "text-[#25D366]" },
+  {
+    key: "whatsapp_msg",
+    label: "WhatsApp",
+    icon: MessageCircle,
+    color: "text-[#25D366]",
+  },
   { key: "sms", label: "SMS", icon: MessageCircle, color: "text-info" },
   { key: "email", label: "Email", icon: Mail, color: "text-info" },
   { key: "meeting", label: "Meeting", icon: Users, color: "text-accent" },
-  { key: "instagram_dm", label: "Instagram", icon: Activity, color: "text-rose" },
-  { key: "system_note", label: "Note", icon: FileText, color: "text-text-muted" },
-  { key: "follow_up_scheduled", label: "Follow-up", icon: CheckSquare, color: "text-warn" },
+  {
+    key: "instagram_dm",
+    label: "Instagram",
+    icon: Activity,
+    color: "text-rose",
+  },
+  {
+    key: "system_note",
+    label: "Note",
+    icon: FileText,
+    color: "text-text-muted",
+  },
+  {
+    key: "follow_up_scheduled",
+    label: "Follow-up",
+    icon: CheckSquare,
+    color: "text-warn",
+  },
 ];
 
 const OUTCOMES: { key: ActivityOutcome; label: string }[] = [
@@ -55,7 +80,9 @@ export function LogActivityModal({
   const biz = useBusinessStore((s) => s.activeKey);
 
   const [activityType, setActivityType] = useState<ActivityType>("call");
-  const [direction, setDirection] = useState<"inbound" | "outbound">("outbound");
+  const [direction, setDirection] = useState<"inbound" | "outbound">(
+    "outbound",
+  );
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [outcome, setOutcome] = useState<ActivityOutcome | "">("");
@@ -79,7 +106,9 @@ export function LogActivityModal({
         scheduled_at: scheduledAt || undefined,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["contacts", biz, "timeline", contactId] });
+      qc.invalidateQueries({
+        queryKey: ["contacts", biz, "timeline", contactId],
+      });
       onClose();
     },
     onError: (err: unknown) => {
@@ -102,7 +131,12 @@ export function LogActivityModal({
       }
       footer={
         <>
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={logMut.isPending}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            disabled={logMut.isPending}
+          >
             Cancel
           </Button>
           <Button

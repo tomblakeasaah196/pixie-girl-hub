@@ -27,7 +27,8 @@ export function QuotationsView() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["quotations", { status, page }],
-    queryFn: () => listQuotations({ status: status || undefined, limit: PAGE_SIZE, page }),
+    queryFn: () =>
+      listQuotations({ status: status || undefined, limit: PAGE_SIZE, page }),
   });
 
   const rows = data?.data ?? [];

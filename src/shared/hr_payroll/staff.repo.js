@@ -161,18 +161,30 @@ async function findByIdWithProfile(userId) {
 async function updateUserProfile(userId, { display_name, avatar_url, phone }) {
   const sets = [];
   const vals = [userId];
-  if (display_name !== undefined) { vals.push(display_name); sets.push(`display_name = $${vals.length}`); }
-  if (avatar_url !== undefined) { vals.push(avatar_url); sets.push(`avatar_url = $${vals.length}`); }
-  if (phone !== undefined) { vals.push(phone); sets.push(`phone = $${vals.length}`); }
+  if (display_name !== undefined) {
+    vals.push(display_name);
+    sets.push(`display_name = $${vals.length}`);
+  }
+  if (avatar_url !== undefined) {
+    vals.push(avatar_url);
+    sets.push(`avatar_url = $${vals.length}`);
+  }
+  if (phone !== undefined) {
+    vals.push(phone);
+    sets.push(`phone = $${vals.length}`);
+  }
   if (!sets.length) return;
-  await query(`UPDATE shared.users SET ${sets.join(', ')} WHERE user_id = $1`, vals);
+  await query(
+    `UPDATE shared.users SET ${sets.join(", ")} WHERE user_id = $1`,
+    vals,
+  );
 }
 
 async function updateEmail(userId, newEmail) {
-  await query(
-    `UPDATE shared.users SET email = $2 WHERE user_id = $1`,
-    [userId, newEmail.toLowerCase().trim()],
-  );
+  await query(`UPDATE shared.users SET email = $2 WHERE user_id = $1`, [
+    userId,
+    newEmail.toLowerCase().trim(),
+  ]);
 }
 
 module.exports = {

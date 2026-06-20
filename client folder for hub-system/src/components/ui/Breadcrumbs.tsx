@@ -25,7 +25,9 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
           ) : (
             <span
               className={
-                i === items.length - 1 ? "text-brand-accent" : "text-brand-smoke"
+                i === items.length - 1
+                  ? "text-brand-accent"
+                  : "text-brand-smoke"
               }
             >
               {c.label}

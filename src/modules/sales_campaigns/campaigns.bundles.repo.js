@@ -34,7 +34,13 @@ const BUNDLE_COLS = [
   "display_order",
 ];
 
-async function listBundles({ client, brand, filters = {}, limit = 100, offset = 0 }) {
+async function listBundles({
+  client,
+  brand,
+  filters = {},
+  limit = 100,
+  offset = 0,
+}) {
   const where = [];
   const params = [];
   let i = 1;
@@ -61,7 +67,10 @@ async function listBundles({ client, brand, filters = {}, limit = 100, offset = 
       LIMIT $${i++} OFFSET $${i++}`,
     [...params, limit, offset],
   );
-  return { data: rows, meta: { total: c[0].total, has_more: offset + rows.length < c[0].total } };
+  return {
+    data: rows,
+    meta: { total: c[0].total, has_more: offset + rows.length < c[0].total },
+  };
 }
 
 async function findBundle({ client, brand, id }) {
@@ -420,7 +429,12 @@ async function listAmbassadorContacts({ client, brand, q, limit = 50 }) {
   return rows;
 }
 
-async function promoteContactToAmbassador({ client, brand, contact_id, profile = {} }) {
+async function promoteContactToAmbassador({
+  client,
+  brand,
+  contact_id,
+  profile = {},
+}) {
   // brand passed for audit context; the contact is visible by visible_to.
   const { rows } = await ex(client)(
     `UPDATE shared.contacts

@@ -335,7 +335,9 @@ function ChannelRow({
             <span
               className={cn(
                 "shrink-0 text-[10px]",
-                hasUnread ? "font-semibold text-brand-accent" : "text-brand-smoke/60",
+                hasUnread
+                  ? "font-semibold text-brand-accent"
+                  : "text-brand-smoke/60",
               )}
             >
               {fmtRelativeTime(last.created_at)}

@@ -91,7 +91,11 @@ export default function DashboardPage() {
   const params = getPeriodParams(period);
 
   // ── Permissions — resolved before queries so enabled flags are correct ──────
-  const { hasPermission, hasAnyPermission, isLoading: permsLoading } = usePermissions();
+  const {
+    hasPermission,
+    hasAnyPermission,
+    isLoading: permsLoading,
+  } = usePermissions();
 
   // ── Persona — which layout this user gets, derived from permissions ─────────
   // (see useDashboardPersona for the ladder; new roles fit automatically)
@@ -100,12 +104,27 @@ export default function DashboardPage() {
   const isManagerView = persona === "manager";
   const isCashierView = persona === "cashier";
 
-  const canSeeSales     = hasAnyPermission([{ module: "sales", action: "view" }, { module: "pos", action: "view" }, { module: "invoicing", action: "view" }]);
-  const canSeeFinance   = hasAnyPermission([{ module: "accounting", action: "view" }, { module: "invoicing", action: "view" }, { module: "expenses", action: "view" }]);
-  const canSeeStock     = hasAnyPermission([{ module: "stock", action: "view" }, { module: "catalogue", action: "view" }, { module: "purchasing", action: "view" }]);
-  const canSeeCustomers = hasAnyPermission([{ module: "crm", action: "view" }, { module: "contacts", action: "view" }]);
+  const canSeeSales = hasAnyPermission([
+    { module: "sales", action: "view" },
+    { module: "pos", action: "view" },
+    { module: "invoicing", action: "view" },
+  ]);
+  const canSeeFinance = hasAnyPermission([
+    { module: "accounting", action: "view" },
+    { module: "invoicing", action: "view" },
+    { module: "expenses", action: "view" },
+  ]);
+  const canSeeStock = hasAnyPermission([
+    { module: "stock", action: "view" },
+    { module: "catalogue", action: "view" },
+    { module: "purchasing", action: "view" },
+  ]);
+  const canSeeCustomers = hasAnyPermission([
+    { module: "crm", action: "view" },
+    { module: "contacts", action: "view" },
+  ]);
   const canSeeLogistics = hasPermission("logistics", "view");
-  const canSeeRetail    = hasPermission("retail-partners", "view");
+  const canSeeRetail = hasPermission("retail-partners", "view");
 
   // All data queries — each fires only when permissions have loaded and the
   // user actually has access to that module. This prevents wasted 403 requests.
@@ -164,12 +183,12 @@ export default function DashboardPage() {
   // Map the pre-computed permission booleans onto section keys so the section
   // picker and render logic stay in sync with the query enabled flags above.
   const permittedSections = DASHBOARD_SECTIONS.filter((s) => {
-    if (s.key === "sales")     return canSeeSales;
-    if (s.key === "finance")   return canSeeFinance;
+    if (s.key === "sales") return canSeeSales;
+    if (s.key === "finance") return canSeeFinance;
     if (s.key === "customers") return canSeeCustomers;
-    if (s.key === "stock")     return canSeeStock;
+    if (s.key === "stock") return canSeeStock;
     if (s.key === "logistics") return canSeeLogistics;
-    if (s.key === "retail")    return canSeeRetail;
+    if (s.key === "retail") return canSeeRetail;
     return false;
   }).map((s) => s.key);
 
@@ -475,7 +494,9 @@ export default function DashboardPage() {
             {isOwnerView && <QuickActions max={3} />}
 
             {/* Alerts strip — operational alerts for everyone except cashiers */}
-            {!isCashierView && alerts.length > 0 && <AlertsStrip alerts={alerts} />}
+            {!isCashierView && alerts.length > 0 && (
+              <AlertsStrip alerts={alerts} />
+            )}
 
             {/* KPI sections.
                 Owner/generic: permission-filtered minus manually-hidden.

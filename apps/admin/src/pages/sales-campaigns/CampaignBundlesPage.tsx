@@ -3,8 +3,20 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Edit3, Package, Plus, Search } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
-import { Button, Card, EmptyState, MoneyText, Pill, Skeleton } from "@/components/ui/primitives";
-import { DeniedState, ErrorState, NumberField, Toggle } from "@/components/ui/controls";
+import {
+  Button,
+  Card,
+  EmptyState,
+  MoneyText,
+  Pill,
+  Skeleton,
+} from "@/components/ui/primitives";
+import {
+  DeniedState,
+  ErrorState,
+  NumberField,
+  Toggle,
+} from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
 import {
@@ -36,25 +48,36 @@ export function CampaignBundlesPage() {
         <div
           className="absolute -top-12 -right-8 w-[220px] h-[220px] rounded-full pointer-events-none"
           style={{
-            background: "radial-gradient(circle, rgb(var(--accent-deep)/0.4), transparent 70%)",
+            background:
+              "radial-gradient(circle, rgb(var(--accent-deep)/0.4), transparent 70%)",
             filter: "blur(34px)",
           }}
         />
         <div className="relative flex items-center gap-3 flex-wrap">
-          <Link to="/sales-campaigns" className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-muted hover:text-text-primary">
+          <Link
+            to="/sales-campaigns"
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-muted hover:text-text-primary"
+          >
             <ArrowLeft className="w-3.5 h-3.5" /> Sales Campaigns
           </Link>
         </div>
         <div className="relative mt-3 flex items-end justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="font-display text-[28px] leading-tight">Catalogue bundles</h1>
+            <h1 className="font-display text-[28px] leading-tight">
+              Catalogue bundles
+            </h1>
             <p className="text-text-muted text-[13px] mt-1 max-w-[600px]">
-              Curated, fixed-composition product sets. Reusable across campaigns. Set the per-item ₦
-              discount and the preorder discount-loss % here.
+              Curated, fixed-composition product sets. Reusable across
+              campaigns. Set the per-item ₦ discount and the preorder
+              discount-loss % here.
             </p>
           </div>
           {canCreate && (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreateOpen(true)}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setCreateOpen(true)}
+            >
               New bundle
             </Button>
           )}
@@ -81,7 +104,13 @@ export function CampaignBundlesPage() {
             icon={<Package className="w-7 h-7" />}
             title="No bundles yet"
             message="Create your first bundle — fixed composition, per-item ₦ off, before/after totals shown on the landing."
-            action={canCreate ? <Button variant="primary" onClick={() => setCreateOpen(true)}>Create a bundle</Button> : null}
+            action={
+              canCreate ? (
+                <Button variant="primary" onClick={() => setCreateOpen(true)}>
+                  Create a bundle
+                </Button>
+              ) : null
+            }
           />
         </Card>
       )}
@@ -104,18 +133,38 @@ export function CampaignBundlesPage() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <div className="font-display font-medium text-[16px] truncate flex-1">{b.name}</div>
-                <Pill tone={b.status === "active" ? "success" : "neutral"} dot={false}>{b.status}</Pill>
+                <div className="font-display font-medium text-[16px] truncate flex-1">
+                  {b.name}
+                </div>
+                <Pill
+                  tone={b.status === "active" ? "success" : "neutral"}
+                  dot={false}
+                >
+                  {b.status}
+                </Pill>
               </div>
               <div className="micro mt-0.5">/{b.slug}</div>
               <div className="flex flex-wrap gap-2 mt-2 text-[11.5px] text-text-muted">
-                <span>Per item: <MoneyText ngn={Number(b.default_per_item_discount_ngn || 0)} /></span>
+                <span>
+                  Per item:{" "}
+                  <MoneyText
+                    ngn={Number(b.default_per_item_discount_ngn || 0)}
+                  />
+                </span>
                 <span>·</span>
-                <span>Preorder-loss: <span className="font-mono">{Math.round(b.default_preorder_loss_pct * 100)}%</span></span>
+                <span>
+                  Preorder-loss:{" "}
+                  <span className="font-mono">
+                    {Math.round(b.default_preorder_loss_pct * 100)}%
+                  </span>
+                </span>
               </div>
               {canEdit && (
                 <div className="mt-2 flex gap-2">
-                  <button onClick={() => setEditId(b.bundle_id)} className="text-[11.5px] font-semibold text-accent-glow hover:underline inline-flex items-center gap-1">
+                  <button
+                    onClick={() => setEditId(b.bundle_id)}
+                    className="text-[11.5px] font-semibold text-accent-glow hover:underline inline-flex items-center gap-1"
+                  >
                     <Edit3 className="w-3 h-3" /> Edit
                   </button>
                 </div>
@@ -125,13 +174,28 @@ export function CampaignBundlesPage() {
         ))}
       </div>
 
-      <CreateBundleModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      {editId && <EditBundleModal open={Boolean(editId)} onClose={() => setEditId(null)} id={editId} />}
+      <CreateBundleModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
+      {editId && (
+        <EditBundleModal
+          open={Boolean(editId)}
+          onClose={() => setEditId(null)}
+          id={editId}
+        />
+      )}
     </div>
   );
 }
 
-function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreateBundleModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateBundle();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -141,7 +205,11 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
   const [heroImage, setHeroImage] = useState("");
 
   function makeSlug(s: string) {
-    return s.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-{2,}/g, "-");
+    return s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-{2,}/g, "-");
   }
 
   async function submit(e: React.FormEvent) {
@@ -196,14 +264,30 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Default per-item ₦ off">
-            <NumberField value={perItem} onChange={setPerItem} suffix="NGN" allowDecimal={false} />
+            <NumberField
+              value={perItem}
+              onChange={setPerItem}
+              suffix="NGN"
+              allowDecimal={false}
+            />
           </Field>
-          <Field label="Preorder loss %" hint="0.7 = 70% of the discount is lost on preorder">
-            <NumberField value={preorderLoss} onChange={setPreorderLoss} suffix="" />
+          <Field
+            label="Preorder loss %"
+            hint="0.7 = 70% of the discount is lost on preorder"
+          >
+            <NumberField
+              value={preorderLoss}
+              onChange={setPreorderLoss}
+              suffix=""
+            />
           </Field>
         </div>
         <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="h-9 px-3 rounded-[10px] text-[13px] font-semibold text-text-muted hover:bg-text-primary/[0.06]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 px-3 rounded-[10px] text-[13px] font-semibold text-text-muted hover:bg-text-primary/[0.06]"
+          >
             Cancel
           </button>
           <Button type="submit" variant="primary" disabled={create.isPending}>
@@ -215,13 +299,27 @@ function CreateBundleModal({ open, onClose }: { open: boolean; onClose: () => vo
   );
 }
 
-function EditBundleModal({ open, onClose, id }: { open: boolean; onClose: () => void; id: string }) {
+function EditBundleModal({
+  open,
+  onClose,
+  id,
+}: {
+  open: boolean;
+  onClose: () => void;
+  id: string;
+}) {
   const update = useUpdateBundle(id);
   const list = useBundleList();
-  const bundle = (list.data?.data || []).find((b: Bundle) => b.bundle_id === id);
+  const bundle = (list.data?.data || []).find(
+    (b: Bundle) => b.bundle_id === id,
+  );
   const [name, setName] = useState(bundle?.name || "");
-  const [perItem, setPerItem] = useState(bundle?.default_per_item_discount_ngn?.toString() || "");
-  const [preorderLoss, setPreorderLoss] = useState(bundle?.default_preorder_loss_pct?.toString() || "0.7");
+  const [perItem, setPerItem] = useState(
+    bundle?.default_per_item_discount_ngn?.toString() || "",
+  );
+  const [preorderLoss, setPreorderLoss] = useState(
+    bundle?.default_preorder_loss_pct?.toString() || "0.7",
+  );
   const [heroImage, setHeroImage] = useState(bundle?.hero_image_url || "");
   const [archived, setArchived] = useState(bundle?.status === "archived");
 
@@ -258,17 +356,34 @@ function EditBundleModal({ open, onClose, id }: { open: boolean; onClose: () => 
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Per-item ₦ off">
-            <NumberField value={perItem} onChange={setPerItem} suffix="NGN" allowDecimal={false} />
+            <NumberField
+              value={perItem}
+              onChange={setPerItem}
+              suffix="NGN"
+              allowDecimal={false}
+            />
           </Field>
           <Field label="Preorder loss %">
-            <NumberField value={preorderLoss} onChange={setPreorderLoss} suffix="" />
+            <NumberField
+              value={preorderLoss}
+              onChange={setPreorderLoss}
+              suffix=""
+            />
           </Field>
         </div>
         <Field label="Status">
-          <Toggle checked={archived} onChange={setArchived} label={archived ? "Archived" : "Active"} />
+          <Toggle
+            checked={archived}
+            onChange={setArchived}
+            label={archived ? "Archived" : "Active"}
+          />
         </Field>
         <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="h-9 px-3 rounded-[10px] text-[13px] font-semibold text-text-muted hover:bg-text-primary/[0.06]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 px-3 rounded-[10px] text-[13px] font-semibold text-text-muted hover:bg-text-primary/[0.06]"
+          >
             Cancel
           </button>
           <Button type="submit" variant="primary" disabled={update.isPending}>

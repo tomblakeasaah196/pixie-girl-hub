@@ -14,9 +14,7 @@ export interface MovementListParams {
   limit?: number;
 }
 
-export async function listMovements(
-  params: MovementListParams = {},
-): Promise<{
+export async function listMovements(params: MovementListParams = {}): Promise<{
   data: StockMovement[];
   pagination?: { page: number; limit: number; total: number };
 }> {

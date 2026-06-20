@@ -77,7 +77,9 @@ async function notify({
     created_at: rows[0].created_at,
   };
   try {
-    getIo().to(ROOMS.user_notifications(user_id)).emit("notification:new", notif);
+    getIo()
+      .to(ROOMS.user_notifications(user_id))
+      .emit("notification:new", notif);
   } catch {
     // socket.io not ready (worker context); skip silently
   }
@@ -104,7 +106,13 @@ async function notify({
   return rows[0];
 }
 
-async function list({ user_id, only_unread, business, page = 1, page_size = 30 }) {
+async function list({
+  user_id,
+  only_unread,
+  business,
+  page = 1,
+  page_size = 30,
+}) {
   const where = ["user_id = $1"];
   const params = [user_id];
   if (only_unread) where.push("is_read = false");

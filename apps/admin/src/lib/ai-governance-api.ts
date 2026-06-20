@@ -111,15 +111,23 @@ export const aiGovernanceApi = {
   upsertBrandVoice: (input: BrandVoiceUpsert) =>
     api.put<BrandVoiceConfig>("/ai-governance/brand-voice", input),
 
-  listModels: (params: { vendor?: AiVendor; capability?: AiCapability } = {}) => {
+  listModels: (
+    params: { vendor?: AiVendor; capability?: AiCapability } = {},
+  ) => {
     const u = new URLSearchParams();
     if (params.vendor) u.set("vendor", params.vendor);
     if (params.capability) u.set("capability", params.capability);
     const qs = u.toString();
     return api.get<AiModel[]>(`/ai-governance/models${qs ? `?${qs}` : ""}`);
   },
-  upsertModel: (input: Partial<AiModel> & { model_id: string; vendor: AiVendor; display_name: string; capability: AiCapability }) =>
-    api.post<AiModel>("/ai-governance/models", input),
+  upsertModel: (
+    input: Partial<AiModel> & {
+      model_id: string;
+      vendor: AiVendor;
+      display_name: string;
+      capability: AiCapability;
+    },
+  ) => api.post<AiModel>("/ai-governance/models", input),
 
   listVendors: () => api.get<AiVendorRow[]>("/ai-governance/vendors"),
   upsertVendor: (input: {
@@ -139,6 +147,8 @@ export const aiGovernanceApi = {
     if (params.from) u.set("from", params.from);
     if (params.to) u.set("to", params.to);
     const qs = u.toString();
-    return api.get<SpendMeter>(`/ai-governance/usage/meter${qs ? `?${qs}` : ""}`);
+    return api.get<SpendMeter>(
+      `/ai-governance/usage/meter${qs ? `?${qs}` : ""}`,
+    );
   },
 };

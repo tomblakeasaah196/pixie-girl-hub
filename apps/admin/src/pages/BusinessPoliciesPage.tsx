@@ -4,7 +4,12 @@ import { ExternalLink, Plus, Scale, Trash2 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
-import { ConfirmDialog, ErrorState, Select, Toggle } from "@/components/ui/controls";
+import {
+  ConfirmDialog,
+  ErrorState,
+  Select,
+  Toggle,
+} from "@/components/ui/controls";
 import { Field, TextInput } from "@/components/ui/Form";
 import { useActiveBusiness } from "@/stores/business";
 import {
@@ -37,16 +42,26 @@ const POLICY_TYPES = [
  * the storefront chooses to expose it.
  */
 export function BusinessPoliciesPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Business Policies" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Business Policies" },
+  ]);
   const biz = useActiveBusiness();
   const q = useBusinessPolicies();
   const del = useDeletePolicy();
   const update = useUpdatePolicy();
   const [drawer, setDrawer] = useState<BusinessPolicy | "new" | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<BusinessPolicy | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<BusinessPolicy | null>(
+    null,
+  );
 
   if (q.isError)
-    return <ErrorState message={(q.error as Error)?.message} onRetry={() => q.refetch()} />;
+    return (
+      <ErrorState
+        message={(q.error as Error)?.message}
+        onRetry={() => q.refetch()}
+      />
+    );
 
   const columns: Column<BusinessPolicy>[] = [
     {
@@ -55,7 +70,9 @@ export function BusinessPoliciesPage() {
       render: (r) => (
         <div className="min-w-0">
           <div className="font-medium truncate">{r.title}</div>
-          <div className="text-[11px] text-text-faint font-mono truncate">/{r.slug}</div>
+          <div className="text-[11px] text-text-faint font-mono truncate">
+            /{r.slug}
+          </div>
         </div>
       ),
     },
@@ -65,7 +82,8 @@ export function BusinessPoliciesPage() {
       width: "160px",
       render: (r) => (
         <span className="text-[12.5px]">
-          {POLICY_TYPES.find((t) => t.value === r.policy_type)?.label ?? r.policy_type}
+          {POLICY_TYPES.find((t) => t.value === r.policy_type)?.label ??
+            r.policy_type}
         </span>
       ),
     },
@@ -81,7 +99,13 @@ export function BusinessPoliciesPage() {
       width: "120px",
       render: (r) => (
         <Pill
-          tone={r.status === "published" ? "success" : r.status === "draft" ? "warn" : "neutral"}
+          tone={
+            r.status === "published"
+              ? "success"
+              : r.status === "draft"
+                ? "warn"
+                : "neutral"
+          }
           dot={false}
         >
           {r.status}
@@ -132,25 +156,35 @@ export function BusinessPoliciesPage() {
             <Scale className="w-5 h-5" />
           </span>
           <div>
-            <h2 className="font-display text-[22px] font-medium">Business Policies</h2>
+            <h2 className="font-display text-[22px] font-medium">
+              Business Policies
+            </h2>
             <p className="text-text-muted text-[13px]">
               Privacy, Refund, QMS, Terms, Cookie & more.{" "}
-              <Pill tone="info" dot={false}>Editing for {biz.name}</Pill>
+              <Pill tone="info" dot={false}>
+                Editing for {biz.name}
+              </Pill>
             </p>
           </div>
         </div>
-        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setDrawer("new")}>
+        <Button
+          variant="primary"
+          icon={<Plus className="w-4 h-4" />}
+          onClick={() => setDrawer("new")}
+        >
           New policy
         </Button>
       </div>
 
       <Card className="p-4 border-info/30 bg-info/5">
         <p className="text-[12.5px] text-text-muted leading-relaxed">
-          <strong className="text-text-primary">Settings owns the content.</strong> Toggle{" "}
-          <em>Live</em> to mark a policy as published.{" "}
-          <strong className="text-text-primary">Storefront Studio</strong> reads the published rows
-          and decides which policies show on the public website and where (footer link, dedicated
-          page, etc.).
+          <strong className="text-text-primary">
+            Settings owns the content.
+          </strong>{" "}
+          Toggle <em>Live</em> to mark a policy as published.{" "}
+          <strong className="text-text-primary">Storefront Studio</strong> reads
+          the published rows and decides which policies show on the public
+          website and where (footer link, dedicated page, etc.).
         </p>
       </Card>
 
@@ -165,7 +199,11 @@ export function BusinessPoliciesPage() {
           title: "No policies yet",
           message: "Create your first business or legal policy.",
           action: (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setDrawer("new")}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setDrawer("new")}
+            >
               New policy
             </Button>
           ),
@@ -185,8 +223,9 @@ export function BusinessPoliciesPage() {
         message={
           pendingDelete && (
             <>
-              This permanently removes <strong>{pendingDelete.title}</strong>. If it is currently
-              published on the website, take it down in Storefront Studio first.
+              This permanently removes <strong>{pendingDelete.title}</strong>.
+              If it is currently published on the website, take it down in
+              Storefront Studio first.
             </>
           )
         }
@@ -228,7 +267,11 @@ function PolicyDrawer({
       status: is_published ? ("published" as const) : ("draft" as const),
     };
     if (isNew) create.mutate(payload, { onSuccess: onClose });
-    else if (row) update.mutate({ id: row.policy_id, patch: payload }, { onSuccess: onClose });
+    else if (row)
+      update.mutate(
+        { id: row.policy_id, patch: payload },
+        { onSuccess: onClose },
+      );
   };
 
   // Auto-slugify the title for a fresh policy.
@@ -244,7 +287,9 @@ function PolicyDrawer({
       open={open}
       onClose={onClose}
       title={isNew ? "New policy" : row?.title}
-      subtitle={isNew ? "Versioned content; publish when ready" : `v${row?.version}`}
+      subtitle={
+        isNew ? "Versioned content; publish when ready" : `v${row?.version}`
+      }
       wide
       footer={
         <div className="flex justify-between items-center w-full">
@@ -259,7 +304,10 @@ function PolicyDrawer({
             </a>
           )}
           <div className="flex justify-end gap-2 ml-auto">
-            <button onClick={onClose} className="text-[13px] font-semibold text-text-muted px-3 h-9 rounded-[10px] hover:bg-text-primary/[0.06]">
+            <button
+              onClick={onClose}
+              className="text-[13px] font-semibold text-text-muted px-3 h-9 rounded-[10px] hover:bg-text-primary/[0.06]"
+            >
               Cancel
             </button>
             <button
@@ -267,7 +315,11 @@ function PolicyDrawer({
               disabled={!title || !slug || create.isPending || update.isPending}
               className="h-9 px-4 rounded-[10px] text-[13px] font-semibold bg-accent-deep text-[#F4E9D9] disabled:opacity-50 hover:bg-accent"
             >
-              {create.isPending || update.isPending ? "Saving…" : isNew ? "Create" : "Save"}
+              {create.isPending || update.isPending
+                ? "Saving…"
+                : isNew
+                  ? "Create"
+                  : "Save"}
             </button>
           </div>
         </div>
@@ -276,13 +328,20 @@ function PolicyDrawer({
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Title">
-            <TextInput value={title} onChange={(e) => onTitleChange(e.target.value)} placeholder="Privacy Policy" />
+            <TextInput
+              value={title}
+              onChange={(e) => onTitleChange(e.target.value)}
+              placeholder="Privacy Policy"
+            />
           </Field>
           <Field label="Type">
             <Select<string>
               value={policy_type}
               onChange={setType}
-              options={POLICY_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+              options={POLICY_TYPES.map((t) => ({
+                value: t.value,
+                label: t.label,
+              }))}
             />
           </Field>
         </div>
@@ -293,7 +352,10 @@ function PolicyDrawer({
             placeholder="privacy"
           />
         </Field>
-        <Field label="Summary" hint="Plain-text preview for search & SmartComm answers">
+        <Field
+          label="Summary"
+          hint="Plain-text preview for search & SmartComm answers"
+        >
           <textarea
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
@@ -311,7 +373,11 @@ function PolicyDrawer({
           />
         </Field>
         <div className="flex items-center gap-3 py-1">
-          <Toggle checked={is_published} onChange={setPublished} label="Mark as published" />
+          <Toggle
+            checked={is_published}
+            onChange={setPublished}
+            label="Mark as published"
+          />
           <span className="text-[11.5px] text-text-faint">
             Storefront Studio decides whether to surface it on the website.
           </span>

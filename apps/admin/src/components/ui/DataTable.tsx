@@ -30,12 +30,21 @@ export function DataTable<T>({
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
   loading?: boolean;
-  empty?: { icon: ReactNode; title: string; message?: string; action?: ReactNode };
+  empty?: {
+    icon: ReactNode;
+    title: string;
+    message?: string;
+    action?: ReactNode;
+  };
   toolbar?: ReactNode;
 }) {
   return (
     <Card className="overflow-hidden">
-      {toolbar && <div className="flex items-center gap-2 p-[14px_18px] border-b hairline flex-wrap">{toolbar}</div>}
+      {toolbar && (
+        <div className="flex items-center gap-2 p-[14px_18px] border-b hairline flex-wrap">
+          {toolbar}
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -56,7 +65,10 @@ export function DataTable<T>({
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i}>
                   {columns.map((c) => (
-                    <td key={c.key} className="p-[0_18px] lg:px-4 h-[54px] lg:h-[44px] border-b hairline">
+                    <td
+                      key={c.key}
+                      className="p-[0_18px] lg:px-4 h-[54px] lg:h-[44px] border-b hairline"
+                    >
                       <Skeleton className="w-3/4" />
                     </td>
                   ))}
@@ -69,7 +81,8 @@ export function DataTable<T>({
                   onClick={() => onRowClick?.(row)}
                   className={cn(
                     "border-b hairline last:border-0 transition-colors",
-                    onRowClick && "cursor-pointer hover:bg-text-primary/[0.035]",
+                    onRowClick &&
+                      "cursor-pointer hover:bg-text-primary/[0.035]",
                   )}
                 >
                   {columns.map((c) => (
@@ -87,7 +100,12 @@ export function DataTable<T>({
         </table>
       </div>
       {!loading && rows.length === 0 && empty && (
-        <EmptyState icon={empty.icon} title={empty.title} message={empty.message} action={empty.action} />
+        <EmptyState
+          icon={empty.icon}
+          title={empty.title}
+          message={empty.message}
+          action={empty.action}
+        />
       )}
     </Card>
   );

@@ -31,20 +31,27 @@ export function createSupplier(input: {
   return api.post<Supplier>(`${BASE}/suppliers`, input);
 }
 
-export function updateSupplier(id: string, input: Partial<{
-  supplier_name: string;
-  country: string;
-  email: string;
-  phone: string;
-  currency: string;
-  is_active: boolean;
-}>) {
+export function updateSupplier(
+  id: string,
+  input: Partial<{
+    supplier_name: string;
+    country: string;
+    email: string;
+    phone: string;
+    currency: string;
+    is_active: boolean;
+  }>,
+) {
   return api.patch<Supplier>(`${BASE}/suppliers/${id}`, input);
 }
 
 // ── Purchase Orders ───────────────────────────────────────
 
-export function listPos(params?: { status?: string; supplier_id?: string; page?: number }) {
+export function listPos(params?: {
+  status?: string;
+  supplier_id?: string;
+  page?: number;
+}) {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   if (params?.supplier_id) qs.set("supplier_id", params.supplier_id);
@@ -88,11 +95,16 @@ export function approvePo(id: string) {
 }
 
 export function advancePo(id: string, status: string, notes?: string) {
-  return api.post<PurchaseOrder>(`${BASE}/purchase-orders/${id}/advance`, { status, notes });
+  return api.post<PurchaseOrder>(`${BASE}/purchase-orders/${id}/advance`, {
+    status,
+    notes,
+  });
 }
 
 export function cancelPo(id: string, reason?: string) {
-  return api.post<PurchaseOrder>(`${BASE}/purchase-orders/${id}/cancel`, { reason });
+  return api.post<PurchaseOrder>(`${BASE}/purchase-orders/${id}/cancel`, {
+    reason,
+  });
 }
 
 // ── GRNs ─────────────────────────────────────────────────
@@ -101,14 +113,20 @@ export function listGrns(params?: { page?: number }) {
   const qs = new URLSearchParams();
   if (params?.page) qs.set("page", String(params.page));
   const q = qs.toString();
-  return api.get<GrnPaginated>(`${BASE}/goods-received-notes${q ? `?${q}` : ""}`);
+  return api.get<GrnPaginated>(
+    `${BASE}/goods-received-notes${q ? `?${q}` : ""}`,
+  );
 }
 
 export function getGrn(id: string) {
   return api.get<GoodsReceivedNote>(`${BASE}/goods-received-notes/${id}`);
 }
 
-export function createGrn(input: { po_id: string; notes?: string; lines?: Array<{ po_line_id: string; quantity_received: number }> }) {
+export function createGrn(input: {
+  po_id: string;
+  notes?: string;
+  lines?: Array<{ po_line_id: string; quantity_received: number }>;
+}) {
   return api.post<GoodsReceivedNote>(`${BASE}/goods-received-notes`, input);
 }
 
@@ -118,12 +136,17 @@ export function postGrn(id: string) {
 
 // ── Supplier Invoices ─────────────────────────────────────
 
-export function listSupplierInvoices(params?: { page?: number; status?: string }) {
+export function listSupplierInvoices(params?: {
+  page?: number;
+  status?: string;
+}) {
   const qs = new URLSearchParams();
   if (params?.page) qs.set("page", String(params.page));
   if (params?.status) qs.set("status", params.status);
   const q = qs.toString();
-  return api.get<InvoicePaginated>(`${BASE}/supplier-invoices${q ? `?${q}` : ""}`);
+  return api.get<InvoicePaginated>(
+    `${BASE}/supplier-invoices${q ? `?${q}` : ""}`,
+  );
 }
 
 export function getSupplierInvoice(id: string) {
@@ -148,6 +171,13 @@ export function approveSupplierInvoice(id: string) {
   return api.post<SupplierInvoice>(`${BASE}/supplier-invoices/${id}/approve`);
 }
 
-export function paySupplierInvoice(id: string, payment_method: string, payment_reference?: string) {
-  return api.post<SupplierInvoice>(`${BASE}/supplier-invoices/${id}/pay`, { payment_method, payment_reference });
+export function paySupplierInvoice(
+  id: string,
+  payment_method: string,
+  payment_reference?: string,
+) {
+  return api.post<SupplierInvoice>(`${BASE}/supplier-invoices/${id}/pay`, {
+    payment_method,
+    payment_reference,
+  });
 }

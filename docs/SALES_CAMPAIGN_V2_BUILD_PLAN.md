@@ -25,6 +25,7 @@ Status: **PR 1 shipped (admin builder + backend deltas).** PR 2 (Next.js public 
 ## What ships in PR 1 (this PR — admin builder + backend)
 
 ### Backend
+
 - `migrations/000220_shared_sales_campaigns_v2.sql` — `business_config.sales_subdomain` + `praxis_voice_profile` + `show_viewer_count_policy` + `viewer_count_floor`; `contacts.is_ambassador` + `ambassador_profile`.
 - `migrations/000221_shared_praxis_campaign_actions.sql` — Praxis action-catalogue entries for `draft_copy`, `suggest_layout`, `suggest_discount_math`, `dry_run_pricing`, `analytics_qna`, `daily_briefing`.
 - `migrations/000222_shared_help_sales_campaigns.sql` — 10 Help Center articles + RAG mirror.
@@ -41,6 +42,7 @@ Status: **PR 1 shipped (admin builder + backend deltas).** PR 2 (Next.js public 
 - `src/routes/index.js` — `hostBrandResolverMiddleware` wired onto public `/sale/:slug`.
 
 ### Frontend (admin)
+
 - `apps/admin/src/lib/campaigns.ts` — TanStack Query hooks for everything (40+ endpoints).
 - `apps/admin/src/pages/sales-campaigns/SalesCampaignsListPage.tsx` — hero strip + KPIs + filters + cards + create modal.
 - `apps/admin/src/pages/sales-campaigns/CampaignBuilderPage.tsx` — 6-step wizard (Brief / Bundles / Pricing / Landing / Ambassadors / Approval) with drag-reorder block editor (@dnd-kit) + Praxis assist drawer.

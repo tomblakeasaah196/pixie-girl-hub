@@ -12,7 +12,9 @@ import type {
   ValuationLine,
 } from "./types";
 
-function qs(params: Record<string, string | number | undefined | null>): string {
+function qs(
+  params: Record<string, string | number | undefined | null>,
+): string {
   const parts = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== null && v !== "")
     .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`);
@@ -28,13 +30,21 @@ export const stockApi = {
   updateLocation: (id: string, patch: Partial<StockLocation>) =>
     api.patch<StockLocation>(`/stock/locations/${id}`, patch),
 
-  valuation: (filters?: { location_id?: string; variant_id?: string; product_id?: string }) =>
+  valuation: (filters?: {
+    location_id?: string;
+    variant_id?: string;
+    product_id?: string;
+  }) =>
     api.get<{ lines: ValuationLine[]; summary: ValuationSummary }>(
       `/stock/valuation${qs(filters ?? {})}`,
     ),
 
-  listLevels: (params: { variant_id?: string; location_id?: string; page?: number; page_size?: number }) =>
-    api.get<StockLevel[]>(`/stock/levels${qs(params)}`),
+  listLevels: (params: {
+    variant_id?: string;
+    location_id?: string;
+    page?: number;
+    page_size?: number;
+  }) => api.get<StockLevel[]>(`/stock/levels${qs(params)}`),
 
   variantStock: (variantId: string) =>
     api.get<StockLevel[]>(`/stock/levels/variant/${variantId}`),
@@ -50,8 +60,12 @@ export const stockApi = {
   recordMovement: (input: Record<string, unknown>) =>
     api.post<StockMovement>("/stock/movements", input),
 
-  listAdjustments: (params: { status?: string; location_id?: string; page?: number; page_size?: number }) =>
-    api.get<Paginated<StockAdjustment>>(`/stock/adjustments${qs(params)}`),
+  listAdjustments: (params: {
+    status?: string;
+    location_id?: string;
+    page?: number;
+    page_size?: number;
+  }) => api.get<Paginated<StockAdjustment>>(`/stock/adjustments${qs(params)}`),
 
   getAdjustment: (id: string) =>
     api.get<StockAdjustment>(`/stock/adjustments/${id}`),
@@ -71,11 +85,13 @@ export const stockApi = {
   postAdjustment: (id: string) =>
     api.post<StockAdjustment>(`/stock/adjustments/${id}/post`),
 
-  listTransfers: (params: { status?: string; page?: number; page_size?: number }) =>
-    api.get<Paginated<StockTransfer>>(`/stock/transfers${qs(params)}`),
+  listTransfers: (params: {
+    status?: string;
+    page?: number;
+    page_size?: number;
+  }) => api.get<Paginated<StockTransfer>>(`/stock/transfers${qs(params)}`),
 
-  getTransfer: (id: string) =>
-    api.get<StockTransfer>(`/stock/transfers/${id}`),
+  getTransfer: (id: string) => api.get<StockTransfer>(`/stock/transfers/${id}`),
 
   createTransfer: (input: Record<string, unknown>) =>
     api.post<StockTransfer>("/stock/transfers", input),
@@ -86,8 +102,12 @@ export const stockApi = {
   receiveTransfer: (id: string, input: Record<string, unknown>) =>
     api.post<StockTransfer>(`/stock/transfers/${id}/receive`, input),
 
-  listAlerts: (params: { status?: string; variant_id?: string; page?: number; page_size?: number }) =>
-    api.get<Paginated<StockAlert>>(`/stock/alerts${qs(params)}`),
+  listAlerts: (params: {
+    status?: string;
+    variant_id?: string;
+    page?: number;
+    page_size?: number;
+  }) => api.get<Paginated<StockAlert>>(`/stock/alerts${qs(params)}`),
 
   acknowledgeAlert: (id: string) =>
     api.post<StockAlert>(`/stock/alerts/${id}/acknowledge`),
@@ -98,8 +118,11 @@ export const stockApi = {
   resolveAlert: (id: string) =>
     api.post<StockAlert>(`/stock/alerts/${id}/resolve`),
 
-  listShipments: (params: { status?: string; page?: number; page_size?: number }) =>
-    api.get<Paginated<InboundShipment>>(`/stock/shipments${qs(params)}`),
+  listShipments: (params: {
+    status?: string;
+    page?: number;
+    page_size?: number;
+  }) => api.get<Paginated<InboundShipment>>(`/stock/shipments${qs(params)}`),
 
   getShipment: (id: string) =>
     api.get<InboundShipment>(`/stock/shipments/${id}`),

@@ -100,7 +100,11 @@ export function QuickAddProductModal({
       surface="light"
       footer={
         <div className="flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose} disabled={mutation.isPending}>
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            disabled={mutation.isPending}
+          >
             Cancel
           </Button>
           <Button

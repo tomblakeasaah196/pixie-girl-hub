@@ -47,7 +47,12 @@ const pinChannel = z.object({ pinned: z.boolean() }).strict();
 const muteChannel = z
   .object({
     muted: z.boolean(),
-    hours: z.number().int().positive().max(24 * 30).optional(),
+    hours: z
+      .number()
+      .int()
+      .positive()
+      .max(24 * 30)
+      .optional(),
   })
   .strict();
 
@@ -76,17 +81,13 @@ const postMessage = z
     { message: "content or attachments required" },
   );
 
-const editMessage = z
-  .object({ content: z.string().min(1).max(8000) })
-  .strict();
+const editMessage = z.object({ content: z.string().min(1).max(8000) }).strict();
 
 const forwardMessage = z
   .object({ channel_ids: z.array(z.string().uuid()).min(1).max(20) })
   .strict();
 
-const reactToMessage = z
-  .object({ emoji: z.string().min(1).max(8) })
-  .strict();
+const reactToMessage = z.object({ emoji: z.string().min(1).max(8) }).strict();
 
 const markRead = z
   .object({ up_to_message_id: z.string().uuid().optional() })
@@ -154,7 +155,12 @@ const orderCaptureCreate = z
       ])
       .optional(),
     notes: z.string().max(2000).optional(),
-    expires_in: z.number().int().positive().max(7 * 24 * 3600).optional(),
+    expires_in: z
+      .number()
+      .int()
+      .positive()
+      .max(7 * 24 * 3600)
+      .optional(),
   })
   .strict();
 

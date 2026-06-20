@@ -92,11 +92,15 @@ export function CustomerOnboardingPublic() {
   }, [token]);
 
   const canSubmit = useMemo(() => {
-    return !!form.first_name && !!form.delivery_line1 && !!(
-      form.primary_phone ||
-      form.whatsapp_number ||
-      form.email ||
-      form.instagram_handle
+    return (
+      !!form.first_name &&
+      !!form.delivery_line1 &&
+      !!(
+        form.primary_phone ||
+        form.whatsapp_number ||
+        form.email ||
+        form.instagram_handle
+      )
     );
   }, [form]);
 
@@ -167,7 +171,9 @@ export function CustomerOnboardingPublic() {
       <Shell business={business}>
         <div className="text-center py-12">
           <AlertCircle className="w-8 h-8 mx-auto mb-3 text-danger" />
-          <p className="text-[14px] font-medium">Sorry — link no longer works.</p>
+          <p className="text-[14px] font-medium">
+            Sorry — link no longer works.
+          </p>
           <p className="text-[12.5px] text-text-muted mt-1">
             {errMsg ?? "Please ask us for a fresh link."}
           </p>
@@ -455,7 +461,11 @@ function Shell({
   children: React.ReactNode;
 }) {
   const brandName =
-    business === "faitlynhair" ? "Faitlyn" : business === "pixiegirl" ? "Pixie Girl" : "Welcome";
+    business === "faitlynhair"
+      ? "Faitlyn"
+      : business === "pixiegirl"
+        ? "Pixie Girl"
+        : "Welcome";
   return (
     <div className="min-h-screen bg-bg text-text-primary px-4 py-6 sm:px-6 sm:py-10">
       <div className="max-w-[520px] mx-auto">
@@ -465,7 +475,9 @@ function Shell({
           </div>
           <div>
             <p className="font-display text-[18px] leading-none">{brandName}</p>
-            <p className="text-[11.5px] text-text-faint">Welcome — let&rsquo;s get you set up</p>
+            <p className="text-[11.5px] text-text-faint">
+              Welcome — let&rsquo;s get you set up
+            </p>
           </div>
         </div>
         <div className="rounded-2xl bg-panel border hairline p-5 sm:p-6">
@@ -494,7 +506,9 @@ function Section({
 }
 
 function Row({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{children}</div>;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{children}</div>
+  );
 }
 
 function Field({

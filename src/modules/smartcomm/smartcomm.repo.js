@@ -59,9 +59,7 @@ async function listChannelsForUser({
     where.push(`c.assigned_to = $1`);
   }
   if (q) {
-    where.push(
-      `(c.name ILIKE $${i} OR c.last_message_preview ILIKE $${i})`,
-    );
+    where.push(`(c.name ILIKE $${i} OR c.last_message_preview ILIKE $${i})`);
     params.push(`%${q}%`);
     i++;
   }
@@ -125,9 +123,7 @@ async function getChannelEnriched({ id, user_id }) {
   const [members, messages, me] = await Promise.all([
     listMembers({ channel_id: id }),
     listMessages({ channel_id: id, limit: 50, user_id }),
-    user_id
-      ? findMember({ channel_id: id, user_id })
-      : Promise.resolve(null),
+    user_id ? findMember({ channel_id: id, user_id }) : Promise.resolve(null),
   ]);
   return { ...channel, members, messages, my_member: me };
 }
@@ -749,7 +745,11 @@ async function findContactByEmail({ client, email }) {
   return rows[0] || null;
 }
 
-async function findContactBySocialHandle({ client, platform, external_user_id }) {
+async function findContactBySocialHandle({
+  client,
+  platform,
+  external_user_id,
+}) {
   if (!external_user_id) return null;
   const { rows } = await ex(client)(
     `SELECT c.* FROM shared.contacts c

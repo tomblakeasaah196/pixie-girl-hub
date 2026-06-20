@@ -19,7 +19,9 @@ async function createTask({ client, task }) {
     task.reminder_minutes !== null &&
     task.reminder_minutes !== undefined &&
     task.due_at
-      ? new Date(new Date(task.due_at).getTime() - task.reminder_minutes * 60000).toISOString()
+      ? new Date(
+          new Date(task.due_at).getTime() - task.reminder_minutes * 60000,
+        ).toISOString()
       : null;
   const { rows } = await ex(client)(
     `INSERT INTO shared.tasks

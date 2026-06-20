@@ -5,11 +5,7 @@
 
 import { api } from "@/lib/api";
 
-export type MessagingPlatform =
-  | "whatsapp"
-  | "instagram"
-  | "facebook"
-  | "email";
+export type MessagingPlatform = "whatsapp" | "instagram" | "facebook" | "email";
 
 export interface MessagingAccount {
   account_id: string;

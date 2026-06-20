@@ -31,8 +31,16 @@ export function WhatsAppWindowBadge({ expiresAt, compact }: Props) {
   const tone = expired
     ? { dot: "bg-danger", border: "border-danger/30", text: "text-danger" }
     : warn
-      ? { dot: "bg-amber-400", border: "border-amber-400/30", text: "text-amber-300" }
-      : { dot: "bg-green-400", border: "border-green-400/30", text: "text-green-300" };
+      ? {
+          dot: "bg-amber-400",
+          border: "border-amber-400/30",
+          text: "text-amber-300",
+        }
+      : {
+          dot: "bg-green-400",
+          border: "border-green-400/30",
+          text: "text-green-300",
+        };
 
   if (compact) {
     return (
@@ -54,7 +62,11 @@ export function WhatsAppWindowBadge({ expiresAt, compact }: Props) {
     <div
       className={`inline-flex items-center gap-1.5 px-2 py-[3px] rounded-full text-[11px] border ${tone.border} ${tone.text} bg-panel/50`}
     >
-      {expired ? <AlertTriangle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+      {expired ? (
+        <AlertTriangle className="w-3 h-3" />
+      ) : (
+        <Clock className="w-3 h-3" />
+      )}
       <span>
         {expired
           ? "Window closed — template only"

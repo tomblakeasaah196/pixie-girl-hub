@@ -20,9 +20,13 @@ const costSet = z
     cost_source: z.enum(["manual", "production", "grn", "import"]).optional(),
   })
   .strict()
-  .refine((v) => v.cost_ngn !== undefined || v.cost_native || v.supplier_id !== undefined, {
-    message: "Provide at least one of cost_ngn, cost_native, or supplier_id.",
-  });
+  .refine(
+    (v) =>
+      v.cost_ngn !== undefined || v.cost_native || v.supplier_id !== undefined,
+    {
+      message: "Provide at least one of cost_ngn, cost_native, or supplier_id.",
+    },
+  );
 
 const grantCreate = z
   .object({

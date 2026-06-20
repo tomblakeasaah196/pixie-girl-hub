@@ -6,11 +6,14 @@ export default function NotFound() {
       <div className="glass rounded-[var(--radius)] p-8 max-w-md text-center space-y-4">
         <div className="micro">Not the page you remember</div>
         <h1 className="font-display text-3xl leading-tight">
-          That sale has <span className="italic text-[rgb(var(--accent-glow))]">left the room.</span>
+          That sale has{" "}
+          <span className="italic text-[rgb(var(--accent-glow))]">
+            left the room.
+          </span>
         </h1>
         <p className="text-[rgb(var(--text-muted))] text-sm">
-          You may be a few hours too late — or the link is mistyped. Either
-          way, our full collection is alive and well on the main storefront.
+          You may be a few hours too late — or the link is mistyped. Either way,
+          our full collection is alive and well on the main storefront.
         </p>
         <Link
           href="https://pixiegirlglobal.com"

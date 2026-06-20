@@ -39,7 +39,10 @@ describe("smartcomm validators", () => {
     const { calledNext } = run(v.validatePostMessage, {
       message_type: "image",
       attachments: [
-        { document_id: "11111111-1111-1111-1111-111111111111", display_name: "x" },
+        {
+          document_id: "11111111-1111-1111-1111-111111111111",
+          display_name: "x",
+        },
       ],
     });
     expect(calledNext).toBe(true);

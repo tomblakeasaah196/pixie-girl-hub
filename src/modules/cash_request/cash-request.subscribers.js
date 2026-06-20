@@ -29,7 +29,10 @@ function register() {
         reference_id: payload.id,
       });
     } catch (err) {
-      logger.error({ err: err.message, id: payload.id }, "cash_request approved notification failed");
+      logger.error(
+        { err: err.message, id: payload.id },
+        "cash_request approved notification failed",
+      );
     }
   });
 
@@ -46,7 +49,10 @@ function register() {
         reference_id: payload.id,
       });
     } catch (err) {
-      logger.error({ err: err.message, id: payload.id }, "cash_request rejected notification failed");
+      logger.error(
+        { err: err.message, id: payload.id },
+        "cash_request rejected notification failed",
+      );
     }
   });
 
@@ -63,7 +69,10 @@ function register() {
         reference_id: payload.id,
       });
     } catch (err) {
-      logger.error({ err: err.message, id: payload.id }, "cash_request sent_back notification failed");
+      logger.error(
+        { err: err.message, id: payload.id },
+        "cash_request sent_back notification failed",
+      );
     }
   });
 
@@ -80,7 +89,10 @@ function register() {
         reference_id: payload.id,
       });
     } catch (err) {
-      logger.error({ err: err.message, id: payload.id }, "cash_request disbursed notification failed");
+      logger.error(
+        { err: err.message, id: payload.id },
+        "cash_request disbursed notification failed",
+      );
     }
   });
 
@@ -92,7 +104,10 @@ function register() {
       // org_workflow resolution (future extension). For now, push to the
       // brand approvals room via Socket.io (handled by rooms.js).
     } catch (err) {
-      logger.error({ err: err.message, id: payload.id }, "cash_request pending_finance notification failed");
+      logger.error(
+        { err: err.message, id: payload.id },
+        "cash_request pending_finance notification failed",
+      );
     }
   });
 

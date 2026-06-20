@@ -14,12 +14,20 @@ const columns: Column<Quotation>[] = [
     key: "number",
     header: "Quote #",
     width: "130px",
-    render: (q) => <span className="font-mono text-[13px] font-semibold">{q.quotation_number}</span>,
+    render: (q) => (
+      <span className="font-mono text-[13px] font-semibold">
+        {q.quotation_number}
+      </span>
+    ),
   },
   {
     key: "contact",
     header: "Customer",
-    render: (q) => <span className="text-[13px]">{q.contact_name ?? q.contact_id.slice(0, 8)}</span>,
+    render: (q) => (
+      <span className="text-[13px]">
+        {q.contact_name ?? q.contact_id.slice(0, 8)}
+      </span>
+    ),
   },
   {
     key: "status",
@@ -41,7 +49,9 @@ const columns: Column<Quotation>[] = [
     width: "110px",
     render: (q) =>
       q.valid_until ? (
-        <span className="text-[12px] text-text-muted">{new Date(q.valid_until).toLocaleDateString()}</span>
+        <span className="text-[12px] text-text-muted">
+          {new Date(q.valid_until).toLocaleDateString()}
+        </span>
       ) : (
         <span className="text-[12px] text-text-faint">—</span>
       ),
@@ -50,7 +60,11 @@ const columns: Column<Quotation>[] = [
     key: "date",
     header: "Created",
     width: "110px",
-    render: (q) => <span className="text-[12px] text-text-muted">{new Date(q.created_at).toLocaleDateString()}</span>,
+    render: (q) => (
+      <span className="text-[12px] text-text-muted">
+        {new Date(q.created_at).toLocaleDateString()}
+      </span>
+    ),
   },
 ];
 
@@ -92,7 +106,11 @@ export function QuotationsView() {
           title: "No quotations",
           message: "Create a quotation to start the B2B sales flow.",
           action: (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setShowCreate(true)}
+            >
               New Quotation
             </Button>
           ),
@@ -104,17 +122,30 @@ export function QuotationsView() {
               <input
                 placeholder="Search quotations…"
                 value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
               />
             </div>
             <Select
               value={status}
-              onChange={(v) => { setStatus(v); setPage(1); }}
-              options={QUOTE_STATUS_OPTIONS as { value: string; label: string }[]}
+              onChange={(v) => {
+                setStatus(v);
+                setPage(1);
+              }}
+              options={
+                QUOTE_STATUS_OPTIONS as { value: string; label: string }[]
+              }
               className="w-[180px]"
             />
-            <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowCreate(true)}>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus className="w-3.5 h-3.5" />}
+              onClick={() => setShowCreate(true)}
+            >
               New Quote
             </Button>
           </>
@@ -124,11 +155,24 @@ export function QuotationsView() {
       {meta && meta.total > meta.page_size && (
         <div className="flex items-center justify-between text-[12px] text-text-muted mt-3 px-1">
           <span>
-            Showing {(meta.page - 1) * meta.page_size + 1}–{Math.min(meta.page * meta.page_size, meta.total)} of {meta.total}
+            Showing {(meta.page - 1) * meta.page_size + 1}–
+            {Math.min(meta.page * meta.page_size, meta.total)} of {meta.total}
           </span>
           <div className="flex gap-1">
-            <button disabled={meta.page <= 1} onClick={() => setPage((p) => p - 1)} className="px-3 h-8 rounded-[9px] border border-line text-[12px] font-semibold disabled:opacity-40 hover:bg-text-primary/[0.05]">Prev</button>
-            <button disabled={!meta.has_more} onClick={() => setPage((p) => p + 1)} className="px-3 h-8 rounded-[9px] border border-line text-[12px] font-semibold disabled:opacity-40 hover:bg-text-primary/[0.05]">Next</button>
+            <button
+              disabled={meta.page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+              className="px-3 h-8 rounded-[9px] border border-line text-[12px] font-semibold disabled:opacity-40 hover:bg-text-primary/[0.05]"
+            >
+              Prev
+            </button>
+            <button
+              disabled={!meta.has_more}
+              onClick={() => setPage((p) => p + 1)}
+              className="px-3 h-8 rounded-[9px] border border-line text-[12px] font-semibold disabled:opacity-40 hover:bg-text-primary/[0.05]"
+            >
+              Next
+            </button>
           </div>
         </div>
       )}

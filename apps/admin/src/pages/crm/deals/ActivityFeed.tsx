@@ -11,7 +11,11 @@ function relTime(iso: string) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleDateString("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 const OUTCOME_LABELS: Record<string, string> = {
@@ -56,7 +60,8 @@ export function ActivityFeed({ activities, isLoading }: ActivityFeedProps) {
   }
 
   const sorted = [...activities].sort(
-    (a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime(),
+    (a, b) =>
+      new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime(),
   );
 
   return (
@@ -77,7 +82,9 @@ export function ActivityFeed({ activities, isLoading }: ActivityFeedProps) {
                   {activityLabel(act.activity_type)}
                 </span>
                 {act.direction && act.direction !== "internal" && (
-                  <span className="text-[10.5px] text-text-faint capitalize">{act.direction}</span>
+                  <span className="text-[10.5px] text-text-faint capitalize">
+                    {act.direction}
+                  </span>
                 )}
                 {act.outcome && (
                   <span className="text-[10.5px] text-success">
@@ -87,7 +94,9 @@ export function ActivityFeed({ activities, isLoading }: ActivityFeedProps) {
               </div>
 
               {act.subject && (
-                <div className="text-[12px] text-text-muted mt-0.5">{act.subject}</div>
+                <div className="text-[12px] text-text-muted mt-0.5">
+                  {act.subject}
+                </div>
               )}
 
               {act.body && (

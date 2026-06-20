@@ -25,7 +25,8 @@ export function useMediaQuery(query: string): boolean {
 export const useIsDesktop = () => useMediaQuery("(min-width: 1024px)");
 
 /** Tablet = 768–1023px. Drawer sidebar + bottom nav, full-width fluid body. */
-export const useIsTablet = () => useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
+export const useIsTablet = () =>
+  useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
 
 /** Phone = ≤767px. The frozen tier — never changed by the desktop pass. */
 export const useIsPhone = () => useMediaQuery("(max-width: 767px)");

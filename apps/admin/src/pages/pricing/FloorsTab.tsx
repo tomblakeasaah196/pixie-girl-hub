@@ -4,7 +4,12 @@ import { Button, Pill, MoneyText } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field, TextInput } from "@/components/ui/Form";
-import { NumberField, Select, ConfirmDialog, ErrorState } from "@/components/ui/controls";
+import {
+  NumberField,
+  Select,
+  ConfirmDialog,
+  ErrorState,
+} from "@/components/ui/controls";
 import { useFloors, useFloorMutations } from "./hooks";
 import {
   CHANNEL_OPTIONS,
@@ -27,7 +32,11 @@ export function FloorsTab({ canEdit }: { canEdit: boolean }) {
       key: "type",
       header: "Type",
       width: "170px",
-      render: (r) => <span className="font-semibold text-[13px]">{FLOOR_TYPE_LABELS[r.floor_type]}</span>,
+      render: (r) => (
+        <span className="font-semibold text-[13px]">
+          {FLOOR_TYPE_LABELS[r.floor_type]}
+        </span>
+      ),
     },
     {
       key: "value",
@@ -45,24 +54,40 @@ export function FloorsTab({ canEdit }: { canEdit: boolean }) {
       key: "channel",
       header: "Channel",
       width: "120px",
-      render: (r) => <span className="text-text-muted text-xs">{channelLabel(r.channel)}</span>,
+      render: (r) => (
+        <span className="text-text-muted text-xs">
+          {channelLabel(r.channel)}
+        </span>
+      ),
     },
     {
       key: "reason",
       header: "Reason",
-      render: (r) => <span className="text-text-muted text-xs truncate">{r.reason ?? "—"}</span>,
+      render: (r) => (
+        <span className="text-text-muted text-xs truncate">
+          {r.reason ?? "—"}
+        </span>
+      ),
     },
     {
       key: "expires",
       header: "Expires",
       width: "110px",
-      render: (r) => <span className="text-text-faint text-xs">{r.expires_at ? fmtDate(r.expires_at) : "—"}</span>,
+      render: (r) => (
+        <span className="text-text-faint text-xs">
+          {r.expires_at ? fmtDate(r.expires_at) : "—"}
+        </span>
+      ),
     },
     {
       key: "status",
       header: "Status",
       width: "100px",
-      render: (r) => <Pill tone={r.is_active ? "success" : "neutral"}>{r.is_active ? "Active" : "Inactive"}</Pill>,
+      render: (r) => (
+        <Pill tone={r.is_active ? "success" : "neutral"}>
+          {r.is_active ? "Active" : "Inactive"}
+        </Pill>
+      ),
     },
     ...(canEdit
       ? [
@@ -93,7 +118,12 @@ export function FloorsTab({ canEdit }: { canEdit: boolean }) {
     <div className="space-y-4">
       <div className="flex justify-end">
         {canEdit && (
-          <Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setCreating(true)}>
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => setCreating(true)}
+          >
             New floor
           </Button>
         )}
@@ -107,9 +137,14 @@ export function FloorsTab({ canEdit }: { canEdit: boolean }) {
         empty={{
           icon: <Shield className="w-7 h-7" />,
           title: "No price floors",
-          message: "Set minimum prices, margins or markups to protect against under-pricing.",
+          message:
+            "Set minimum prices, margins or markups to protect against under-pricing.",
           action: canEdit ? (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setCreating(true)}
+            >
               New floor
             </Button>
           ) : undefined,
@@ -120,7 +155,9 @@ export function FloorsTab({ canEdit }: { canEdit: boolean }) {
         open={creating}
         saving={create.isPending}
         onClose={() => setCreating(false)}
-        onSubmit={(input) => create.mutate(input, { onSuccess: () => setCreating(false) })}
+        onSubmit={(input) =>
+          create.mutate(input, { onSuccess: () => setCreating(false) })
+        }
       />
 
       <ConfirmDialog
@@ -128,7 +165,9 @@ export function FloorsTab({ canEdit }: { canEdit: boolean }) {
         onClose={() => setConfirmDel(null)}
         onConfirm={() =>
           confirmDel &&
-          remove.mutate(confirmDel.floor_id, { onSuccess: () => setConfirmDel(null) })
+          remove.mutate(confirmDel.floor_id, {
+            onSuccess: () => setConfirmDel(null),
+          })
         }
         title="Deactivate floor?"
         message="This deactivates the floor. Recreate it to change its value (floors are not editable in place)."
@@ -190,7 +229,11 @@ function FloorDrawer({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={saving || value.trim() === ""} onClick={submit}>
+          <Button
+            variant="primary"
+            disabled={saving || value.trim() === ""}
+            onClick={submit}
+          >
             {saving ? "Creating…" : "Create floor"}
           </Button>
         </>
@@ -198,10 +241,19 @@ function FloorDrawer({
     >
       <div className="space-y-4">
         <Field label="Floor type">
-          <Select value={floorType} onChange={(v) => setFloorType(v)} options={FLOOR_TYPE_OPTIONS} />
+          <Select
+            value={floorType}
+            onChange={(v) => setFloorType(v)}
+            options={FLOOR_TYPE_OPTIONS}
+          />
         </Field>
         <Field label={isNgn ? "Floor value (₦)" : "Floor value (%)"}>
-          <NumberField value={value} onChange={setValue} suffix={isNgn ? "₦" : "%"} placeholder="0" />
+          <NumberField
+            value={value}
+            onChange={setValue}
+            suffix={isNgn ? "₦" : "%"}
+            placeholder="0"
+          />
         </Field>
         <Field label="Channel" hint="optional — applies to all if blank">
           <Select
@@ -211,7 +263,11 @@ function FloorDrawer({
           />
         </Field>
         <Field label="Reason" hint="optional">
-          <TextInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why this floor exists" />
+          <TextInput
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why this floor exists"
+          />
         </Field>
       </div>
     </Drawer>

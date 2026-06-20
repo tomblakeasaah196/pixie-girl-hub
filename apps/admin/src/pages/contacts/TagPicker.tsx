@@ -8,9 +8,18 @@ import type { ContactTag } from "./types";
 // ── Inline tag picker ──────────────────────────────────────────────────
 
 const TAG_PRESET_COLOURS = [
-  "#A81D1D", "#690909", "#7f703d", "#5aa0a8",
-  "#7a8fa8", "#8b9d77", "#b76e79", "#9c7ad9",
-  "#d4a853", "#3d7a6f", "#c27b55", "#4a6fa8",
+  "#A81D1D",
+  "#690909",
+  "#7f703d",
+  "#5aa0a8",
+  "#7a8fa8",
+  "#8b9d77",
+  "#b76e79",
+  "#9c7ad9",
+  "#d4a853",
+  "#3d7a6f",
+  "#c27b55",
+  "#4a6fa8",
 ];
 
 function getBestTextColor(hex: string): string {
@@ -38,7 +47,10 @@ function TagPill({ tag, onRemove, removable = false }: TagPillProps) {
       {removable && onRemove && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
           className="opacity-70 hover:opacity-100 transition-opacity ml-0.5"
         >
           <X className="w-2.5 h-2.5" />
@@ -96,7 +108,8 @@ export function TagPicker({ contactId }: Props) {
   });
 
   const removeTagMut = useMutation({
-    mutationFn: (tagId: string) => contactsApi.removeContactTag(contactId, tagId),
+    mutationFn: (tagId: string) =>
+      contactsApi.removeContactTag(contactId, tagId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contacts", biz, "tags", contactId] });
     },
@@ -105,7 +118,10 @@ export function TagPicker({ contactId }: Props) {
   // Close popover when clicking outside
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
         setCreatingNew(false);
         setSearchTerm("");
@@ -199,13 +215,17 @@ export function TagPicker({ contactId }: Props) {
                           className="w-3 h-3 rounded-full flex-shrink-0"
                           style={{ backgroundColor: tag.colour }}
                         />
-                        <span className="text-[12px] text-text-primary">{tag.tag_name}</span>
+                        <span className="text-[12px] text-text-primary">
+                          {tag.tag_name}
+                        </span>
                       </button>
                     ))}
 
                     {filteredSuggestions.length === 0 && (
                       <div className="px-2 py-2 text-[11.5px] text-text-faint">
-                        {searchTerm ? `No tag matches "${searchTerm}"` : "No more tags to add"}
+                        {searchTerm
+                          ? `No tag matches "${searchTerm}"`
+                          : "No more tags to add"}
                       </div>
                     )}
                   </div>
@@ -222,7 +242,9 @@ export function TagPicker({ contactId }: Props) {
                     >
                       <Plus className="w-3.5 h-3.5 text-accent" />
                       <span className="text-[12px] text-accent font-semibold">
-                        {searchTerm ? `Create "${searchTerm}"` : "Create new tag"}
+                        {searchTerm
+                          ? `Create "${searchTerm}"`
+                          : "Create new tag"}
                       </span>
                     </button>
                   </div>
@@ -230,7 +252,9 @@ export function TagPicker({ contactId }: Props) {
               ) : (
                 /* New tag creation */
                 <div className="p-3">
-                  <div className="text-[12px] font-semibold text-text-primary mb-3">New Tag</div>
+                  <div className="text-[12px] font-semibold text-text-primary mb-3">
+                    New Tag
+                  </div>
                   <input
                     autoFocus
                     type="text"

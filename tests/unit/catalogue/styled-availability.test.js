@@ -14,7 +14,9 @@ jest.mock("../../../src/modules/catalogue/catalogue.events", () => ({
 jest.mock("../../../src/config/database", () => ({ transaction: jest.fn() }));
 jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
 
-const { availabilityState } = require("../../../src/modules/catalogue/styled.service");
+const {
+  availabilityState,
+} = require("../../../src/modules/catalogue/styled.service");
 
 describe("availabilityState", () => {
   test("stock on hand → in_stock", () => {

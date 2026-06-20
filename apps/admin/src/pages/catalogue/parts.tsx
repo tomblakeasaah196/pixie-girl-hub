@@ -26,7 +26,10 @@ export function Tabs({
   onChange: (key: string) => void;
 }) {
   return (
-    <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto" role="tablist">
+    <div
+      className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto"
+      role="tablist"
+    >
       {tabs.map((t) => {
         const on = t.key === active;
         return (
@@ -47,7 +50,9 @@ export function Tabs({
               <span
                 className={cn(
                   "text-[10.5px] tabular-nums px-1.5 py-0.5 rounded-full",
-                  on ? "bg-black/20 text-[#F4E9D9]" : "bg-text-primary/[0.08] text-text-faint",
+                  on
+                    ? "bg-black/20 text-[#F4E9D9]"
+                    : "bg-text-primary/[0.08] text-text-faint",
                 )}
               >
                 {t.count}
@@ -61,7 +66,11 @@ export function Tabs({
 }
 
 /* ── Availability pill (production-framed pre-order, P0-7) ── */
-export function AvailabilityPill({ availability }: { availability?: Availability }) {
+export function AvailabilityPill({
+  availability,
+}: {
+  availability?: Availability;
+}) {
   if (!availability) return <Pill tone="neutral">—</Pill>;
   if (availability.state === "in_stock") {
     return <Pill tone="success">In stock · {availability.available}</Pill>;
@@ -125,7 +134,10 @@ export function CardGridSkeleton({ count = 8 }: { count?: number }) {
   return (
     <CardGrid>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="glass rounded-[var(--radius)] shadow-glass p-4 h-[148px] animate-pulse">
+        <div
+          key={i}
+          className="glass rounded-[var(--radius)] shadow-glass p-4 h-[148px] animate-pulse"
+        >
           <div className="h-3 w-16 rounded bg-text-primary/[0.08] mb-3" />
           <div className="h-4 w-3/4 rounded bg-text-primary/[0.1] mb-2" />
           <div className="h-3 w-1/2 rounded bg-text-primary/[0.07]" />

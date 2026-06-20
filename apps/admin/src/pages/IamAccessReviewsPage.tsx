@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import {
-  ClipboardCheck, Plus, Check, X as XIcon, Flag, ChevronLeft,
-  ChevronRight, FileSpreadsheet, FileText,
+  ClipboardCheck,
+  Plus,
+  Check,
+  X as XIcon,
+  Flag,
+  ChevronLeft,
+  ChevronRight,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 import { Card, Pill } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
@@ -34,12 +41,13 @@ const STATUS_LABEL: Record<string, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
 };
-const DECISION_TONE: Record<string, "success" | "danger" | "warn" | "neutral"> = {
-  pending: "neutral",
-  approved: "success",
-  revoked: "danger",
-  flagged: "warn",
-};
+const DECISION_TONE: Record<string, "success" | "danger" | "warn" | "neutral"> =
+  {
+    pending: "neutral",
+    approved: "success",
+    revoked: "danger",
+    flagged: "warn",
+  };
 
 /* ── Page ──────────────────────────────────────────────────── */
 export function IamAccessReviewsPage() {
@@ -48,13 +56,25 @@ export function IamAccessReviewsPage() {
     { label: "Access Reviews" },
   ]);
 
-  const [filters, setFilters] = useState<ReviewFilters>({ page: 1, per_page: 20 });
+  const [filters, setFilters] = useState<ReviewFilters>({
+    page: 1,
+    per_page: 20,
+  });
   const [statusFilter, setStatusFilter] = useState("");
-  const reviews = useAccessReviews({ ...filters, status: statusFilter || undefined });
+  const reviews = useAccessReviews({
+    ...filters,
+    status: statusFilter || undefined,
+  });
   const [showCreate, setShowCreate] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  if (reviews.isError) return <ErrorState message="Failed to load reviews" onRetry={() => reviews.refetch()} />;
+  if (reviews.isError)
+    return (
+      <ErrorState
+        message="Failed to load reviews"
+        onRetry={() => reviews.refetch()}
+      />
+    );
 
   const rows = reviews.data?.rows ?? [];
   const total = reviews.data?.total ?? 0;
@@ -70,8 +90,12 @@ export function IamAccessReviewsPage() {
             <ClipboardCheck className="w-5 h-5" />
           </span>
           <div>
-            <h2 className="font-display text-[22px] font-medium">Access Reviews</h2>
-            <p className="text-text-muted text-[13px]">Periodic attestation of who can do what</p>
+            <h2 className="font-display text-[22px] font-medium">
+              Access Reviews
+            </h2>
+            <p className="text-text-muted text-[13px]">
+              Periodic attestation of who can do what
+            </p>
           </div>
         </div>
         <button
@@ -87,7 +111,10 @@ export function IamAccessReviewsPage() {
         <select
           className="px-3 py-2 rounded-xl bg-panel border border-border-c text-[13px]"
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setFilters((f) => ({ ...f, page: 1 })); }}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setFilters((f) => ({ ...f, page: 1 }));
+          }}
         >
           <option value="">All statuses</option>
           <option value="open">Open</option>
@@ -95,26 +122,38 @@ export function IamAccessReviewsPage() {
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
         </select>
-        <span className="text-text-faint text-[12px] ml-auto">{total} review{total !== 1 ? "s" : ""}</span>
+        <span className="text-text-faint text-[12px] ml-auto">
+          {total} review{total !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {/* Reviews list */}
       {reviews.isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="p-5 animate-pulse h-20"><span /></Card>
+            <Card key={i} className="p-5 animate-pulse h-20">
+              <span />
+            </Card>
           ))}
         </div>
       ) : rows.length === 0 ? (
         <Card className="p-10 text-center">
           <ClipboardCheck className="w-10 h-10 text-text-faint mx-auto mb-3" />
-          <p className="text-text-muted text-[14px] font-medium">No access reviews yet</p>
-          <p className="text-text-faint text-[12px] mt-1">Create a review to snapshot and attest current user access</p>
+          <p className="text-text-muted text-[14px] font-medium">
+            No access reviews yet
+          </p>
+          <p className="text-text-faint text-[12px] mt-1">
+            Create a review to snapshot and attest current user access
+          </p>
         </Card>
       ) : (
         <div className="space-y-2">
           {rows.map((r) => (
-            <ReviewRow key={r.review_id} review={r} onSelect={() => setSelectedId(r.review_id)} />
+            <ReviewRow
+              key={r.review_id}
+              review={r}
+              onSelect={() => setSelectedId(r.review_id)}
+            />
           ))}
         </div>
       )}
@@ -143,34 +182,55 @@ export function IamAccessReviewsPage() {
       )}
 
       {/* Create modal */}
-      <CreateReviewModal open={showCreate} onClose={() => setShowCreate(false)} />
+      <CreateReviewModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+      />
 
       {/* Review detail drawer */}
-      <ReviewDetailDrawer reviewId={selectedId} onClose={() => setSelectedId(null)} />
+      <ReviewDetailDrawer
+        reviewId={selectedId}
+        onClose={() => setSelectedId(null)}
+      />
     </div>
   );
 }
 
 /* ── Review row ─────────────────────────────────────────────── */
-function ReviewRow({ review: r, onSelect }: { review: AccessReview; onSelect: () => void }) {
+function ReviewRow({
+  review: r,
+  onSelect,
+}: {
+  review: AccessReview;
+  onSelect: () => void;
+}) {
   const stats = r.entry_stats;
   const totalEntries = stats?.total ?? 0;
-  const decided = (stats?.approved ?? 0) + (stats?.revoked ?? 0) + (stats?.flagged ?? 0);
+  const decided =
+    (stats?.approved ?? 0) + (stats?.revoked ?? 0) + (stats?.flagged ?? 0);
   const pct = totalEntries > 0 ? Math.round((decided / totalEntries) * 100) : 0;
 
   return (
     <Card className="p-4 cursor-pointer hover:border-accent/30 transition-colors">
       <button onClick={onSelect} className="w-full text-left">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="font-display text-[15px] font-medium flex-1 min-w-0 truncate">{r.title}</span>
-          <Pill tone={STATUS_TONE[r.status] ?? "neutral"} dot={false}>{STATUS_LABEL[r.status] ?? r.status}</Pill>
+          <span className="font-display text-[15px] font-medium flex-1 min-w-0 truncate">
+            {r.title}
+          </span>
+          <Pill tone={STATUS_TONE[r.status] ?? "neutral"} dot={false}>
+            {STATUS_LABEL[r.status] ?? r.status}
+          </Pill>
         </div>
         <div className="flex items-center gap-4 mt-2 text-[12px] text-text-muted">
           <span>Initiated {new Date(r.initiated_at).toLocaleDateString()}</span>
-          {r.due_date && <span>Due {new Date(r.due_date).toLocaleDateString()}</span>}
+          {r.due_date && (
+            <span>Due {new Date(r.due_date).toLocaleDateString()}</span>
+          )}
           {totalEntries > 0 && (
             <span className="flex items-center gap-2">
-              <span>{decided}/{totalEntries} decided</span>
+              <span>
+                {decided}/{totalEntries} decided
+              </span>
               <span className="w-20 h-1.5 bg-text-faint/20 rounded-full overflow-hidden">
                 <span
                   className="h-full bg-success rounded-full block transition-all"
@@ -186,7 +246,13 @@ function ReviewRow({ review: r, onSelect }: { review: AccessReview; onSelect: ()
 }
 
 /* ── Create review modal ────────────────────────────────────── */
-function CreateReviewModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreateReviewModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -195,7 +261,11 @@ function CreateReviewModal({ open, onClose }: { open: boolean; onClose: () => vo
   function handleCreate() {
     if (!title.trim()) return;
     create.mutate(
-      { title: title.trim(), description: description.trim() || undefined, due_date: dueDate || undefined },
+      {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        due_date: dueDate || undefined,
+      },
       {
         onSuccess: () => {
           setTitle("");
@@ -211,10 +281,13 @@ function CreateReviewModal({ open, onClose }: { open: boolean; onClose: () => vo
     <Modal open={open} onClose={onClose} title="New Access Review">
       <div className="space-y-4">
         <p className="text-text-muted text-[13px]">
-          This will snapshot every active user with their current roles and permissions for attestation.
+          This will snapshot every active user with their current roles and
+          permissions for attestation.
         </p>
         <div>
-          <label className="text-[12px] font-medium text-text-muted block mb-1">Title *</label>
+          <label className="text-[12px] font-medium text-text-muted block mb-1">
+            Title *
+          </label>
           <input
             type="text"
             className="w-full px-3 py-2 rounded-xl bg-panel border border-border-c text-[13px]"
@@ -224,7 +297,9 @@ function CreateReviewModal({ open, onClose }: { open: boolean; onClose: () => vo
           />
         </div>
         <div>
-          <label className="text-[12px] font-medium text-text-muted block mb-1">Description</label>
+          <label className="text-[12px] font-medium text-text-muted block mb-1">
+            Description
+          </label>
           <textarea
             className="w-full px-3 py-2 rounded-xl bg-panel border border-border-c text-[13px] min-h-[80px] resize-y"
             placeholder="Quarterly attestation of staff access..."
@@ -233,7 +308,9 @@ function CreateReviewModal({ open, onClose }: { open: boolean; onClose: () => vo
           />
         </div>
         <div>
-          <label className="text-[12px] font-medium text-text-muted block mb-1">Due date</label>
+          <label className="text-[12px] font-medium text-text-muted block mb-1">
+            Due date
+          </label>
           <input
             type="date"
             className="w-full px-3 py-2 rounded-xl bg-panel border border-border-c text-[13px]"
@@ -262,7 +339,13 @@ function CreateReviewModal({ open, onClose }: { open: boolean; onClose: () => vo
 }
 
 /* ── Review detail drawer ───────────────────────────────────── */
-function ReviewDetailDrawer({ reviewId, onClose }: { reviewId: string | null; onClose: () => void }) {
+function ReviewDetailDrawer({
+  reviewId,
+  onClose,
+}: {
+  reviewId: string | null;
+  onClose: () => void;
+}) {
   const review = useAccessReview(reviewId);
   const updateReview = useUpdateReview();
   const decideEntry = useDecideEntry();
@@ -284,7 +367,10 @@ function ReviewDetailDrawer({ reviewId, onClose }: { reviewId: string | null; on
     }
   }
 
-  function handleDecide(entryId: string, decision: "approved" | "revoked" | "flagged") {
+  function handleDecide(
+    entryId: string,
+    decision: "approved" | "revoked" | "flagged",
+  ) {
     if (!reviewId) return;
     const note = noteEntryId === entryId ? noteText : undefined;
     decideEntry.mutate(
@@ -308,7 +394,9 @@ function ReviewDetailDrawer({ reviewId, onClose }: { reviewId: string | null; on
       open={!!reviewId}
       onClose={onClose}
       title={r?.title ?? "Access Review"}
-      subtitle={r ? `${STATUS_LABEL[r.status]} · ${entries.length} entries` : undefined}
+      subtitle={
+        r ? `${STATUS_LABEL[r.status]} · ${entries.length} entries` : undefined
+      }
       wide
       footer={
         r && r.status !== "completed" && r.status !== "cancelled" ? (
@@ -360,7 +448,10 @@ function ReviewDetailDrawer({ reviewId, onClose }: { reviewId: string | null; on
       {review.isLoading ? (
         <div className="space-y-3 p-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 rounded-xl bg-text-faint/10 animate-pulse" />
+            <div
+              key={i}
+              className="h-16 rounded-xl bg-text-faint/10 animate-pulse"
+            />
           ))}
         </div>
       ) : !r ? (
@@ -371,21 +462,43 @@ function ReviewDetailDrawer({ reviewId, onClose }: { reviewId: string | null; on
           {stats && (
             <div className="grid grid-cols-4 gap-3">
               {[
-                { label: "Pending", value: stats.pending, tone: "text-text-muted" },
-                { label: "Approved", value: stats.approved, tone: "text-success" },
+                {
+                  label: "Pending",
+                  value: stats.pending,
+                  tone: "text-text-muted",
+                },
+                {
+                  label: "Approved",
+                  value: stats.approved,
+                  tone: "text-success",
+                },
                 { label: "Revoked", value: stats.revoked, tone: "text-danger" },
                 { label: "Flagged", value: stats.flagged, tone: "text-warn" },
               ].map((s) => (
-                <div key={s.label} className="text-center p-3 rounded-xl bg-text-faint/5">
-                  <div className={cn("font-display text-[20px] font-medium", s.tone)}>{s.value}</div>
-                  <div className="text-[11px] text-text-faint mt-0.5">{s.label}</div>
+                <div
+                  key={s.label}
+                  className="text-center p-3 rounded-xl bg-text-faint/5"
+                >
+                  <div
+                    className={cn(
+                      "font-display text-[20px] font-medium",
+                      s.tone,
+                    )}
+                  >
+                    {s.value}
+                  </div>
+                  <div className="text-[11px] text-text-faint mt-0.5">
+                    {s.label}
+                  </div>
                 </div>
               ))}
             </div>
           )}
 
           {r.description && (
-            <p className="text-text-muted text-[13px] leading-relaxed">{r.description}</p>
+            <p className="text-text-muted text-[13px] leading-relaxed">
+              {r.description}
+            </p>
           )}
 
           {/* Entry list */}
@@ -399,7 +512,9 @@ function ReviewDetailDrawer({ reviewId, onClose }: { reviewId: string | null; on
                 isDeciding={decideEntry.isPending}
                 noteOpen={noteEntryId === entry.entry_id}
                 onToggleNote={() => {
-                  setNoteEntryId(noteEntryId === entry.entry_id ? null : entry.entry_id);
+                  setNoteEntryId(
+                    noteEntryId === entry.entry_id ? null : entry.entry_id,
+                  );
                   setNoteText("");
                 }}
                 noteText={noteText}
@@ -433,7 +548,8 @@ function EntryCard({
   noteText: string;
   onNoteChange: (v: string) => void;
 }) {
-  const canDecide = reviewStatus !== "completed" && reviewStatus !== "cancelled";
+  const canDecide =
+    reviewStatus !== "completed" && reviewStatus !== "cancelled";
 
   return (
     <div className="rounded-xl border border-border-c bg-panel p-4">
@@ -445,15 +561,22 @@ function EntryCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[14px] font-medium truncate">{e.user_name}</span>
-            {e.role_name && <Pill tone="neutral" dot={false}>{e.role_name}</Pill>}
+            <span className="text-[14px] font-medium truncate">
+              {e.user_name}
+            </span>
+            {e.role_name && (
+              <Pill tone="neutral" dot={false}>
+                {e.role_name}
+              </Pill>
+            )}
             <Pill tone={DECISION_TONE[e.decision] ?? "neutral"} dot={false}>
               {e.decision}
             </Pill>
           </div>
           <div className="text-[11px] text-text-faint mt-0.5">
             {e.user_email ?? "No email"} · {e.businesses.join(", ")}
-            {e.permissions_snapshot.length > 0 && ` · ${e.permissions_snapshot.length} permissions`}
+            {e.permissions_snapshot.length > 0 &&
+              ` · ${e.permissions_snapshot.length} permissions`}
           </div>
         </div>
       </div>

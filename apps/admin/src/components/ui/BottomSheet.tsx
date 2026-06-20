@@ -9,7 +9,12 @@ interface BottomSheetProps {
   children: ReactNode;
 }
 
-export function BottomSheet({ open, onClose, title, children }: BottomSheetProps) {
+export function BottomSheet({
+  open,
+  onClose,
+  title,
+  children,
+}: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);

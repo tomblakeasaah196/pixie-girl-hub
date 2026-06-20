@@ -69,9 +69,10 @@ export interface TimelineParams {
 }
 
 export const getContactTimeline = (id: string, params: TimelineParams = {}) =>
-  api.get<{ data: TimelineEvent[]; meta: { total: number; has_more: boolean } }>(
-    `${C}/${id}/timeline${qs(params)}`,
-  );
+  api.get<{
+    data: TimelineEvent[];
+    meta: { total: number; has_more: boolean };
+  }>(`${C}/${id}/timeline${qs(params)}`);
 
 // ── Addresses ────────────────────────────────────────────────────────────
 
@@ -85,7 +86,8 @@ export const updateAddress = (
   contactId: string,
   addressId: string,
   input: Partial<AddressCreateInput>,
-) => api.patch<ContactAddress>(`${C}/${contactId}/addresses/${addressId}`, input);
+) =>
+  api.patch<ContactAddress>(`${C}/${contactId}/addresses/${addressId}`, input);
 
 export const deleteAddress = (contactId: string, addressId: string) =>
   api.delete<void>(`${C}/${contactId}/addresses/${addressId}`);
@@ -102,10 +104,15 @@ export const createSegment = (input: {
 
 export const updateSegment = (
   id: string,
-  input: Partial<{ name: string; description: string; filter: Record<string, unknown> }>,
+  input: Partial<{
+    name: string;
+    description: string;
+    filter: Record<string, unknown>;
+  }>,
 ) => api.patch<ContactSegment>(`${C}/segments/${id}`, input);
 
-export const deleteSegment = (id: string) => api.delete<void>(`${C}/segments/${id}`);
+export const deleteSegment = (id: string) =>
+  api.delete<void>(`${C}/segments/${id}`);
 
 // ── CRM: Pipelines ───────────────────────────────────────────────────────
 
@@ -144,7 +151,11 @@ export const setDealStatus = (
   id: string,
   status: "won" | "lost" | "cancelled",
   lostReason?: string,
-) => api.post<Deal>(`${CRM}/deals/${id}/status`, { status, lost_reason: lostReason });
+) =>
+  api.post<Deal>(`${CRM}/deals/${id}/status`, {
+    status,
+    lost_reason: lostReason,
+  });
 
 // ── CRM: Activities ──────────────────────────────────────────────────────
 
@@ -176,18 +187,32 @@ export const addNote = (dealId: string, body: string, visibility?: string) =>
 // ── CRM: Preferences ────────────────────────────────────────────────────
 
 export const getPreferences = (contactId: string) =>
-  api.get<CustomerPreferences | null>(`${CRM}/customers/${contactId}/preferences`);
+  api.get<CustomerPreferences | null>(
+    `${CRM}/customers/${contactId}/preferences`,
+  );
 
-export const upsertPreferences = (contactId: string, input: Partial<CustomerPreferences>) =>
-  api.put<CustomerPreferences>(`${CRM}/customers/${contactId}/preferences`, input);
+export const upsertPreferences = (
+  contactId: string,
+  input: Partial<CustomerPreferences>,
+) =>
+  api.put<CustomerPreferences>(
+    `${CRM}/customers/${contactId}/preferences`,
+    input,
+  );
 
 // ── CRM: Measurements ───────────────────────────────────────────────────
 
 export const listMeasurements = (contactId: string) =>
   api.get<CustomerMeasurement[]>(`${CRM}/customers/${contactId}/measurements`);
 
-export const addMeasurement = (contactId: string, input: Partial<CustomerMeasurement>) =>
-  api.post<CustomerMeasurement>(`${CRM}/customers/${contactId}/measurements`, input);
+export const addMeasurement = (
+  contactId: string,
+  input: Partial<CustomerMeasurement>,
+) =>
+  api.post<CustomerMeasurement>(
+    `${CRM}/customers/${contactId}/measurements`,
+    input,
+  );
 
 // ── CRM: Churn ──────────────────────────────────────────────────────────
 
@@ -199,8 +224,7 @@ export const listChurnScores = (contactId: string) =>
 export const listContactTags = (contactId: string) =>
   api.get<ContactTag[]>(`${C}/${contactId}/tags`);
 
-export const listAllTags = () =>
-  api.get<ContactTag[]>(`${C}/tags`);
+export const listAllTags = () => api.get<ContactTag[]>(`${C}/tags`);
 
 export const addContactTag = (
   contactId: string,
@@ -219,7 +243,10 @@ export const deleteTag = (tagId: string) =>
   api.delete<void>(`${C}/tags/${tagId}`);
 
 export const mergeTags = (sourceTagId: string, targetTagId: string) =>
-  api.post<void>(`${C}/tags/merge`, { source_tag_id: sourceTagId, target_tag_id: targetTagId });
+  api.post<void>(`${C}/tags/merge`, {
+    source_tag_id: sourceTagId,
+    target_tag_id: targetTagId,
+  });
 
 // ── Contact-level activities (no deal required) ───────────────────────────
 

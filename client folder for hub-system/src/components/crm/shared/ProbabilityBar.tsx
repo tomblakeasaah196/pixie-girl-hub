@@ -11,7 +11,12 @@ const TONES = [
   { max: 25, bg: "bg-state-danger", text: "text-state-danger", label: "Cold" },
   { max: 50, bg: "bg-state-warn", text: "text-state-warn", label: "Warm" },
   { max: 75, bg: "bg-accent2", text: "text-accent2", label: "Hot" },
-  { max: 100, bg: "bg-brand-accent", text: "text-brand-accent", label: "Likely" },
+  {
+    max: 100,
+    bg: "bg-brand-accent",
+    text: "text-brand-accent",
+    label: "Likely",
+  },
 ];
 
 export function ProbabilityBar({

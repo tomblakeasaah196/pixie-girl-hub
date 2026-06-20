@@ -24,10 +24,8 @@ interface State {
 
 function looksLikeChunkError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error ?? "");
-  return (
-    /loading chunk|dynamically imported module|failed to fetch|importing a module script/i.test(
-      msg,
-    )
+  return /loading chunk|dynamically imported module|failed to fetch|importing a module script/i.test(
+    msg,
   );
 }
 
@@ -61,7 +59,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <TriangleAlert className="h-6 w-6" />
           </div>
           <h2 className="font-display text-2xl text-brand-cream">
-            {isChunkError ? "A new version is available" : "Something went wrong"}
+            {isChunkError
+              ? "A new version is available"
+              : "Something went wrong"}
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-brand-cloud">
             {isChunkError

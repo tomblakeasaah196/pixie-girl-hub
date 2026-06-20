@@ -212,9 +212,12 @@ export default function PONew() {
           <div className="mb-5 flex items-start gap-3 rounded-xl border border-brand-accent/30 bg-brand-accent/[0.06] px-4 py-3">
             <Zap className="h-4 w-4 text-brand-accent mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-medium text-brand-accent">Quick purchase mode</p>
+              <p className="text-sm font-medium text-brand-accent">
+                Quick purchase mode
+              </p>
               <p className="text-xs text-brand-smoke mt-0.5">
-                After creating the PO you'll be taken straight to receive the goods — no extra steps.
+                After creating the PO you'll be taken straight to receive the
+                goods — no extra steps.
               </p>
             </div>
           </div>
@@ -229,10 +232,7 @@ export default function PONew() {
           </h1>
         </header>
 
-        <form
-          onSubmit={handleSubmit(submit)}
-          className="space-y-6"
-        >
+        <form onSubmit={handleSubmit(submit)} className="space-y-6">
           <Card className="p-5 sm:p-6 space-y-4">
             <SupplierSearchInput
               value={selectedSupplier}

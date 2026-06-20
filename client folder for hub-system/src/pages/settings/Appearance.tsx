@@ -392,9 +392,9 @@ export default function Appearance() {
               </div>
 
               <p className="text-[0.7rem] text-brand-smoke mb-4">
-                Set the three accents, pick dark or light, then Generate —
-                the full scale (surfaces, text, variants) is derived with
-                contrast checks. Fine-tune any token under Advanced.
+                Set the three accents, pick dark or light, then Generate — the
+                full scale (surfaces, text, variants) is derived with contrast
+                checks. Fine-tune any token under Advanced.
               </p>
 
               <div className="grid gap-4 sm:grid-cols-3">
@@ -447,7 +447,9 @@ export default function Appearance() {
                 onClick={() => setAdvanced((v) => !v)}
                 className="mt-5 text-[0.65rem] uppercase tracking-wide text-brand-accent hover:text-brand-accent-glow"
               >
-                {advanced ? "Hide advanced tokens" : "Advanced: edit every token"}
+                {advanced
+                  ? "Hide advanced tokens"
+                  : "Advanced: edit every token"}
               </button>
               {advanced && (
                 <div className="mt-4 space-y-4">

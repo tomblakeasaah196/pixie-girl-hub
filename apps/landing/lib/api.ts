@@ -22,7 +22,9 @@ function apiBase(): string {
 }
 
 /** Fetch a campaign by slug. Returns null on 404 so callers can render notFound(). */
-export async function fetchCampaign(slug: string): Promise<LandingPayload | null> {
+export async function fetchCampaign(
+  slug: string,
+): Promise<LandingPayload | null> {
   const host = headers().get("host") || "";
   const hostName = host.split(":")[0];
   const brandHint = headers().get("x-brand-context") || undefined;
@@ -48,6 +50,60 @@ export async function fetchCampaign(slug: string): Promise<LandingPayload | null
   }
   const json = (await res.json()) as { data?: LandingPayload };
   return (json?.data ?? (json as unknown as LandingPayload)) || null;
+}
+
+/** Fetch the sales index (storefront root). Returns the active/upcoming/past campaign summaries. */
+export async function fetchSalesIndex(): Promise<{
+  brand: string;
+  active: { slug: string; name: string; hero_image_url?: string; state: "before" | "live" | "ended" } | null;
+  upcoming: Array<{ slug: string; name: string; hero_image_url?: string; state: "before" | "live" | "ended"; starts_at: string }>;
+  past: Array<{ slug: string; name: string; hero_image_url?: string; state: "before" | "live" | "ended"; ends_at: string }>;
+} | null> {
+  const host = headers().get("host") || "";
+  const hostName = host.split(":")[0];
+  const brandHint = headers().get("x-brand-context") || undefined;
+  const url = `${apiBase()}/api/public/sale`;
+  const init: RequestInit = {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Host: hostName,
+      "X-Forwarded-Host": hostName,
+      ...(brandHint ? { "X-Brand-Context": brandHint } : {}),
+    },
+    next: { revalidate: 5 },
+  };
+  const res = await fetch(url, init);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Hub returned ${res.status} for /api/public/sale`);
+  }
+  const json = (await res.json()) as { data?: any };
+  return json?.data ?? null;
+}
+
+/** Fetch the published landing page config. Returns null on 404 if never published. */
+export async function fetchPublishedLanding(brandKey?: string) {
+  const host = headers().get("host") || "";
+  const hostName = host.split(":")[0];
+  const url = `${apiBase()}/api/public/landing${brandKey ? `?brand=${encodeURIComponent(brandKey)}` : ""}`;
+  const init: RequestInit = {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Host: hostName,
+      "X-Forwarded-Host": hostName,
+      ...(brandKey ? { "X-Brand-Context": brandKey } : {}),
+    },
+    next: { revalidate: 60 },
+  };
+  const res = await fetch(url, init);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Hub returned ${res.status} for /api/public/landing`);
+  }
+  const json = (await res.json()) as { data?: any };
+  return json?.data ?? null;
 }
 
 export function apiBaseUrl(): string {

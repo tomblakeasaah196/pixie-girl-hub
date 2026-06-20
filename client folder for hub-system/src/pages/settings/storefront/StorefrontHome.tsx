@@ -77,10 +77,10 @@ export default function StorefrontHome() {
             Storefront <span className="italic text-brand-accent">Content</span>
           </h1>
           <p className="mt-3 text-sm sm:text-base text-brand-cloud max-w-2xl">
-            Everything on the public storefront that's driven from the ERP —
-            the homepage hero and section copy, the "Four formats" cards, and
-            how each scent is presented. Product prices, stock and galleries
-            still come from the catalogue.
+            Everything on the public storefront that's driven from the ERP — the
+            homepage hero and section copy, the "Four formats" cards, and how
+            each scent is presented. Product prices, stock and galleries still
+            come from the catalogue.
           </p>
         </header>
 

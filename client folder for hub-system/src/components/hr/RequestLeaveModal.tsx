@@ -65,7 +65,11 @@ export function RequestLeaveModal({
       open={open}
       onClose={onClose}
       title="Request leave"
-      description={type === "unpaid" ? "Unpaid leave is deducted from your pay." : undefined}
+      description={
+        type === "unpaid"
+          ? "Unpaid leave is deducted from your pay."
+          : undefined
+      }
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -75,7 +79,9 @@ export function RequestLeaveModal({
             onClick={() => mut.mutate()}
             disabled={!start || !end || days <= 0 || mut.isPending}
           >
-            {mut.isPending ? "Submitting…" : `Submit${days ? ` · ${days} day${days > 1 ? "s" : ""}` : ""}`}
+            {mut.isPending
+              ? "Submitting…"
+              : `Submit${days ? ` · ${days} day${days > 1 ? "s" : ""}` : ""}`}
           </Button>
         </>
       }

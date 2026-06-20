@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { FileText, Plus, ArrowRight, ArrowLeft, Check, Trash2 } from "lucide-react";
+import {
+  FileText,
+  Plus,
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Trash2,
+} from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button, Card, MoneyText } from "@/components/ui/primitives";
 import { FormSection, Field, TextInput } from "@/components/ui/Form";
@@ -32,11 +39,16 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
 
   // Step 2: Cash returned
   const [cashReturned, setCashReturned] = useState("");
-  const [returnMethod, setReturnMethod] = useState<"cash" | "bank_transfer" | "offset_advance">("cash");
+  const [returnMethod, setReturnMethod] = useState<
+    "cash" | "bank_transfer" | "offset_advance"
+  >("cash");
   const [returnTxnId, setReturnTxnId] = useState("");
 
   const disbursed = Number(r.amount_disbursed_ngn || r.amount_requested_ngn);
-  const receiptsTotal = receipts.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const receiptsTotal = receipts.reduce(
+    (sum, e) => sum + (Number(e.amount) || 0),
+    0,
+  );
   const returned = Number(cashReturned) || 0;
   const accounted = receiptsTotal + returned;
   const shortfall = disbursed - accounted;
@@ -44,12 +56,20 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
   function addReceipt() {
     setReceipts((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), amount: "", paid_to: "", paid_on: "", description: "" },
+      {
+        id: crypto.randomUUID(),
+        amount: "",
+        paid_to: "",
+        paid_on: "",
+        description: "",
+      },
     ]);
   }
 
   function updateReceipt(id: string, field: keyof ReceiptEntry, value: string) {
-    setReceipts((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+    setReceipts((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)),
+    );
   }
 
   function removeReceipt(id: string) {
@@ -62,7 +82,10 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
         id: r.cash_request_id,
         input: {
           settled_total_receipts_ngn: receiptsTotal,
-          notes: returned > 0 ? `Cash returned: ${money(returned)} via ${returnMethod}` : undefined,
+          notes:
+            returned > 0
+              ? `Cash returned: ${money(returned)} via ${returnMethod}`
+              : undefined,
         },
       },
       { onSuccess: onClose },
@@ -85,19 +108,35 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
         <div className="flex gap-2 w-full justify-between">
           <div>
             {step > 1 && (
-              <Button variant="ghost" size="sm" onClick={() => setStep((s) => (s - 1) as Step)} icon={<ArrowLeft className="w-3.5 h-3.5" />}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep((s) => (s - 1) as Step)}
+                icon={<ArrowLeft className="w-3.5 h-3.5" />}
+              >
                 Back
               </Button>
             )}
           </div>
           <div className="flex gap-2">
             {step < 3 && (
-              <Button variant="primary" size="sm" onClick={() => setStep((s) => (s + 1) as Step)} icon={<ArrowRight className="w-3.5 h-3.5" />}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setStep((s) => (s + 1) as Step)}
+                icon={<ArrowRight className="w-3.5 h-3.5" />}
+              >
                 Next
               </Button>
             )}
             {step === 3 && (
-              <Button variant="primary" size="sm" disabled={isBusy} onClick={handleConfirm} icon={<Check className="w-3.5 h-3.5" />}>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={isBusy}
+                onClick={handleConfirm}
+                icon={<Check className="w-3.5 h-3.5" />}
+              >
                 {isBusy ? "Settling…" : "Confirm Settlement"}
               </Button>
             )}
@@ -121,7 +160,9 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
                       : "bg-text-primary/[0.04] text-text-faint",
                 )}
               >
-                <span className="w-4 h-4 rounded-full grid place-items-center text-[9px] bg-current/20">{i + 1}</span>
+                <span className="w-4 h-4 rounded-full grid place-items-center text-[9px] bg-current/20">
+                  {i + 1}
+                </span>
                 <span className="hidden sm:inline">{label}</span>
               </div>
             </div>
@@ -138,16 +179,37 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-500",
-                accounted >= disbursed ? "bg-success" : accounted > 0 ? "bg-warn" : "bg-text-primary/10",
+                accounted >= disbursed
+                  ? "bg-success"
+                  : accounted > 0
+                    ? "bg-warn"
+                    : "bg-text-primary/10",
               )}
-              style={{ width: `${Math.min(100, (accounted / disbursed) * 100)}%` }}
+              style={{
+                width: `${Math.min(100, (accounted / disbursed) * 100)}%`,
+              }}
             />
           </div>
           <div className="flex justify-between text-[11px] mt-1.5">
-            <span className="text-text-faint">Receipts: {money(receiptsTotal)}</span>
+            <span className="text-text-faint">
+              Receipts: {money(receiptsTotal)}
+            </span>
             <span className="text-text-faint">Returned: {money(returned)}</span>
-            <span className={cn("font-bold", shortfall > 0 ? "text-warn" : shortfall < 0 ? "text-info" : "text-success")}>
-              {shortfall > 0 ? `Shortfall: ${money(shortfall)}` : shortfall < 0 ? `Over: ${money(Math.abs(shortfall))}` : "Balanced"}
+            <span
+              className={cn(
+                "font-bold",
+                shortfall > 0
+                  ? "text-warn"
+                  : shortfall < 0
+                    ? "text-info"
+                    : "text-success",
+              )}
+            >
+              {shortfall > 0
+                ? `Shortfall: ${money(shortfall)}`
+                : shortfall < 0
+                  ? `Over: ${money(Math.abs(shortfall))}`
+                  : "Balanced"}
             </span>
           </div>
         </Card>
@@ -157,14 +219,27 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="micro">Receipt Items</div>
-              <Button variant="secondary" size="sm" onClick={addReceipt} icon={<Plus className="w-3.5 h-3.5" />}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={addReceipt}
+                icon={<Plus className="w-3.5 h-3.5" />}
+              >
                 Add Receipt
               </Button>
             </div>
             {receipts.length === 0 && (
               <Card className="p-6 text-center">
-                <p className="text-text-muted text-sm mb-3">No receipts added yet. Add receipts to account for how the advance was spent.</p>
-                <Button variant="primary" size="sm" onClick={addReceipt} icon={<Plus className="w-3.5 h-3.5" />}>
+                <p className="text-text-muted text-sm mb-3">
+                  No receipts added yet. Add receipts to account for how the
+                  advance was spent.
+                </p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={addReceipt}
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                >
                   Add First Receipt
                 </Button>
               </Card>
@@ -173,7 +248,10 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
               <Card key={entry.id} className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="micro">Receipt {idx + 1}</span>
-                  <button onClick={() => removeReceipt(entry.id)} className="text-danger hover:text-danger/80 p-1">
+                  <button
+                    onClick={() => removeReceipt(entry.id)}
+                    className="text-danger hover:text-danger/80 p-1"
+                  >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -184,7 +262,9 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
                       step="0.01"
                       min="0"
                       value={entry.amount}
-                      onChange={(e) => updateReceipt(entry.id, "amount", e.target.value)}
+                      onChange={(e) =>
+                        updateReceipt(entry.id, "amount", e.target.value)
+                      }
                       placeholder="0.00"
                       className="font-mono"
                     />
@@ -192,7 +272,9 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
                   <Field label="Paid To">
                     <TextInput
                       value={entry.paid_to}
-                      onChange={(e) => updateReceipt(entry.id, "paid_to", e.target.value)}
+                      onChange={(e) =>
+                        updateReceipt(entry.id, "paid_to", e.target.value)
+                      }
                       placeholder="Vendor name"
                     />
                   </Field>
@@ -202,13 +284,17 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
                     <TextInput
                       type="date"
                       value={entry.paid_on}
-                      onChange={(e) => updateReceipt(entry.id, "paid_on", e.target.value)}
+                      onChange={(e) =>
+                        updateReceipt(entry.id, "paid_on", e.target.value)
+                      }
                     />
                   </Field>
                   <Field label="Description">
                     <TextInput
                       value={entry.description}
-                      onChange={(e) => updateReceipt(entry.id, "description", e.target.value)}
+                      onChange={(e) =>
+                        updateReceipt(entry.id, "description", e.target.value)
+                      }
                       placeholder="What was purchased"
                     />
                   </Field>
@@ -221,7 +307,10 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
         {/* Step 2: Cash Returned */}
         {step === 2 && (
           <FormSection title="Cash Returned">
-            <Field label="Amount Returned (₦)" hint="how much cash are you returning?">
+            <Field
+              label="Amount Returned (₦)"
+              hint="how much cash are you returning?"
+            >
               <TextInput
                 type="number"
                 step="0.01"
@@ -236,20 +325,26 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
               <>
                 <Field label="Return Method">
                   <div className="flex gap-2">
-                    {(["cash", "bank_transfer", "offset_advance"] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setReturnMethod(m)}
-                        className={cn(
-                          "px-3 py-2 rounded-xl text-xs font-semibold border transition-all",
-                          returnMethod === m
-                            ? "bg-accent/20 border-accent/30 text-accent-glow"
-                            : "bg-text-primary/[0.04] border-transparent text-text-muted hover:bg-text-primary/[0.08]",
-                        )}
-                      >
-                        {m === "cash" ? "Cash" : m === "bank_transfer" ? "Bank Transfer" : "Offset Next Advance"}
-                      </button>
-                    ))}
+                    {(["cash", "bank_transfer", "offset_advance"] as const).map(
+                      (m) => (
+                        <button
+                          key={m}
+                          onClick={() => setReturnMethod(m)}
+                          className={cn(
+                            "px-3 py-2 rounded-xl text-xs font-semibold border transition-all",
+                            returnMethod === m
+                              ? "bg-accent/20 border-accent/30 text-accent-glow"
+                              : "bg-text-primary/[0.04] border-transparent text-text-muted hover:bg-text-primary/[0.08]",
+                          )}
+                        >
+                          {m === "cash"
+                            ? "Cash"
+                            : m === "bank_transfer"
+                              ? "Bank Transfer"
+                              : "Offset Next Advance"}
+                        </button>
+                      ),
+                    )}
                   </div>
                 </Field>
                 {returnMethod === "bank_transfer" && (
@@ -286,13 +381,21 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
                     {receipts.map((e) => (
                       <tr key={e.id} className="border-t hairline">
                         <td className="py-2">{e.paid_to || "—"}</td>
-                        <td className="py-2 text-text-muted">{e.description || "—"}</td>
-                        <td className="py-2 text-right font-mono">{money(Number(e.amount) || 0)}</td>
+                        <td className="py-2 text-text-muted">
+                          {e.description || "—"}
+                        </td>
+                        <td className="py-2 text-right font-mono">
+                          {money(Number(e.amount) || 0)}
+                        </td>
                       </tr>
                     ))}
                     <tr className="border-t-2 border-line font-bold">
-                      <td colSpan={2} className="py-2">Total Receipts</td>
-                      <td className="py-2 text-right font-mono">{money(receiptsTotal)}</td>
+                      <td colSpan={2} className="py-2">
+                        Total Receipts
+                      </td>
+                      <td className="py-2 text-right font-mono">
+                        {money(receiptsTotal)}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -308,7 +411,16 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
               </Card>
             )}
 
-            <Card className={cn("p-4 border-l-[3px]", shortfall > 0 ? "border-l-warn" : shortfall < 0 ? "border-l-info" : "border-l-success")}>
+            <Card
+              className={cn(
+                "p-4 border-l-[3px]",
+                shortfall > 0
+                  ? "border-l-warn"
+                  : shortfall < 0
+                    ? "border-l-info"
+                    : "border-l-success",
+              )}
+            >
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-text-muted">Disbursed</span>
@@ -319,8 +431,23 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
                   <span className="font-mono">{money(accounted)}</span>
                 </div>
                 <div className="flex justify-between font-bold border-t hairline pt-2">
-                  <span>{shortfall > 0 ? "Shortfall (payroll deduction)" : shortfall < 0 ? "Overspend" : "Balanced"}</span>
-                  <span className={cn("font-mono", shortfall > 0 ? "text-warn" : shortfall < 0 ? "text-info" : "text-success")}>
+                  <span>
+                    {shortfall > 0
+                      ? "Shortfall (payroll deduction)"
+                      : shortfall < 0
+                        ? "Overspend"
+                        : "Balanced"}
+                  </span>
+                  <span
+                    className={cn(
+                      "font-mono",
+                      shortfall > 0
+                        ? "text-warn"
+                        : shortfall < 0
+                          ? "text-info"
+                          : "text-success",
+                    )}
+                  >
                     {money(Math.abs(shortfall))}
                   </span>
                 </div>
@@ -329,7 +456,8 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
 
             {shortfall > 0 && (
               <div className="p-3 rounded-xl bg-warn/10 border border-warn/20 text-xs text-warn">
-                The shortfall of {money(shortfall)} will be flagged for payroll deduction per company policy.
+                The shortfall of {money(shortfall)} will be flagged for payroll
+                deduction per company policy.
               </div>
             )}
           </div>

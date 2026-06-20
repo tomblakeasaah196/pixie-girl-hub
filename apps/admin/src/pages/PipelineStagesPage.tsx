@@ -17,7 +17,13 @@ import {
   ErrorState,
 } from "@/components/ui/controls";
 import { Field, TextInput } from "@/components/ui/Form";
-import { Button, Card, Pill, EmptyState, Skeleton } from "@/components/ui/primitives";
+import {
+  Button,
+  Card,
+  Pill,
+  EmptyState,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 
 /**
@@ -61,7 +67,10 @@ function ColorInput({
 }
 
 export function PipelineStagesPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Pipeline Stages" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Pipeline Stages" },
+  ]);
   const active = useActiveBusiness();
   const [pipeline, setPipeline] = useState<Pipeline>("crm");
   const q = usePipelineStages(pipeline);
@@ -173,9 +182,7 @@ export function PipelineStagesPage() {
                 <StageRow
                   key={s.stage_id}
                   stage={s}
-                  onPatch={(patch) =>
-                    update.mutate({ id: s.stage_id, patch })
-                  }
+                  onPatch={(patch) => update.mutate({ id: s.stage_id, patch })}
                   onDelete={() => setConfirmDel(s)}
                 />
               ))}
@@ -203,8 +210,8 @@ export function PipelineStagesPage() {
         title="Delete stage"
         message={
           <>
-            Delete the stage{" "}
-            <strong>{confirmDel?.stage_label}</strong>? This cannot be undone.
+            Delete the stage <strong>{confirmDel?.stage_label}</strong>? This
+            cannot be undone.
           </>
         }
         confirmLabel="Delete"
@@ -257,7 +264,11 @@ function StageRow({
         <ColorInput value={colour} onChange={commitColour} />
       </div>
       <div className="w-[88px]">
-        <NumberField value={order} onChange={commitOrder} allowDecimal={false} />
+        <NumberField
+          value={order}
+          onChange={commitOrder}
+          allowDecimal={false}
+        />
       </div>
       <Toggle
         checked={stage.is_terminal}
@@ -382,7 +393,11 @@ function AddStageDrawer({
           <ColorInput value={colour} onChange={setColour} />
         </Field>
         <div className="flex flex-col gap-3 pt-1">
-          <Toggle checked={terminal} onChange={setTerminal} label="Terminal stage" />
+          <Toggle
+            checked={terminal}
+            onChange={setTerminal}
+            label="Terminal stage"
+          />
           <Toggle
             checked={positive}
             onChange={setPositive}

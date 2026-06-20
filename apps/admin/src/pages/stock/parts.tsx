@@ -19,7 +19,10 @@ export function Tabs({
   onChange: (key: string) => void;
 }) {
   return (
-    <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto" role="tablist">
+    <div
+      className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto"
+      role="tablist"
+    >
       {tabs.map((t) => {
         const on = t.key === active;
         return (
@@ -40,7 +43,9 @@ export function Tabs({
               <span
                 className={cn(
                   "text-[10.5px] tabular-nums px-1.5 py-0.5 rounded-full",
-                  on ? "bg-black/20 text-[#F4E9D9]" : "bg-text-primary/[0.08] text-text-faint",
+                  on
+                    ? "bg-black/20 text-[#F4E9D9]"
+                    : "bg-text-primary/[0.08] text-text-faint",
                 )}
               >
                 {t.count}
@@ -157,7 +162,11 @@ export function SeverityPill({ severity }: { severity: string }) {
 }
 
 export function FieldLabel({ children }: { children: ReactNode }) {
-  return <label className="block text-[12px] font-semibold text-text-muted uppercase tracking-wide mb-1.5">{children}</label>;
+  return (
+    <label className="block text-[12px] font-semibold text-text-muted uppercase tracking-wide mb-1.5">
+      {children}
+    </label>
+  );
 }
 
 export function TextInput({
@@ -235,14 +244,27 @@ export function Pagination({
   );
 }
 
-export function TableSkeleton({ cols = 5, rows = 6 }: { cols?: number; rows?: number }) {
+export function TableSkeleton({
+  cols = 5,
+  rows = 6,
+}: {
+  cols?: number;
+  rows?: number;
+}) {
   return (
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <tr key={i}>
           {Array.from({ length: cols }).map((_, j) => (
             <td key={j} className="p-[0_18px] h-[54px] border-b hairline">
-              <div className="h-3 w-3/4 rounded bg-text-primary/[0.08] animate-shimmer" style={{ backgroundSize: "400% 100%", background: "linear-gradient(90deg, rgb(var(--text)/.05) 25%, rgb(var(--text)/.1) 37%, rgb(var(--text)/.05) 63%)" }} />
+              <div
+                className="h-3 w-3/4 rounded bg-text-primary/[0.08] animate-shimmer"
+                style={{
+                  backgroundSize: "400% 100%",
+                  background:
+                    "linear-gradient(90deg, rgb(var(--text)/.05) 25%, rgb(var(--text)/.1) 37%, rgb(var(--text)/.05) 63%)",
+                }}
+              />
             </td>
           ))}
         </tr>

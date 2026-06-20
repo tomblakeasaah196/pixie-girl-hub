@@ -130,7 +130,11 @@ router.delete(
 router.get("/styled-products", can("view"), styled.list);
 // Brand-wide size-tier ladder + head-size guide (the "Size & Guide" modal).
 // Literal segments declared before :id so they are never shadowed.
-router.get("/styled-products/size-config", can("view"), styledVar.getSizeConfig);
+router.get(
+  "/styled-products/size-config",
+  can("view"),
+  styledVar.getSizeConfig,
+);
 router.put(
   "/styled-products/size-config",
   can("edit"),
@@ -212,7 +216,11 @@ router.delete(
 );
 
 // ── Styled colour × size variants ────────────────────────
-router.get("/styled-products/:id/variants", can("view"), styledVar.listVariants);
+router.get(
+  "/styled-products/:id/variants",
+  can("view"),
+  styledVar.listVariants,
+);
 // Bulk-generate the colour × size matrix ("all sizes" or a picked subset).
 // Literal 'bulk' declared before the :variantId param route.
 router.post(

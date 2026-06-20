@@ -69,14 +69,14 @@ export function playNotifSound(priority: "low" | "normal" | "high" | "urgent") {
   if (ac.state === "suspended") void ac.resume();
   try {
     if (priority === "urgent") {
-      tone(ac, 1047, 0,    0.14, 0.14);
-      tone(ac, 880,  0.15, 0.14, 0.12);
-      tone(ac, 698,  0.30, 0.20, 0.10);
+      tone(ac, 1047, 0, 0.14, 0.14);
+      tone(ac, 880, 0.15, 0.14, 0.12);
+      tone(ac, 698, 0.3, 0.2, 0.1);
     } else if (priority === "high") {
-      tone(ac, 880,   0,    0.09, 0.12);
-      tone(ac, 1318.5,0.09, 0.16, 0.10);
+      tone(ac, 880, 0, 0.09, 0.12);
+      tone(ac, 1318.5, 0.09, 0.16, 0.1);
     } else {
-      tone(ac, 880, 0, 0.10, 0.08);
+      tone(ac, 880, 0, 0.1, 0.08);
     }
   } catch {}
 }
@@ -85,7 +85,10 @@ export function playNotifSound(priority: "low" | "normal" | "high" | "urgent") {
 const played = new Set<string>();
 let lastGlobal = 0;
 
-export function playOnce(priority: "low" | "normal" | "high" | "urgent", id: string) {
+export function playOnce(
+  priority: "low" | "normal" | "high" | "urgent",
+  id: string,
+) {
   if (played.has(id)) return;
   const now = Date.now();
   if (now - lastGlobal < 1000) return;

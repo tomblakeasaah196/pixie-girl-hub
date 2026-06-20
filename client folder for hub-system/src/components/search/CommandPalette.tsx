@@ -308,13 +308,17 @@ export function CommandPalette({ open, onClose }: Props) {
                         <div
                           className={cn(
                             "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                            isActive ? "bg-brand-accent/20" : "bg-brand-graphite",
+                            isActive
+                              ? "bg-brand-accent/20"
+                              : "bg-brand-graphite",
                           )}
                         >
                           <Icon
                             className={cn(
                               "h-3.5 w-3.5",
-                              isActive ? "text-brand-accent" : "text-brand-smoke",
+                              isActive
+                                ? "text-brand-accent"
+                                : "text-brand-smoke",
                             )}
                           />
                         </div>

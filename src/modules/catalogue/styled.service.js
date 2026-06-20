@@ -288,7 +288,9 @@ async function restore({ brand, user, request_id, id }) {
       slug = `${trashed.slug}-restored-${restoreSuffix()}`;
       renamed = true;
     }
-    if (await repo.styledCodeTaken({ client, brand, code: trashed.styled_code })) {
+    if (
+      await repo.styledCodeTaken({ client, brand, code: trashed.styled_code })
+    ) {
       styled_code = `${trashed.styled_code}-R${restoreSuffix()}`;
       renamed = true;
     }

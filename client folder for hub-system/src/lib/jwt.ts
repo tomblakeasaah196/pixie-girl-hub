@@ -39,7 +39,10 @@ export function decodeJwt(token: string | null | undefined): JwtPayload | null {
  * can distinguish "logged out" (no token at all) from "session timed out"
  * (had a token, it expired). Tokens with no `exp` claim never report expired.
  */
-export function isTokenExpired(token: string | null | undefined, skewSeconds = 10): boolean {
+export function isTokenExpired(
+  token: string | null | undefined,
+  skewSeconds = 10,
+): boolean {
   const payload = decodeJwt(token);
   if (!payload || typeof payload.exp !== "number") return false;
   const nowSeconds = Date.now() / 1000;

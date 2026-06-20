@@ -1,4 +1,4 @@
-type HapticStyle = 'light' | 'medium' | 'success' | 'error';
+type HapticStyle = "light" | "medium" | "success" | "error";
 
 const PATTERNS: Record<HapticStyle, number | number[]> = {
   light: 10,
@@ -8,7 +8,7 @@ const PATTERNS: Record<HapticStyle, number | number[]> = {
 };
 
 export function useHaptic() {
-  return (style: HapticStyle = 'light') => {
+  return (style: HapticStyle = "light") => {
     try {
       navigator.vibrate?.(PATTERNS[style]);
     } catch {
@@ -17,7 +17,7 @@ export function useHaptic() {
   };
 }
 
-export function haptic(style: HapticStyle = 'light') {
+export function haptic(style: HapticStyle = "light") {
   try {
     navigator.vibrate?.(PATTERNS[style]);
   } catch {

@@ -70,7 +70,9 @@ export function ContactDetailDrawer({ contactId, onClose }: Props) {
             {contact.source && (
               <>
                 <span className="text-text-faint">·</span>
-                <span className="capitalize">{contact.source.replace(/_/g, " ")}</span>
+                <span className="capitalize">
+                  {contact.source.replace(/_/g, " ")}
+                </span>
               </>
             )}
           </span>

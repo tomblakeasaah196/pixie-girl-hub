@@ -15,9 +15,9 @@ turned into either a Service Job (Faitlyn revamp) or a Custom Order
 "Closure repair" tomorrow doesn't need a code change — a new row here
 shows up automatically in:
 
-  - The Smartcomm composer's "Convert to ..." menu.
-  - The Catalogue → Services tab in the admin app.
-  - The public order form's services picker.
+- The Smartcomm composer's "Convert to ..." menu.
+- The Catalogue → Services tab in the admin app.
+- The public order form's services picker.
 
 ## Backing tables
 
@@ -25,10 +25,10 @@ shows up automatically in:
 
 ## Files
 
-| File                                | Purpose                                  |
-| ----------------------------------- | ---------------------------------------- |
-| `service-catalogue.routes.js`       | Express router                           |
-| `service-catalogue.controller.js`   | HTTP handlers                            |
-| `service-catalogue.service.js`      | Business logic + audit                   |
-| `service-catalogue.repo.js`         | Parameterised SQL                        |
-| `service-catalogue.validator.js`    | Zod input schemas                        |
+| File                              | Purpose                |
+| --------------------------------- | ---------------------- |
+| `service-catalogue.routes.js`     | Express router         |
+| `service-catalogue.controller.js` | HTTP handlers          |
+| `service-catalogue.service.js`    | Business logic + audit |
+| `service-catalogue.repo.js`       | Parameterised SQL      |
+| `service-catalogue.validator.js`  | Zod input schemas      |

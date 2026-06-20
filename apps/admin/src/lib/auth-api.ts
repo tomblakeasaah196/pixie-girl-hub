@@ -116,14 +116,17 @@ export async function getGeoWelcome(
   params?: Record<string, string>,
 ): Promise<GeoWelcome> {
   const qs = params ? new URLSearchParams(params).toString() : "";
-  return api.get<GeoWelcome>(
-    `/geo-welcome${qs ? `?${qs}` : ""}`,
-    "public",
-  );
+  return api.get<GeoWelcome>(`/geo-welcome${qs ? `?${qs}` : ""}`, "public");
 }
 
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  await api.post('/auth/change-password', { current_password: currentPassword, new_password: newPassword });
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await api.post("/auth/change-password", {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
 }
 
 export interface MyProfile {
@@ -139,17 +142,22 @@ export interface MyProfile {
 }
 
 export async function getMe(): Promise<MyProfile> {
-  return api.get<MyProfile>('/auth/me');
+  return api.get<MyProfile>("/auth/me");
 }
 
-export async function updateMe(data: { display_name?: string; phone?: string }): Promise<MyProfile> {
-  return api.patch<MyProfile>('/auth/me', data);
+export async function updateMe(data: {
+  display_name?: string;
+  phone?: string;
+}): Promise<MyProfile> {
+  return api.patch<MyProfile>("/auth/me", data);
 }
 
-export async function uploadAvatar(blob: Blob): Promise<{ avatar_url: string }> {
+export async function uploadAvatar(
+  blob: Blob,
+): Promise<{ avatar_url: string }> {
   const form = new FormData();
-  form.append('avatar', blob, 'avatar.jpg');
-  return api.postForm<{ avatar_url: string }>('/auth/me/avatar', form);
+  form.append("avatar", blob, "avatar.jpg");
+  return api.postForm<{ avatar_url: string }>("/auth/me/avatar", form);
 }
 
 export async function requestEmailChange(

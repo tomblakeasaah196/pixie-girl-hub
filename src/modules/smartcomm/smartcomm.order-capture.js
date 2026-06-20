@@ -56,7 +56,11 @@ async function createCaptureLink({ brand, user, request_id, input }) {
       throw new AppError("ITEM_INVALID", "Every item needs product_id", 422);
     }
     if (!it.qty || it.qty <= 0) {
-      throw new AppError("ITEM_INVALID", "Every item needs a positive qty", 422);
+      throw new AppError(
+        "ITEM_INVALID",
+        "Every item needs a positive qty",
+        422,
+      );
     }
   }
 
@@ -121,11 +125,7 @@ function verifyCaptureToken(token) {
         410,
       );
     }
-    throw new AppError(
-      "CAPTURE_INVALID",
-      "This order link isn't valid.",
-      400,
-    );
+    throw new AppError("CAPTURE_INVALID", "This order link isn't valid.", 400);
   }
 }
 

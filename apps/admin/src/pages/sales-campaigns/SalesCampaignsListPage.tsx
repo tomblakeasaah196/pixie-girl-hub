@@ -7,6 +7,7 @@ import {
   TrendingUp,
   Sparkles,
   CalendarRange,
+  LayoutTemplate,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
@@ -23,7 +24,12 @@ import { DeniedState, ErrorState, Select } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
 import { moneyCompact } from "@/lib/format";
-import { useCampaignList, useCreateCampaign, type Campaign, type CampaignStatus } from "@/lib/campaigns";
+import {
+  useCampaignList,
+  useCreateCampaign,
+  type Campaign,
+  type CampaignStatus,
+} from "@/lib/campaigns";
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "All states" },
@@ -124,37 +130,63 @@ export function SalesCampaignsListPage() {
         />
         <div className="relative flex flex-col md:flex-row md:items-end gap-5">
           <div className="min-w-0">
-            <div className="micro mb-2">Module · Sales Campaigns & Landing Pages</div>
+            <div className="micro mb-2">
+              Module · Sales Campaigns & Landing Pages
+            </div>
             <h1 className="font-display text-[34px] md:text-[40px] leading-[1.05]">
               <span>The next ₦100M sale begins </span>
               <span className="italic text-accent-glow">here.</span>
             </h1>
             <p className="text-text-muted mt-2.5 max-w-[640px]">
-              Build a campaign with Praxis, launch the landing page to your sales
-              subdomain, and watch the dashboard convert in real time.
+              Build a campaign with Praxis, launch the landing page to your
+              sales subdomain, and watch the dashboard convert in real time.
             </p>
           </div>
-          {canCreate && (
-            <Button
-              size="md"
-              variant="primary"
-              className="md:ml-auto cta-breathe"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => setCreateOpen(true)}
-            >
-              New campaign
-            </Button>
-          )}
+          <div className="md:ml-auto flex flex-wrap items-center gap-2">
+            {can("sales_campaigns", "view") && (
+              <Button
+                size="md"
+                variant="ghost"
+                icon={<LayoutTemplate className="w-4 h-4" />}
+                onClick={() => navigate("/landing-studio")}
+              >
+                Landing Studio
+              </Button>
+            )}
+            {canCreate && (
+              <Button
+                size="md"
+                variant="primary"
+                className="cta-breathe"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setCreateOpen(true)}
+              >
+                New campaign
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KpiTile label="Live now" value={String(rollups.live)} tone="accent" />
-        <KpiTile label="Scheduled" value={String(rollups.scheduled)} tone="accent" />
-        <KpiTile label="Revenue" value={moneyCompact(rollups.revenue)} tone="accent" />
+        <KpiTile
+          label="Scheduled"
+          value={String(rollups.scheduled)}
+          tone="accent"
+        />
+        <KpiTile
+          label="Revenue"
+          value={moneyCompact(rollups.revenue)}
+          tone="accent"
+        />
         <KpiTile label="Orders" value={String(rollups.orders)} tone="accent" />
-        <KpiTile label="Signups" value={String(rollups.signups)} tone="accent" />
+        <KpiTile
+          label="Signups"
+          value={String(rollups.signups)}
+          tone="accent"
+        />
       </div>
 
       {/* Filters */}
@@ -170,7 +202,11 @@ export function SalesCampaignsListPage() {
             />
           </div>
           <div className="md:w-[220px]">
-            <Select<string> value={status} onChange={setStatus} options={STATUS_OPTIONS} />
+            <Select<string>
+              value={status}
+              onChange={setStatus}
+              options={STATUS_OPTIONS}
+            />
           </div>
           <div className="ml-auto">
             <Link
@@ -268,7 +304,8 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             <Pill tone={tone}>{STATUS_LABEL[campaign.status]}</Pill>
             {campaign.ai_assist_pct > 0 && (
               <Pill tone="accent" dot={false}>
-                <Sparkles className="w-3 h-3" /> {Math.round(campaign.ai_assist_pct * 100)}% AI
+                <Sparkles className="w-3 h-3" />{" "}
+                {Math.round(campaign.ai_assist_pct * 100)}% AI
               </Pill>
             )}
           </div>
@@ -276,7 +313,9 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             <div className="font-display font-medium text-[18px] leading-tight text-text-primary truncate drop-shadow">
               {campaign.name}
             </div>
-            <div className="micro text-text-muted truncate">/sale/{campaign.slug}</div>
+            <div className="micro text-text-muted truncate">
+              /sale/{campaign.slug}
+            </div>
           </div>
         </div>
         <div className="p-4 space-y-3">
@@ -284,8 +323,12 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
           {(state === "live" || campaign.status === "scheduled") && (
             <div>
               <div className="flex justify-between text-[11px] text-text-faint mb-1">
-                <span className="font-mono">{new Date(starts).toLocaleDateString()}</span>
-                <span className="font-mono">{new Date(ends).toLocaleDateString()}</span>
+                <span className="font-mono">
+                  {new Date(starts).toLocaleDateString()}
+                </span>
+                <span className="font-mono">
+                  {new Date(ends).toLocaleDateString()}
+                </span>
               </div>
               <div className="h-1.5 rounded-full bg-text-primary/10 overflow-hidden">
                 <div
@@ -296,9 +339,16 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             </div>
           )}
           <div className="grid grid-cols-3 gap-1 text-center">
-            <Stat label="Visitors" value={safeNumber(campaign.total_unique_visitors)} />
+            <Stat
+              label="Visitors"
+              value={safeNumber(campaign.total_unique_visitors)}
+            />
             <Stat label="Orders" value={safeNumber(campaign.total_orders)} />
-            <Stat label="Revenue" value={moneyCompact(safeNumber(campaign.total_revenue_ngn))} isMoney />
+            <Stat
+              label="Revenue"
+              value={moneyCompact(safeNumber(campaign.total_revenue_ngn))}
+              isMoney
+            />
           </div>
         </div>
       </Card>
@@ -306,7 +356,15 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
   );
 }
 
-function Stat({ label, value, isMoney }: { label: string; value: number | string; isMoney?: boolean }) {
+function Stat({
+  label,
+  value,
+  isMoney,
+}: {
+  label: string;
+  value: number | string;
+  isMoney?: boolean;
+}) {
   const display = isMoney ? String(value) : safeNumber(value).toLocaleString();
   return (
     <div className="rounded-[10px] bg-text-primary/[0.04] py-1.5">
@@ -353,7 +411,10 @@ function CreateCampaignModal({
   // Gentle cleaning WHILE typing in the slug box — keeps a trailing hyphen so
   // "pixie-summer-sale" can be typed one character at a time.
   function cleanSlugInput(raw: string) {
-    return raw.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-{2,}/g, "-");
+    return raw
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/-{2,}/g, "-");
   }
   // Final pass on submit — trims any leading/trailing hyphen.
   function finalizeSlug(raw: string) {
@@ -439,7 +500,9 @@ function CreateCampaignModal({
             />
           </Field>
           <Field
-            label={discountType === "percentage" ? "Discount (0–1)" : "Discount ₦"}
+            label={
+              discountType === "percentage" ? "Discount (0–1)" : "Discount ₦"
+            }
             hint={discountType === "percentage" ? "e.g. 0.20 = 20%" : "in NGN"}
           >
             <input

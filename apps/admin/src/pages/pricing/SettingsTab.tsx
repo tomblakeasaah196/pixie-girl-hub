@@ -34,11 +34,15 @@ export function SettingsTab({ canEdit }: { canEdit: boolean }) {
 
   if (isError) return <ErrorState onRetry={() => refetch()} />;
   if (isLoading || !data) {
-    return <div className="h-64 animate-pulse rounded-[14px] bg-text-primary/[0.04]" />;
+    return (
+      <div className="h-64 animate-pulse rounded-[14px] bg-text-primary/[0.04]" />
+    );
   }
 
   const setFee = (i: number, key: keyof FeeRow, val: string) =>
-    setFees((rows) => rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)));
+    setFees((rows) =>
+      rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)),
+    );
 
   const submit = () => {
     const channel_fees: ConfigChannelFee[] = fees
@@ -50,8 +54,10 @@ export function SettingsTab({ canEdit }: { canEdit: boolean }) {
         fixed_ngn: f.fixed.trim() === "" ? 0 : Number(f.fixed),
       }));
     save.mutate({
-      instant_apply_threshold_pct: threshold.trim() === "" ? undefined : Number(threshold),
-      default_target_margin_pct: defaultMargin.trim() === "" ? undefined : Number(defaultMargin),
+      instant_apply_threshold_pct:
+        threshold.trim() === "" ? undefined : Number(threshold),
+      default_target_margin_pct:
+        defaultMargin.trim() === "" ? undefined : Number(defaultMargin),
       round_to_ngn: roundTo.trim() === "" ? undefined : Number(roundTo),
       channel_fees,
     });
@@ -65,14 +71,32 @@ export function SettingsTab({ canEdit }: { canEdit: boolean }) {
           <h3 className="font-display text-[15px]">Advisor settings</h3>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Field label="Instant-apply threshold" hint="changes within this % apply instantly">
-            <NumberField value={threshold} onChange={setThreshold} suffix="%" disabled={!canEdit} />
+          <Field
+            label="Instant-apply threshold"
+            hint="changes within this % apply instantly"
+          >
+            <NumberField
+              value={threshold}
+              onChange={setThreshold}
+              suffix="%"
+              disabled={!canEdit}
+            />
           </Field>
           <Field label="Default target margin" hint="advisor's starting margin">
-            <NumberField value={defaultMargin} onChange={setDefaultMargin} suffix="%" disabled={!canEdit} />
+            <NumberField
+              value={defaultMargin}
+              onChange={setDefaultMargin}
+              suffix="%"
+              disabled={!canEdit}
+            />
           </Field>
           <Field label="Round suggestions to" hint="nearest ₦; 0 = off">
-            <NumberField value={roundTo} onChange={setRoundTo} suffix="₦" disabled={!canEdit} />
+            <NumberField
+              value={roundTo}
+              onChange={setRoundTo}
+              suffix="₦"
+              disabled={!canEdit}
+            />
           </Field>
         </div>
       </Card>
@@ -97,23 +121,46 @@ export function SettingsTab({ canEdit }: { canEdit: boolean }) {
             </thead>
             <tbody>
               {fees.map((f, i) => (
-                <tr key={i} className="border-b hairline last:border-0 align-top">
+                <tr
+                  key={i}
+                  className="border-b hairline last:border-0 align-top"
+                >
                   <td className="py-2 pr-2">
-                    <TextInput value={f.channel} onChange={(e) => setFee(i, "channel", e.target.value)} placeholder="jumia" />
+                    <TextInput
+                      value={f.channel}
+                      onChange={(e) => setFee(i, "channel", e.target.value)}
+                      placeholder="jumia"
+                    />
                   </td>
                   <td className="py-2 pr-2">
-                    <TextInput value={f.label} onChange={(e) => setFee(i, "label", e.target.value)} placeholder="Jumia" />
+                    <TextInput
+                      value={f.label}
+                      onChange={(e) => setFee(i, "label", e.target.value)}
+                      placeholder="Jumia"
+                    />
                   </td>
                   <td className="py-2 pr-2">
-                    <NumberField value={f.pct} onChange={(v) => setFee(i, "pct", v)} suffix="%" disabled={!canEdit} />
+                    <NumberField
+                      value={f.pct}
+                      onChange={(v) => setFee(i, "pct", v)}
+                      suffix="%"
+                      disabled={!canEdit}
+                    />
                   </td>
                   <td className="py-2 pr-2">
-                    <NumberField value={f.fixed} onChange={(v) => setFee(i, "fixed", v)} suffix="₦" disabled={!canEdit} />
+                    <NumberField
+                      value={f.fixed}
+                      onChange={(v) => setFee(i, "fixed", v)}
+                      suffix="₦"
+                      disabled={!canEdit}
+                    />
                   </td>
                   <td className="py-2 text-right">
                     {canEdit && (
                       <button
-                        onClick={() => setFees((rows) => rows.filter((_, idx) => idx !== i))}
+                        onClick={() =>
+                          setFees((rows) => rows.filter((_, idx) => idx !== i))
+                        }
                         className="text-text-faint hover:text-danger p-1 rounded-[8px] hover:bg-danger/10"
                         aria-label="Remove channel"
                       >
@@ -132,7 +179,12 @@ export function SettingsTab({ canEdit }: { canEdit: boolean }) {
             variant="ghost"
             icon={<Plus className="w-3.5 h-3.5" />}
             className="mt-3"
-            onClick={() => setFees((rows) => [...rows, { channel: "", label: "", pct: "", fixed: "" }])}
+            onClick={() =>
+              setFees((rows) => [
+                ...rows,
+                { channel: "", label: "", pct: "", fixed: "" },
+              ])
+            }
           >
             Add channel
           </Button>

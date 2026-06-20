@@ -499,8 +499,8 @@ export default function DeliveryDetail() {
           </div>
           <p className="flex items-center gap-1.5 text-xs text-brand-smoke">
             <FileText className="h-3.5 w-3.5" />
-            The signed delivery note was emailed to the customer and archived
-            in Documents.
+            The signed delivery note was emailed to the customer and archived in
+            Documents.
           </p>
         </div>
       )}
@@ -513,7 +513,10 @@ export default function DeliveryDetail() {
           </p>
           <ol className="relative border-l border-white/10 space-y-4 pl-5">
             {trackingData.map((entry) => (
-              <li key={entry.track_id ?? entry.tracking_id} className="relative">
+              <li
+                key={entry.track_id ?? entry.tracking_id}
+                className="relative"
+              >
                 <div className="absolute -left-[21px] top-1 h-3 w-3 rounded-full border border-white/20 bg-brand-graphite" />
                 <p className="text-sm font-medium text-brand-cream">
                   {entry.message}

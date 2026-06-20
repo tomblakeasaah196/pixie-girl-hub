@@ -79,7 +79,13 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                 >
                   <div className="relative w-14 h-14 rounded-[10px] overflow-hidden bg-[rgb(var(--panel-2))] flex-shrink-0">
                     {it.image_url ? (
-                      <Image src={it.image_url} alt={it.name} fill sizes="56px" className="object-cover" />
+                      <Image
+                        src={it.image_url}
+                        alt={it.name}
+                        fill
+                        sizes="56px"
+                        className="object-cover"
+                      />
                     ) : (
                       <div className="grid place-items-center w-full h-full text-[rgb(var(--text-faint))]">
                         <ShoppingBag className="w-5 h-5" />
@@ -87,7 +93,9 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-semibold truncate">{it.name}</div>
+                    <div className="text-[13px] font-semibold truncate">
+                      {it.name}
+                    </div>
                     {it.preorder && (
                       <div className="text-[10px] text-[rgb(var(--warn))] mt-0.5">
                         Pre-order · ships in {it.preorder_lead_weeks ?? 3} wks
@@ -106,7 +114,9 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <span className="font-mono tabular-nums w-5 text-center text-[13px]">{it.quantity}</span>
+                    <span className="font-mono tabular-nums w-5 text-center text-[13px]">
+                      {it.quantity}
+                    </span>
                     <button
                       type="button"
                       onClick={() => setQ(it.id, it.quantity + 1)}
@@ -131,18 +141,24 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
             <div className="p-5 border-t hairline space-y-3">
               <div className="flex justify-between text-[13px]">
                 <span className="text-[rgb(var(--text-muted))]">Subtotal</span>
-                <span className="font-mono tabular-nums">{money(subtotal)}</span>
+                <span className="font-mono tabular-nums">
+                  {money(subtotal)}
+                </span>
               </div>
               {savings > 0 && (
                 <div className="flex justify-between text-[13px]">
                   <span className="text-[rgb(var(--success))]">You save</span>
-                  <span className="font-mono tabular-nums text-[rgb(var(--success))]">−{money(savings)}</span>
+                  <span className="font-mono tabular-nums text-[rgb(var(--success))]">
+                    −{money(savings)}
+                  </span>
                 </div>
               )}
               {savings > 0 && (
                 <div className="flex justify-between text-[12px] text-[rgb(var(--text-faint))]">
                   <span>vs retail</span>
-                  <span className="font-mono tabular-nums line-through">{money(retail)}</span>
+                  <span className="font-mono tabular-nums line-through">
+                    {money(retail)}
+                  </span>
                 </div>
               )}
               <Link

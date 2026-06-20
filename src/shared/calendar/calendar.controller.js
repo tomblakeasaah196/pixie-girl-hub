@@ -16,8 +16,8 @@ async function listEvents(req, res) {
   res.json({
     data: await service.listEvents({
       brand: req.brand,
-      from: req.query.from,
-      to: req.query.to,
+      from: req.query.from || req.query.start,
+      to: req.query.to || req.query.end,
       event_type: req.query.event_type,
       reference_type: req.query.reference_type,
       reference_id: req.query.reference_id,

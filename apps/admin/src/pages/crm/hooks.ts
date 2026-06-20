@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
 import * as crmApi from "./api";
 import type { DealFilter } from "./types";
@@ -98,7 +103,8 @@ export function useUpdateDeal(id: string) {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: (input: Partial<DealCreateInput>) => crmApi.updateDeal(id, input),
+    mutationFn: (input: Partial<DealCreateInput>) =>
+      crmApi.updateDeal(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["crm", biz, "deal", id] });
       qc.invalidateQueries({ queryKey: ["crm", biz, "deals"] });
@@ -142,7 +148,9 @@ export function useAddDealActivity(dealId: string) {
     mutationFn: (input: Parameters<typeof crmApi.addDealActivity>[1]) =>
       crmApi.addDealActivity(dealId, input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["crm", biz, "deal-activities", dealId] });
+      qc.invalidateQueries({
+        queryKey: ["crm", biz, "deal-activities", dealId],
+      });
       qc.invalidateQueries({ queryKey: ["crm", biz, "deal", dealId] });
       qc.invalidateQueries({ queryKey: ["crm", biz, "kpis"] });
     },

@@ -27,10 +27,16 @@ async function processCartTtl(job) {
         reason: "cart TTL expired (20-min auto-release)",
       });
     });
-    logger.info({ brand, reference_id, variant_id }, "cart reservation released (TTL expired)");
+    logger.info(
+      { brand, reference_id, variant_id },
+      "cart reservation released (TTL expired)",
+    );
   } catch (err) {
     if (err.code === "INSUFFICIENT_STOCK" || err.code === "23514") {
-      logger.info({ brand, reference_id }, "cart reservation already released or deducted");
+      logger.info(
+        { brand, reference_id },
+        "cart reservation already released or deducted",
+      );
       return;
     }
     throw err;

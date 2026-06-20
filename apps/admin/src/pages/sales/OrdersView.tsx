@@ -4,7 +4,11 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { useOrders } from "./hooks";
-import { ORDER_STATUS, ORDER_STATUS_OPTIONS, SALES_CHANNELS } from "./constants";
+import {
+  ORDER_STATUS,
+  ORDER_STATUS_OPTIONS,
+  SALES_CHANNELS,
+} from "./constants";
 import { OrderDetail } from "./OrderDetail";
 import type { SalesOrder, OrderStatus } from "./types";
 
@@ -13,19 +17,28 @@ const columns: Column<SalesOrder>[] = [
     key: "number",
     header: "Order #",
     width: "130px",
-    render: (o) => <span className="font-mono text-[13px] font-semibold">{o.order_number}</span>,
+    render: (o) => (
+      <span className="font-mono text-[13px] font-semibold">
+        {o.order_number}
+      </span>
+    ),
   },
   {
     key: "contact",
     header: "Customer",
-    render: (o) => <span className="text-[13px]">{o.contact_name ?? o.contact_id.slice(0, 8)}</span>,
+    render: (o) => (
+      <span className="text-[13px]">
+        {o.contact_name ?? o.contact_id.slice(0, 8)}
+      </span>
+    ),
   },
   {
     key: "channel",
     header: "Channel",
     render: (o) => (
       <span className="text-[12px] text-text-muted">
-        {SALES_CHANNELS.find((c) => c.value === o.sales_channel)?.label ?? o.sales_channel}
+        {SALES_CHANNELS.find((c) => c.value === o.sales_channel)?.label ??
+          o.sales_channel}
       </span>
     ),
   },
@@ -49,14 +62,22 @@ const columns: Column<SalesOrder>[] = [
     align: "right",
     render: (o) => {
       const bal = Number(o.balance_due_ngn);
-      return bal > 0 ? <MoneyText ngn={bal} className="text-warn" /> : <span className="text-[12px] text-success">Paid</span>;
+      return bal > 0 ? (
+        <MoneyText ngn={bal} className="text-warn" />
+      ) : (
+        <span className="text-[12px] text-success">Paid</span>
+      );
     },
   },
   {
     key: "date",
     header: "Date",
     width: "110px",
-    render: (o) => <span className="text-[12px] text-text-muted">{new Date(o.created_at).toLocaleDateString()}</span>,
+    render: (o) => (
+      <span className="text-[12px] text-text-muted">
+        {new Date(o.created_at).toLocaleDateString()}
+      </span>
+    ),
   },
 ];
 
@@ -87,7 +108,8 @@ export function OrdersView() {
         empty={{
           icon: <ShoppingBag className="w-8 h-8" />,
           title: "No orders yet",
-          message: "Orders from Quick Sale and other channels will appear here.",
+          message:
+            "Orders from Quick Sale and other channels will appear here.",
         }}
         toolbar={
           <>
@@ -96,14 +118,22 @@ export function OrdersView() {
               <input
                 placeholder="Search orders…"
                 value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
               />
             </div>
             <Select
               value={status}
-              onChange={(v) => { setStatus(v); setPage(1); }}
-              options={ORDER_STATUS_OPTIONS as { value: string; label: string }[]}
+              onChange={(v) => {
+                setStatus(v);
+                setPage(1);
+              }}
+              options={
+                ORDER_STATUS_OPTIONS as { value: string; label: string }[]
+              }
               className="w-[180px]"
             />
           </>
@@ -113,7 +143,8 @@ export function OrdersView() {
       {meta && meta.total > meta.page_size && (
         <div className="flex items-center justify-between text-[12px] text-text-muted mt-3 px-1">
           <span>
-            Showing {(meta.page - 1) * meta.page_size + 1}–{Math.min(meta.page * meta.page_size, meta.total)} of {meta.total}
+            Showing {(meta.page - 1) * meta.page_size + 1}–
+            {Math.min(meta.page * meta.page_size, meta.total)} of {meta.total}
           </span>
           <div className="flex gap-1">
             <button

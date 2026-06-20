@@ -562,154 +562,160 @@ export default function Checkout() {
         )}
 
         {/* ── STEP: PAYMENT (Optimus Pay — dedicated account + countdown) ─────── */}
-        {step === "payment" && order && order.payment_method === "optimus_pay" && (
-          <OptimusPaymentPanel
-            order={order}
-            business={business!}
-            whatsappNumber={campaign?.whatsapp_number}
-            onConfirmed={() => setStep("done")}
-          />
-        )}
+        {step === "payment" &&
+          order &&
+          order.payment_method === "optimus_pay" && (
+            <OptimusPaymentPanel
+              order={order}
+              business={business!}
+              whatsappNumber={campaign?.whatsapp_number}
+              onConfirmed={() => setStep("done")}
+            />
+          )}
 
         {/* ── STEP: PAYMENT (bank transfer instructions) ──────────────────────── */}
-        {step === "payment" && order && order.payment_method !== "optimus_pay" && (
-          <div className="space-y-6">
-            <div className="text-center py-4">
-              <p className="text-4xl mb-3">🏦</p>
-              <h2 className="text-xl font-bold text-white mb-1">
-                Complete Your Transfer
-              </h2>
-              <p className="text-gray-400 text-sm">
-                Order{" "}
-                <span className="acc-text font-mono">{order.order_number}</span>{" "}
-                is reserved for you.
-              </p>
-            </div>
-
-            {/* Selected bank account */}
-            {selectedAccount && (
-              <div className="rounded-2xl border border-white/8 bg-white/5 p-5 space-y-3">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">
-                  Transfer to this account
+        {step === "payment" &&
+          order &&
+          order.payment_method !== "optimus_pay" && (
+            <div className="space-y-6">
+              <div className="text-center py-4">
+                <p className="text-4xl mb-3">🏦</p>
+                <h2 className="text-xl font-bold text-white mb-1">
+                  Complete Your Transfer
+                </h2>
+                <p className="text-gray-400 text-sm">
+                  Order{" "}
+                  <span className="acc-text font-mono">
+                    {order.order_number}
+                  </span>{" "}
+                  is reserved for you.
                 </p>
-                <div className="space-y-2">
-                  <DetailRow label="Bank" value={selectedAccount.bank_name} />
-                  <DetailRow
-                    label="Account name"
-                    value={selectedAccount.account_name}
-                  />
-                  <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                    <div>
-                      <p className="text-xs text-gray-500">Account number</p>
-                      <p className="font-mono text-white font-bold text-lg">
-                        {selectedAccount.account_number}
-                      </p>
+              </div>
+
+              {/* Selected bank account */}
+              {selectedAccount && (
+                <div className="rounded-2xl border border-white/8 bg-white/5 p-5 space-y-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">
+                    Transfer to this account
+                  </p>
+                  <div className="space-y-2">
+                    <DetailRow label="Bank" value={selectedAccount.bank_name} />
+                    <DetailRow
+                      label="Account name"
+                      value={selectedAccount.account_name}
+                    />
+                    <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                      <div>
+                        <p className="text-xs text-gray-500">Account number</p>
+                        <p className="font-mono text-white font-bold text-lg">
+                          {selectedAccount.account_number}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() =>
+                          copyAccountNumber(selectedAccount.account_number)
+                        }
+                        className="flex items-center gap-1 text-xs acc-text hover:opacity-80 transition-colors"
+                      >
+                        {copiedAccount === selectedAccount.account_number ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" /> Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" /> Copy
+                          </>
+                        )}
+                      </button>
                     </div>
-                    <button
-                      onClick={() =>
-                        copyAccountNumber(selectedAccount.account_number)
-                      }
-                      className="flex items-center gap-1 text-xs acc-text hover:opacity-80 transition-colors"
-                    >
-                      {copiedAccount === selectedAccount.account_number ? (
-                        <>
-                          <Check className="h-3.5 w-3.5" /> Copied
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3.5 w-3.5" /> Copy
-                        </>
-                      )}
-                    </button>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl acc-soft border acc-border-soft px-4 py-3">
+                    <p className="text-xs acc-text">Transfer exactly</p>
+                    <p className="text-xl font-black acc-text">
+                      {fmtMoney(order.total_amount)}
+                    </p>
                   </div>
                 </div>
-                <div className="flex items-center justify-between rounded-xl acc-soft border acc-border-soft px-4 py-3">
-                  <p className="text-xs acc-text">Transfer exactly</p>
-                  <p className="text-xl font-black acc-text">
+              )}
+
+              <div className="rounded-xl border border-white/8 bg-white/5 p-4 text-sm text-gray-400 space-y-1.5">
+                <p>
+                  1. Transfer{" "}
+                  <strong className="text-white">
                     {fmtMoney(order.total_amount)}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="rounded-xl border border-white/8 bg-white/5 p-4 text-sm text-gray-400 space-y-1.5">
-              <p>
-                1. Transfer{" "}
-                <strong className="text-white">
-                  {fmtMoney(order.total_amount)}
-                </strong>{" "}
-                to the account above
-              </p>
-              <p>2. Save your bank receipt / screenshot</p>
-              <p>3. Upload it below — we'll reserve your items immediately</p>
-              <p>
-                4. We verify and confirm your order (usually within the hour)
-              </p>
-            </div>
-
-            {/* Proof upload */}
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-gray-300">
-                Upload Payment Receipt
-              </p>
-
-              <label className="block rounded-2xl border-2 border-dashed border-white/15 hover:border-[#C9A86C] transition-colors p-8 text-center cursor-pointer">
-                <Upload className="h-8 w-8 text-gray-500 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">
-                  {proofFile
-                    ? proofFile.name
-                    : "Click to upload receipt screenshot"}
+                  </strong>{" "}
+                  to the account above
                 </p>
-                <p className="text-xs text-gray-600 mt-1">PNG, JPG or PDF</p>
+                <p>2. Save your bank receipt / screenshot</p>
+                <p>3. Upload it below — we'll reserve your items immediately</p>
+                <p>
+                  4. We verify and confirm your order (usually within the hour)
+                </p>
+              </div>
+
+              {/* Proof upload */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-300">
+                  Upload Payment Receipt
+                </p>
+
+                <label className="block rounded-2xl border-2 border-dashed border-white/15 hover:border-[#C9A86C] transition-colors p-8 text-center cursor-pointer">
+                  <Upload className="h-8 w-8 text-gray-500 mx-auto mb-2" />
+                  <p className="text-sm text-gray-400">
+                    {proofFile
+                      ? proofFile.name
+                      : "Click to upload receipt screenshot"}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">PNG, JPG or PDF</p>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setProofFile(f);
+                    }}
+                  />
+                </label>
+
+                <p className="text-center text-xs text-gray-600">
+                  — or enter the receipt/transaction URL —
+                </p>
+
                 <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) setProofFile(f);
-                  }}
+                  type="url"
+                  value={proofUrl}
+                  onChange={(e) => setProofUrl(e.target.value)}
+                  placeholder="https://... (screenshot URL from cloud storage)"
+                  className={INPUT_CLASS}
                 />
-              </label>
 
-              <p className="text-center text-xs text-gray-600">
-                — or enter the receipt/transaction URL —
-              </p>
+                {apiError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+                    <p className="text-sm text-red-300">{apiError}</p>
+                  </div>
+                )}
 
-              <input
-                type="url"
-                value={proofUrl}
-                onChange={(e) => setProofUrl(e.target.value)}
-                placeholder="https://... (screenshot URL from cloud storage)"
-                className={INPUT_CLASS}
-              />
-
-              {apiError && (
-                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
-                  <p className="text-sm text-red-300">{apiError}</p>
-                </div>
-              )}
-
-              <button
-                disabled={submittingProof || (!proofFile && !proofUrl)}
-                onClick={handleProofUpload}
-                className="w-full acc-bg disabled:opacity-40 text-black font-bold py-4 rounded-full transition-colors text-sm"
-              >
-                {submittingProof ? "Uploading…" : "Submit Payment Proof"}
-              </button>
-
-              {campaign?.whatsapp_number && (
                 <button
-                  onClick={openWhatsApp}
-                  className="w-full border border-green-500/30 text-green-400 hover:bg-green-500/10 font-medium py-3 rounded-full transition-colors text-sm flex items-center justify-center gap-2"
+                  disabled={submittingProof || (!proofFile && !proofUrl)}
+                  onClick={handleProofUpload}
+                  className="w-full acc-bg disabled:opacity-40 text-black font-bold py-4 rounded-full transition-colors text-sm"
                 >
-                  <MessageCircle className="h-4 w-4" />
-                  Send receipt on WhatsApp instead
+                  {submittingProof ? "Uploading…" : "Submit Payment Proof"}
                 </button>
-              )}
+
+                {campaign?.whatsapp_number && (
+                  <button
+                    onClick={openWhatsApp}
+                    className="w-full border border-green-500/30 text-green-400 hover:bg-green-500/10 font-medium py-3 rounded-full transition-colors text-sm flex items-center justify-center gap-2"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Send receipt on WhatsApp instead
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* ── STEP: DONE ─────────────────────────────────────────────────────── */}
         {step === "done" && order && (
@@ -867,9 +873,8 @@ function OptimusPaymentPanel({
           Transfer to Your Dedicated Account
         </h2>
         <p className="text-gray-400 text-sm">
-          Order{" "}
-          <span className="acc-text font-mono">{order.order_number}</span> —
-          confirms automatically once your transfer lands.
+          Order <span className="acc-text font-mono">{order.order_number}</span>{" "}
+          — confirms automatically once your transfer lands.
         </p>
       </div>
 
@@ -890,8 +895,8 @@ function OptimusPaymentPanel({
               Payment window expired
             </p>
             <p className="text-xs text-red-300/80">
-              This account number may no longer accept transfers. If you
-              already sent the money, sit tight — we're still watching for it.
+              This account number may no longer accept transfers. If you already
+              sent the money, sit tight — we're still watching for it.
               Otherwise, go back and place the order again
               {whatsappNumber ? " or message us for help" : ""}.
             </p>
@@ -910,8 +915,8 @@ function OptimusPaymentPanel({
               {mm}:{ss}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              This account number is reserved for your order for{" "}
-              {expiresMin} minutes
+              This account number is reserved for your order for {expiresMin}{" "}
+              minutes
             </p>
           </>
         )}
@@ -966,8 +971,8 @@ function OptimusPaymentPanel({
             <span className="relative inline-flex rounded-full h-3 w-3 acc-bg" />
           </span>
           <p className="text-sm text-gray-400">
-            Waiting for your transfer… this page updates by itself — no
-            receipt upload needed.
+            Waiting for your transfer… this page updates by itself — no receipt
+            upload needed.
           </p>
         </div>
       )}

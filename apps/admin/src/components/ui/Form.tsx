@@ -4,7 +4,13 @@ import { cn } from "@/lib/cn";
 /** Schema-driven form atoms (canon §5). Real forms mirror the endpoint
  *  payload_schema and map server errors back onto fields. */
 
-export function FormSection({ title, children }: { title?: string; children: ReactNode }) {
+export function FormSection({
+  title,
+  children,
+}: {
+  title?: string;
+  children: ReactNode;
+}) {
   return (
     <section className="mb-6">
       {title && <div className="micro mb-3">{title}</div>}
@@ -54,14 +60,21 @@ export function Field({
     <label className="block">
       <span className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.1em] font-bold text-text-muted mb-2">
         {label}
-        {hint && <span className="normal-case tracking-normal font-normal text-text-faint">· {hint}</span>}
+        {hint && (
+          <span className="normal-case tracking-normal font-normal text-text-faint">
+            · {hint}
+          </span>
+        )}
       </span>
       {children}
     </label>
   );
 }
 
-export function TextInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+export function TextInput({
+  className,
+  ...rest
+}: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       className={cn(
@@ -88,7 +101,10 @@ export function SaveBar({
   return (
     <div className="sticky bottom-0 flex items-center justify-end gap-2 p-3 dropglass rounded-b-[var(--radius)]">
       {onCancel && (
-        <button className="text-[13px] font-semibold text-text-muted px-3 h-9 rounded-[10px] hover:bg-text-primary/[0.06]" onClick={onCancel}>
+        <button
+          className="text-[13px] font-semibold text-text-muted px-3 h-9 rounded-[10px] hover:bg-text-primary/[0.06]"
+          onClick={onCancel}
+        >
           Cancel
         </button>
       )}

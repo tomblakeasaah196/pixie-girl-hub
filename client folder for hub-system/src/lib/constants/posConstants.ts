@@ -7,10 +7,7 @@ import {
   XCircle,
   Lock,
 } from "lucide-react";
-import type {
-  SessionStatus,
-  SyncStatus,
-} from "@typedefs/pos";
+import type { SessionStatus, SyncStatus } from "@typedefs/pos";
 
 // ── Payment method meta ───────────────────────────────────────────────────────
 

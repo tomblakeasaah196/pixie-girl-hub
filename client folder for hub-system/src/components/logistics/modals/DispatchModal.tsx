@@ -32,14 +32,21 @@ interface Props {
   onDispatched?: () => void;
 }
 
-export function DispatchModal({ open, onClose, delivery, onDispatched }: Props) {
+export function DispatchModal({
+  open,
+  onClose,
+  delivery,
+  onDispatched,
+}: Props) {
   const qc = useQueryClient();
   const [company, setCompany] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
   const [waybill, setWaybill] = useState("");
   const [fee, setFee] = useState<number | undefined>(
-    Number(delivery.delivery_fee) > 0 ? Number(delivery.delivery_fee) : undefined,
+    Number(delivery.delivery_fee) > 0
+      ? Number(delivery.delivery_fee)
+      : undefined,
   );
 
   const addr = delivery.delivery_address ?? ({} as Record<string, string>);
@@ -86,7 +93,11 @@ export function DispatchModal({ open, onClose, delivery, onDispatched }: Props) 
       surface="light"
       footer={
         <div className="flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose} disabled={mutation.isPending}>
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            disabled={mutation.isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -197,9 +208,8 @@ export function DispatchModal({ open, onClose, delivery, onDispatched }: Props) 
             <>
               <Mail className="w-3.5 h-3.5 mt-0.5 shrink-0 text-brand-accent" />
               <p>
-                The customer will be emailed the dispatch notice, driver
-                details and a link to <strong>sign for the delivery</strong> on
-                arrival.
+                The customer will be emailed the dispatch notice, driver details
+                and a link to <strong>sign for the delivery</strong> on arrival.
               </p>
             </>
           ) : (

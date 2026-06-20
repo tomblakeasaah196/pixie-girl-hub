@@ -123,9 +123,13 @@ async function resetPassword(req, res) {
  */
 async function mePermissions(req, res) {
   if (req.user.is_ceo) {
-    return res.json({ data: [{ module: "*", action: "*", record_scope: "all" }] });
+    return res.json({
+      data: [{ module: "*", action: "*", record_scope: "all" }],
+    });
   }
-  const { rows } = await permissionsRepo.findAllForRoles({ role_ids: req.user.role_ids });
+  const { rows } = await permissionsRepo.findAllForRoles({
+    role_ids: req.user.role_ids,
+  });
   res.json({ data: rows });
 }
 
@@ -153,7 +157,7 @@ async function updateMe(req, res) {
 }
 
 async function uploadAvatar(req, res) {
-  if (!req.file) throw new AppError('NO_FILE', 'No file uploaded', 422);
+  if (!req.file) throw new AppError("NO_FILE", "No file uploaded", 422);
   const data = await service.uploadAvatar({
     user_id: req.user.user_id,
     buffer: req.file.buffer,

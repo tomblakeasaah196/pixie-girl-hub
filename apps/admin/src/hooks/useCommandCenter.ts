@@ -150,11 +150,12 @@ export function useMarkNotificationRead() {
   const qc = useQueryClient();
   const biz = useBusinessStore((s) => s.activeKey);
   return useMutation({
-    mutationFn: (id: string) =>
-      api.post<unknown>(`/notifications/${id}/read`),
+    mutationFn: (id: string) => api.post<unknown>(`/notifications/${id}/read`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notifications", "recent", biz] });
-      qc.invalidateQueries({ queryKey: ["notifications", "unread-count", biz] });
+      qc.invalidateQueries({
+        queryKey: ["notifications", "unread-count", biz],
+      });
     },
   });
 }
@@ -167,7 +168,9 @@ export function useMarkAllRead() {
     mutationFn: () => api.post<unknown>("/notifications/read-all"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notifications", "recent", biz] });
-      qc.invalidateQueries({ queryKey: ["notifications", "unread-count", biz] });
+      qc.invalidateQueries({
+        queryKey: ["notifications", "unread-count", biz],
+      });
     },
   });
 }
@@ -184,8 +187,5 @@ export function urgentCount(summary: InsightSummary | undefined): number {
 /** Total open insight count across all categories. */
 export function openCount(summary: InsightSummary | undefined): number {
   if (!summary) return 0;
-  return Object.values(summary).reduce(
-    (acc, cat) => acc + (cat?.open ?? 0),
-    0,
-  );
+  return Object.values(summary).reduce((acc, cat) => acc + (cat?.open ?? 0), 0);
 }

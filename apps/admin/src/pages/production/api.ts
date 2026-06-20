@@ -46,7 +46,10 @@ export function updateFactoryAccount(
 
 // ── Ledger ────────────────────────────────────────────────
 
-export function listLedger(accountId: string, params?: { limit?: number; offset?: number }) {
+export function listLedger(
+  accountId: string,
+  params?: { limit?: number; offset?: number },
+) {
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.offset) qs.set("offset", String(params.offset));
@@ -73,12 +76,19 @@ export function addLedgerEntry(
 }
 
 export function reconcileEntries(accountId: string, entryIds: string[]) {
-  return api.post<{ reconciled: number }>(`${FA}/${accountId}/reconcile`, { entry_ids: entryIds });
+  return api.post<{ reconciled: number }>(`${FA}/${accountId}/reconcile`, {
+    entry_ids: entryIds,
+  });
 }
 
 // ── Shipments ─────────────────────────────────────────────
 
-export function listShipments(params?: { account_id?: string; status?: string; limit?: number; offset?: number }) {
+export function listShipments(params?: {
+  account_id?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
   const qs = new URLSearchParams();
   if (params?.account_id) qs.set("account_id", params.account_id);
   if (params?.status) qs.set("status", params.status);
@@ -121,7 +131,11 @@ export function advanceShipment(
 
 // ── Production Runs ───────────────────────────────────────
 
-export function listProductionRuns(params?: { status?: string; limit?: number; offset?: number }) {
+export function listProductionRuns(params?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   if (params?.limit) qs.set("limit", String(params.limit));
@@ -134,7 +148,10 @@ export function getProductionRun(id: string) {
   return api.get<ProductionRun>(`${PR}/${id}`);
 }
 
-export function createProductionRun(input: { title: string; units_planned?: number }) {
+export function createProductionRun(input: {
+  title: string;
+  units_planned?: number;
+}) {
   return api.post<ProductionRun>(PR, input);
 }
 

@@ -154,11 +154,16 @@ export default function TaskDetailPanel({
   // ── derived ───────────────────────────────────────────────────────────
 
   const subtasks: Subtask[] = task?.subtasks ?? [];
-  const doneCount = task?.subtask_done_count ?? subtasks.filter((s) => s.is_done).length;
+  const doneCount =
+    task?.subtask_done_count ?? subtasks.filter((s) => s.is_done).length;
   const totalCount = task?.subtask_count ?? subtasks.length;
   const statusMeta = task ? TASK_STATUS_META[task.status] : null;
   const priorityMeta = task ? TASK_PRIORITY_META[task.priority] : null;
-  const overdue = task?.due_at ? isPast(task.due_at) && task.status !== "done" && task.status !== "cancelled" : false;
+  const overdue = task?.due_at
+    ? isPast(task.due_at) &&
+      task.status !== "done" &&
+      task.status !== "cancelled"
+    : false;
 
   // ── render ────────────────────────────────────────────────────────────
 
@@ -185,8 +190,12 @@ export default function TaskDetailPanel({
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
           {/* ── Status + Priority pills ── */}
           <div className="flex items-center gap-2 flex-wrap">
-            {statusMeta && <Pill tone={statusMeta.tone}>{statusMeta.label}</Pill>}
-            {priorityMeta && <Pill tone={priorityMeta.tone}>{priorityMeta.label}</Pill>}
+            {statusMeta && (
+              <Pill tone={statusMeta.tone}>{statusMeta.label}</Pill>
+            )}
+            {priorityMeta && (
+              <Pill tone={priorityMeta.tone}>{priorityMeta.label}</Pill>
+            )}
           </div>
 
           {/* ── Info rows ── */}
@@ -205,10 +214,13 @@ export default function TaskDetailPanel({
                 label="Due date"
                 value={
                   <span className={cn(overdue && "text-danger font-semibold")}>
-                    {formatDate(task.due_at)}
-                    {" "}
-                    <span className="text-text-faint">{formatTime(task.due_at)}</span>
-                    {overdue && <span className="ml-1.5 text-[11px]">Overdue</span>}
+                    {formatDate(task.due_at)}{" "}
+                    <span className="text-text-faint">
+                      {formatTime(task.due_at)}
+                    </span>
+                    {overdue && (
+                      <span className="ml-1.5 text-[11px]">Overdue</span>
+                    )}
                   </span>
                 }
                 className={cn(overdue && "text-danger")}
@@ -278,7 +290,9 @@ export default function TaskDetailPanel({
                       type="button"
                       className="shrink-0 text-text-muted hover:text-accent-glow transition-colors"
                       onClick={() => handleToggle(st)}
-                      aria-label={st.is_done ? "Mark incomplete" : "Mark complete"}
+                      aria-label={
+                        st.is_done ? "Mark incomplete" : "Mark complete"
+                      }
                     >
                       {st.is_done ? (
                         <CheckSquare size={16} className="text-accent-glow" />

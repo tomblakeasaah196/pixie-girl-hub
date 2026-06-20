@@ -29,8 +29,8 @@
 
   --radius: 18px;
   --blur: 22px;
-  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05),
-    0 18px 44px rgb(0 0 0 / 0.6);
+  --glass-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 18px 44px rgb(0 0 0 / 0.6);
 
   /* Layer-B per-business defaults (overridden inline by the page from
      the campaign payload's brand). */
@@ -58,7 +58,10 @@ body {
   background: rgb(var(--bg));
   color: rgb(var(--text));
   font-family: var(--font-body);
-  font-feature-settings: "ss01" on, "ss02" on, "tnum" on;
+  font-feature-settings:
+    "ss01" on,
+    "ss02" on,
+    "tnum" on;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100%;
@@ -87,7 +90,11 @@ body::before {
       rgba(var(--accent-glow), 0.18),
       transparent 60%
     ),
-    radial-gradient(ellipse at 92% 88%, rgba(var(--accent), 0.22), transparent 65%);
+    radial-gradient(
+      ellipse at 92% 88%,
+      rgba(var(--accent), 0.22),
+      transparent 65%
+    );
   filter: blur(34px) saturate(120%);
   opacity: 0.85;
   animation: drift 26s ease-in-out infinite;

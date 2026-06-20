@@ -11,16 +11,28 @@ import type { ClientSegment } from "../types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const AVATAR_COLORS = ["#8b9d77", "#7a8fa8", "#b76e79", "#9c7ad9", "#5aa0a8", "#a8785a"];
+const AVATAR_COLORS = [
+  "#8b9d77",
+  "#7a8fa8",
+  "#b76e79",
+  "#9c7ad9",
+  "#5aa0a8",
+  "#a8785a",
+];
 
 function avatarColor(name: string) {
   return AVATAR_COLORS[
-    Math.abs(name.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length
+    Math.abs(name.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) %
+      AVATAR_COLORS.length
   ];
 }
 
 function initials(name: string) {
-  return name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 const SEGMENT_OPTIONS: { key: ClientSegment; label: string }[] = [
@@ -42,7 +54,11 @@ function ClientRow({
   onOpen: () => void;
   onNewDeal: () => void;
 }) {
-  const PRIORITY_TONE = { vip: "accent", regular: "neutral", new: "info" } as const;
+  const PRIORITY_TONE = {
+    vip: "accent",
+    regular: "neutral",
+    new: "info",
+  } as const;
 
   return (
     <div
@@ -75,7 +91,9 @@ function ClientRow({
             <span>{contact.email}</span>
           )}
           {contact.source && (
-            <span className="capitalize">{contact.source.replace(/_/g, " ")}</span>
+            <span className="capitalize">
+              {contact.source.replace(/_/g, " ")}
+            </span>
           )}
         </div>
       </div>
@@ -130,7 +148,14 @@ export function ClientsTab() {
   const [newDealFor, setNewDealFor] = useState<Contact | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const priorityFilter = segment === "vip" ? "vip" : segment === "new" ? "new" : segment === "regular" ? "regular" : undefined;
+  const priorityFilter =
+    segment === "vip"
+      ? "vip"
+      : segment === "new"
+        ? "new"
+        : segment === "regular"
+          ? "regular"
+          : undefined;
 
   const { data, isLoading } = useContacts({
     q: search || undefined,
@@ -152,7 +177,10 @@ export function ClientsTab() {
           <input
             type="text"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search clients…"
             className="w-full h-[38px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors"
           />
@@ -173,7 +201,10 @@ export function ClientsTab() {
           <button
             key={key}
             type="button"
-            onClick={() => { setSegment(key); setPage(1); }}
+            onClick={() => {
+              setSegment(key);
+              setPage(1);
+            }}
             className={[
               "px-3 h-[28px] rounded-[8px] text-[11.5px] font-semibold transition-all",
               segment === key
@@ -195,8 +226,15 @@ export function ClientsTab() {
         </div>
       ) : contacts.length === 0 ? (
         <div className="py-12 text-center">
-          <div className="text-text-faint text-[13px]">No clients match this filter</div>
-          <Button variant="secondary" size="sm" className="mt-3" onClick={() => setShowCreate(true)}>
+          <div className="text-text-faint text-[13px]">
+            No clients match this filter
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+            onClick={() => setShowCreate(true)}
+          >
             Add a client
           </Button>
         </div>
@@ -225,8 +263,8 @@ export function ClientsTab() {
             Previous
           </Button>
           <span className="text-[11px] text-text-faint">
-            {(page - 1) * meta.page_size + 1}–{Math.min(page * meta.page_size, meta.total)} of{" "}
-            {meta.total}
+            {(page - 1) * meta.page_size + 1}–
+            {Math.min(page * meta.page_size, meta.total)} of {meta.total}
           </span>
           <Button
             variant="ghost"
@@ -256,9 +294,7 @@ export function ClientsTab() {
       )}
 
       {/* Create contact modal */}
-      {showCreate && (
-        <ContactFormModal onClose={() => setShowCreate(false)} />
-      )}
+      {showCreate && <ContactFormModal onClose={() => setShowCreate(false)} />}
     </div>
   );
 }

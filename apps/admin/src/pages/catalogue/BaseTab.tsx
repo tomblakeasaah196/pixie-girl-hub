@@ -28,7 +28,11 @@ export function BaseTab() {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2.5 flex-wrap">
-        <SearchBox value={q} onChange={setQ} placeholder="Search base products…" />
+        <SearchBox
+          value={q}
+          onChange={setQ}
+          placeholder="Search base products…"
+        />
         <div className="ml-auto flex gap-2">
           {user?.isCeo && (
             <Button
@@ -73,7 +77,11 @@ export function BaseTab() {
             message="Base products are your China-origin, stock-bearing items. Add one to get started."
             action={
               canCreate ? (
-                <Button variant="primary" size="sm" onClick={() => nav("/catalogue/base/new")}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => nav("/catalogue/base/new")}
+                >
                   New base product
                 </Button>
               ) : undefined
@@ -83,7 +91,11 @@ export function BaseTab() {
       ) : (
         <CardGrid>
           {(products.data ?? []).map((p) => (
-            <BaseCard key={p.product_id} p={p} onOpen={() => nav(`/catalogue/base/${p.product_id}`)} />
+            <BaseCard
+              key={p.product_id}
+              p={p}
+              onOpen={() => nav(`/catalogue/base/${p.product_id}`)}
+            />
           ))}
         </CardGrid>
       )}
@@ -95,7 +107,11 @@ export function BaseTab() {
 }
 
 function BaseCard({ p, onOpen }: { p: BaseProduct; onOpen: () => void }) {
-  const specs = [p.texture_type, p.lace_type, p.hair_length_inches ? `${p.hair_length_inches}"` : null]
+  const specs = [
+    p.texture_type,
+    p.lace_type,
+    p.hair_length_inches ? `${p.hair_length_inches}"` : null,
+  ]
     .filter(Boolean)
     .join(" · ");
   return (
@@ -104,15 +120,25 @@ function BaseCard({ p, onOpen }: { p: BaseProduct; onOpen: () => void }) {
       className="text-left glass rounded-[var(--radius)] shadow-glass p-4 transition-all hover:border-accent/40 hover:-translate-y-0.5 focus:outline-none focus:border-accent/50"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <span className="font-mono text-[10.5px] text-accent-glow">{p.product_code}</span>
+        <span className="font-mono text-[10.5px] text-accent-glow">
+          {p.product_code}
+        </span>
         {p.is_visible_storefront ? (
-          <Pill tone="success" dot={false}>Storefront</Pill>
+          <Pill tone="success" dot={false}>
+            Storefront
+          </Pill>
         ) : (
-          <Pill tone="neutral" dot={false}>Hidden</Pill>
+          <Pill tone="neutral" dot={false}>
+            Hidden
+          </Pill>
         )}
       </div>
-      <div className="font-display text-[16px] leading-tight mb-1 truncate">{p.name}</div>
-      <div className="text-[11.5px] text-text-faint mb-3 truncate">{specs || "—"}</div>
+      <div className="font-display text-[16px] leading-tight mb-1 truncate">
+        {p.name}
+      </div>
+      <div className="text-[11.5px] text-text-faint mb-3 truncate">
+        {specs || "—"}
+      </div>
       {p.preorder_enabled && (
         <Pill tone="info" dot={false}>
           <Factory className="w-3 h-3" /> Pre-order ready

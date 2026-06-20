@@ -72,9 +72,7 @@ function squareTransparent(input, size, paddingRatio = 0) {
  *  keying it out. Best-effort — only sound for solid, flat backdrops. */
 async function flattenToTransparent(input) {
   const img = sharp(input).ensureAlpha();
-  const { data, info } = await img
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
   const [kr, kg, kb] = [data[0], data[1], data[2]];
   const tol = 18;
   for (let i = 0; i < data.length; i += info.channels) {

@@ -8,9 +8,18 @@ import { useAddDealActivity, useDraftActivity } from "../hooks";
 import type { ActivityType, ActivityOutcome } from "@/pages/contacts/types";
 
 const ACTIVITY_TYPES: ActivityType[] = [
-  "call", "whatsapp_msg", "sms", "instagram_dm",
-  "email", "meeting", "walk_in_visit", "website_chat",
-  "quote_sent", "payment_received", "follow_up_scheduled", "task_created",
+  "call",
+  "whatsapp_msg",
+  "sms",
+  "instagram_dm",
+  "email",
+  "meeting",
+  "walk_in_visit",
+  "website_chat",
+  "quote_sent",
+  "payment_received",
+  "follow_up_scheduled",
+  "task_created",
 ];
 
 const OUTCOMES: { value: ActivityOutcome; label: string }[] = [
@@ -24,7 +33,12 @@ const OUTCOMES: { value: ActivityOutcome; label: string }[] = [
   { value: "converted", label: "Converted" },
 ];
 
-const PHONE_TYPES: ActivityType[] = ["call", "sms", "whatsapp_msg", "instagram_dm"];
+const PHONE_TYPES: ActivityType[] = [
+  "call",
+  "sms",
+  "whatsapp_msg",
+  "instagram_dm",
+];
 
 interface Props {
   dealId: string;
@@ -34,7 +48,9 @@ interface Props {
 
 export function LogActivityModal({ dealId, contactId, onClose }: Props) {
   const [activityType, setActivityType] = useState<ActivityType>("call");
-  const [direction, setDirection] = useState<"inbound" | "outbound">("outbound");
+  const [direction, setDirection] = useState<"inbound" | "outbound">(
+    "outbound",
+  );
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [outcome, setOutcome] = useState<ActivityOutcome | "">("");
@@ -49,11 +65,17 @@ export function LogActivityModal({ dealId, contactId, onClose }: Props) {
   const [aiDrafted, setAiDrafted] = useState(false);
 
   const isPhone = PHONE_TYPES.includes(activityType);
-  const isScheduled = activityType === "follow_up_scheduled" || activityType === "task_created";
+  const isScheduled =
+    activityType === "follow_up_scheduled" || activityType === "task_created";
 
   const handleDraftAi = () => {
     draftAi.mutate(
-      { deal_id: dealId, contact_id: contactId, activity_type: activityType, direction },
+      {
+        deal_id: dealId,
+        contact_id: contactId,
+        activity_type: activityType,
+        direction,
+      },
       {
         onSuccess: (draft) => {
           if (draft.subject) setSubject(draft.subject);
@@ -87,12 +109,18 @@ export function LogActivityModal({ dealId, contactId, onClose }: Props) {
       title="Log Activity"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
           <Button
             variant="primary"
             onClick={handleSubmit}
             disabled={addActivity.isPending}
-            icon={addActivity.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : undefined}
+            icon={
+              addActivity.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : undefined
+            }
           >
             Log
           </Button>
@@ -116,7 +144,9 @@ export function LogActivityModal({ dealId, contactId, onClose }: Props) {
                 ].join(" ")}
               >
                 <ActivityIcon type={type} size="sm" />
-                <span className="text-center leading-tight">{activityLabel(type)}</span>
+                <span className="text-center leading-tight">
+                  {activityLabel(type)}
+                </span>
               </button>
             ))}
           </div>
@@ -175,7 +205,10 @@ export function LogActivityModal({ dealId, contactId, onClose }: Props) {
             </div>
             <textarea
               value={body}
-              onChange={(e) => { setBody(e.target.value); setAiDrafted(false); }}
+              onChange={(e) => {
+                setBody(e.target.value);
+                setAiDrafted(false);
+              }}
               placeholder={`Notes about this ${activityLabel(activityType).toLowerCase()}…`}
               rows={4}
               className={[
@@ -204,7 +237,9 @@ export function LogActivityModal({ dealId, contactId, onClose }: Props) {
               >
                 <option value="">— select outcome —</option>
                 {OUTCOMES.map(({ value, label }) => (
-                  <option key={value} value={value}>{label}</option>
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -250,10 +285,14 @@ export function LogActivityModal({ dealId, contactId, onClose }: Props) {
         </FormSection>
 
         {addActivity.isError && (
-          <p className="text-[12px] text-danger text-center">Failed to log activity. Try again.</p>
+          <p className="text-[12px] text-danger text-center">
+            Failed to log activity. Try again.
+          </p>
         )}
         {draftAi.isError && (
-          <p className="text-[12px] text-warn text-center">AI draft failed — type your notes manually.</p>
+          <p className="text-[12px] text-warn text-center">
+            AI draft failed — type your notes manually.
+          </p>
         )}
       </div>
     </Modal>

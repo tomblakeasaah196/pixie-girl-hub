@@ -30,7 +30,11 @@ export function RulesTab({ canEdit }: { canEdit: boolean }) {
       render: (r) => (
         <div>
           <div className="font-semibold text-[13px]">{r.rule_name}</div>
-          {r.description && <div className="text-[11px] text-text-faint truncate max-w-[220px]">{r.description}</div>}
+          {r.description && (
+            <div className="text-[11px] text-text-faint truncate max-w-[220px]">
+              {r.description}
+            </div>
+          )}
         </div>
       ),
     },
@@ -38,7 +42,11 @@ export function RulesTab({ canEdit }: { canEdit: boolean }) {
       key: "type",
       header: "Type",
       width: "150px",
-      render: (r) => <span className="text-text-muted text-xs">{RULE_TYPE_LABELS[r.rule_type]}</span>,
+      render: (r) => (
+        <span className="text-text-muted text-xs">
+          {RULE_TYPE_LABELS[r.rule_type]}
+        </span>
+      ),
     },
     {
       key: "value",
@@ -58,7 +66,11 @@ export function RulesTab({ canEdit }: { canEdit: boolean }) {
       key: "channel",
       header: "Channel",
       width: "120px",
-      render: (r) => <span className="text-text-muted text-xs">{channelLabel(r.channel)}</span>,
+      render: (r) => (
+        <span className="text-text-muted text-xs">
+          {channelLabel(r.channel)}
+        </span>
+      ),
     },
     {
       key: "priority",
@@ -71,7 +83,11 @@ export function RulesTab({ canEdit }: { canEdit: boolean }) {
       key: "status",
       header: "Status",
       width: "100px",
-      render: (r) => <Pill tone={r.is_active ? "success" : "neutral"}>{r.is_active ? "Active" : "Inactive"}</Pill>,
+      render: (r) => (
+        <Pill tone={r.is_active ? "success" : "neutral"}>
+          {r.is_active ? "Active" : "Inactive"}
+        </Pill>
+      ),
     },
     ...(canEdit
       ? [
@@ -102,7 +118,12 @@ export function RulesTab({ canEdit }: { canEdit: boolean }) {
     <div className="space-y-4">
       <div className="flex justify-end">
         {canEdit && (
-          <Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setCreating(true)}>
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => setCreating(true)}
+          >
             New rule
           </Button>
         )}
@@ -117,9 +138,14 @@ export function RulesTab({ canEdit }: { canEdit: boolean }) {
         empty={{
           icon: <Tag className="w-7 h-7" />,
           title: "No pricing rules",
-          message: "Define markup, margin, fixed-price or discount rules to automate pricing.",
+          message:
+            "Define markup, margin, fixed-price or discount rules to automate pricing.",
           action: canEdit ? (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setCreating(true)}
+            >
               New rule
             </Button>
           ) : undefined,
@@ -151,7 +177,9 @@ export function RulesTab({ canEdit }: { canEdit: boolean }) {
         onClose={() => setConfirmDel(null)}
         onConfirm={() =>
           confirmDel &&
-          remove.mutate(confirmDel.rule_id, { onSuccess: () => setConfirmDel(null) })
+          remove.mutate(confirmDel.rule_id, {
+            onSuccess: () => setConfirmDel(null),
+          })
         }
         title={`Deactivate "${confirmDel?.rule_name}"?`}
         message="This deactivates the rule. It stops affecting prices but stays on record."
@@ -203,7 +231,8 @@ function RuleDrawer({
   }, [open, rule]);
 
   const isNgn = RULE_VALUE_IS_NGN[ruleType];
-  const needsValue = ruleType !== "cost_pass_through" && ruleType !== "tiered_quantity";
+  const needsValue =
+    ruleType !== "cost_pass_through" && ruleType !== "tiered_quantity";
 
   const submit = () => {
     if (!name.trim()) return;
@@ -228,7 +257,11 @@ function RuleDrawer({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={saving || !name.trim()} onClick={submit}>
+          <Button
+            variant="primary"
+            disabled={saving || !name.trim()}
+            onClick={submit}
+          >
             {saving ? "Saving…" : rule ? "Save" : "Create rule"}
           </Button>
         </>
@@ -236,14 +269,27 @@ function RuleDrawer({
     >
       <div className="space-y-4">
         <Field label="Rule name">
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Storefront base markup" />
+          <TextInput
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Storefront base markup"
+          />
         </Field>
         <Field label="Rule type">
-          <Select value={ruleType} onChange={(v) => setRuleType(v)} options={RULE_TYPE_OPTIONS} />
+          <Select
+            value={ruleType}
+            onChange={(v) => setRuleType(v)}
+            options={RULE_TYPE_OPTIONS}
+          />
         </Field>
         {needsValue && (
           <Field label={isNgn ? "Value (₦)" : "Value (%)"}>
-            <NumberField value={value} onChange={setValue} suffix={isNgn ? "₦" : "%"} placeholder="0" />
+            <NumberField
+              value={value}
+              onChange={setValue}
+              suffix={isNgn ? "₦" : "%"}
+              placeholder="0"
+            />
           </Field>
         )}
         <Field label="Channel" hint="optional — applies to all if blank">
@@ -254,10 +300,17 @@ function RuleDrawer({
           />
         </Field>
         <Field label="Priority" hint="lower = higher priority">
-          <NumberField value={priority} onChange={setPriority} allowDecimal={false} />
+          <NumberField
+            value={priority}
+            onChange={setPriority}
+            allowDecimal={false}
+          />
         </Field>
         <Field label="Description" hint="optional">
-          <TextInput value={description} onChange={(e) => setDescription(e.target.value)} />
+          <TextInput
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </Field>
         {rule && (
           <label className="flex items-center gap-2">

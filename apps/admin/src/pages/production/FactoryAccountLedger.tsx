@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, CheckSquare, AlertTriangle, Globe } from "lucide-react";
-import { Button, Card, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
+import {
+  Button,
+  Card,
+  Pill,
+  Skeleton,
+  EmptyState,
+} from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Form";
 import { Select, NumberField } from "@/components/ui/controls";
@@ -10,13 +16,15 @@ import { useLedger, useAddLedgerEntry, useReconcileEntries } from "./hooks";
 import { ENTRY_TYPE_META, PAYMENT_METHOD_LABELS } from "./constants";
 import type { EntryType, PaymentMethod, FactoryAccount } from "./types";
 
-const ENTRY_TYPES: { value: EntryType; label: string }[] = Object.entries(ENTRY_TYPE_META).map(
-  ([v, m]) => ({ value: v as EntryType, label: m.label }),
-);
+const ENTRY_TYPES: { value: EntryType; label: string }[] = Object.entries(
+  ENTRY_TYPE_META,
+).map(([v, m]) => ({ value: v as EntryType, label: m.label }));
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = Object.entries(
-  PAYMENT_METHOD_LABELS,
-).map(([v, m]) => ({ value: v as PaymentMethod, label: m.label }));
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] =
+  Object.entries(PAYMENT_METHOD_LABELS).map(([v, m]) => ({
+    value: v as PaymentMethod,
+    label: m.label,
+  }));
 
 function fmt(d: string) {
   return new Date(d).toLocaleDateString("en-NG", {
@@ -43,9 +51,11 @@ export function FactoryAccountLedger({ account }: { account: FactoryAccount }) {
 
   const balance = account.current_balance_base;
   const isNearThreshold =
-    account.credit_alert_threshold != null && balance >= account.credit_alert_threshold * 0.9;
+    account.credit_alert_threshold != null &&
+    balance >= account.credit_alert_threshold * 0.9;
   const isOverThreshold =
-    account.credit_alert_threshold != null && balance >= account.credit_alert_threshold;
+    account.credit_alert_threshold != null &&
+    balance >= account.credit_alert_threshold;
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -85,7 +95,9 @@ export function FactoryAccountLedger({ account }: { account: FactoryAccount }) {
             {account.credit_alert_threshold != null && (
               <div className="text-[12px] text-text-faint mt-1">
                 {t("alertThreshold")}:{" "}
-                <span className="font-mono">{cny(account.credit_alert_threshold)}</span>
+                <span className="font-mono">
+                  {cny(account.credit_alert_threshold)}
+                </span>
               </div>
             )}
           </div>
@@ -155,7 +167,10 @@ export function FactoryAccountLedger({ account }: { account: FactoryAccount }) {
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 8 }).map((__, j) => (
-                      <td key={j} className="p-[0_14px] h-[50px] border-b hairline">
+                      <td
+                        key={j}
+                        className="p-[0_14px] h-[50px] border-b hairline"
+                      >
                         <Skeleton className="w-3/4" />
                       </td>
                     ))}
@@ -306,7 +321,12 @@ function AddEntryDrawer({
       {
         onSuccess: () => {
           onClose();
-          setForm((p) => ({ ...p, amount_original: "", description: "", notes: "" }));
+          setForm((p) => ({
+            ...p,
+            amount_original: "",
+            description: "",
+            notes: "",
+          }));
         },
       },
     );
@@ -406,7 +426,9 @@ function AddEntryDrawer({
         <Field label={t("paymentMethod")}>
           <Select
             value={form.payment_method}
-            onChange={(v) => setField("payment_method", v as PaymentMethod | "")}
+            onChange={(v) =>
+              setField("payment_method", v as PaymentMethod | "")
+            }
             options={[
               { value: "", label: t("selectPrompt") },
               ...PAYMENT_METHODS.map((o) => ({

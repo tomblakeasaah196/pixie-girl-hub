@@ -100,7 +100,13 @@ export interface AccessReview {
   completed_by: string | null;
   summary_note: string | null;
   entries?: AccessReviewEntry[];
-  entry_stats?: { total: number; approved: number; revoked: number; flagged: number; pending: number };
+  entry_stats?: {
+    total: number;
+    approved: number;
+    revoked: number;
+    flagged: number;
+    pending: number;
+  };
 }
 
 export interface AccessReviewEntry {
@@ -182,7 +188,10 @@ export function useIamUsers(filters: UserFilters = {}) {
   const q = qs.toString();
   return useQuery<{ rows: IamUser[]; total: number }>({
     queryKey: ["iam-users", brand, q],
-    queryFn: () => api.get<{ rows: IamUser[]; total: number }>(`/iam/users${q ? `?${q}` : ""}`),
+    queryFn: () =>
+      api.get<{ rows: IamUser[]; total: number }>(
+        `/iam/users${q ? `?${q}` : ""}`,
+      ),
   });
 }
 
@@ -199,7 +208,11 @@ export function useProvisionStaff() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (data: { profileId: string; email: string; businesses: string[] }) =>
+    mutationFn: (data: {
+      profileId: string;
+      email: string;
+      businesses: string[];
+    }) =>
       api.post<{ temp_password: string }>(
         `/iam/users/provision-staff/${data.profileId}`,
         { email: data.email, businesses: data.businesses },
@@ -217,7 +230,11 @@ export function useProvisionExternal() {
       email: string;
       external_label: string;
       businesses: string[];
-    }) => api.post<{ temp_password: string }>("/iam/users/provision-external", data),
+    }) =>
+      api.post<{ temp_password: string }>(
+        "/iam/users/provision-external",
+        data,
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["iam-users", brand] }),
   });
 }
@@ -226,8 +243,7 @@ export function useDeactivateUser() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (userId: string) =>
-      api.post(`/iam/users/${userId}/deactivate`),
+    mutationFn: (userId: string) => api.post(`/iam/users/${userId}/deactivate`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["iam-users", brand] });
       qc.invalidateQueries({ queryKey: ["iam-stats", brand] });
@@ -239,8 +255,7 @@ export function useReactivateUser() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (userId: string) =>
-      api.post(`/iam/users/${userId}/reactivate`),
+    mutationFn: (userId: string) => api.post(`/iam/users/${userId}/reactivate`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["iam-users", brand] });
       qc.invalidateQueries({ queryKey: ["iam-stats", brand] });
@@ -253,7 +268,9 @@ export function useAdminResetPassword() {
   const brand = useBrand();
   return useMutation({
     mutationFn: (userId: string) =>
-      api.post<{ temp_password: string }>(`/iam/users/${userId}/reset-password`),
+      api.post<{ temp_password: string }>(
+        `/iam/users/${userId}/reset-password`,
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["iam-users", brand] }),
   });
 }
@@ -297,8 +314,7 @@ export function useRevokeSession() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (sessionId: string) =>
-      api.delete(`/iam/sessions/${sessionId}`),
+    mutationFn: (sessionId: string) => api.delete(`/iam/sessions/${sessionId}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["iam-sessions", brand] });
       qc.invalidateQueries({ queryKey: ["iam-my-sessions", brand] });
@@ -311,8 +327,7 @@ export function useRevokeAllSessions() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (userId: string) =>
-      api.delete(`/iam/sessions/user/${userId}`),
+    mutationFn: (userId: string) => api.delete(`/iam/sessions/user/${userId}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["iam-sessions", brand] });
       qc.invalidateQueries({ queryKey: ["iam-my-sessions", brand] });
@@ -344,13 +359,17 @@ export function useAuditLog(filters: AuditFilters = {}) {
   if (filters.user_search) qs.set("user_search", filters.user_search);
   if (filters.date_from) qs.set("date_from", filters.date_from);
   if (filters.date_to) qs.set("date_to", filters.date_to);
-  if (filters.is_sensitive !== undefined) qs.set("is_sensitive", String(filters.is_sensitive));
+  if (filters.is_sensitive !== undefined)
+    qs.set("is_sensitive", String(filters.is_sensitive));
   if (filters.page) qs.set("page", String(filters.page));
   if (filters.per_page) qs.set("per_page", String(filters.per_page));
   const q = qs.toString();
   return useQuery<{ rows: AuditEntry[]; total: number }>({
     queryKey: ["iam-audit", brand, q],
-    queryFn: () => api.get<{ rows: AuditEntry[]; total: number }>(`/iam/audit${q ? `?${q}` : ""}`),
+    queryFn: () =>
+      api.get<{ rows: AuditEntry[]; total: number }>(
+        `/iam/audit${q ? `?${q}` : ""}`,
+      ),
   });
 }
 
@@ -377,7 +396,10 @@ export function useSecurityEvents(filters: EventFilters = {}) {
   const q = qs.toString();
   return useQuery<{ rows: SecurityEvent[]; total: number }>({
     queryKey: ["iam-events", brand, q],
-    queryFn: () => api.get<{ rows: SecurityEvent[]; total: number }>(`/iam/events${q ? `?${q}` : ""}`),
+    queryFn: () =>
+      api.get<{ rows: SecurityEvent[]; total: number }>(
+        `/iam/events${q ? `?${q}` : ""}`,
+      ),
   });
 }
 
@@ -393,7 +415,10 @@ export function useAccessReviews(filters: ReviewFilters = {}) {
   const q = qs.toString();
   return useQuery<{ rows: AccessReview[]; total: number }>({
     queryKey: ["iam-reviews", brand, q],
-    queryFn: () => api.get<{ rows: AccessReview[]; total: number }>(`/iam/reviews${q ? `?${q}` : ""}`),
+    queryFn: () =>
+      api.get<{ rows: AccessReview[]; total: number }>(
+        `/iam/reviews${q ? `?${q}` : ""}`,
+      ),
   });
 }
 
@@ -410,8 +435,11 @@ export function useCreateReview() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (data: { title: string; description?: string; due_date?: string }) =>
-      api.post("/iam/reviews", data),
+    mutationFn: (data: {
+      title: string;
+      description?: string;
+      due_date?: string;
+    }) => api.post("/iam/reviews", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["iam-reviews", brand] }),
   });
 }
@@ -420,8 +448,13 @@ export function useUpdateReview() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ reviewId, patch }: { reviewId: string; patch: Partial<AccessReview> }) =>
-      api.patch(`/iam/reviews/${reviewId}`, patch),
+    mutationFn: ({
+      reviewId,
+      patch,
+    }: {
+      reviewId: string;
+      patch: Partial<AccessReview>;
+    }) => api.patch(`/iam/reviews/${reviewId}`, patch),
     onSuccess: (_data, { reviewId }) => {
       qc.invalidateQueries({ queryKey: ["iam-reviews", brand] });
       qc.invalidateQueries({ queryKey: ["iam-reviews", brand, reviewId] });
@@ -475,8 +508,7 @@ export function useTotpVerify() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (data: { code: string }) =>
-      api.post("/iam/totp/verify", data),
+    mutationFn: (data: { code: string }) => api.post("/iam/totp/verify", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["totp-status", brand] }),
   });
 }
@@ -504,11 +536,13 @@ export async function downloadAuditExport(
   if (filters.user_search) qs.set("user_search", filters.user_search);
   if (filters.date_from) qs.set("date_from", filters.date_from);
   if (filters.date_to) qs.set("date_to", filters.date_to);
-  if (filters.is_sensitive !== undefined) qs.set("is_sensitive", String(filters.is_sensitive));
+  if (filters.is_sensitive !== undefined)
+    qs.set("is_sensitive", String(filters.is_sensitive));
   if (filters.page) qs.set("page", String(filters.page));
   if (filters.per_page) qs.set("per_page", String(filters.per_page));
   qs.set("format", format);
-  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api/v1";
+  const base =
+    (import.meta.env.VITE_API_URL as string | undefined) ?? "/api/v1";
   const res = await fetch(`${base}/iam/audit/export?${qs}`, {
     credentials: "include",
     headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
@@ -531,7 +565,8 @@ export async function downloadReviewExport(
 ) {
   const qs = new URLSearchParams();
   qs.set("format", format);
-  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api/v1";
+  const base =
+    (import.meta.env.VITE_API_URL as string | undefined) ?? "/api/v1";
   const res = await fetch(`${base}/iam/reviews/${reviewId}/export?${qs}`, {
     credentials: "include",
     headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },

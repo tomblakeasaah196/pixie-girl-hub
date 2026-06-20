@@ -24,9 +24,17 @@ router.get("/:code", ctrl.getOne);
 router.post("/", requirePermission("platform_settings", "edit"), ctrl.create);
 
 // PATCH /factory-i18n/:code — update display_name / is_active.
-router.patch("/:code", requirePermission("platform_settings", "edit"), ctrl.patchOne);
+router.patch(
+  "/:code",
+  requirePermission("platform_settings", "edit"),
+  ctrl.patchOne,
+);
 
 // DELETE /factory-i18n/:code — remove a locale (cannot delete 'en').
-router.delete("/:code", requirePermission("platform_settings", "edit"), ctrl.deleteOne);
+router.delete(
+  "/:code",
+  requirePermission("platform_settings", "edit"),
+  ctrl.deleteOne,
+);
 
 module.exports = router;

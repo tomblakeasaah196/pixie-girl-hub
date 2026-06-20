@@ -324,7 +324,10 @@ export function AudienceBuilder({
             onClick={() =>
               onChange({
                 ...value,
-                include: { ...(value.include ?? {}), contact_type: ["subscriber"] },
+                include: {
+                  ...(value.include ?? {}),
+                  contact_type: ["subscriber"],
+                },
                 exclude: { ...(value.exclude ?? {}), unsubscribed: true },
                 channel_requirements: "email",
               })
@@ -494,9 +497,7 @@ export function AudienceBuilder({
         <input
           type="checkbox"
           checked={value.exclude?.unsubscribed !== false}
-          onChange={(e) =>
-            updateExclude({ unsubscribed: e.target.checked })
-          }
+          onChange={(e) => updateExclude({ unsubscribed: e.target.checked })}
           className="rounded"
         />
         <span className="text-brand-cloud">

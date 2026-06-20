@@ -78,7 +78,14 @@ async function nextCode({ client, brand }) {
   return rows[0].num;
 }
 
-async function list({ client, brand, filters = {}, page = 1, page_size = 25, offset = 0 }) {
+async function list({
+  client,
+  brand,
+  filters = {},
+  page = 1,
+  page_size = 25,
+  offset = 0,
+}) {
   const where = ["s.is_deleted = false"];
   const params = [];
   let i = 1;
@@ -95,7 +102,9 @@ async function list({ client, brand, filters = {}, page = 1, page_size = 25, off
     params.push(filters.category_id);
   }
   if (filters.q) {
-    where.push(`(s.name ILIKE $${i} OR s.styled_code ILIKE $${i} OR s.slug ILIKE $${i})`);
+    where.push(
+      `(s.name ILIKE $${i} OR s.styled_code ILIKE $${i} OR s.slug ILIKE $${i})`,
+    );
     params.push(`%${filters.q}%`);
     i++;
   }
@@ -226,7 +235,13 @@ async function softDelete({ client, brand, id }) {
 }
 
 // ── Trash + Restore (names are partial-unique over live rows, 000041) ──
-async function listTrashed({ client, brand, page = 1, page_size = 25, offset = 0 }) {
+async function listTrashed({
+  client,
+  brand,
+  page = 1,
+  page_size = 25,
+  offset = 0,
+}) {
   const run = ex(client);
   const { rows: c } = await run(
     `SELECT COUNT(*)::int AS total FROM ${t(brand, "styled_products")} WHERE is_deleted = true`,
@@ -241,7 +256,12 @@ async function listTrashed({ client, brand, page = 1, page_size = 25, offset = 0
   );
   return {
     data: rows,
-    meta: { page, page_size, total: c[0].total, has_more: offset + rows.length < c[0].total },
+    meta: {
+      page,
+      page_size,
+      total: c[0].total,
+      has_more: offset + rows.length < c[0].total,
+    },
   };
 }
 async function getTrashedById({ client, brand, id }) {
@@ -282,7 +302,12 @@ async function restore({ client, brand, id, slug, styled_code }) {
  * sum every active variant of the base. This is the number that drives the
  * out-of-stock / pre-order cascade.
  */
-async function baseAvailability({ client, brand, base_product_id, base_variant_id }) {
+async function baseAvailability({
+  client,
+  brand,
+  base_product_id,
+  base_variant_id,
+}) {
   if (base_variant_id) {
     const { rows } = await ex(client)(
       `SELECT COALESCE(SUM(available), 0)::int AS available

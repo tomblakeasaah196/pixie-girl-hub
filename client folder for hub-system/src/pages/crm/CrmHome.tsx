@@ -43,7 +43,8 @@ export default function CrmHome() {
       "clients",
   );
   const [dealsView, setDealsView] = useState<DealsView>(
-    () => (localStorage.getItem("orika_crm_deals_view") as DealsView) || "board",
+    () =>
+      (localStorage.getItem("orika_crm_deals_view") as DealsView) || "board",
   );
   const [creating, setCreating] = useState(false);
   const [stageForNew, setStageForNew] = useState<string | undefined>();
@@ -157,7 +158,10 @@ export default function CrmHome() {
 
         {workspace === "deals" && (
           <div className="animate-fade-in">
-            <ForecastStrip pipeline={pipeline?.pipeline} loading={pipelineLoading} />
+            <ForecastStrip
+              pipeline={pipeline?.pipeline}
+              loading={pipelineLoading}
+            />
             {dealsView === "board" ? (
               <PipelineBoard
                 pipeline={pipeline?.pipeline}

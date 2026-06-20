@@ -206,9 +206,8 @@ export function UserAccessDrawer({
               );
             })}
             <p className="text-xs text-text-on-light-muted flex items-center gap-1.5">
-              <Key className="h-3.5 w-3.5" />
-              A role on a specific business overrides "All businesses" when the
-              user works in that business.
+              <Key className="h-3.5 w-3.5" />A role on a specific business
+              overrides "All businesses" when the user works in that business.
             </p>
           </div>
         </div>

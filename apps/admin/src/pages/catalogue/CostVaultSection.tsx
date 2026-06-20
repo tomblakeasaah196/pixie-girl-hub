@@ -16,7 +16,13 @@ import {
  * never even see the section, and the cost field is fetched on demand. The
  * operational wholesale price stays visible elsewhere; THIS is the secret.
  */
-export function CostVaultSection({ productId, variant }: { productId: string; variant: Variant }) {
+export function CostVaultSection({
+  productId,
+  variant,
+}: {
+  productId: string;
+  variant: Variant;
+}) {
   const access = useVaultAccess();
   const [revealed, setRevealed] = useState(false);
   const cost = useVariantCost(productId, variant.variant_id, revealed);
@@ -34,7 +40,10 @@ export function CostVaultSection({ productId, variant }: { productId: string; va
   };
   const save = () =>
     setCost.mutate(
-      { variantId: variant.variant_id, input: { cost_ngn: costNgn ? Number(costNgn) : undefined } },
+      {
+        variantId: variant.variant_id,
+        input: { cost_ngn: costNgn ? Number(costNgn) : undefined },
+      },
       { onSuccess: () => setEditing(false) },
     );
 
@@ -46,7 +55,11 @@ export function CostVaultSection({ productId, variant }: { productId: string; va
       </div>
 
       {!revealed ? (
-        <Button size="sm" icon={<Eye className="w-3.5 h-3.5" />} onClick={() => setRevealed(true)}>
+        <Button
+          size="sm"
+          icon={<Eye className="w-3.5 h-3.5" />}
+          onClick={() => setRevealed(true)}
+        >
           Reveal cost
         </Button>
       ) : cost.isLoading ? (
@@ -84,7 +97,9 @@ export function CostVaultSection({ productId, variant }: { productId: string; va
           {cost.data?.supplier_code && (
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-[12px] text-text-muted">Supplier</span>
-              <span className="text-[13px] font-mono">{cost.data.supplier_code}</span>
+              <span className="text-[13px] font-mono">
+                {cost.data.supplier_code}
+              </span>
             </div>
           )}
           <Button size="sm" className="mt-1" onClick={startEdit}>

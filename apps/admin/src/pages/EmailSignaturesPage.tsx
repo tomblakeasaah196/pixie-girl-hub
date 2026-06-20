@@ -17,7 +17,11 @@ const TOKENS: { token: string; sample: string; label: string }[] = [
   { token: "{{phone}}", sample: "+234 801 234 5678", label: "Sender phone" },
   { token: "{{email}}", sample: "ada.obi@pixiegirl.ng", label: "Sender email" },
   { token: "{{business_name}}", sample: "Pixie Girl", label: "Business name" },
-  { token: "{{website}}", sample: "https://pixiegirl.ng", label: "Business website" },
+  {
+    token: "{{website}}",
+    sample: "https://pixiegirl.ng",
+    label: "Business website",
+  },
 ];
 
 function renderPreview(html: string): string {
@@ -39,7 +43,10 @@ const STARTER = `<table style="font-family: Arial, sans-serif; color: #1a1011;">
 </table>`;
 
 export function EmailSignaturesPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Email Signatures" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Email Signatures" },
+  ]);
   const query = useSignatureTemplate();
   const save = useSaveSignatureTemplate();
 
@@ -127,8 +134,12 @@ export function EmailSignaturesPage() {
               key={t.token}
               className="flex items-center justify-between gap-3 p-2.5 rounded-[10px] bg-text-primary/[0.03] border border-line"
             >
-              <code className="font-mono text-[12px] text-accent-glow">{t.token}</code>
-              <span className="text-[12px] text-text-muted truncate">{t.label}</span>
+              <code className="font-mono text-[12px] text-accent-glow">
+                {t.token}
+              </code>
+              <span className="text-[12px] text-text-muted truncate">
+                {t.label}
+              </span>
             </div>
           ))}
         </div>

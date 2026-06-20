@@ -41,7 +41,11 @@ async function compressImage(buffer, mime) {
   try {
     const img = sharp(buffer, { failOn: "none" }).rotate(); // honour EXIF orientation
     const meta = await img.metadata();
-    if (meta.width && meta.height && Math.max(meta.width, meta.height) > MAX_EDGE) {
+    if (
+      meta.width &&
+      meta.height &&
+      Math.max(meta.width, meta.height) > MAX_EDGE
+    ) {
       img.resize({
         width: meta.width >= meta.height ? MAX_EDGE : undefined,
         height: meta.height > meta.width ? MAX_EDGE : undefined,

@@ -15,7 +15,10 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     if (!on) return;
     start.current = Date.now();
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start.current) / 1000)), 1000);
+    const id = setInterval(
+      () => setElapsed(Math.floor((Date.now() - start.current) / 1000)),
+      1000,
+    );
     return () => clearInterval(id);
   }, [on]);
 
@@ -36,7 +39,11 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
       title={on ? "Clock out" : "Clock in (on-site)"}
     >
       {on ? <MapPin className="w-[15px]" /> : <Clock className="w-[15px]" />}
-      {on ? <span className="font-mono tabular-nums">{hhmmss}</span> : !compact && <span>Clock in</span>}
+      {on ? (
+        <span className="font-mono tabular-nums">{hhmmss}</span>
+      ) : (
+        !compact && <span>Clock in</span>
+      )}
     </button>
   );
 }

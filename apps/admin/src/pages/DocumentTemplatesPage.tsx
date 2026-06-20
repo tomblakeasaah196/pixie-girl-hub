@@ -4,7 +4,12 @@ import { FileSignature, Plus, Star, Trash2 } from "lucide-react";
 import { Button, Card, Pill, EmptyState } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
-import { ConfirmDialog, ErrorState, Select, Toggle } from "@/components/ui/controls";
+import {
+  ConfirmDialog,
+  ErrorState,
+  Select,
+  Toggle,
+} from "@/components/ui/controls";
 import { Field, TextInput } from "@/components/ui/Form";
 import { useActiveBusiness } from "@/stores/business";
 import {
@@ -36,23 +41,36 @@ const DOC_TYPES = [
  * {{line_items}}, {{total}} are substituted at render.
  */
 export function DocumentTemplatesPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Document Templates" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Document Templates" },
+  ]);
   const biz = useActiveBusiness();
   const q = useDocumentTemplates();
   const setDefault = useSetDefaultTemplate();
   const del = useDeleteDocumentTemplate();
 
   const [drawer, setDrawer] = useState<DocumentTemplate | "new" | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<DocumentTemplate | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<DocumentTemplate | null>(
+    null,
+  );
 
   if (q.isError)
-    return <ErrorState message={(q.error as Error)?.message} onRetry={() => q.refetch()} />;
+    return (
+      <ErrorState
+        message={(q.error as Error)?.message}
+        onRetry={() => q.refetch()}
+      />
+    );
 
   // Group by doc_type so the user sees one section per document family.
-  const byType = (q.data ?? []).reduce<Record<string, DocumentTemplate[]>>((acc, t) => {
-    (acc[t.doc_type] ||= []).push(t);
-    return acc;
-  }, {});
+  const byType = (q.data ?? []).reduce<Record<string, DocumentTemplate[]>>(
+    (acc, t) => {
+      (acc[t.doc_type] ||= []).push(t);
+      return acc;
+    },
+    {},
+  );
 
   const columns = (): Column<DocumentTemplate>[] => [
     {
@@ -61,25 +79,43 @@ export function DocumentTemplatesPage() {
       render: (r) => (
         <span className="font-medium flex items-center gap-2">
           {r.name}
-          {r.is_default && <Star className="w-3.5 h-3.5 text-accent-glow fill-current" />}
+          {r.is_default && (
+            <Star className="w-3.5 h-3.5 text-accent-glow fill-current" />
+          )}
         </span>
       ),
     },
-    { key: "version", header: "Version", render: (r) => <span className="font-mono">v{r.version}</span>, width: "100px" },
+    {
+      key: "version",
+      header: "Version",
+      render: (r) => <span className="font-mono">v{r.version}</span>,
+      width: "100px",
+    },
     {
       key: "status",
       header: "Status",
       width: "140px",
       render: (r) => (
         <Pill
-          tone={r.status === "published" ? "success" : r.status === "draft" ? "warn" : "neutral"}
+          tone={
+            r.status === "published"
+              ? "success"
+              : r.status === "draft"
+                ? "warn"
+                : "neutral"
+          }
           dot={false}
         >
           {r.status}
         </Pill>
       ),
     },
-    { key: "updated_at", header: "Updated", render: (r) => new Date(r.updated_at).toLocaleDateString(), width: "120px" },
+    {
+      key: "updated_at",
+      header: "Updated",
+      render: (r) => new Date(r.updated_at).toLocaleDateString(),
+      width: "120px",
+    },
     {
       key: "actions",
       header: "",
@@ -121,14 +157,22 @@ export function DocumentTemplatesPage() {
             <FileSignature className="w-5 h-5" />
           </span>
           <div>
-            <h2 className="font-display text-[22px] font-medium">Document Templates</h2>
+            <h2 className="font-display text-[22px] font-medium">
+              Document Templates
+            </h2>
             <p className="text-text-muted text-[13px]">
               Invoices, POs, Delivery Notes, Receipts, Contracts.{" "}
-              <Pill tone="info" dot={false}>Editing for {biz.name}</Pill>
+              <Pill tone="info" dot={false}>
+                Editing for {biz.name}
+              </Pill>
             </p>
           </div>
         </div>
-        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setDrawer("new")}>
+        <Button
+          variant="primary"
+          icon={<Plus className="w-4 h-4" />}
+          onClick={() => setDrawer("new")}
+        >
           New template
         </Button>
       </div>
@@ -137,8 +181,9 @@ export function DocumentTemplatesPage() {
         The renderer reads the default template per document type. Tokens like{" "}
         <code className="font-mono">{"{{customer_name}}"}</code>,{" "}
         <code className="font-mono">{"{{line_items}}"}</code>,{" "}
-        <code className="font-mono">{"{{total}}"}</code> are substituted at render. The active brand's
-        colours come from <span className="text-text-primary">css_vars</span>.
+        <code className="font-mono">{"{{total}}"}</code> are substituted at
+        render. The active brand's colours come from{" "}
+        <span className="text-text-primary">css_vars</span>.
       </div>
 
       {DOC_TYPES.map((t) => {
@@ -176,17 +221,18 @@ export function DocumentTemplatesPage() {
           title="No templates yet"
           message="Create your first document template — Invoices, POs, Delivery Notes, Receipts, Contracts."
           action={
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setDrawer("new")}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setDrawer("new")}
+            >
               New template
             </Button>
           }
         />
       )}
 
-      <TemplateDrawer
-        target={drawer}
-        onClose={() => setDrawer(null)}
-      />
+      <TemplateDrawer target={drawer} onClose={() => setDrawer(null)} />
 
       <ConfirmDialog
         open={!!pendingDelete}
@@ -199,8 +245,9 @@ export function DocumentTemplatesPage() {
         message={
           pendingDelete && (
             <>
-              This permanently removes <strong>{pendingDelete.name}</strong>{" "}
-              (v{pendingDelete.version}). Documents already rendered with it are unaffected.
+              This permanently removes <strong>{pendingDelete.name}</strong> (v
+              {pendingDelete.version}). Documents already rendered with it are
+              unaffected.
             </>
           )
         }
@@ -229,7 +276,9 @@ function TemplateDrawer({
 
   const [doc_type, setDocType] = useState(row?.doc_type ?? "invoice");
   const [name, setName] = useState(row?.name ?? "");
-  const [status, setStatus] = useState<"draft" | "published" | "archived">(row?.status ?? "draft");
+  const [status, setStatus] = useState<"draft" | "published" | "archived">(
+    row?.status ?? "draft",
+  );
   const [header_html, setHeader] = useState(row?.header_html ?? "");
   const [body_html, setBody] = useState(row?.body_html ?? "");
   const [footer_html, setFooter] = useState(row?.footer_html ?? "");
@@ -247,7 +296,11 @@ function TemplateDrawer({
       is_default,
     };
     if (isNew) create.mutate(payload, { onSuccess: onClose });
-    else if (row) update.mutate({ id: row.template_id, patch: payload }, { onSuccess: onClose });
+    else if (row)
+      update.mutate(
+        { id: row.template_id, patch: payload },
+        { onSuccess: onClose },
+      );
   };
 
   return (
@@ -259,7 +312,10 @@ function TemplateDrawer({
       wide
       footer={
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="text-[13px] font-semibold text-text-muted px-3 h-9 rounded-[10px] hover:bg-text-primary/[0.06]">
+          <button
+            onClick={onClose}
+            className="text-[13px] font-semibold text-text-muted px-3 h-9 rounded-[10px] hover:bg-text-primary/[0.06]"
+          >
             Cancel
           </button>
           <button
@@ -267,7 +323,11 @@ function TemplateDrawer({
             disabled={!name || create.isPending || update.isPending}
             className="h-9 px-4 rounded-[10px] text-[13px] font-semibold bg-accent-deep text-[#F4E9D9] disabled:opacity-50 hover:bg-accent"
           >
-            {create.isPending || update.isPending ? "Saving…" : isNew ? "Create" : "Save"}
+            {create.isPending || update.isPending
+              ? "Saving…"
+              : isNew
+                ? "Create"
+                : "Save"}
           </button>
         </div>
       }
@@ -282,7 +342,11 @@ function TemplateDrawer({
             />
           </Field>
           <Field label="Name">
-            <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Standard Invoice" />
+            <TextInput
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Standard Invoice"
+            />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3 items-end">
@@ -298,7 +362,11 @@ function TemplateDrawer({
             />
           </Field>
           <div className="pb-1.5">
-            <Toggle checked={is_default} onChange={setIsDefault} label="Default for this document type" />
+            <Toggle
+              checked={is_default}
+              onChange={setIsDefault}
+              label="Default for this document type"
+            />
           </div>
         </div>
         <Field label="Header HTML">

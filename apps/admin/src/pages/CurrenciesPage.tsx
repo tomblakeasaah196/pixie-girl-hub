@@ -4,7 +4,12 @@ import { Coins, Loader2, Plus, RefreshCw } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
-import { ErrorState, NumberField, Select, Toggle } from "@/components/ui/controls";
+import {
+  ErrorState,
+  NumberField,
+  Select,
+  Toggle,
+} from "@/components/ui/controls";
 import { Field, TextInput } from "@/components/ui/Form";
 import { useActiveBusiness } from "@/stores/business";
 import {
@@ -22,21 +27,26 @@ import {
  * (per-platform) and the FX rate ledger with a manual-override form.
  */
 export function CurrenciesPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Currencies & FX" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Currencies & FX" },
+  ]);
   const active = useActiveBusiness();
 
   return (
     <div className="max-w-[920px] mx-auto space-y-9 pb-24">
       <header>
         <div className="flex items-center gap-2.5 mb-1.5">
-          <h1 className="font-display text-[22px] font-medium">Currencies &amp; FX</h1>
+          <h1 className="font-display text-[22px] font-medium">
+            Currencies &amp; FX
+          </h1>
           <Pill tone="accent" dot={false}>
             Editing for: {active.name}
           </Pill>
         </div>
         <p className="text-xs text-text-muted">
-          The currency registry and the foreign-exchange rate ledger used
-          across pricing, invoicing and settlement.
+          The currency registry and the foreign-exchange rate ledger used across
+          pricing, invoicing and settlement.
         </p>
       </header>
 
@@ -60,10 +70,16 @@ function CurrenciesSection() {
     {
       key: "code",
       header: "Code",
-      render: (r) => <span className="font-mono font-semibold">{r.currency_code}</span>,
+      render: (r) => (
+        <span className="font-mono font-semibold">{r.currency_code}</span>
+      ),
     },
     { key: "name", header: "Name", render: (r) => r.display_name },
-    { key: "symbol", header: "Symbol", render: (r) => <span className="font-mono">{r.symbol}</span> },
+    {
+      key: "symbol",
+      header: "Symbol",
+      render: (r) => <span className="font-mono">{r.symbol}</span>,
+    },
     {
       key: "decimals",
       header: "Decimals",
@@ -73,7 +89,12 @@ function CurrenciesSection() {
     {
       key: "settlement",
       header: "Settlement",
-      render: (r) => (r.is_settlement ? <Pill tone="info">Settlement</Pill> : <span className="text-text-faint">—</span>),
+      render: (r) =>
+        r.is_settlement ? (
+          <Pill tone="info">Settlement</Pill>
+        ) : (
+          <span className="text-text-faint">—</span>
+        ),
     },
     {
       key: "active",
@@ -82,7 +103,9 @@ function CurrenciesSection() {
         <Toggle
           checked={r.is_active}
           disabled={update.isPending}
-          onChange={(v) => update.mutate({ code: r.currency_code, patch: { is_active: v } })}
+          onChange={(v) =>
+            update.mutate({ code: r.currency_code, patch: { is_active: v } })
+          }
         />
       ),
     },
@@ -92,7 +115,11 @@ function CurrenciesSection() {
     <section>
       <div className="flex items-center justify-between mb-3">
         <div className="micro">Currencies</div>
-        <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => setAdding(true)}>
+        <Button
+          size="sm"
+          icon={<Plus className="w-4 h-4" />}
+          onClick={() => setAdding(true)}
+        >
           Add currency
         </Button>
       </div>
@@ -112,7 +139,10 @@ function CurrenciesSection() {
             title: "No currencies yet",
             message: "Add a currency to start pricing and settling in it.",
             action: (
-              <Button icon={<Plus className="w-4 h-4" />} onClick={() => setAdding(true)}>
+              <Button
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setAdding(true)}
+              >
                 Add currency
               </Button>
             ),
@@ -125,7 +155,13 @@ function CurrenciesSection() {
   );
 }
 
-function AddCurrencyDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AddCurrencyDrawer({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const save = useSaveCurrency();
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -180,7 +216,11 @@ function AddCurrencyDrawer({ open, onClose }: { open: boolean; onClose: () => vo
             variant="primary"
             disabled={!code.trim() || !name.trim() || save.isPending}
             onClick={submit}
-            icon={save.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+            icon={
+              save.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : undefined
+            }
           >
             Save currency
           </Button>
@@ -189,29 +229,57 @@ function AddCurrencyDrawer({ open, onClose }: { open: boolean; onClose: () => vo
     >
       <div className="space-y-4">
         <Field label="Code" hint="ISO 4217, e.g. NGN">
-          <TextInput value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="NGN" maxLength={3} />
+          <TextInput
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            placeholder="NGN"
+            maxLength={3}
+          />
         </Field>
         <Field label="Display name">
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Nigerian Naira" />
+          <TextInput
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nigerian Naira"
+          />
         </Field>
         <Field label="Symbol">
-          <TextInput value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="₦" />
+          <TextInput
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value)}
+            placeholder="₦"
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Decimal places">
-            <NumberField value={decimals} onChange={setDecimals} allowDecimal={false} placeholder="2" />
+            <NumberField
+              value={decimals}
+              onChange={setDecimals}
+              allowDecimal={false}
+              placeholder="2"
+            />
           </Field>
           <Field label="Rounding unit">
-            <NumberField value={rounding} onChange={setRounding} placeholder="0.01" />
+            <NumberField
+              value={rounding}
+              onChange={setRounding}
+              placeholder="0.01"
+            />
           </Field>
         </div>
         <div className="flex items-center gap-6 pt-1">
-          <Toggle checked={isSettlement} onChange={setIsSettlement} label="Settlement currency" />
+          <Toggle
+            checked={isSettlement}
+            onChange={setIsSettlement}
+            label="Settlement currency"
+          />
           <Toggle checked={isActive} onChange={setIsActive} label="Active" />
         </div>
         {save.isError && (
           <p className="text-[12px] text-danger">
-            {save.error instanceof Error ? save.error.message : "Could not save currency."}
+            {save.error instanceof Error
+              ? save.error.message
+              : "Could not save currency."}
           </p>
         )}
       </div>
@@ -270,18 +338,37 @@ function FxSection() {
       key: "rate",
       header: "Rate",
       align: "right",
-      render: (r) => <span className="tabular-nums">{Number(r.rate).toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>,
+      render: (r) => (
+        <span className="tabular-nums">
+          {Number(r.rate).toLocaleString(undefined, {
+            maximumFractionDigits: 8,
+          })}
+        </span>
+      ),
     },
-    { key: "source", header: "Source", render: (r) => r.source ?? <span className="text-text-faint">—</span> },
+    {
+      key: "source",
+      header: "Source",
+      render: (r) => r.source ?? <span className="text-text-faint">—</span>,
+    },
     {
       key: "override",
       header: "Type",
-      render: (r) => (r.is_manual_override ? <Pill tone="warn">Manual</Pill> : <Pill tone="neutral">Auto</Pill>),
+      render: (r) =>
+        r.is_manual_override ? (
+          <Pill tone="warn">Manual</Pill>
+        ) : (
+          <Pill tone="neutral">Auto</Pill>
+        ),
     },
     {
       key: "valid_at",
       header: "Valid at",
-      render: (r) => <span className="text-text-muted">{new Date(r.valid_at).toLocaleString()}</span>,
+      render: (r) => (
+        <span className="text-text-muted">
+          {new Date(r.valid_at).toLocaleString()}
+        </span>
+      ),
     },
   ];
 
@@ -316,20 +403,32 @@ function FxSection() {
             <NumberField value={rate} onChange={setRate2} placeholder="0.00" />
           </Field>
           <Field label="Valid at" hint="optional">
-            <TextInput type="datetime-local" value={validAt} onChange={(e) => setValidAt(e.target.value)} />
+            <TextInput
+              type="datetime-local"
+              value={validAt}
+              onChange={(e) => setValidAt(e.target.value)}
+            />
           </Field>
           <Button
             variant="primary"
             disabled={!fromValue || !toValue || !rate || setRate.isPending}
             onClick={submit}
-            icon={setRate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            icon={
+              setRate.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )
+            }
           >
             Set rate
           </Button>
         </div>
         {setRate.isError && (
           <p className="text-[12px] text-danger mt-2">
-            {setRate.error instanceof Error ? setRate.error.message : "Could not set rate."}
+            {setRate.error instanceof Error
+              ? setRate.error.message
+              : "Could not set rate."}
           </p>
         )}
       </Card>
@@ -347,7 +446,8 @@ function FxSection() {
           empty={{
             icon: <RefreshCw className="w-8 h-8" />,
             title: "No FX rates yet",
-            message: "Rates appear once the auto-refresh runs or you add a manual override above.",
+            message:
+              "Rates appear once the auto-refresh runs or you add a manual override above.",
           }}
         />
       )}

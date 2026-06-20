@@ -23,7 +23,10 @@ function sample(prefix: string, padding: number, next: number) {
 }
 
 export function DocumentNumberingPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Document Numbering" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Document Numbering" },
+  ]);
   const q = useDocSequences();
   const update = useUpdateDocSequence();
   const active = useActiveBusiness();
@@ -100,7 +103,9 @@ export function DocumentNumberingPage() {
   return (
     <div className="max-w-[900px] mx-auto space-y-4 pb-12">
       <div className="flex items-center gap-2.5 flex-wrap">
-        <h1 className="font-display text-2xl font-medium">Document numbering</h1>
+        <h1 className="font-display text-2xl font-medium">
+          Document numbering
+        </h1>
         <Pill tone="accent" dot={false}>
           Editing for: {active.name}
         </Pill>
@@ -136,7 +141,15 @@ export function DocumentNumberingPage() {
         open={!!editing}
         onClose={close}
         title={editing ? `Edit ${editing.document_type}` : "Edit sequence"}
-        subtitle={editing ? sample(prefix || editing.prefix, Number(padding) || editing.padding, editing.next_number) : undefined}
+        subtitle={
+          editing
+            ? sample(
+                prefix || editing.prefix,
+                Number(padding) || editing.padding,
+                editing.next_number,
+              )
+            : undefined
+        }
         footer={
           <>
             <Button variant="ghost" onClick={close}>
@@ -146,7 +159,11 @@ export function DocumentNumberingPage() {
               variant="primary"
               onClick={save}
               disabled={update.isPending}
-              icon={update.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+              icon={
+                update.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : undefined
+              }
             >
               Save changes
             </Button>
@@ -160,9 +177,7 @@ export function DocumentNumberingPage() {
               hint={locked ? "Locked — documents already issued" : undefined}
             >
               <span
-                title={
-                  locked ? "Locked — documents already issued" : undefined
-                }
+                title={locked ? "Locked — documents already issued" : undefined}
               >
                 <TextInput
                   value={prefix}

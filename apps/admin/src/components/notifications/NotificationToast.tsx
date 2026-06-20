@@ -11,7 +11,14 @@
 
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, AlertTriangle, Bell, Package, DollarSign, CheckCircle } from "lucide-react";
+import {
+  X,
+  AlertTriangle,
+  Bell,
+  Package,
+  DollarSign,
+  CheckCircle,
+} from "lucide-react";
 import { create } from "zustand";
 import { cn } from "@/lib/cn";
 import type { AppNotification } from "@/lib/notifications-api";
@@ -45,7 +52,7 @@ export const useToastStore = create<ToastStore>((set) => ({
 
 function priorityBorder(p: string) {
   if (p === "urgent") return "border-l-[3px] border-l-danger";
-  if (p === "high")   return "border-l-[3px] border-l-warn";
+  if (p === "high") return "border-l-[3px] border-l-warn";
   if (p === "normal") return "border-l-[3px] border-l-accent";
   return "";
 }
@@ -54,7 +61,11 @@ function NotifIcon({ type }: { type: string }) {
   const cls = "w-4 h-4 shrink-0";
   if (type.includes("approval") || type.includes("leave"))
     return <AlertTriangle className={cn(cls, "text-warn")} />;
-  if (type.includes("payment") || type.includes("billing") || type.includes("order"))
+  if (
+    type.includes("payment") ||
+    type.includes("billing") ||
+    type.includes("order")
+  )
     return <DollarSign className={cn(cls, "text-success")} />;
   if (type.includes("stock") || type.includes("production"))
     return <Package className={cn(cls, "text-accent-glow")} />;
@@ -72,12 +83,15 @@ function Toast({ item }: { item: ToastItem }) {
 
   const { notif } = item;
   const p = notif.priority ?? "normal";
-  const autoMs = p === "urgent" ? 0 : p === "high" ? 6000 : p === "low" ? 3000 : 4000;
+  const autoMs =
+    p === "urgent" ? 0 : p === "high" ? 6000 : p === "low" ? 3000 : 4000;
 
   useEffect(() => {
     if (!autoMs) return;
     timer.current = setTimeout(() => remove(item.id), autoMs);
-    return () => { if (timer.current) clearTimeout(timer.current); };
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
   }, [autoMs, item.id, remove]);
 
   function handleClick() {

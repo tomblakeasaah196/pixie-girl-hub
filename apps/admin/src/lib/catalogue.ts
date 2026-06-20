@@ -290,7 +290,10 @@ export interface BaseFilters {
 function qs(params: Record<string, string | undefined>): string {
   const parts = Object.entries(params).filter(([, v]) => v != null && v !== "");
   if (!parts.length) return "";
-  return "?" + parts.map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join("&");
+  return (
+    "?" +
+    parts.map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join("&")
+  );
 }
 
 export function useBaseProducts(filters: BaseFilters = {}) {
@@ -302,7 +305,8 @@ export function useBaseProducts(filters: BaseFilters = {}) {
         `/catalogue/products${qs({
           q: filters.q,
           category_id: filters.category_id,
-          visible: filters.visible === undefined ? undefined : String(filters.visible),
+          visible:
+            filters.visible === undefined ? undefined : String(filters.visible),
           page_size: "100",
         })}`,
       ),
@@ -324,7 +328,8 @@ export function useCreateBaseProduct() {
   return useMutation({
     mutationFn: (input: Partial<BaseProduct>) =>
       api.post<BaseProduct>("/catalogue/products", input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
   });
 }
 
@@ -372,7 +377,8 @@ export function useBulkImportProducts() {
   return useMutation({
     mutationFn: (rows: BulkImportRow[]) =>
       api.post<BulkImportResult>("/catalogue/products/bulk-import", { rows }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
   });
 }
 
@@ -382,7 +388,8 @@ export function useUpdateBaseProduct(id: string) {
   return useMutation({
     mutationFn: (patch: Partial<BaseProduct>) =>
       api.patch<BaseProduct>(`/catalogue/products/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
   });
 }
 
@@ -391,7 +398,8 @@ export function useDeleteBaseProduct() {
   const brand = useBrand();
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/catalogue/products/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
   });
 }
 
@@ -400,7 +408,8 @@ export function useVariants(productId: string | null) {
   const brand = useBrand();
   return useQuery<Variant[]>({
     queryKey: ["catalogue", "variants", brand, productId],
-    queryFn: () => api.get<Variant[]>(`/catalogue/products/${productId}/variants`),
+    queryFn: () =>
+      api.get<Variant[]>(`/catalogue/products/${productId}/variants`),
     enabled: !!productId,
   });
 }
@@ -412,7 +421,9 @@ export function useAddVariant(productId: string) {
     mutationFn: (input: Partial<Variant>) =>
       api.post<Variant>(`/catalogue/products/${productId}/variants`, input),
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["catalogue", "variants", brand, productId] }),
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "variants", brand, productId],
+      }),
   });
 }
 
@@ -420,10 +431,21 @@ export function useUpdateVariant(productId: string) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ variantId, patch }: { variantId: string; patch: Partial<Variant> }) =>
-      api.patch<Variant>(`/catalogue/products/${productId}/variants/${variantId}`, patch),
+    mutationFn: ({
+      variantId,
+      patch,
+    }: {
+      variantId: string;
+      patch: Partial<Variant>;
+    }) =>
+      api.patch<Variant>(
+        `/catalogue/products/${productId}/variants/${variantId}`,
+        patch,
+      ),
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["catalogue", "variants", brand, productId] }),
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "variants", brand, productId],
+      }),
   });
 }
 
@@ -502,7 +524,9 @@ export function useUnpublishStyled() {
   const brand = useBrand();
   return useMutation({
     mutationFn: ({ id, archive }: { id: string; archive?: boolean }) =>
-      api.post<StyledProduct>(`/catalogue/styled-products/${id}/unpublish`, { archive: !!archive }),
+      api.post<StyledProduct>(`/catalogue/styled-products/${id}/unpublish`, {
+        archive: !!archive,
+      }),
     onSuccess: () => invalidateStyled(qc, brand),
   });
 }
@@ -511,7 +535,8 @@ export function useRemoveStyled() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/catalogue/styled-products/${id}`),
+    mutationFn: (id: string) =>
+      api.delete<void>(`/catalogue/styled-products/${id}`),
     onSuccess: () => invalidateStyled(qc, brand),
   });
 }
@@ -554,7 +579,8 @@ export function useCreateCategory() {
   return useMutation({
     mutationFn: (input: Partial<Category>) =>
       api.post<Category>("/catalogue/categories", input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "categories", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "categories", brand] }),
   });
 }
 
@@ -564,7 +590,8 @@ export function useUpdateCategory(id: string) {
   return useMutation({
     mutationFn: (patch: Partial<Category>) =>
       api.patch<Category>(`/catalogue/categories/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "categories", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "categories", brand] }),
   });
 }
 
@@ -573,7 +600,8 @@ export function useArchiveCategory() {
   const brand = useBrand();
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/catalogue/categories/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "categories", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "categories", brand] }),
   });
 }
 
@@ -591,7 +619,8 @@ export function useCreateCollection() {
   return useMutation({
     mutationFn: (input: Partial<Collection>) =>
       api.post<Collection>("/catalogue/collections", input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] }),
   });
 }
 
@@ -625,7 +654,8 @@ export function useCreateService() {
   return useMutation({
     mutationFn: (input: ServiceInput) =>
       api.post<ServiceOffering>("/service-catalogue", input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
   });
 }
 
@@ -635,7 +665,8 @@ export function useToggleService() {
   return useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
       api.patch<ServiceOffering>(`/service-catalogue/${id}`, { is_active }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
   });
 }
 
@@ -648,13 +679,18 @@ export function useVaultAccess() {
   const brand = useBrand();
   return useQuery<{ can_see: boolean }>({
     queryKey: ["catalogue", "vault-access", brand],
-    queryFn: () => api.get<{ can_see: boolean }>("/catalogue/cost-vault/access"),
+    queryFn: () =>
+      api.get<{ can_see: boolean }>("/catalogue/cost-vault/access"),
     staleTime: 5 * 60_000,
   });
 }
 
 /** Fetch a variant's true cost — ONLY call when access is confirmed. */
-export function useVariantCost(productId: string, variantId: string | null, enabled: boolean) {
+export function useVariantCost(
+  productId: string,
+  variantId: string | null,
+  enabled: boolean,
+) {
   const brand = useBrand();
   return useQuery<VariantCost | null>({
     queryKey: ["catalogue", "cost", brand, variantId],
@@ -677,13 +713,21 @@ export function useSetVariantCost(productId: string) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ variantId, input }: { variantId: string; input: SetCostInput }) =>
+    mutationFn: ({
+      variantId,
+      input,
+    }: {
+      variantId: string;
+      input: SetCostInput;
+    }) =>
       api.put<{ variant_id: string }>(
         `/catalogue/products/${productId}/variants/${variantId}/cost`,
         input,
       ),
     onSuccess: (_d, vars) =>
-      qc.invalidateQueries({ queryKey: ["catalogue", "cost", brand, vars.variantId] }),
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "cost", brand, vars.variantId],
+      }),
   });
 }
 
@@ -703,7 +747,8 @@ export function useGrantVault() {
   return useMutation({
     mutationFn: (input: { user_id: string; business?: string }) =>
       api.post<VaultGrant>("/catalogue/cost-vault/grants", input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "vault-grants", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "vault-grants", brand] }),
   });
 }
 
@@ -712,8 +757,11 @@ export function useRevokeVault() {
   const brand = useBrand();
   return useMutation({
     mutationFn: ({ userId, reason }: { userId: string; reason?: string }) =>
-      api.delete<void>(`/catalogue/cost-vault/grants/${userId}${qs({ reason })}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "vault-grants", brand] }),
+      api.delete<void>(
+        `/catalogue/cost-vault/grants/${userId}${qs({ reason })}`,
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "vault-grants", brand] }),
   });
 }
 
@@ -754,7 +802,8 @@ export function useCreateBundle() {
   return useMutation({
     mutationFn: (input: BundleCreateInput) =>
       api.post<Bundle>("/retention/bundles", input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
   });
 }
 
@@ -764,7 +813,8 @@ export function useToggleBundle() {
   return useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
       api.patch<Bundle>(`/retention/bundles/${id}/active`, { is_active }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
   });
 }
 
@@ -816,8 +866,12 @@ export function useStockRealtime() {
  *  detail query carries colours + variants + price range). */
 function invalidateStyledDetail(qc: QueryClient, brand: string, id: string) {
   qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand, "one", id] });
-  qc.invalidateQueries({ queryKey: ["catalogue", "styled-colours", brand, id] });
-  qc.invalidateQueries({ queryKey: ["catalogue", "styled-variants", brand, id] });
+  qc.invalidateQueries({
+    queryKey: ["catalogue", "styled-colours", brand, id],
+  });
+  qc.invalidateQueries({
+    queryKey: ["catalogue", "styled-variants", brand, id],
+  });
   qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
 }
 
@@ -826,7 +880,8 @@ export function useSizeConfig() {
   const brand = useBrand();
   return useQuery<SizeConfig>({
     queryKey: ["catalogue", "size-config", brand],
-    queryFn: () => api.get<SizeConfig>("/catalogue/styled-products/size-config"),
+    queryFn: () =>
+      api.get<SizeConfig>("/catalogue/styled-products/size-config"),
   });
 }
 
@@ -863,7 +918,10 @@ export function useCreateColour(styledId: string) {
   const brand = useBrand();
   return useMutation({
     mutationFn: (input: Partial<StyledColour>) =>
-      api.post<StyledColour>(`/catalogue/styled-products/${styledId}/colours`, input),
+      api.post<StyledColour>(
+        `/catalogue/styled-products/${styledId}/colours`,
+        input,
+      ),
     onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
   });
 }
@@ -871,7 +929,13 @@ export function useUpdateColour(styledId: string) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ colourId, patch }: { colourId: string; patch: Partial<StyledColour> }) =>
+    mutationFn: ({
+      colourId,
+      patch,
+    }: {
+      colourId: string;
+      patch: Partial<StyledColour>;
+    }) =>
       api.patch<StyledColour>(
         `/catalogue/styled-products/${styledId}/colours/${colourId}`,
         patch,
@@ -884,13 +948,18 @@ export function useDeleteColour(styledId: string) {
   const brand = useBrand();
   return useMutation({
     mutationFn: (colourId: string) =>
-      api.delete<void>(`/catalogue/styled-products/${styledId}/colours/${colourId}`),
+      api.delete<void>(
+        `/catalogue/styled-products/${styledId}/colours/${colourId}`,
+      ),
     onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
   });
 }
 
 // ── Per-colour images (2–3 pictures per colour) ──────────
-export function useColourImages(styledId: string | null, colourId: string | null) {
+export function useColourImages(
+  styledId: string | null,
+  colourId: string | null,
+) {
   const brand = useBrand();
   return useQuery<ProductImage[]>({
     queryKey: ["catalogue", "colour-images", brand, styledId, colourId],
@@ -917,7 +986,9 @@ export function useAddColourImage(styledId: string, colourId: string) {
       qc.invalidateQueries({
         queryKey: ["catalogue", "colour-images", brand, styledId, colourId],
       });
-      qc.invalidateQueries({ queryKey: ["catalogue", "styled-colours", brand, styledId] });
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "styled-colours", brand, styledId],
+      });
     },
   });
 }
@@ -933,7 +1004,9 @@ export function useRemoveColourImage(styledId: string, colourId: string) {
       qc.invalidateQueries({
         queryKey: ["catalogue", "colour-images", brand, styledId, colourId],
       });
-      qc.invalidateQueries({ queryKey: ["catalogue", "styled-colours", brand, styledId] });
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "styled-colours", brand, styledId],
+      });
     },
   });
 }
@@ -944,7 +1017,9 @@ export function useStyledVariants(styledId: string | null) {
   return useQuery<StyledVariant[]>({
     queryKey: ["catalogue", "styled-variants", brand, styledId],
     queryFn: () =>
-      api.get<StyledVariant[]>(`/catalogue/styled-products/${styledId}/variants`),
+      api.get<StyledVariant[]>(
+        `/catalogue/styled-products/${styledId}/variants`,
+      ),
     enabled: !!styledId,
   });
 }
@@ -969,7 +1044,13 @@ export function useUpdateStyledVariant(styledId: string) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ variantId, patch }: { variantId: string; patch: Partial<StyledVariant> }) =>
+    mutationFn: ({
+      variantId,
+      patch,
+    }: {
+      variantId: string;
+      patch: Partial<StyledVariant>;
+    }) =>
       api.patch<StyledVariant>(
         `/catalogue/styled-products/${styledId}/variants/${variantId}`,
         patch,
@@ -982,7 +1063,9 @@ export function useDeleteStyledVariant(styledId: string) {
   const brand = useBrand();
   return useMutation({
     mutationFn: (variantId: string) =>
-      api.delete<void>(`/catalogue/styled-products/${styledId}/variants/${variantId}`),
+      api.delete<void>(
+        `/catalogue/styled-products/${styledId}/variants/${variantId}`,
+      ),
     onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
   });
 }
@@ -994,7 +1077,8 @@ export function useProductTrash(enabled = true) {
   const brand = useBrand();
   return useQuery<BaseProduct[]>({
     queryKey: ["catalogue", "trash", "products", brand],
-    queryFn: () => api.get<BaseProduct[]>("/catalogue/products/trash?page_size=100"),
+    queryFn: () =>
+      api.get<BaseProduct[]>("/catalogue/products/trash?page_size=100"),
     enabled,
   });
 }
@@ -1003,9 +1087,13 @@ export function useRestoreProduct() {
   const brand = useBrand();
   return useMutation({
     mutationFn: (id: string) =>
-      api.post<BaseProduct & { renamed: boolean }>(`/catalogue/products/${id}/restore`),
+      api.post<BaseProduct & { renamed: boolean }>(
+        `/catalogue/products/${id}/restore`,
+      ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["catalogue", "trash", "products", brand] });
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "trash", "products", brand],
+      });
       qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] });
     },
   });
@@ -1015,7 +1103,9 @@ export function useStyledTrash(enabled = true) {
   return useQuery<StyledProduct[]>({
     queryKey: ["catalogue", "trash", "styled", brand],
     queryFn: () =>
-      api.get<StyledProduct[]>("/catalogue/styled-products/trash?page_size=100"),
+      api.get<StyledProduct[]>(
+        "/catalogue/styled-products/trash?page_size=100",
+      ),
     enabled,
   });
 }
@@ -1028,7 +1118,9 @@ export function useRestoreStyled() {
         `/catalogue/styled-products/${id}/restore`,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["catalogue", "trash", "styled", brand] });
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "trash", "styled", brand],
+      });
       invalidateStyled(qc, brand);
     },
   });
@@ -1041,11 +1133,18 @@ export function useAddCollectionMember() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ collectionId, productId }: { collectionId: string; productId: string }) =>
+    mutationFn: ({
+      collectionId,
+      productId,
+    }: {
+      collectionId: string;
+      productId: string;
+    }) =>
       api.post<{ member_id: string }>(
         `/catalogue/collections/${collectionId}/members`,
         { product_id: productId },
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] }),
   });
 }

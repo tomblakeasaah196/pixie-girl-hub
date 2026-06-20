@@ -102,15 +102,24 @@ const createAdjustment = async (req, res) =>
   });
 const submitAdjustment = async (req, res) =>
   res.json({
-    data: await service.submitAdjustment({ ...base(req), id: req.params.adjId }),
+    data: await service.submitAdjustment({
+      ...base(req),
+      id: req.params.adjId,
+    }),
   });
 const approveAdjustment = async (req, res) =>
   res.json({
-    data: await service.approveAdjustment({ ...base(req), id: req.params.adjId }),
+    data: await service.approveAdjustment({
+      ...base(req),
+      id: req.params.adjId,
+    }),
   });
 const rejectAdjustment = async (req, res) =>
   res.json({
-    data: await service.rejectAdjustment({ ...base(req), id: req.params.adjId }),
+    data: await service.rejectAdjustment({
+      ...base(req),
+      id: req.params.adjId,
+    }),
   });
 const postAdjustment = async (req, res) =>
   res.json({

@@ -19,12 +19,7 @@ interface Props {
  * anything, why, and where to go for the full picture. Avoids
  * recreating the help article here; this is a glance, not a course.
  */
-export function CostInfoModal({
-  open,
-  onClose,
-  platform,
-  windowOpen,
-}: Props) {
+export function CostInfoModal({ open, onClose, platform, windowOpen }: Props) {
   const primary =
     platform === "whatsapp"
       ? windowOpen

@@ -13,7 +13,10 @@ import { fmtDate, fmtMoney } from "@lib/format";
 import { showToast } from "@hooks/useToast";
 import { errMsg } from "@services/api";
 import { useActiveBusiness } from "@hooks/useActiveBusiness";
-import { FULFILMENT_LABELS, SOURCE_LABELS } from "@lib/constants/salesConstants";
+import {
+  FULFILMENT_LABELS,
+  SOURCE_LABELS,
+} from "@lib/constants/salesConstants";
 import type { OrderSource } from "@typedefs/sales";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 

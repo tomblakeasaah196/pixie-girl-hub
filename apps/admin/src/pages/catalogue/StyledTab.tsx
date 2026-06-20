@@ -1,7 +1,20 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Sparkles, Package, ClipboardCheck, Ruler, Trash2 } from "lucide-react";
-import { Button, Card, MoneyText, EmptyState, Pill } from "@/components/ui/primitives";
+import {
+  Plus,
+  Sparkles,
+  Package,
+  ClipboardCheck,
+  Ruler,
+  Trash2,
+} from "lucide-react";
+import {
+  Button,
+  Card,
+  MoneyText,
+  EmptyState,
+  Pill,
+} from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -66,13 +79,14 @@ export function StyledTab() {
     <div className="space-y-5">
       {/* Review widget — pending drafts to publish (Ops) */}
       {pending.length > 0 && (
-        <Card className="p-4 flex items-center gap-4 border-l-[3px]" >
+        <Card className="p-4 flex items-center gap-4 border-l-[3px]">
           <span className="grid place-items-center w-11 h-11 rounded-[13px] bg-warn/12 text-warn shrink-0">
             <ClipboardCheck className="w-5 h-5" />
           </span>
           <div className="flex-1 min-w-0">
             <div className="font-display text-[15px]">
-              {pending.length} draft{pending.length === 1 ? "" : "s"} awaiting review
+              {pending.length} draft{pending.length === 1 ? "" : "s"} awaiting
+              review
             </div>
             <div className="text-[12px] text-text-muted">
               {aiPending.length > 0
@@ -89,7 +103,11 @@ export function StyledTab() {
       {/* Toolbar */}
       <div className="flex items-center gap-2.5 flex-wrap">
         <Tabs tabs={STATUS_TABS} active={status} onChange={setStatus} />
-        <SearchBox value={q} onChange={setQ} placeholder="Search styled products…" />
+        <SearchBox
+          value={q}
+          onChange={setQ}
+          placeholder="Search styled products…"
+        />
         <div className="ml-auto flex gap-2">
           {can("catalogue", "edit") && (
             <Button
@@ -146,7 +164,11 @@ export function StyledTab() {
             message="Create a storefront skin over a base product, or let AI draft one."
             action={
               canCreate ? (
-                <Button variant="primary" size="sm" onClick={() => nav("/catalogue/styled/new")}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => nav("/catalogue/styled/new")}
+                >
                   New styled product
                 </Button>
               ) : undefined
@@ -156,7 +178,11 @@ export function StyledTab() {
       ) : (
         <CardGrid>
           {(styled.data ?? []).map((s) => (
-            <StyledCard key={s.styled_id} s={s} onOpen={() => nav(`/catalogue/styled/${s.styled_id}`)} />
+            <StyledCard
+              key={s.styled_id}
+              s={s}
+              onOpen={() => nav(`/catalogue/styled/${s.styled_id}`)}
+            />
           ))}
         </CardGrid>
       )}
@@ -182,10 +208,14 @@ function StyledCard({ s, onOpen }: { s: StyledProduct; onOpen: () => void }) {
       className="text-left glass rounded-[var(--radius)] shadow-glass p-4 transition-all hover:border-accent/40 hover:-translate-y-0.5 focus:outline-none focus:border-accent/50"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <span className="font-mono text-[10.5px] text-accent-glow">{s.styled_code}</span>
+        <span className="font-mono text-[10.5px] text-accent-glow">
+          {s.styled_code}
+        </span>
         <StyledStatusBadge status={s.status} />
       </div>
-      <div className="font-display text-[16px] leading-tight mb-1 truncate">{s.name}</div>
+      <div className="font-display text-[16px] leading-tight mb-1 truncate">
+        {s.name}
+      </div>
       <div className="text-[11.5px] text-text-faint mb-3 truncate">
         on {s.base_name} · {s.base_product_code}
       </div>
@@ -199,7 +229,9 @@ function StyledCard({ s, onOpen }: { s: StyledProduct; onOpen: () => void }) {
         <div className="mt-3 pt-3 border-t hairline">
           <Pill tone="accent" dot={false}>
             <Sparkles className="w-3 h-3" /> AI draft
-            {s.ai_confidence != null ? ` · ${Math.round(s.ai_confidence * 100)}%` : ""}
+            {s.ai_confidence != null
+              ? ` · ${Math.round(s.ai_confidence * 100)}%`
+              : ""}
           </Pill>
         </div>
       )}

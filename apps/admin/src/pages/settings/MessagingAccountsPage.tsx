@@ -42,7 +42,10 @@ import {
  * (or that the email domain's MX records resolve).
  */
 
-const PLATFORM_ICON: Record<MessagingPlatform, React.FC<{ className?: string }>> = {
+const PLATFORM_ICON: Record<
+  MessagingPlatform,
+  React.FC<{ className?: string }>
+> = {
   whatsapp: MessageSquare,
   instagram: Instagram,
   facebook: Facebook,
@@ -120,8 +123,8 @@ export function MessagingAccountsPage() {
           <code className="font-mono text-[11px] bg-panel-2 px-1 rounded">
             encryption.service
           </code>
-          . The list view only shows a &ldquo;key on file&rdquo; flag, never
-          the raw token.
+          . The list view only shows a &ldquo;key on file&rdquo; flag, never the
+          raw token.
         </div>
       </div>
 
@@ -169,9 +172,7 @@ export function MessagingAccountsPage() {
                     key={acc.account_id}
                     account={acc}
                     isLast={i === accounts.length - 1}
-                    onEdit={() =>
-                      setEditing({ platform: p, existing: acc })
-                    }
+                    onEdit={() => setEditing({ platform: p, existing: acc })}
                     onToggleActive={() =>
                       setActive.mutate({
                         id: acc.account_id,
@@ -285,8 +286,7 @@ function AccountRow({
           </code>
           {account.last_inbound_at && (
             <p className="text-[11px] text-text-faint mt-1">
-              Last inbound:{" "}
-              {new Date(account.last_inbound_at).toLocaleString()}
+              Last inbound: {new Date(account.last_inbound_at).toLocaleString()}
             </p>
           )}
         </div>
@@ -418,66 +418,64 @@ function AccountEditor({
       }
     >
       <div className="space-y-3">
+        <Field
+          label="External account ID"
+          required
+          value={form.external_account_id}
+          onChange={(v) => setForm({ ...form, external_account_id: v })}
+          placeholder={meta.placeholder_id}
+          disabled={!!existing}
+        />
+        {existing && (
+          <p className="text-[10.5px] text-text-faint -mt-2">
+            The provider ID is the row&rsquo;s identity; create a new account if
+            you need to change it.
+          </p>
+        )}
+        <Field
+          label="Display name"
+          required
+          value={form.display_name}
+          onChange={(v) => setForm({ ...form, display_name: v })}
+          placeholder={meta.placeholder_name}
+        />
+        {platform !== "email" && (
           <Field
-            label="External account ID"
-            required
-            value={form.external_account_id}
-            onChange={(v) => setForm({ ...form, external_account_id: v })}
-            placeholder={meta.placeholder_id}
-            disabled={!!existing}
+            label={
+              existing && existing.has_access_token
+                ? "Replace access token (leave blank to keep current)"
+                : "Access token (Meta Page / System User token)"
+            }
+            value={form.access_token ?? ""}
+            onChange={(v) => setForm({ ...form, access_token: v })}
+            placeholder="EAA…"
+            type="password"
           />
-          {existing && (
-            <p className="text-[10.5px] text-text-faint -mt-2">
-              The provider ID is the row&rsquo;s identity; create a new
-              account if you need to change it.
-            </p>
-          )}
+        )}
+        {platform !== "email" && (
           <Field
-            label="Display name"
-            required
-            value={form.display_name}
-            onChange={(v) => setForm({ ...form, display_name: v })}
-            placeholder={meta.placeholder_name}
+            label="Webhook verify token (Meta GET handshake)"
+            value={form.webhook_verify_token ?? ""}
+            onChange={(v) => setForm({ ...form, webhook_verify_token: v })}
+            placeholder="Random string the GET handshake echoes"
           />
-          {platform !== "email" && (
-            <Field
-              label={
-                existing && existing.has_access_token
-                  ? "Replace access token (leave blank to keep current)"
-                  : "Access token (Meta Page / System User token)"
-              }
-              value={form.access_token ?? ""}
-              onChange={(v) => setForm({ ...form, access_token: v })}
-              placeholder="EAA…"
-              type="password"
-            />
-          )}
-          {platform !== "email" && (
-            <Field
-              label="Webhook verify token (Meta GET handshake)"
-              value={form.webhook_verify_token ?? ""}
-              onChange={(v) =>
-                setForm({ ...form, webhook_verify_token: v })
-              }
-              placeholder="Random string the GET handshake echoes"
-            />
-          )}
-          <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
-            <input
-              type="checkbox"
-              checked={form.is_active !== false}
-              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-              className="accent-accent"
-            />
-            Active (receive inbound)
-          </label>
-          {save.isError && (
-            <p className="text-[12px] text-danger inline-flex items-center gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5" />
-              Couldn&rsquo;t save. Check the external ID isn&rsquo;t already
-              registered to another brand.
-            </p>
-          )}
+        )}
+        <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
+          <input
+            type="checkbox"
+            checked={form.is_active !== false}
+            onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+            className="accent-accent"
+          />
+          Active (receive inbound)
+        </label>
+        {save.isError && (
+          <p className="text-[12px] text-danger inline-flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5" />
+            Couldn&rsquo;t save. Check the external ID isn&rsquo;t already
+            registered to another brand.
+          </p>
+        )}
       </div>
     </Modal>
   );

@@ -89,8 +89,8 @@ export function PermissionMatrix({
         </tbody>
       </table>
       <p className="px-4 py-2 text-[10px] text-brand-smoke/50">
-        All {catalogue.length} modules shown — scroll horizontally. Click a
-        role row to open the full editor.
+        All {catalogue.length} modules shown — scroll horizontally. Click a role
+        row to open the full editor.
       </p>
     </div>
   );

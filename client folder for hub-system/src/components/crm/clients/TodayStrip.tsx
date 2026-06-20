@@ -181,7 +181,9 @@ interface TodaySection {
 function TodayCard({ section }: { section: TodaySection }) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? section.items.slice(0, 8) : section.items.slice(0, 3);
+  const visible = expanded
+    ? section.items.slice(0, 8)
+    : section.items.slice(0, 3);
 
   return (
     <div className="rounded-2xl border border-brand-graphite bg-brand-charcoal/60 p-3.5 flex flex-col">

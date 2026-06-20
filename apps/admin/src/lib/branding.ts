@@ -27,15 +27,17 @@ export const COLOUR_TOKENS = [
   "warn",
   "danger",
 ] as const;
-export const SCALAR_TOKENS = ["panel-alpha", "border-alpha", "mesh-op"] as const;
+export const SCALAR_TOKENS = [
+  "panel-alpha",
+  "border-alpha",
+  "mesh-op",
+] as const;
 
 export type ColourToken = (typeof COLOUR_TOKENS)[number];
 export type ScalarToken = (typeof SCALAR_TOKENS)[number];
 
 export type ThemeMode = "dark" | "light";
-export type ThemeTokens = Partial<
-  Record<ColourToken | ScalarToken, string>
->;
+export type ThemeTokens = Partial<Record<ColourToken | ScalarToken, string>>;
 export type Theme = Partial<Record<ThemeMode, ThemeTokens>>;
 
 // ── Login page content (DB-driven; canon "little/no hardcoded data") ──
@@ -273,7 +275,10 @@ export function useLoginConfig(): LoginConfig {
       ...(cfg.region_messages ?? {}),
     },
     toggles: { ...LOGIN_CONFIG_FALLBACK.toggles, ...(cfg.toggles ?? {}) },
-    background: { ...LOGIN_CONFIG_FALLBACK.background, ...(cfg.background ?? {}) },
+    background: {
+      ...LOGIN_CONFIG_FALLBACK.background,
+      ...(cfg.background ?? {}),
+    },
   };
 }
 
@@ -309,7 +314,9 @@ export interface LogoUploadResult {
   transparency: { hadAlpha: boolean; keyed: boolean; warning: string | null };
 }
 
-export async function uploadBrandingLogo(file: File): Promise<LogoUploadResult> {
+export async function uploadBrandingLogo(
+  file: File,
+): Promise<LogoUploadResult> {
   const form = new FormData();
   form.append("file", file);
   form.append("purpose", "logo");

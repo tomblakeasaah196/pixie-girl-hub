@@ -11,7 +11,12 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
-import { Card, EmptyState, KpiTile, Skeleton } from "@/components/ui/primitives";
+import {
+  Card,
+  EmptyState,
+  KpiTile,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { useRules, useProposals, useFloors } from "./hooks";
 import { AdvisorTab } from "./AdvisorTab";
@@ -51,12 +56,28 @@ export function PricingPage() {
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "advisor", label: "Advisor", icon: <Gauge className="w-4 h-4" /> },
-    { key: "scenarios", label: "Scenarios", icon: <SlidersHorizontal className="w-4 h-4" /> },
+    {
+      key: "scenarios",
+      label: "Scenarios",
+      icon: <SlidersHorizontal className="w-4 h-4" />,
+    },
     { key: "rules", label: "Rules", icon: <Tag className="w-4 h-4" /> },
     { key: "floors", label: "Floors", icon: <Shield className="w-4 h-4" /> },
-    { key: "overrides", label: "Overrides", icon: <Repeat className="w-4 h-4" /> },
-    { key: "proposals", label: "Proposals", icon: <ClipboardList className="w-4 h-4" /> },
-    { key: "settings", label: "Settings", icon: <SettingsIcon className="w-4 h-4" /> },
+    {
+      key: "overrides",
+      label: "Overrides",
+      icon: <Repeat className="w-4 h-4" />,
+    },
+    {
+      key: "proposals",
+      label: "Proposals",
+      icon: <ClipboardList className="w-4 h-4" />,
+    },
+    {
+      key: "settings",
+      label: "Settings",
+      icon: <SettingsIcon className="w-4 h-4" />,
+    },
   ];
 
   return (
@@ -64,8 +85,8 @@ export function PricingPage() {
       <div>
         <h1 className="font-display text-2xl font-medium">Pricing</h1>
         <p className="text-text-muted text-sm mt-0.5">
-          An advisory engine — grounded in true cost, governed by thresholds. The catalogue keeps
-          the live prices.
+          An advisory engine — grounded in true cost, governed by thresholds.
+          The catalogue keeps the live prices.
         </p>
       </div>
 
@@ -90,15 +111,23 @@ export function PricingPage() {
       </div>
 
       {tab === "advisor" && (
-        <AdvisorTab canEdit={canEdit} onGoToProposals={() => setTab("proposals")} />
+        <AdvisorTab
+          canEdit={canEdit}
+          onGoToProposals={() => setTab("proposals")}
+        />
       )}
       {tab === "scenarios" && (
-        <ScenariosTab canEdit={canEdit} onGoToProposals={() => setTab("proposals")} />
+        <ScenariosTab
+          canEdit={canEdit}
+          onGoToProposals={() => setTab("proposals")}
+        />
       )}
       {tab === "rules" && <RulesTab canEdit={canEdit} />}
       {tab === "floors" && <FloorsTab canEdit={canEdit} />}
       {tab === "overrides" && <OverridesTab canEdit={canEdit} />}
-      {tab === "proposals" && <ProposalsTab canApprove={can("pricing", "approve")} />}
+      {tab === "proposals" && (
+        <ProposalsTab canApprove={can("pricing", "approve")} />
+      )}
       {tab === "settings" && <SettingsTab canEdit={canEdit} />}
     </div>
   );
@@ -125,13 +154,21 @@ function PricingKpiStrip() {
   const pending = proposals.data?.length ?? 0;
   return (
     <div className="grid grid-cols-3 gap-4">
-      <KpiTile label="Active rules" value={String(rules.data?.length ?? 0)} tone="accent" />
+      <KpiTile
+        label="Active rules"
+        value={String(rules.data?.length ?? 0)}
+        tone="accent"
+      />
       <KpiTile
         label="Pending approval"
         value={String(pending)}
         tone={pending ? "warn" : "neutral"}
       />
-      <KpiTile label="Price floors" value={String(floors.data?.length ?? 0)} tone="info" />
+      <KpiTile
+        label="Price floors"
+        value={String(floors.data?.length ?? 0)}
+        tone="info"
+      />
     </div>
   );
 }

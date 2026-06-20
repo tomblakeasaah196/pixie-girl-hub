@@ -274,7 +274,41 @@ async function deleteAddress({ client, contact_id, address_id }) {
   return rowCount > 0;
 }
 
+/**
+ * Contacts whose birthday falls within the next `days` days (global). The
+ * nested CASE picks this year's birthday if it's still ahead (incl. today),
+ * else next year's — interval math is leap-safe (no make_date crash on Feb 29).
+ */
+async function upcomingMilestones({ days = 7, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT contact_id, display_name, date_of_birth, primary_phone,
+            whatsapp_number, email, next_birthday,
+            (next_birthday - current_date) AS days_until
+       FROM (
+         SELECT contact_id, display_name, date_of_birth, primary_phone,
+                whatsapp_number, email,
+                CASE WHEN cand >= current_date THEN cand
+                     ELSE (cand + interval '1 year')::date END AS next_birthday
+           FROM (
+             SELECT contact_id, display_name, date_of_birth, primary_phone,
+                    whatsapp_number, email,
+                    (date_of_birth
+                      + (extract(year from age(date_of_birth))::int
+                         * interval '1 year'))::date AS cand
+               FROM shared.contacts
+              WHERE date_of_birth IS NOT NULL AND is_deleted = false
+           ) a
+       ) m
+      WHERE next_birthday <= current_date + ($1 * interval '1 day')
+      ORDER BY next_birthday
+      LIMIT $2`,
+    [days, limit],
+  );
+  return rows.map((r) => ({ ...r, milestone_type: "birthday" }));
+}
+
 module.exports = {
+  upcomingMilestones,
   findAll,
   findById,
   create,

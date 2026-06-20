@@ -21,11 +21,11 @@ phone + IG handle + WhatsApp number + email + delivery address (Google
 Places autocomplete, NG-restricted, with a map pin and lat/lng) + any
 inspiration photos. On submit:
 
-  1. The matching contact is found or created.
-  2. `contact_social_handles` is upserted for IG + WhatsApp.
-  3. A default `contact_addresses` row is created/updated with lat/lng.
-  4. The originating Smartcomm channel (if any) is updated so the
-     staffer sees a "form completed" chip in the customer sidebar.
+1. The matching contact is found or created.
+2. `contact_social_handles` is upserted for IG + WhatsApp.
+3. A default `contact_addresses` row is created/updated with lat/lng.
+4. The originating Smartcomm channel (if any) is updated so the
+   staffer sees a "form completed" chip in the customer sidebar.
 
 ## Backing tables
 
@@ -36,19 +36,19 @@ inspiration photos. On submit:
 
 ## Files
 
-| File                                           | Purpose                                  |
-| ---------------------------------------------- | ---------------------------------------- |
-| `customer-onboarding.routes.js`                | Public + admin Express router            |
-| `customer-onboarding.controller.js`            | HTTP handlers                            |
-| `customer-onboarding.service.js`               | Business logic (upserts, channel binding) |
-| `customer-onboarding.repo.js`                  | Parameterised SQL                        |
-| `customer-onboarding.validator.js`             | Zod input schemas                        |
+| File                                | Purpose                                   |
+| ----------------------------------- | ----------------------------------------- |
+| `customer-onboarding.routes.js`     | Public + admin Express router             |
+| `customer-onboarding.controller.js` | HTTP handlers                             |
+| `customer-onboarding.service.js`    | Business logic (upserts, channel binding) |
+| `customer-onboarding.repo.js`       | Parameterised SQL                         |
+| `customer-onboarding.validator.js`  | Zod input schemas                         |
 
 ## Endpoints
 
-| Method | Path                                                | Auth                       |
-| ------ | --------------------------------------------------- | -------------------------- |
-| POST   | `/api/v1/customer-onboarding/links`                 | smartcomm.edit (staff)     |
-| GET    | `/api/v1/customer-onboarding/admin/submissions`     | customer_onboarding.view   |
-| GET    | `/api/public/onboarding/:token`                     | public (token-protected)   |
-| POST   | `/api/public/onboarding/:token`                     | public (token-protected)   |
+| Method | Path                                            | Auth                     |
+| ------ | ----------------------------------------------- | ------------------------ |
+| POST   | `/api/v1/customer-onboarding/links`             | smartcomm.edit (staff)   |
+| GET    | `/api/v1/customer-onboarding/admin/submissions` | customer_onboarding.view |
+| GET    | `/api/public/onboarding/:token`                 | public (token-protected) |
+| POST   | `/api/public/onboarding/:token`                 | public (token-protected) |

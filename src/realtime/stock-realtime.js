@@ -31,13 +31,15 @@ function emitToBrand(brand, channel, payload) {
 function registerStockRealtime() {
   // A movement is the finest-grained change; carry the variant/location so a
   // client can decide whether the change is relevant to what it's showing.
-  events.on("moved", ({ brand, variant_id, location_id, movement_type, quantity }) =>
-    emitToBrand(brand, "stock:moved", {
-      variant_id,
-      location_id,
-      movement_type,
-      quantity,
-    }),
+  events.on(
+    "moved",
+    ({ brand, variant_id, location_id, movement_type, quantity }) =>
+      emitToBrand(brand, "stock:moved", {
+        variant_id,
+        location_id,
+        movement_type,
+        quantity,
+      }),
   );
 
   // Coarser posted/received transitions also shift available counts.

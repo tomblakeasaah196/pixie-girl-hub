@@ -19,8 +19,23 @@ import {
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
-import { Button, Card, EmptyState, KpiTile, MoneyText, Pill, Skeleton, type Tone } from "@/components/ui/primitives";
-import { DeniedState, ErrorState, NumberField, Select, Toggle } from "@/components/ui/controls";
+import {
+  Button,
+  Card,
+  EmptyState,
+  KpiTile,
+  MoneyText,
+  Pill,
+  Skeleton,
+  type Tone,
+} from "@/components/ui/primitives";
+import {
+  DeniedState,
+  ErrorState,
+  NumberField,
+  Select,
+  Toggle,
+} from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { Field, FormSection } from "@/components/ui/Form";
@@ -85,25 +100,77 @@ const STEPS = [
 
 type StepKey = (typeof STEPS)[number]["key"];
 
-const BLOCK_LIBRARY: Array<{ key: string; label: string; description: string }> = [
+const BLOCK_LIBRARY: Array<{
+  key: string;
+  label: string;
+  description: string;
+}> = [
   { key: "hero", label: "Hero", description: "Cinematic top of page" },
   { key: "countdown", label: "Countdown", description: "Live tabular timer" },
-  { key: "bundle_showcase", label: "Bundle Showcase", description: "Curated category bundles" },
-  { key: "quantity_tier_visualiser", label: "Tier Ladder", description: "Buy more save more" },
-  { key: "featured_products", label: "Featured Products", description: "Individual styled products" },
-  { key: "lookbook_carousel", label: "Lookbook Carousel", description: "Reels-style scroll" },
-  { key: "stock_counter", label: "Live Stock", description: "Real-time remaining count" },
+  {
+    key: "bundle_showcase",
+    label: "Bundle Showcase",
+    description: "Curated category bundles",
+  },
+  {
+    key: "quantity_tier_visualiser",
+    label: "Tier Ladder",
+    description: "Buy more save more",
+  },
+  {
+    key: "featured_products",
+    label: "Featured Products",
+    description: "Individual styled products",
+  },
+  {
+    key: "lookbook_carousel",
+    label: "Lookbook Carousel",
+    description: "Reels-style scroll",
+  },
+  {
+    key: "stock_counter",
+    label: "Live Stock",
+    description: "Real-time remaining count",
+  },
   { key: "brand_story", label: "Brand Story", description: "Why this drop" },
-  { key: "founder_quote", label: "Founder Quote", description: "Trust + intent" },
+  {
+    key: "founder_quote",
+    label: "Founder Quote",
+    description: "Trust + intent",
+  },
   { key: "why_buy", label: "Why Buy", description: "3-bullet value props" },
-  { key: "testimonials", label: "Testimonials", description: "Real customer quotes" },
-  { key: "ugc_carousel", label: "UGC Carousel", description: "IG posts + customer clips" },
+  {
+    key: "testimonials",
+    label: "Testimonials",
+    description: "Real customer quotes",
+  },
+  {
+    key: "ugc_carousel",
+    label: "UGC Carousel",
+    description: "IG posts + customer clips",
+  },
   { key: "faq", label: "FAQ", description: "Pre-empt friction" },
   { key: "wig_care", label: "Wig Care", description: "Care guide snippet" },
-  { key: "stylist_spotlight", label: "Stylist Spotlight", description: "Showcase a stylist" },
-  { key: "shipping_returns", label: "Shipping & Returns", description: "DHL info + policy" },
-  { key: "newsletter_capture", label: "Newsletter", description: "Email signup" },
-  { key: "vip_signup", label: "VIP Signup", description: "Pre-launch heads-up" },
+  {
+    key: "stylist_spotlight",
+    label: "Stylist Spotlight",
+    description: "Showcase a stylist",
+  },
+  {
+    key: "shipping_returns",
+    label: "Shipping & Returns",
+    description: "DHL info + policy",
+  },
+  {
+    key: "newsletter_capture",
+    label: "Newsletter",
+    description: "Email signup",
+  },
+  {
+    key: "vip_signup",
+    label: "VIP Signup",
+    description: "Pre-launch heads-up",
+  },
 ];
 
 export function CampaignBuilderPage() {
@@ -133,19 +200,44 @@ export function CampaignBuilderPage() {
     return <ErrorState onRetry={() => campaignQ.refetch()} />;
   }
   const campaign = campaignQ.data;
-  const canEdit = can("sales_campaigns", "edit") && ["draft", "pending_approval", "scheduled", "paused"].includes(campaign.status);
+  const canEdit =
+    can("sales_campaigns", "edit") &&
+    ["draft", "pending_approval", "scheduled", "paused"].includes(
+      campaign.status,
+    );
 
   return (
     <div className="space-y-4">
-      <CampaignHeader campaign={campaign} onPraxis={() => setPraxisOpen(true)} />
+      <CampaignHeader
+        campaign={campaign}
+        onPraxis={() => setPraxisOpen(true)}
+      />
       <Stepper active={step} onChange={setStep} />
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
         <div>
-          {step === "brief" && <BriefStep campaign={campaign} canEdit={canEdit} onNext={() => setStep("bundles")} />}
-          {step === "bundles" && <BundlesStep campaign={campaign} canEdit={canEdit} />}
-          {step === "pricing" && <PricingStep campaign={campaign} canEdit={canEdit} />}
-          {step === "landing" && <LandingStep campaign={campaign} canEdit={canEdit} onNext={() => setStep("ambassadors")} />}
-          {step === "ambassadors" && <AmbassadorsStep campaign={campaign} canEdit={canEdit} />}
+          {step === "brief" && (
+            <BriefStep
+              campaign={campaign}
+              canEdit={canEdit}
+              onNext={() => setStep("bundles")}
+            />
+          )}
+          {step === "bundles" && (
+            <BundlesStep campaign={campaign} canEdit={canEdit} />
+          )}
+          {step === "pricing" && (
+            <PricingStep campaign={campaign} canEdit={canEdit} />
+          )}
+          {step === "landing" && (
+            <LandingStep
+              campaign={campaign}
+              canEdit={canEdit}
+              onNext={() => setStep("ambassadors")}
+            />
+          )}
+          {step === "ambassadors" && (
+            <AmbassadorsStep campaign={campaign} canEdit={canEdit} />
+          )}
           {step === "approval" && <ApprovalStep campaign={campaign} />}
         </div>
         <PraxisSidebar campaign={campaign} step={step} />
@@ -173,7 +265,8 @@ function CampaignHeader({
       <div
         className="absolute -top-12 -right-8 w-[240px] h-[240px] rounded-full pointer-events-none"
         style={{
-          background: "radial-gradient(circle, rgb(var(--accent-deep)/0.4), transparent 70%)",
+          background:
+            "radial-gradient(circle, rgb(var(--accent-deep)/0.4), transparent 70%)",
           filter: "blur(34px)",
         }}
       />
@@ -184,10 +277,13 @@ function CampaignHeader({
         >
           <ArrowLeft className="w-3.5 h-3.5" /> All campaigns
         </Link>
-        <Pill tone={TONE_FOR[campaign.status]}>{STATUS_LABEL[campaign.status]}</Pill>
+        <Pill tone={TONE_FOR[campaign.status]}>
+          {STATUS_LABEL[campaign.status]}
+        </Pill>
         {campaign.ai_assist_pct > 0 && (
           <Pill tone="accent" dot={false}>
-            <Sparkles className="w-3 h-3" /> Drafted with Praxis · {Math.round(campaign.ai_assist_pct * 100)}%
+            <Sparkles className="w-3 h-3" /> Drafted with Praxis ·{" "}
+            {Math.round(campaign.ai_assist_pct * 100)}%
           </Pill>
         )}
         <div className="ml-auto flex gap-2">
@@ -195,7 +291,11 @@ function CampaignHeader({
             variant="ghost"
             icon={<Eye className="w-4 h-4" />}
             onClick={() =>
-              window.open(`/sale/${campaign.slug}?brand=${brand}`, "_blank", "noopener")
+              window.open(
+                `/sale/${campaign.slug}?brand=${brand}`,
+                "_blank",
+                "noopener",
+              )
             }
           >
             View live page
@@ -210,7 +310,9 @@ function CampaignHeader({
         </div>
       </div>
       <div className="mt-3">
-        <h1 className="font-display text-[26px] md:text-[32px] leading-tight">{campaign.name}</h1>
+        <h1 className="font-display text-[26px] md:text-[32px] leading-tight">
+          {campaign.name}
+        </h1>
         <div className="micro mt-1 truncate">/sale/{campaign.slug}</div>
       </div>
     </Card>
@@ -218,7 +320,13 @@ function CampaignHeader({
 }
 
 // ── Stepper ──────────────────────────────────────────────
-function Stepper({ active, onChange }: { active: StepKey; onChange: (s: StepKey) => void }) {
+function Stepper({
+  active,
+  onChange,
+}: {
+  active: StepKey;
+  onChange: (s: StepKey) => void;
+}) {
   return (
     <Card className="p-2">
       <div className="flex gap-1 overflow-x-auto">
@@ -251,7 +359,13 @@ function Stepper({ active, onChange }: { active: StepKey; onChange: (s: StepKey)
 }
 
 // ── Praxis attribution sidebar ───────────────────────────
-function PraxisSidebar({ campaign, step }: { campaign: Campaign; step: StepKey }) {
+function PraxisSidebar({
+  campaign,
+  step,
+}: {
+  campaign: Campaign;
+  step: StepKey;
+}) {
   return (
     <div className="space-y-3">
       <Card className="p-4">
@@ -260,23 +374,41 @@ function PraxisSidebar({ campaign, step }: { campaign: Campaign; step: StepKey }
           <span className="micro">Praxis on this step</span>
         </div>
         <div className="text-[12.5px] text-text-muted leading-relaxed">
-          {step === "brief" && "Set the campaign name, slug and dates. Praxis uses your voice profile to write copy in the next steps."}
-          {step === "bundles" && "Bundles are catalogue entities. Attach existing bundles or create new ones — fixed composition, per-item ₦ discount."}
-          {step === "pricing" && "Goal-seek margin, charm round, configure the tier ladder + cart upsell escalator. Floors are enforced — Praxis refuses any breach."}
-          {step === "landing" && "Drag blocks from the library, reorder, edit copy inline. Preview Before / Live / Ended states."}
-          {step === "ambassadors" && "Promote contacts to ambassadors, mint per-ambassador trackable links. Share kit auto-generates copy for every channel."}
-          {step === "approval" && "Submit for approval. Anyone with sales_campaigns.approve can launch."}
+          {step === "brief" &&
+            "Set the campaign name, slug and dates. Praxis uses your voice profile to write copy in the next steps."}
+          {step === "bundles" &&
+            "Bundles are catalogue entities. Attach existing bundles or create new ones — fixed composition, per-item ₦ discount."}
+          {step === "pricing" &&
+            "Goal-seek margin, charm round, configure the tier ladder + cart upsell escalator. Floors are enforced — Praxis refuses any breach."}
+          {step === "landing" &&
+            "Drag blocks from the library, reorder, edit copy inline. Preview Before / Live / Ended states."}
+          {step === "ambassadors" &&
+            "Promote contacts to ambassadors, mint per-ambassador trackable links. Share kit auto-generates copy for every channel."}
+          {step === "approval" &&
+            "Submit for approval. Anyone with sales_campaigns.approve can launch."}
         </div>
         <div className="mt-3 text-[11px] text-text-faint">
-          Voice: <span className="text-accent-glow">{campaign.voice_profile_override?.tone || "editorial-luxury"}</span>
+          Voice:{" "}
+          <span className="text-accent-glow">
+            {campaign.voice_profile_override?.tone || "editorial-luxury"}
+          </span>
         </div>
       </Card>
       <Card className="p-4">
         <div className="micro mb-3">At a glance</div>
         <div className="space-y-2 text-[12.5px]">
-          <Row label="Starts" value={new Date(campaign.starts_at).toLocaleString()} />
-          <Row label="Ends" value={new Date(campaign.ends_at).toLocaleString()} />
-          <Row label="Visitors" value={String(campaign.total_unique_visitors)} />
+          <Row
+            label="Starts"
+            value={new Date(campaign.starts_at).toLocaleString()}
+          />
+          <Row
+            label="Ends"
+            value={new Date(campaign.ends_at).toLocaleString()}
+          />
+          <Row
+            label="Visitors"
+            value={String(campaign.total_unique_visitors)}
+          />
           <Row label="Orders" value={String(campaign.total_orders)} />
           <Row
             label="Revenue"
@@ -292,36 +424,66 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-2">
       <span className="text-text-faint">{label}</span>
-      <span className="font-mono tabular-nums text-text-primary truncate text-right">{value}</span>
+      <span className="font-mono tabular-nums text-text-primary truncate text-right">
+        {value}
+      </span>
     </div>
   );
 }
 
 // ── Step 1: Brief ────────────────────────────────────────
-function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit: boolean; onNext?: () => void }) {
+function BriefStep({
+  campaign,
+  canEdit,
+  onNext,
+}: {
+  campaign: Campaign;
+  canEdit: boolean;
+  onNext?: () => void;
+}) {
   const update = useUpdateCampaign(campaign.campaign_id);
   const [name, setName] = useState(campaign.name);
   const [slug, setSlug] = useState(campaign.slug);
   const [description, setDescription] = useState(campaign.description || "");
   const [startsAt, setStartsAt] = useState(toLocalInput(campaign.starts_at));
   const [endsAt, setEndsAt] = useState(toLocalInput(campaign.ends_at));
-  const [viewerPolicy, setViewerPolicy] = useState<string>(campaign.show_viewer_count_policy || "");
-  const [viewerFloor, setViewerFloor] = useState<string>(
-    campaign.viewer_count_floor != null ? String(campaign.viewer_count_floor) : "",
+  const [viewerPolicy, setViewerPolicy] = useState<string>(
+    campaign.show_viewer_count_policy || "",
   );
-  const [vipMins, setVipMins] = useState<string>(String(campaign.vip_early_access_minutes || 0));
-  const [lastCallMins, setLastCallMins] = useState<string>(String(campaign.last_call_surge_minutes || 0));
-  const [vipTopN, setVipTopN] = useState<string>(String(campaign.vip_top_n || 10));
+  const [viewerFloor, setViewerFloor] = useState<string>(
+    campaign.viewer_count_floor != null
+      ? String(campaign.viewer_count_floor)
+      : "",
+  );
+  const [vipMins, setVipMins] = useState<string>(
+    String(campaign.vip_early_access_minutes || 0),
+  );
+  const [lastCallMins, setLastCallMins] = useState<string>(
+    String(campaign.last_call_surge_minutes || 0),
+  );
+  const [vipTopN, setVipTopN] = useState<string>(
+    String(campaign.vip_top_n || 10),
+  );
   const [vipThreshold, setVipThreshold] = useState<string>(
-    campaign.vip_lifetime_threshold_ngn ? String(campaign.vip_lifetime_threshold_ngn) : "",
+    campaign.vip_lifetime_threshold_ngn
+      ? String(campaign.vip_lifetime_threshold_ngn)
+      : "",
   );
   const [exitEnabled, setExitEnabled] = useState(campaign.exit_intent_enabled);
-  const [exitCode, setExitCode] = useState<string>(campaign.exit_intent_code || "");
-  const [exitDiscount, setExitDiscount] = useState<string>(
-    campaign.exit_intent_discount_ngn ? String(campaign.exit_intent_discount_ngn) : "",
+  const [exitCode, setExitCode] = useState<string>(
+    campaign.exit_intent_code || "",
   );
-  const [multiCurrency, setMultiCurrency] = useState(campaign.allow_multi_currency_display);
-  const [abandonment, setAbandonment] = useState(campaign.abandonment_recovery_enabled);
+  const [exitDiscount, setExitDiscount] = useState<string>(
+    campaign.exit_intent_discount_ngn
+      ? String(campaign.exit_intent_discount_ngn)
+      : "",
+  );
+  const [multiCurrency, setMultiCurrency] = useState(
+    campaign.allow_multi_currency_display,
+  );
+  const [abandonment, setAbandonment] = useState(
+    campaign.abandonment_recovery_enabled,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -333,14 +495,23 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
     startsAt !== toLocalInput(campaign.starts_at) ||
     endsAt !== toLocalInput(campaign.ends_at) ||
     viewerPolicy !== (campaign.show_viewer_count_policy || "") ||
-    viewerFloor !== (campaign.viewer_count_floor != null ? String(campaign.viewer_count_floor) : "") ||
+    viewerFloor !==
+      (campaign.viewer_count_floor != null
+        ? String(campaign.viewer_count_floor)
+        : "") ||
     vipMins !== String(campaign.vip_early_access_minutes || 0) ||
     lastCallMins !== String(campaign.last_call_surge_minutes || 0) ||
     vipTopN !== String(campaign.vip_top_n || 10) ||
-    vipThreshold !== (campaign.vip_lifetime_threshold_ngn ? String(campaign.vip_lifetime_threshold_ngn) : "") ||
+    vipThreshold !==
+      (campaign.vip_lifetime_threshold_ngn
+        ? String(campaign.vip_lifetime_threshold_ngn)
+        : "") ||
     exitEnabled !== campaign.exit_intent_enabled ||
     exitCode !== (campaign.exit_intent_code || "") ||
-    exitDiscount !== (campaign.exit_intent_discount_ngn ? String(campaign.exit_intent_discount_ngn) : "") ||
+    exitDiscount !==
+      (campaign.exit_intent_discount_ngn
+        ? String(campaign.exit_intent_discount_ngn)
+        : "") ||
     multiCurrency !== campaign.allow_multi_currency_display ||
     abandonment !== campaign.abandonment_recovery_enabled;
 
@@ -351,11 +522,14 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
     try {
       await update.mutateAsync({
         name,
-        ...(cleanSlug && cleanSlug !== campaign.slug ? { slug: cleanSlug } : {}),
+        ...(cleanSlug && cleanSlug !== campaign.slug
+          ? { slug: cleanSlug }
+          : {}),
         description: description || null,
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
-        show_viewer_count_policy: (viewerPolicy || null) as Campaign["show_viewer_count_policy"],
+        show_viewer_count_policy: (viewerPolicy ||
+          null) as Campaign["show_viewer_count_policy"],
         viewer_count_floor: viewerFloor ? Number(viewerFloor) : null,
         vip_early_access_minutes: Number(vipMins) || 0,
         last_call_surge_minutes: Number(lastCallMins) || 0,
@@ -363,7 +537,8 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
         vip_lifetime_threshold_ngn: vipThreshold ? Number(vipThreshold) : null,
         exit_intent_enabled: exitEnabled,
         exit_intent_code: exitEnabled ? exitCode || null : null,
-        exit_intent_discount_ngn: exitEnabled && exitDiscount ? Number(exitDiscount) : null,
+        exit_intent_discount_ngn:
+          exitEnabled && exitDiscount ? Number(exitDiscount) : null,
         allow_multi_currency_display: multiCurrency,
         abandonment_recovery_enabled: abandonment,
       });
@@ -442,7 +617,10 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
 
       <FormSection title="States & extras">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="VIP early-access (minutes)" hint="0 = no head-start; e.g. 60 = 1h">
+          <Field
+            label="VIP early-access (minutes)"
+            hint="0 = no head-start; e.g. 60 = 1h"
+          >
             <NumberField
               value={vipMins}
               onChange={setVipMins}
@@ -451,7 +629,10 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
               disabled={!canEdit}
             />
           </Field>
-          <Field label="Last-call surge (minutes)" hint="0 = off; e.g. 30 = final-30-min UX">
+          <Field
+            label="Last-call surge (minutes)"
+            hint="0 = off; e.g. 30 = final-30-min UX"
+          >
             <NumberField
               value={lastCallMins}
               onChange={setLastCallMins}
@@ -460,8 +641,16 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
               disabled={!canEdit}
             />
           </Field>
-          <Field label="Multi-currency display" hint="Geo-detect → display NGN/USD/GBP">
-            <Toggle checked={multiCurrency} onChange={setMultiCurrency} disabled={!canEdit} label={multiCurrency ? "On" : "Off"} />
+          <Field
+            label="Multi-currency display"
+            hint="Geo-detect → display NGN/USD/GBP"
+          >
+            <Toggle
+              checked={multiCurrency}
+              onChange={setMultiCurrency}
+              disabled={!canEdit}
+              label={multiCurrency ? "On" : "Off"}
+            />
           </Field>
         </div>
       </FormSection>
@@ -501,7 +690,10 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
 
       <FormSection title="VIP rewards">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Top-N spenders to reward" hint="Auto-tag campaign_vip at campaign end">
+          <Field
+            label="Top-N spenders to reward"
+            hint="Auto-tag campaign_vip at campaign end"
+          >
             <NumberField
               value={vipTopN}
               onChange={setVipTopN}
@@ -510,7 +702,10 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
               disabled={!canEdit}
             />
           </Field>
-          <Field label="Lifetime spend → Platinum VIP" hint="Promote anyone whose lifetime spend crosses this ₦">
+          <Field
+            label="Lifetime spend → Platinum VIP"
+            hint="Promote anyone whose lifetime spend crosses this ₦"
+          >
             <NumberField
               value={vipThreshold}
               onChange={setVipThreshold}
@@ -524,11 +719,27 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
 
       <FormSection title="Don't-leave-without-buying">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Exit-intent modal" hint="One-time code when cursor leaves or back gesture fires">
-            <Toggle checked={exitEnabled} onChange={setExitEnabled} disabled={!canEdit} label={exitEnabled ? "On" : "Off"} />
+          <Field
+            label="Exit-intent modal"
+            hint="One-time code when cursor leaves or back gesture fires"
+          >
+            <Toggle
+              checked={exitEnabled}
+              onChange={setExitEnabled}
+              disabled={!canEdit}
+              label={exitEnabled ? "On" : "Off"}
+            />
           </Field>
-          <Field label="Cart abandonment email" hint="60-min nudge if cart sits with no checkout">
-            <Toggle checked={abandonment} onChange={setAbandonment} disabled={!canEdit} label={abandonment ? "On" : "Off"} />
+          <Field
+            label="Cart abandonment email"
+            hint="60-min nudge if cart sits with no checkout"
+          >
+            <Toggle
+              checked={abandonment}
+              onChange={setAbandonment}
+              disabled={!canEdit}
+              label={abandonment ? "On" : "Off"}
+            />
           </Field>
           {exitEnabled && (
             <>
@@ -570,7 +781,11 @@ function BriefStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit:
             </span>
           ) : null}
           {dirty && (
-            <Button variant="ghost" disabled={saving} onClick={() => save(false)}>
+            <Button
+              variant="ghost"
+              disabled={saving}
+              onClick={() => save(false)}
+            >
               {saving ? "Saving…" : "Save"}
             </Button>
           )}
@@ -597,14 +812,23 @@ function toLocalInput(iso: string): string {
 // Gentle slug cleaning WHILE typing — keeps a trailing hyphen so a multi-word
 // slug can be typed; finalizeSlug trims the stray ends on save.
 function cleanSlugInput(raw: string): string {
-  return raw.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-{2,}/g, "-");
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-");
 }
 function finalizeSlug(raw: string): string {
   return raw.replace(/^-+|-+$/g, "");
 }
 
 // ── Step 2: Bundles ──────────────────────────────────────
-function BundlesStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean }) {
+function BundlesStep({
+  campaign,
+  canEdit,
+}: {
+  campaign: Campaign;
+  canEdit: boolean;
+}) {
   const linksQ = useCampaignBundles(campaign.campaign_id);
   const bundlesQ = useBundleList();
   const attach = useAttachCampaignBundle(campaign.campaign_id);
@@ -622,10 +846,12 @@ function BundlesStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
     <Card className="p-5 space-y-4">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h2 className="font-display text-[22px] leading-tight">Bundles in this campaign</h2>
+          <h2 className="font-display text-[22px] leading-tight">
+            Bundles in this campaign
+          </h2>
           <p className="text-text-muted text-[13px] mt-1">
-            Bundles are curated catalogue entities. Fixed composition, per-item ₦ discount, displayed
-            before/after totals on the landing.
+            Bundles are curated catalogue entities. Fixed composition, per-item
+            ₦ discount, displayed before/after totals on the landing.
           </p>
         </div>
         {canEdit && (
@@ -653,7 +879,10 @@ function BundlesStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
                   Attach bundle
                 </Button>
                 <Link to="/sales-campaigns/bundles">
-                  <Button variant="secondary" icon={<PackagePlus className="w-4 h-4" />}>
+                  <Button
+                    variant="secondary"
+                    icon={<PackagePlus className="w-4 h-4" />}
+                  >
                     Manage all bundles
                   </Button>
                 </Link>
@@ -683,21 +912,32 @@ function BundlesStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
               {!l.bundle_hero_image_url && <ImageIcon className="w-6 h-6" />}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="font-display font-medium text-[15px] truncate">{l.bundle_name}</div>
+              <div className="font-display font-medium text-[15px] truncate">
+                {l.bundle_name}
+              </div>
               <div className="micro mt-0.5 truncate">/{l.bundle_slug}</div>
               <div className="flex flex-wrap gap-1.5 mt-2 text-[11px]">
-                {l.is_featured && <Pill tone="accent" dot={false}>Featured</Pill>}
-                {l.preorder_enabled && <Pill tone="warn" dot={false}>Preorder on</Pill>}
+                {l.is_featured && (
+                  <Pill tone="accent" dot={false}>
+                    Featured
+                  </Pill>
+                )}
+                {l.preorder_enabled && (
+                  <Pill tone="warn" dot={false}>
+                    Preorder on
+                  </Pill>
+                )}
                 {l.current_stock_snapshot != null && (
                   <Pill tone="neutral" dot={false}>
                     Stock: {l.current_stock_snapshot}
                   </Pill>
                 )}
-                {l.per_item_discount_ngn != null && Number(l.per_item_discount_ngn) > 0 && (
-                  <Pill tone="success" dot={false}>
-                    −{money(Number(l.per_item_discount_ngn))} / item
-                  </Pill>
-                )}
+                {l.per_item_discount_ngn != null &&
+                  Number(l.per_item_discount_ngn) > 0 && (
+                    <Pill tone="success" dot={false}>
+                      −{money(Number(l.per_item_discount_ngn))} / item
+                    </Pill>
+                  )}
               </div>
             </div>
             {canEdit && (
@@ -713,11 +953,17 @@ function BundlesStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
         ))}
       </div>
 
-      <Modal open={pickerOpen} onClose={() => setPickerOpen(false)} title="Attach a bundle">
+      <Modal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title="Attach a bundle"
+      >
         <div className="space-y-2 max-h-[55vh] overflow-y-auto">
           {available.length === 0 ? (
             <div className="text-center py-6">
-              <p className="text-text-muted mb-3">No bundles in the catalogue yet.</p>
+              <p className="text-text-muted mb-3">
+                No bundles in the catalogue yet.
+              </p>
               <Link to="/sales-campaigns/bundles">
                 <Button variant="primary" icon={<Plus className="w-4 h-4" />}>
                   Create a bundle
@@ -743,7 +989,9 @@ function BundlesStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
                     <ImageIcon className="w-5 h-5 text-text-faint" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="font-display font-medium text-[14px] truncate">{b.name}</div>
+                    <div className="font-display font-medium text-[14px] truncate">
+                      {b.name}
+                    </div>
                     <div className="micro truncate">/{b.slug}</div>
                   </div>
                   {isAttached ? (
@@ -762,7 +1010,13 @@ function BundlesStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
 }
 
 // ── Step 3: Pricing ──────────────────────────────────────
-function PricingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean }) {
+function PricingStep({
+  campaign,
+  canEdit,
+}: {
+  campaign: Campaign;
+  canEdit: boolean;
+}) {
   const tiersQ = useCampaignTiers(campaign.campaign_id);
   const upsellsQ = useCampaignUpsells(campaign.campaign_id);
   const upsertTier = useUpsertTier(campaign.campaign_id);
@@ -777,10 +1031,12 @@ function PricingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
     <div className="space-y-4">
       <Card className="p-5 space-y-4">
         <div>
-          <h2 className="font-display text-[22px] leading-tight">Quantity-tier ladder</h2>
+          <h2 className="font-display text-[22px] leading-tight">
+            Quantity-tier ladder
+          </h2>
           <p className="text-text-muted text-[13px] mt-1">
-            <span className="font-mono">Fixed ₦</span> amounts at the cart, not percentages.
-            The engine always respects the per-product price floor.
+            <span className="font-mono">Fixed ₦</span> amounts at the cart, not
+            percentages. The engine always respects the per-product price floor.
           </p>
         </div>
         <TierEditor
@@ -793,9 +1049,12 @@ function PricingStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boole
 
       <Card className="p-5 space-y-4">
         <div>
-          <h2 className="font-display text-[22px] leading-tight">Cart upsell ladder</h2>
+          <h2 className="font-display text-[22px] leading-tight">
+            Cart upsell ladder
+          </h2>
           <p className="text-text-muted text-[13px] mt-1">
-            One polite, dismissible nudge per rung — the offer escalates as the cart grows.
+            One polite, dismissible nudge per rung — the offer escalates as the
+            cart grows.
           </p>
         </div>
         <UpsellEditor
@@ -817,7 +1076,12 @@ function TierEditor({
 }: {
   tiers: QuantityTier[];
   canEdit: boolean;
-  onSubmit: (input: Partial<QuantityTier> & { min_quantity: number; fixed_discount_ngn: number }) => void;
+  onSubmit: (
+    input: Partial<QuantityTier> & {
+      min_quantity: number;
+      fixed_discount_ngn: number;
+    },
+  ) => void;
   onDelete: (id: string) => void;
 }) {
   const [qty, setQty] = useState("2");
@@ -839,19 +1103,28 @@ function TierEditor({
     <div className="space-y-3">
       <div className="space-y-1.5">
         {tiers.length === 0 ? (
-          <div className="text-[13px] text-text-faint italic py-3">No tiers yet. Add one below.</div>
+          <div className="text-[13px] text-text-faint italic py-3">
+            No tiers yet. Add one below.
+          </div>
         ) : (
           tiers.map((t) => (
             <div
               key={t.tier_id}
               className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
             >
-              <span className="font-display font-medium text-[16px] w-12 text-center tabular-nums">{t.min_quantity}+</span>
+              <span className="font-display font-medium text-[16px] w-12 text-center tabular-nums">
+                {t.min_quantity}+
+              </span>
               <span className="text-text-muted text-[13px]">→</span>
               <MoneyText ngn={Number(t.fixed_discount_ngn)} />
-              <span className="text-text-muted text-[12px] truncate flex-1">{t.label}</span>
+              <span className="text-text-muted text-[12px] truncate flex-1">
+                {t.label}
+              </span>
               {canEdit && (
-                <button onClick={() => onDelete(t.tier_id)} className="text-text-faint hover:text-danger p-1">
+                <button
+                  onClick={() => onDelete(t.tier_id)}
+                  className="text-text-faint hover:text-danger p-1"
+                >
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
@@ -864,10 +1137,20 @@ function TierEditor({
           <div className="micro">Add a tier</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Minimum quantity">
-              <NumberField value={qty} onChange={setQty} allowDecimal={false} suffix="items" />
+              <NumberField
+                value={qty}
+                onChange={setQty}
+                allowDecimal={false}
+                suffix="items"
+              />
             </Field>
             <Field label="Discount" hint="Fixed ₦ off the cart subtotal">
-              <NumberField value={discount} onChange={setDiscount} suffix="NGN" allowDecimal={false} />
+              <NumberField
+                value={discount}
+                onChange={setDiscount}
+                suffix="NGN"
+                allowDecimal={false}
+              />
             </Field>
             <Field label="Label (optional)">
               <input
@@ -906,7 +1189,8 @@ function UpsellEditor({
   onDelete: (id: string) => void;
 }) {
   const [rung, setRung] = useState("1");
-  const [triggerType, setTriggerType] = useState<CartUpsell["trigger_type"]>("cart_qty");
+  const [triggerType, setTriggerType] =
+    useState<CartUpsell["trigger_type"]>("cart_qty");
   const [minQty, setMinQty] = useState("1");
   const [minValue, setMinValue] = useState("");
   const [label, setLabel] = useState("");
@@ -918,7 +1202,8 @@ function UpsellEditor({
       rung: Number(rung) || 1,
       trigger_type: triggerType,
       min_cart_qty: triggerType === "cart_qty" ? Number(minQty) || 1 : null,
-      min_cart_value_ngn: triggerType === "cart_value" ? Number(minValue) || 0 : null,
+      min_cart_value_ngn:
+        triggerType === "cart_value" ? Number(minValue) || 0 : null,
       offer_label: label || `Add 1 more`,
       offer_subline: subline || undefined,
       reward_type: "fixed_amount",
@@ -933,17 +1218,27 @@ function UpsellEditor({
     <div className="space-y-3">
       <div className="space-y-1.5">
         {upsells.length === 0 ? (
-          <div className="text-[13px] text-text-faint italic py-3">No upsell rungs yet — add the first below.</div>
+          <div className="text-[13px] text-text-faint italic py-3">
+            No upsell rungs yet — add the first below.
+          </div>
         ) : (
           upsells.map((u) => (
             <div
               key={u.upsell_id}
               className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
             >
-              <span className="font-display font-medium text-[14px] w-8 text-center tabular-nums shrink-0">#{u.rung}</span>
+              <span className="font-display font-medium text-[14px] w-8 text-center tabular-nums shrink-0">
+                #{u.rung}
+              </span>
               <div className="min-w-0 flex-1">
-                <div className="font-medium text-[13px] truncate">{u.offer_label}</div>
-                {u.offer_subline && <div className="text-text-muted text-[11px] truncate">{u.offer_subline}</div>}
+                <div className="font-medium text-[13px] truncate">
+                  {u.offer_label}
+                </div>
+                {u.offer_subline && (
+                  <div className="text-text-muted text-[11px] truncate">
+                    {u.offer_subline}
+                  </div>
+                )}
               </div>
               <span className="text-[12px] text-text-faint tabular-nums whitespace-nowrap hidden sm:block">
                 {u.trigger_type === "cart_qty"
@@ -953,10 +1248,16 @@ function UpsellEditor({
                     : "bundle"}
               </span>
               {u.reward_value != null && Number(u.reward_value) > 0 && (
-                <span className="text-[12px] text-accent-glow tabular-nums whitespace-nowrap">−{money(Number(u.reward_value))}</span>
+                <span className="text-[12px] text-accent-glow tabular-nums whitespace-nowrap">
+                  −{money(Number(u.reward_value))}
+                </span>
               )}
               {canEdit && (
-                <button onClick={() => onDelete(u.upsell_id)} className="text-text-faint hover:text-danger p-1 shrink-0" aria-label="Remove rung">
+                <button
+                  onClick={() => onDelete(u.upsell_id)}
+                  className="text-text-faint hover:text-danger p-1 shrink-0"
+                  aria-label="Remove rung"
+                >
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
@@ -969,7 +1270,11 @@ function UpsellEditor({
           <div className="micro">Add a rung</div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Field label="Rung">
-              <NumberField value={rung} onChange={setRung} allowDecimal={false} />
+              <NumberField
+                value={rung}
+                onChange={setRung}
+                allowDecimal={false}
+              />
             </Field>
             <Field label="Trigger">
               <Select<CartUpsell["trigger_type"]>
@@ -982,15 +1287,31 @@ function UpsellEditor({
                 ]}
               />
             </Field>
-            <Field label={triggerType === "cart_value" ? "Min value (₦)" : "Min items"}>
+            <Field
+              label={
+                triggerType === "cart_value" ? "Min value (₦)" : "Min items"
+              }
+            >
               {triggerType === "cart_value" ? (
-                <NumberField value={minValue} onChange={setMinValue} allowDecimal={false} />
+                <NumberField
+                  value={minValue}
+                  onChange={setMinValue}
+                  allowDecimal={false}
+                />
               ) : (
-                <NumberField value={minQty} onChange={setMinQty} allowDecimal={false} />
+                <NumberField
+                  value={minQty}
+                  onChange={setMinQty}
+                  allowDecimal={false}
+                />
               )}
             </Field>
             <Field label="Reward ₦ off">
-              <NumberField value={rewardValue} onChange={setRewardValue} allowDecimal={false} />
+              <NumberField
+                value={rewardValue}
+                onChange={setRewardValue}
+                allowDecimal={false}
+              />
             </Field>
           </div>
           <Field label="Offer headline">
@@ -1001,7 +1322,10 @@ function UpsellEditor({
               className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
             />
           </Field>
-          <Field label="Subline (optional)" hint="The smaller line under the headline">
+          <Field
+            label="Subline (optional)"
+            hint="The smaller line under the headline"
+          >
             <input
               value={subline}
               onChange={(e) => setSubline(e.target.value)}
@@ -1028,7 +1352,15 @@ function UpsellEditor({
 // ── Step 4: Landing page ─────────────────────────────────
 // The heavy editing now lives in the full-screen Studio (edit + live preview
 // side by side, image upload). This step is a launcher + at-a-glance summary.
-function LandingStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdit: boolean; onNext?: () => void }) {
+function LandingStep({
+  campaign,
+  canEdit,
+  onNext,
+}: {
+  campaign: Campaign;
+  canEdit: boolean;
+  onNext?: () => void;
+}) {
   const brand = useBrand();
   const [studioOpen, setStudioOpen] = useState(false);
   const blocks = campaign.landing_blocks || [];
@@ -1061,23 +1393,39 @@ function LandingStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdi
       <div className="p-5 md:p-6 space-y-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="font-display text-[22px] leading-tight">Design the landing page</h2>
+            <h2 className="font-display text-[22px] leading-tight">
+              Design the landing page
+            </h2>
             <p className="text-text-muted text-[13px] mt-1 max-w-[520px]">
-              Open the full-screen Studio to edit and preview side by side — hero, look book,
-              bundles, testimonials and more. Upload images right there; no detours.
+              Open the full-screen Studio to edit and preview side by side —
+              hero, look book, bundles, testimonials and more. Upload images
+              right there; no detours.
             </p>
           </div>
-          <Button variant="primary" icon={<Pencil className="w-4 h-4" />} onClick={() => setStudioOpen(true)}>
+          <Button
+            variant="primary"
+            icon={<Pencil className="w-4 h-4" />}
+            onClick={() => setStudioOpen(true)}
+          >
             {canEdit ? "Open the Studio" : "Open preview"}
           </Button>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Pill tone="neutral" dot={false}>{enabledCount} sections</Pill>
-          <Pill tone={campaign.landing_hero_image_url ? "success" : "warn"} dot={false}>
-            {campaign.landing_hero_image_url ? "Hero image set" : "No hero image yet"}
+          <Pill tone="neutral" dot={false}>
+            {enabledCount} sections
           </Pill>
-          <Pill tone="neutral" dot={false}>/sale/{campaign.slug}</Pill>
+          <Pill
+            tone={campaign.landing_hero_image_url ? "success" : "warn"}
+            dot={false}
+          >
+            {campaign.landing_hero_image_url
+              ? "Hero image set"
+              : "No hero image yet"}
+          </Pill>
+          <Pill tone="neutral" dot={false}>
+            /sale/{campaign.slug}
+          </Pill>
         </div>
 
         <div className="flex items-center justify-between gap-3 pt-3 border-t border-line/60">
@@ -1090,22 +1438,37 @@ function LandingStep({ campaign, canEdit, onNext }: { campaign: Campaign; canEdi
             <Eye className="w-3.5 h-3.5" /> Open the public page ↗
           </a>
           {onNext && (
-            <Button variant="ghost" icon={<ChevronRight className="w-4 h-4" />} onClick={onNext}>
+            <Button
+              variant="ghost"
+              icon={<ChevronRight className="w-4 h-4" />}
+              onClick={onNext}
+            >
               Continue
             </Button>
           )}
         </div>
       </div>
 
-      <LandingStudio open={studioOpen} onClose={() => setStudioOpen(false)} campaign={campaign} canEdit={canEdit} />
+      <LandingStudio
+        open={studioOpen}
+        onClose={() => setStudioOpen(false)}
+        campaign={campaign}
+        canEdit={canEdit}
+      />
     </Card>
   );
 }
 
 // ── Step 5: Ambassadors / Share kit ──────────────────────
-function AmbassadorsStep({ campaign, canEdit }: { campaign: Campaign; canEdit: boolean }) {
+function AmbassadorsStep({
+  campaign,
+  canEdit,
+}: {
+  campaign: Campaign;
+  canEdit: boolean;
+}) {
   const ambassadorsQ = useCampaignAmbassadors(campaign.campaign_id);
-  const ambassadors = (ambassadorsQ.data?.data || []);
+  const ambassadors = ambassadorsQ.data?.data || [];
   // We'll keep this view list-only for v1; the picker drawer can come next iteration.
 
   return (
@@ -1115,12 +1478,16 @@ function AmbassadorsStep({ campaign, canEdit }: { campaign: Campaign; canEdit: b
           <div>
             <h2 className="font-display text-[22px]">Ambassadors</h2>
             <p className="text-text-muted text-[13px] mt-1">
-              Pick contacts you've promoted to ambassadors. Each gets a trackable
-              link with their utm_source — revenue + commission roll up here.
+              Pick contacts you've promoted to ambassadors. Each gets a
+              trackable link with their utm_source — revenue + commission roll
+              up here.
             </p>
           </div>
           {canEdit && (
-            <Link to="/sales-campaigns/ambassadors" className="text-[12.5px] font-semibold text-accent-glow hover:underline">
+            <Link
+              to="/sales-campaigns/ambassadors"
+              className="text-[12.5px] font-semibold text-accent-glow hover:underline"
+            >
               Manage ambassadors →
             </Link>
           )}
@@ -1143,9 +1510,13 @@ function AmbassadorsStep({ campaign, canEdit }: { campaign: Campaign; canEdit: b
                 <div className="font-medium text-[13px] truncate">
                   {a.first_name || ""} {a.last_name || ""}
                 </div>
-                <div className="text-text-faint text-[11px] truncate">{a.instagram_handle || a.email}</div>
+                <div className="text-text-faint text-[11px] truncate">
+                  {a.instagram_handle || a.email}
+                </div>
               </div>
-              <div className="col-span-2 font-mono text-[12px] text-accent-glow">{a.utm_source}</div>
+              <div className="col-span-2 font-mono text-[12px] text-accent-glow">
+                {a.utm_source}
+              </div>
               <div className="col-span-2 text-[12px] tabular-nums">
                 {a.visits_count} visits
               </div>
@@ -1174,35 +1545,77 @@ function ApprovalStep({ campaign }: { campaign: Campaign }) {
     <Card className="p-5 space-y-4">
       <h2 className="font-display text-[22px]">Approval & launch</h2>
       <div className="text-[13px] text-text-muted">
-        Submit the campaign for approval. Anyone with <span className="font-mono">sales_campaigns.approve</span> can launch it once approved.
+        Submit the campaign for approval. Anyone with{" "}
+        <span className="font-mono">sales_campaigns.approve</span> can launch it
+        once approved.
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <KpiTile label="Current state" value={STATUS_LABEL[campaign.status]} tone={TONE_FOR[campaign.status]} />
-        <KpiTile label="Approved by" value={campaign.approved_by ? "✓ Approved" : "—"} tone={campaign.approved_at ? "success" : "neutral"} />
+        <KpiTile
+          label="Current state"
+          value={STATUS_LABEL[campaign.status]}
+          tone={TONE_FOR[campaign.status]}
+        />
+        <KpiTile
+          label="Approved by"
+          value={campaign.approved_by ? "✓ Approved" : "—"}
+          tone={campaign.approved_at ? "success" : "neutral"}
+        />
       </div>
       <div className="flex flex-wrap gap-2">
         {campaign.status === "draft" && canEdit && (
-          <Button variant="primary" onClick={() => transition.mutate("submit")}>Submit for approval</Button>
+          <Button variant="primary" onClick={() => transition.mutate("submit")}>
+            Submit for approval
+          </Button>
         )}
         {campaign.status === "pending_approval" && canApprove && (
           <>
-            <Button variant="primary" onClick={() => transition.mutate("approve")}>Approve</Button>
-            <Button variant="danger" onClick={() => transition.mutate("reject")}>Reject</Button>
+            <Button
+              variant="primary"
+              onClick={() => transition.mutate("approve")}
+            >
+              Approve
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => transition.mutate("reject")}
+            >
+              Reject
+            </Button>
           </>
         )}
         {campaign.status === "scheduled" && canEdit && (
-          <Button variant="primary" onClick={() => transition.mutate("launch")} className="cta-breathe">Launch now</Button>
+          <Button
+            variant="primary"
+            onClick={() => transition.mutate("launch")}
+            className="cta-breathe"
+          >
+            Launch now
+          </Button>
         )}
         {campaign.status === "live" && canEdit && (
           <>
-            <Button variant="secondary" onClick={() => transition.mutate("pause")}>Pause</Button>
-            <Button variant="danger" onClick={() => transition.mutate("end")}>End early</Button>
+            <Button
+              variant="secondary"
+              onClick={() => transition.mutate("pause")}
+            >
+              Pause
+            </Button>
+            <Button variant="danger" onClick={() => transition.mutate("end")}>
+              End early
+            </Button>
           </>
         )}
         {campaign.status === "paused" && canEdit && (
           <>
-            <Button variant="primary" onClick={() => transition.mutate("resume")}>Resume</Button>
-            <Button variant="danger" onClick={() => transition.mutate("end")}>End</Button>
+            <Button
+              variant="primary"
+              onClick={() => transition.mutate("resume")}
+            >
+              Resume
+            </Button>
+            <Button variant="danger" onClick={() => transition.mutate("end")}>
+              End
+            </Button>
           </>
         )}
       </div>
@@ -1227,8 +1640,13 @@ function PraxisAssistDrawer({
   const suggest = usePraxisSuggestLayout(campaign.campaign_id);
   const accept = usePraxisAccept(campaign.campaign_id);
   const update = useUpdateCampaign(campaign.campaign_id);
-  const [layoutResult, setLayoutResult] = useState<Array<{ key: string; rationale: string }> | null>(null);
-  const [copyResult, setCopyResult] = useState<Record<string, unknown> | null>(null);
+  const [layoutResult, setLayoutResult] = useState<Array<{
+    key: string;
+    rationale: string;
+  }> | null>(null);
+  const [copyResult, setCopyResult] = useState<Record<string, unknown> | null>(
+    null,
+  );
 
   async function runDraft() {
     const r = await draft.mutateAsync({
@@ -1284,12 +1702,17 @@ function PraxisAssistDrawer({
       open={open}
       onClose={onClose}
       wide
-      title={<span className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-accent-glow" /> Praxis</span>}
+      title={
+        <span className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-accent-glow" /> Praxis
+        </span>
+      }
       subtitle={`Voice: ${campaign.voice_profile_override?.tone || "editorial-luxury"} · ${campaign.name}`}
     >
       <div className="space-y-4">
         <div className="dropglass rounded-[12px] p-3 text-[12px] text-text-muted border border-line">
-          Praxis is drafting — review every block before publish. Every accepted suggestion is logged with the prompt + the diff.
+          Praxis is drafting — review every block before publish. Every accepted
+          suggestion is logged with the prompt + the diff.
         </div>
 
         <div className="flex gap-1">
@@ -1299,10 +1722,16 @@ function PraxisAssistDrawer({
               onClick={() => setTab(k)}
               className={cn(
                 "px-3 py-1.5 rounded-[9px] text-[12px] font-semibold",
-                tab === k ? "bg-accent-deep text-[#F4E9D9]" : "text-text-muted hover:bg-text-primary/[0.05]",
+                tab === k
+                  ? "bg-accent-deep text-[#F4E9D9]"
+                  : "text-text-muted hover:bg-text-primary/[0.05]",
               )}
             >
-              {k === "copy" ? "Draft copy" : k === "layout" ? "Layout" : "Pricing"}
+              {k === "copy"
+                ? "Draft copy"
+                : k === "layout"
+                  ? "Layout"
+                  : "Pricing"}
             </button>
           ))}
         </div>
@@ -1321,7 +1750,10 @@ function PraxisAssistDrawer({
                 ]}
               />
             </Field>
-            <Field label="Brief" hint="One sentence is enough. Praxis loads your brand voice automatically.">
+            <Field
+              label="Brief"
+              hint="One sentence is enough. Praxis loads your brand voice automatically."
+            >
               <textarea
                 value={brief}
                 onChange={(e) => setBrief(e.target.value)}
@@ -1330,21 +1762,36 @@ function PraxisAssistDrawer({
                 className="w-full px-[13px] py-2 rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
               />
             </Field>
-            <Button variant="primary" onClick={runDraft} disabled={draft.isPending} icon={<Wand2 className="w-4 h-4" />}>
+            <Button
+              variant="primary"
+              onClick={runDraft}
+              disabled={draft.isPending}
+              icon={<Wand2 className="w-4 h-4" />}
+            >
               {draft.isPending ? "Drafting…" : "Draft copy"}
             </Button>
             {copyResult && (
               <div className="dropglass rounded-[12px] p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-3.5 h-3.5 text-accent-glow" />
-                  <span className="micro text-accent-glow">Drafted by Praxis · pending acceptance</span>
+                  <span className="micro text-accent-glow">
+                    Drafted by Praxis · pending acceptance
+                  </span>
                 </div>
                 <pre className="text-[12px] whitespace-pre-wrap text-text-primary leading-relaxed">
                   {JSON.stringify(copyResult, null, 2)}
                 </pre>
                 <div className="flex gap-2 justify-end">
-                  <Button variant="ghost" onClick={() => setCopyResult(null)}>Discard</Button>
-                  <Button variant="primary" onClick={applyCopy} icon={<Check className="w-4 h-4" />}>Accept & apply</Button>
+                  <Button variant="ghost" onClick={() => setCopyResult(null)}>
+                    Discard
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={applyCopy}
+                    icon={<Check className="w-4 h-4" />}
+                  >
+                    Accept & apply
+                  </Button>
                 </div>
               </div>
             )}
@@ -1353,27 +1800,48 @@ function PraxisAssistDrawer({
 
         {tab === "layout" && (
           <div className="space-y-3">
-            <p className="text-[13px] text-text-muted">Suggest a block layout for this campaign.</p>
-            <Button variant="primary" onClick={runLayout} disabled={suggest.isPending} icon={<Layers className="w-4 h-4" />}>
+            <p className="text-[13px] text-text-muted">
+              Suggest a block layout for this campaign.
+            </p>
+            <Button
+              variant="primary"
+              onClick={runLayout}
+              disabled={suggest.isPending}
+              icon={<Layers className="w-4 h-4" />}
+            >
               {suggest.isPending ? "Thinking…" : "Suggest layout"}
             </Button>
             {layoutResult && (
               <div className="dropglass rounded-[12px] p-4 space-y-3">
                 <div className="micro text-accent-glow flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5" /> Drafted by Praxis · pending acceptance
+                  <Sparkles className="w-3.5 h-3.5" /> Drafted by Praxis ·
+                  pending acceptance
                 </div>
                 <ol className="space-y-1.5">
                   {layoutResult.map((b, i) => (
                     <li key={b.key} className="text-[12.5px] leading-relaxed">
-                      <span className="font-mono text-text-faint mr-2">#{i + 1}</span>
-                      <span className="font-semibold">{BLOCK_LIBRARY.find((x) => x.key === b.key)?.label || b.key}</span>
+                      <span className="font-mono text-text-faint mr-2">
+                        #{i + 1}
+                      </span>
+                      <span className="font-semibold">
+                        {BLOCK_LIBRARY.find((x) => x.key === b.key)?.label ||
+                          b.key}
+                      </span>
                       <span className="text-text-muted"> — {b.rationale}</span>
                     </li>
                   ))}
                 </ol>
                 <div className="flex gap-2 justify-end">
-                  <Button variant="ghost" onClick={() => setLayoutResult(null)}>Discard</Button>
-                  <Button variant="primary" onClick={applyLayout} icon={<Check className="w-4 h-4" />}>Accept & apply</Button>
+                  <Button variant="ghost" onClick={() => setLayoutResult(null)}>
+                    Discard
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={applyLayout}
+                    icon={<Check className="w-4 h-4" />}
+                  >
+                    Accept & apply
+                  </Button>
                 </div>
               </div>
             )}
@@ -1383,10 +1851,16 @@ function PraxisAssistDrawer({
         {tab === "pricing" && (
           <div className="space-y-3 text-[13px] text-text-muted">
             <p>
-              Open the Pricing step in the builder and tap <span className="font-semibold text-accent-glow">"Suggest with Praxis"</span> next to a bundle to get a goal-seek + charm-rounded number with the floor enforced.
+              Open the Pricing step in the builder and tap{" "}
+              <span className="font-semibold text-accent-glow">
+                "Suggest with Praxis"
+              </span>{" "}
+              next to a bundle to get a goal-seek + charm-rounded number with
+              the floor enforced.
             </p>
             <p className="text-text-faint">
-              For dry-run questions ("Will ₦149,000 break the floor?"), use the Live Praxis chat on the campaign detail page.
+              For dry-run questions ("Will ₦149,000 break the floor?"), use the
+              Live Praxis chat on the campaign detail page.
             </p>
           </div>
         )}

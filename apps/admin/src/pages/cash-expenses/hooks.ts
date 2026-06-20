@@ -86,14 +86,18 @@ export function useCashRequestMutations() {
   });
 
   const disburse = useMutation({
-    mutationFn: (v: { id: string; input: Parameters<typeof cashApi.disburseCashRequest>[1] }) =>
-      cashApi.disburseCashRequest(v.id, v.input),
+    mutationFn: (v: {
+      id: string;
+      input: Parameters<typeof cashApi.disburseCashRequest>[1];
+    }) => cashApi.disburseCashRequest(v.id, v.input),
     onSuccess: invalidate,
   });
 
   const settle = useMutation({
-    mutationFn: (v: { id: string; input: Parameters<typeof cashApi.settleCashRequest>[1] }) =>
-      cashApi.settleCashRequest(v.id, v.input),
+    mutationFn: (v: {
+      id: string;
+      input: Parameters<typeof cashApi.settleCashRequest>[1];
+    }) => cashApi.settleCashRequest(v.id, v.input),
     onSuccess: invalidate,
   });
 
@@ -104,12 +108,25 @@ export function useCashRequestMutations() {
   });
 
   const addDocument = useMutation({
-    mutationFn: (v: { id: string; document_id: string; document_role?: DocumentRole; notes?: string }) =>
-      cashApi.addCashRequestDocument(v.id, v),
+    mutationFn: (v: {
+      id: string;
+      document_id: string;
+      document_role?: DocumentRole;
+      notes?: string;
+    }) => cashApi.addCashRequestDocument(v.id, v),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cash-request-docs"] }),
   });
 
-  return { create, submit, finance, ceo, disburse, settle, cancel, addDocument };
+  return {
+    create,
+    submit,
+    finance,
+    ceo,
+    disburse,
+    settle,
+    cancel,
+    addDocument,
+  };
 }
 
 // ── Expenses ─────────────────────────────────────────────

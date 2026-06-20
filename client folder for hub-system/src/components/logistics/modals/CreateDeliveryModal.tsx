@@ -169,7 +169,8 @@ export function CreateDeliveryModal({
         ) : (
           <div className="rounded-xl border border-brand-cloud/40 bg-brand-cream/30 px-4 py-3 text-sm text-brand-black">
             For <strong>{prefill?.contact?.display_name}</strong> — items copy
-            from the {prefill?.reference_type === "sales_order" ? "order" : "sale"}{" "}
+            from the{" "}
+            {prefill?.reference_type === "sales_order" ? "order" : "sale"}{" "}
             automatically.
           </div>
         )}

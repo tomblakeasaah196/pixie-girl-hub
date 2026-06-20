@@ -12,9 +12,18 @@ import type { ContactTag } from "@/pages/contacts/types";
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 const TAG_PRESET_COLOURS = [
-  "#A81D1D", "#690909", "#7f703d", "#5aa0a8",
-  "#7a8fa8", "#8b9d77", "#b76e79", "#9c7ad9",
-  "#d4a853", "#3d7a6f", "#c27b55", "#4a6fa8",
+  "#A81D1D",
+  "#690909",
+  "#7f703d",
+  "#5aa0a8",
+  "#7a8fa8",
+  "#8b9d77",
+  "#b76e79",
+  "#9c7ad9",
+  "#d4a853",
+  "#3d7a6f",
+  "#c27b55",
+  "#4a6fa8",
 ];
 
 function getBestTextColor(hex: string): string {
@@ -29,7 +38,10 @@ function TagPill({ tag }: { tag: ContactTag }) {
   return (
     <span
       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] font-semibold"
-      style={{ backgroundColor: tag.colour, color: getBestTextColor(tag.colour) }}
+      style={{
+        backgroundColor: tag.colour,
+        color: getBestTextColor(tag.colour),
+      }}
     >
       {tag.tag_name}
     </span>
@@ -102,7 +114,10 @@ function TagRow({ tag, allTags, onDelete, onMergeStart }: TagRowProps) {
                     <button
                       key={c}
                       type="button"
-                      onClick={() => { setColour(c); setShowSwatch(false); }}
+                      onClick={() => {
+                        setColour(c);
+                        setShowSwatch(false);
+                      }}
                       className="w-5 h-5 rounded-full transition-all"
                       style={{
                         backgroundColor: c,
@@ -234,9 +249,8 @@ function MergeDialog({ sourceTag, allTags, onClose }: MergeDialogProps) {
   return (
     <Modal open onClose={onClose} title="Merge tag">
       <p className="text-[12px] text-text-muted mb-4">
-        All contacts tagged{" "}
-        <TagPill tag={sourceTag} /> will be re-tagged with the target tag. The source tag is
-        permanently removed.
+        All contacts tagged <TagPill tag={sourceTag} /> will be re-tagged with
+        the target tag. The source tag is permanently removed.
       </p>
 
       {/* Target picker */}
@@ -247,7 +261,10 @@ function MergeDialog({ sourceTag, allTags, onClose }: MergeDialogProps) {
           onChange={setTargetId}
           options={[
             { value: "", label: "— choose target tag —" },
-            ...targetOptions.map((t) => ({ value: t.tag_id, label: t.tag_name })),
+            ...targetOptions.map((t) => ({
+              value: t.tag_id,
+              label: t.tag_name,
+            })),
           ]}
         />
       </div>
@@ -271,7 +288,11 @@ function MergeDialog({ sourceTag, allTags, onClose }: MergeDialogProps) {
           className="flex-1"
           disabled={!targetId || mergeMut.isPending}
           onClick={() => mergeMut.mutate()}
-          icon={mergeMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : undefined}
+          icon={
+            mergeMut.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : undefined
+          }
         >
           Merge
         </Button>
@@ -320,7 +341,11 @@ function DeleteConfirm({ tag, onClose }: DeleteConfirmProps) {
           className="flex-1 bg-danger/90 hover:bg-danger"
           onClick={() => deleteMut.mutate()}
           disabled={deleteMut.isPending}
-          icon={deleteMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : undefined}
+          icon={
+            deleteMut.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : undefined
+          }
         >
           Delete
         </Button>
@@ -361,9 +386,12 @@ export function ContactTagsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-display text-2xl text-text-primary">Contact Tags</h1>
+          <h1 className="font-display text-2xl text-text-primary">
+            Contact Tags
+          </h1>
           <p className="text-[12px] text-text-faint mt-1">
-            Manage all tags used across your contacts — rename, recolour, merge, or delete.
+            Manage all tags used across your contacts — rename, recolour, merge,
+            or delete.
           </p>
         </div>
         <Pill tone="neutral" dot={false}>
@@ -395,14 +423,19 @@ export function ContactTagsPage() {
       ) : allTags.length === 0 ? (
         <Card className="py-12 text-center">
           <Tag className="w-8 h-8 text-text-faint mx-auto mb-3" />
-          <div className="text-[14px] font-semibold text-text-primary mb-1">No tags yet</div>
+          <div className="text-[14px] font-semibold text-text-primary mb-1">
+            No tags yet
+          </div>
           <p className="text-[12px] text-text-faint">
-            Tags are created from contact profiles. Once added, they appear here for management.
+            Tags are created from contact profiles. Once added, they appear here
+            for management.
           </p>
         </Card>
       ) : filtered.length === 0 ? (
         <Card className="py-8 text-center">
-          <p className="text-[13px] text-text-faint">No tags match "{search}"</p>
+          <p className="text-[13px] text-text-faint">
+            No tags match "{search}"
+          </p>
         </Card>
       ) : (
         <div className="flex flex-col gap-2">

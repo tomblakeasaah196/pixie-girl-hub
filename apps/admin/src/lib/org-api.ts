@@ -120,38 +120,51 @@ export interface WorkflowInstance {
 export const orgApi = {
   // Org units
   listUnits: (params?: { include_inactive?: boolean; q?: string }) => {
-    const entries = Object.entries(params ?? {}).filter(([, v]) => v !== undefined) as [string, string][];
-    const qs = entries.length ? "?" + new URLSearchParams(entries).toString() : "";
+    const entries = Object.entries(params ?? {}).filter(
+      ([, v]) => v !== undefined,
+    ) as [string, string][];
+    const qs = entries.length
+      ? "?" + new URLSearchParams(entries).toString()
+      : "";
     return api.get<OrgUnit[]>(`/org${qs}`);
   },
   getUnit: (id: string) => api.get<OrgUnit>(`/org/${id}`),
   createUnit: (body: Partial<OrgUnit>) => api.post<OrgUnit>("/org", body),
-  updateUnit: (id: string, body: Partial<OrgUnit>) => api.patch<OrgUnit>(`/org/${id}`, body),
+  updateUnit: (id: string, body: Partial<OrgUnit>) =>
+    api.patch<OrgUnit>(`/org/${id}`, body),
   deleteUnit: (id: string) => api.delete<void>(`/org/${id}`),
 
   // Positions
   listPositions: (params?: { unit_id?: string }) => {
-    const qs = params?.unit_id ? `?unit_id=${encodeURIComponent(params.unit_id)}` : "";
+    const qs = params?.unit_id
+      ? `?unit_id=${encodeURIComponent(params.unit_id)}`
+      : "";
     return api.get<OrgPosition[]>(`/org/positions${qs}`);
   },
   getPosition: (id: string) => api.get<OrgPosition>(`/org/positions/${id}`),
-  createPosition: (body: Partial<OrgPosition>) => api.post<OrgPosition>("/org/positions", body),
-  updatePosition: (id: string, body: Partial<OrgPosition>) => api.patch<OrgPosition>(`/org/positions/${id}`, body),
+  createPosition: (body: Partial<OrgPosition>) =>
+    api.post<OrgPosition>("/org/positions", body),
+  updatePosition: (id: string, body: Partial<OrgPosition>) =>
+    api.patch<OrgPosition>(`/org/positions/${id}`, body),
   deletePosition: (id: string) => api.delete<void>(`/org/positions/${id}`),
 
   // Dotted lines
   listDottedLines: (position_id: string) =>
     api.get<DottedLine[]>(`/org/positions/${position_id}/dotted-lines`),
-  createDottedLine: (position_id: string, body: { dotted_to_position_id: string; notes?: string }) =>
-    api.post<DottedLine>(`/org/positions/${position_id}/dotted-lines`, body),
-  deleteDottedLine: (dotted_id: string) => api.delete<void>(`/org/dotted-lines/${dotted_id}`),
+  createDottedLine: (
+    position_id: string,
+    body: { dotted_to_position_id: string; notes?: string },
+  ) => api.post<DottedLine>(`/org/positions/${position_id}/dotted-lines`, body),
+  deleteDottedLine: (dotted_id: string) =>
+    api.delete<void>(`/org/dotted-lines/${dotted_id}`),
 
   // Workflow definitions
   listDefinitions: (include_inactive?: boolean) => {
     const qs = include_inactive ? "?include_inactive=true" : "";
     return api.get<WorkflowDefinition[]>(`/org/workflows${qs}`);
   },
-  getDefinition: (id: string) => api.get<WorkflowDefinition>(`/org/workflows/${id}`),
+  getDefinition: (id: string) =>
+    api.get<WorkflowDefinition>(`/org/workflows/${id}`),
   createDefinition: (body: {
     name: string;
     description?: string;
@@ -167,7 +180,12 @@ export const orgApi = {
   // We type accordingly and re-fetch the full envelope when meta is needed.
   listPending: (page = 1) =>
     api.get<WorkflowInstance[]>(`/org/approvals/pending?page=${page}`),
-  getInstance: (id: string) => api.get<WorkflowInstance>(`/org/approvals/${id}`),
-  act: (id: string, action: "approve" | "reject" | "request_changes", notes?: string) =>
+  getInstance: (id: string) =>
+    api.get<WorkflowInstance>(`/org/approvals/${id}`),
+  act: (
+    id: string,
+    action: "approve" | "reject" | "request_changes",
+    notes?: string,
+  ) =>
     api.post<WorkflowInstance>(`/org/approvals/${id}/act`, { action, notes }),
 };

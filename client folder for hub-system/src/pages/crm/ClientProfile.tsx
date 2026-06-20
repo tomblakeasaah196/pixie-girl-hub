@@ -8,11 +8,7 @@
 
 import { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Cake,
@@ -239,9 +235,17 @@ export default function ClientProfile() {
         <Tabs
           tabs={[
             { key: "overview", label: "Overview" },
-            { key: "purchases", label: "Purchases", badge: client.purchase_count },
+            {
+              key: "purchases",
+              label: "Purchases",
+              badge: client.purchase_count,
+            },
             { key: "concierge", label: "Concierge" },
-            { key: "deals", label: "B2B deals", badge: client.deals.length || undefined },
+            {
+              key: "deals",
+              label: "B2B deals",
+              badge: client.deals.length || undefined,
+            },
             { key: "notes", label: "Notes" },
           ]}
           active={tab}
@@ -311,7 +315,9 @@ function Kpi({
       <div className="text-lg font-display text-brand-cream mt-0.5 tabular-nums truncate">
         {value}
       </div>
-      {hint && <div className="text-[0.6rem] text-brand-smoke mt-0.5">{hint}</div>}
+      {hint && (
+        <div className="text-[0.6rem] text-brand-smoke mt-0.5">{hint}</div>
+      )}
     </div>
   );
 }
@@ -398,7 +404,10 @@ function OverviewTab({ client }: { client: ClientProfileData }) {
           ) : (
             <ul className="space-y-1.5">
               {client.preferences.slice(0, 6).map((p) => (
-                <li key={p.preference_id} className="flex justify-between text-xs">
+                <li
+                  key={p.preference_id}
+                  className="flex justify-between text-xs"
+                >
                   <span className="text-brand-smoke">
                     {p.preference_key.replace(/_/g, " ")}
                   </span>
@@ -442,13 +451,8 @@ function OverviewTab({ client }: { client: ClientProfileData }) {
   );
 }
 
-function PurchaseRow({
-  p,
-}: {
-  p: import("@typedefs/crm").ClientPurchase;
-}) {
-  const typeLabel =
-    p.invoice_type === "pos_sale" ? "In store" : "Invoice";
+function PurchaseRow({ p }: { p: import("@typedefs/crm").ClientPurchase }) {
+  const typeLabel = p.invoice_type === "pos_sale" ? "In store" : "Invoice";
   return (
     <li className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.03]">
       <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-brand-accent/10 text-brand-accent shrink-0">
@@ -467,7 +471,13 @@ function PurchaseRow({
           {fmtMoney(Number(p.total_amount), p.currency || "NGN")}
         </span>
         <Badge
-          tone={p.status === "paid" ? "sage" : p.status === "overdue" ? "danger" : "neutral"}
+          tone={
+            p.status === "paid"
+              ? "sage"
+              : p.status === "overdue"
+                ? "danger"
+                : "neutral"
+          }
           size="xs"
         >
           {p.status.replace(/_/g, " ")}
@@ -613,7 +623,9 @@ function NotesTab({ contactId }: { contactId: string }) {
           <button
             onClick={() => setPin((v) => !v)}
             className={`inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-wide transition-colors ${
-              pin ? "text-brand-accent" : "text-brand-smoke hover:text-brand-cream"
+              pin
+                ? "text-brand-accent"
+                : "text-brand-smoke hover:text-brand-cream"
             }`}
           >
             <Pin className="w-3.5 h-3.5" /> {pin ? "Pinned" : "Pin to profile"}

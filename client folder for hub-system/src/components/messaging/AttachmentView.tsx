@@ -20,7 +20,8 @@ interface Props {
 }
 
 export function AttachmentView({ attachment, messageType, isOwn }: Props) {
-  if (messageType === "image") return <ImageAttachment attachment={attachment} />;
+  if (messageType === "image")
+    return <ImageAttachment attachment={attachment} />;
   if (messageType === "voice_note")
     return <VoiceAttachment attachment={attachment} isOwn={isOwn} />;
   return <DocumentAttachment attachment={attachment} isOwn={isOwn} />;
@@ -46,9 +47,7 @@ function ImageAttachment({ attachment }: { attachment: MessageAttachment }) {
   }, [attachment.document_id]);
 
   if (!url) {
-    return (
-      <div className="h-40 w-56 animate-pulse rounded-xl bg-white/10" />
-    );
+    return <div className="h-40 w-56 animate-pulse rounded-xl bg-white/10" />;
   }
 
   return (
@@ -105,7 +104,12 @@ function VoiceAttachment({
   const wantPlayRef = useRef(false);
   const fixingRef = useRef(false);
 
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  useEffect(
+    () => () => {
+      if (url) URL.revokeObjectURL(url);
+    },
+    [url],
+  );
 
   async function handleToggle() {
     if (!url) {
@@ -279,7 +283,9 @@ function DocumentAttachment({
       <span className="flex-1 truncate">
         {attachment.display_name ?? "Attachment"}
       </span>
-      <Download className={cn("h-3.5 w-3.5 shrink-0", busy && "animate-pulse")} />
+      <Download
+        className={cn("h-3.5 w-3.5 shrink-0", busy && "animate-pulse")}
+      />
     </button>
   );
 }

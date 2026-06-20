@@ -20,10 +20,14 @@ export function ModulePlaceholder() {
       <div className="w-[84px] h-[84px] rounded-[24px] mx-auto mb-[18px] grid place-items-center text-accent-glow bg-accent/10 border border-accent/20">
         <Icon className="w-[38px] h-[38px]" />
       </div>
-      <h3 className="font-display text-2xl font-medium mb-1.5 capitalize">{label}</h3>
+      <h3 className="font-display text-2xl font-medium mb-1.5 capitalize">
+        {label}
+      </h3>
       <p className="text-text-muted max-w-[440px] mx-auto">
-        The {label} module renders here, built to <code>docs/Frontend_Engineering_Guide_v2.2.md</code> via the
-        canon's question gate. Use the floating <b>Back</b> pill to return to the Command Center.
+        The {label} module renders here, built to{" "}
+        <code>docs/Frontend_Engineering_Guide_v2.2.md</code> via the canon's
+        question gate. Use the floating <b>Back</b> pill to return to the
+        Command Center.
       </p>
     </div>
   );

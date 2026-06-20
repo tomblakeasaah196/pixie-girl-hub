@@ -83,7 +83,10 @@ export function CartUpsellModal({ payload }: { payload: LandingPayload }) {
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[60] grid place-items-end md:place-items-center px-4 pb-24 md:pb-4"
         >
-          <div className="absolute inset-0 bg-black/55 backdrop-blur-[3px]" onClick={dismiss} />
+          <div
+            className="absolute inset-0 bg-black/55 backdrop-blur-[3px]"
+            onClick={dismiss}
+          />
           <motion.div
             initial={{ y: 40, opacity: 0, scale: 0.96 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
@@ -103,9 +106,13 @@ export function CartUpsellModal({ payload }: { payload: LandingPayload }) {
               <Sparkles className="w-4 h-4 text-[rgb(var(--accent-glow))]" />
               <span className="micro">A small nudge</span>
             </div>
-            <h3 className="font-display text-[24px] leading-tight">{current.offer_label}</h3>
+            <h3 className="font-display text-[24px] leading-tight">
+              {current.offer_label}
+            </h3>
             {current.offer_subline && (
-              <p className="mt-2 text-[rgb(var(--text-muted))]">{current.offer_subline}</p>
+              <p className="mt-2 text-[rgb(var(--text-muted))]">
+                {current.offer_subline}
+              </p>
             )}
             {current.reward_type === "fixed_amount" && current.reward_value && (
               <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))] text-[12px] font-semibold">

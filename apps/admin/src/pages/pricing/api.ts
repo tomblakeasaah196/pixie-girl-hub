@@ -28,7 +28,10 @@ const BASE = "/pricing";
 function qs(params: Record<string, string | undefined>): string {
   const parts = Object.entries(params).filter(([, v]) => v != null && v !== "");
   if (!parts.length) return "";
-  return "?" + parts.map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join("&");
+  return (
+    "?" +
+    parts.map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join("&")
+  );
 }
 
 // ── Advisor ──────────────────────────────────────────────────────────────────
@@ -60,7 +63,10 @@ export const createScenario = (input: CreateScenarioInput) =>
   api.post<Scenario>(`${BASE}/scenarios`, input);
 
 export const computeScenario = (id: string, sliders?: ComputeSliderInput[]) =>
-  api.post<Scenario & { results_count: number }>(`${BASE}/scenarios/${id}/compute`, { sliders });
+  api.post<Scenario & { results_count: number }>(
+    `${BASE}/scenarios/${id}/compute`,
+    { sliders },
+  );
 
 // ── Proposals ────────────────────────────────────────────────────────────────
 export const listProposals = (status?: string) =>
@@ -79,14 +85,18 @@ export const rejectProposal = (id: string, reason?: string) =>
   api.post<Proposal>(`${BASE}/proposals/${id}/reject`, { reason });
 
 export const revertProposal = (id: string, reason?: string) =>
-  api.post<Proposal & { reverted?: boolean }>(`${BASE}/proposals/${id}/revert`, { reason });
+  api.post<Proposal & { reverted?: boolean }>(
+    `${BASE}/proposals/${id}/revert`,
+    { reason },
+  );
 
 // ── Rules ────────────────────────────────────────────────────────────────────
 export const listRules = (params?: { channel?: string; is_active?: boolean }) =>
   api.get<Rule[]>(
     `${BASE}/rules${qs({
       channel: params?.channel,
-      is_active: params?.is_active === undefined ? undefined : String(params.is_active),
+      is_active:
+        params?.is_active === undefined ? undefined : String(params.is_active),
     })}`,
   );
 
@@ -96,7 +106,8 @@ export const createRule = (input: CreateRuleInput) =>
 export const updateRule = (id: string, input: UpdateRuleInput) =>
   api.patch<Rule>(`${BASE}/rules/${id}`, input);
 
-export const deleteRule = (id: string) => api.delete<void>(`${BASE}/rules/${id}`);
+export const deleteRule = (id: string) =>
+  api.delete<void>(`${BASE}/rules/${id}`);
 
 // ── Floors ───────────────────────────────────────────────────────────────────
 export const listFloors = (variantId?: string) =>
@@ -105,7 +116,8 @@ export const listFloors = (variantId?: string) =>
 export const createFloor = (input: CreateFloorInput) =>
   api.post<Floor>(`${BASE}/floors`, input);
 
-export const deleteFloor = (id: string) => api.delete<void>(`${BASE}/floors/${id}`);
+export const deleteFloor = (id: string) =>
+  api.delete<void>(`${BASE}/floors/${id}`);
 
 // ── Overrides ────────────────────────────────────────────────────────────────
 export const listOverrides = (variantId?: string) =>
@@ -114,7 +126,8 @@ export const listOverrides = (variantId?: string) =>
 export const createOverride = (input: CreateOverrideInput) =>
   api.post<Override>(`${BASE}/overrides`, input);
 
-export const deleteOverride = (id: string) => api.delete<void>(`${BASE}/overrides/${id}`);
+export const deleteOverride = (id: string) =>
+  api.delete<void>(`${BASE}/overrides/${id}`);
 
 // ── History ──────────────────────────────────────────────────────────────────
 export const getHistory = (variantId: string) =>

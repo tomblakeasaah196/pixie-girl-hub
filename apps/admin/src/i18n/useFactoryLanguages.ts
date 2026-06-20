@@ -14,7 +14,9 @@ export function useFactoryLanguages() {
     queryFn: async () => {
       const langs = await listWithTranslations();
       await syncFromApi(langs);
-      return Object.fromEntries(langs.map((l) => [l.language_code, l.display_name]));
+      return Object.fromEntries(
+        langs.map((l) => [l.language_code, l.display_name]),
+      );
     },
     staleTime: 10 * 60 * 1000,
     retry: false,

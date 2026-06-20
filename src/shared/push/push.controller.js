@@ -13,7 +13,11 @@ async function publicKey(req, res) {
 async function subscribe(req, res) {
   const { endpoint, keys } = req.body || {};
   if (!endpoint || !keys?.p256dh || !keys?.auth) {
-    return res.status(400).json({ error: { message: "endpoint, keys.p256dh and keys.auth are required" } });
+    return res
+      .status(400)
+      .json({
+        error: { message: "endpoint, keys.p256dh and keys.auth are required" },
+      });
   }
   await service.saveSubscription({
     user_id: req.user.user_id,
@@ -28,7 +32,8 @@ async function subscribe(req, res) {
 /** DELETE /push/subscribe — unregister a push subscription. */
 async function unsubscribe(req, res) {
   const { endpoint } = req.body || {};
-  if (!endpoint) return res.status(400).json({ error: { message: "endpoint required" } });
+  if (!endpoint)
+    return res.status(400).json({ error: { message: "endpoint required" } });
   await service.removeSubscription({ user_id: req.user.user_id, endpoint });
   res.json({ data: { ok: true } });
 }

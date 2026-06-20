@@ -1,17 +1,30 @@
 import { useNavigate } from "react-router-dom";
-import { Calendar, User, MoreVertical, Trophy, XCircle, PauseCircle } from "lucide-react";
+import {
+  Calendar,
+  User,
+  MoreVertical,
+  Trophy,
+  XCircle,
+  PauseCircle,
+} from "lucide-react";
 import { MoneyText, Pill } from "@/components/ui/primitives";
 import type { Deal } from "@/pages/contacts/types";
 
 const AVATAR_COLORS = ["#8b9d77", "#7a8fa8", "#b76e79", "#9c7ad9", "#5aa0a8"];
 
 function avatarColor(name: string) {
-  const idx = Math.abs(name.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length;
+  const idx =
+    Math.abs(name.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) %
+    AVATAR_COLORS.length;
   return AVATAR_COLORS[idx];
 }
 
 function initials(name: string) {
-  return name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 function daysSince(iso: string | null) {
@@ -26,7 +39,11 @@ interface DealCardProps {
   onWonLost?: (deal: Deal) => void;
 }
 
-export function DealCard({ deal, isDragging = false, onWonLost }: DealCardProps) {
+export function DealCard({
+  deal,
+  isDragging = false,
+  onWonLost,
+}: DealCardProps) {
   const navigate = useNavigate();
   const stale = daysSince(deal.last_activity_at);
   const isStale = stale !== null && stale > 14;
@@ -41,7 +58,9 @@ export function DealCard({ deal, isDragging = false, onWonLost }: DealCardProps)
       className={[
         "p-3 rounded-[13px] bg-surface border hairline cursor-pointer select-none",
         "hover:border-accent/40 hover:bg-text-primary/[0.04] transition-all",
-        isDragging ? "shadow-glass rotate-1 scale-[1.02] opacity-90" : "shadow-sm",
+        isDragging
+          ? "shadow-glass rotate-1 scale-[1.02] opacity-90"
+          : "shadow-sm",
         isStale ? "border-warn/30" : "",
       ].join(" ")}
       onClick={() => navigate(`/crm/deals/${deal.deal_id}`)}
@@ -61,7 +80,9 @@ export function DealCard({ deal, isDragging = false, onWonLost }: DealCardProps)
             {deal.title}
           </div>
           {deal.contact_name && (
-            <div className="text-[10.5px] text-text-faint truncate">{deal.contact_name}</div>
+            <div className="text-[10.5px] text-text-faint truncate">
+              {deal.contact_name}
+            </div>
           )}
         </div>
         {/* Context menu trigger */}
@@ -109,7 +130,9 @@ export function DealCard({ deal, isDragging = false, onWonLost }: DealCardProps)
           </span>
         )}
         {isStale && (
-          <Pill tone="warn" dot={false}>{stale}d idle</Pill>
+          <Pill tone="warn" dot={false}>
+            {stale}d idle
+          </Pill>
         )}
         {deal.source_channel && (
           <span className="text-[10px] text-text-faint capitalize">
@@ -124,20 +147,23 @@ export function DealCard({ deal, isDragging = false, onWonLost }: DealCardProps)
 // ── Won/Lost mini indicator for non-open deals ────────────────────────────
 
 export function DealStatusBadge({ status }: { status: Deal["status"] }) {
-  if (status === "won") return (
-    <span className="inline-flex items-center gap-1 text-[10.5px] text-success font-semibold">
-      <Trophy className="w-3 h-3" /> Won
-    </span>
-  );
-  if (status === "lost") return (
-    <span className="inline-flex items-center gap-1 text-[10.5px] text-danger font-semibold">
-      <XCircle className="w-3 h-3" /> Lost
-    </span>
-  );
-  if (status === "on_hold") return (
-    <span className="inline-flex items-center gap-1 text-[10.5px] text-warn font-semibold">
-      <PauseCircle className="w-3 h-3" /> On hold
-    </span>
-  );
+  if (status === "won")
+    return (
+      <span className="inline-flex items-center gap-1 text-[10.5px] text-success font-semibold">
+        <Trophy className="w-3 h-3" /> Won
+      </span>
+    );
+  if (status === "lost")
+    return (
+      <span className="inline-flex items-center gap-1 text-[10.5px] text-danger font-semibold">
+        <XCircle className="w-3 h-3" /> Lost
+      </span>
+    );
+  if (status === "on_hold")
+    return (
+      <span className="inline-flex items-center gap-1 text-[10.5px] text-warn font-semibold">
+        <PauseCircle className="w-3 h-3" /> On hold
+      </span>
+    );
   return null;
 }

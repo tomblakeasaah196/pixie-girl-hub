@@ -553,7 +553,8 @@ function SuppliersTab({ productId }: { productId: string }) {
                   </Link>
                   {l.is_preferred && (
                     <Badge tone="gold" size="xs">
-                      <Star className="w-2.5 h-2.5 fill-brand-accent" /> Preferred
+                      <Star className="w-2.5 h-2.5 fill-brand-accent" />{" "}
+                      Preferred
                     </Badge>
                   )}
                 </div>

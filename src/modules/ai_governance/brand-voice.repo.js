@@ -50,7 +50,9 @@ async function upsert({ brand, user_id, input }) {
       input.signature_html || null,
       input.do_donts ? JSON.stringify(input.do_donts) : null,
       input.faq_markdown || null,
-      input.sample_transcripts ? JSON.stringify(input.sample_transcripts) : null,
+      input.sample_transcripts
+        ? JSON.stringify(input.sample_transcripts)
+        : null,
       input.primary_emojis || null,
       input.classify_inbound,
       input.draft_on_tap,

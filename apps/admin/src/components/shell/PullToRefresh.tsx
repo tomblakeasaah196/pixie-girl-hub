@@ -85,13 +85,20 @@ export function PullToRefresh({ onRefresh, children, className }: Props) {
           showIndicator ? "opacity-100" : "opacity-0",
         )}
         style={{
-          height: refreshing ? 56 : pullDistance > 10 ? Math.min(pullDistance, 80) : 0,
+          height: refreshing
+            ? 56
+            : pullDistance > 10
+              ? Math.min(pullDistance, 80)
+              : 0,
         }}
       >
         {/* Sparkle spinner */}
         <svg
           viewBox="0 0 64 64"
-          className={cn("w-7 h-7 text-accent-glow", refreshing && "animate-spin")}
+          className={cn(
+            "w-7 h-7 text-accent-glow",
+            refreshing && "animate-spin",
+          )}
           style={{
             transform: `scale(${0.5 + progress * 0.5}) rotate(${pullDistance * 3}deg)`,
             opacity: progress,

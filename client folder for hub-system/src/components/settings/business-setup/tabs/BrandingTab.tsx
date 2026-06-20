@@ -233,13 +233,7 @@ export function BrandingTab({ business }: { business: Business }) {
   );
 }
 
-function SectionHeader({
-  title,
-  hint,
-}: {
-  title: string;
-  hint?: string;
-}) {
+function SectionHeader({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="mb-4">
       <h3 className="font-display text-lg text-brand-black">{title}</h3>

@@ -277,8 +277,7 @@ export function InviteModal({ open, onClose }: InviteModalProps) {
                     {selectedStaff.display_name}
                   </p>
                   <p className="text-xs text-text-on-light-muted">
-                    {selectedStaff.job_title || "—"} ·{" "}
-                    {selectedStaff.email}
+                    {selectedStaff.job_title || "—"} · {selectedStaff.email}
                   </p>
                 </div>
                 <Button

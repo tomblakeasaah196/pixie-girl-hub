@@ -66,7 +66,15 @@ async function updateTemplate({ client, brand, id, patch, user_id }) {
   const sets = [];
   const params = [id, brand];
   let i = 3;
-  for (const col of ["doc_type", "name", "status", "header_html", "body_html", "footer_html", "is_default"]) {
+  for (const col of [
+    "doc_type",
+    "name",
+    "status",
+    "header_html",
+    "body_html",
+    "footer_html",
+    "is_default",
+  ]) {
     if (patch[col] === undefined) continue;
     sets.push(`${col} = $${i++}`);
     params.push(patch[col]);
@@ -185,7 +193,14 @@ async function updateReport({ client, brand, id, patch }) {
   const sets = [];
   const params = [id, brand];
   let i = 3;
-  for (const col of ["name", "source_module", "trigger_event", "cadence", "is_active", "next_run_at"]) {
+  for (const col of [
+    "name",
+    "source_module",
+    "trigger_event",
+    "cadence",
+    "is_active",
+    "next_run_at",
+  ]) {
     if (patch[col] === undefined) continue;
     sets.push(`${col} = $${i++}`);
     params.push(patch[col]);
@@ -240,7 +255,14 @@ async function upsertSecret({ client, brand, row, user_id }) {
            updated_by = EXCLUDED.updated_by,
            updated_at = now()
      RETURNING secret_id, business, provider, key_name, last4, is_active, updated_at`,
-    [brand || null, row.provider, row.key_name, row.secret_enc, row.last4 || null, user_id || null],
+    [
+      brand || null,
+      row.provider,
+      row.key_name,
+      row.secret_enc,
+      row.last4 || null,
+      user_id || null,
+    ],
   );
   return rows[0];
 }
@@ -292,11 +314,18 @@ async function createPolicy({ client, brand, row, user_id }) {
              COALESCE($8,'draft'),COALESCE($9,false),$10,$11,$12)
      RETURNING *`,
     [
-      brand, row.slug, row.title, row.policy_type,
-      row.body_html, row.summary || null,
-      row.version, row.status,
-      row.is_published, row.public_url || null,
-      row.effective_from || null, user_id || null,
+      brand,
+      row.slug,
+      row.title,
+      row.policy_type,
+      row.body_html,
+      row.summary || null,
+      row.version,
+      row.status,
+      row.is_published,
+      row.public_url || null,
+      row.effective_from || null,
+      user_id || null,
     ],
   );
   return rows[0];
@@ -305,8 +334,18 @@ async function updatePolicy({ client, brand, id, patch, user_id }) {
   const sets = [];
   const params = [id, brand];
   let i = 3;
-  for (const col of ["slug", "title", "policy_type", "body_html", "summary",
-                     "version", "status", "is_published", "public_url", "effective_from"]) {
+  for (const col of [
+    "slug",
+    "title",
+    "policy_type",
+    "body_html",
+    "summary",
+    "version",
+    "status",
+    "is_published",
+    "public_url",
+    "effective_from",
+  ]) {
     if (patch[col] === undefined) continue;
     sets.push(`${col} = $${i++}`);
     params.push(patch[col]);

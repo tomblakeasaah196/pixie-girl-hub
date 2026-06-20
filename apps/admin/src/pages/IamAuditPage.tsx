@@ -271,7 +271,12 @@ export function IamAuditPage() {
 
   /* error state */
   if (audit.isError) {
-    return <ErrorState message="Failed to load audit log." onRetry={() => audit.refetch()} />;
+    return (
+      <ErrorState
+        message="Failed to load audit log."
+        onRetry={() => audit.refetch()}
+      />
+    );
   }
 
   return (
@@ -283,9 +288,7 @@ export function IamAuditPage() {
             <ScrollText className="w-5 h-5" />
           </span>
           <div>
-            <h2 className="font-display text-[22px] font-medium">
-              Audit Log
-            </h2>
+            <h2 className="font-display text-[22px] font-medium">Audit Log</h2>
             <p className="text-text-muted text-[13px]">
               Append-only trail of every action
             </p>

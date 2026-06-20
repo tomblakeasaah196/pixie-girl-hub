@@ -42,7 +42,9 @@ function qs(params: Record<string, unknown>): string {
 
 export const smartcommApi = {
   listChannels: (p: ChannelListParams = {}) =>
-    api.get<Channel[]>(`/smartcomm/channels${qs(p as Record<string, unknown>)}`),
+    api.get<Channel[]>(
+      `/smartcomm/channels${qs(p as Record<string, unknown>)}`,
+    ),
   getChannel: (id: string) => api.get<Channel>(`/smartcomm/channels/${id}`),
   createChannel: (input: {
     channel_type: "group" | "direct";
@@ -55,7 +57,11 @@ export const smartcommApi = {
     api.post<Channel>(`/smartcomm/channels/${id}/archive`, { archived }),
   resolveThread: (id: string) =>
     api.post<Channel>(`/smartcomm/channels/${id}/resolve`),
-  assignThread: (id: string, assigned_to: string | null, handoff_note?: string) =>
+  assignThread: (
+    id: string,
+    assigned_to: string | null,
+    handoff_note?: string,
+  ) =>
     api.post<Channel>(`/smartcomm/channels/${id}/assign`, {
       assigned_to,
       handoff_note,
@@ -74,8 +80,10 @@ export const smartcommApi = {
     api.post(`/smartcomm/channels/${id}/mark-read`, { up_to_message_id }),
 
   // Members
-  addMember: (id: string, m: { user_id?: string; contact_id?: string; role?: "member" | "admin" }) =>
-    api.post(`/smartcomm/channels/${id}/members`, m),
+  addMember: (
+    id: string,
+    m: { user_id?: string; contact_id?: string; role?: "member" | "admin" },
+  ) => api.post(`/smartcomm/channels/${id}/members`, m),
   removeMember: (id: string, member_id: string) =>
     api.delete(`/smartcomm/channels/${id}/members/${member_id}`),
 
@@ -157,12 +165,19 @@ export const smartcommApi = {
 
   // Praxis-drafted reply (on-demand, permission-gated).
   draftWithPraxis: (channelId: string) =>
-    api.post<MessageDraft>(`/smartcomm/channels/${channelId}/draft-with-praxis`),
+    api.post<MessageDraft>(
+      `/smartcomm/channels/${channelId}/draft-with-praxis`,
+    ),
 
   // Order capture link
   createOrderCapture: (input: {
     contact_id: string;
-    items: { product_id: string; qty: number; price_ngn?: string; note?: string }[];
+    items: {
+      product_id: string;
+      qty: number;
+      price_ngn?: string;
+      note?: string;
+    }[];
     sales_channel?: string;
     notes?: string;
     expires_in?: number;

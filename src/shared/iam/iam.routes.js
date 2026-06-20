@@ -51,8 +51,16 @@ router.post(
   validator.validateProvisionExternal,
   controller.provisionExternalUser,
 );
-router.post("/users/:userId/deactivate", can("edit"), controller.deactivateUser);
-router.post("/users/:userId/reactivate", can("edit"), controller.reactivateUser);
+router.post(
+  "/users/:userId/deactivate",
+  can("edit"),
+  controller.deactivateUser,
+);
+router.post(
+  "/users/:userId/reactivate",
+  can("edit"),
+  controller.reactivateUser,
+);
 router.post(
   "/users/:userId/reset-password",
   can("edit"),

@@ -106,7 +106,9 @@ async function draftStyled({ brand, user, request_id, input }) {
       "AI_UNAVAILABLE",
       `AI drafting unavailable: ${guard.reason}`,
       403,
-      { user_message: "AI drafting isn't available for your account right now." },
+      {
+        user_message: "AI drafting isn't available for your account right now.",
+      },
     );
   }
 
@@ -146,9 +148,14 @@ async function draftStyled({ brand, user, request_id, input }) {
   const parsed = extractJson(completion.content);
   if (!parsed || !parsed.name) {
     await recordUsageSafe({ user, brand, vendor, completion, ok: false });
-    throw new AppError("AI_DRAFT_UNPARSEABLE", "AI returned no usable draft", 502, {
-      user_message: "The AI draft came back malformed. Please try again.",
-    });
+    throw new AppError(
+      "AI_DRAFT_UNPARSEABLE",
+      "AI returned no usable draft",
+      502,
+      {
+        user_message: "The AI draft came back malformed. Please try again.",
+      },
+    );
   }
 
   // 5. Save as a DRAFT (never live). Slug is made unique-ish to avoid
@@ -171,7 +178,9 @@ async function draftStyled({ brand, user, request_id, input }) {
         ? parsed.style_addon_price_ngn
         : undefined,
     category_id: input.category_id,
-    meta_title: parsed.meta_title ? String(parsed.meta_title).slice(0, 200) : undefined,
+    meta_title: parsed.meta_title
+      ? String(parsed.meta_title).slice(0, 200)
+      : undefined,
     meta_description: parsed.meta_description
       ? String(parsed.meta_description).slice(0, 500)
       : undefined,

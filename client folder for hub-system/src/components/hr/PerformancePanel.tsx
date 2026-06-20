@@ -20,7 +20,12 @@ function GoalRow({ g }: { g: PerformanceGoal }) {
     g.status === "achieved"
       ? 100
       : g.target_value && Number(g.target_value) > 0
-        ? Math.min(100, Math.round((Number(g.current_value) / Number(g.target_value)) * 100))
+        ? Math.min(
+            100,
+            Math.round(
+              (Number(g.current_value) / Number(g.target_value)) * 100,
+            ),
+          )
         : g.status === "missed"
           ? 0
           : 50;
@@ -29,7 +34,13 @@ function GoalRow({ g }: { g: PerformanceGoal }) {
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm text-brand-cream">{g.title}</span>
         <Badge
-          tone={g.status === "achieved" ? "sage" : g.status === "missed" ? "rose" : "neutral"}
+          tone={
+            g.status === "achieved"
+              ? "sage"
+              : g.status === "missed"
+                ? "rose"
+                : "neutral"
+          }
           size="xs"
         >
           {g.status}
@@ -60,7 +71,9 @@ export function PerformancePanel({
 }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
-    queryKey: self ? ["hr", "me", "performance"] : ["hr", "performance", profileId],
+    queryKey: self
+      ? ["hr", "me", "performance"]
+      : ["hr", "performance", profileId],
     queryFn: () => (self ? getMyPerformance() : getPerformance(profileId!)),
     enabled: self || !!profileId,
   });
@@ -123,7 +136,10 @@ export function PerformancePanel({
           {data.reviews.length ? (
             <div className="space-y-3">
               {data.reviews.map((rv) => (
-                <div key={rv.review_id} className="rounded-xl border border-white/5 p-3">
+                <div
+                  key={rv.review_id}
+                  className="rounded-xl border border-white/5 p-3"
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-brand-smoke">
                       {fmtDate(rv.period_start)} – {fmtDate(rv.period_end)}
@@ -134,9 +150,16 @@ export function PerformancePanel({
                       </Badge>
                     )}
                   </div>
-                  {rv.summary && <p className="mt-1 text-sm text-brand-cloud">{rv.summary}</p>}
+                  {rv.summary && (
+                    <p className="mt-1 text-sm text-brand-cloud">
+                      {rv.summary}
+                    </p>
+                  )}
                   <div className="mt-2 flex items-center gap-2">
-                    <Badge tone={rv.status === "acknowledged" ? "sage" : "neutral"} size="xs">
+                    <Badge
+                      tone={rv.status === "acknowledged" ? "sage" : "neutral"}
+                      size="xs"
+                    >
                       {rv.status}
                     </Badge>
                     {self && rv.status === "shared" && (

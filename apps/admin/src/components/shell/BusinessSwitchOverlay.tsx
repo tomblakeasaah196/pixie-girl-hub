@@ -72,11 +72,17 @@ export function BusinessSwitchOverlay() {
       {/* Brand monogram pulse */}
       <div
         className="relative w-[88px] h-[88px] rounded-[28px] grid place-items-center shadow-[0_0_60px_rgb(0_0_0/0.5)]"
-        style={{ background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})` }}
+        style={{
+          background: `linear-gradient(140deg, ${biz.grad1}, ${biz.grad2})`,
+        }}
       >
         <span className="font-display font-semibold text-[32px] text-white/90">
           {biz.logoUrl ? (
-            <img src={biz.logoUrl} alt="" className="w-full h-full rounded-[28px] object-cover" />
+            <img
+              src={biz.logoUrl}
+              alt=""
+              className="w-full h-full rounded-[28px] object-cover"
+            />
           ) : (
             biz.monogram
           )}
@@ -84,13 +90,17 @@ export function BusinessSwitchOverlay() {
         {/* Pulsing ring */}
         <span
           className="absolute inset-0 rounded-[28px] animate-pulse"
-          style={{ boxShadow: `0 0 0 2px ${biz.grad1}88, 0 0 0 8px ${biz.grad1}22` }}
+          style={{
+            boxShadow: `0 0 0 2px ${biz.grad1}88, 0 0 0 8px ${biz.grad1}22`,
+          }}
         />
       </div>
 
       {/* Business name */}
       <div className="text-center">
-        <h2 className="font-display font-light text-3xl text-white/90 mb-1">{biz.name}</h2>
+        <h2 className="font-display font-light text-3xl text-white/90 mb-1">
+          {biz.name}
+        </h2>
         <p
           key={lineIdx}
           className="text-white/55 text-sm animate-app-in"

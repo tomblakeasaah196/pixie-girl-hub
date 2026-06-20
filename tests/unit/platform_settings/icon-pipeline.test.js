@@ -76,7 +76,9 @@ describe("generateIconSet", () => {
   });
 
   test("keys out the background for an opaque source and warns", async () => {
-    const set = await generateIconSet(await opaqueJpeg(), { allowKeyOut: true });
+    const set = await generateIconSet(await opaqueJpeg(), {
+      allowKeyOut: true,
+    });
     expect(set.transparency.hadAlpha).toBe(false);
     expect(set.transparency.keyed).toBe(true);
     expect(typeof set.transparency.warning).toBe("string");

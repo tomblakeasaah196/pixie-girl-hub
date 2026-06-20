@@ -35,12 +35,7 @@ export function SessionExpiredOverlay() {
           You were signed out after a period of inactivity. Please log in again
           to pick up where you left off.
         </p>
-        <Button
-          variant="gold"
-          fullWidth
-          className="mt-6"
-          onClick={goToLogin}
-        >
+        <Button variant="gold" fullWidth className="mt-6" onClick={goToLogin}>
           Log in again
         </Button>
       </div>

@@ -12,6 +12,9 @@ const { requirePermission } = require("../../middleware/rbac");
 const router = express.Router();
 const can = (a) => requirePermission("crm", a);
 
+// Dashboard KPIs (literal — before any :id route)
+router.get("/kpis", can("view"), c.kpis);
+
 // Pipelines + stages
 router.get("/pipelines", can("view"), c.listPipelines);
 router.post(

@@ -6,14 +6,17 @@
  * call per platform.
  */
 
-jest.mock("../../../src/modules/messaging_accounts/messaging-accounts.repo", () => ({
-  list: jest.fn(),
-  get: jest.fn(),
-  getRaw: jest.fn(),
-  upsert: jest.fn(),
-  setActive: jest.fn(),
-  remove: jest.fn(),
-}));
+jest.mock(
+  "../../../src/modules/messaging_accounts/messaging-accounts.repo",
+  () => ({
+    list: jest.fn(),
+    get: jest.fn(),
+    getRaw: jest.fn(),
+    upsert: jest.fn(),
+    setActive: jest.fn(),
+    remove: jest.fn(),
+  }),
+);
 jest.mock("../../../src/services/encryption.service", () => ({
   encrypt: jest.fn((s) => `enc:${s}`),
   decrypt: jest.fn((s) => s.replace(/^enc:/, "")),

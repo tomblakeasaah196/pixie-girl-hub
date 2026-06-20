@@ -309,7 +309,8 @@ export function ReceiptModal({
       {/* Reference input */}
       <div>
         <label className="mb-1.5 block text-xs font-medium text-brand-smoke">
-          Transfer Reference <span className="text-brand-smoke/50">(optional)</span>
+          Transfer Reference{" "}
+          <span className="text-brand-smoke/50">(optional)</span>
         </label>
         <Input
           value={reference}
@@ -1153,8 +1154,8 @@ function ForeignTenderSection({ lines }: { lines: ForeignTenderLine[] }) {
               </div>
               <p className="mt-0.5 text-xs text-brand-smoke">
                 {l.payment_method.replace(/_/g, " ")} ·{" "}
-                {new Date(l.tender_date).toLocaleDateString()} · 1 {l.currency} ={" "}
-                ₦
+                {new Date(l.tender_date).toLocaleDateString()} · 1 {l.currency}{" "}
+                = ₦
                 {l.exchange_rate.toLocaleString("en-NG", {
                   maximumFractionDigits: 2,
                 })}

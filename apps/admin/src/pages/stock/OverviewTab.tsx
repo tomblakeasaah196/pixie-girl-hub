@@ -12,7 +12,12 @@ import {
   useStockMovements,
 } from "./hooks";
 import { MovementTypePill, SeverityPill, LocationTypePill } from "./parts";
-import type { StockLocation, StockLevel, StockMovement, StockAlert } from "./types";
+import type {
+  StockLocation,
+  StockLevel,
+  StockMovement,
+  StockAlert,
+} from "./types";
 
 /* ── Location row shape (aggregated from levels) ── */
 interface LocationRow {
@@ -47,7 +52,15 @@ export default function OverviewTab() {
   /* Aggregate levels per location */
   const locationRows = useMemo<LocationRow[]>(() => {
     if (!locations.data || !levels.data) return [];
-    const map = new Map<string, { on_hand: number; reserved: number; available: number; skus: Set<string> }>();
+    const map = new Map<
+      string,
+      {
+        on_hand: number;
+        reserved: number;
+        available: number;
+        skus: Set<string>;
+      }
+    >();
     for (const lvl of levels.data as StockLevel[]) {
       let agg = map.get(lvl.location_id);
       if (!agg) {
@@ -63,7 +76,10 @@ export default function OverviewTab() {
     const valuationLines = valuation.data?.lines ?? [];
     const valueByLoc = new Map<string, number>();
     for (const vl of valuationLines) {
-      valueByLoc.set(vl.location_id, (valueByLoc.get(vl.location_id) ?? 0) + Number(vl.value_ngn));
+      valueByLoc.set(
+        vl.location_id,
+        (valueByLoc.get(vl.location_id) ?? 0) + Number(vl.value_ngn),
+      );
     }
 
     return (locations.data as StockLocation[]).map((loc) => {
@@ -97,7 +113,8 @@ export default function OverviewTab() {
   }
 
   /* Loading state */
-  const isLoading = valuation.isLoading || locations.isLoading || levels.isLoading;
+  const isLoading =
+    valuation.isLoading || locations.isLoading || levels.isLoading;
 
   /* KPI values */
   const summary = valuation.data?.summary;
@@ -107,12 +124,48 @@ export default function OverviewTab() {
 
   /* ── Location breakdown columns ── */
   const locationColumns: Column<LocationRow>[] = [
-    { key: "name", header: "Location", render: (r) => <span className="font-semibold text-[13px]">{r.display_name}</span> },
-    { key: "type", header: "Type", render: (r) => <LocationTypePill type={r.location_type} /> },
-    { key: "skus", header: "SKUs Tracked", align: "right", render: (r) => <span className="tabular-nums">{r.skus_tracked}</span> },
-    { key: "on_hand", header: "On Hand", align: "right", render: (r) => <span className="tabular-nums">{r.on_hand.toLocaleString()}</span> },
-    { key: "reserved", header: "Reserved", align: "right", render: (r) => <span className="tabular-nums">{r.reserved.toLocaleString()}</span> },
-    { key: "available", header: "Available", align: "right", render: (r) => <span className="tabular-nums">{r.available.toLocaleString()}</span> },
+    {
+      key: "name",
+      header: "Location",
+      render: (r) => (
+        <span className="font-semibold text-[13px]">{r.display_name}</span>
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      render: (r) => <LocationTypePill type={r.location_type} />,
+    },
+    {
+      key: "skus",
+      header: "SKUs Tracked",
+      align: "right",
+      render: (r) => <span className="tabular-nums">{r.skus_tracked}</span>,
+    },
+    {
+      key: "on_hand",
+      header: "On Hand",
+      align: "right",
+      render: (r) => (
+        <span className="tabular-nums">{r.on_hand.toLocaleString()}</span>
+      ),
+    },
+    {
+      key: "reserved",
+      header: "Reserved",
+      align: "right",
+      render: (r) => (
+        <span className="tabular-nums">{r.reserved.toLocaleString()}</span>
+      ),
+    },
+    {
+      key: "available",
+      header: "Available",
+      align: "right",
+      render: (r) => (
+        <span className="tabular-nums">{r.available.toLocaleString()}</span>
+      ),
+    },
     {
       key: "value",
       header: "Value",
@@ -123,15 +176,41 @@ export default function OverviewTab() {
 
   /* ── Movement mini-table columns ── */
   const movementColumns: Column<StockMovement>[] = [
-    { key: "number", header: "#", width: "110px", render: (r) => <span className="font-mono text-[12px] text-text-muted">{r.movement_number}</span> },
-    { key: "type", header: "Type", render: (r) => <MovementTypePill type={r.movement_type} /> },
-    { key: "qty", header: "Qty", align: "right", render: (r) => <span className="tabular-nums font-semibold">{r.quantity > 0 ? `+${r.quantity}` : r.quantity}</span> },
+    {
+      key: "number",
+      header: "#",
+      width: "110px",
+      render: (r) => (
+        <span className="font-mono text-[12px] text-text-muted">
+          {r.movement_number}
+        </span>
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      render: (r) => <MovementTypePill type={r.movement_type} />,
+    },
+    {
+      key: "qty",
+      header: "Qty",
+      align: "right",
+      render: (r) => (
+        <span className="tabular-nums font-semibold">
+          {r.quantity > 0 ? `+${r.quantity}` : r.quantity}
+        </span>
+      ),
+    },
     {
       key: "cost",
       header: "Unit Cost",
       align: "right",
       render: (r) =>
-        r.unit_cost_ngn ? <MoneyText ngn={Number(r.unit_cost_ngn)} className="text-[13px]" /> : <span className="text-text-faint">--</span>,
+        r.unit_cost_ngn ? (
+          <MoneyText ngn={Number(r.unit_cost_ngn)} className="text-[13px]" />
+        ) : (
+          <span className="text-text-faint">--</span>
+        ),
     },
     {
       key: "date",
@@ -139,7 +218,11 @@ export default function OverviewTab() {
       align: "right",
       render: (r) => (
         <span className="text-[12px] text-text-muted tabular-nums">
-          {new Date(r.performed_at).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "2-digit" })}
+          {new Date(r.performed_at).toLocaleDateString("en-NG", {
+            day: "2-digit",
+            month: "short",
+            year: "2-digit",
+          })}
         </span>
       ),
     },
@@ -185,7 +268,9 @@ export default function OverviewTab() {
         toolbar={
           <div className="flex items-center gap-2">
             <Package className="w-4 h-4 text-text-muted" />
-            <span className="text-[13px] font-semibold">Location Breakdown</span>
+            <span className="text-[13px] font-semibold">
+              Location Breakdown
+            </span>
           </div>
         }
       />
@@ -205,7 +290,10 @@ export default function OverviewTab() {
         {alerts.isLoading && (
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="p-3 rounded-xl bg-text-primary/[0.03] border border-line">
+              <div
+                key={i}
+                className="p-3 rounded-xl bg-text-primary/[0.03] border border-line"
+              >
                 <Skeleton className="w-3/4 mb-2" />
                 <Skeleton className="w-1/2" />
               </div>
@@ -214,7 +302,9 @@ export default function OverviewTab() {
         )}
 
         {alerts.data && alerts.data.data.length === 0 && (
-          <p className="text-[13px] text-text-muted py-4 text-center">No active stock alerts</p>
+          <p className="text-[13px] text-text-muted py-4 text-center">
+            No active stock alerts
+          </p>
         )}
 
         {alerts.data && alerts.data.data.length > 0 && (
@@ -239,14 +329,18 @@ export default function OverviewTab() {
                   <span className="text-[11px] text-text-muted">Available</span>
                   <span
                     className={`text-[13px] font-semibold tabular-nums ${
-                      alert.on_hand_at_detection === 0 ? "text-danger" : "text-text-primary"
+                      alert.on_hand_at_detection === 0
+                        ? "text-danger"
+                        : "text-text-primary"
                     }`}
                   >
                     {alert.on_hand_at_detection}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-text-muted">Reorder pt</span>
+                  <span className="text-[11px] text-text-muted">
+                    Reorder pt
+                  </span>
                   <span className="text-[12px] tabular-nums text-text-faint">
                     {alert.reorder_point}
                   </span>

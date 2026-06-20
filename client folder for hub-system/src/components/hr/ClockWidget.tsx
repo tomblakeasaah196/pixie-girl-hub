@@ -73,8 +73,16 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
   }
 
   const active = !clocked_in
-    ? { label: "Clock in", icon: <LogIn className="w-3.5 h-3.5" />, run: () => handle(inMut) }
-    : { label: "Clock out", icon: <LogOut className="w-3.5 h-3.5" />, run: () => handle(outMut) };
+    ? {
+        label: "Clock in",
+        icon: <LogIn className="w-3.5 h-3.5" />,
+        run: () => handle(inMut),
+      }
+    : {
+        label: "Clock out",
+        icon: <LogOut className="w-3.5 h-3.5" />,
+        run: () => handle(outMut),
+      };
 
   return (
     <button

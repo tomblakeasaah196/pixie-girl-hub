@@ -22,10 +22,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVisibleModules } from "@hooks/useVisibleModules";
-import {
-  NAV_PRIORITY_MAX,
-  type AppModule,
-} from "@lib/constants/modules";
+import { NAV_PRIORITY_MAX, type AppModule } from "@lib/constants/modules";
 import { getMyNav, setMyNav, resetMyNav, type MyNav } from "@services/nav";
 
 export function useNavPriority() {

@@ -6,10 +6,9 @@ import { api } from "./api";
 // ─────────────────────────────────────────────────────────────
 
 export type DayMode = "on_site" | "remote" | "off";
-export type WorkSchedule = Partial<Record<
-  "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun",
-  DayMode
->>;
+export type WorkSchedule = Partial<
+  Record<"mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun", DayMode>
+>;
 
 export type AttendanceStatus =
   | "present"
@@ -155,7 +154,11 @@ export interface MyHrSummary {
   profile_id: string;
   schedule: ScheduleInfo;
   today: AttendanceRecord | null;
-  leave_balance: Array<{ leave_type: string; days_taken: number; entitlement?: number }>;
+  leave_balance: Array<{
+    leave_type: string;
+    days_taken: number;
+    entitlement?: number;
+  }>;
   open_queries: StaffQuery[];
   goals: PerformanceGoal[];
   latest_review: PerformanceReview | null;
@@ -205,11 +208,13 @@ export async function getMyToday(): Promise<TodayAttendance> {
   const { data } = await api.get("/hr/me/today");
   return data;
 }
-export async function getMyAttendance(params: { from_date?: string; to_date?: string } = {}) {
-  const { data } = await api.get<{ profile_id: string; data: AttendanceRecord[] }>(
-    "/hr/me/attendance",
-    { params },
-  );
+export async function getMyAttendance(
+  params: { from_date?: string; to_date?: string } = {},
+) {
+  const { data } = await api.get<{
+    profile_id: string;
+    data: AttendanceRecord[];
+  }>("/hr/me/attendance", { params });
   return data;
 }
 export async function getMyPerformance(): Promise<Performance> {
@@ -235,11 +240,16 @@ export async function justifyAttendance(
   const { data } = await api.post(`/hr/attendance/${id}/justify`, body);
   return data;
 }
-export async function respondToQuery(id: string, response: string): Promise<StaffQuery> {
+export async function respondToQuery(
+  id: string,
+  response: string,
+): Promise<StaffQuery> {
   const { data } = await api.post(`/hr/queries/${id}/respond`, { response });
   return data;
 }
-export async function acknowledgeReview(id: string): Promise<PerformanceReview> {
+export async function acknowledgeReview(
+  id: string,
+): Promise<PerformanceReview> {
   const { data } = await api.post(`/hr/reviews/${id}/acknowledge`);
   return data;
 }
@@ -249,21 +259,34 @@ export async function getOverview(business?: string): Promise<HrOverview> {
   const { data } = await api.get("/hr/overview", { params: { business } });
   return data;
 }
-export async function listAttendance(params: {
-  profile_id?: string;
-  from_date?: string;
-  to_date?: string;
-  status?: string;
-} = {}) {
-  const { data } = await api.get<{ data: AttendanceRecord[] }>("/hr/attendance", { params });
+export async function listAttendance(
+  params: {
+    profile_id?: string;
+    from_date?: string;
+    to_date?: string;
+    status?: string;
+  } = {},
+) {
+  const { data } = await api.get<{ data: AttendanceRecord[] }>(
+    "/hr/attendance",
+    { params },
+  );
   return data.data;
 }
 export async function reconcileDay(date: string, business?: string) {
-  const { data } = await api.post("/hr/attendance/reconcile", { date, business });
+  const { data } = await api.post("/hr/attendance/reconcile", {
+    date,
+    business,
+  });
   return data;
 }
-export async function reviewJustification(id: string, decision: "approve" | "reject") {
-  const { data } = await api.post(`/hr/attendance/${id}/justification/${decision}`);
+export async function reviewJustification(
+  id: string,
+  decision: "approve" | "reject",
+) {
+  const { data } = await api.post(
+    `/hr/attendance/${id}/justification/${decision}`,
+  );
   return data;
 }
 export async function getSchedule(profileId: string): Promise<ScheduleInfo> {
@@ -278,17 +301,24 @@ export async function updateSchedule(
   return data;
 }
 export async function listWorkLocations(business?: string) {
-  const { data } = await api.get<{ data: WorkLocation[] }>("/hr/work-locations", {
-    params: { business },
-  });
+  const { data } = await api.get<{ data: WorkLocation[] }>(
+    "/hr/work-locations",
+    {
+      params: { business },
+    },
+  );
   return data.data;
 }
 export async function createWorkLocation(body: Partial<WorkLocation>) {
   const { data } = await api.post("/hr/work-locations", body);
   return data;
 }
-export async function listQueries(params: { profile_id?: string; status?: string } = {}) {
-  const { data } = await api.get<{ data: StaffQuery[] }>("/hr/queries", { params });
+export async function listQueries(
+  params: { profile_id?: string; status?: string } = {},
+) {
+  const { data } = await api.get<{ data: StaffQuery[] }>("/hr/queries", {
+    params,
+  });
   return data.data;
 }
 export async function raiseQuery(body: {
@@ -317,15 +347,24 @@ export async function getPerformance(
   const { data } = await api.get(`/hr/performance/${profileId}`, { params });
   return data;
 }
-export async function createGoal(profileId: string, body: Partial<PerformanceGoal>) {
+export async function createGoal(
+  profileId: string,
+  body: Partial<PerformanceGoal>,
+) {
   const { data } = await api.post(`/hr/performance/${profileId}/goals`, body);
   return data;
 }
-export async function updateGoal(goalId: string, body: Partial<PerformanceGoal>) {
+export async function updateGoal(
+  goalId: string,
+  body: Partial<PerformanceGoal>,
+) {
   const { data } = await api.patch(`/hr/performance/goals/${goalId}`, body);
   return data;
 }
-export async function createReview(profileId: string, body: Partial<PerformanceReview>) {
+export async function createReview(
+  profileId: string,
+  body: Partial<PerformanceReview>,
+) {
   const { data } = await api.post(`/hr/performance/${profileId}/reviews`, body);
   return data;
 }
@@ -355,12 +394,18 @@ export interface LeaveRequest {
   staff_name?: string;
 }
 
-export async function listLeave(params: { status?: string; profile_id?: string } = {}) {
-  const { data } = await api.get<{ data: LeaveRequest[] }>("/staff/leave", { params });
+export async function listLeave(
+  params: { status?: string; profile_id?: string } = {},
+) {
+  const { data } = await api.get<{ data: LeaveRequest[] }>("/staff/leave", {
+    params,
+  });
   return data.data;
 }
 export async function getLeaveBalance(profileId: string, year?: number) {
-  const { data } = await api.get(`/staff/leave/balance/${profileId}`, { params: { year } });
+  const { data } = await api.get(`/staff/leave/balance/${profileId}`, {
+    params: { year },
+  });
   return data;
 }
 export async function submitLeave(body: {
@@ -378,7 +423,9 @@ export async function approveLeave(id: string) {
   return data;
 }
 export async function rejectLeave(id: string, rejection_reason?: string) {
-  const { data } = await api.post(`/staff/leave/${id}/reject`, { rejection_reason });
+  const { data } = await api.post(`/staff/leave/${id}/reject`, {
+    rejection_reason,
+  });
   return data;
 }
 export async function cancelLeave(id: string) {

@@ -54,50 +54,197 @@ const SECTIONS: Section[] = [
   {
     title: "Identity",
     tiles: [
-      { key: "business-setup", label: "Business Setup", desc: "Profile, financial, identity & operational policies", icon: Building2, to: "/settings/business-setup" },
-      { key: "businesses", label: "Businesses", desc: "List & provision business lines", icon: ShoppingBag, to: "/settings/businesses" },
-      { key: "appearance", label: "Appearance", desc: "White-label theme, fonts & per-brand colours", icon: Palette, to: "/settings/appearance" },
-      { key: "login", label: "Login Screen", desc: "Hero copy, quotes, regional welcomes & toggles", icon: LogIn, to: "/settings/login" },
-      { key: "policies", label: "Business Policies", desc: "Privacy, Refund, QMS, Terms & more — Studio decides web placement", icon: Scale, to: "/settings/policies" },
+      {
+        key: "business-setup",
+        label: "Business Setup",
+        desc: "Profile, financial, identity & operational policies",
+        icon: Building2,
+        to: "/settings/business-setup",
+      },
+      {
+        key: "businesses",
+        label: "Businesses",
+        desc: "List & provision business lines",
+        icon: ShoppingBag,
+        to: "/settings/businesses",
+      },
+      {
+        key: "appearance",
+        label: "Appearance",
+        desc: "White-label theme, fonts & per-brand colours",
+        icon: Palette,
+        to: "/settings/appearance",
+      },
+      {
+        key: "login",
+        label: "Login Screen",
+        desc: "Hero copy, quotes, regional welcomes & toggles",
+        icon: LogIn,
+        to: "/settings/login",
+      },
+      {
+        key: "policies",
+        label: "Business Policies",
+        desc: "Privacy, Refund, QMS, Terms & more — Studio decides web placement",
+        icon: Scale,
+        to: "/settings/policies",
+      },
     ],
   },
   {
     title: "Money",
     tiles: [
-      { key: "currencies", label: "Currencies & FX", desc: "Currency catalogue + exchange rates", icon: Coins, to: "/settings/currencies" },
-      { key: "tax-rates", label: "Tax Rates", desc: "VAT, WHT & more — enabled system-wide", icon: Receipt, to: "/settings/tax-rates" },
-      { key: "payment-gateways", label: "Payment Gateways", desc: "Paystack · Opay · Nomba · Stripe + fees", icon: CreditCard, to: "/settings/payment-gateways" },
-      { key: "bank-accounts", label: "Bank Accounts", desc: "Company accounts (masked) & payout links", icon: Wallet, to: "/settings/bank-accounts" },
+      {
+        key: "currencies",
+        label: "Currencies & FX",
+        desc: "Currency catalogue + exchange rates",
+        icon: Coins,
+        to: "/settings/currencies",
+      },
+      {
+        key: "tax-rates",
+        label: "Tax Rates",
+        desc: "VAT, WHT & more — enabled system-wide",
+        icon: Receipt,
+        to: "/settings/tax-rates",
+      },
+      {
+        key: "payment-gateways",
+        label: "Payment Gateways",
+        desc: "Paystack · Opay · Nomba · Stripe + fees",
+        icon: CreditCard,
+        to: "/settings/payment-gateways",
+      },
+      {
+        key: "bank-accounts",
+        label: "Bank Accounts",
+        desc: "Company accounts (masked) & payout links",
+        icon: Wallet,
+        to: "/settings/bank-accounts",
+      },
     ],
   },
   {
     title: "Operations",
     tiles: [
-      { key: "document-numbering", label: "Document Numbering", desc: "Prefixes, padding & sequences", icon: Hash, to: "/settings/document-numbering" },
-      { key: "custom-fields", label: "Custom Fields", desc: "Per-entity field definitions", icon: LayoutGrid, to: "/settings/custom-fields" },
-      { key: "pipeline-stages", label: "Pipeline Stages", desc: "CRM, delivery, PO & production stages", icon: GitBranch, to: "/settings/pipeline-stages" },
-      { key: "scheduled-reports", label: "Scheduled Reports", desc: "Automated report delivery", icon: CalendarClock, to: "/settings/scheduled-reports" },
-      { key: "factory-languages", label: "Factory Languages", desc: "Add & manage translations for China factory screens — no code needed", icon: Globe, to: "/settings/factory-languages" },
+      {
+        key: "document-numbering",
+        label: "Document Numbering",
+        desc: "Prefixes, padding & sequences",
+        icon: Hash,
+        to: "/settings/document-numbering",
+      },
+      {
+        key: "custom-fields",
+        label: "Custom Fields",
+        desc: "Per-entity field definitions",
+        icon: LayoutGrid,
+        to: "/settings/custom-fields",
+      },
+      {
+        key: "pipeline-stages",
+        label: "Pipeline Stages",
+        desc: "CRM, delivery, PO & production stages",
+        icon: GitBranch,
+        to: "/settings/pipeline-stages",
+      },
+      {
+        key: "scheduled-reports",
+        label: "Scheduled Reports",
+        desc: "Automated report delivery",
+        icon: CalendarClock,
+        to: "/settings/scheduled-reports",
+      },
+      {
+        key: "factory-languages",
+        label: "Factory Languages",
+        desc: "Add & manage translations for China factory screens — no code needed",
+        icon: Globe,
+        to: "/settings/factory-languages",
+      },
     ],
   },
   {
     title: "Communication",
     tiles: [
-      { key: "document-templates", label: "Document Templates", desc: "Invoices, POs, receipts, contracts", icon: FileText, to: "/settings/document-templates" },
-      { key: "email-signatures", label: "Email Signatures", desc: "Brand template & per-staff render", icon: Mail, to: "/settings/email-signatures" },
-      { key: "notifications", label: "Notifications", desc: "Your channel & category preferences", icon: Bell, to: "/settings/notifications" },
-      { key: "channel-policy", label: "Channel Policy", desc: "Where every automated message goes — keeps the WhatsApp bill in check", icon: Wallet, to: "/settings/channel-policy" },
-      { key: "quick-replies", label: "Quick Replies", desc: "Personal + brand snippets for the Smartcomm composer", icon: MessageCircle, to: "/settings/quick-replies" },
-      { key: "messaging-accounts", label: "Messaging Accounts", desc: "Connect WhatsApp, Instagram, FB Messenger & inbound email per brand", icon: Plug, to: "/settings/messaging-accounts" },
+      {
+        key: "document-templates",
+        label: "Document Templates",
+        desc: "Invoices, POs, receipts, contracts",
+        icon: FileText,
+        to: "/settings/document-templates",
+      },
+      {
+        key: "email-signatures",
+        label: "Email Signatures",
+        desc: "Brand template & per-staff render",
+        icon: Mail,
+        to: "/settings/email-signatures",
+      },
+      {
+        key: "notifications",
+        label: "Notifications",
+        desc: "Your channel & category preferences",
+        icon: Bell,
+        to: "/settings/notifications",
+      },
+      {
+        key: "channel-policy",
+        label: "Channel Policy",
+        desc: "Where every automated message goes — keeps the WhatsApp bill in check",
+        icon: Wallet,
+        to: "/settings/channel-policy",
+      },
+      {
+        key: "quick-replies",
+        label: "Quick Replies",
+        desc: "Personal + brand snippets for the Smartcomm composer",
+        icon: MessageCircle,
+        to: "/settings/quick-replies",
+      },
+      {
+        key: "messaging-accounts",
+        label: "Messaging Accounts",
+        desc: "Connect WhatsApp, Instagram, FB Messenger & inbound email per brand",
+        icon: Plug,
+        to: "/settings/messaging-accounts",
+      },
     ],
   },
   {
     title: "Integrations & Security",
     tiles: [
-      { key: "integration-secrets", label: "API Keys & Secrets", desc: "Encrypted, write-only third-party keys", icon: KeyRound, to: "/settings/integration-secrets" },
-      { key: "iam", label: "IAM & Security", desc: "Audit log, sessions & access (module)", icon: ShieldCheck, to: "/iam-security", external: true },
-      { key: "roles", label: "Roles & Access", desc: "Permission matrix (Org & Workflow)", icon: Lock, to: "/org-builder", external: true },
-      { key: "help", label: "Help Center", desc: "Guides & FAQs", icon: HelpCircle, to: "/help", external: true },
+      {
+        key: "integration-secrets",
+        label: "API Keys & Secrets",
+        desc: "Encrypted, write-only third-party keys",
+        icon: KeyRound,
+        to: "/settings/integration-secrets",
+      },
+      {
+        key: "iam",
+        label: "IAM & Security",
+        desc: "Audit log, sessions & access (module)",
+        icon: ShieldCheck,
+        to: "/iam-security",
+        external: true,
+      },
+      {
+        key: "roles",
+        label: "Roles & Access",
+        desc: "Permission matrix (Org & Workflow)",
+        icon: Lock,
+        to: "/org-builder",
+        external: true,
+      },
+      {
+        key: "help",
+        label: "Help Center",
+        desc: "Guides & FAQs",
+        icon: HelpCircle,
+        to: "/help",
+        external: true,
+      },
     ],
   },
 ];
@@ -108,8 +255,8 @@ export function SettingsHome() {
       <div className="mb-6">
         <h2 className="font-display text-[22px] font-medium">Settings</h2>
         <p className="text-text-muted text-[13px] mt-1">
-          Configure the hub. Business identity, money, operations,
-          communication & integrations — all DB-driven.
+          Configure the hub. Business identity, money, operations, communication
+          & integrations — all DB-driven.
         </p>
       </div>
 
@@ -143,7 +290,9 @@ function SettingsTile({ tile }: { tile: Tile }) {
       </span>
       <span className="flex-1 min-w-0">
         <span className="flex items-center gap-1.5">
-          <span className="font-display text-[15px] truncate">{tile.label}</span>
+          <span className="font-display text-[15px] truncate">
+            {tile.label}
+          </span>
           {tile.external && (
             <span className="text-[9px] uppercase tracking-wide text-info/80 border border-info/30 rounded px-1 py-px">
               module

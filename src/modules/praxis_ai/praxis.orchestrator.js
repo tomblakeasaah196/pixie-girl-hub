@@ -425,7 +425,9 @@ function buildSmartcommPrompt(ctx) {
   }
   if (ctx.signature_html) {
     // Strip HTML for the system prompt — model treats signatures literally.
-    const sig = String(ctx.signature_html).replace(/<[^>]+>/g, "").trim();
+    const sig = String(ctx.signature_html)
+      .replace(/<[^>]+>/g, "")
+      .trim();
     if (sig) lines.push(`End with this signature: ${sig}`);
   }
   return lines.join("\n");

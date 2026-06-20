@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Playfair_Display, Montserrat, JetBrains_Mono } from "next/font/google";
+import { Playfair_Display, Montserrat, JetBrains_Mono, Italiana } from "next/font/google";
 import { headers } from "next/headers";
+import { getBrand } from "@/lib/brand";
 import "@/styles/globals.css";
 
 const playfair = Playfair_Display({
@@ -21,6 +22,14 @@ const jetbrains = JetBrains_Mono({
   display: "swap",
   weight: ["400", "500", "700"],
 });
+// Reserved for the intro overlay headline only — deliberately distinct from
+// the site's regular display/body faces so the welcome reads as cinematic.
+const italiana = Italiana({
+  subsets: ["latin"],
+  variable: "--font-cinematic",
+  display: "swap",
+  weight: "400",
+});
 
 export const metadata: Metadata = {
   title: "Sales",
@@ -40,14 +49,18 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const brand = headers().get("x-brand") ?? "pixiegirl";
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const brand = getBrand();
 
   return (
     <html
       lang="en"
-      data-brand={brand}
-      className={`${playfair.variable} ${montserrat.variable} ${jetbrains.variable}`}
+      data-business={brand}
+      className={`${playfair.variable} ${montserrat.variable} ${jetbrains.variable} ${italiana.variable}`}
     >
       <body>{children}</body>
     </html>

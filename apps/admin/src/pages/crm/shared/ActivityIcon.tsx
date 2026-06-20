@@ -29,7 +29,11 @@ const ACTIVITY_META: Record<
   quote_sent: { icon: FileText, color: "#b76e79", label: "Quote Sent" },
   payment_received: { icon: DollarSign, color: "#8b9d77", label: "Payment" },
   system_note: { icon: AlertCircle, color: "#7a8fa8", label: "System Note" },
-  status_change: { icon: CheckSquare, color: "#9c7ad9", label: "Status Change" },
+  status_change: {
+    icon: CheckSquare,
+    color: "#9c7ad9",
+    label: "Status Change",
+  },
   follow_up_scheduled: { icon: Calendar, color: "#d4a853", label: "Follow-up" },
   task_created: { icon: CheckSquare, color: "#5aa0a8", label: "Task" },
 };

@@ -34,12 +34,27 @@ import {
  * resolveChannel() over this table — so every edit here is binding.
  */
 
-const CHOICES: { value: ChannelPreference; label: string; icon: React.FC<{className?: string}>; cost: string }[] = [
+const CHOICES: {
+  value: ChannelPreference;
+  label: string;
+  icon: React.FC<{ className?: string }>;
+  cost: string;
+}[] = [
   { value: "email", label: "Email", icon: Mail, cost: "Free" },
-  { value: "whatsapp", label: "WhatsApp", icon: MessageSquare, cost: "~₦11–₦88" },
+  {
+    value: "whatsapp",
+    label: "WhatsApp",
+    icon: MessageSquare,
+    cost: "~₦11–₦88",
+  },
   { value: "instagram", label: "Instagram", icon: Instagram, cost: "Free" },
   { value: "in_app_only", label: "In-app only", icon: Bell, cost: "Free" },
-  { value: "respect_contact_pref", label: "Customer's pick", icon: HelpCircle, cost: "Varies" },
+  {
+    value: "respect_contact_pref",
+    label: "Customer's pick",
+    icon: HelpCircle,
+    cost: "Varies",
+  },
   { value: "disabled", label: "Disabled", icon: Ban, cost: "—" },
 ];
 
@@ -62,10 +77,7 @@ export function ChannelPolicyPage() {
     onSuccess: (p) => {
       qc.invalidateQueries({ queryKey: ["outbound-policy", business.key] });
       setSavedAt((m) => ({ ...m, [p.event_key]: Date.now() }));
-      setTimeout(
-        () => setSavedAt((m) => ({ ...m, [p.event_key]: 0 })),
-        2000,
-      );
+      setTimeout(() => setSavedAt((m) => ({ ...m, [p.event_key]: 0 })), 2000);
     },
   });
 
@@ -95,9 +107,9 @@ export function ChannelPolicyPage() {
             </span>
           </h2>
           <p className="text-text-muted text-[13px]">
-            Where every automated outbound message goes. Most things default
-            to email (free); only delivery + recovery use WhatsApp; marketing
-            stays off WhatsApp by guardrail.
+            Where every automated outbound message goes. Most things default to
+            email (free); only delivery + recovery use WhatsApp; marketing stays
+            off WhatsApp by guardrail.
           </p>
         </div>
       </header>
@@ -112,19 +124,15 @@ export function ChannelPolicyPage() {
           <code className="font-mono text-[11px] px-1 bg-panel-2 rounded">
             event_key
           </code>{" "}
-          and the resolver picks the channel here — including the
-          unconditional <strong>block WhatsApp</strong> guardrail on
-          marketing.
+          and the resolver picks the channel here — including the unconditional{" "}
+          <strong>block WhatsApp</strong> guardrail on marketing.
         </div>
       </div>
 
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-28 bg-panel-2 rounded-xl animate-pulse"
-            />
+            <div key={i} className="h-28 bg-panel-2 rounded-xl animate-pulse" />
           ))}
         </div>
       ) : (
@@ -137,16 +145,15 @@ export function ChannelPolicyPage() {
               <Card className="p-0 overflow-hidden">
                 {byCategory
                   .get(cat)!
-                  .sort((a, b) =>
-                    a.event_key.localeCompare(b.event_key),
-                  )
+                  .sort((a, b) => a.event_key.localeCompare(b.event_key))
                   .map((p, i, arr) => (
                     <PolicyRow
                       key={p.policy_id}
                       policy={p}
                       isLast={i === arr.length - 1}
                       saving={
-                        save.isPending && save.variables?.event_key === p.event_key
+                        save.isPending &&
+                        save.variables?.event_key === p.event_key
                       }
                       saved={!!savedAt[p.event_key]}
                       onSave={(patch) =>
@@ -155,7 +162,9 @@ export function ChannelPolicyPage() {
                           channel_preference:
                             patch.channel_preference ?? p.channel_preference,
                           fallback_channel:
-                            patch.fallback_channel ?? p.fallback_channel ?? undefined,
+                            patch.fallback_channel ??
+                            p.fallback_channel ??
+                            undefined,
                           rationale:
                             patch.rationale ?? p.rationale ?? undefined,
                           block_whatsapp:
@@ -219,7 +228,10 @@ function PolicyRow({ policy, isLast, saving, saved, onSave }: PolicyRowProps) {
             value={(policy.fallback_channel ?? "email") as ChannelPreference}
             onChange={(v) =>
               onSave({
-                fallback_channel: v === "respect_contact_pref" ? null : (v as OutboundPolicy["fallback_channel"]),
+                fallback_channel:
+                  v === "respect_contact_pref"
+                    ? null
+                    : (v as OutboundPolicy["fallback_channel"]),
               })
             }
             compact

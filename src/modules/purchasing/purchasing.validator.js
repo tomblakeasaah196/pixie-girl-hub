@@ -29,8 +29,14 @@ const supplierProduct = z
 
 const supplierCreate = z
   .object({
-    contact_id: z.string().uuid(),
-    display_name: z.string().min(1).max(200),
+    // Link an existing contact (contact_id) OR pass supplier_name to auto-create
+    // a 'supplier' contact (the "either/or" is enforced in the service).
+    contact_id: z.string().uuid().optional(),
+    display_name: z.string().min(1).max(200).optional(),
+    supplier_name: z.string().min(1).max(200).optional(),
+    email: z.string().email().optional(),
+    country: z.string().max(80).optional(),
+    currency: z.string().length(3).optional(),
     supplier_type: z
       .enum([
         "goods",

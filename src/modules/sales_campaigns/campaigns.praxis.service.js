@@ -63,7 +63,14 @@ function systemPromptFromVoice(voice) {
     .join("\n");
 }
 
-async function callLLM({ feature_key, user, brand, is_ceo, messages, temperature = 0.4 }) {
+async function callLLM({
+  feature_key,
+  user,
+  brand,
+  is_ceo,
+  messages,
+  temperature = 0.4,
+}) {
   const vendor = await llm.resolveVendor();
   if (!vendor) {
     // Graceful fallback when no AI vendor is configured (matches Praxis orchestrator's stub).
@@ -226,7 +233,8 @@ async function suggestLayout({ brand, user, campaign_id, brief = {} }) {
       layout: defaultLayout(brief),
       pending_acceptance: true,
       drafted_by_ai: false,
-      reason: "AI vendor not configured — returned the canonical default layout.",
+      reason:
+        "AI vendor not configured — returned the canonical default layout.",
     };
   }
 
@@ -234,11 +242,21 @@ async function suggestLayout({ brand, user, campaign_id, brief = {} }) {
   try {
     parsed = JSON.parse(extractJson(result.content));
   } catch {
-    throw new AppError("LLM_PARSE_ERROR", "Praxis returned an unparsable layout.", 502);
+    throw new AppError(
+      "LLM_PARSE_ERROR",
+      "Praxis returned an unparsable layout.",
+      502,
+    );
   }
-  parsed.blocks = (parsed.blocks || []).filter((b) => BLOCK_LIBRARY.includes(b.key));
+  parsed.blocks = (parsed.blocks || []).filter((b) =>
+    BLOCK_LIBRARY.includes(b.key),
+  );
   if (!parsed.blocks.length) parsed.blocks = defaultLayout(brief);
-  return { layout: parsed.blocks, pending_acceptance: true, drafted_by_ai: true };
+  return {
+    layout: parsed.blocks,
+    pending_acceptance: true,
+    drafted_by_ai: true,
+  };
 }
 
 function defaultLayout(brief) {
@@ -247,7 +265,10 @@ function defaultLayout(brief) {
     return [
       { key: "hero", rationale: "Cinematic anchor for the drop." },
       { key: "countdown", rationale: "Urgency clock to the end." },
-      { key: "bundle_showcase", rationale: "Curated bundles take centre stage." },
+      {
+        key: "bundle_showcase",
+        rationale: "Curated bundles take centre stage.",
+      },
       { key: "lookbook_carousel", rationale: "Show how they wear." },
       { key: "founder_quote", rationale: "Trust + intent." },
       { key: "faq", rationale: "Pre-empt the friction questions." },
@@ -257,7 +278,10 @@ function defaultLayout(brief) {
     { key: "hero", rationale: "Headline + cinematic." },
     { key: "countdown", rationale: "Drives urgency." },
     { key: "bundle_showcase", rationale: "Faith's verbatim core feature." },
-    { key: "quantity_tier_visualiser", rationale: "Surfaces the next ladder rung." },
+    {
+      key: "quantity_tier_visualiser",
+      rationale: "Surfaces the next ladder rung.",
+    },
     { key: "featured_products", rationale: "Individual styled products." },
     { key: "lookbook_carousel", rationale: "Visual selling." },
     { key: "brand_story", rationale: "Why this drop matters." },
@@ -268,7 +292,7 @@ function defaultLayout(brief) {
 // ── Suggest discount maths (deterministic — no LLM) ──────
 async function suggestPricing({
   brand,
-  user,
+  // user,
   campaign_id,
   target_margin_pct,
   include_charm_rounding = true,
@@ -336,7 +360,13 @@ async function suggestPricing({
 }
 
 // ── Dry-run pricing question ─────────────────────────────
-async function dryRunPricing({ brand, user, campaign_id, question, payload = {} }) {
+async function dryRunPricing({
+  brand,
+  user,
+  campaign_id,
+  question,
+  payload = {},
+}) {
   const campaign = await campaignsRepo.findById({ brand, id: campaign_id });
   if (!campaign) throw new NotFoundError("Campaign");
 
@@ -346,7 +376,8 @@ async function dryRunPricing({ brand, user, campaign_id, question, payload = {} 
     payload.floor_ngn !== null &&
     payload.floor_ngn !== undefined
   ) {
-    const above = Number(payload.proposed_price_ngn) >= Number(payload.floor_ngn);
+    const above =
+      Number(payload.proposed_price_ngn) >= Number(payload.floor_ngn);
     return {
       answer: above
         ? `Yes — ₦${Number(payload.proposed_price_ngn).toLocaleString()} is above the floor of ₦${Number(payload.floor_ngn).toLocaleString()}.`
@@ -359,12 +390,18 @@ async function dryRunPricing({ brand, user, campaign_id, question, payload = {} 
   const voice = await loadVoiceProfile(brand, campaign);
   let chunks = [];
   try {
-    chunks = await ragPipeline.retrieve({ brand, queryText: question, topK: 4 });
+    chunks = await ragPipeline.retrieve({
+      brand,
+      queryText: question,
+      topK: 4,
+    });
   } catch {
     chunks = [];
   }
   const ctx = (chunks || [])
-    .map((c) => `- [${c.title || c.source_ref || "context"}] ${c.content || ""}`)
+    .map(
+      (c) => `- [${c.title || c.source_ref || "context"}] ${c.content || ""}`,
+    )
     .join("\n");
 
   const result = await callLLM({
@@ -386,8 +423,12 @@ async function dryRunPricing({ brand, user, campaign_id, question, payload = {} 
   });
 
   return {
-    answer: result.content || "Praxis is offline — set an AI vendor in Settings → AI Control to enable.",
-    citations: (chunks || []).map((c) => c.title || c.source_ref).filter(Boolean),
+    answer:
+      result.content ||
+      "Praxis is offline — set an AI vendor in Settings → AI Control to enable.",
+    citations: (chunks || [])
+      .map((c) => c.title || c.source_ref)
+      .filter(Boolean),
     drafted_by_ai: !result.stub,
   };
 }
@@ -513,7 +554,11 @@ function stripBanned(payload, banned) {
   if (!banned.length) return payload;
   const re = new RegExp(`\\b(${banned.map(escapeRe).join("|")})\\b`, "ig");
   const recur = (v) => {
-    if (typeof v === "string") return v.replace(re, "").replace(/\s{2,}/g, " ").trim();
+    if (typeof v === "string")
+      return v
+        .replace(re, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
     if (Array.isArray(v)) return v.map(recur);
     if (v && typeof v === "object") {
       const out = {};

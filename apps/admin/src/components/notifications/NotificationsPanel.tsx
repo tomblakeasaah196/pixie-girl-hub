@@ -39,14 +39,16 @@ function relTime(iso: string): string {
 function isToday(iso: string): boolean {
   const d = new Date(iso);
   const n = new Date();
-  return d.getFullYear() === n.getFullYear() &&
+  return (
+    d.getFullYear() === n.getFullYear() &&
     d.getMonth() === n.getMonth() &&
-    d.getDate() === n.getDate();
+    d.getDate() === n.getDate()
+  );
 }
 
 function priorityBorder(p: string) {
   if (p === "urgent") return "border-l-[3px] border-l-danger";
-  if (p === "high")   return "border-l-[3px] border-l-warn";
+  if (p === "high") return "border-l-[3px] border-l-warn";
   return "";
 }
 
@@ -54,7 +56,11 @@ function NotifIcon({ type }: { type: string }) {
   const cls = "w-4 h-4 shrink-0 mt-0.5";
   if (type.includes("approval") || type.includes("leave"))
     return <AlertTriangle className={cn(cls, "text-warn")} />;
-  if (type.includes("payment") || type.includes("billing") || type.includes("order"))
+  if (
+    type.includes("payment") ||
+    type.includes("billing") ||
+    type.includes("order")
+  )
     return <DollarSign className={cn(cls, "text-success")} />;
   if (type.includes("stock") || type.includes("production"))
     return <Package className={cn(cls, "text-accent-glow")} />;
@@ -111,7 +117,9 @@ function NotifItem({
             {n.body}
           </p>
         )}
-        <p className="text-[10px] text-text-faint mt-1">{relTime(n.created_at)}</p>
+        <p className="text-[10px] text-text-faint mt-1">
+          {relTime(n.created_at)}
+        </p>
       </div>
     </button>
   );
@@ -129,9 +137,7 @@ export function NotificationsPanel({ onClose }: Props) {
   const markAll = useMarkAllRead();
 
   const all = data?.data ?? [];
-  const unreadCount = data?.total
-    ? all.filter((n) => !n.is_read).length
-    : 0;
+  const unreadCount = data?.total ? all.filter((n) => !n.is_read).length : 0;
   const today = all.filter((n) => isToday(n.created_at));
   const earlier = all.filter((n) => !isToday(n.created_at));
 
@@ -199,8 +205,12 @@ export function NotificationsPanel({ onClose }: Props) {
         ) : all.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center px-4">
             <Bell className="w-8 h-8 text-text-faint/30 mb-3" />
-            <p className="text-[13px] font-medium text-text-muted">You're all caught up</p>
-            <p className="text-[11px] text-text-faint mt-1">No notifications right now</p>
+            <p className="text-[13px] font-medium text-text-muted">
+              You're all caught up
+            </p>
+            <p className="text-[11px] text-text-faint mt-1">
+              No notifications right now
+            </p>
           </div>
         ) : (
           <>
@@ -208,7 +218,11 @@ export function NotificationsPanel({ onClose }: Props) {
               <>
                 <p className="micro px-4 pt-3 pb-1.5">Today</p>
                 {today.map((n) => (
-                  <NotifItem key={n.notification_id} n={n} onNavigate={handleNavigate} />
+                  <NotifItem
+                    key={n.notification_id}
+                    n={n}
+                    onNavigate={handleNavigate}
+                  />
                 ))}
               </>
             )}
@@ -216,7 +230,11 @@ export function NotificationsPanel({ onClose }: Props) {
               <>
                 <p className="micro px-4 pt-3 pb-1.5">Earlier</p>
                 {earlier.map((n) => (
-                  <NotifItem key={n.notification_id} n={n} onNavigate={handleNavigate} />
+                  <NotifItem
+                    key={n.notification_id}
+                    n={n}
+                    onNavigate={handleNavigate}
+                  />
                 ))}
               </>
             )}
@@ -230,7 +248,10 @@ export function NotificationsPanel({ onClose }: Props) {
           {all.length > 0 ? `Showing ${all.length} most recent` : ""}
         </p>
         <button
-          onClick={() => { onClose(); navigate("/notifications"); }}
+          onClick={() => {
+            onClose();
+            navigate("/notifications");
+          }}
           className="flex items-center gap-1 text-[11.5px] text-accent hover:text-accent-glow transition-colors font-medium"
         >
           View all <ArrowRight className="w-3.5 h-3.5" />

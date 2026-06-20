@@ -20,7 +20,10 @@ import {
  * links and a primary flag. Add via Drawer; click a row to edit.
  */
 export function BankAccountsPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Bank Accounts" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Bank Accounts" },
+  ]);
   const active = useActiveBusiness();
   const query = useBankAccounts();
   const update = useUpdateBankAccount();
@@ -28,19 +31,33 @@ export function BankAccountsPage() {
   const [editing, setEditing] = useState<BankAccount | null>(null);
 
   const columns: Column<BankAccount>[] = [
-    { key: "bank", header: "Bank", render: (r) => <span className="font-semibold">{r.bank_name}</span> },
-    { key: "account_name", header: "Account name", render: (r) => r.account_name },
+    {
+      key: "bank",
+      header: "Bank",
+      render: (r) => <span className="font-semibold">{r.bank_name}</span>,
+    },
+    {
+      key: "account_name",
+      header: "Account name",
+      render: (r) => r.account_name,
+    },
     {
       key: "number",
       header: "Account no.",
       render: (r) =>
         r.account_number_masked ? (
-          <span className="font-mono text-text-muted">{r.account_number_masked}</span>
+          <span className="font-mono text-text-muted">
+            {r.account_number_masked}
+          </span>
         ) : (
           <MaskedField value={r.account_number} />
         ),
     },
-    { key: "currency", header: "Currency", render: (r) => <span className="font-mono">{r.currency}</span> },
+    {
+      key: "currency",
+      header: "Currency",
+      render: (r) => <span className="font-mono">{r.currency}</span>,
+    },
     {
       key: "primary",
       header: "Primary",
@@ -56,7 +73,10 @@ export function BankAccountsPage() {
       header: "Gateway links",
       render: (r) => (
         <div className="flex gap-1.5">
-          <Pill tone={r.paystack_recipient_code ? "success" : "neutral"} dot={false}>
+          <Pill
+            tone={r.paystack_recipient_code ? "success" : "neutral"}
+            dot={false}
+          >
             Paystack {r.paystack_recipient_code ? "Linked" : "—"}
           </Pill>
           <Pill tone={r.opay_account_id ? "success" : "neutral"} dot={false}>
@@ -73,7 +93,9 @@ export function BankAccountsPage() {
           <Toggle
             checked={r.is_active}
             disabled={update.isPending}
-            onChange={(v) => update.mutate({ id: r.account_id, patch: { is_active: v } })}
+            onChange={(v) =>
+              update.mutate({ id: r.account_id, patch: { is_active: v } })
+            }
           />
         </div>
       ),
@@ -85,14 +107,22 @@ export function BankAccountsPage() {
       <header className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 mb-1.5">
-            <h1 className="font-display text-[22px] font-medium">Bank accounts</h1>
+            <h1 className="font-display text-[22px] font-medium">
+              Bank accounts
+            </h1>
             <Pill tone="accent" dot={false}>
               Editing for: {active.name}
             </Pill>
           </div>
-          <p className="text-xs text-text-muted">Settlement accounts and their gateway links.</p>
+          <p className="text-xs text-text-muted">
+            Settlement accounts and their gateway links.
+          </p>
         </div>
-        <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => setAdding(true)}>
+        <Button
+          size="sm"
+          icon={<Plus className="w-4 h-4" />}
+          onClick={() => setAdding(true)}
+        >
           Add bank account
         </Button>
       </header>
@@ -113,7 +143,10 @@ export function BankAccountsPage() {
             title: "No bank accounts yet",
             message: "Add an account to receive settlements for this brand.",
             action: (
-              <Button icon={<Plus className="w-4 h-4" />} onClick={() => setAdding(true)}>
+              <Button
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setAdding(true)}
+              >
                 Add bank account
               </Button>
             ),
@@ -198,9 +231,16 @@ function BankAccountDrawer({
           </Button>
           <Button
             variant="primary"
-            disabled={!bankName.trim() || !accountName.trim() || !accountNumber.trim() || busy}
+            disabled={
+              !bankName.trim() ||
+              !accountName.trim() ||
+              !accountNumber.trim() ||
+              busy
+            }
             onClick={submit}
-            icon={busy ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+            icon={
+              busy ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined
+            }
           >
             {isEdit ? "Save changes" : "Save account"}
           </Button>
@@ -209,26 +249,52 @@ function BankAccountDrawer({
     >
       <div className="space-y-4">
         <Field label="Bank name">
-          <TextInput value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="Guaranty Trust Bank" />
+          <TextInput
+            value={bankName}
+            onChange={(e) => setBankName(e.target.value)}
+            placeholder="Guaranty Trust Bank"
+          />
         </Field>
         <Field label="Account name">
-          <TextInput value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="Pixie Girl Ltd" />
+          <TextInput
+            value={accountName}
+            onChange={(e) => setAccountName(e.target.value)}
+            placeholder="Pixie Girl Ltd"
+          />
         </Field>
         <Field label="Account number">
-          <TextInput value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="0123456789" />
+          <TextInput
+            value={accountNumber}
+            onChange={(e) => setAccountNumber(e.target.value)}
+            placeholder="0123456789"
+          />
         </Field>
         <Field label="Sort code" hint="optional">
-          <TextInput value={sortCode} onChange={(e) => setSortCode(e.target.value)} placeholder="058" />
+          <TextInput
+            value={sortCode}
+            onChange={(e) => setSortCode(e.target.value)}
+            placeholder="058"
+          />
         </Field>
         <Field label="Currency">
-          <Select value={currencyValue} onChange={setCurrency} options={codes.map((c) => ({ value: c, label: c }))} />
+          <Select
+            value={currencyValue}
+            onChange={setCurrency}
+            options={codes.map((c) => ({ value: c, label: c }))}
+          />
         </Field>
         <div className="pt-1">
-          <Toggle checked={isPrimary} onChange={setIsPrimary} label="Primary account" />
+          <Toggle
+            checked={isPrimary}
+            onChange={setIsPrimary}
+            label="Primary account"
+          />
         </div>
         {err && (
           <p className="text-[12px] text-danger">
-            {err instanceof Error ? err.message : "Could not save bank account."}
+            {err instanceof Error
+              ? err.message
+              : "Could not save bank account."}
           </p>
         )}
       </div>

@@ -78,7 +78,9 @@ export default function ProcurementHome() {
         <div className="grid gap-4 sm:grid-cols-2 mb-8">
           {/* Quick Purchase */}
           <button
-            onClick={() => navigate("/procurement/purchase-orders/new?mode=quick")}
+            onClick={() =>
+              navigate("/procurement/purchase-orders/new?mode=quick")
+            }
             className="group relative text-left rounded-2xl border border-brand-accent/30 bg-brand-accent/5 p-5 hover:border-brand-accent/60 hover:bg-brand-accent/10 transition-all"
           >
             <div className="flex items-start gap-4">
@@ -185,15 +187,13 @@ export default function ProcurementHome() {
             icon={<FileQuestion className="w-5 h-5" />}
             tone="gold"
             empty="No new responses yet."
-            items={responsesReady
-              .slice(0, 5)
-              .map((r) => ({
-                id: r.rfq_id,
-                primary: r.title,
-                secondary: r.rfq_number,
-                hint: fmtRelative(r.updated_at),
-                to: `/procurement/rfqs/${r.rfq_id}`,
-              }))}
+            items={responsesReady.slice(0, 5).map((r) => ({
+              id: r.rfq_id,
+              primary: r.title,
+              secondary: r.rfq_number,
+              hint: fmtRelative(r.updated_at),
+              to: `/procurement/rfqs/${r.rfq_id}`,
+            }))}
           />
           <Lane
             title="POs awaiting receipt"
@@ -219,15 +219,13 @@ export default function ProcurementHome() {
             icon={<FileText className="w-5 h-5" />}
             tone="rose"
             empty="No POs pending."
-            items={posPending
-              .slice(0, 5)
-              .map((p) => ({
-                id: p.po_id,
-                primary: p.supplier_name ?? "—",
-                secondary: p.po_number,
-                hint: fmtMoney(p.total_amount, p.currency),
-                to: `/procurement/purchase-orders/${p.po_id}`,
-              }))}
+            items={posPending.slice(0, 5).map((p) => ({
+              id: p.po_id,
+              primary: p.supplier_name ?? "—",
+              secondary: p.po_number,
+              hint: fmtMoney(p.total_amount, p.currency),
+              to: `/procurement/purchase-orders/${p.po_id}`,
+            }))}
           />
           <Lane
             title="Bills to clear"

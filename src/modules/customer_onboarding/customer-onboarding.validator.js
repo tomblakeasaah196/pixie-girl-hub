@@ -56,10 +56,7 @@ const submissionPayload = z
   .strict()
   .refine(
     (v) =>
-      v.primary_phone ||
-      v.whatsapp_number ||
-      v.email ||
-      v.instagram_handle,
+      v.primary_phone || v.whatsapp_number || v.email || v.instagram_handle,
     {
       message:
         "Provide at least one contact method: phone, WhatsApp, email or Instagram handle",

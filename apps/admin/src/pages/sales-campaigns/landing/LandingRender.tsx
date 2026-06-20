@@ -44,7 +44,11 @@ export interface LandingModel {
   gallery?: string[];
 }
 
-const NGN = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 });
+const NGN = new Intl.NumberFormat("en-NG", {
+  style: "currency",
+  currency: "NGN",
+  maximumFractionDigits: 0,
+});
 function ngn(v: number | string | null | undefined): string {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? NGN.format(n) : "₦—";
@@ -59,7 +63,10 @@ export function placeholderBg(seed: string): string {
 
 /** Pull editable body copy from a block (stored under props.body). */
 function blockBody(b: LandingBlock): string | undefined {
-  const fromProps = b.props && typeof b.props.body === "string" ? (b.props.body as string) : undefined;
+  const fromProps =
+    b.props && typeof b.props.body === "string"
+      ? (b.props.body as string)
+      : undefined;
   const legacy = (b as { body?: unknown }).body;
   return fromProps ?? (typeof legacy === "string" ? legacy : undefined);
 }
@@ -82,9 +89,15 @@ function useCountdown(target?: string | null) {
   };
 }
 
-const BLOCK_TITLE: Record<string, { eyebrow: string; title: string; body?: string }> = {
+const BLOCK_TITLE: Record<
+  string,
+  { eyebrow: string; title: string; body?: string }
+> = {
   bundle_showcase: { eyebrow: "Curated sets", title: "The collections" },
-  quantity_tier_visualiser: { eyebrow: "Buy more, save more", title: "The more you take home" },
+  quantity_tier_visualiser: {
+    eyebrow: "Buy more, save more",
+    title: "The more you take home",
+  },
   featured_products: { eyebrow: "Hand-picked", title: "Pieces we're loving" },
   lookbook_carousel: { eyebrow: "The look book", title: "Worn, not just sold" },
   stock_counter: { eyebrow: "Moving fast", title: "What's still in" },
@@ -116,7 +129,13 @@ function Section({
   bleed?: boolean;
 }) {
   return (
-    <section className={cn("px-6 md:px-12", bleed ? "py-0" : "py-14 md:py-20", className)}>
+    <section
+      className={cn(
+        "px-6 md:px-12",
+        bleed ? "py-0" : "py-14 md:py-20",
+        className,
+      )}
+    >
       <div className="max-w-[1140px] mx-auto">
         {(eyebrow || title) && (
           <div className="mb-8 md:mb-12 text-center">
@@ -126,7 +145,9 @@ function Section({
               </div>
             )}
             {title && (
-              <h2 className="font-display text-[28px] md:text-[42px] leading-[1.05]">{title}</h2>
+              <h2 className="font-display text-[28px] md:text-[42px] leading-[1.05]">
+                {title}
+              </h2>
             )}
           </div>
         )}
@@ -147,7 +168,10 @@ export function LandingRender({
 }) {
   const cd = useCountdown(model.countdown_to);
   const enabled = useMemo(
-    () => (model.blocks || []).filter((b) => b.enabled !== false && (b.key || b.type)),
+    () =>
+      (model.blocks || []).filter(
+        (b) => b.enabled !== false && (b.key || b.type),
+      ),
     [model.blocks],
   );
   const featured = (model.products || []).filter((p) => p.name);
@@ -214,11 +238,15 @@ export function LandingRender({
                       <div className="font-mono text-[24px] md:text-[32px] tabular-nums text-white leading-none">
                         {String(u.v).padStart(2, "0")}
                       </div>
-                      <div className="text-[9px] tracking-[0.22em] uppercase text-white/55 mt-1.5">{u.l}</div>
+                      <div className="text-[9px] tracking-[0.22em] uppercase text-white/55 mt-1.5">
+                        {u.l}
+                      </div>
                     </div>
                   ))}
                   {model.countdown_message && (
-                    <span className="hidden md:block text-white/70 text-[13px] ml-2">{model.countdown_message}</span>
+                    <span className="hidden md:block text-white/70 text-[13px] ml-2">
+                      {model.countdown_message}
+                    </span>
                   )}
                 </div>
               )}
@@ -248,8 +276,8 @@ export function LandingRender({
               "The drop has ended — but our shelves are full of beautiful things."}
           </h2>
           <p className="text-text-muted mt-5 max-w-[520px] mx-auto">
-            Join the list and you'll be the first to know when the next one opens — plus first pick before
-            it goes public.
+            Join the list and you'll be the first to know when the next one
+            opens — plus first pick before it goes public.
           </p>
           <div className="mt-8 flex justify-center gap-3">
             <a
@@ -264,7 +292,12 @@ export function LandingRender({
         <>
           {/* Featured products fall through here if the block is present */}
           {enabled.map((b, i) => (
-            <BlockSection key={(b.key || b.type || "blk") + i} block={b} model={model} featured={featured} />
+            <BlockSection
+              key={(b.key || b.type || "blk") + i}
+              block={b}
+              model={model}
+              featured={featured}
+            />
           ))}
           {enabled.length === 0 && <DefaultBody model={model} />}
         </>
@@ -314,15 +347,26 @@ function BlockSection({
                 key={n}
                 className="group rounded-[20px] overflow-hidden border border-line/70 bg-panel/40 hover:-translate-y-1 transition-transform"
               >
-                <div className="h-56" style={{ background: placeholderBg(`bundle-${model.slug}-${n}`) }} />
+                <div
+                  className="h-56"
+                  style={{
+                    background: placeholderBg(`bundle-${model.slug}-${n}`),
+                  }}
+                />
                 <div className="p-5">
-                  <div className="font-display text-[20px]">The Signature Set {n + 1}</div>
+                  <div className="font-display text-[20px]">
+                    The Signature Set {n + 1}
+                  </div>
                   <p className="text-text-muted text-[13px] mt-1.5">
                     A fixed, curated composition — styled to wear together.
                   </p>
                   <div className="mt-4 flex items-baseline gap-2">
-                    <span className="font-mono text-[20px] text-accent-glow">{ngn(180000 - n * 20000)}</span>
-                    <span className="text-text-faint text-[13px] line-through">{ngn(240000 - n * 20000)}</span>
+                    <span className="font-mono text-[20px] text-accent-glow">
+                      {ngn(180000 - n * 20000)}
+                    </span>
+                    <span className="text-text-faint text-[13px] line-through">
+                      {ngn(240000 - n * 20000)}
+                    </span>
                   </div>
                 </div>
               </article>
@@ -344,9 +388,15 @@ function BlockSection({
                 key={t.q}
                 className="rounded-[18px] border border-accent/30 bg-accent/[0.06] p-6 text-center"
               >
-                <div className="font-display text-[40px] leading-none">{t.q}+</div>
-                <div className="text-text-muted text-[13px] mt-2">bundles in one order</div>
-                <div className="mt-4 font-mono text-accent-glow text-[18px]">save {ngn(t.s)}</div>
+                <div className="font-display text-[40px] leading-none">
+                  {t.q}+
+                </div>
+                <div className="text-text-muted text-[13px] mt-2">
+                  bundles in one order
+                </div>
+                <div className="mt-4 font-mono text-accent-glow text-[18px]">
+                  save {ngn(t.s)}
+                </div>
               </div>
             ))}
           </div>
@@ -357,21 +407,32 @@ function BlockSection({
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {(featured.length ? featured.slice(0, 8) : Array.from({ length: 4 })).map((p, n) => {
+            {(featured.length
+              ? featured.slice(0, 8)
+              : Array.from({ length: 4 })
+            ).map((p, n) => {
               const prod = (p || {}) as LandingProduct;
               return (
                 <article key={n} className="group">
                   <div
                     className="aspect-[3/4] rounded-[16px] overflow-hidden mb-3"
                     style={{
-                      backgroundImage: prod.hero_image_url ? `url("${prod.hero_image_url}")` : undefined,
-                      background: prod.hero_image_url ? undefined : placeholderBg(`prod-${model.slug}-${n}`),
+                      backgroundImage: prod.hero_image_url
+                        ? `url("${prod.hero_image_url}")`
+                        : undefined,
+                      background: prod.hero_image_url
+                        ? undefined
+                        : placeholderBg(`prod-${model.slug}-${n}`),
                       backgroundSize: "cover",
                       backgroundPosition: "center",
                     }}
                   />
-                  <div className="font-medium text-[13.5px] truncate">{prod.name || "Styled piece"}</div>
-                  <div className="font-mono text-accent-glow text-[13px]">{ngn(prod.campaign_price_ngn ?? 95000 + n * 10000)}</div>
+                  <div className="font-medium text-[13.5px] truncate">
+                    {prod.name || "Styled piece"}
+                  </div>
+                  <div className="font-mono text-accent-glow text-[13px]">
+                    {ngn(prod.campaign_price_ngn ?? 95000 + n * 10000)}
+                  </div>
                 </article>
               );
             })}
@@ -384,13 +445,20 @@ function BlockSection({
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 md:mx-0 md:px-0 snap-x">
-            {(model.gallery?.length ? model.gallery : Array.from({ length: 6 })).map((g, n) => (
+            {(model.gallery?.length
+              ? model.gallery
+              : Array.from({ length: 6 })
+            ).map((g, n) => (
               <div
                 key={n}
                 className="snap-start shrink-0 w-[230px] md:w-[280px] aspect-[3/4] rounded-[18px] overflow-hidden"
                 style={{
-                  backgroundImage: typeof g === "string" ? `url("${g}")` : undefined,
-                  background: typeof g === "string" ? undefined : placeholderBg(`look-${model.slug}-${n}`),
+                  backgroundImage:
+                    typeof g === "string" ? `url("${g}")` : undefined,
+                  background:
+                    typeof g === "string"
+                      ? undefined
+                      : placeholderBg(`look-${model.slug}-${n}`),
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                 }}
@@ -412,7 +480,9 @@ function BlockSection({
               <div className="text-[11px] tracking-[0.3em] uppercase text-accent-glow/90 font-semibold mb-3">
                 {meta?.eyebrow}
               </div>
-              <h2 className="font-display text-[30px] md:text-[40px] leading-[1.05]">{meta?.title}</h2>
+              <h2 className="font-display text-[30px] md:text-[40px] leading-[1.05]">
+                {meta?.title}
+              </h2>
               <p className="text-text-muted mt-5 leading-relaxed">
                 {blockBody(block) ||
                   "Every drop begins with a single idea: that a woman should never have to choose between quality and the price she pays for it. This collection is our answer — limited, intentional, and made to be worn."}
@@ -426,9 +496,14 @@ function BlockSection({
       return (
         <Section className="text-center">
           <blockquote className="font-display italic text-[26px] md:text-[40px] leading-[1.25] max-w-[860px] mx-auto">
-            “{blockBody(block) || "We don't do ordinary. We do the piece she remembers."}”
+            “
+            {blockBody(block) ||
+              "We don't do ordinary. We do the piece she remembers."}
+            ”
           </blockquote>
-          <div className="mt-6 text-[12px] tracking-[0.25em] uppercase text-text-muted">— The Founder</div>
+          <div className="mt-6 text-[12px] tracking-[0.25em] uppercase text-text-muted">
+            — The Founder
+          </div>
         </Section>
       );
 
@@ -437,13 +512,18 @@ function BlockSection({
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {[
-              ["Ethically sourced", "Full-density, raw hair — traceable to the bundle."],
+              [
+                "Ethically sourced",
+                "Full-density, raw hair — traceable to the bundle.",
+              ],
               ["Made to last", "Wears, washes and styles like your own."],
               ["Loved by thousands", "A community of women who don't settle."],
             ].map(([t, d]) => (
               <div key={t} className="rounded-[18px] border border-line/70 p-6">
                 <div className="font-display text-[20px]">{t}</div>
-                <p className="text-text-muted text-[13.5px] mt-2 leading-relaxed">{d}</p>
+                <p className="text-text-muted text-[13.5px] mt-2 leading-relaxed">
+                  {d}
+                </p>
               </div>
             ))}
           </div>
@@ -455,12 +535,18 @@ function BlockSection({
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {[0, 1, 2].map((n) => (
-              <figure key={n} className="rounded-[18px] bg-panel/40 border border-line/70 p-6">
+              <figure
+                key={n}
+                className="rounded-[18px] bg-panel/40 border border-line/70 p-6"
+              >
                 <div className="text-accent-glow text-[15px] mb-3">★★★★★</div>
                 <blockquote className="text-[14px] leading-relaxed text-text-primary/90">
-                  “Easily the best I've ordered. The quality speaks before I do.”
+                  “Easily the best I've ordered. The quality speaks before I
+                  do.”
                 </blockquote>
-                <figcaption className="mt-4 text-[12px] text-text-muted">— Verified customer</figcaption>
+                <figcaption className="mt-4 text-[12px] text-text-muted">
+                  — Verified customer
+                </figcaption>
               </figure>
             ))}
           </div>
@@ -472,16 +558,29 @@ function BlockSection({
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="max-w-[760px] mx-auto divide-y divide-line/60">
             {[
-              ["How long does delivery take?", "Lagos: 1–2 days. Nationwide: 2–4 days via DHL."],
-              ["Can I return an item?", "Unworn pieces can be returned within 7 days of delivery."],
-              ["Are prices in this drop final?", "Yes — these are limited-time prices, only while the drop is live."],
+              [
+                "How long does delivery take?",
+                "Lagos: 1–2 days. Nationwide: 2–4 days via DHL.",
+              ],
+              [
+                "Can I return an item?",
+                "Unworn pieces can be returned within 7 days of delivery.",
+              ],
+              [
+                "Are prices in this drop final?",
+                "Yes — these are limited-time prices, only while the drop is live.",
+              ],
             ].map(([q, a]) => (
               <details key={q} className="group py-5">
                 <summary className="flex items-center justify-between cursor-pointer list-none font-medium text-[15px]">
                   {q}
-                  <span className="text-accent-glow text-[20px] transition-transform group-open:rotate-45">+</span>
+                  <span className="text-accent-glow text-[20px] transition-transform group-open:rotate-45">
+                    +
+                  </span>
                 </summary>
-                <p className="text-text-muted text-[13.5px] mt-3 leading-relaxed">{a}</p>
+                <p className="text-text-muted text-[13.5px] mt-3 leading-relaxed">
+                  {a}
+                </p>
               </details>
             ))}
           </div>
@@ -496,11 +595,17 @@ function BlockSection({
             <div className="text-[11px] tracking-[0.3em] uppercase text-accent-glow/90 font-semibold mb-3">
               {meta?.eyebrow}
             </div>
-            <h2 className="font-display text-[28px] md:text-[36px]">{meta?.title}</h2>
+            <h2 className="font-display text-[28px] md:text-[36px]">
+              {meta?.title}
+            </h2>
             <p className="text-text-muted mt-3 text-[14px]">
-              First access to every drop, private prices and the occasional gift. No noise.
+              First access to every drop, private prices and the occasional
+              gift. No noise.
             </p>
-            <form className="mt-6 flex flex-col sm:flex-row gap-3" onSubmit={(e) => e.preventDefault()}>
+            <form
+              className="mt-6 flex flex-col sm:flex-row gap-3"
+              onSubmit={(e) => e.preventDefault()}
+            >
               <input
                 placeholder="you@email.com"
                 className="flex-1 h-[52px] px-5 rounded-full bg-bg/60 border border-line outline-none focus:border-accent/60 text-[14px]"
@@ -519,7 +624,10 @@ function BlockSection({
     case "stock_counter":
     default:
       return (
-        <Section eyebrow={meta?.eyebrow || "More"} title={meta?.title || prettyKey(key)}>
+        <Section
+          eyebrow={meta?.eyebrow || "More"}
+          title={meta?.title || prettyKey(key)}
+        >
           <p className="text-text-muted text-center max-w-[640px] mx-auto leading-relaxed">
             {blockBody(block) ||
               "Beautifully presented details go here — this section is part of your landing and will fill in with real content as you build."}
@@ -533,8 +641,9 @@ function DefaultBody({ model }: { model: LandingModel }) {
   return (
     <Section eyebrow="The collection" title="Curated for this drop">
       <p className="text-center text-text-muted max-w-[600px] mx-auto">
-        Add blocks in the Studio — bundles, a look book, testimonials and more — and they'll appear here,
-        exactly as your customers will see them on {model.slug}.
+        Add blocks in the Studio — bundles, a look book, testimonials and more —
+        and they'll appear here, exactly as your customers will see them on{" "}
+        {model.slug}.
       </p>
     </Section>
   );

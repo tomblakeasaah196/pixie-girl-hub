@@ -38,7 +38,7 @@ const A = (
 function emitSettingsUpdated(payload) {
   try {
     require("../../config/socket").getIo().emit("settings:updated", payload);
-  } catch (_) {
+  } catch {
     /* socket not initialised — non-fatal */
   }
 }
@@ -112,7 +112,7 @@ async function updateConfig({ brand, user, request_id, input }) {
         require("../platform_settings/platform-settings.service").emitBrandingUpdated(
           { scope: "business", brand },
         );
-      } catch (_) {
+      } catch {
         /* socket may not be initialised yet (e.g. seeding) — non-fatal */
       }
     }

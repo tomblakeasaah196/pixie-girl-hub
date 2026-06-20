@@ -26,7 +26,6 @@ const SEVERITY_ORDER: Record<string, number> = {
 
 const PAGE_SIZE = 20;
 
-
 /* ─── Main Component ─── */
 
 export default function AlertsTab() {
@@ -48,7 +47,9 @@ export default function AlertsTab() {
       const sa = SEVERITY_ORDER[a.severity] ?? 99;
       const sb = SEVERITY_ORDER[b.severity] ?? 99;
       if (sa !== sb) return sa - sb;
-      return new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime();
+      return (
+        new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime()
+      );
     });
   }, [alertsQ.data]);
 
@@ -94,7 +95,9 @@ export default function AlertsTab() {
       header: "Reorder Point",
       align: "right",
       render: (r) => (
-        <span className="tabular-nums text-[13px] text-text-muted">{r.reorder_point}</span>
+        <span className="tabular-nums text-[13px] text-text-muted">
+          {r.reorder_point}
+        </span>
       ),
     },
     {
@@ -127,14 +130,23 @@ export default function AlertsTab() {
   /* ─── Render ─── */
 
   if (alertsQ.isError) {
-    return <ErrorState message="Failed to load stock alerts." onRetry={() => alertsQ.refetch()} />;
+    return (
+      <ErrorState
+        message="Failed to load stock alerts."
+        onRetry={() => alertsQ.refetch()}
+      />
+    );
   }
 
   return (
     <div className="space-y-4">
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={statusFilter} onChange={setStatusFilter} options={STATUS_OPTIONS} />
+        <Select
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={STATUS_OPTIONS}
+        />
       </div>
 
       {/* ── Table ── */}
@@ -149,7 +161,12 @@ export default function AlertsTab() {
         }}
       />
       {meta && (
-        <Pagination page={page} pageSize={PAGE_SIZE} total={meta.total} onChange={setPage} />
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={meta.total}
+          onChange={setPage}
+        />
       )}
     </div>
   );

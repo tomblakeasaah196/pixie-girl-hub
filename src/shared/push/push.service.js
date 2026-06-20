@@ -41,7 +41,13 @@ function getPublicKey() {
 }
 
 /** Store or refresh a push subscription for a user. */
-async function saveSubscription({ user_id, endpoint, p256dh, auth_key, user_agent }) {
+async function saveSubscription({
+  user_id,
+  endpoint,
+  p256dh,
+  auth_key,
+  user_agent,
+}) {
   await query(
     `INSERT INTO shared.push_subscriptions (user_id, endpoint, p256dh, auth_key, user_agent)
      VALUES ($1, $2, $3, $4, $5)
@@ -73,13 +79,21 @@ async function sendToUser({ user_id, title, body, url, tag }) {
   );
   if (!rows.length) return;
 
-  const payload = JSON.stringify({ title, body: body || "", url: url || "/notifications", tag });
+  const payload = JSON.stringify({
+    title,
+    body: body || "",
+    url: url || "/notifications",
+    tag,
+  });
 
   await Promise.all(
     rows.map(async (sub) => {
       try {
         await wp.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth_key } },
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth_key },
+          },
           payload,
         );
         await query(
@@ -89,13 +103,24 @@ async function sendToUser({ user_id, title, body, url, tag }) {
       } catch (err) {
         if (err.statusCode === 410 || err.statusCode === 404) {
           // Subscription expired — clean up.
-          await removeSubscription({ user_id, endpoint: sub.endpoint }).catch(() => {});
+          await removeSubscription({ user_id, endpoint: sub.endpoint }).catch(
+            () => {},
+          );
         } else {
-          logger.warn({ err: err.message, user_id }, "push: delivery failed (non-fatal)");
+          logger.warn(
+            { err: err.message, user_id },
+            "push: delivery failed (non-fatal)",
+          );
         }
       }
     }),
   );
 }
 
-module.exports = { getPublicKey, saveSubscription, removeSubscription, sendToUser, isConfigured };
+module.exports = {
+  getPublicKey,
+  saveSubscription,
+  removeSubscription,
+  sendToUser,
+  isConfigured,
+};

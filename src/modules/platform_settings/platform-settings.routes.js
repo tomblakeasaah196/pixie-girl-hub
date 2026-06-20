@@ -25,7 +25,9 @@ const can = (action) => requirePermission("business_setup", action);
 // branding images (logos, login backgrounds) should be far smaller.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: Math.min(8, config.MEDIA_MAX_FILE_SIZE_MB || 8) * 1024 * 1024 },
+  limits: {
+    fileSize: Math.min(8, config.MEDIA_MAX_FILE_SIZE_MB || 8) * 1024 * 1024,
+  },
 });
 
 // GET /api/v1/platform-settings — the singleton (full payload incl. theme).

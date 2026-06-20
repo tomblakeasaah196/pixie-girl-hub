@@ -179,7 +179,7 @@ export function BrandVoicePage() {
         />
         <Field
           label="Signature (HTML allowed)"
-          placeholder='Best,<br/>The Pixie Girl team 🌹'
+          placeholder="Best,<br/>The Pixie Girl team 🌹"
           value={form.signature_html ?? ""}
           onChange={(v) => set("signature_html", v)}
           textarea
@@ -469,7 +469,11 @@ function ListEditor({
               add();
             }
           }}
-          placeholder={tone === "ok" ? "e.g. Greet by first name" : "e.g. Never promise specific delivery dates"}
+          placeholder={
+            tone === "ok"
+              ? "e.g. Greet by first name"
+              : "e.g. Never promise specific delivery dates"
+          }
           className="flex-1 rounded-lg bg-panel-2 border hairline px-2.5 py-1.5 text-[12.5px] focus:outline-none focus:border-accent/40"
         />
         <button

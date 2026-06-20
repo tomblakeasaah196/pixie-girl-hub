@@ -26,8 +26,13 @@ async function getBundle({ brand, id }) {
 
 async function createBundle({ brand, user, request_id, input }) {
   return transaction(async (client) => {
-    const clash = await repo.findBundleBySlug({ client, brand, slug: input.slug });
-    if (clash) throw new ConflictError(`Bundle slug '${input.slug}' is already in use`);
+    const clash = await repo.findBundleBySlug({
+      client,
+      brand,
+      slug: input.slug,
+    });
+    if (clash)
+      throw new ConflictError(`Bundle slug '${input.slug}' is already in use`);
     const created = await repo.createBundle({
       client,
       brand,
@@ -52,8 +57,15 @@ async function updateBundle({ brand, user, request_id, id, patch }) {
     const before = await repo.findBundle({ client, brand, id });
     if (!before) throw new NotFoundError("Bundle");
     if (patch.slug && patch.slug !== before.slug) {
-      const clash = await repo.findBundleBySlug({ client, brand, slug: patch.slug });
-      if (clash) throw new ConflictError(`Bundle slug '${patch.slug}' is already in use`);
+      const clash = await repo.findBundleBySlug({
+        client,
+        brand,
+        slug: patch.slug,
+      });
+      if (clash)
+        throw new ConflictError(
+          `Bundle slug '${patch.slug}' is already in use`,
+        );
     }
     const updated = await repo.updateBundle({ client, brand, id, patch });
     await audit({
@@ -119,7 +131,13 @@ async function removeBundleItem({ brand, user, request_id, bundle_item_id }) {
   });
 }
 
-async function reorderBundleItems({ brand, user, request_id, bundle_id, ordered_ids }) {
+async function reorderBundleItems({
+  brand,
+  user,
+  request_id,
+  bundle_id,
+  ordered_ids,
+}) {
   return transaction(async (client) => {
     await repo.reorderBundleItems({ client, brand, bundle_id, ordered_ids });
     await audit({
@@ -139,9 +157,19 @@ async function listCampaignBundles({ brand, campaign_id }) {
   return repo.listCampaignBundles({ brand, campaign_id });
 }
 
-async function attachCampaignBundle({ brand, user, request_id, campaign_id, input }) {
+async function attachCampaignBundle({
+  brand,
+  user,
+  request_id,
+  campaign_id,
+  input,
+}) {
   return transaction(async (client) => {
-    const bundle = await repo.findBundle({ client, brand, id: input.bundle_id });
+    const bundle = await repo.findBundle({
+      client,
+      brand,
+      id: input.bundle_id,
+    });
     if (!bundle) throw new NotFoundError("Bundle");
     const link = await repo.attachCampaignBundle({
       client,
@@ -163,7 +191,13 @@ async function attachCampaignBundle({ brand, user, request_id, campaign_id, inpu
   });
 }
 
-async function detachCampaignBundle({ brand, user, request_id, campaign_id, link_id }) {
+async function detachCampaignBundle({
+  brand,
+  user,
+  request_id,
+  campaign_id,
+  link_id,
+}) {
   return transaction(async (client) => {
     const ok = await repo.detachCampaignBundle({ client, brand, link_id });
     if (!ok) throw new NotFoundError("Campaign bundle");
@@ -239,7 +273,13 @@ async function upsertUpsell({ brand, user, request_id, campaign_id, input }) {
   });
 }
 
-async function deleteUpsell({ brand, user, request_id, campaign_id, upsell_id }) {
+async function deleteUpsell({
+  brand,
+  user,
+  request_id,
+  campaign_id,
+  upsell_id,
+}) {
   return transaction(async (client) => {
     const ok = await repo.deleteUpsell({ client, brand, upsell_id });
     if (!ok) throw new NotFoundError("Upsell");
@@ -260,7 +300,13 @@ async function listCampaignAmbassadors({ brand, campaign_id }) {
   return repo.listCampaignAmbassadors({ brand, campaign_id });
 }
 
-async function addCampaignAmbassador({ brand, user, request_id, campaign_id, input }) {
+async function addCampaignAmbassador({
+  brand,
+  user,
+  request_id,
+  campaign_id,
+  input,
+}) {
   return transaction(async (client) => {
     const row = await repo.addCampaignAmbassador({
       client,
@@ -309,7 +355,13 @@ async function listAmbassadorContacts({ brand, q }) {
   return repo.listAmbassadorContacts({ brand, q });
 }
 
-async function promoteContactToAmbassador({ brand, user, request_id, contact_id, profile }) {
+async function promoteContactToAmbassador({
+  brand,
+  user,
+  request_id,
+  contact_id,
+  profile,
+}) {
   return transaction(async (client) => {
     const contact = await repo.promoteContactToAmbassador({
       client,

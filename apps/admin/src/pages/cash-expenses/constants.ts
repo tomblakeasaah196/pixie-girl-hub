@@ -1,4 +1,10 @@
-import type { CashRequestStatus, ExpenseStatus, Urgency, RecipientType, DocumentRole } from "./types";
+import type {
+  CashRequestStatus,
+  ExpenseStatus,
+  Urgency,
+  RecipientType,
+  DocumentRole,
+} from "./types";
 import type { Tone } from "@/components/ui/primitives";
 
 interface StatusMeta {
@@ -68,13 +74,14 @@ export const URGENCY_OPTIONS = [
   { value: "critical", label: "Critical" },
 ];
 
-export const RECIPIENT_TYPE_OPTIONS: { value: RecipientType; label: string }[] = [
-  { value: "self_bank", label: "My Bank Account" },
-  { value: "self_cash", label: "Cash (Self)" },
-  { value: "third_party_bank", label: "Third-Party Bank Transfer" },
-  { value: "petty_cash", label: "Petty Cash" },
-  { value: "supplier_direct", label: "Direct to Supplier" },
-];
+export const RECIPIENT_TYPE_OPTIONS: { value: RecipientType; label: string }[] =
+  [
+    { value: "self_bank", label: "My Bank Account" },
+    { value: "self_cash", label: "Cash (Self)" },
+    { value: "third_party_bank", label: "Third-Party Bank Transfer" },
+    { value: "petty_cash", label: "Petty Cash" },
+    { value: "supplier_direct", label: "Direct to Supplier" },
+  ];
 
 export const DOCUMENT_ROLE_OPTIONS: { value: DocumentRole; label: string }[] = [
   { value: "quote", label: "Quote" },

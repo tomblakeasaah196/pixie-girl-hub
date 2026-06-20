@@ -486,7 +486,28 @@ async function recordChurnScore({ client, brand, input }) {
   return rows[0];
 }
 
+/** Dashboard KPIs: open pipeline, wins this month, win/closed totals. */
+async function kpis({ brand, client }) {
+  const { rows } = await ex(client)(
+    `SELECT
+       COUNT(*) FILTER (WHERE status = 'open')::int AS open_deals,
+       COALESCE(SUM(expected_value_ngn) FILTER (WHERE status = 'open'), 0)
+         AS open_pipeline_ngn,
+       COUNT(*) FILTER (WHERE status = 'won'
+         AND won_at >= date_trunc('month', now()))::int AS won_this_month,
+       COALESCE(SUM(expected_value_ngn) FILTER (WHERE status = 'won'
+         AND won_at >= date_trunc('month', now())), 0)
+         AS won_value_this_month_ngn,
+       COUNT(*) FILTER (WHERE status = 'won')::int AS won_total,
+       COUNT(*) FILTER (WHERE status IN ('won', 'lost'))::int AS closed_total
+     FROM ${t(brand, "crm_deals")}
+     WHERE is_deleted = false`,
+  );
+  return rows[0];
+}
+
 module.exports = {
+  kpis,
   listPipelines,
   getPipeline,
   createPipeline,

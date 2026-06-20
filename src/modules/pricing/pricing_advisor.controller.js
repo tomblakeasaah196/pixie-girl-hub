@@ -13,7 +13,9 @@ const base = (req) => ({
 });
 
 async function recommend(req, res) {
-  res.json({ data: await advisor.recommend({ ...base(req), input: req.body }) });
+  res.json({
+    data: await advisor.recommend({ ...base(req), input: req.body }),
+  });
 }
 
 async function apply(req, res) {
@@ -25,7 +27,9 @@ async function getConfig(req, res) {
 }
 
 async function updateConfig(req, res) {
-  res.json({ data: await advisor.updateConfig({ ...base(req), patch: req.body }) });
+  res.json({
+    data: await advisor.updateConfig({ ...base(req), patch: req.body }),
+  });
 }
 
 async function setUsd(req, res) {

@@ -34,7 +34,12 @@ export function POSTotals({ currency = "NGN", onCheckout }: POSTotalsProps) {
   // VAT off for this sale, compute totals zero-rated.
   const { vatRate } = useActiveBusiness();
   const effectiveVatRate = applyVat ? vatRate : 0;
-  const totals = computeTotals(lines, orderDiscount, loyaltyDisc, effectiveVatRate);
+  const totals = computeTotals(
+    lines,
+    orderDiscount,
+    loyaltyDisc,
+    effectiveVatRate,
+  );
   const hasApproval = lines.some((l) => l.needs_approval);
 
   return (
@@ -111,9 +116,7 @@ export function POSTotals({ currency = "NGN", onCheckout }: POSTotalsProps) {
               />
             </span>
             {`VAT (${(vatRate * 100).toFixed(1)}%)`}
-            {!applyVat && (
-              <span className="text-brand-smoke/60">— exempt</span>
-            )}
+            {!applyVat && <span className="text-brand-smoke/60">— exempt</span>}
           </button>
           <span className="text-brand-smoke">
             {fmtMoneyTotals(totals.vat, currency)}

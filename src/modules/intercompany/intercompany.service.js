@@ -430,7 +430,9 @@ async function matchTransaction({ user, request_id, id }) {
   // GAP-6: when buyer matches (confirms receipt), receive stock into buyer's ledger
   if (txn.reference_type === "product_variant" && txn.reference_id) {
     try {
-      const loc = await stockRepo.getDefaultLocation({ brand: txn.buyer_brand });
+      const loc = await stockRepo.getDefaultLocation({
+        brand: txn.buyer_brand,
+      });
       if (loc) {
         await stockService.receiveStock({
           client: null,

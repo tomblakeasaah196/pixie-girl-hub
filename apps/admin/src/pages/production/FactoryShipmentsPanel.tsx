@@ -1,12 +1,30 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Truck, Package, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
-import { Button, Card, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
+import {
+  Plus,
+  Truck,
+  Package,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+} from "lucide-react";
+import {
+  Button,
+  Card,
+  Pill,
+  Skeleton,
+  EmptyState,
+} from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Form";
 import { NumberField } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
-import { useShipments, useCreateShipment, useShipment, useAdvanceShipment } from "./hooks";
+import {
+  useShipments,
+  useCreateShipment,
+  useShipment,
+  useAdvanceShipment,
+} from "./hooks";
 import { SHIPMENT_STATUS_META } from "./constants";
 import type { Shipment, ShipmentStatus } from "./types";
 
@@ -53,7 +71,11 @@ export function FactoryShipmentsPanel({
 
   const shipments = data?.shipments ?? [];
 
-  const filterBtns: Array<{ value: ShipmentStatus | ""; label: string; labelZh: string }> = [
+  const filterBtns: Array<{
+    value: ShipmentStatus | "";
+    label: string;
+    labelZh: string;
+  }> = [
     { value: "", label: "All", labelZh: t("all") },
     ...STATUS_ORDER.map((s) => ({
       value: s,
@@ -108,7 +130,11 @@ export function FactoryShipmentsPanel({
           icon={<AlertTriangle className="w-7 h-7" />}
           title={t("failedToLoad")}
           message={t("couldNotLoadShipments")}
-          action={<Button size="sm" onClick={() => refetch()}>{t("retry")}</Button>}
+          action={
+            <Button size="sm" onClick={() => refetch()}>
+              {t("retry")}
+            </Button>
+          }
         />
       )}
 
@@ -131,7 +157,11 @@ export function FactoryShipmentsPanel({
 
       <div className="grid gap-3">
         {shipments.map((s) => (
-          <ShipmentCard key={s.shipment_id} shipment={s} onSelect={setSelected} />
+          <ShipmentCard
+            key={s.shipment_id}
+            shipment={s}
+            onSelect={setSelected}
+          />
         ))}
       </div>
 
@@ -171,14 +201,18 @@ function ShipmentCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-sm font-semibold">{shipment.shipment_ref}</span>
+            <span className="font-mono text-sm font-semibold">
+              {shipment.shipment_ref}
+            </span>
             <Pill tone={meta.tone}>{isZh ? meta.labelZh : meta.label}</Pill>
           </div>
           <div className="text-[13px] text-text-muted flex items-center gap-2">
             <Truck className="w-3.5 h-3.5 shrink-0" />
             {shipment.courier}
             {shipment.tracking_number && (
-              <span className="font-mono text-xs text-text-faint">{shipment.tracking_number}</span>
+              <span className="font-mono text-xs text-text-faint">
+                {shipment.tracking_number}
+              </span>
             )}
           </div>
         </div>
@@ -187,7 +221,9 @@ function ShipmentCard({
             {shipment.items.length} {t("items")}
           </div>
           {shipment.courier_fee_base != null && (
-            <div className="font-mono text-sm">{cny(shipment.courier_fee_base)}</div>
+            <div className="font-mono text-sm">
+              {cny(shipment.courier_fee_base)}
+            </div>
           )}
         </div>
       </div>
@@ -213,7 +249,12 @@ function ShipmentCard({
                 )}
               />
               {i < STATUS_ORDER.length - 1 && (
-                <div className={cn("h-px flex-1", done ? "bg-accent/50" : "bg-text-primary/10")} />
+                <div
+                  className={cn(
+                    "h-px flex-1",
+                    done ? "bg-accent/50" : "bg-text-primary/10",
+                  )}
+                />
               )}
             </div>
           );
@@ -241,7 +282,9 @@ function ShipmentDetailDrawer({
   const meta = shipment ? SHIPMENT_STATUS_META[shipment.status] : null;
 
   const nextStatuses: ShipmentStatus[] = shipment
-    ? STATUS_ORDER.slice(STATUS_ORDER.indexOf(shipment.status as ShipmentStatus) + 1)
+    ? STATUS_ORDER.slice(
+        STATUS_ORDER.indexOf(shipment.status as ShipmentStatus) + 1,
+      )
     : [];
 
   return (
@@ -257,7 +300,9 @@ function ShipmentDetailDrawer({
         )
       }
       subtitle={
-        meta ? <Pill tone={meta.tone}>{isZh ? meta.labelZh : meta.label}</Pill> : undefined
+        meta ? (
+          <Pill tone={meta.tone}>{isZh ? meta.labelZh : meta.label}</Pill>
+        ) : undefined
       }
     >
       {isLoading ? (
@@ -276,7 +321,9 @@ function ShipmentDetailDrawer({
             {shipment.tracking_number && (
               <div>
                 <div className="micro mb-1">{t("tracking")}</div>
-                <div className="font-mono text-sm">{shipment.tracking_number}</div>
+                <div className="font-mono text-sm">
+                  {shipment.tracking_number}
+                </div>
               </div>
             )}
             <div>
@@ -310,7 +357,9 @@ function ShipmentDetailDrawer({
                 >
                   <div className="flex items-center gap-2">
                     <Package className="w-4 h-4 text-text-faint shrink-0" />
-                    <span className="text-text-muted">{item.sku_description ?? "—"}</span>
+                    <span className="text-text-muted">
+                      {item.sku_description ?? "—"}
+                    </span>
                   </div>
                   <div className="flex items-center gap-4 shrink-0 font-mono text-xs">
                     <span>×{item.quantity_shipped}</span>
@@ -318,7 +367,9 @@ function ShipmentDetailDrawer({
                       <span>{cny(item.unit_price_base)}/pc</span>
                     )}
                     {item.total_price_base != null && (
-                      <span className="font-semibold">{cny(item.total_price_base)}</span>
+                      <span className="font-semibold">
+                        {cny(item.total_price_base)}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -342,7 +393,9 @@ function ShipmentDetailDrawer({
               ) : (
                 <Card className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-semibold">{t("advanceTo")}</span>
+                    <span className="text-[13px] font-semibold">
+                      {t("advanceTo")}
+                    </span>
                     <button onClick={() => setShowAdvance(false)}>
                       <ChevronUp className="w-4 h-4 text-text-faint" />
                     </button>
@@ -423,9 +476,13 @@ function CreateShipmentDrawer({
     setForm((p) => ({ ...p, [k]: v }));
 
   const addItem = () =>
-    setItems((p) => [...p, { sku_description: "", quantity_shipped: "1", unit_price_base: "" }]);
+    setItems((p) => [
+      ...p,
+      { sku_description: "", quantity_shipped: "1", unit_price_base: "" },
+    ]);
 
-  const removeItem = (i: number) => setItems((p) => p.filter((_, j) => j !== i));
+  const removeItem = (i: number) =>
+    setItems((p) => p.filter((_, j) => j !== i));
 
   const setItem = (i: number, k: string, v: string) =>
     setItems((p) => p.map((item, j) => (j === i ? { ...item, [k]: v } : item)));
@@ -448,7 +505,9 @@ function CreateShipmentDrawer({
         items: items.map((it) => ({
           sku_description: it.sku_description || undefined,
           quantity_shipped: parseInt(it.quantity_shipped) || 1,
-          unit_price_base: it.unit_price_base ? parseFloat(it.unit_price_base) : undefined,
+          unit_price_base: it.unit_price_base
+            ? parseFloat(it.unit_price_base)
+            : undefined,
         })),
       },
       { onSuccess: onClose },
@@ -559,7 +618,9 @@ function CreateShipmentDrawer({
                     <input
                       type="text"
                       value={item.sku_description}
-                      onChange={(e) => setItem(i, "sku_description", e.target.value)}
+                      onChange={(e) =>
+                        setItem(i, "sku_description", e.target.value)
+                      }
                       placeholder={t("courierPlaceholder")}
                       className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
                     />
@@ -569,7 +630,9 @@ function CreateShipmentDrawer({
                       type="number"
                       min="1"
                       value={item.quantity_shipped}
-                      onChange={(e) => setItem(i, "quantity_shipped", e.target.value)}
+                      onChange={(e) =>
+                        setItem(i, "quantity_shipped", e.target.value)
+                      }
                       className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
                     />
                   </Field>
@@ -579,7 +642,9 @@ function CreateShipmentDrawer({
                       min="0"
                       step="0.01"
                       value={item.unit_price_base}
-                      onChange={(e) => setItem(i, "unit_price_base", e.target.value)}
+                      onChange={(e) =>
+                        setItem(i, "unit_price_base", e.target.value)
+                      }
                       placeholder="0.00"
                       className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
                     />

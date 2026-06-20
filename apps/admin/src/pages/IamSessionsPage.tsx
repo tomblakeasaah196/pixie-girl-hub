@@ -86,7 +86,9 @@ export function IamSessionsPage() {
     key: "device",
     header: "Device",
     render: (r) => (
-      <span className="text-text">{parseDevice(r.user_agent, r.device_label)}</span>
+      <span className="text-text">
+        {parseDevice(r.user_agent, r.device_label)}
+      </span>
     ),
   };
 
@@ -102,7 +104,9 @@ export function IamSessionsPage() {
     key: "created",
     header: "Created",
     render: (r) => (
-      <span className="text-text-muted text-[12px]">{fmtDate(r.created_at)}</span>
+      <span className="text-text-muted text-[12px]">
+        {fmtDate(r.created_at)}
+      </span>
     ),
   };
 
@@ -110,7 +114,9 @@ export function IamSessionsPage() {
     key: "last_seen",
     header: "Last seen",
     render: (r) => (
-      <span className="text-text-muted text-[12px]">{fmtDate(r.last_seen_at)}</span>
+      <span className="text-text-muted text-[12px]">
+        {fmtDate(r.last_seen_at)}
+      </span>
     ),
   };
 
@@ -118,7 +124,9 @@ export function IamSessionsPage() {
     key: "expires",
     header: "Expires",
     render: (r) => (
-      <span className="text-text-muted text-[12px]">{fmtDate(r.expires_at)}</span>
+      <span className="text-text-muted text-[12px]">
+        {fmtDate(r.expires_at)}
+      </span>
     ),
   };
 
@@ -186,7 +194,9 @@ export function IamSessionsPage() {
           <Monitor className="w-5 h-5" />
         </span>
         <div>
-          <h2 className="font-display text-[22px] font-medium">Sessions & Devices</h2>
+          <h2 className="font-display text-[22px] font-medium">
+            Sessions & Devices
+          </h2>
           <p className="text-text-muted text-[13px]">
             View and revoke active sessions across all users
           </p>
@@ -284,8 +294,8 @@ export function IamSessionsPage() {
         title="Revoke all sessions?"
         message={
           <>
-            This will immediately sign out <strong>all sessions</strong> for this
-            user.
+            This will immediately sign out <strong>all sessions</strong> for
+            this user.
           </>
         }
         confirmLabel="Revoke All"

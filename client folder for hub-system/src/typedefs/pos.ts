@@ -94,10 +94,7 @@ export interface PosTransaction {
 
 // ── Cart (local state) ────────────────────────────────────────────────────────
 
-export type POSPaymentMethod =
-  | "cash"
-  | "pos_card"
-  | "bank_transfer";
+export type POSPaymentMethod = "cash" | "pos_card" | "bank_transfer";
 
 export interface CartLine {
   id: string; // local UUID — not a DB ID

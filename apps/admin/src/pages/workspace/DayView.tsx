@@ -1,6 +1,14 @@
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/primitives";
-import { isToday, isSameDay, formatTime, getHours, formatHour, DAY_NAMES, MONTH_NAMES } from "./constants";
+import {
+  isToday,
+  isSameDay,
+  formatTime,
+  getHours,
+  formatHour,
+  DAY_NAMES,
+  MONTH_NAMES,
+} from "./constants";
 import type { CalendarEvent } from "./types";
 
 interface DayViewProps {
@@ -11,7 +19,13 @@ interface DayViewProps {
   onCreateEvent: (date: Date) => void;
 }
 
-export function DayView({ date, events, loading, onSelectEvent, onCreateEvent }: DayViewProps) {
+export function DayView({
+  date,
+  events,
+  loading,
+  onSelectEvent,
+  onCreateEvent,
+}: DayViewProps) {
   const hours = getHours();
   const dayEvents = events.filter((e) => isSameDay(new Date(e.start_at), date));
 
@@ -50,7 +64,9 @@ export function DayView({ date, events, loading, onSelectEvent, onCreateEvent }:
       {/* Time grid */}
       <div className="max-h-[600px] overflow-y-auto">
         {hours.map((hour) => {
-          const hourEvents = dayEvents.filter((e) => new Date(e.start_at).getHours() === hour);
+          const hourEvents = dayEvents.filter(
+            (e) => new Date(e.start_at).getHours() === hour,
+          );
           return (
             <div
               key={hour}

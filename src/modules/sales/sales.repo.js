@@ -165,6 +165,16 @@ async function findByPublicToken({ client, brand, token }) {
   );
   return rows[0] || null;
 }
+async function findByOrderNumber({ client, brand, order_number }) {
+  if (!order_number) return null;
+  const { rows } = await ex(client)(
+    `SELECT order_id, order_number, status, total_ngn, amount_paid_ngn
+       FROM ${t(brand, "sales_orders")}
+      WHERE order_number = $1 LIMIT 1`,
+    [order_number],
+  );
+  return rows[0] || null;
+}
 async function findById({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "sales_orders")} WHERE order_id = $1`,
@@ -644,6 +654,7 @@ module.exports = {
   createOrder,
   findByIdempotencyKey,
   findByPublicToken,
+  findByOrderNumber,
   insertLine,
   insertDiscount,
   findById,

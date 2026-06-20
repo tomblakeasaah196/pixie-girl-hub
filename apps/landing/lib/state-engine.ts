@@ -20,7 +20,12 @@ export type DerivedState =
 export function deriveState(
   payload: LandingPayload,
   now: number = Date.now(),
-): { state: LandingState; derived: DerivedState; msToStart: number; msToEnd: number } {
+): {
+  state: LandingState;
+  derived: DerivedState;
+  msToStart: number;
+  msToEnd: number;
+} {
   const starts = new Date(payload.starts_at).getTime();
   const ends = new Date(payload.ends_at).getTime();
   const msToStart = starts - now;
@@ -34,12 +39,21 @@ export function deriveState(
   else if (now < starts) state = "before";
 
   let derived: DerivedState = state;
-  if (state === "before" && payload.vip_early_access_minutes && payload.vip_early_access_minutes > 0) {
+  if (
+    state === "before" &&
+    payload.vip_early_access_minutes &&
+    payload.vip_early_access_minutes > 0
+  ) {
     const vipStart = starts - payload.vip_early_access_minutes * 60_000;
     if (now >= vipStart) derived = "before_vip_window";
   }
-  if (state === "live" && payload.last_call_surge_minutes && payload.last_call_surge_minutes > 0) {
-    if (msToEnd <= payload.last_call_surge_minutes * 60_000) derived = "live_last_call";
+  if (
+    state === "live" &&
+    payload.last_call_surge_minutes &&
+    payload.last_call_surge_minutes > 0
+  ) {
+    if (msToEnd <= payload.last_call_surge_minutes * 60_000)
+      derived = "live_last_call";
   }
   if (state === "live") {
     const allOut = (payload.bundles || []).every(
@@ -48,22 +62,34 @@ export function deriveState(
         b.current_stock_snapshot !== undefined &&
         Number(b.current_stock_snapshot) <= 0,
     );
-    if (allOut && (payload.bundles || []).length > 0) derived = "live_sold_out_hold";
+    if (allOut && (payload.bundles || []).length > 0)
+      derived = "live_sold_out_hold";
   }
-  if (state === "ended" && payload.next_campaign?.slug) derived = "ended_waitlist";
+  if (state === "ended" && payload.next_campaign?.slug)
+    derived = "ended_waitlist";
 
   return { state, derived, msToStart, msToEnd };
 }
 
 /** Smart-viewer policy resolver. */
 export function shouldShowViewerCount(
-  campaign: Pick<LandingPayload, "show_viewer_count_policy" | "viewer_count_floor"> & {
-    brand?: { show_viewer_count_policy?: "smart" | "on" | "off" | null; viewer_count_floor?: number | null };
+  campaign: Pick<
+    LandingPayload,
+    "show_viewer_count_policy" | "viewer_count_floor"
+  > & {
+    brand?: {
+      show_viewer_count_policy?: "smart" | "on" | "off" | null;
+      viewer_count_floor?: number | null;
+    };
   },
   currentViewers: number,
 ): "show" | "pill_only" | "hidden" {
-  const policy = campaign.show_viewer_count_policy || campaign.brand?.show_viewer_count_policy || "smart";
-  const floor = campaign.viewer_count_floor ?? campaign.brand?.viewer_count_floor ?? 20;
+  const policy =
+    campaign.show_viewer_count_policy ||
+    campaign.brand?.show_viewer_count_policy ||
+    "smart";
+  const floor =
+    campaign.viewer_count_floor ?? campaign.brand?.viewer_count_floor ?? 20;
   if (policy === "off") return "hidden";
   if (policy === "on") return "show";
   // smart

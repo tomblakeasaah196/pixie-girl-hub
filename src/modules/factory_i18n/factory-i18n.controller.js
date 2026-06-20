@@ -10,18 +10,66 @@ const { AppError } = require("../../utils/errors");
 
 /** All 61 keys required in every translation bundle (derived from en baseline). */
 const REQUIRED_KEYS = [
-  "currentBalance", "alertThreshold", "reconcile", "addEntry", "balanceExceeded",
-  "date", "type", "description", "debit", "credit", "balance", "reconCol",
-  "noEntries", "noEntriesMsg", "failedToLoad", "couldNotLoadEntries",
-  "couldNotLoadShipments", "retry", "addLedgerEntry", "cancel", "saving",
-  "saveEntry", "entryType", "amount", "currency", "fxRate", "paymentMethod",
-  "selectPrompt", "paidBy", "paidByPlaceholder", "descriptionPlaceholder",
-  "all", "newShipment", "noShipments", "noShipmentsMsg", "items", "shipped",
-  "estimatedArrival", "courier", "tracking", "shippingFee", "itemsLabel",
-  "advanceStatus", "advanceTo", "updating", "confirm", "createShipment",
-  "courierPlaceholder", "trackingNumber", "trackingPlaceholder", "shippedDate",
-  "unitPrice", "qty", "add", "noFactoryAccounts", "noFactoryAccountsMsg",
-  "ledger", "shipmentsTab", "shipment", "langToggle",
+  "currentBalance",
+  "alertThreshold",
+  "reconcile",
+  "addEntry",
+  "balanceExceeded",
+  "date",
+  "type",
+  "description",
+  "debit",
+  "credit",
+  "balance",
+  "reconCol",
+  "noEntries",
+  "noEntriesMsg",
+  "failedToLoad",
+  "couldNotLoadEntries",
+  "couldNotLoadShipments",
+  "retry",
+  "addLedgerEntry",
+  "cancel",
+  "saving",
+  "saveEntry",
+  "entryType",
+  "amount",
+  "currency",
+  "fxRate",
+  "paymentMethod",
+  "selectPrompt",
+  "paidBy",
+  "paidByPlaceholder",
+  "descriptionPlaceholder",
+  "all",
+  "newShipment",
+  "noShipments",
+  "noShipmentsMsg",
+  "items",
+  "shipped",
+  "estimatedArrival",
+  "courier",
+  "tracking",
+  "shippingFee",
+  "itemsLabel",
+  "advanceStatus",
+  "advanceTo",
+  "updating",
+  "confirm",
+  "createShipment",
+  "courierPlaceholder",
+  "trackingNumber",
+  "trackingPlaceholder",
+  "shippedDate",
+  "unitPrice",
+  "qty",
+  "add",
+  "noFactoryAccounts",
+  "noFactoryAccountsMsg",
+  "ledger",
+  "shipmentsTab",
+  "shipment",
+  "langToggle",
 ];
 
 /** Regex for a valid language code: 2–5 lowercase letters only. */
@@ -37,7 +85,9 @@ async function listLanguages(req, res, next) {
   try {
     const data = await repo.listLanguages();
     res.json({ data });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 /**
@@ -48,7 +98,9 @@ async function listAllWithTranslations(req, res, next) {
   try {
     const data = await repo.listAllWithTranslations();
     res.json({ data });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 /**
@@ -58,9 +110,16 @@ async function listAllWithTranslations(req, res, next) {
 async function getOne(req, res, next) {
   try {
     const row = await repo.getWithTranslations(req.params.code.toLowerCase());
-    if (!row) throw new AppError("NOT_FOUND", `Language '${req.params.code}' not found`, 404);
+    if (!row)
+      throw new AppError(
+        "NOT_FOUND",
+        `Language '${req.params.code}' not found`,
+        404,
+      );
     res.json({ data: row });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 // ── Write endpoints (platform_settings edit OR CEO) ────────
@@ -83,25 +142,37 @@ async function create(req, res, next) {
       throw new AppError(
         "VALIDATION_ERROR",
         "language_code must be 2–5 lowercase letters only",
-        400
+        400,
       );
     }
     if (code === "en") {
       throw new AppError(
         "VALIDATION_ERROR",
         "Cannot overwrite the base English language via this endpoint",
-        400
+        400,
       );
     }
 
     // display_name validation
-    if (!display_name || typeof display_name !== "string" || !display_name.trim()) {
+    if (
+      !display_name ||
+      typeof display_name !== "string" ||
+      !display_name.trim()
+    ) {
       throw new AppError("VALIDATION_ERROR", "display_name is required", 400);
     }
 
     // Translations validation
-    if (!translations || typeof translations !== "object" || Array.isArray(translations)) {
-      throw new AppError("VALIDATION_ERROR", "translations must be a JSON object", 400);
+    if (
+      !translations ||
+      typeof translations !== "object" ||
+      Array.isArray(translations)
+    ) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "translations must be a JSON object",
+        400,
+      );
     }
     const missingKeys = REQUIRED_KEYS.filter((k) => !(k in translations));
     if (missingKeys.length) {
@@ -109,22 +180,34 @@ async function create(req, res, next) {
         "VALIDATION_ERROR",
         `translations is missing required keys: ${missingKeys.join(", ")}`,
         400,
-        { fields: { translations: `Missing keys: ${missingKeys.join(", ")}` } }
+        { fields: { translations: `Missing keys: ${missingKeys.join(", ")}` } },
       );
     }
-    const nonStringKeys = REQUIRED_KEYS.filter((k) => typeof translations[k] !== "string");
+    const nonStringKeys = REQUIRED_KEYS.filter(
+      (k) => typeof translations[k] !== "string",
+    );
     if (nonStringKeys.length) {
       throw new AppError(
         "VALIDATION_ERROR",
         `All translation values must be strings. Non-string keys: ${nonStringKeys.join(", ")}`,
         400,
-        { fields: { translations: `Non-string values for: ${nonStringKeys.join(", ")}` } }
+        {
+          fields: {
+            translations: `Non-string values for: ${nonStringKeys.join(", ")}`,
+          },
+        },
       );
     }
 
-    const row = await repo.create({ language_code: code, display_name: display_name.trim(), translations });
+    const row = await repo.create({
+      language_code: code,
+      display_name: display_name.trim(),
+      translations,
+    });
     res.status(201).json({ data: row });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 /**
@@ -141,15 +224,26 @@ async function patchOne(req, res, next) {
       throw new AppError(
         "VALIDATION_ERROR",
         "Cannot deactivate the base English language",
-        400
+        400,
       );
     }
 
-    if (display_name !== undefined && (typeof display_name !== "string" || !display_name.trim())) {
-      throw new AppError("VALIDATION_ERROR", "display_name must be a non-empty string", 400);
+    if (
+      display_name !== undefined &&
+      (typeof display_name !== "string" || !display_name.trim())
+    ) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "display_name must be a non-empty string",
+        400,
+      );
     }
     if (is_active !== undefined && typeof is_active !== "boolean") {
-      throw new AppError("VALIDATION_ERROR", "is_active must be a boolean", 400);
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "is_active must be a boolean",
+        400,
+      );
     }
 
     const fields = {};
@@ -157,13 +251,20 @@ async function patchOne(req, res, next) {
     if (is_active !== undefined) fields.is_active = is_active;
 
     if (!Object.keys(fields).length) {
-      throw new AppError("VALIDATION_ERROR", "No updatable fields provided (display_name, is_active)", 400);
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "No updatable fields provided (display_name, is_active)",
+        400,
+      );
     }
 
     const row = await repo.update(code, fields);
-    if (!row) throw new AppError("NOT_FOUND", `Language '${code}' not found`, 404);
+    if (!row)
+      throw new AppError("NOT_FOUND", `Language '${code}' not found`, 404);
     res.json({ data: row });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 /**
@@ -177,14 +278,24 @@ async function deleteOne(req, res, next) {
       throw new AppError(
         "VALIDATION_ERROR",
         "Cannot delete the base English language",
-        400
+        400,
       );
     }
     const existing = await repo.getWithTranslations(code);
-    if (!existing) throw new AppError("NOT_FOUND", `Language '${code}' not found`, 404);
+    if (!existing)
+      throw new AppError("NOT_FOUND", `Language '${code}' not found`, 404);
     await repo.remove(code);
     res.status(204).end();
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
-module.exports = { listLanguages, listAllWithTranslations, getOne, create, patchOne, deleteOne };
+module.exports = {
+  listLanguages,
+  listAllWithTranslations,
+  getOne,
+  create,
+  patchOne,
+  deleteOne,
+};

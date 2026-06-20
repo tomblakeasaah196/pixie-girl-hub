@@ -122,9 +122,21 @@ export function OverviewTab({ contact, onJumpTab }: Props) {
       </div>
 
       {/* Stakeholder snapshots */}
-      {isEmployee && <EmployeeSnapshot contactId={contact.contact_id} onJumpTab={onJumpTab} />}
-      {isSupplier && <SupplierSnapshot contactId={contact.contact_id} onJumpTab={onJumpTab} />}
-      {isPartner && <PartnerSnapshot contactId={contact.contact_id} onJumpTab={onJumpTab} />}
+      {isEmployee && (
+        <EmployeeSnapshot
+          contactId={contact.contact_id}
+          onJumpTab={onJumpTab}
+        />
+      )}
+      {isSupplier && (
+        <SupplierSnapshot
+          contactId={contact.contact_id}
+          onJumpTab={onJumpTab}
+        />
+      )}
+      {isPartner && (
+        <PartnerSnapshot contactId={contact.contact_id} onJumpTab={onJumpTab} />
+      )}
 
       {/* Upcoming events */}
       <Card className="p-5">
@@ -496,7 +508,9 @@ function SupplierSnapshot({
             <div className="text-[0.6rem] uppercase tracking-widest text-brand-smoke">
               Open POs
             </div>
-            <div className="text-brand-cream mt-0.5 tabular-nums">{openPOs}</div>
+            <div className="text-brand-cream mt-0.5 tabular-nums">
+              {openPOs}
+            </div>
           </div>
           <div>
             <div className="text-[0.6rem] uppercase tracking-widest text-brand-smoke">

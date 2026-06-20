@@ -33,14 +33,16 @@ import { errMsg } from "@services/api";
 import { fmtDate, fmtMoney } from "@lib/format";
 import type { BillStatus } from "@typedefs/purchasing";
 
-const TONE: Record<BillStatus, "gold" | "sage" | "rose" | "neutral" | "danger"> =
-  {
-    pending: "neutral",
-    matched: "gold",
-    approved: "gold",
-    paid: "sage",
-    disputed: "danger",
-  };
+const TONE: Record<
+  BillStatus,
+  "gold" | "sage" | "rose" | "neutral" | "danger"
+> = {
+  pending: "neutral",
+  matched: "gold",
+  approved: "gold",
+  paid: "sage",
+  disputed: "danger",
+};
 
 export default function BillDetail() {
   const { id } = useParams();

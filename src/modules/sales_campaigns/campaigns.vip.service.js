@@ -24,7 +24,7 @@ function t(brand, table) {
   if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   return `${brand}.${table}`;
 }
-const ex = (client) => (client ? client.query.bind(client) : query);
+//  = (client) => (client ? client.query.bind(client) : query);
 
 /**
  * Compute the top-N spenders for a campaign + their order info, ready
@@ -57,12 +57,22 @@ async function listTopSpenders({ brand, campaign_id, top_n = 10 }) {
  * Idempotent via the (campaign_id, contact_id) unique constraint on
  * sales_campaign_vip_grants.
  */
-async function grantTopSpenders({ brand, user, request_id, campaign_id, top_n }) {
+async function grantTopSpenders({
+  brand,
+  user,
+  request_id,
+  campaign_id,
+  top_n,
+}) {
   const campaign = await campaignsRepo.findById({ brand, id: campaign_id });
   if (!campaign) throw new NotFoundError("Campaign");
 
   const effectiveN = top_n || campaign.vip_top_n || 10;
-  const spenders = await listTopSpenders({ brand, campaign_id, top_n: effectiveN });
+  const spenders = await listTopSpenders({
+    brand,
+    campaign_id,
+    top_n: effectiveN,
+  });
   if (!spenders.length) return { granted: 0, lifetime_promoted: 0 };
 
   let granted = 0;
@@ -78,7 +88,9 @@ async function grantTopSpenders({ brand, user, request_id, campaign_id, top_n })
         [spender.contact_id],
       );
       const lifetime = Number(lifeRows[0].lifetime || 0);
-      const lifetimeThreshold = Number(campaign.vip_lifetime_threshold_ngn || 0);
+      const lifetimeThreshold = Number(
+        campaign.vip_lifetime_threshold_ngn || 0,
+      );
       const promoteLifetime =
         lifetimeThreshold > 0 && lifetime >= lifetimeThreshold;
 
@@ -218,7 +230,8 @@ async function updateGiftStatus({
 // ── Heuristic gift category — placeholder while the LLM is offline ──
 function giftCategoryForSpend(total) {
   const n = Number(total || 0);
-  if (n >= 1_000_000) return "branded wig + handwritten letter + scented candle gift box";
+  if (n >= 1_000_000)
+    return "branded wig + handwritten letter + scented candle gift box";
   if (n >= 500_000) return "branded scarf + scented candle";
   return "branded postcard + thank-you scarf";
 }

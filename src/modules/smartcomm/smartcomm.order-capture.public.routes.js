@@ -101,7 +101,10 @@ async function fetchPrefillContext(decoded) {
     expires_at: new Date(decoded.exp * 1000).toISOString(),
     contact: {
       contact_id: contact.contact_id,
-      first_name: contact.first_name || (contact.display_name || "").split(" ")[0] || null,
+      first_name:
+        contact.first_name ||
+        (contact.display_name || "").split(" ")[0] ||
+        null,
       last_name: contact.last_name || null,
       display_name: contact.display_name,
       primary_phone: contact.primary_phone,

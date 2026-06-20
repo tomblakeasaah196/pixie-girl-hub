@@ -455,9 +455,7 @@ export default function CountSession() {
                         <div
                           className={cn(
                             "font-mono text-sm",
-                            variance > 0
-                              ? "text-accent2"
-                              : "text-state-danger",
+                            variance > 0 ? "text-accent2" : "text-state-danger",
                           )}
                         >
                           {variance > 0 ? "+" : ""}

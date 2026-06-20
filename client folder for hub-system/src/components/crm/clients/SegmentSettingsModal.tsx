@@ -53,7 +53,10 @@ export function SegmentSettingsModal({
         stale_deal_days: staleDealDays,
       }),
     onSuccess: () => {
-      showToast.success("Segments updated", "Client lists recalculate instantly.");
+      showToast.success(
+        "Segments updated",
+        "Client lists recalculate instantly.",
+      );
       qc.invalidateQueries({ queryKey: ["crm"] });
       onClose();
     },

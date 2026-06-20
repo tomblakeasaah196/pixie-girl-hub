@@ -30,7 +30,9 @@ export function useCreateFactoryAccount() {
   const brand = useBrand();
   return useMutation({
     mutationFn: api.createFactoryAccount,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["factory-accounts", brand] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["factory-accounts", brand] });
+    },
   });
 }
 
@@ -49,7 +51,10 @@ export function useUpdateFactoryAccount(id: string) {
 
 // ── Ledger ────────────────────────────────────────────────
 
-export function useLedger(accountId: string | null, params?: { limit?: number; offset?: number }) {
+export function useLedger(
+  accountId: string | null,
+  params?: { limit?: number; offset?: number },
+) {
   const brand = useBrand();
   return useQuery({
     queryKey: ["ledger", accountId, params, brand],
@@ -75,14 +80,20 @@ export function useAddLedgerEntry(accountId: string) {
 export function useReconcileEntries(accountId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (entryIds: string[]) => api.reconcileEntries(accountId, entryIds),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["ledger", accountId] }); },
+    mutationFn: (entryIds: string[]) =>
+      api.reconcileEntries(accountId, entryIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ledger", accountId] });
+    },
   });
 }
 
 // ── Shipments ─────────────────────────────────────────────
 
-export function useShipments(params?: { account_id?: string; status?: string }) {
+export function useShipments(params?: {
+  account_id?: string;
+  status?: string;
+}) {
   const brand = useBrand();
   return useQuery({
     queryKey: ["shipments", params, brand],
@@ -149,7 +160,9 @@ export function useCreateProductionRun() {
   const brand = useBrand();
   return useMutation({
     mutationFn: api.createProductionRun,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["production-runs", undefined, brand] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["production-runs", undefined, brand] });
+    },
   });
 }
 

@@ -9,7 +9,10 @@ import { SectionHeader } from "./BundleShowcase";
 // Story copy seeds. The campaign can override per-block via block.props,
 // otherwise the brand voice profile drives the default editorial copy.
 
-function blockProps(payload: LandingPayload, key: string): Record<string, unknown> {
+function blockProps(
+  payload: LandingPayload,
+  key: string,
+): Record<string, unknown> {
   const b = (payload.blocks || []).find((x) => x.key === key);
   return (b?.props as Record<string, unknown>) || {};
 }
@@ -27,7 +30,9 @@ export function BrandStory({ payload }: { payload: LandingPayload }) {
     <section className="section">
       <div className="mx-auto max-w-[820px] text-center">
         <SectionHeader eyebrow="Our story" title={title} />
-        <p className="mt-6 text-[rgb(var(--text-muted))] leading-relaxed text-[17px]">{body}</p>
+        <p className="mt-6 text-[rgb(var(--text-muted))] leading-relaxed text-[17px]">
+          {body}
+        </p>
       </div>
     </section>
   );
@@ -56,12 +61,24 @@ export function FounderQuote({ payload }: { payload: LandingPayload }) {
 /* ── Why Buy ────────────────────────────────────────────────── */
 export function WhyBuy({ payload }: { payload: LandingPayload }) {
   const props = blockProps(payload, "why_buy");
-  const items =
-    (props.items as { icon?: string; title: string; body: string }[]) || [
-      { title: "Real human hair, every strand", body: "Sourced and inspected by us — never substituted." },
-      { title: "Stylist-tested fit", body: "Cap construction tested on hundreds of head shapes." },
-      { title: "Wear-it-forever care", body: "Detailed care guide in every box; replace nothing." },
-    ];
+  const items = (props.items as {
+    icon?: string;
+    title: string;
+    body: string;
+  }[]) || [
+    {
+      title: "Real human hair, every strand",
+      body: "Sourced and inspected by us — never substituted.",
+    },
+    {
+      title: "Stylist-tested fit",
+      body: "Cap construction tested on hundreds of head shapes.",
+    },
+    {
+      title: "Wear-it-forever care",
+      body: "Detailed care guide in every box; replace nothing.",
+    },
+  ];
   return (
     <section className="section">
       <div className="mx-auto max-w-[1080px]">
@@ -79,8 +96,12 @@ export function WhyBuy({ payload }: { payload: LandingPayload }) {
               <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))] mb-4">
                 <Heart className="w-5 h-5" />
               </span>
-              <h3 className="font-display text-[20px] leading-tight mb-2">{it.title}</h3>
-              <p className="text-[rgb(var(--text-muted))] text-[14px] leading-relaxed">{it.body}</p>
+              <h3 className="font-display text-[20px] leading-tight mb-2">
+                {it.title}
+              </h3>
+              <p className="text-[rgb(var(--text-muted))] text-[14px] leading-relaxed">
+                {it.body}
+              </p>
             </motion.div>
           ))}
         </div>
@@ -92,21 +113,30 @@ export function WhyBuy({ payload }: { payload: LandingPayload }) {
 /* ── Testimonials ───────────────────────────────────────────── */
 export function Testimonials({ payload }: { payload: LandingPayload }) {
   const props = blockProps(payload, "testimonials");
-  const items = (props.items as { quote: string; name?: string; handle?: string }[]) || [];
+  const items =
+    (props.items as { quote: string; name?: string; handle?: string }[]) || [];
   if (!items.length) return null;
   return (
     <section className="section">
       <div className="mx-auto max-w-[1080px]">
-        <SectionHeader eyebrow="What they said" title="Real customers. Real words." />
+        <SectionHeader
+          eyebrow="What they said"
+          title="Real customers. Real words."
+        />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-10">
           {items.slice(0, 6).map((t, i) => (
             <div key={i} className="glass rounded-[var(--radius)] p-6">
               <div className="flex gap-1 mb-3">
                 {[0, 1, 2, 3, 4].map((s) => (
-                  <Star key={s} className="w-3.5 h-3.5 fill-[rgb(var(--accent-glow))] text-[rgb(var(--accent-glow))]" />
+                  <Star
+                    key={s}
+                    className="w-3.5 h-3.5 fill-[rgb(var(--accent-glow))] text-[rgb(var(--accent-glow))]"
+                  />
                 ))}
               </div>
-              <p className="text-[rgb(var(--text-muted))] leading-relaxed">&ldquo;{t.quote}&rdquo;</p>
+              <p className="text-[rgb(var(--text-muted))] leading-relaxed">
+                &ldquo;{t.quote}&rdquo;
+              </p>
               {(t.name || t.handle) && (
                 <div className="micro mt-4">
                   {t.name} {t.handle ? `· @${t.handle}` : ""}
@@ -124,10 +154,22 @@ export function Testimonials({ payload }: { payload: LandingPayload }) {
 export function Faq({ payload }: { payload: LandingPayload }) {
   const props = blockProps(payload, "faq");
   const items = (props.items as { q: string; a: string }[]) || [
-    { q: "When does the sale end?", a: "When the timer hits zero — that is the only rule." },
-    { q: "Do you ship internationally?", a: "Yes. We use DHL for international delivery." },
-    { q: "What if I order the wrong colour?", a: "Reach out within 48 hours of delivery and we'll work it out." },
-    { q: "Are these real human hair?", a: "Yes. Every strand. We inspect each unit before shipping." },
+    {
+      q: "When does the sale end?",
+      a: "When the timer hits zero — that is the only rule.",
+    },
+    {
+      q: "Do you ship internationally?",
+      a: "Yes. We use DHL for international delivery.",
+    },
+    {
+      q: "What if I order the wrong colour?",
+      a: "Reach out within 48 hours of delivery and we'll work it out.",
+    },
+    {
+      q: "Are these real human hair?",
+      a: "Yes. Every strand. We inspect each unit before shipping.",
+    },
   ];
   const [open, setOpen] = useState<number | null>(0);
   return (
@@ -138,7 +180,10 @@ export function Faq({ payload }: { payload: LandingPayload }) {
           {items.map((it, i) => {
             const isOpen = open === i;
             return (
-              <div key={i} className="glass rounded-[var(--radius)] overflow-hidden">
+              <div
+                key={i}
+                className="glass rounded-[var(--radius)] overflow-hidden"
+              >
                 <button
                   type="button"
                   onClick={() => setOpen(isOpen ? null : i)}
@@ -177,10 +222,16 @@ export function WigCare({ payload }: { payload: LandingPayload }) {
   return (
     <section className="section-tight">
       <div className="mx-auto max-w-[820px] glass rounded-[var(--radius)] p-8">
-        <SectionHeader eyebrow="Wear it forever" title="A 4-step care ritual." />
+        <SectionHeader
+          eyebrow="Wear it forever"
+          title="A 4-step care ritual."
+        />
         <ol className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-[14px] text-[rgb(var(--text-muted))]">
           {[
-            ["Wash gently every 8-10 wears", "Use sulphate-free shampoo. Soak, don't scrub."],
+            [
+              "Wash gently every 8-10 wears",
+              "Use sulphate-free shampoo. Soak, don't scrub.",
+            ],
             ["Detangle from tips upward", "A wide-tooth comb. No hairbrushes."],
             ["Air-dry on a stand", "Direct heat dulls the cuticle."],
             ["Store braided + zipped", "Tangle-free between wears."],
@@ -190,7 +241,9 @@ export function WigCare({ payload }: { payload: LandingPayload }) {
                 {i + 1}
               </span>
               <div>
-                <div className="font-semibold text-[rgb(var(--text))]">{title}</div>
+                <div className="font-semibold text-[rgb(var(--text))]">
+                  {title}
+                </div>
                 <div>{body}</div>
               </div>
             </li>
@@ -216,7 +269,9 @@ export function StylistSpotlight({ payload }: { payload: LandingPayload }) {
         </span>
         <div>
           <div className="micro">Stylist spotlight</div>
-          <h3 className="font-display text-[22px] leading-tight mt-1">{name}</h3>
+          <h3 className="font-display text-[22px] leading-tight mt-1">
+            {name}
+          </h3>
           <p className="mt-2 text-[rgb(var(--text-muted))]">{body}</p>
         </div>
       </div>
@@ -236,7 +291,9 @@ export function ShippingReturns({ payload }: { payload: LandingPayload }) {
           </span>
           <div>
             <div className="font-semibold">DHL worldwide</div>
-            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">Tracked, insured.</div>
+            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">
+              Tracked, insured.
+            </div>
           </div>
         </div>
         <div className="flex gap-3 items-start">
@@ -245,7 +302,9 @@ export function ShippingReturns({ payload }: { payload: LandingPayload }) {
           </span>
           <div>
             <div className="font-semibold">Hand-inspected</div>
-            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">Every unit, every time.</div>
+            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">
+              Every unit, every time.
+            </div>
           </div>
         </div>
         <div className="flex gap-3 items-start">
@@ -254,7 +313,9 @@ export function ShippingReturns({ payload }: { payload: LandingPayload }) {
           </span>
           <div>
             <div className="font-semibold">48-hour grace</div>
-            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">Reach us in two days; we&apos;ll work it out.</div>
+            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">
+              Reach us in two days; we&apos;ll work it out.
+            </div>
           </div>
         </div>
       </div>

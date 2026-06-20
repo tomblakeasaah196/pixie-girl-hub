@@ -18,20 +18,28 @@ export function FloatingLauncher() {
   const { data } = useUnreadCount();
   const { data: messagesUnread } = useUnreadMessages();
   const openDock = useChatDockStore((s) => s.openDock);
-  const unread =
-    (data?.unread ?? 0) + (messagesUnread?.unread_count ?? 0);
+  const unread = (data?.unread ?? 0) + (messagesUnread?.unread_count ?? 0);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open || isDesktop) return;
-    const onDown = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const onDown = (e: PointerEvent) =>
+      !ref.current?.contains(e.target as Node) && setOpen(false);
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open, isDesktop]);
 
-  const mini = (label: string, icon: ReactNode, onClick: () => void, accent?: boolean) => (
+  const mini = (
+    label: string,
+    icon: ReactNode,
+    onClick: () => void,
+    accent?: boolean,
+  ) => (
     <button
-      onClick={() => { setOpen(false); onClick(); }}
+      onClick={() => {
+        setOpen(false);
+        onClick();
+      }}
       className={cn(
         "relative grid place-items-center w-12 h-12 rounded-full dropglass shadow-[0_8px_22px_rgb(0_0_0/0.4)] transition-all hover:scale-110 hover:border-accent/40",
         accent ? "text-accent-glow" : "text-text-primary",
@@ -53,9 +61,24 @@ export function FloatingLauncher() {
     >
       {open && (
         <div className="flex flex-col items-center gap-2.5 animate-fade-in">
-          <div className="group/m">{mini("Help", <HelpCircle className="w-5 h-5" />, () => navigate("/help"))}</div>
-          <div className="group/m">{mini("Messages", <MessageCircle className="w-5 h-5" />, () => (isDesktop ? openDock() : navigate("/smartcomm")))}</div>
-          <div className="group/m">{mini("Praxis AI", <Sparkles className="w-5 h-5" />, () => navigate("/praxis"), true)}</div>
+          <div className="group/m">
+            {mini("Help", <HelpCircle className="w-5 h-5" />, () =>
+              navigate("/help"),
+            )}
+          </div>
+          <div className="group/m">
+            {mini("Messages", <MessageCircle className="w-5 h-5" />, () =>
+              isDesktop ? openDock() : navigate("/smartcomm"),
+            )}
+          </div>
+          <div className="group/m">
+            {mini(
+              "Praxis AI",
+              <Sparkles className="w-5 h-5" />,
+              () => navigate("/praxis"),
+              true,
+            )}
+          </div>
         </div>
       )}
       <button

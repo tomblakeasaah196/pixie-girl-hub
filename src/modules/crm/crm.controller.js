@@ -214,7 +214,11 @@ const recordChurnScore = async (req, res) =>
     }),
   });
 
+const kpis = async (req, res) =>
+  res.json({ data: await service.kpis({ brand: req.brand }) });
+
 module.exports = {
+  kpis,
   listPipelines,
   createPipeline,
   updatePipeline,

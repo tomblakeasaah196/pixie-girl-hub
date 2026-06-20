@@ -591,7 +591,9 @@ export function HandToLogisticsModal({
             Cancel
           </Button>
           <Button
-            onClick={form.handleSubmit((v) => mutation.mutate(v as HandToLogisticsValues))}
+            onClick={form.handleSubmit((v) =>
+              mutation.mutate(v as HandToLogisticsValues),
+            )}
             loading={mutation.isPending}
           >
             Confirm Dispatch
@@ -666,7 +668,8 @@ export function HandToLogisticsModal({
                 error={fieldState.error?.message}
               />
               <p className="mt-1 text-[10px] text-brand-smoke/60">
-                Enter the delivery cost charged to the client (₦). Leave 0 if unknown.
+                Enter the delivery cost charged to the client (₦). Leave 0 if
+                unknown.
               </p>
             </div>
           )}

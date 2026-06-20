@@ -29,7 +29,10 @@ const ROLE_NAME = "factory_manager";
 
 async function main() {
   const args = process.argv.slice(2);
-  const businessArg = args[args.indexOf("--business") + 1] || process.env.FACTORY_BUSINESS || "faitlynhair";
+  const businessArg =
+    args[args.indexOf("--business") + 1] ||
+    process.env.FACTORY_BUSINESS ||
+    "faitlynhair";
 
   const pool = new Pool({
     host: process.env.DB_HOST,
@@ -48,7 +51,9 @@ async function main() {
       [EMAIL],
     );
     if (existing.length) {
-      process.stdout.write(`\n✔ Account already exists: ${EMAIL} (user_id: ${existing[0].user_id})\n`);
+      process.stdout.write(
+        `\n✔ Account already exists: ${EMAIL} (user_id: ${existing[0].user_id})\n`,
+      );
       return;
     }
 
@@ -110,7 +115,14 @@ async function main() {
           default_business, permitted_businesses, force_password_reset)
        VALUES ($1, $2, $3, $4, 'active', false, $5, $6::text[], false)
        RETURNING user_id`,
-      [profileId, EMAIL, passwordHash, DISPLAY_NAME, businessArg, [businessArg]],
+      [
+        profileId,
+        EMAIL,
+        passwordHash,
+        DISPLAY_NAME,
+        businessArg,
+        [businessArg],
+      ],
     );
     const userId = userRows[0].user_id;
 
@@ -133,7 +145,11 @@ async function main() {
         `  user_id:  ${userId}\n\n`,
     );
   } catch (err) {
-    try { await client.query("ROLLBACK"); } catch { /* ignore */ }
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* ignore */
+    }
     process.stderr.write(`\n✗ Failed: ${err.message}\n`);
     process.exitCode = 1;
   } finally {

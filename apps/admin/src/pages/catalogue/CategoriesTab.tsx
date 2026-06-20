@@ -14,7 +14,11 @@ import {
 
 /** Dynamic categories (Tab 3 of the catalogue model). Manual list + create. */
 function slugify(s: string) {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function CategoriesTab() {
@@ -44,7 +48,10 @@ export function CategoriesTab() {
       {cats.isLoading ? (
         <Card className="p-5 space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-12 rounded-[11px] bg-text-primary/[0.05] animate-pulse" />
+            <div
+              key={i}
+              className="h-12 rounded-[11px] bg-text-primary/[0.05] animate-pulse"
+            />
           ))}
         </Card>
       ) : cats.isError ? (
@@ -57,7 +64,11 @@ export function CategoriesTab() {
             message="Group products into dynamic categories for the storefront."
             action={
               canCreate ? (
-                <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setOpen(true)}
+                >
                   New category
                 </Button>
               ) : undefined
@@ -69,12 +80,20 @@ export function CategoriesTab() {
           {(cats.data ?? []).map((c: Category) => (
             <Card key={c.category_id} className="p-3.5 flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-semibold truncate">{c.name}</div>
+                <div className="text-[14px] font-semibold truncate">
+                  {c.name}
+                </div>
                 {c.description && (
-                  <div className="text-[12px] text-text-faint truncate">{c.description}</div>
+                  <div className="text-[12px] text-text-faint truncate">
+                    {c.description}
+                  </div>
                 )}
               </div>
-              {!c.is_visible_storefront && <Pill tone="neutral" dot={false}>Hidden</Pill>}
+              {!c.is_visible_storefront && (
+                <Pill tone="neutral" dot={false}>
+                  Hidden
+                </Pill>
+              )}
               {canDelete && (
                 <button
                   onClick={() => archive.mutate(c.category_id)}
@@ -95,7 +114,13 @@ export function CategoriesTab() {
   );
 }
 
-function CreateCategoryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreateCategoryModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateCategory();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -103,7 +128,11 @@ function CreateCategoryModal({ open, onClose }: { open: boolean; onClose: () => 
   const submit = () => {
     if (!name.trim()) return;
     create.mutate(
-      { name: name.trim(), slug: slugify(name), description: description.trim() || null },
+      {
+        name: name.trim(),
+        slug: slugify(name),
+        description: description.trim() || null,
+      },
       {
         onSuccess: () => {
           setName("");
@@ -124,7 +153,12 @@ function CreateCategoryModal({ open, onClose }: { open: boolean; onClose: () => 
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" disabled={!name.trim() || create.isPending} onClick={submit}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!name.trim() || create.isPending}
+            onClick={submit}
+          >
             {create.isPending ? "Creating…" : "Create"}
           </Button>
         </>
@@ -147,7 +181,9 @@ function CreateCategoryModal({ open, onClose }: { open: boolean; onClose: () => 
         </Field>
         {create.isError && (
           <p className="text-[12px] text-danger">
-            {create.error instanceof Error ? create.error.message : "Could not create category."}
+            {create.error instanceof Error
+              ? create.error.message
+              : "Could not create category."}
           </p>
         )}
       </div>

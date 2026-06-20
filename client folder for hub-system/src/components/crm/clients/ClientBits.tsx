@@ -10,7 +10,10 @@ import { cn } from "@lib/cn";
 
 const SEGMENT_META: Record<
   ClientSegment,
-  { label: string; tone: "gold" | "rose" | "sage" | "neutral" | "warn" | "info" }
+  {
+    label: string;
+    tone: "gold" | "rose" | "sage" | "neutral" | "warn" | "info";
+  }
 > = {
   new: { label: "New", tone: "info" },
   active: { label: "Active", tone: "sage" },
@@ -69,7 +72,10 @@ export function QuickReach({
 }) {
   const wa = whatsapp || phone;
   return (
-    <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+    <span
+      className="inline-flex items-center gap-1"
+      onClick={(e) => e.stopPropagation()}
+    >
       {phone && (
         <a
           href={`tel:${phone}`}

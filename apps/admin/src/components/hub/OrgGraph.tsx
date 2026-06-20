@@ -46,7 +46,11 @@ function buildLayout(positions: OrgPosition[]): LayoutNode[] {
 
   // Sort children within each parent by display_order, then name
   for (const [, children] of childrenOf) {
-    children.sort((a, b) => a.display_order - b.display_order || a.display_name.localeCompare(b.display_name));
+    children.sort(
+      (a, b) =>
+        a.display_order - b.display_order ||
+        a.display_name.localeCompare(b.display_name),
+    );
   }
 
   const layout: LayoutNode[] = [];
@@ -72,7 +76,11 @@ function buildLayout(positions: OrgPosition[]): LayoutNode[] {
     const parent = p.reports_to_position_id;
     return !parent || !byId.has(parent);
   });
-  roots.sort((a, b) => a.display_order - b.display_order || a.display_name.localeCompare(b.display_name));
+  roots.sort(
+    (a, b) =>
+      a.display_order - b.display_order ||
+      a.display_name.localeCompare(b.display_name),
+  );
   for (const root of roots) visit(root.position_id, 0);
 
   return layout;
@@ -88,7 +96,10 @@ function formatNgn(n: number): string {
 
 function GraphDesktop({ positions, onSelectPosition, selectedId }: Props) {
   const layout = useMemo(() => buildLayout(positions), [positions]);
-  const byId = useMemo(() => new Map(layout.map((n) => [n.pos.position_id, n])), [layout]);
+  const byId = useMemo(
+    () => new Map(layout.map((n) => [n.pos.position_id, n])),
+    [layout],
+  );
 
   if (layout.length === 0) {
     return (
@@ -102,7 +113,13 @@ function GraphDesktop({ positions, onSelectPosition, selectedId }: Props) {
   const maxY = Math.max(...layout.map((n) => n.y)) + NODE_H + PAD;
 
   // Build connector lines
-  const lines: Array<{ x1: number; y1: number; x2: number; y2: number; deputy: boolean }> = [];
+  const lines: Array<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    deputy: boolean;
+  }> = [];
   for (const node of layout) {
     const parentId = node.pos.reports_to_position_id;
     if (!parentId) continue;
@@ -209,7 +226,9 @@ function TreeNode({
   onSelectPosition?: (p: OrgPosition) => void;
   selectedId?: string | null;
 }) {
-  const children = positions.filter((p) => p.reports_to_position_id === pos.position_id);
+  const children = positions.filter(
+    (p) => p.reports_to_position_id === pos.position_id,
+  );
   const selected = selectedId === pos.position_id;
 
   return (
@@ -225,7 +244,9 @@ function TreeNode({
         )}
       >
         <div className="text-[13px] font-semibold">{pos.display_name}</div>
-        <div className="text-[10px] text-[rgb(var(--text-faint))] font-mono">{pos.position_key}</div>
+        <div className="text-[10px] text-[rgb(var(--text-faint))] font-mono">
+          {pos.position_key}
+        </div>
       </button>
       {children.length > 0 && (
         <ul className="space-y-0.5">
@@ -256,7 +277,14 @@ function GraphMobile({ positions, onSelectPosition, selectedId }: Props) {
     return (
       <ul className="space-y-1">
         {positions.map((p) => (
-          <TreeNode key={p.position_id} pos={p} depth={0} positions={positions} onSelectPosition={onSelectPosition} selectedId={selectedId} />
+          <TreeNode
+            key={p.position_id}
+            pos={p}
+            depth={0}
+            positions={positions}
+            onSelectPosition={onSelectPosition}
+            selectedId={selectedId}
+          />
         ))}
       </ul>
     );
@@ -265,7 +293,14 @@ function GraphMobile({ positions, onSelectPosition, selectedId }: Props) {
   return (
     <ul className="space-y-1">
       {roots.map((p) => (
-        <TreeNode key={p.position_id} pos={p} depth={0} positions={positions} onSelectPosition={onSelectPosition} selectedId={selectedId} />
+        <TreeNode
+          key={p.position_id}
+          pos={p}
+          depth={0}
+          positions={positions}
+          onSelectPosition={onSelectPosition}
+          selectedId={selectedId}
+        />
       ))}
     </ul>
   );

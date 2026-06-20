@@ -22,7 +22,11 @@ export function NewsletterCapture({ payload }: { payload: LandingPayload }) {
 }
 
 export function VipSignup({ payload }: { payload: LandingPayload }) {
-  if (!payload.vip_early_access_minutes || payload.vip_early_access_minutes <= 0) return null;
+  if (
+    !payload.vip_early_access_minutes ||
+    payload.vip_early_access_minutes <= 0
+  )
+    return null;
   const mins = payload.vip_early_access_minutes;
   const hrs = Math.round((mins / 60) * 10) / 10;
   return (
@@ -116,7 +120,9 @@ function Form({
         }`}
       >
         <SectionHeader eyebrow={eyebrow} title={title} />
-        <p className="text-center text-[rgb(var(--text-muted))] mt-3">{subtitle}</p>
+        <p className="text-center text-[rgb(var(--text-muted))] mt-3">
+          {subtitle}
+        </p>
         <form onSubmit={submit} className="mt-6 space-y-3">
           <input
             type="email"
@@ -148,13 +154,19 @@ function Form({
               </button>
             ))}
           </div>
-          {err && <p className="text-[12px] text-[rgb(var(--danger))]">{err}</p>}
+          {err && (
+            <p className="text-[12px] text-[rgb(var(--danger))]">{err}</p>
+          )}
           <button
             type="submit"
             disabled={busy}
             className="w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen disabled:opacity-60"
           >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : icon || <Bell className="w-4 h-4" />}
+            {busy ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              icon || <Bell className="w-4 h-4" />
+            )}
             {busy ? "Sending…" : ctaLabel}
           </button>
         </form>

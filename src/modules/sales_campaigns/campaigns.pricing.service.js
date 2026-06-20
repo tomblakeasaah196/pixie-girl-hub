@@ -23,7 +23,8 @@ const PRECISION = 4;
 Decimal.set({ precision: 24, rounding: Decimal.ROUND_HALF_UP });
 
 function d(value) {
-  if (value === null || value === undefined || value === "") return new Decimal(0);
+  if (value === null || value === undefined || value === "")
+    return new Decimal(0);
   return new Decimal(value);
 }
 
@@ -125,7 +126,11 @@ function charmRound({ price_ngn, strategy = "thousand_up", floor_ngn = null }) {
       break;
     }
     default:
-      throw new AppError("UNKNOWN_STRATEGY", `Unknown rounding strategy '${strategy}'`, 400);
+      throw new AppError(
+        "UNKNOWN_STRATEGY",
+        `Unknown rounding strategy '${strategy}'`,
+        400,
+      );
   }
 
   let belowFloor = false;
@@ -154,7 +159,10 @@ function charmRound({ price_ngn, strategy = "thousand_up", floor_ngn = null }) {
  * (cart engine) clamps and propagates `clamped: true` if so.
  */
 function applyQuantityTier({ cart, tiers }) {
-  const totalQty = cart.items.reduce((a, it) => a + Number(it.quantity || 0), 0);
+  const totalQty = cart.items.reduce(
+    (a, it) => a + Number(it.quantity || 0),
+    0,
+  );
   const sorted = [...tiers].sort((a, b) => b.min_quantity - a.min_quantity);
 
   let selected = null;
@@ -173,7 +181,9 @@ function applyQuantityTier({ cart, tiers }) {
     cart_total_quantity: totalQty,
     selected_tier: selected,
     next_tier: upcoming || null,
-    applied_discount_ngn: selected ? d(selected.fixed_discount_ngn).toFixed(2) : "0.00",
+    applied_discount_ngn: selected
+      ? d(selected.fixed_discount_ngn).toFixed(2)
+      : "0.00",
   };
 }
 
@@ -186,7 +196,10 @@ function applyQuantityTier({ cart, tiers }) {
  * Returns the highest-priority unmet rung, or null if no rung applies.
  */
 function pickNextCartUpsell({ cart, upsells, shown_ids = new Set() }) {
-  const totalQty = cart.items.reduce((a, it) => a + Number(it.quantity || 0), 0);
+  const totalQty = cart.items.reduce(
+    (a, it) => a + Number(it.quantity || 0),
+    0,
+  );
   const totalValue = cart.items.reduce(
     (a, it) => a.plus(d(it.unit_price_ngn).times(it.quantity || 0)),
     new Decimal(0),
@@ -197,12 +210,22 @@ function pickNextCartUpsell({ cart, upsells, shown_ids = new Set() }) {
     .sort((a, b) => a.rung - b.rung);
 
   for (const c of candidates) {
-    if (c.trigger_type === "cart_qty" && c.min_cart_qty !== null && c.min_cart_qty !== undefined) {
+    if (
+      c.trigger_type === "cart_qty" &&
+      c.min_cart_qty !== null &&
+      c.min_cart_qty !== undefined
+    ) {
       if (totalQty >= c.min_cart_qty) return c;
-    } else if (c.trigger_type === "cart_value" && c.min_cart_value_ngn !== null && c.min_cart_value_ngn !== undefined) {
+    } else if (
+      c.trigger_type === "cart_value" &&
+      c.min_cart_value_ngn !== null &&
+      c.min_cart_value_ngn !== undefined
+    ) {
       if (totalValue.gte(d(c.min_cart_value_ngn))) return c;
     } else if (c.trigger_type === "specific_bundle" && c.trigger_bundle_id) {
-      const hasBundle = cart.items.some((it) => it.bundle_id === c.trigger_bundle_id);
+      const hasBundle = cart.items.some(
+        (it) => it.bundle_id === c.trigger_bundle_id,
+      );
       if (hasBundle) return c;
     }
   }

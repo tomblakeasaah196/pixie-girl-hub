@@ -27,7 +27,11 @@ function register() {
     const locs = await repo.listLocations({ brand });
     for (const loc of locs) {
       if (loc.is_active)
-        await repo.seedLevel({ brand, variant_id, location_id: loc.location_id });
+        await repo.seedLevel({
+          brand,
+          variant_id,
+          location_id: loc.location_id,
+        });
     }
   });
   logger.info(

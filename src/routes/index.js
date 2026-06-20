@@ -19,7 +19,9 @@ const path = require("path");
 const { config } = require("../config/env");
 const { authMiddleware } = require("../middleware/auth");
 const { brandContextMiddleware } = require("../middleware/brand-context");
-const { hostBrandResolverMiddleware } = require("../middleware/host-brand-resolver");
+const {
+  hostBrandResolverMiddleware,
+} = require("../middleware/host-brand-resolver");
 const { publicWriteLimiter } = require("../middleware");
 
 // Auth & user-management
@@ -52,9 +54,13 @@ const businessSetupRouter = require("../modules/business_setup/business-setup.ro
 const platformSettingsRouter = require("../modules/platform_settings/platform-settings.routes");
 const settingsRouter = require("../modules/settings/settings.routes");
 const brandingPublicRouter = require("../modules/platform_settings/branding.public.routes");
-const { welcomeRouter: geoPublicRouter, geoRouter } = require("../modules/platform_settings/geo.public.routes");
+const {
+  welcomeRouter: geoPublicRouter,
+  geoRouter,
+} = require("../modules/platform_settings/geo.public.routes");
 const manifestPublicRouter = require("../modules/platform_settings/manifest.public.routes");
 const salesCampaignsRouter = require("../modules/sales_campaigns/campaigns.routes");
+const landingStudioRouter = require("../modules/landing_studio/landing.routes");
 const retentionRouter = require("../modules/retention/retention.routes");
 const productionRouter = require("../modules/production/production.routes");
 const serviceJobsRouter = require("../modules/service_jobs/service-jobs.routes");
@@ -125,6 +131,7 @@ const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.r
 const publicReferralRouter = require("../modules/retention/referral.routes");
 const publicHairQuizRouter = require("../modules/retention/hair-quiz.routes");
 const publicCampaignRouter = require("../modules/sales_campaigns/campaigns.public.routes");
+const publicLandingRouter = require("../modules/landing_studio/landing.public.routes");
 const publicSignRouter = require("../shared/documents/documents.esign.public.routes");
 const publicNewsletterRouter = require("../modules/email_campaigns/newsletter.routes");
 const publicEmailTrackingRouter = require("../modules/email_campaigns/tracking.routes");
@@ -160,6 +167,8 @@ function mountRoutes(app) {
   // /sale/:slug controller knows which brand to load when served from
   // sales.pixiegirlglobal.com / sales.thefaitlynbrand.com.
   publicRouter.use("/sale", hostBrandResolverMiddleware, publicCampaignRouter);
+  // Brand-level "no active sale" landing config (Landing Studio output).
+  publicRouter.use("/landing", hostBrandResolverMiddleware, publicLandingRouter);
   publicRouter.use("/sign", publicWriteLimiter, publicSignRouter);
   publicRouter.use("/newsletter", publicWriteLimiter, publicNewsletterRouter);
   publicRouter.use(
@@ -250,6 +259,7 @@ function mountRoutes(app) {
   api.use("/settings", settingsRouter);
   api.use("/platform-settings", platformSettingsRouter);
   api.use("/sales-campaigns", salesCampaignsRouter);
+  api.use("/landing-studio", landingStudioRouter);
   api.use("/retention", retentionRouter);
   api.use("/production", productionRouter);
   api.use("/service-jobs", serviceJobsRouter);

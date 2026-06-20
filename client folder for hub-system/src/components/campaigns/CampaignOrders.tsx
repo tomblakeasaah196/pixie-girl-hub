@@ -75,7 +75,10 @@ interface Props {
   business: string;
 }
 
-export default function CampaignOrders({ campaignId, business: _business }: Props) {
+export default function CampaignOrders({
+  campaignId,
+  business: _business,
+}: Props) {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [cancelModal, setCancelModal] = useState<string | null>(null);
@@ -133,10 +136,7 @@ export default function CampaignOrders({ campaignId, business: _business }: Prop
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-24 rounded-2xl bg-white/5 animate-pulse"
-          />
+          <div key={i} className="h-24 rounded-2xl bg-white/5 animate-pulse" />
         ))}
       </div>
     );
@@ -168,9 +168,7 @@ export default function CampaignOrders({ campaignId, business: _business }: Prop
                 : "text-brand-smoke border-white/10 hover:border-white/20",
             )}
           >
-            {f === "all"
-              ? "All"
-              : (STATUS_META[f]?.label ?? f)}
+            {f === "all" ? "All" : (STATUS_META[f]?.label ?? f)}
           </button>
         ))}
       </div>

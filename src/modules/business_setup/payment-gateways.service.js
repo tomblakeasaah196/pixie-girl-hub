@@ -42,7 +42,7 @@ function isEnabled(provider) {
 }
 
 // env fallback bags (used when no DB row, or to fill unset DB fields).
-function envCreds(provider) {
+function envCreds(provider, brand) {
   switch (provider) {
     case "paystack":
       return { secret_key: config.PAYSTACK_SECRET_KEY || null };
@@ -52,12 +52,19 @@ function envCreds(provider) {
         private_key: config.OPAY_PRIVATE_KEY || null,
         merchant_id: config.OPAY_MERCHANT_ID || null,
       };
-    case "nomba":
+    case "nomba": {
+      // Per-brand: prefer the brand-prefixed keys, fall back to legacy NOMBA_*.
+      const px = { pixiegirl: "PIXIE", faitlynhair: "FAITLYN" }[brand];
+      const pick = (suffix) =>
+        (px ? config[`${px}_NOMBA_${suffix}`] : null) ||
+        config[`NOMBA_${suffix}`] ||
+        null;
       return {
-        client_id: config.NOMBA_CLIENT_ID || null,
-        client_secret: config.NOMBA_API_KEY || null,
-        account_id: config.NOMBA_ACCOUNT_ID || null,
+        client_id: pick("CLIENT_ID"),
+        client_secret: pick("API_KEY"),
+        account_id: pick("ACCOUNT_ID"),
       };
+    }
     case "stripe":
       return {
         secret_key: config.STRIPE_SECRET_KEY || null,
@@ -203,7 +210,7 @@ function maskRow(r) {
  * expect, or null if nothing is configured at all.
  */
 async function resolveCredentials({ brand, provider }) {
-  const base = envCreds(provider);
+  const base = envCreds(provider, brand);
   let row = null;
   try {
     row = await repo.getRaw({ brand, provider });

@@ -22,7 +22,12 @@ export function useStockValuation(filters?: { location_id?: string }) {
   });
 }
 
-export function useStockLevels(params: { variant_id?: string; location_id?: string; page?: number; page_size?: number }) {
+export function useStockLevels(params: {
+  variant_id?: string;
+  location_id?: string;
+  page?: number;
+  page_size?: number;
+}) {
   const brand = useBrand();
   return useQuery({
     queryKey: [brand, "stock", "levels", params],
@@ -44,7 +49,12 @@ export function useStockMovements(params: {
   });
 }
 
-export function useStockAdjustments(params: { status?: string; location_id?: string; page?: number; page_size?: number }) {
+export function useStockAdjustments(params: {
+  status?: string;
+  location_id?: string;
+  page?: number;
+  page_size?: number;
+}) {
   const brand = useBrand();
   return useQuery({
     queryKey: [brand, "stock", "adjustments", params],
@@ -61,7 +71,11 @@ export function useStockAdjustment(id: string | null) {
   });
 }
 
-export function useStockTransfers(params: { status?: string; page?: number; page_size?: number }) {
+export function useStockTransfers(params: {
+  status?: string;
+  page?: number;
+  page_size?: number;
+}) {
   const brand = useBrand();
   return useQuery({
     queryKey: [brand, "stock", "transfers", params],
@@ -78,7 +92,12 @@ export function useStockTransfer(id: string | null) {
   });
 }
 
-export function useStockAlerts(params: { status?: string; variant_id?: string; page?: number; page_size?: number }) {
+export function useStockAlerts(params: {
+  status?: string;
+  variant_id?: string;
+  page?: number;
+  page_size?: number;
+}) {
   const brand = useBrand();
   return useQuery({
     queryKey: [brand, "stock", "alerts", params],
@@ -87,7 +106,11 @@ export function useStockAlerts(params: { status?: string; variant_id?: string; p
   });
 }
 
-export function useInboundShipments(params: { status?: string; page?: number; page_size?: number }) {
+export function useInboundShipments(params: {
+  status?: string;
+  page?: number;
+  page_size?: number;
+}) {
   const brand = useBrand();
   return useQuery({
     queryKey: [brand, "stock", "shipments", params],
@@ -107,7 +130,8 @@ export function useInboundShipment(id: string | null) {
 export function useStockMutations() {
   const brand = useBrand();
   const qc = useQueryClient();
-  const invalidate = (...keys: string[]) => qc.invalidateQueries({ queryKey: [brand, "stock", ...keys] });
+  const invalidate = (...keys: string[]) =>
+    qc.invalidateQueries({ queryKey: [brand, "stock", ...keys] });
 
   return {
     createLocation: useMutation({
@@ -115,13 +139,22 @@ export function useStockMutations() {
       onSuccess: () => invalidate("locations"),
     }),
     updateLocation: useMutation({
-      mutationFn: ({ id, patch }: { id: string; patch: Partial<Record<string, unknown>> }) =>
-        stockApi.updateLocation(id, patch as never),
+      mutationFn: ({
+        id,
+        patch,
+      }: {
+        id: string;
+        patch: Partial<Record<string, unknown>>;
+      }) => stockApi.updateLocation(id, patch as never),
       onSuccess: () => invalidate("locations"),
     }),
     recordMovement: useMutation({
       mutationFn: stockApi.recordMovement,
-      onSuccess: () => { invalidate("movements"); invalidate("levels"); invalidate("valuation"); },
+      onSuccess: () => {
+        invalidate("movements");
+        invalidate("levels");
+        invalidate("valuation");
+      },
     }),
     createAdjustment: useMutation({
       mutationFn: stockApi.createAdjustment,
@@ -133,7 +166,11 @@ export function useStockMutations() {
     }),
     approveAdjustment: useMutation({
       mutationFn: stockApi.approveAdjustment,
-      onSuccess: () => { invalidate("adjustments"); invalidate("levels"); invalidate("valuation"); },
+      onSuccess: () => {
+        invalidate("adjustments");
+        invalidate("levels");
+        invalidate("valuation");
+      },
     }),
     rejectAdjustment: useMutation({
       mutationFn: stockApi.rejectAdjustment,
@@ -141,7 +178,12 @@ export function useStockMutations() {
     }),
     postAdjustment: useMutation({
       mutationFn: stockApi.postAdjustment,
-      onSuccess: () => { invalidate("adjustments"); invalidate("levels"); invalidate("valuation"); invalidate("movements"); },
+      onSuccess: () => {
+        invalidate("adjustments");
+        invalidate("levels");
+        invalidate("valuation");
+        invalidate("movements");
+      },
     }),
     createTransfer: useMutation({
       mutationFn: stockApi.createTransfer,
@@ -149,12 +191,25 @@ export function useStockMutations() {
     }),
     dispatchTransfer: useMutation({
       mutationFn: stockApi.dispatchTransfer,
-      onSuccess: () => { invalidate("transfers"); invalidate("levels"); invalidate("movements"); },
+      onSuccess: () => {
+        invalidate("transfers");
+        invalidate("levels");
+        invalidate("movements");
+      },
     }),
     receiveTransfer: useMutation({
-      mutationFn: ({ id, input }: { id: string; input: Record<string, unknown> }) =>
-        stockApi.receiveTransfer(id, input),
-      onSuccess: () => { invalidate("transfers"); invalidate("levels"); invalidate("movements"); },
+      mutationFn: ({
+        id,
+        input,
+      }: {
+        id: string;
+        input: Record<string, unknown>;
+      }) => stockApi.receiveTransfer(id, input),
+      onSuccess: () => {
+        invalidate("transfers");
+        invalidate("levels");
+        invalidate("movements");
+      },
     }),
     acknowledgeAlert: useMutation({
       mutationFn: stockApi.acknowledgeAlert,
@@ -178,9 +233,18 @@ export function useStockMutations() {
       onSuccess: () => invalidate("shipments"),
     }),
     receiveShipment: useMutation({
-      mutationFn: ({ id, input }: { id: string; input: Record<string, unknown> }) =>
-        stockApi.receiveShipment(id, input),
-      onSuccess: () => { invalidate("shipments"); invalidate("levels"); invalidate("movements"); },
+      mutationFn: ({
+        id,
+        input,
+      }: {
+        id: string;
+        input: Record<string, unknown>;
+      }) => stockApi.receiveShipment(id, input),
+      onSuccess: () => {
+        invalidate("shipments");
+        invalidate("levels");
+        invalidate("movements");
+      },
     }),
   };
 }

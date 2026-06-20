@@ -4,7 +4,12 @@ import { Button, Pill, MoneyText } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field, TextInput } from "@/components/ui/Form";
-import { NumberField, Select, ConfirmDialog, ErrorState } from "@/components/ui/controls";
+import {
+  NumberField,
+  Select,
+  ConfirmDialog,
+  ErrorState,
+} from "@/components/ui/controls";
 import type { BaseProduct } from "@/lib/catalogue";
 import { ProductVariantPicker } from "./parts";
 import { useOverrides, useOverrideMutations } from "./hooks";
@@ -21,25 +26,39 @@ export function OverridesTab({ canEdit }: { canEdit: boolean }) {
     {
       key: "variant",
       header: "Variant",
-      render: (r) => <span className="font-mono text-[11px] text-text-muted">{r.variant_id.slice(0, 8)}…</span>,
+      render: (r) => (
+        <span className="font-mono text-[11px] text-text-muted">
+          {r.variant_id.slice(0, 8)}…
+        </span>
+      ),
     },
     {
       key: "channel",
       header: "Channel",
       width: "120px",
-      render: (r) => <span className="text-text-muted text-xs">{channelLabel(r.channel)}</span>,
+      render: (r) => (
+        <span className="text-text-muted text-xs">
+          {channelLabel(r.channel)}
+        </span>
+      ),
     },
     {
       key: "price",
       header: "Override price",
       align: "right",
       width: "140px",
-      render: (r) => <MoneyText ngn={Number(r.override_price_ngn)} className="text-[13px]" />,
+      render: (r) => (
+        <MoneyText ngn={Number(r.override_price_ngn)} className="text-[13px]" />
+      ),
     },
     {
       key: "reason",
       header: "Reason",
-      render: (r) => <span className="text-text-muted text-xs truncate">{r.reason ?? "—"}</span>,
+      render: (r) => (
+        <span className="text-text-muted text-xs truncate">
+          {r.reason ?? "—"}
+        </span>
+      ),
     },
     {
       key: "dates",
@@ -56,7 +75,11 @@ export function OverridesTab({ canEdit }: { canEdit: boolean }) {
       key: "status",
       header: "Status",
       width: "100px",
-      render: (r) => <Pill tone={r.is_active ? "success" : "neutral"}>{r.is_active ? "Active" : "Inactive"}</Pill>,
+      render: (r) => (
+        <Pill tone={r.is_active ? "success" : "neutral"}>
+          {r.is_active ? "Active" : "Inactive"}
+        </Pill>
+      ),
     },
     ...(canEdit
       ? [
@@ -87,7 +110,12 @@ export function OverridesTab({ canEdit }: { canEdit: boolean }) {
     <div className="space-y-4">
       <div className="flex justify-end">
         {canEdit && (
-          <Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setCreating(true)}>
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => setCreating(true)}
+          >
             New override
           </Button>
         )}
@@ -101,9 +129,14 @@ export function OverridesTab({ canEdit }: { canEdit: boolean }) {
         empty={{
           icon: <Layers className="w-7 h-7" />,
           title: "No price overrides",
-          message: "Pin a fixed price for a specific variant on a specific channel.",
+          message:
+            "Pin a fixed price for a specific variant on a specific channel.",
           action: canEdit ? (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setCreating(true)}
+            >
               New override
             </Button>
           ) : undefined,
@@ -114,7 +147,9 @@ export function OverridesTab({ canEdit }: { canEdit: boolean }) {
         open={creating}
         saving={create.isPending}
         onClose={() => setCreating(false)}
-        onSubmit={(input) => create.mutate(input, { onSuccess: () => setCreating(false) })}
+        onSubmit={(input) =>
+          create.mutate(input, { onSuccess: () => setCreating(false) })
+        }
       />
 
       <ConfirmDialog
@@ -122,7 +157,9 @@ export function OverridesTab({ canEdit }: { canEdit: boolean }) {
         onClose={() => setConfirmDel(null)}
         onConfirm={() =>
           confirmDel &&
-          remove.mutate(confirmDel.override_id, { onSuccess: () => setConfirmDel(null) })
+          remove.mutate(confirmDel.override_id, {
+            onSuccess: () => setConfirmDel(null),
+          })
         }
         title="Remove override?"
         message="The variant reverts to its rule-driven / catalogue price on this channel."
@@ -194,7 +231,11 @@ function OverrideDrawer({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={saving || !valid} onClick={submit}>
+          <Button
+            variant="primary"
+            disabled={saving || !valid}
+            onClick={submit}
+          >
             {saving ? "Creating…" : "Create override"}
           </Button>
         </>
@@ -208,13 +249,26 @@ function OverrideDrawer({
           onVariant={(id) => setVariantId(id)}
         />
         <Field label="Channel">
-          <Select value={channel} onChange={(v) => setChannel(v)} options={CHANNEL_OPTIONS} />
+          <Select
+            value={channel}
+            onChange={(v) => setChannel(v)}
+            options={CHANNEL_OPTIONS}
+          />
         </Field>
         <Field label="Override price (₦)">
-          <NumberField value={price} onChange={setPrice} suffix="₦" placeholder="0.00" />
+          <NumberField
+            value={price}
+            onChange={setPrice}
+            suffix="₦"
+            placeholder="0.00"
+          />
         </Field>
         <Field label="Reason">
-          <TextInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why this price is pinned" />
+          <TextInput
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why this price is pinned"
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Effective from" hint="optional">

@@ -20,7 +20,10 @@ import {
  */
 
 export function IntegrationSecretsPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Integration Secrets" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Integration Secrets" },
+  ]);
   const query = useIntegrationSecrets();
   const setSecret = useSetSecret();
   const del = useDeleteSecret();
@@ -53,13 +56,25 @@ export function IntegrationSecretsPage() {
   };
 
   const columns: Column<IntegrationSecret>[] = [
-    { key: "provider", header: "Provider", render: (r) => <span className="font-semibold">{r.provider}</span> },
-    { key: "key_name", header: "Key name", render: (r) => <span className="font-mono text-[12.5px]">{r.key_name}</span> },
+    {
+      key: "provider",
+      header: "Provider",
+      render: (r) => <span className="font-semibold">{r.provider}</span>,
+    },
+    {
+      key: "key_name",
+      header: "Key name",
+      render: (r) => (
+        <span className="font-mono text-[12.5px]">{r.key_name}</span>
+      ),
+    },
     {
       key: "value",
       header: "Value",
       render: (r) => (
-        <span className="font-mono text-text-muted">•••• {r.last4 ?? "????"}</span>
+        <span className="font-mono text-text-muted">
+          •••• {r.last4 ?? "????"}
+        </span>
       ),
     },
     {
@@ -75,7 +90,11 @@ export function IntegrationSecretsPage() {
       key: "is_active",
       header: "Status",
       render: (r) =>
-        r.is_active ? <Pill tone="success">Active</Pill> : <Pill tone="neutral">Inactive</Pill>,
+        r.is_active ? (
+          <Pill tone="success">Active</Pill>
+        ) : (
+          <Pill tone="neutral">Inactive</Pill>
+        ),
     },
     {
       key: "actions",
@@ -110,12 +129,18 @@ export function IntegrationSecretsPage() {
     <div className="max-w-[960px] mx-auto">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
-          <h2 className="font-display text-xl font-medium">Integration secrets</h2>
+          <h2 className="font-display text-xl font-medium">
+            Integration secrets
+          </h2>
           <p className="text-[13px] text-text-muted mt-0.5">
             API keys and tokens for third-party providers.
           </p>
         </div>
-        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setDrawerOpen(true)}>
+        <Button
+          variant="primary"
+          icon={<Plus className="w-4 h-4" />}
+          onClick={() => setDrawerOpen(true)}
+        >
           Add / rotate key
         </Button>
       </div>
@@ -124,7 +149,8 @@ export function IntegrationSecretsPage() {
         <ShieldCheck className="w-4 h-4 text-accent-glow shrink-0 mt-0.5" />
         <p className="text-[12.5px] text-text-muted leading-relaxed">
           Keys are encrypted at rest (AES-256-GCM) and never displayed again —
-          only replaced. This is safer than storing them in <code className="font-mono">.env</code>.
+          only replaced. This is safer than storing them in{" "}
+          <code className="font-mono">.env</code>.
         </p>
       </Card>
 
@@ -136,9 +162,14 @@ export function IntegrationSecretsPage() {
         empty={{
           icon: <KeyRound className="w-7 h-7" />,
           title: "No keys stored",
-          message: "Add your first provider key. The value is encrypted and shown only as the last 4 characters.",
+          message:
+            "Add your first provider key. The value is encrypted and shown only as the last 4 characters.",
           action: (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setDrawerOpen(true)}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setDrawerOpen(true)}
+            >
               Add / rotate key
             </Button>
           ),
@@ -152,8 +183,14 @@ export function IntegrationSecretsPage() {
         subtitle="Write-only — the value is never shown again"
         footer={
           <>
-            <Button variant="ghost" onClick={closeDrawer}>Cancel</Button>
-            <Button variant="primary" disabled={!canSave || setSecret.isPending} onClick={submit}>
+            <Button variant="ghost" onClick={closeDrawer}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!canSave || setSecret.isPending}
+              onClick={submit}
+            >
               {setSecret.isPending ? "Saving…" : "Save key"}
             </Button>
           </>
@@ -161,10 +198,18 @@ export function IntegrationSecretsPage() {
       >
         <div className="space-y-4">
           <Field label="Provider" hint="e.g. paystack, sendgrid">
-            <TextInput value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="paystack" />
+            <TextInput
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              placeholder="paystack"
+            />
           </Field>
           <Field label="Key name" hint="identifier for this key">
-            <TextInput value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="secret_key" />
+            <TextInput
+              value={keyName}
+              onChange={(e) => setKeyName(e.target.value)}
+              placeholder="secret_key"
+            />
           </Field>
           <Field label="Secret" hint="entered once; encrypted at rest">
             <input
@@ -178,7 +223,9 @@ export function IntegrationSecretsPage() {
           </Field>
           {setSecret.isError && (
             <p className="text-[12px] text-danger">
-              {setSecret.error instanceof Error ? setSecret.error.message : "Failed to save key"}
+              {setSecret.error instanceof Error
+                ? setSecret.error.message
+                : "Failed to save key"}
             </p>
           )}
         </div>
@@ -195,8 +242,8 @@ export function IntegrationSecretsPage() {
         message={
           <>
             Delete the <strong>{toDelete?.provider}</strong> /{" "}
-            <strong>{toDelete?.key_name}</strong> key? Integrations relying on it
-            will stop working until a new key is added.
+            <strong>{toDelete?.key_name}</strong> key? Integrations relying on
+            it will stop working until a new key is added.
           </>
         }
         confirmLabel="Delete"

@@ -56,7 +56,13 @@ async function listAdmin({ brand, limit = 50, offset = 0 }) {
   return rows;
 }
 
-async function markCompleted({ client, submission_id, payload, contact_id, ip }) {
+async function markCompleted({
+  client,
+  submission_id,
+  payload,
+  contact_id,
+  ip,
+}) {
   const { rows } = await ex(client)(
     `UPDATE shared.customer_onboarding_submissions
         SET payload      = $2,

@@ -145,9 +145,7 @@ export default function InvoiceDetail() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() =>
-                openInvoicePdf(invoice.invoice_id)
-              }
+              onClick={() => openInvoicePdf(invoice.invoice_id)}
             >
               <Download className="h-4 w-4" />
               PDF

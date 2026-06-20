@@ -30,7 +30,14 @@ const FALLBACK: Record<string, BrandConfig> = {
 };
 
 export function getBrand(): BrandKey {
-  return headers().get("x-brand") ?? "pixiegirl";
+  try {
+    const host = headers().get("host") || "";
+    if (host.includes("faitlyn")) return "faitlynhair";
+    if (host.includes("pixie")) return "pixiegirl";
+  } catch {
+    // fall through to default
+  }
+  return "pixiegirl";
 }
 
 export async function getBrandConfig(): Promise<BrandConfig> {

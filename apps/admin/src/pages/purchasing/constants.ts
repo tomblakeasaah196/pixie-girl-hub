@@ -5,32 +5,36 @@ export const PO_STATUS_META: Record<
   PoStatus,
   { label: string; tone: Tone; isFactory: boolean }
 > = {
-  draft:             { label: "Draft",             tone: "neutral", isFactory: false },
-  submitted:         { label: "Submitted",          tone: "warn",    isFactory: false },
-  approved:          { label: "Approved",           tone: "info",    isFactory: false },
-  in_production:     { label: "In Production",      tone: "accent",  isFactory: true  },
-  quality_check:     { label: "Quality Check",      tone: "warn",    isFactory: true  },
-  ready_to_ship:     { label: "Ready to Ship",      tone: "info",    isFactory: true  },
-  in_transit:        { label: "In Transit",         tone: "info",    isFactory: true  },
-  arrived_lagos:     { label: "Arrived Lagos",      tone: "warn",    isFactory: true  },
-  cleared_customs:   { label: "Cleared Customs",    tone: "warn",    isFactory: true  },
-  partially_received:{ label: "Partially Received", tone: "info",    isFactory: true  },
-  received:          { label: "Received",           tone: "success", isFactory: false },
-  closed:            { label: "Closed",             tone: "success", isFactory: false },
-  cancelled:         { label: "Cancelled",          tone: "neutral", isFactory: false },
+  draft: { label: "Draft", tone: "neutral", isFactory: false },
+  submitted: { label: "Submitted", tone: "warn", isFactory: false },
+  approved: { label: "Approved", tone: "info", isFactory: false },
+  in_production: { label: "In Production", tone: "accent", isFactory: true },
+  quality_check: { label: "Quality Check", tone: "warn", isFactory: true },
+  ready_to_ship: { label: "Ready to Ship", tone: "info", isFactory: true },
+  in_transit: { label: "In Transit", tone: "info", isFactory: true },
+  arrived_lagos: { label: "Arrived Lagos", tone: "warn", isFactory: true },
+  cleared_customs: { label: "Cleared Customs", tone: "warn", isFactory: true },
+  partially_received: {
+    label: "Partially Received",
+    tone: "info",
+    isFactory: true,
+  },
+  received: { label: "Received", tone: "success", isFactory: false },
+  closed: { label: "Closed", tone: "success", isFactory: false },
+  cancelled: { label: "Cancelled", tone: "neutral", isFactory: false },
 };
 
 // State machine — what statuses can we go to from each state?
 export const PO_NEXT_STATES: Partial<Record<PoStatus, PoStatus[]>> = {
-  approved:          ["in_production", "ready_to_ship", "in_transit", "cancelled"],
-  in_production:     ["quality_check", "ready_to_ship", "cancelled"],
-  quality_check:     ["ready_to_ship", "in_production", "cancelled"],
-  ready_to_ship:     ["in_transit", "cancelled"],
-  in_transit:        ["arrived_lagos", "cancelled"],
-  arrived_lagos:     ["cleared_customs"],
-  cleared_customs:   ["partially_received", "received"],
-  partially_received:["partially_received", "received", "closed"],
-  received:          ["closed"],
+  approved: ["in_production", "ready_to_ship", "in_transit", "cancelled"],
+  in_production: ["quality_check", "ready_to_ship", "cancelled"],
+  quality_check: ["ready_to_ship", "in_production", "cancelled"],
+  ready_to_ship: ["in_transit", "cancelled"],
+  in_transit: ["arrived_lagos", "cancelled"],
+  arrived_lagos: ["cleared_customs"],
+  cleared_customs: ["partially_received", "received"],
+  partially_received: ["partially_received", "received", "closed"],
+  received: ["closed"],
 };
 
 export const FACTORY_TRACKING_STEPS: PoStatus[] = [

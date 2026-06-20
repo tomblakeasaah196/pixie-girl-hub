@@ -4,7 +4,6 @@
 import { api } from "@services/api";
 import type { PayrollRun, Payslip, PayrollMode } from "@typedefs/payroll";
 
-
 export interface PayrollRunListResponse {
   data: PayrollRun[];
 }
@@ -83,10 +82,19 @@ export async function sendPayslip(
 
 export async function openPayslipPdf(payslipId: string): Promise<void> {
   const { openPdf } = await import("@lib/openPdf");
-  return openPdf(`/payroll/payslips/${payslipId}/pdf`, `payslip-${payslipId}.pdf`);
+  return openPdf(
+    `/payroll/payslips/${payslipId}/pdf`,
+    `payslip-${payslipId}.pdf`,
+  );
 }
 
-export async function openCompliancePdf(runId: string, outputKey: string): Promise<void> {
+export async function openCompliancePdf(
+  runId: string,
+  outputKey: string,
+): Promise<void> {
   const { openPdf } = await import("@lib/openPdf");
-  return openPdf(`/payroll/runs/${runId}/compliance/${outputKey}`, `${outputKey}.pdf`);
+  return openPdf(
+    `/payroll/runs/${runId}/compliance/${outputKey}`,
+    `${outputKey}.pdf`,
+  );
 }

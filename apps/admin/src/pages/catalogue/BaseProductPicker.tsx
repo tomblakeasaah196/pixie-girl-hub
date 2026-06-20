@@ -28,7 +28,8 @@ export function BaseProductPicker({
   useEffect(() => {
     if (!open) return;
     const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
@@ -64,7 +65,11 @@ export function BaseProductPicker({
           </button>
         )}
         {!disabled && (
-          <button onClick={clear} className="text-text-faint hover:text-danger" aria-label="Clear">
+          <button
+            onClick={clear}
+            className="text-text-faint hover:text-danger"
+            aria-label="Clear"
+          >
             <X className="w-4 h-4" />
           </button>
         )}
@@ -97,7 +102,9 @@ export function BaseProductPicker({
               Start typing to search…
             </div>
           ) : results.isLoading ? (
-            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">Searching…</div>
+            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
+              Searching…
+            </div>
           ) : list.length === 0 ? (
             <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
               No base products match “{q.trim()}”.
@@ -113,11 +120,19 @@ export function BaseProductPicker({
                   b.product_id === value && "bg-accent/[0.08]",
                 )}
               >
-                <div className="text-[13px] text-text-primary truncate">{b.name}</div>
+                <div className="text-[13px] text-text-primary truncate">
+                  {b.name}
+                </div>
                 <div className="text-[11px] text-text-faint flex items-center gap-2">
-                  <span className="font-mono text-accent-glow">{b.product_code}</span>
-                  {b.lace_type && <span>· {b.lace_type.replace(/_/g, " ")}</span>}
-                  {b.hair_length_inches != null && <span>· {b.hair_length_inches}"</span>}
+                  <span className="font-mono text-accent-glow">
+                    {b.product_code}
+                  </span>
+                  {b.lace_type && (
+                    <span>· {b.lace_type.replace(/_/g, " ")}</span>
+                  )}
+                  {b.hair_length_inches != null && (
+                    <span>· {b.hair_length_inches}"</span>
+                  )}
                 </div>
               </button>
             ))

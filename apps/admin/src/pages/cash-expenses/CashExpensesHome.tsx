@@ -10,18 +10,32 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
-import { Button, Card, EmptyState, KpiTile, Pill, Skeleton } from "@/components/ui/primitives";
+import {
+  Button,
+  Card,
+  EmptyState,
+  KpiTile,
+  Pill,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { MoneyText } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
 import { moneyCompact } from "@/lib/format";
+import { useCashRequests, useCashRequestKpis, useExpenses } from "./hooks";
 import {
-  useCashRequests,
-  useCashRequestKpis,
-  useExpenses,
-} from "./hooks";
-import { CR_STATUS_META, CR_STATUS_TABS, EXPENSE_STATUS_META, EXPENSE_STATUS_TABS, URGENCY_META } from "./constants";
-import type { CashRequest, CashRequestStatus, Expense, ExpenseStatus } from "./types";
+  CR_STATUS_META,
+  CR_STATUS_TABS,
+  EXPENSE_STATUS_META,
+  EXPENSE_STATUS_TABS,
+  URGENCY_META,
+} from "./constants";
+import type {
+  CashRequest,
+  CashRequestStatus,
+  Expense,
+  ExpenseStatus,
+} from "./types";
 
 const CashRequestDetailDrawer = lazy(() => import("./CashRequestDetailDrawer"));
 const CreateCashRequestDrawer = lazy(() => import("./CreateCashRequestDrawer"));
@@ -59,11 +73,36 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
 
   const canApprove = can("expenses", "approve");
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode; show: boolean }[] = [
-    { key: "my-requests", label: "My Requests", icon: <Wallet className="w-4 h-4" />, show: true },
-    { key: "approval-queue", label: "Approval Queue", icon: <ClipboardCheck className="w-4 h-4" />, show: canApprove },
-    { key: "all-requests", label: "All Cash Requests", icon: <Banknote className="w-4 h-4" />, show: canApprove },
-    { key: "expenses", label: "Expenses", icon: <Receipt className="w-4 h-4" />, show: true },
+  const tabs: {
+    key: Tab;
+    label: string;
+    icon: React.ReactNode;
+    show: boolean;
+  }[] = [
+    {
+      key: "my-requests",
+      label: "My Requests",
+      icon: <Wallet className="w-4 h-4" />,
+      show: true,
+    },
+    {
+      key: "approval-queue",
+      label: "Approval Queue",
+      icon: <ClipboardCheck className="w-4 h-4" />,
+      show: canApprove,
+    },
+    {
+      key: "all-requests",
+      label: "All Cash Requests",
+      icon: <Banknote className="w-4 h-4" />,
+      show: canApprove,
+    },
+    {
+      key: "expenses",
+      label: "Expenses",
+      icon: <Receipt className="w-4 h-4" />,
+      show: true,
+    },
   ];
 
   return (
@@ -72,10 +111,16 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-2xl font-medium">Cash & Expenses</h1>
-          <p className="text-text-muted text-sm mt-0.5">Requests, approvals, disbursements & expenses</p>
+          <p className="text-text-muted text-sm mt-0.5">
+            Requests, approvals, disbursements & expenses
+          </p>
         </div>
         {can("expenses", "create") && (
-          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
+          <Button
+            variant="primary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => setShowCreate(true)}
+          >
             New Cash Request
           </Button>
         )}
@@ -83,21 +128,27 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
 
       {/* Tab bar */}
       <div className="flex gap-1 p-1 glass rounded-2xl overflow-x-auto">
-        {tabs.filter((t) => t.show).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => { setTab(t.key); setCrPage(1); setExPage(1); }}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all",
-              tab === t.key
-                ? "bg-accent-deep text-[#F4E9D9] shadow-md"
-                : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05]",
-            )}
-          >
-            {t.icon}
-            {t.label}
-          </button>
-        ))}
+        {tabs
+          .filter((t) => t.show)
+          .map((t) => (
+            <button
+              key={t.key}
+              onClick={() => {
+                setTab(t.key);
+                setCrPage(1);
+                setExPage(1);
+              }}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all",
+                tab === t.key
+                  ? "bg-accent-deep text-[#F4E9D9] shadow-md"
+                  : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05]",
+              )}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
       </div>
 
       {/* Tab content */}
@@ -113,10 +164,7 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
         />
       )}
       {tab === "approval-queue" && (
-        <ApprovalQueueTab
-          page={crPage}
-          onSelect={setSelectedCr}
-        />
+        <ApprovalQueueTab page={crPage} onSelect={setSelectedCr} />
       )}
       {tab === "all-requests" && (
         <AllRequestsTab
@@ -143,13 +191,14 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
           <CashRequestDetailDrawer
             request={selectedCr}
             onClose={() => setSelectedCr(null)}
-            onSettle={(cr) => { setSelectedCr(null); setShowSettle(cr); }}
+            onSettle={(cr) => {
+              setSelectedCr(null);
+              setShowSettle(cr);
+            }}
           />
         )}
         {showCreate && (
-          <CreateCashRequestDrawer
-            onClose={() => setShowCreate(false)}
-          />
+          <CreateCashRequestDrawer onClose={() => setShowCreate(false)} />
         )}
         {showSettle && (
           <SettlementWizardDrawer
@@ -263,10 +312,20 @@ function Pagination({
         {total} total · Page {page} of {pages}
       </span>
       <div className="flex gap-1">
-        <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+        >
           Prev
         </Button>
-        <Button size="sm" variant="ghost" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={page >= pages}
+          onClick={() => onPage(page + 1)}
+        >
           Next
         </Button>
       </div>
@@ -288,7 +347,11 @@ function exStatusPill(status: ExpenseStatus) {
 
 function formatDate(d: string | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "2-digit" });
+  return new Date(d).toLocaleDateString("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "2-digit",
+  });
 }
 
 // ── My Requests Tab ──────────────────────────────────────
@@ -316,15 +379,59 @@ function MyRequestsTab({
   });
 
   const cols: Column<CashRequest>[] = [
-    { key: "no", header: "Request #", width: "140px", render: (r) => <span className="font-mono text-xs">{r.request_number}</span> },
-    { key: "purpose", header: "Purpose", render: (r) => <span className="truncate max-w-[200px] block">{r.purpose}</span> },
-    { key: "amount", header: "Amount", align: "right", width: "130px", render: (r) => <MoneyText ngn={Number(r.amount_requested_ngn)} /> },
-    { key: "status", header: "Status", width: "150px", render: (r) => crStatusPill(r.status) },
-    { key: "date", header: "Submitted", width: "110px", render: (r) => <span className="text-text-muted text-xs">{formatDate(r.submitted_at || r.created_at)}</span> },
-    { key: "urgency", header: "Urgency", width: "100px", render: (r) => {
-      const u = URGENCY_META[r.urgency];
-      return r.urgency !== "normal" ? <Pill tone={u.tone} dot={false}>{u.label}</Pill> : <span className="text-text-faint text-xs">Normal</span>;
-    }},
+    {
+      key: "no",
+      header: "Request #",
+      width: "140px",
+      render: (r) => (
+        <span className="font-mono text-xs">{r.request_number}</span>
+      ),
+    },
+    {
+      key: "purpose",
+      header: "Purpose",
+      render: (r) => (
+        <span className="truncate max-w-[200px] block">{r.purpose}</span>
+      ),
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      align: "right",
+      width: "130px",
+      render: (r) => <MoneyText ngn={Number(r.amount_requested_ngn)} />,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "150px",
+      render: (r) => crStatusPill(r.status),
+    },
+    {
+      key: "date",
+      header: "Submitted",
+      width: "110px",
+      render: (r) => (
+        <span className="text-text-muted text-xs">
+          {formatDate(r.submitted_at || r.created_at)}
+        </span>
+      ),
+    },
+    {
+      key: "urgency",
+      header: "Urgency",
+      width: "100px",
+      render: (r) => {
+        const u = URGENCY_META[r.urgency];
+        return r.urgency !== "normal" ? (
+          <Pill tone={u.tone} dot={false}>
+            {u.label}
+          </Pill>
+        ) : (
+          <span className="text-text-faint text-xs">Normal</span>
+        );
+      },
+    },
   ];
 
   if (isError) {
@@ -334,7 +441,11 @@ function MyRequestsTab({
           icon={<AlertTriangle className="w-7 h-7" />}
           title="Failed to load"
           message="Couldn't fetch your cash requests."
-          action={<Button variant="secondary" onClick={() => refetch()}>Retry</Button>}
+          action={
+            <Button variant="secondary" onClick={() => refetch()}>
+              Retry
+            </Button>
+          }
         />
       </Card>
     );
@@ -349,19 +460,37 @@ function MyRequestsTab({
         rowKey={(r) => r.cash_request_id}
         onRowClick={onSelect}
         loading={isLoading}
-        toolbar={<StatusFilters tabs={CR_STATUS_TABS} value={statusFilter} onChange={onStatusFilter} />}
+        toolbar={
+          <StatusFilters
+            tabs={CR_STATUS_TABS}
+            value={statusFilter}
+            onChange={onStatusFilter}
+          />
+        }
         empty={{
           icon: <Wallet className="w-7 h-7" />,
           title: "No cash requests yet",
-          message: "Need funds for a purchase or expense? Request cash and get it approved in minutes.",
+          message:
+            "Need funds for a purchase or expense? Request cash and get it approved in minutes.",
           action: canCreate ? (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={onCreate}>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={onCreate}
+            >
               Request Cash
             </Button>
           ) : undefined,
         }}
       />
-      {data && <Pagination page={data.page} total={data.total} pageSize={data.page_size} onPage={onPage} />}
+      {data && (
+        <Pagination
+          page={data.page}
+          total={data.total}
+          pageSize={data.page_size}
+          onPage={onPage}
+        />
+      )}
     </div>
   );
 }
@@ -381,25 +510,82 @@ function ApprovalQueueTab({
   const rows = [
     ...(pending.data?.data ?? []),
     ...(pendingCeo.data?.data ?? []),
-  ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  ].sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
 
   const isLoading = pending.isLoading || pendingCeo.isLoading;
 
   const cols: Column<CashRequest>[] = [
-    { key: "no", header: "Request #", width: "130px", render: (r) => <span className="font-mono text-xs">{r.request_number}</span> },
-    { key: "purpose", header: "Purpose", render: (r) => <span className="truncate max-w-[180px] block">{r.purpose}</span> },
-    { key: "category", header: "Category", width: "130px", render: (r) => <span className="text-xs">{r.category_display}</span> },
-    { key: "amount", header: "Amount", align: "right", width: "130px", render: (r) => <MoneyText ngn={Number(r.amount_requested_ngn)} /> },
-    { key: "urgency", header: "Urgency", width: "95px", render: (r) => {
-      const u = URGENCY_META[r.urgency];
-      return <Pill tone={u.tone} dot={r.urgency !== "normal"}>{u.label}</Pill>;
-    }},
-    { key: "status", header: "Stage", width: "140px", render: (r) => crStatusPill(r.status) },
-    { key: "waiting", header: "Waiting", width: "100px", render: (r) => {
-      const since = r.submitted_at || r.created_at;
-      const hours = Math.round((Date.now() - new Date(since).getTime()) / 3_600_000);
-      return <span className={cn("text-xs", hours > 24 ? "text-danger font-bold" : "text-text-muted")}>{hours}h</span>;
-    }},
+    {
+      key: "no",
+      header: "Request #",
+      width: "130px",
+      render: (r) => (
+        <span className="font-mono text-xs">{r.request_number}</span>
+      ),
+    },
+    {
+      key: "purpose",
+      header: "Purpose",
+      render: (r) => (
+        <span className="truncate max-w-[180px] block">{r.purpose}</span>
+      ),
+    },
+    {
+      key: "category",
+      header: "Category",
+      width: "130px",
+      render: (r) => <span className="text-xs">{r.category_display}</span>,
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      align: "right",
+      width: "130px",
+      render: (r) => <MoneyText ngn={Number(r.amount_requested_ngn)} />,
+    },
+    {
+      key: "urgency",
+      header: "Urgency",
+      width: "95px",
+      render: (r) => {
+        const u = URGENCY_META[r.urgency];
+        return (
+          <Pill tone={u.tone} dot={r.urgency !== "normal"}>
+            {u.label}
+          </Pill>
+        );
+      },
+    },
+    {
+      key: "status",
+      header: "Stage",
+      width: "140px",
+      render: (r) => crStatusPill(r.status),
+    },
+    {
+      key: "waiting",
+      header: "Waiting",
+      width: "100px",
+      render: (r) => {
+        const since = r.submitted_at || r.created_at;
+        const hours = Math.round(
+          (Date.now() - new Date(since).getTime()) / 3_600_000,
+        );
+        return (
+          <span
+            className={cn(
+              "text-xs",
+              hours > 24 ? "text-danger font-bold" : "text-text-muted",
+            )}
+          >
+            {hours}h
+          </span>
+        );
+      },
+    },
   ];
 
   return (
@@ -414,7 +600,8 @@ function ApprovalQueueTab({
         empty={{
           icon: <ClipboardCheck className="w-7 h-7" />,
           title: "Queue is clear",
-          message: "No cash requests need your approval right now. You'll be notified when one arrives.",
+          message:
+            "No cash requests need your approval right now. You'll be notified when one arrives.",
         }}
       />
     </div>
@@ -436,22 +623,79 @@ function AllRequestsTab({
   onPage: (p: number) => void;
   onSelect: (cr: CashRequest) => void;
 }) {
-  const { data, isLoading } = useCashRequests({ status: statusFilter || undefined, page });
+  const { data, isLoading } = useCashRequests({
+    status: statusFilter || undefined,
+    page,
+  });
 
   const cols: Column<CashRequest>[] = [
-    { key: "no", header: "Request #", width: "130px", render: (r) => <span className="font-mono text-xs">{r.request_number}</span> },
-    { key: "category", header: "Category", width: "130px", render: (r) => <span className="text-xs">{r.category_display}</span> },
-    { key: "purpose", header: "Purpose", render: (r) => <span className="truncate max-w-[180px] block">{r.purpose}</span> },
-    { key: "amount", header: "Amount", align: "right", width: "120px", render: (r) => <MoneyText ngn={Number(r.amount_requested_ngn)} /> },
-    { key: "status", header: "Status", width: "150px", render: (r) => crStatusPill(r.status) },
-    { key: "match", header: "Match", width: "110px", render: (r) => {
-      if (r.match_status === "not_applicable") return <span className="text-text-faint text-xs">—</span>;
-      const toneMap: Record<string, "success" | "warn" | "danger" | "neutral"> = {
-        matched: "success", unmatched: "neutral", mismatch: "danger", manual_review: "warn",
-      };
-      return <Pill tone={toneMap[r.match_status] ?? "neutral"} dot={false}>{r.match_status.replace("_", " ")}</Pill>;
-    }},
-    { key: "date", header: "Date", width: "100px", render: (r) => <span className="text-text-muted text-xs">{formatDate(r.created_at)}</span> },
+    {
+      key: "no",
+      header: "Request #",
+      width: "130px",
+      render: (r) => (
+        <span className="font-mono text-xs">{r.request_number}</span>
+      ),
+    },
+    {
+      key: "category",
+      header: "Category",
+      width: "130px",
+      render: (r) => <span className="text-xs">{r.category_display}</span>,
+    },
+    {
+      key: "purpose",
+      header: "Purpose",
+      render: (r) => (
+        <span className="truncate max-w-[180px] block">{r.purpose}</span>
+      ),
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      align: "right",
+      width: "120px",
+      render: (r) => <MoneyText ngn={Number(r.amount_requested_ngn)} />,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "150px",
+      render: (r) => crStatusPill(r.status),
+    },
+    {
+      key: "match",
+      header: "Match",
+      width: "110px",
+      render: (r) => {
+        if (r.match_status === "not_applicable")
+          return <span className="text-text-faint text-xs">—</span>;
+        const toneMap: Record<
+          string,
+          "success" | "warn" | "danger" | "neutral"
+        > = {
+          matched: "success",
+          unmatched: "neutral",
+          mismatch: "danger",
+          manual_review: "warn",
+        };
+        return (
+          <Pill tone={toneMap[r.match_status] ?? "neutral"} dot={false}>
+            {r.match_status.replace("_", " ")}
+          </Pill>
+        );
+      },
+    },
+    {
+      key: "date",
+      header: "Date",
+      width: "100px",
+      render: (r) => (
+        <span className="text-text-muted text-xs">
+          {formatDate(r.created_at)}
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -463,14 +707,28 @@ function AllRequestsTab({
         rowKey={(r) => r.cash_request_id}
         onRowClick={onSelect}
         loading={isLoading}
-        toolbar={<StatusFilters tabs={CR_STATUS_TABS} value={statusFilter} onChange={onStatusFilter} />}
+        toolbar={
+          <StatusFilters
+            tabs={CR_STATUS_TABS}
+            value={statusFilter}
+            onChange={onStatusFilter}
+          />
+        }
         empty={{
           icon: <Banknote className="w-7 h-7" />,
           title: "No cash requests",
-          message: "Cash requests from all staff will appear here once submitted.",
+          message:
+            "Cash requests from all staff will appear here once submitted.",
         }}
       />
-      {data && <Pagination page={data.page} total={data.total} pageSize={data.page_size} onPage={onPage} />}
+      {data && (
+        <Pagination
+          page={data.page}
+          total={data.total}
+          pageSize={data.page_size}
+          onPage={onPage}
+        />
+      )}
     </div>
   );
 }
@@ -490,15 +748,60 @@ function ExpensesTab({
   onPage: (p: number) => void;
   onSelect: (ex: Expense) => void;
 }) {
-  const { data, isLoading } = useExpenses({ status: statusFilter || undefined, page });
+  const { data, isLoading } = useExpenses({
+    status: statusFilter || undefined,
+    page,
+  });
 
   const cols: Column<Expense>[] = [
-    { key: "no", header: "Expense #", width: "130px", render: (r) => <span className="font-mono text-xs">{r.expense_number}</span> },
-    { key: "title", header: "Title", render: (r) => <span className="truncate max-w-[200px] block">{r.title}</span> },
-    { key: "type", header: "Type", width: "120px", render: (r) => <span className="text-xs capitalize">{r.expense_type.replace(/_/g, " ")}</span> },
-    { key: "amount", header: "Amount", align: "right", width: "120px", render: (r) => <MoneyText ngn={Number(r.total_amount_ngn)} /> },
-    { key: "status", header: "Status", width: "130px", render: (r) => exStatusPill(r.status) },
-    { key: "date", header: "Date", width: "100px", render: (r) => <span className="text-text-muted text-xs">{formatDate(r.expense_date)}</span> },
+    {
+      key: "no",
+      header: "Expense #",
+      width: "130px",
+      render: (r) => (
+        <span className="font-mono text-xs">{r.expense_number}</span>
+      ),
+    },
+    {
+      key: "title",
+      header: "Title",
+      render: (r) => (
+        <span className="truncate max-w-[200px] block">{r.title}</span>
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      width: "120px",
+      render: (r) => (
+        <span className="text-xs capitalize">
+          {r.expense_type.replace(/_/g, " ")}
+        </span>
+      ),
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      align: "right",
+      width: "120px",
+      render: (r) => <MoneyText ngn={Number(r.total_amount_ngn)} />,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "130px",
+      render: (r) => exStatusPill(r.status),
+    },
+    {
+      key: "date",
+      header: "Date",
+      width: "100px",
+      render: (r) => (
+        <span className="text-text-muted text-xs">
+          {formatDate(r.expense_date)}
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -509,14 +812,28 @@ function ExpensesTab({
         rowKey={(r) => r.expense_id}
         onRowClick={onSelect}
         loading={isLoading}
-        toolbar={<StatusFilters tabs={EXPENSE_STATUS_TABS} value={statusFilter} onChange={onStatusFilter} />}
+        toolbar={
+          <StatusFilters
+            tabs={EXPENSE_STATUS_TABS}
+            value={statusFilter}
+            onChange={onStatusFilter}
+          />
+        }
         empty={{
           icon: <Receipt className="w-7 h-7" />,
           title: "No expenses recorded",
-          message: "Expenses from staff reimbursements, petty cash, and direct payments will appear here.",
+          message:
+            "Expenses from staff reimbursements, petty cash, and direct payments will appear here.",
         }}
       />
-      {data && <Pagination page={data.page} total={data.total} pageSize={data.page_size} onPage={onPage} />}
+      {data && (
+        <Pagination
+          page={data.page}
+          total={data.total}
+          pageSize={data.page_size}
+          onPage={onPage}
+        />
+      )}
     </div>
   );
 }

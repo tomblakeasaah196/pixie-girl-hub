@@ -3,7 +3,12 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, KeyRound, Loader2, Plug } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
-import { ErrorState, NumberField, Select, Toggle } from "@/components/ui/controls";
+import {
+  ErrorState,
+  NumberField,
+  Select,
+  Toggle,
+} from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
 import { useActiveBusiness } from "@/stores/business";
 import {
@@ -22,7 +27,12 @@ import {
  * business config keyed by provider.
  */
 
-const PROVIDERS: PaymentGateway["provider"][] = ["paystack", "opay", "nomba", "stripe"];
+const PROVIDERS: PaymentGateway["provider"][] = [
+  "paystack",
+  "opay",
+  "nomba",
+  "stripe",
+];
 const PROVIDER_LABEL: Record<PaymentGateway["provider"], string> = {
   paystack: "Paystack",
   opay: "OPay",
@@ -42,29 +52,37 @@ interface GatewayFee {
 }
 
 export function PaymentGatewaysPage() {
-  useBreadcrumbs([{ label: "Settings", href: "/settings" }, { label: "Payment Gateways" }]);
+  useBreadcrumbs([
+    { label: "Settings", href: "/settings" },
+    { label: "Payment Gateways" },
+  ]);
   const active = useActiveBusiness();
   const query = usePaymentGateways();
 
   const byProvider = new Map((query.data ?? []).map((g) => [g.provider, g]));
-  const cards: { provider: PaymentGateway["provider"]; row?: PaymentGateway }[] = PROVIDERS.map(
-    (p) => ({ provider: p, row: byProvider.get(p) }),
-  );
+  const cards: {
+    provider: PaymentGateway["provider"];
+    row?: PaymentGateway;
+  }[] = PROVIDERS.map((p) => ({ provider: p, row: byProvider.get(p) }));
 
-  const [configuring, setConfiguring] = useState<PaymentGateway["provider"] | null>(null);
+  const [configuring, setConfiguring] = useState<
+    PaymentGateway["provider"] | null
+  >(null);
 
   return (
     <div className="max-w-[960px] mx-auto space-y-7 pb-24">
       <header>
         <div className="flex items-center gap-2.5 mb-1.5">
-          <h1 className="font-display text-[22px] font-medium">Payment gateways</h1>
+          <h1 className="font-display text-[22px] font-medium">
+            Payment gateways
+          </h1>
           <Pill tone="accent" dot={false}>
             Editing for: {active.name}
           </Pill>
         </div>
         <p className="text-xs text-text-muted">
-          Connect providers, set roles, and manage write-only credentials. Secrets
-          are never displayed once saved.
+          Connect providers, set roles, and manage write-only credentials.
+          Secrets are never displayed once saved.
         </p>
       </header>
 
@@ -120,8 +138,14 @@ function GatewayCard({
     <Card className="p-5 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-display text-[17px] font-medium">{PROVIDER_LABEL[provider]}</div>
-          {!configured && <div className="text-[12px] text-text-faint mt-0.5">Not configured</div>}
+          <div className="font-display text-[17px] font-medium">
+            {PROVIDER_LABEL[provider]}
+          </div>
+          {!configured && (
+            <div className="text-[12px] text-text-faint mt-0.5">
+              Not configured
+            </div>
+          )}
         </div>
         {configured ? (
           <Toggle
@@ -248,7 +272,11 @@ function ConfigureDrawer({
             variant="primary"
             disabled={configure.isPending}
             onClick={submit}
-            icon={configure.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+            icon={
+              configure.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : undefined
+            }
           >
             Save credentials
           </Button>
@@ -261,15 +289,33 @@ function ConfigureDrawer({
           current value; fill it to rotate.
         </p>
         <Field label="Public key">
-          <PasswordInput value={publicKey} onChange={setPublicKey} placeholder="pk_live_…" autoComplete="off" />
+          <PasswordInput
+            value={publicKey}
+            onChange={setPublicKey}
+            placeholder="pk_live_…"
+            autoComplete="off"
+          />
         </Field>
         <Field label="Secret key">
-          <PasswordInput value={secretKey} onChange={setSecretKey} placeholder="sk_live_…" autoComplete="new-password" />
+          <PasswordInput
+            value={secretKey}
+            onChange={setSecretKey}
+            placeholder="sk_live_…"
+            autoComplete="new-password"
+          />
         </Field>
         <Field label="Webhook secret">
-          <PasswordInput value={webhookSecret} onChange={setWebhookSecret} placeholder="whsec_…" autoComplete="new-password" />
+          <PasswordInput
+            value={webhookSecret}
+            onChange={setWebhookSecret}
+            placeholder="whsec_…"
+            autoComplete="new-password"
+          />
         </Field>
-        <Field label="Supported currencies" hint="comma-separated, e.g. NGN, USD">
+        <Field
+          label="Supported currencies"
+          hint="comma-separated, e.g. NGN, USD"
+        >
           <input
             value={currencies}
             onChange={(e) => setCurrencies(e.target.value)}
@@ -279,7 +325,9 @@ function ConfigureDrawer({
         </Field>
         {configure.isError && (
           <p className="text-[12px] text-danger">
-            {configure.error instanceof Error ? configure.error.message : "Could not save credentials."}
+            {configure.error instanceof Error
+              ? configure.error.message
+              : "Could not save credentials."}
           </p>
         )}
       </div>
@@ -318,7 +366,10 @@ function FeeSchedule() {
   const config = useBusinessConfig();
   const save = useSaveBusinessConfig();
 
-  const serverFees = (config.data?.payment_gateway_fees ?? {}) as Record<string, GatewayFee>;
+  const serverFees = (config.data?.payment_gateway_fees ?? {}) as Record<
+    string,
+    GatewayFee
+  >;
   const [draft, setDraft] = useState<Record<string, GatewayFee>>({});
 
   useEffect(() => {
@@ -339,7 +390,8 @@ function FeeSchedule() {
       const entry: GatewayFee = {};
       if (f.pct !== "" && f.pct != null) entry.pct = Number(f.pct);
       if (f.fixed !== "" && f.fixed != null) entry.fixed = Number(f.fixed);
-      if (f.cap_ngn !== "" && f.cap_ngn != null) entry.cap_ngn = Number(f.cap_ngn);
+      if (f.cap_ngn !== "" && f.cap_ngn != null)
+        entry.cap_ngn = Number(f.cap_ngn);
       if (Object.keys(entry).length) out[p] = entry;
     }
     save.mutate({ payment_gateway_fees: out });
@@ -356,7 +408,11 @@ function FeeSchedule() {
           variant="primary"
           disabled={save.isPending}
           onClick={submit}
-          icon={save.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+          icon={
+            save.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : undefined
+          }
         >
           Save fees
         </Button>
@@ -375,26 +431,46 @@ function FeeSchedule() {
           {PROVIDERS.map((p) => {
             const f = draft[p] ?? {};
             return (
-              <div key={p} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+              <div
+                key={p}
+                className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end"
+              >
                 <div className="flex items-center gap-2">
                   <Plug className="w-4 h-4 text-text-faint" />
-                  <span className="text-[13px] font-semibold">{PROVIDER_LABEL[p]}</span>
+                  <span className="text-[13px] font-semibold">
+                    {PROVIDER_LABEL[p]}
+                  </span>
                 </div>
                 <Field label="Percent">
-                  <NumberField value={str(f.pct)} onChange={(v) => setField(p, "pct", v)} suffix="%" placeholder="1.5" />
+                  <NumberField
+                    value={str(f.pct)}
+                    onChange={(v) => setField(p, "pct", v)}
+                    suffix="%"
+                    placeholder="1.5"
+                  />
                 </Field>
                 <Field label="Fixed">
-                  <NumberField value={str(f.fixed)} onChange={(v) => setField(p, "fixed", v)} placeholder="100" />
+                  <NumberField
+                    value={str(f.fixed)}
+                    onChange={(v) => setField(p, "fixed", v)}
+                    placeholder="100"
+                  />
                 </Field>
                 <Field label="Cap (NGN)">
-                  <NumberField value={str(f.cap_ngn)} onChange={(v) => setField(p, "cap_ngn", v)} placeholder="2000" />
+                  <NumberField
+                    value={str(f.cap_ngn)}
+                    onChange={(v) => setField(p, "cap_ngn", v)}
+                    placeholder="2000"
+                  />
                 </Field>
               </div>
             );
           })}
           {save.isError && (
             <p className="text-[12px] text-danger">
-              {save.error instanceof Error ? save.error.message : "Could not save fees."}
+              {save.error instanceof Error
+                ? save.error.message
+                : "Could not save fees."}
             </p>
           )}
         </Card>

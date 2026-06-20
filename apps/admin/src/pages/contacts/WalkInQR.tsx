@@ -79,10 +79,7 @@ export function WalkInQR({ onClose }: Props) {
     >
       <div className="flex flex-col items-center gap-5">
         {/* QR Code */}
-        <div
-          ref={svgRef}
-          className="p-5 rounded-[20px] bg-white shadow-glass"
-        >
+        <div ref={svgRef} className="p-5 rounded-[20px] bg-white shadow-glass">
           <QRCodeSVG
             value={walkinUrl}
             size={200}
@@ -95,8 +92,12 @@ export function WalkInQR({ onClose }: Props) {
 
         {/* Business name */}
         <div className="text-center">
-          <div className="font-display text-lg text-text-primary">{business.name}</div>
-          <div className="text-[12px] text-text-faint mt-0.5">Walk-in Registration</div>
+          <div className="font-display text-lg text-text-primary">
+            {business.name}
+          </div>
+          <div className="text-[12px] text-text-faint mt-0.5">
+            Walk-in Registration
+          </div>
         </div>
 
         {/* URL preview */}
@@ -116,8 +117,12 @@ export function WalkInQR({ onClose }: Props) {
               </div>
               <ul className="text-[11.5px] text-text-muted space-y-1">
                 <li>• Customer scans the QR with their phone camera</li>
-                <li>• Fills in: name, phone, email, and birthday (month + day)</li>
-                <li>• Their contact card appears on your screen in real-time</li>
+                <li>
+                  • Fills in: name, phone, email, and birthday (month + day)
+                </li>
+                <li>
+                  • Their contact card appears on your screen in real-time
+                </li>
                 <li>• Birthday reminders fire automatically each year</li>
               </ul>
             </div>

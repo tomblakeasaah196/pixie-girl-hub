@@ -61,7 +61,7 @@ is idempotent — `IF NOT EXISTS` / `ON CONFLICT` / `DROP CONSTRAINT IF EXISTS`)
   optional self-hosted/IG video link + an optional per-colour price bump.
 - **NEW** `styled_product_variants` — the colour × size SKU matrix. Retail =
   `COALESCE(price_override_ngn, styled.retail_price_ngn + colour.premium_ngn +
-  size_tier.premium_ngn)`.
+size_tier.premium_ngn)`.
 - **NEW** `styled_size_tiers` — brand-wide S/M/L/XL ladder (premium +
   head-circumference range + tip), seeded (S 0 · M +5k · L +15k · XL +30k).
 - **NEW** `catalogue_config` (singleton) — the customer-facing head-size guide
@@ -85,10 +85,11 @@ above plus a searchable base-product picker and quick add-to-collection.
 **Source:** Owner directive — 70% of revenue arrives via Instagram +
 WhatsApp DMs; the hub-system reference shipped these channels DISABLED.
 This migration brings the V2.2 §6.17 vision to life: WhatsApp Cloud API
-+ Instagram Graph API + Cloudflare-routed inbound email all flow into
-one inbox; commerce flows (catalogue share, order capture, custom-wig
-revamp) are first-class; per-user × per-platform permissions; Praxis
-draft staging; a shareable Online QR welcome form; Service Catalogue.
+
+- Instagram Graph API + Cloudflare-routed inbound email all flow into
+  one inbox; commerce flows (catalogue share, order capture, custom-wig
+  revamp) are first-class; per-user × per-platform permissions; Praxis
+  draft staging; a shareable Online QR welcome form; Service Catalogue.
 
 **Migration `000213_shared_smartcomm_v2.sql` (NEW).**
 

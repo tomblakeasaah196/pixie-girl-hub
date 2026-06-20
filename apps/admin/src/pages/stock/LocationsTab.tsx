@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 import { MapPin, Plus, Pencil } from "lucide-react";
-import { Button, Card, EmptyState, Pill, Skeleton } from "@/components/ui/primitives";
+import {
+  Button,
+  Card,
+  EmptyState,
+  Pill,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { ErrorState, Select, Toggle } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import { useAuthStore } from "@/stores/auth";
@@ -50,7 +56,10 @@ export default function LocationsTab() {
 
   if (locationsQ.isError) {
     return (
-      <ErrorState message="Failed to load locations." onRetry={() => locationsQ.refetch()} />
+      <ErrorState
+        message="Failed to load locations."
+        onRetry={() => locationsQ.refetch()}
+      />
     );
   }
 
@@ -93,7 +102,12 @@ export default function LocationsTab() {
           message="Add a warehouse, salon or retail location to start tracking stock."
           action={
             canCreate ? (
-              <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={openAdd}
+              >
                 Add Location
               </Button>
             ) : undefined
@@ -142,16 +156,24 @@ export default function LocationsTab() {
             </div>
 
             <div>
-              <h3 className="text-[15px] font-semibold text-text-primary">{loc.display_name}</h3>
-              <p className="text-[12px] text-text-muted font-mono">{loc.location_code}</p>
+              <h3 className="text-[15px] font-semibold text-text-primary">
+                {loc.display_name}
+              </h3>
+              <p className="text-[12px] text-text-muted font-mono">
+                {loc.location_code}
+              </p>
             </div>
 
             {/* Feature pills */}
             <div className="flex flex-wrap gap-1.5">
               {loc.is_default && <Pill tone="accent">Default</Pill>}
               {loc.available_for_pos && <Pill tone="success">POS</Pill>}
-              {loc.available_for_storefront && <Pill tone="info">Storefront</Pill>}
-              {loc.location_type === "amazon_fba" && <Pill tone="warn">Consignment</Pill>}
+              {loc.available_for_storefront && (
+                <Pill tone="info">Storefront</Pill>
+              )}
+              {loc.location_type === "amazon_fba" && (
+                <Pill tone="warn">Consignment</Pill>
+              )}
               {!loc.is_active && <Pill tone="danger">Inactive</Pill>}
             </div>
 
@@ -296,7 +318,11 @@ function LocationDrawer({
       onClose={onClose}
       title={isEdit ? "Edit Location" : "Add Location"}
       footer={
-        <Button variant="primary" onClick={handleSave} disabled={!canSave || saving}>
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          disabled={!canSave || saving}
+        >
           {saving ? "Saving..." : "Save"}
         </Button>
       }
@@ -324,19 +350,27 @@ function LocationDrawer({
 
         <div>
           <FieldLabel>Type</FieldLabel>
-          <Select value={locationType} onChange={setLocationType} options={LOCATION_TYPE_OPTIONS} />
+          <Select
+            value={locationType}
+            onChange={setLocationType}
+            options={LOCATION_TYPE_OPTIONS}
+          />
         </div>
 
         {isAmazonFba && (
           <InfoBanner>
-            Amazon FBA locations are consignment. Stock deducted only when sales are reported from
-            Amazon.
+            Amazon FBA locations are consignment. Stock deducted only when sales
+            are reported from Amazon.
           </InfoBanner>
         )}
 
         <div>
           <FieldLabel>Address</FieldLabel>
-          <TextInput value={address} onChange={setAddress} placeholder="Street address (optional)" />
+          <TextInput
+            value={address}
+            onChange={setAddress}
+            placeholder="Street address (optional)"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -352,7 +386,11 @@ function LocationDrawer({
 
         <div>
           <FieldLabel>Country</FieldLabel>
-          <TextInput value={country} onChange={setCountry} placeholder="Country" />
+          <TextInput
+            value={country}
+            onChange={setCountry}
+            placeholder="Country"
+          />
         </div>
 
         <div className="space-y-3 pt-2 border-t border-line">
@@ -373,11 +411,7 @@ function LocationDrawer({
             onChange={setIsDefault}
             label="Set as default?"
           />
-          <Toggle
-            checked={isActive}
-            onChange={setIsActive}
-            label="Active?"
-          />
+          <Toggle checked={isActive} onChange={setIsActive} label="Active?" />
         </div>
       </div>
     </Drawer>

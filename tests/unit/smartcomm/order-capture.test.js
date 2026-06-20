@@ -47,7 +47,10 @@ describe("smartcomm order-capture", () => {
     await expect(
       orderCapture.createCaptureLink({
         ...baseArgs,
-        input: { contact_id: "33333333-3333-3333-3333-333333333333", items: [] },
+        input: {
+          contact_id: "33333333-3333-3333-3333-333333333333",
+          items: [],
+        },
       }),
     ).rejects.toMatchObject({ code: "ITEMS_REQUIRED" });
   });
@@ -58,7 +61,9 @@ describe("smartcomm order-capture", () => {
         ...baseArgs,
         input: {
           contact_id: "33333333-3333-3333-3333-333333333333",
-          items: [{ product_id: "22222222-2222-2222-2222-222222222222", qty: 0 }],
+          items: [
+            { product_id: "22222222-2222-2222-2222-222222222222", qty: 0 },
+          ],
         },
       }),
     ).rejects.toMatchObject({ code: "ITEM_INVALID" });
@@ -76,24 +81,36 @@ describe("smartcomm order-capture", () => {
     expect(r.url).toMatch(/^https:\/\/pixiegirl\.test\/order\?capture=/);
     expect(typeof r.expires_at).toBe("string");
 
-    const decoded = jwt.verify(r.token, "test-secret-must-be-at-least-32-chars-long-XYZ", {
-      issuer: "smartcomm",
-      audience: "order-capture",
-    });
+    const decoded = jwt.verify(
+      r.token,
+      "test-secret-must-be-at-least-32-chars-long-XYZ",
+      {
+        issuer: "smartcomm",
+        audience: "order-capture",
+      },
+    );
     expect(decoded.contact_id).toBe("33333333-3333-3333-3333-333333333333");
     expect(decoded.brand).toBe("pixiegirl");
     expect(decoded.sales_channel).toBe("instagram");
     expect(decoded.items).toHaveLength(1);
-    expect(decoded.items[0].product_id).toBe("22222222-2222-2222-2222-222222222222");
+    expect(decoded.items[0].product_id).toBe(
+      "22222222-2222-2222-2222-222222222222",
+    );
     expect(decoded.items[0].qty).toBe(2);
-    expect(decoded.staffer_user_id).toBe("11111111-1111-1111-1111-111111111111");
+    expect(decoded.staffer_user_id).toBe(
+      "11111111-1111-1111-1111-111111111111",
+    );
   });
 
   test("verifyCaptureToken rejects tampered tokens", () => {
-    const bad = jwt.sign({ foo: "bar" }, "different-secret-also-long-enough-XYZ", {
-      issuer: "smartcomm",
-      audience: "order-capture",
-    });
+    const bad = jwt.sign(
+      { foo: "bar" },
+      "different-secret-also-long-enough-XYZ",
+      {
+        issuer: "smartcomm",
+        audience: "order-capture",
+      },
+    );
     expect(() => orderCapture.verifyCaptureToken(bad)).toThrow();
   });
 

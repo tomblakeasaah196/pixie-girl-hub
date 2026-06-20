@@ -4,7 +4,13 @@ import { Button } from "@/components/ui/primitives";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
 import { useCreateContact, useUpdateContact } from "./hooks";
-import type { Contact, ContactType, PriorityLevel, ContactSource, ContactCreateInput } from "./types";
+import type {
+  Contact,
+  ContactType,
+  PriorityLevel,
+  ContactSource,
+  ContactCreateInput,
+} from "./types";
 
 // ── Country dial codes (E.164 support) ─────────────────────────────────
 
@@ -43,7 +49,9 @@ function PhoneField({
   placeholder?: string;
 }) {
   // Parse existing value back to dial + number
-  const parsedDial = DIAL_CODES.find((d) => value.startsWith(d.dial) && d.dial !== "+") ?? DIAL_CODES[0];
+  const parsedDial =
+    DIAL_CODES.find((d) => value.startsWith(d.dial) && d.dial !== "+") ??
+    DIAL_CODES[0];
   const parsedNumber = parsedDial ? value.replace(parsedDial.dial, "") : value;
 
   const [selectedDial, setSelectedDial] = useState<DialCode>(parsedDial);
@@ -86,7 +94,11 @@ function PhoneField({
       </div>
       {rawNumber && (
         <p className="text-[10.5px] text-text-faint mt-1">
-          Will be stored as: <span className="font-mono">{selectedDial.dial}{rawNumber.replace(/\D/g, "")}</span>
+          Will be stored as:{" "}
+          <span className="font-mono">
+            {selectedDial.dial}
+            {rawNumber.replace(/\D/g, "")}
+          </span>
         </p>
       )}
     </Field>
@@ -168,7 +180,9 @@ function TypeChips({
         ))}
       </div>
       {value.length === 0 && (
-        <p className="text-[11px] text-danger/80 mt-1">Select at least one type</p>
+        <p className="text-[11px] text-danger/80 mt-1">
+          Select at least one type
+        </p>
       )}
     </Field>
   );
@@ -204,13 +218,27 @@ const SOURCE_OPTS: { value: ContactSource | ""; label: string }[] = [
 ];
 const MONTH_OPTS = [
   { value: "", label: "Month" },
-  ...["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map(
-    (m, i) => ({ value: String(i + 1).padStart(2, "0"), label: m }),
-  ),
+  ...[
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ].map((m, i) => ({ value: String(i + 1).padStart(2, "0"), label: m })),
 ];
 const DAY_OPTS = [
   { value: "", label: "Day" },
-  ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1).padStart(2, "0"), label: String(i + 1) })),
+  ...Array.from({ length: 31 }, (_, i) => ({
+    value: String(i + 1).padStart(2, "0"),
+    label: String(i + 1),
+  })),
 ];
 
 // ── Main form ────────────────────────────────────────────────────────────
@@ -222,7 +250,12 @@ interface Props {
   onSuccess?: (contactId: string) => void;
 }
 
-export function ContactFormModal({ contact, initialType, onClose, onSuccess }: Props) {
+export function ContactFormModal({
+  contact,
+  initialType,
+  onClose,
+  onSuccess,
+}: Props) {
   const isEdit = !!contact;
 
   const createMut = useCreateContact();
@@ -261,8 +294,12 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
     const y = d.getFullYear();
     return y === 1900 ? "" : String(y);
   });
-  const [priority, setPriority] = useState<PriorityLevel>(contact?.priority_level ?? "regular");
-  const [source, setSource] = useState<ContactSource | "">(contact?.source ?? "");
+  const [priority, setPriority] = useState<PriorityLevel>(
+    contact?.priority_level ?? "regular",
+  );
+  const [source, setSource] = useState<ContactSource | "">(
+    contact?.source ?? "",
+  );
   const [tin, setTin] = useState(contact?.tin ?? "");
   const [cac, setCac] = useState(contact?.cac_number ?? "");
   const [notes, setNotes] = useState(contact?.notes ?? "");
@@ -337,7 +374,11 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
         onClose();
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
     }
   };
 
@@ -407,7 +448,8 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
                   />
                 </Field>
               </div>
-              {(types.includes("supplier") || types.includes("retail_partner")) && (
+              {(types.includes("supplier") ||
+                types.includes("retail_partner")) && (
                 <Field label="Company / Organisation">
                   <TextInput
                     value={company}
@@ -468,15 +510,26 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
             <FormSection title="Personal">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Gender">
-                  <Select value={gender} onChange={setGender} options={GENDER_OPTS} />
+                  <Select
+                    value={gender}
+                    onChange={setGender}
+                    options={GENDER_OPTS}
+                  />
                 </Field>
                 <Field label="Country">
-                  <Select value={countryCode} onChange={setCountryCode} options={COUNTRY_OPTS} />
+                  <Select
+                    value={countryCode}
+                    onChange={setCountryCode}
+                    options={COUNTRY_OPTS}
+                  />
                 </Field>
               </div>
 
               {/* Birthday: month + day (year optional) */}
-              <Field label="Birthday (month & day)" hint="Used for birthday reminders. Year is optional.">
+              <Field
+                label="Birthday (month & day)"
+                hint="Used for birthday reminders. Year is optional."
+              >
                 <div className="flex gap-2 items-center">
                   <Select
                     className="flex-1"
@@ -508,10 +561,18 @@ export function ContactFormModal({ contact, initialType, onClose, onSuccess }: P
             <FormSection title="Classification">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Priority">
-                  <Select value={priority} onChange={setPriority} options={PRIORITY_OPTS} />
+                  <Select
+                    value={priority}
+                    onChange={setPriority}
+                    options={PRIORITY_OPTS}
+                  />
                 </Field>
                 <Field label="Source">
-                  <Select value={source} onChange={setSource} options={SOURCE_OPTS} />
+                  <Select
+                    value={source}
+                    onChange={setSource}
+                    options={SOURCE_OPTS}
+                  />
                 </Field>
               </div>
             </FormSection>

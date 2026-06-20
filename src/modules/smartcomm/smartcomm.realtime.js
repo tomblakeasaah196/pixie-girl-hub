@@ -43,7 +43,10 @@ function emit(room, event, payload) {
     getIo().to(room).emit(event, payload);
   } catch (err) {
     // Socket.io not initialised (worker process / tests) — skip silently.
-    logger.debug({ err: err.message, room, event }, "smartcomm realtime emit skipped");
+    logger.debug(
+      { err: err.message, room, event },
+      "smartcomm realtime emit skipped",
+    );
   }
 }
 

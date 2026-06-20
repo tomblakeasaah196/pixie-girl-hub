@@ -36,7 +36,10 @@ export type DocumentRole =
   | "settlement_receipt"
   | "other";
 
-export type SettlementEntryType = "receipt" | "cash_returned" | "foreign_fx_adjustment";
+export type SettlementEntryType =
+  | "receipt"
+  | "cash_returned"
+  | "foreign_fx_adjustment";
 
 export interface CashRequest {
   cash_request_id: string;
@@ -138,9 +141,20 @@ export interface PaginatedResponse<T> {
 
 // ── Expense types ────────────────────────────────────────
 
-export type ExpenseStatus = "draft" | "pending" | "approved" | "rejected" | "partially_paid" | "paid";
+export type ExpenseStatus =
+  | "draft"
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "partially_paid"
+  | "paid";
 
-export type ExpenseType = "reimbursement" | "petty_cash" | "direct_payment" | "direct_invoice" | "cash_advance_retirement";
+export type ExpenseType =
+  | "reimbursement"
+  | "petty_cash"
+  | "direct_payment"
+  | "direct_invoice"
+  | "cash_advance_retirement";
 
 export interface ExpenseCategory {
   category_id: string;

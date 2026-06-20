@@ -254,7 +254,8 @@ export function useFxRates(params?: { from?: string; to?: string }) {
   const q = qs.toString();
   return useQuery<FxRate[]>({
     queryKey: ["fx-rates", q],
-    queryFn: () => api.get<FxRate[]>(`/business-setup/fx-rates${q ? `?${q}` : ""}`),
+    queryFn: () =>
+      api.get<FxRate[]>(`/business-setup/fx-rates${q ? `?${q}` : ""}`),
   });
 }
 export function useSetFxRate() {
@@ -315,9 +316,15 @@ export function useUpdateDocSequence() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: { prefix?: string; padding?: number } }) =>
-      api.patch(`/business-setup/document-numbering/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["doc-numbering", brand] }),
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: { prefix?: string; padding?: number };
+    }) => api.patch(`/business-setup/document-numbering/${id}`, patch),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["doc-numbering", brand] }),
   });
 }
 
@@ -338,7 +345,8 @@ export function useCreateCustomField() {
   return useMutation({
     mutationFn: (row: Partial<CustomField>) =>
       api.post("/business-setup/custom-fields", row),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["custom-fields", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["custom-fields", brand] }),
   });
 }
 export function useUpdateCustomField() {
@@ -347,7 +355,8 @@ export function useUpdateCustomField() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<CustomField> }) =>
       api.patch(`/business-setup/custom-fields/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["custom-fields", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["custom-fields", brand] }),
   });
 }
 
@@ -359,7 +368,8 @@ export function usePipelineStages(pipelineType?: string) {
   const q = pipelineType ? `?pipeline_type=${pipelineType}` : "";
   return useQuery<PipelineStage[]>({
     queryKey: ["pipeline-stages", brand, pipelineType ?? "all"],
-    queryFn: () => api.get<PipelineStage[]>(`/business-setup/pipeline-stages${q}`),
+    queryFn: () =>
+      api.get<PipelineStage[]>(`/business-setup/pipeline-stages${q}`),
   });
 }
 export function useCreatePipelineStage() {
@@ -368,24 +378,33 @@ export function useCreatePipelineStage() {
   return useMutation({
     mutationFn: (row: Partial<PipelineStage>) =>
       api.post("/business-setup/pipeline-stages", row),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pipeline-stages", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["pipeline-stages", brand] }),
   });
 }
 export function useUpdatePipelineStage() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<PipelineStage> }) =>
-      api.patch(`/business-setup/pipeline-stages/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pipeline-stages", brand] }),
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: Partial<PipelineStage>;
+    }) => api.patch(`/business-setup/pipeline-stages/${id}`, patch),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["pipeline-stages", brand] }),
   });
 }
 export function useDeletePipelineStage() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/business-setup/pipeline-stages/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pipeline-stages", brand] }),
+    mutationFn: (id: string) =>
+      api.delete(`/business-setup/pipeline-stages/${id}`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["pipeline-stages", brand] }),
   });
 }
 
@@ -405,7 +424,8 @@ export function useCreateBankAccount() {
   return useMutation({
     mutationFn: (row: Partial<BankAccount>) =>
       api.post("/business-setup/bank-accounts", row),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bank-accounts", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["bank-accounts", brand] }),
   });
 }
 export function useUpdateBankAccount() {
@@ -414,7 +434,8 @@ export function useUpdateBankAccount() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<BankAccount> }) =>
       api.patch(`/business-setup/bank-accounts/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bank-accounts", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["bank-accounts", brand] }),
   });
 }
 
@@ -425,7 +446,8 @@ export function usePaymentGateways() {
   const brand = useBrand();
   return useQuery<PaymentGateway[]>({
     queryKey: ["payment-gateways", brand],
-    queryFn: () => api.get<PaymentGateway[]>("/business-setup/payment-gateways"),
+    queryFn: () =>
+      api.get<PaymentGateway[]>("/business-setup/payment-gateways"),
   });
 }
 export function useConfigureGateway() {
@@ -439,16 +461,26 @@ export function useConfigureGateway() {
       display_label?: string;
       role?: string;
     }) => api.post("/business-setup/payment-gateways", row),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["payment-gateways", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["payment-gateways", brand] }),
   });
 }
 export function useSetGatewayActive() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ provider, is_active }: { provider: string; is_active: boolean }) =>
-      api.patch(`/business-setup/payment-gateways/${provider}/active`, { is_active }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["payment-gateways", brand] }),
+    mutationFn: ({
+      provider,
+      is_active,
+    }: {
+      provider: string;
+      is_active: boolean;
+    }) =>
+      api.patch(`/business-setup/payment-gateways/${provider}/active`, {
+        is_active,
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["payment-gateways", brand] }),
   });
 }
 export function useSetGatewayRole() {
@@ -457,7 +489,8 @@ export function useSetGatewayRole() {
   return useMutation({
     mutationFn: ({ provider, role }: { provider: string; role: string }) =>
       api.patch(`/business-setup/payment-gateways/${provider}/role`, { role }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["payment-gateways", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["payment-gateways", brand] }),
   });
 }
 
@@ -507,7 +540,8 @@ export function useSaveSignatureTemplate() {
   return useMutation({
     mutationFn: (html: string) =>
       api.put("/business-setup/email-signature-template", { html }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["signature-template", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["signature-template", brand] }),
   });
 }
 
@@ -519,7 +553,8 @@ export function useDocumentTemplates(docType?: string) {
   const q = docType ? `?doc_type=${docType}` : "";
   return useQuery<DocumentTemplate[]>({
     queryKey: ["doc-templates", brand, docType ?? "all"],
-    queryFn: () => api.get<DocumentTemplate[]>(`/settings/document-templates${q}`),
+    queryFn: () =>
+      api.get<DocumentTemplate[]>(`/settings/document-templates${q}`),
   });
 }
 export function useCreateDocumentTemplate() {
@@ -528,16 +563,23 @@ export function useCreateDocumentTemplate() {
   return useMutation({
     mutationFn: (row: Partial<DocumentTemplate>) =>
       api.post("/settings/document-templates", row),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["doc-templates", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["doc-templates", brand] }),
   });
 }
 export function useUpdateDocumentTemplate() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<DocumentTemplate> }) =>
-      api.patch(`/settings/document-templates/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["doc-templates", brand] }),
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: Partial<DocumentTemplate>;
+    }) => api.patch(`/settings/document-templates/${id}`, patch),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["doc-templates", brand] }),
   });
 }
 export function useSetDefaultTemplate() {
@@ -546,15 +588,18 @@ export function useSetDefaultTemplate() {
   return useMutation({
     mutationFn: (id: string) =>
       api.post(`/settings/document-templates/${id}/set-default`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["doc-templates", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["doc-templates", brand] }),
   });
 }
 export function useDeleteDocumentTemplate() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/settings/document-templates/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["doc-templates", brand] }),
+    mutationFn: (id: string) =>
+      api.delete(`/settings/document-templates/${id}`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["doc-templates", brand] }),
   });
 }
 
@@ -564,7 +609,8 @@ export function useDeleteDocumentTemplate() {
 export function useNotificationPrefs() {
   return useQuery<NotificationPref[]>({
     queryKey: ["notification-prefs"],
-    queryFn: () => api.get<NotificationPref[]>("/settings/notification-preferences"),
+    queryFn: () =>
+      api.get<NotificationPref[]>("/settings/notification-preferences"),
   });
 }
 export function useUpsertNotificationPref() {
@@ -596,16 +642,23 @@ export function useCreateReport() {
   return useMutation({
     mutationFn: (row: Partial<ScheduledReport>) =>
       api.post("/settings/scheduled-reports", row),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduled-reports", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["scheduled-reports", brand] }),
   });
 }
 export function useUpdateReport() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<ScheduledReport> }) =>
-      api.patch(`/settings/scheduled-reports/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduled-reports", brand] }),
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: Partial<ScheduledReport>;
+    }) => api.patch(`/settings/scheduled-reports/${id}`, patch),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["scheduled-reports", brand] }),
   });
 }
 export function useDeleteReport() {
@@ -613,7 +666,8 @@ export function useDeleteReport() {
   const brand = useBrand();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/settings/scheduled-reports/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduled-reports", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["scheduled-reports", brand] }),
   });
 }
 
@@ -624,7 +678,8 @@ export function useIntegrationSecrets() {
   const brand = useBrand();
   return useQuery<IntegrationSecret[]>({
     queryKey: ["integration-secrets", brand],
-    queryFn: () => api.get<IntegrationSecret[]>("/settings/integration-secrets"),
+    queryFn: () =>
+      api.get<IntegrationSecret[]>("/settings/integration-secrets"),
   });
 }
 export function useSetSecret() {
@@ -633,7 +688,8 @@ export function useSetSecret() {
   return useMutation({
     mutationFn: (row: { provider: string; key_name: string; secret: string }) =>
       api.put("/settings/integration-secrets", row),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["integration-secrets", brand] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["integration-secrets", brand] }),
   });
 }
 // ════════════════════════════════════════════════════════════
@@ -676,8 +732,13 @@ export function useUpdatePolicy() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<BusinessPolicy> }) =>
-      api.patch(`/settings/policies/${id}`, patch),
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: Partial<BusinessPolicy>;
+    }) => api.patch(`/settings/policies/${id}`, patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["policies", brand] }),
   });
 }
@@ -694,7 +755,9 @@ export function useDeleteSecret() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/settings/integration-secrets/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["integration-secrets", brand] }),
+    mutationFn: (id: string) =>
+      api.delete(`/settings/integration-secrets/${id}`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["integration-secrets", brand] }),
   });
 }

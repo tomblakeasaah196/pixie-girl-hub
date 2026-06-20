@@ -10,10 +10,16 @@ import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { type LandingBlock, usePublicLanding } from "@/lib/campaigns";
-import { LandingRender, type LandingModel, type LandingProduct } from "../landing/LandingRender";
+import {
+  LandingRender,
+  type LandingModel,
+  type LandingProduct,
+} from "../landing/LandingRender";
 
 function galleryFromBlocks(blocks: LandingBlock[]): string[] {
-  const lb = (blocks || []).find((b) => (b.key || b.type) === "lookbook_carousel");
+  const lb = (blocks || []).find(
+    (b) => (b.key || b.type) === "lookbook_carousel",
+  );
   const imgs = lb?.props?.images;
   return Array.isArray(imgs) ? (imgs as string[]) : [];
 }
@@ -61,13 +67,15 @@ export function SaleLandingPublic() {
             This chapter is being prepared
           </h1>
           <p className="text-text-muted leading-relaxed">
-            The page you're looking for isn't open right now. Follow us, or join the list, to be the
-            first to know the moment it opens.
+            The page you're looking for isn't open right now. Follow us, or join
+            the list, to be the first to know the moment it opens.
           </p>
         </div>
       </div>
     );
   }
 
-  return <LandingRender model={model} scrollable={false} className="min-h-screen" />;
+  return (
+    <LandingRender model={model} scrollable={false} className="min-h-screen" />
+  );
 }

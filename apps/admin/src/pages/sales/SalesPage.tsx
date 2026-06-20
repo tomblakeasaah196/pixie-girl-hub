@@ -30,14 +30,27 @@ export function SalesPage() {
       {kpis && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <KpiTile label="Orders MTD" value={String(kpis.orders_mtd)} />
-          <KpiTile label="Revenue MTD" value={money(Number(kpis.revenue_mtd))} />
-          <KpiTile label="Pending Payment" value={String(kpis.pending_payment_count)} tone="warn" />
-          <KpiTile label="Avg Order Value" value={money(Number(kpis.avg_order_value))} />
+          <KpiTile
+            label="Revenue MTD"
+            value={money(Number(kpis.revenue_mtd))}
+          />
+          <KpiTile
+            label="Pending Payment"
+            value={String(kpis.pending_payment_count)}
+            tone="warn"
+          />
+          <KpiTile
+            label="Avg Order Value"
+            value={money(Number(kpis.avg_order_value))}
+          />
           <KpiTile label="Open Quotes" value={String(kpis.open_quotes)} />
         </div>
       )}
 
-      <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto" role="tablist">
+      <div
+        className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto"
+        role="tablist"
+      >
         {TABS.map((t) => {
           const on = t.key === tab;
           const Icon = t.icon;

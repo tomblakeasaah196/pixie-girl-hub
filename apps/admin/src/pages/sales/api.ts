@@ -38,7 +38,9 @@ export interface OrderListParams {
 }
 
 export const listOrders = ({ search, ...rest }: OrderListParams = {}) =>
-  api.get<PaginatedResponse<SalesOrder>>(`${S}/orders${qs({ ...rest, q: search })}`);
+  api.get<PaginatedResponse<SalesOrder>>(
+    `${S}/orders${qs({ ...rest, q: search })}`,
+  );
 
 export const getOrder = (id: string) =>
   api.get<SalesOrder>(`${S}/orders/${id}`);
@@ -52,8 +54,14 @@ export const updateOrder = (id: string, input: Record<string, unknown>) =>
 export const addPayment = (orderId: string, input: PaymentCreateInput) =>
   api.post<SalesOrder>(`${S}/orders/${orderId}/payments`, input);
 
-export const createPaymentLink = (orderId: string, input: PaymentLinkInput = {}) =>
-  api.post<{ checkout_url: string }>(`${S}/orders/${orderId}/payment-link`, input);
+export const createPaymentLink = (
+  orderId: string,
+  input: PaymentLinkInput = {},
+) =>
+  api.post<{ checkout_url: string }>(
+    `${S}/orders/${orderId}/payment-link`,
+    input,
+  );
 
 export const cancelOrder = (id: string) =>
   api.post<SalesOrder>(`${S}/orders/${id}/cancel`);
@@ -92,50 +100,61 @@ export const acceptQuotation = (id: string) =>
 export const rejectQuotation = (id: string, reason?: string) =>
   api.post<Quotation>(`${S}/quotations/${id}/reject`, { reason });
 
-export const convertQuotation = (id: string, input: QuotationConvertInput = {}) =>
-  api.post<SalesOrder>(`${S}/quotations/${id}/convert`, input);
+export const convertQuotation = (
+  id: string,
+  input: QuotationConvertInput = {},
+) => api.post<SalesOrder>(`${S}/quotations/${id}/convert`, input);
 
 // ── Cancellations ───────────────────────────────────────────
 
-export const requestCancellation = (orderId: string, input: CancellationRequestInput) =>
-  api.post<unknown>(`${S}/orders/${orderId}/cancellation`, input);
+export const requestCancellation = (
+  orderId: string,
+  input: CancellationRequestInput,
+) => api.post<unknown>(`${S}/orders/${orderId}/cancellation`, input);
 
 // ── KPIs ────────────────────────────────────────────────────
 
-export const getSalesKpis = () =>
-  api.get<SalesKpis>(`/dashboards/kpis/sales`);
+export const getSalesKpis = () => api.get<SalesKpis>(`/dashboards/kpis/sales`);
 
 // ── Catalogue helpers (for product picker) ──────────────────
 
 export const searchProducts = (search: string) =>
-  api.get<PaginatedResponse<{ product_id: string; name: string; slug: string }>>(`/catalogue/products?q=${encodeURIComponent(search)}&page_size=10`);
+  api.get<
+    PaginatedResponse<{ product_id: string; name: string; slug: string }>
+  >(`/catalogue/products?q=${encodeURIComponent(search)}&page_size=10`);
 
 export const getProductVariants = (productId: string) =>
-  api.get<Array<{
-    variant_id: string;
-    sku: string;
-    variant_name: string;
-    price_storefront_ngn: string | null;
-    price_pos_ngn: string | null;
-    is_active: boolean;
-  }>>(`/catalogue/products/${productId}/variants`);
+  api.get<
+    Array<{
+      variant_id: string;
+      sku: string;
+      variant_name: string;
+      price_storefront_ngn: string | null;
+      price_pos_ngn: string | null;
+      is_active: boolean;
+    }>
+  >(`/catalogue/products/${productId}/variants`);
 
 export const searchStyledProducts = (search: string) =>
-  api.get<PaginatedResponse<{
-    styled_product_id: string;
-    name: string;
-    styled_code: string;
-    retail_price_ngn: string | null;
-  }>>(`/catalogue/styled-products?q=${encodeURIComponent(search)}&page_size=10`);
+  api.get<
+    PaginatedResponse<{
+      styled_product_id: string;
+      name: string;
+      styled_code: string;
+      retail_price_ngn: string | null;
+    }>
+  >(`/catalogue/styled-products?q=${encodeURIComponent(search)}&page_size=10`);
 
 export const searchBundles = (_search: string) =>
-  api.get<Array<{
-    bundle_id: string;
-    bundle_code: string;
-    display_name: string;
-    bundle_price_ngn: string | null;
-    pricing_model: string;
-  }>>(`/retention/bundles?active=true`);
+  api.get<
+    Array<{
+      bundle_id: string;
+      bundle_code: string;
+      display_name: string;
+      bundle_price_ngn: string | null;
+      pricing_model: string;
+    }>
+  >(`/retention/bundles?active=true`);
 
 export const getStyledProduct = (id: string) =>
   api.get<{

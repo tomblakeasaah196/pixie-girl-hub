@@ -30,7 +30,9 @@ for (const [path, mod] of Object.entries(localeModules)) {
 
 i18n.use(initReactI18next).init({
   resources,
-  lng: (typeof localStorage !== "undefined" && localStorage.getItem(LANG_KEY)) || "en",
+  lng:
+    (typeof localStorage !== "undefined" && localStorage.getItem(LANG_KEY)) ||
+    "en",
   fallbackLng: "en",
   ns: ["factory"],
   defaultNS: "factory",
@@ -57,17 +59,30 @@ export let FACTORY_LANGUAGES: Record<string, string> = { ...languageNames };
  * Silent on failure — bundled files remain as fallback.
  */
 export async function syncFromApi(
-  langs: Array<{ language_code: string; display_name: string; translations: Record<string, string> }>,
+  langs: Array<{
+    language_code: string;
+    display_name: string;
+    translations: Record<string, string>;
+  }>,
 ) {
   for (const lang of langs) {
-    i18n.addResourceBundle(lang.language_code, "factory", lang.translations, true, true);
+    i18n.addResourceBundle(
+      lang.language_code,
+      "factory",
+      lang.translations,
+      true,
+      true,
+    );
   }
-  FACTORY_LANGUAGES = Object.fromEntries(langs.map((l) => [l.language_code, l.display_name]));
+  FACTORY_LANGUAGES = Object.fromEntries(
+    langs.map((l) => [l.language_code, l.display_name]),
+  );
 }
 
 /** Auto-switch to Chinese for factory_manager users who haven't set a preference yet */
 export function autoDefaultFactoryLang(isFactoryManager: boolean) {
-  const stored = typeof localStorage !== "undefined" && localStorage.getItem(LANG_KEY);
+  const stored =
+    typeof localStorage !== "undefined" && localStorage.getItem(LANG_KEY);
   if (isFactoryManager && !stored) {
     i18n.changeLanguage("zh");
   }

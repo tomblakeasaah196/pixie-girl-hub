@@ -64,13 +64,17 @@ export function Drawer({
           wide
             ? "w-[min(560px,97vw)] lg:w-[min(880px,82vw)] xl:w-[960px]"
             : "w-[min(460px,95vw)] lg:w-[600px] xl:w-[680px]",
-          open ? "translate-x-0 visible" : "translate-x-full invisible pointer-events-none",
+          open
+            ? "translate-x-0 visible"
+            : "translate-x-full invisible pointer-events-none",
         )}
       >
         <div className="flex items-center gap-3 p-5 border-b hairline">
           {leading}
           <div className="min-w-0">
-            <h2 className="font-display text-xl font-medium leading-tight truncate">{title}</h2>
+            <h2 className="font-display text-xl font-medium leading-tight truncate">
+              {title}
+            </h2>
             {subtitle && <div className="micro mt-0.5">{subtitle}</div>}
           </div>
           <IconButton className="ml-auto" onClick={onClose} aria-label="Close">
@@ -78,7 +82,11 @@ export function Drawer({
           </IconButton>
         </div>
         <div className="flex-1 overflow-y-auto p-[22px]">{children}</div>
-        {footer && <div className="p-[15px_20px] border-t hairline flex gap-2 justify-end">{footer}</div>}
+        {footer && (
+          <div className="p-[15px_20px] border-t hairline flex gap-2 justify-end">
+            {footer}
+          </div>
+        )}
       </aside>
     </>,
     document.body,

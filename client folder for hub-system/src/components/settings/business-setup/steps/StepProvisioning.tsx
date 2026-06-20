@@ -157,7 +157,9 @@ function ProvOption({
         <div
           className={cn(
             "w-5 h-5 rounded-full border-2 shrink-0 mt-1",
-            selected ? "border-brand-accent bg-brand-accent" : "border-brand-cloud",
+            selected
+              ? "border-brand-accent bg-brand-accent"
+              : "border-brand-cloud",
           )}
         />
       </div>

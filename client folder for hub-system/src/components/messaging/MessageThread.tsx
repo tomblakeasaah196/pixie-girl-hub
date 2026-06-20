@@ -751,9 +751,7 @@ export function MessageThread({
                   showReactionBar={reactionBarFor === msg.message_id}
                   onToggleReactionBar={() =>
                     setReactionBarFor(
-                      reactionBarFor === msg.message_id
-                        ? null
-                        : msg.message_id,
+                      reactionBarFor === msg.message_id ? null : msg.message_id,
                     )
                   }
                   actions={bubbleActions}

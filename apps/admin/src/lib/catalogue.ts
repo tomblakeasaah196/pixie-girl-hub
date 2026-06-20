@@ -258,19 +258,42 @@ export interface Collection {
 
 /** A service offering (Service Catalogue) — revamps, installs, repairs.
  *  Lives in shared.service_offerings, scoped by `business`. */
+export type ServiceSaleMode = "book" | "buy" | "enquire";
+export type ServiceLocation = "in_studio" | "home" | "virtual";
+
 export interface ServiceOffering {
   service_id: string;
   business: string;
   name: string;
   slug: string;
   description: string | null;
+  short_description: string | null;
+  long_description: string | null;
   base_price_ngn: number | null;
+  compare_at_price_ngn: number | null;
+  price_is_from: boolean;
   duration_minutes: number | null;
   category: string | null;
+  tags: string[] | null;
   image_url: string | null;
+  thumbnail_url: string | null;
   is_active: boolean;
+  is_visible_storefront: boolean;
+  is_featured: boolean;
   sort_order: number;
   required_stylist_tier: string | null;
+  // Web / booking
+  sale_mode: ServiceSaleMode;
+  deposit_required: boolean;
+  deposit_pct: number | null;
+  buffer_minutes: number | null;
+  location_type: ServiceLocation | null;
+  cancellation_policy: string | null;
+  meta_title: string | null;
+  meta_description: string | null;
+  whats_included: string[] | null;
+  faqs: { q: string; a: string }[] | null;
+  aftercare_notes: string | null;
   created_at: string;
 }
 
@@ -726,11 +749,32 @@ export interface ServiceInput {
   name: string;
   slug: string;
   description?: string | null;
+  short_description?: string | null;
+  long_description?: string | null;
   base_price_ngn?: number;
+  compare_at_price_ngn?: number | null;
+  price_is_from?: boolean;
   duration_minutes?: number | null;
   category?: string | null;
+  tags?: string[] | null;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
   is_active?: boolean;
+  is_visible_storefront?: boolean;
+  is_featured?: boolean;
   sort_order?: number;
+  required_stylist_tier?: string | null;
+  sale_mode?: ServiceSaleMode;
+  deposit_required?: boolean;
+  deposit_pct?: number | null;
+  buffer_minutes?: number | null;
+  location_type?: ServiceLocation | null;
+  cancellation_policy?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  whats_included?: string[] | null;
+  faqs?: { q: string; a: string }[] | null;
+  aftercare_notes?: string | null;
 }
 
 /** Admin list — includes inactive so they can be toggled back on. */
@@ -760,6 +804,17 @@ export function useToggleService() {
   return useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
       api.patch<ServiceOffering>(`/service-catalogue/${id}`, { is_active }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
+  });
+}
+
+export function useUpdateService() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<ServiceInput> }) =>
+      api.patch<ServiceOffering>(`/service-catalogue/${id}`, patch),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
   });

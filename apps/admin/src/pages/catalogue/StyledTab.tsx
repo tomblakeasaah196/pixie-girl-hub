@@ -35,6 +35,7 @@ import {
 import { AiDraftModal } from "./AiDraftModal";
 import { SizeGuideModal } from "./SizeGuideModal";
 import { TrashModal } from "./TrashModal";
+import { ImportExportControls } from "@/components/catalogue/ImportExportControls";
 
 /**
  * Styled products — storefront skins over a base. Card grid + status filter;
@@ -109,7 +110,16 @@ export function StyledTab() {
           onChange={setQ}
           placeholder="Search styled products…"
         />
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex gap-2 flex-wrap items-center">
+          {canCreate && (
+            <ImportExportControls
+              label="Styled products"
+              templatePath="/catalogue/styled-products/import-template"
+              exportPath="/catalogue/styled-products/export"
+              importPath="/catalogue/styled-products/import"
+              onImported={() => styled.refetch()}
+            />
+          )}
           {can("catalogue", "edit") && (
             <Button
               size="sm"

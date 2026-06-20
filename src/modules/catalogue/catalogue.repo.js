@@ -533,7 +533,7 @@ async function addImage({ client, brand, image }) {
   );
   return rows[0];
 }
-// A styled colour's own gallery (2–3 pictures per colour).
+// A styled colour's own gallery (2–3 pictures minimum, capped in the service).
 async function listColourImages({ client, brand, colour_id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "product_images")} WHERE styled_colour_id = $1 ORDER BY display_order, uploaded_at`,

@@ -196,7 +196,8 @@ router.delete(
   can("edit"),
   styledVar.deleteColour,
 );
-// Per-colour images (2–3 pictures per colour). Literal 'images' before :imageId.
+// Per-colour images (gallery per colour/variant; 2–3 min, capped in service).
+// Literal 'images' before :imageId.
 router.get(
   "/styled-products/:id/colours/:colourId/images",
   can("view"),

@@ -1,5 +1,12 @@
 import { useRef, useState } from "react";
-import { Plus, Trash2, ImagePlus, Wand2, Palette } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ImagePlus,
+  Wand2,
+  Palette,
+  Video,
+} from "lucide-react";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
 import {
   NumberField,
@@ -27,11 +34,14 @@ import {
 /**
  * Colour + size management for a styled product (catalogue PR).
  *
- * Colours each own their pictures (2–3) and an optional video / IG link, plus
- * an optional per-colour price bump. The colour × size matrix is generated in
- * bulk; each variant's retail = the styled anchor + colour premium + size
- * premium, unless hand-overridden.
+ * Colours each own their own gallery (2–3 minimum, up to MAX_COLOUR_IMAGES)
+ * and an optional video / IG link, plus an optional per-colour price bump. The
+ * colour × size matrix is generated in bulk; each variant's retail = the
+ * styled anchor + colour premium + size premium, unless hand-overridden.
  */
+
+/** Storefront gallery ceiling per colour/variant (mirrors the API cap). */
+const MAX_COLOUR_IMAGES = 10;
 export function StyledVariantsManager({
   styledId,
   anchorPrice,
@@ -108,7 +118,8 @@ function ColoursCard({
       {colours.length === 0 && (
         <p className="text-[12.5px] text-text-muted my-3">
           No colours yet. Add the first colour (e.g. <em>Natural Black</em>),
-          then upload 2–3 pictures for it.
+          then upload its pictures (2–3 minimum, up to {MAX_COLOUR_IMAGES}) and
+          an optional video.
         </p>
       )}
 
@@ -217,9 +228,16 @@ function ColourRow({
               </span>
             )}
           </div>
-          <div className="text-[11px] text-text-faint">
-            {imgs.length} picture{imgs.length === 1 ? "" : "s"}
-            {imgs.length < 2 && <span className="text-warn"> · add 2–3</span>}
+          <div className="text-[11px] text-text-faint flex items-center gap-2 flex-wrap">
+            <span>
+              {imgs.length} picture{imgs.length === 1 ? "" : "s"}
+            </span>
+            {imgs.length < 2 && <span className="text-warn">· add 2–3</span>}
+            {(colour.external_video_url || colour.video_url) && (
+              <span className="inline-flex items-center gap-1 text-accent-glow">
+                <Video className="w-3 h-3" /> video
+              </span>
+            )}
           </div>
         </div>
         {canEdit && (
@@ -261,7 +279,7 @@ function ColourRow({
             )}
           </div>
         ))}
-        {canEdit && (
+        {canEdit && imgs.length < MAX_COLOUR_IMAGES && (
           <button
             onClick={() => fileRef.current?.click()}
             disabled={addImage.isPending}
@@ -284,10 +302,46 @@ function ColourRow({
           onChange={onPick}
         />
       </div>
+      {canEdit && (
+        <p className="text-[11px] text-text-faint mt-1.5">
+          {imgs.length >= MAX_COLOUR_IMAGES
+            ? `Gallery full (${MAX_COLOUR_IMAGES}). Remove a picture to add another.`
+            : `Add as many angles as you like — up to ${MAX_COLOUR_IMAGES} per colour.`}
+        </p>
+      )}
 
-      {/* Expanded editor: premium toggle default + video/IG link */}
+      {/* Video — always available (the storefront shows it on the colour) */}
+      {canEdit && (
+        <div className="mt-3">
+          <label className="micro block mb-1 flex items-center gap-1.5">
+            <Video className="w-3.5 h-3.5" /> Video / Instagram link (optional)
+          </label>
+          <div className="flex gap-2">
+            <input
+              value={igUrl}
+              onChange={(e) => setIgUrl(e.target.value)}
+              placeholder="Paste a YouTube / Instagram / TikTok / video URL…"
+              className="flex-1 h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+            />
+            <Button
+              size="sm"
+              disabled={igUrl === (colour.external_video_url ?? "")}
+              onClick={() =>
+                update.mutate({
+                  colourId: colour.colour_id,
+                  patch: { external_video_url: igUrl.trim() || null },
+                })
+              }
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Expanded editor: default + active toggles */}
       {expanded && canEdit && (
-        <div className="mt-3 pt-3 border-t hairline space-y-3">
+        <div className="mt-3 pt-3 border-t hairline">
           <div className="flex flex-wrap items-center gap-4">
             <Toggle
               checked={colour.is_default}
@@ -309,31 +363,6 @@ function ColourRow({
               }
               label="Active"
             />
-          </div>
-          <div>
-            <label className="micro block mb-1">
-              Video / Instagram link (optional)
-            </label>
-            <div className="flex gap-2">
-              <input
-                value={igUrl}
-                onChange={(e) => setIgUrl(e.target.value)}
-                placeholder="Paste an Instagram / TikTok / video URL…"
-                className="flex-1 h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
-              />
-              <Button
-                size="sm"
-                disabled={igUrl === (colour.external_video_url ?? "")}
-                onClick={() =>
-                  update.mutate({
-                    colourId: colour.colour_id,
-                    patch: { external_video_url: igUrl.trim() || null },
-                  })
-                }
-              >
-                Save
-              </Button>
-            </div>
           </div>
         </div>
       )}

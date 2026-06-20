@@ -1,0 +1,40 @@
+-- ============================================================
+-- TEMPLATE 000043 — Lockdown: a BASE product never reaches the website.
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema name
+-- (e.g. 'pixiegirl', 'faitlynhair'). Applied to NEW brands by
+-- bootstrap-business.js (runs after 000016) and to EXISTING brands by
+-- repair-business-schema.js.
+--
+-- WHY (owner directive, June 2026):
+--   Only STYLED products, bundles and collections go to the website. A base
+--   product is the raw, China-origin, stock-bearing record (the wholesale
+--   spine) and must NEVER be published to the storefront. The storefront read
+--   path was re-pointed at styled_products in the same change; this migration
+--   closes the data-layer door so no legacy/base row can ever surface:
+--     • new base rows default to NOT visible
+--     • every existing base row is pulled off the storefront
+--     • 'storefront' is stripped from base channel lists
+--
+-- This template has NO CREATE TABLE (no sentinel), so the repair script
+-- re-applies it on every run — every statement is therefore idempotent
+-- (SET DEFAULT is declarative; the backfills are guarded to touch only the
+-- rows that still need flipping, so a re-run changes nothing).
+-- ============================================================
+
+-- 1. New base products default to NOT visible on the storefront.
+ALTER TABLE {{BUSINESS}}.products
+  ALTER COLUMN is_visible_storefront SET DEFAULT false;
+ALTER TABLE {{BUSINESS}}.products
+  ALTER COLUMN visible_on_channels SET DEFAULT '{pos}';
+
+-- 2. Backfill: pull every existing base product off the storefront.
+UPDATE {{BUSINESS}}.products
+   SET is_visible_storefront = false
+ WHERE is_visible_storefront = true;
+
+-- 3. Drop 'storefront' from any base product's channel list.
+UPDATE {{BUSINESS}}.products
+   SET visible_on_channels = array_remove(visible_on_channels, 'storefront')
+ WHERE 'storefront' = ANY (visible_on_channels);

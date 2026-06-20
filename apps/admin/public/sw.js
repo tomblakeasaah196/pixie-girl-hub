@@ -2,7 +2,10 @@
    Proper fetch handler required for installability across all browsers
    (Chrome, Edge, Firefox, Samsung Internet). */
 
-const CACHE_NAME = "pixie-hub-shell-v1";
+// Bump this version on any change that should evict the old shell cache.
+// The activate handler deletes every cache that isn't CACHE_NAME, so a new
+// version guarantees clients drop stale assets on next activation.
+const CACHE_NAME = "pixie-hub-shell-v2";
 const SHELL_ASSETS = ["/favicon.svg", "/pwa-icon.svg", "/pwa-icon-192.svg"];
 
 self.addEventListener("install", (event) => {

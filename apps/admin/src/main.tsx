@@ -4,6 +4,11 @@ import App from "./App";
 import "./styles/index.css";
 import "./i18n";
 
+// Surface the live build id in the console — the fastest way to confirm a
+// browser is actually running the deployed build and not a stale cache.
+// eslint-disable-next-line no-console
+console.info(`Pixie Girl Hub build ${__BUILD_ID__}`);
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

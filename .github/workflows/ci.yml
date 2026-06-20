@@ -105,6 +105,19 @@ jobs:
               exit 1
             fi
 
+            echo "--- Verifying the served ERP build matches this commit"
+            EXPECTED_BUILD=$(git rev-parse --short HEAD)
+            SERVED_HTML=$(curl -s "http://localhost:$PORT/")
+            if echo "$SERVED_HTML" | grep -q "x-build\" content=\"$EXPECTED_BUILD\""; then
+              echo "Served ERP build matches HEAD ($EXPECTED_BUILD) ✓"
+            else
+              echo "ERP build verification FAILED"
+              echo "  expected build id: $EXPECTED_BUILD"
+              echo "  served meta tag:   $(echo "$SERVED_HTML" | grep -o 'x-build" content="[^"]*"' | head -1)"
+              echo "  → the origin is serving a stale shell; deploy did not take effect."
+              exit 1
+            fi
+
             # ── Landing (Next.js) ──────────────────────────────────
             echo "--- Installing landing dependencies"
             cd apps/landing

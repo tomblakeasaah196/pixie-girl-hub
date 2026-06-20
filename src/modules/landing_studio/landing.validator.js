@@ -24,7 +24,20 @@ const httpUrl = z
     (v) => v === "" || /^https?:\/\//i.test(v),
     "Only http(s) URLs are allowed",
   );
-const nullableUrl = httpUrl.nullable().optional();
+// Image/media URLs may be an absolute http(s) URL OR a root-relative path
+// served by our own /media mount — storage.put() returns "/media/..." when
+// CDN_BASE_URL is unset, and rejecting it here would 400 the whole Save the
+// moment a hero/logo/background/gallery image is uploaded. Still blocks
+// javascript:/data: and protocol-relative "//host" URLs.
+const mediaUrl = z
+  .string()
+  .trim()
+  .max(2048)
+  .refine(
+    (v) => v === "" || /^https?:\/\//i.test(v) || /^\/(?!\/)/.test(v),
+    "Only http(s) or /media URLs are allowed",
+  );
+const nullableMediaUrl = mediaUrl.nullable().optional();
 
 const themeSchema = z
   .object({
@@ -40,7 +53,7 @@ const themeSchema = z
 
 const logoSchema = z
   .object({
-    url: nullableUrl,
+    url: nullableMediaUrl,
     // Tint may be a hex OR null (null = keep the logo's original colours).
     headerTint: z.string().regex(HEX).nullable().optional(),
     footerTint: z.string().regex(HEX).nullable().optional(),
@@ -65,14 +78,14 @@ const configSchema = z
     background: z
       .object({
         type: z.enum(["color", "image"]).optional(),
-        imageUrl: nullableUrl,
+        imageUrl: nullableMediaUrl,
       })
       .partial()
       .optional(),
     logo: logoSchema.optional(),
     hero: z
       .object({
-        imageUrl: nullableUrl,
+        imageUrl: nullableMediaUrl,
       })
       .passthrough()
       .optional(),
@@ -96,7 +109,7 @@ const configSchema = z
     gallery: z
       .array(
         z
-          .object({ url: httpUrl, caption: z.string().max(160).optional() })
+          .object({ url: mediaUrl, caption: z.string().max(160).optional() })
           .passthrough(),
       )
       .max(24)

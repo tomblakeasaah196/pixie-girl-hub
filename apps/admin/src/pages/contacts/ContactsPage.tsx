@@ -6,12 +6,31 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button, Pill, KpiTile, type Tone } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { useContacts } from "./hooks";
+import {
+  useAmbassadors,
+  useStylists,
+  type Ambassador,
+  type StylistPartner,
+} from "./programmesApi";
 import { ContactFormModal } from "./ContactFormModal";
 import { QuickAddModal } from "./QuickAddModal";
 import { WalkInQR } from "./WalkInQR";
-import { directoryTabs, stakeholderForType } from "./stakeholders";
+import {
+  directoryTabs,
+  stakeholderForType,
+  STAKEHOLDERS,
+} from "./stakeholders";
 import { TYPE_LABELS } from "./ContactDetailPanel";
 import type { Contact, ContactType, PriorityLevel } from "./types";
+
+const STYLIST_STATUS_TONE: Record<string, Tone> = {
+  certified: "success",
+  vetted: "info",
+  vetting: "warn",
+  applicant: "neutral",
+  suspended: "warn",
+  terminated: "danger",
+};
 
 const PRIORITY_TONE: Record<PriorityLevel, Tone> = {
   vip: "accent",
@@ -62,8 +81,9 @@ function ContactAvatar({ name, idx }: { name: string; idx: number }) {
   );
 }
 
-// "all" + the per-stakeholder tabs shipped this phase.
-type TabKey = "all" | ContactType;
+// "all" + the per-stakeholder tabs shipped this phase. Tab identity is the
+// stakeholder KEY (ambassador has no contact_type — it's an overlay).
+type TabKey = "all" | ContactType | "ambassador";
 
 export function ContactsPage() {
   useBreadcrumbs([{ label: "Contacts" }]);
@@ -71,10 +91,10 @@ export function ContactsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const tabs = directoryTabs(); // phase-1 stakeholders
+  const tabs = directoryTabs(); // shipped stakeholders
   const initialTab = (searchParams.get("tab") as TabKey) || "all";
   const [activeTab, setActiveTab] = useState<TabKey>(
-    tabs.some((t) => t.contactType === initialTab) ? initialTab : "all",
+    tabs.some((t) => t.key === initialTab) ? initialTab : "all",
   );
 
   const [search, setSearch] = useState("");
@@ -87,12 +107,19 @@ export function ContactsPage() {
 
   // The active stakeholder tab IS the contact_type server filter — so when you
   // open Clients, only clients come back from the API.
-  const activeDef =
-    activeTab !== "all" ? stakeholderForType(activeTab) : undefined;
+  const activeDef = activeTab !== "all" ? STAKEHOLDERS[activeTab] : undefined;
+
+  // Stylist Partners and Ambassadors are backed by their own programmes, not
+  // the plain contacts list — so those two tabs read from dedicated endpoints.
+  const isAmbassadorTab = activeTab === "ambassador";
+  const isStylistTab = activeTab === "stylist_partner";
+  const isProgrammeTab = isAmbassadorTab || isStylistTab;
 
   const params = {
     ...(search ? { q: search } : {}),
-    ...(activeTab !== "all" ? { contact_type: activeTab } : {}),
+    ...(activeTab !== "all" && !isProgrammeTab
+      ? { contact_type: activeTab }
+      : {}),
     ...(priorityFilter ? { priority_level: priorityFilter } : {}),
     page,
     page_size: 25,
@@ -101,6 +128,27 @@ export function ContactsPage() {
   const { data, isLoading } = useContacts(params);
   const contacts = data?.data ?? [];
   const meta = data?.meta;
+
+  // Programme data sources (only the active one matters; the others idle).
+  const { data: ambData, isLoading: ambLoading } = useAmbassadors(
+    isAmbassadorTab ? search : undefined,
+  );
+  const ambassadors: Ambassador[] = isAmbassadorTab
+    ? (ambData?.data ?? [])
+    : [];
+  const { data: stylistData, isLoading: stylistLoading } = useStylists(
+    isStylistTab
+      ? { ...(priorityFilter ? {} : {}), ...(search ? { city: search } : {}) }
+      : {},
+  );
+  const stylists: StylistPartner[] = isStylistTab
+    ? (stylistData?.data ?? []).filter((s) =>
+        search
+          ? s.display_name?.toLowerCase().includes(search.toLowerCase()) ||
+            s.partner_code?.toLowerCase().includes(search.toLowerCase())
+          : true,
+      )
+    : [];
 
   const changeTab = (t: TabKey) => {
     setActiveTab(t);
@@ -116,12 +164,26 @@ export function ContactsPage() {
     [navigate],
   );
 
-  // Context-aware "add" — employees go to full onboarding; everyone else can
-  // quick-add or open the full form, pre-typed to the active tab.
+  // Context-aware "add" — employees go to full onboarding, stylists to the
+  // programme setup, ambassadors are promoted from a client profile, everyone
+  // else opens the full form pre-typed to the active tab.
   const onPrimaryAdd = () => {
     if (activeTab === "staff") navigate("/contacts/staff/new");
+    else if (isStylistTab) changeTab("all");
+    else if (isAmbassadorTab) changeTab("customer");
     else setShowCreateModal(true);
   };
+
+  const primaryLabel =
+    activeTab === "staff"
+      ? "Onboard Employee"
+      : isStylistTab
+        ? "Add Stylist Partner"
+        : isAmbassadorTab
+          ? "Promote a Client"
+          : activeDef
+            ? `New ${activeDef.label}`
+            : "New Contact";
 
   const columns: Column<Contact>[] = [
     {
@@ -205,6 +267,112 @@ export function ContactsPage() {
     },
   ];
 
+  const ambColumns: Column<Ambassador>[] = [
+    {
+      key: "name",
+      header: "Ambassador",
+      render: (a, idx = ambassadors.indexOf(a)) => {
+        const name =
+          a.display_name ||
+          [a.first_name, a.last_name].filter(Boolean).join(" ") ||
+          "Unnamed";
+        return (
+          <span className="flex items-center gap-2.5">
+            <ContactAvatar name={name} idx={idx} />
+            <span className="flex flex-col min-w-0">
+              <span className="font-medium text-[13px] text-text-primary truncate">
+                {name}
+              </span>
+              {a.instagram_handle && (
+                <span className="text-[11px] text-text-faint truncate">
+                  @{a.instagram_handle}
+                </span>
+              )}
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      key: "commission",
+      header: "Commission",
+      render: (a) => (
+        <span className="text-[12px] text-text-muted font-mono">
+          {a.ambassador_profile?.commission_pct != null
+            ? `${Math.round(a.ambassador_profile.commission_pct * 100)}%`
+            : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "phone",
+      header: "Phone",
+      render: (a) => (
+        <span className="text-[12px] text-text-muted font-mono">
+          {a.primary_phone ?? "—"}
+        </span>
+      ),
+    },
+    {
+      key: "badge",
+      header: "Status",
+      align: "right",
+      render: () => (
+        <Pill tone="accent" dot={false}>
+          Ambassador
+        </Pill>
+      ),
+    },
+  ];
+
+  const stylistColumns: Column<StylistPartner>[] = [
+    {
+      key: "name",
+      header: "Stylist",
+      render: (s, idx = stylists.indexOf(s)) => (
+        <span className="flex items-center gap-2.5">
+          <ContactAvatar name={s.display_name} idx={idx} />
+          <span className="flex flex-col min-w-0">
+            <span className="font-medium text-[13px] text-text-primary truncate">
+              {s.display_name}
+            </span>
+            <span className="text-[11px] text-text-faint truncate font-mono">
+              {s.partner_code}
+            </span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "tier",
+      header: "Tier",
+      render: (s) => (
+        <span className="text-[12px] text-text-muted capitalize">
+          {s.current_tier_key ?? "—"}
+        </span>
+      ),
+    },
+    {
+      key: "location",
+      header: "Location",
+      render: (s) => (
+        <span className="text-[12px] text-text-muted">
+          {[s.city, s.country_code].filter(Boolean).join(", ") || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      align: "right",
+      render: (s) => (
+        <Pill tone={STYLIST_STATUS_TONE[s.status] ?? "neutral"} dot={false}>
+          {s.status}
+        </Pill>
+      ),
+    },
+  ];
+
   const toolbar = (
     <div className="flex flex-col sm:flex-row gap-3 p-[14px_18px] border-b hairline">
       <div className="relative flex-1 max-w-xs">
@@ -271,6 +439,11 @@ export function ContactsPage() {
   );
 
   const emptyLabel = activeDef ? activeDef.plural.toLowerCase() : "contacts";
+  const totalCount = isAmbassadorTab
+    ? ambassadors.length
+    : isStylistTab
+      ? stylists.length
+      : meta?.total;
 
   return (
     <div className="animate-fade-in">
@@ -278,14 +451,14 @@ export function ContactsPage() {
       <div className="flex items-center mb-4 gap-3">
         <div className="flex-1 min-w-0">
           <h1 className="font-display text-2xl text-text-primary">Contacts</h1>
-          {meta && (
+          {totalCount != null && (
             <p className="text-[12px] text-text-faint mt-0.5">
-              {meta.total.toLocaleString()} {emptyLabel}
+              {totalCount.toLocaleString()} {emptyLabel}
             </p>
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {activeTab !== "staff" && (
+          {!isProgrammeTab && activeTab !== "staff" && (
             <Button
               variant="ghost"
               size="sm"
@@ -307,11 +480,7 @@ export function ContactsPage() {
             }
             onClick={onPrimaryAdd}
           >
-            {activeTab === "staff"
-              ? "Onboard Employee"
-              : activeDef
-                ? `New ${activeDef.label}`
-                : "New Contact"}
+            {primaryLabel}
           </Button>
         </div>
       </div>
@@ -330,8 +499,8 @@ export function ContactsPage() {
               key={def.key}
               label={def.plural}
               icon={<Icon className="w-3.5 h-3.5" />}
-              active={activeTab === def.contactType}
-              onClick={() => changeTab(def.contactType as TabKey)}
+              active={activeTab === def.key}
+              onClick={() => changeTab(def.key as TabKey)}
             />
           );
         })}
@@ -341,43 +510,76 @@ export function ContactsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         <KpiTile
           label={`Total ${emptyLabel}`}
-          value={meta ? meta.total.toLocaleString() : "—"}
+          value={totalCount != null ? totalCount.toLocaleString() : "—"}
         />
         <KpiTile label="VIP" value="—" tone="accent" />
         <KpiTile label="New this month" value="—" tone="info" />
         <KpiTile label="At-risk" value="—" tone="warn" />
       </div>
 
-      <DataTable
-        columns={columns}
-        rows={contacts}
-        rowKey={(c) => c.contact_id}
-        onRowClick={openContact}
-        loading={isLoading}
-        toolbar={toolbar}
-        empty={{
-          icon: <Users className="w-8 h-8" />,
-          title: `No ${emptyLabel} yet`,
-          message:
-            activeDef?.blurb ??
-            "Add your first contact or scan the walk-in QR code.",
-          action: (
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Plus className="w-3.5 h-3.5" />}
-              onClick={onPrimaryAdd}
-            >
-              {activeTab === "staff"
-                ? "Onboard Employee"
-                : activeDef
-                  ? `New ${activeDef.label}`
-                  : "New Contact"}
-            </Button>
-          ),
-        }}
-      />
-      {pagination}
+      {isAmbassadorTab ? (
+        <DataTable<Ambassador>
+          columns={ambColumns}
+          rows={ambassadors}
+          rowKey={(a) => a.contact_id}
+          onRowClick={(a) => navigate(`/contacts/${a.contact_id}`)}
+          loading={ambLoading}
+          toolbar={toolbar}
+          empty={{
+            icon: <Users className="w-8 h-8" />,
+            title: "No ambassadors yet",
+            message:
+              "Promote a client to ambassador from their profile to start tracking commission and attribution.",
+          }}
+        />
+      ) : isStylistTab ? (
+        <DataTable<StylistPartner>
+          columns={stylistColumns}
+          rows={stylists}
+          rowKey={(s) => s.stylist_id}
+          onRowClick={(s) => navigate(`/contacts/${s.contact_id}`)}
+          loading={stylistLoading}
+          toolbar={toolbar}
+          empty={{
+            icon: <Users className="w-8 h-8" />,
+            title: "No stylist partners yet",
+            message: activeDef?.blurb ?? "",
+          }}
+        />
+      ) : (
+        <>
+          <DataTable
+            columns={columns}
+            rows={contacts}
+            rowKey={(c) => c.contact_id}
+            onRowClick={openContact}
+            loading={isLoading}
+            toolbar={toolbar}
+            empty={{
+              icon: <Users className="w-8 h-8" />,
+              title: `No ${emptyLabel} yet`,
+              message:
+                activeDef?.blurb ??
+                "Add your first contact or scan the walk-in QR code.",
+              action: (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                  onClick={onPrimaryAdd}
+                >
+                  {activeTab === "staff"
+                    ? "Onboard Employee"
+                    : activeDef
+                      ? `New ${activeDef.label}`
+                      : "New Contact"}
+                </Button>
+              ),
+            }}
+          />
+          {pagination}
+        </>
+      )}
 
       {/* Full form — pre-typed to the active stakeholder tab */}
       {showCreateModal && (

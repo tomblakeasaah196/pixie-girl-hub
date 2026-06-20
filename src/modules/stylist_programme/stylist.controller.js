@@ -20,6 +20,7 @@ async function listPartners(req, res) {
       status: req.query.status,
       country_code: req.query.country_code,
       city: req.query.city,
+      contact_id: req.query.contact_id,
     }),
   });
 }

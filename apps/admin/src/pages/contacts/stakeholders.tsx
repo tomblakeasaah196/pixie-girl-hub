@@ -145,7 +145,7 @@ export const STAKEHOLDERS: Record<string, StakeholderDef> = {
     quickAdd: false,
     createMode: "external",
     profileTabs: ["programme"],
-    phase1: false,
+    phase1: true,
   },
   ambassador: {
     key: "ambassador",
@@ -159,7 +159,7 @@ export const STAKEHOLDERS: Record<string, StakeholderDef> = {
     quickAdd: false,
     createMode: "promote",
     profileTabs: ["ambassador"],
-    phase1: false,
+    phase1: true,
   },
 };
 
@@ -187,14 +187,16 @@ export function stakeholderForType(t: ContactType): StakeholderDef | undefined {
 
 /**
  * Compute the ordered, de-duplicated profile tabs for a contact given the set
- * of types it holds (+ ambassador overlay). This is what makes the profile
- * "dynamic" — a Client sees Deals/Preferences/Loyalty, an Employee sees
- * Employment, a Supplier sees Purchasing, and a Client-who-is-also-Ambassador
- * sees both their client tabs and the Ambassador tab.
+ * of types it holds, plus the two overlays (ambassador flag, stylist record).
+ * This is what makes the profile "dynamic" — a Client sees
+ * Deals/Preferences/Loyalty, an Employee sees Employment, a Supplier sees
+ * Purchasing, and a Client-who-is-also-Ambassador sees both their client tabs
+ * and the Ambassador tab. The stylist Programme tab shows whenever the contact
+ * is enrolled as a stylist partner, even if their contact_type isn't tagged.
  */
 export function profileTabsFor(
   types: ContactType[],
-  isAmbassador = false,
+  overlays: { isAmbassador?: boolean; isStylist?: boolean } = {},
 ): ProfileTabKey[] {
   const out: ProfileTabKey[] = [...UNIVERSAL_TABS];
   const seen = new Set<ProfileTabKey>(out);
@@ -208,7 +210,8 @@ export function profileTabsFor(
     const def = STAKEHOLDERS[t];
     if (def) def.profileTabs.forEach(push);
   }
-  if (isAmbassador) STAKEHOLDERS.ambassador.profileTabs.forEach(push);
+  if (overlays.isStylist) STAKEHOLDERS.stylist_partner.profileTabs.forEach(push);
+  if (overlays.isAmbassador) STAKEHOLDERS.ambassador.profileTabs.forEach(push);
   UNIVERSAL_TABS_TAIL.forEach(push);
   return out;
 }

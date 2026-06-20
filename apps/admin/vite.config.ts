@@ -47,6 +47,17 @@ export default defineConfig({
       ),
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
+    // The @landing-kit source lives outside this app's root; force its bare
+    // deps to resolve to this app's single copy so the bundle never ends up
+    // with two Reacts / two three.js instances (which would break hooks/WebGL).
+    dedupe: [
+      "react",
+      "react-dom",
+      "three",
+      "@react-three/fiber",
+      "@react-three/drei",
+      "framer-motion",
+    ],
   },
   server: {
     port: 5173,

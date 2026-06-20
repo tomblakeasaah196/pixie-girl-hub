@@ -11,6 +11,10 @@ const config: Config = {
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
     "./lib/**/*.{ts,tsx}",
+    // The shared sales-landing renderer lives outside this app. Tailwind must
+    // scan it here or every utility class the Atelier design uses is purged
+    // from the public build. See packages/landing-kit.
+    "../../packages/landing-kit/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {

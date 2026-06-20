@@ -32,6 +32,12 @@
   --font-body: "Montserrat", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
+  /* Atelier sales-landing faces (packages/landing-kit). Kept separate from the
+     admin's own --font-display/-body so the landing matches the Lovable design
+     (Fraunces + Inter Tight) without changing the admin chrome. */
+  --font-atelier-display: "Fraunces", "Playfair Display", Georgia, serif;
+  --font-atelier-body: "Inter Tight", "Montserrat", system-ui, sans-serif;
+
   --radius: 18px;
   --blur: 22px;
   --glass-shadow:

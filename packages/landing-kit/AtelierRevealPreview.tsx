@@ -29,7 +29,8 @@ import { AnimatePresence, motion, useReducedMotion, useMotionValue } from "frame
 import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import type { LandingConfig } from "./config";
 
-const DISPLAY_FONT = '"Fraunces", "Playfair Display", Georgia, serif';
+const DISPLAY_FONT =
+  'var(--font-atelier-display, "Fraunces", "Playfair Display", Georgia, serif)';
 
 /** Retry a dynamic import a couple of times before giving up — smooths over a
  *  transient network blip or a chunk that's momentarily unavailable mid-deploy. */
@@ -42,11 +43,11 @@ function retryImport<T>(factory: () => Promise<T>, retries = 2, delay = 400): Pr
   });
 }
 
-const ThreeDTextReveal = lazy(() =>
-  retryImport(() => import("./ThreeDTextReveal")).then((m) => ({ default: m.ThreeDTextReveal })),
-);
-const ThreeDLogoReveal = lazy(() =>
-  retryImport(() => import("./ThreeDLogoReveal")).then((m) => ({ default: m.ThreeDLogoReveal })),
+// The reveal's 3D centrepiece — the brand logo plate in an atelier of light,
+// a faithful port of the Lovable AtelierStage. Lazy + retried so a transient
+// chunk miss never crashes the page (it degrades to the text headline).
+const AtelierStage = lazy(() =>
+  retryImport(() => import("./AtelierStage")).then((m) => ({ default: m.AtelierStage })),
 );
 
 /** Never let a failed 3D chunk (or a WebGL init error) crash the page — fall
@@ -96,7 +97,7 @@ function RevealHeadline({
           <div className="text-[10px] tracking-[0.5em] uppercase mb-4" style={{ color: accent, opacity: 0.7 }}>
             {tagline}
           </div>
-          <h1 className="text-3xl md:text-5xl lg:text-6xl font-light tracking-tight" style={{ color: accent, fontFamily: DISPLAY_FONT }}>
+          <h1 className="text-3xl md:text-5xl lg:text-6xl font-light tracking-tight" style={{ color: accent, fontFamily: DISPLAY_FONT, fontVariationSettings: '"opsz" 144, "SOFT" 30' }}>
             {headline.split(" ").map((w, i) => (
               <motion.span
                 key={i}
@@ -176,6 +177,33 @@ export function AtelierRevealPreview({
           initial={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } }}
         >
+          {/* 3D atelier stage — full-bleed beneath the drapes, fading in as
+              they part and pushing back on exit (mirrors the reference). If the
+              chunk or WebGL fails it simply stays dark and the headline carries
+              the moment. */}
+          {config.reveal.threeD?.enabled && (
+            <motion.div
+              className="absolute inset-0"
+              initial={{ opacity: 0, scale: 1.05 }}
+              animate={{
+                opacity: phase === "seam" ? 0 : 1,
+                scale: phase === "exit" ? 1.15 : 1,
+              }}
+              transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Reveal3DBoundary fallback={null}>
+                <Suspense fallback={null}>
+                  <AtelierStage
+                    logoUrl={config.logo?.url ?? null}
+                    colors={config.three}
+                    rotationSpeed={config.reveal.threeD.rotationSpeed}
+                    glowIntensity={config.reveal.threeD.glowIntensity}
+                  />
+                </Suspense>
+              </Reveal3DBoundary>
+            </motion.div>
+          )}
+
           {/* Vignette */}
           <div className="pointer-events-none absolute inset-0" style={{ background: `radial-gradient(ellipse at center, transparent 30%, ${ink} 90%)` }} />
 
@@ -213,54 +241,12 @@ export function AtelierRevealPreview({
             style={{ background: `linear-gradient(to bottom, transparent, ${accent}, transparent)`, boxShadow: `0 0 24px ${accent}, 0 0 60px ${accent}` }}
           />
 
-          {/* Headline / 3D Reveal */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            {config.reveal.threeD?.enabled ? (
-              <AnimatePresence>
-                {headlineShown && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.6 }}
-                    className="w-full h-[400px] flex items-center justify-center"
-                  >
-                    {/* 3D, with graceful fallback to the text headline. */}
-                    <Reveal3DBoundary
-                      fallback={
-                        <RevealHeadline show tagline={config.reveal.tagline} headline={headline} accent={accent} />
-                      }
-                    >
-                      <Suspense fallback={null}>
-                        {config.reveal.threeD.variant === "text-dual" ? (
-                          <ThreeDTextReveal
-                            text1="Pixie Girl"
-                            text2="Global"
-                            phase={phaseMotion}
-                            glowIntensity={config.reveal.threeD.glowIntensity}
-                            rotationSpeed={config.reveal.threeD.rotationSpeed}
-                            primaryColor={config.three.primary}
-                            accentColor={config.three.accent}
-                          />
-                        ) : (
-                          <ThreeDLogoReveal
-                            rotationSpeed={config.reveal.threeD.rotationSpeed}
-                            glowIntensity={config.reveal.threeD.glowIntensity}
-                            primaryColor={config.three.primary}
-                            accentColor={config.three.accent}
-                            phase={phaseMotion}
-                          />
-                        )}
-                      </Suspense>
-                    </Reveal3DBoundary>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            ) : (
-              <div className="absolute bottom-[18vh] text-center px-6">
-                <RevealHeadline show={headlineShown} tagline={config.reveal.tagline} headline={headline} accent={accent} />
-              </div>
-            )}
+          {/* Welcome headline — holds over the stage, then lifts away as the
+              drapes finish parting (word-by-word blur reveal). */}
+          <div className="absolute inset-0 flex flex-col items-center justify-end pb-[18vh] pointer-events-none">
+            <div className="text-center px-6">
+              <RevealHeadline show={headlineShown} tagline={config.reveal.tagline} headline={headline} accent={accent} />
+            </div>
           </div>
 
           {/* Skip */}

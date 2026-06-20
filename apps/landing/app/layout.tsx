@@ -1,5 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Playfair_Display, Montserrat, JetBrains_Mono, Italiana } from "next/font/google";
+import {
+  Playfair_Display,
+  Montserrat,
+  JetBrains_Mono,
+  Italiana,
+  Fraunces,
+  Inter_Tight,
+} from "next/font/google";
 import { headers } from "next/headers";
 import { getBrand } from "@/lib/brand";
 import "@/styles/globals.css";
@@ -29,6 +36,22 @@ const italiana = Italiana({
   variable: "--font-cinematic",
   display: "swap",
   weight: "400",
+});
+// Atelier sales-landing faces (packages/landing-kit). Self-hosted via next/font
+// so the live page matches the Lovable reference (Fraunces display + Inter
+// Tight body) with the real variable axes (opsz/SOFT) the design relies on.
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  axes: ["opsz", "SOFT", "WONK"],
+  variable: "--font-atelier-display",
+  display: "swap",
+});
+const interTight = Inter_Tight({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-atelier-body",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -63,7 +86,7 @@ export default function RootLayout({
     <html
       lang="en"
       data-business={brand}
-      className={`${playfair.variable} ${montserrat.variable} ${jetbrains.variable} ${italiana.variable}`}
+      className={`${playfair.variable} ${montserrat.variable} ${jetbrains.variable} ${italiana.variable} ${fraunces.variable} ${interTight.variable}`}
     >
       <body>{children}</body>
     </html>

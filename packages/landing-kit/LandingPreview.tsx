@@ -628,11 +628,13 @@ export function LandingPreview({
       {/* ─── PILLARS ─── */}
       <section className="py-28 md:py-40 px-6 md:px-12">
         <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-12 md:gap-20">
-          {config.pillars.map((p) => (
-            <div key={p.title} className="pt-8" style={{ borderTop: "1px solid rgb(var(--brand-accent)/0.3)" }}>
+          {config.pillars.map((p, i) => (
+            <div key={`${p.numeral}-${i}`} className="pt-8" style={{ borderTop: "1px solid rgb(var(--brand-accent)/0.3)" }}>
               <div className="text-3xl italic" style={{ fontFamily: DISPLAY_FONT, color: "rgb(var(--brand-primary))" }}>{p.numeral}</div>
               <h4 className="text-2xl md:text-3xl mt-2" style={{ fontFamily: DISPLAY_FONT }}>{p.title}</h4>
-              <p className="mt-4 leading-relaxed" style={{ color: "rgb(var(--brand-muted))" }}>{p.body}</p>
+              {/* primary-deep @ 0.8 (not the faint --brand-muted) so the pillar
+                  body copy is actually legible on the light paper background. */}
+              <p className="mt-4 leading-relaxed" style={{ color: "rgb(var(--brand-primary-deep) / 0.8)" }}>{p.body}</p>
             </div>
           ))}
         </div>

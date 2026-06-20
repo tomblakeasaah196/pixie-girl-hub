@@ -142,7 +142,7 @@ function baseConfig(): Omit<LandingConfig, "brandName" | "legalName" | "tagline"
       headlineAccent: "on purpose.",
       body: "The next chapter is being written. Doors closed for now — but the list inside hears first, pays less, and receives the curated gifts reserved for our earliest few. Add your name. Be first through the door.",
       ctaLabel: "Request your invitation",
-      launchSeasonLabel: "The doors open in the season ahead",
+      launchSeasonLabel: "The doors open in the season of {season}",
     },
     invitation: {
       eyebrow: "The Inner Circle",

@@ -63,6 +63,15 @@ const DISPLAY = {
 /** Shared easing — the slow, settled curve the whole reference moves on. */
 const EASE = [0.22, 1, 0.36, 1] as const;
 
+/** Quiet, season-ahead launch month (≈ one quarter out) — the reference never
+ *  shows precise digits. Authors write "{season}" in the hero footnote and we
+ *  swap in this month, so the copy stays editable but reads live by default. */
+const LAUNCH_SEASON = (() => {
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+  return target.toLocaleString("en-US", { month: "long" });
+})();
+
 /** Inject the marquee keyframes once (self-contained; no Tailwind dependency). */
 function usePreviewAssets() {
   useEffect(() => {
@@ -452,7 +461,7 @@ export function LandingPreview({
             className="mt-6 text-[10px] tracking-[0.4em] uppercase text-white/40"
           >
             <span aria-hidden className="mr-2">◦</span>
-            {config.hero.launchSeasonLabel}
+            {(config.hero.launchSeasonLabel || "").replace(/\{season\}/gi, LAUNCH_SEASON)}
           </motion.p>
         </div>
       </section>

@@ -28,9 +28,16 @@ import type { Tone } from "@/components/ui/primitives";
 export type ProfileTabKey =
   | "overview"
   | "timeline"
+  | "tasks"
+  | "calendar"
+  | "notes"
+  | "documents"
   | "addresses"
+  | "audit"
   // client-only
   | "deals"
+  | "invoices"
+  | "concierge"
   | "preferences"
   | "loyalty"
   // employee-only
@@ -71,9 +78,19 @@ export interface StakeholderDef {
 }
 
 /** Universal tabs every contact gets, in order, before the type-specific ones. */
-export const UNIVERSAL_TABS: ProfileTabKey[] = ["overview", "timeline"];
+export const UNIVERSAL_TABS: ProfileTabKey[] = [
+  "overview",
+  "timeline",
+  "tasks",
+  "calendar",
+];
 /** Universal tabs that come AFTER the type-specific ones. */
-export const UNIVERSAL_TABS_TAIL: ProfileTabKey[] = ["addresses"];
+export const UNIVERSAL_TABS_TAIL: ProfileTabKey[] = [
+  "notes",
+  "documents",
+  "addresses",
+  "audit",
+];
 
 export const STAKEHOLDERS: Record<string, StakeholderDef> = {
   customer: {
@@ -87,7 +104,7 @@ export const STAKEHOLDERS: Record<string, StakeholderDef> = {
     blurb: "The people you sell to — their orders, preferences and loyalty.",
     quickAdd: true,
     createMode: "modal",
-    profileTabs: ["deals", "preferences", "loyalty"],
+    profileTabs: ["deals", "invoices", "concierge", "preferences", "loyalty"],
     phase1: true,
   },
   staff: {
@@ -218,9 +235,16 @@ export function profileTabsFor(
 
 export const PROFILE_TAB_LABELS: Record<ProfileTabKey, string> = {
   overview: "Overview",
-  timeline: "Timeline",
+  timeline: "Activity",
+  tasks: "Tasks",
+  calendar: "Calendar",
+  notes: "Notes",
+  documents: "Documents",
   addresses: "Addresses & tags",
+  audit: "Audit",
   deals: "Deals",
+  invoices: "Invoices",
+  concierge: "Concierge",
   preferences: "Preferences",
   loyalty: "Loyalty",
   employment: "Employment",

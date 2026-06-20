@@ -37,6 +37,15 @@ async function revoke(req, res) {
     }),
   });
 }
+async function provision(req, res) {
+  res.status(201).json({
+    data: await service.provisionLogin({
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
+    }),
+  });
+}
 
 // ── Public ─────────────────────────────────────────────────
 async function preview(req, res) {
@@ -52,4 +61,4 @@ async function accept(req, res) {
   });
 }
 
-module.exports = { create, list, revoke, preview, accept };
+module.exports = { create, list, revoke, provision, preview, accept };

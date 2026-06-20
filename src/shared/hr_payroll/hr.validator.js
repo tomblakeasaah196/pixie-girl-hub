@@ -67,6 +67,16 @@ const staffCreateSchema = z.object({
   annual_leave_days_remaining: z.number().min(0).max(365).optional(),
   non_solicit_months: z.number().int().min(0).max(60).optional(),
   dismissal_triggers_log: z.array(z.string().max(200)).max(200).optional(),
+  // Work schedule (set at onboarding, editable in HR).
+  work_schedule: z
+    .record(z.string(), z.enum(["on_site", "remote", "off"]))
+    .optional(),
+  work_expected_start_time: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/, "Use HH:MM")
+    .optional()
+    .nullable(),
+  work_grace_minutes: z.number().int().min(0).max(240).optional(),
 });
 const staffUpdateSchema = staffCreateSchema
   .omit({ contact_id: true, employee_number: true })

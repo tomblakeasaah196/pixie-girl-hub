@@ -43,12 +43,29 @@ import type {
   ContactType,
 } from "./types";
 import { Link } from "react-router-dom";
-import { Briefcase, ShoppingCart, ArrowUpRight } from "lucide-react";
+import {
+  Briefcase,
+  ShoppingCart,
+  ArrowUpRight,
+  Scissors,
+  Sparkles,
+  Award,
+  Wallet,
+} from "lucide-react";
 import {
   profileTabsFor,
   PROFILE_TAB_LABELS,
   type ProfileTabKey,
 } from "./stakeholders";
+import {
+  useStylistByContact,
+  useStylistCertifications,
+  useStylistPayouts,
+  useStylistAssignments,
+  useCreateStylist,
+  usePromoteAmbassador,
+  useDemoteAmbassador,
+} from "./programmesApi";
 
 // ── Helpers (shared with the drawer header) ────────────────────────────────
 
@@ -794,13 +811,19 @@ export function ContactDetailPanel({
 }) {
   const [tab, setTab] = useState<TabKey>("overview");
   const { data: contact, isLoading } = useContact(contactId);
+  // The stylist Programme tab also appears when an enrolled stylist record
+  // exists, even if the contact_type isn't tagged stylist_partner.
+  const { data: stylistRec } = useStylistByContact(contactId);
 
   // Tabs adapt to what the contact actually is — a Client sees
   // Deals/Preferences/Loyalty, an Employee sees Employment, a Supplier sees
   // Purchasing. If the active tab isn't valid for this contact, fall back to
   // Overview rather than rendering nothing.
   const tabs = contact
-    ? profileTabsFor(contact.contact_type, contact.is_ambassador)
+    ? profileTabsFor(contact.contact_type, {
+        isAmbassador: contact.is_ambassador,
+        isStylist: !!stylistRec,
+      })
     : (["overview"] as TabKey[]);
   const activeTab: TabKey = tabs.includes(tab) ? tab : "overview";
 
@@ -875,6 +898,8 @@ export function ContactDetailPanel({
       {activeTab === "employment" && <EmploymentTab contact={contact} />}
       {activeTab === "purchasing" && <PurchasingTab contact={contact} />}
       {activeTab === "subscription" && <SubscriptionTab contact={contact} />}
+      {activeTab === "programme" && <ProgrammeTab contact={contact} />}
+      {activeTab === "ambassador" && <AmbassadorTab contact={contact} />}
     </>
   );
 }
@@ -953,6 +978,383 @@ function SubscriptionTab({ contact }: { contact: Contact }) {
         Email campaigns
         <ArrowUpRight className="w-3.5 h-3.5" />
       </Link>
+    </div>
+  );
+}
+
+// ── Stylist-Partner programme tab ──────────────────────────────────────────
+
+const STYLIST_STATUS_TONE: Record<string, Tone> = {
+  certified: "success",
+  vetted: "info",
+  vetting: "warn",
+  applicant: "neutral",
+  suspended: "warn",
+  terminated: "danger",
+};
+
+const INPUT_CLS =
+  "w-full h-[38px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/50 transition-colors";
+
+function ProgrammeTab({ contact }: { contact: Contact }) {
+  const { data: stylist, isLoading } = useStylistByContact(contact.contact_id);
+  const create = useCreateStylist();
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("NG");
+  const [err, setErr] = useState("");
+
+  const { data: certs } = useStylistCertifications(stylist?.stylist_id ?? null);
+  const { data: payouts } = useStylistPayouts(stylist?.stylist_id ?? null);
+  const { data: assignments } = useStylistAssignments(
+    stylist?.stylist_id ?? null,
+  );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        <Skeleton className="h-16 rounded-[12px]" />
+        <Skeleton className="h-16 rounded-[12px]" />
+      </div>
+    );
+  }
+
+  // Not yet in the programme — enrol this contact.
+  if (!stylist) {
+    return (
+      <div className="rounded-[14px] glass border hairline p-6 text-center max-w-md mx-auto">
+        <span className="grid place-items-center w-11 h-11 rounded-xl bg-warn/[0.14] text-warn mx-auto mb-3">
+          <Scissors className="w-5 h-5" />
+        </span>
+        <div className="font-display text-[16px] text-text-primary mb-1">
+          Add to stylist programme
+        </div>
+        <p className="text-[12.5px] text-text-muted mb-4">
+          Enrol {contact.display_name} as a stylist partner to manage tiers,
+          assignments and payouts.
+        </p>
+        {err && (
+          <div className="mb-3 px-3 py-2 rounded-[10px] bg-danger/[0.1] border border-danger/30 text-[12px] text-danger">
+            {err}
+          </div>
+        )}
+        <div className="flex gap-2 mb-3">
+          <input
+            className={INPUT_CLS}
+            placeholder="City (e.g. Lagos)"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+          />
+          <input
+            className={INPUT_CLS + " w-[110px] shrink-0"}
+            placeholder="Country"
+            value={country}
+            onChange={(e) => setCountry(e.target.value.toUpperCase())}
+            maxLength={3}
+          />
+        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Scissors className="w-3.5 h-3.5" />}
+          disabled={create.isPending || !city.trim() || !country.trim()}
+          onClick={async () => {
+            setErr("");
+            try {
+              await create.mutateAsync({
+                contact_id: contact.contact_id,
+                display_name: contact.display_name,
+                country_code: country.trim(),
+                city: city.trim(),
+              });
+            } catch (e) {
+              setErr(e instanceof Error ? e.message : "Could not enrol stylist.");
+            }
+          }}
+        >
+          {create.isPending ? "Enrolling…" : "Enrol as stylist partner"}
+        </Button>
+      </div>
+    );
+  }
+
+  const certList = certs?.data ?? [];
+  const payoutList = payouts?.data ?? [];
+  const assignmentList = assignments?.data ?? [];
+
+  return (
+    <div className="space-y-5">
+      {/* Programme summary */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <ProgCard label="Partner code">
+          <span className="font-mono text-[13px] text-text-primary">
+            {stylist.partner_code}
+          </span>
+        </ProgCard>
+        <ProgCard label="Status">
+          <Pill tone={STYLIST_STATUS_TONE[stylist.status] ?? "neutral"}>
+            {stylist.status}
+          </Pill>
+        </ProgCard>
+        <ProgCard label="Tier">
+          <span className="text-[13px] text-text-primary capitalize">
+            {stylist.current_tier_key ?? "—"}
+          </span>
+        </ProgCard>
+        <ProgCard label="Location">
+          <span className="text-[13px] text-text-primary">
+            {[stylist.city, stylist.country_code].filter(Boolean).join(", ") ||
+              "—"}
+          </span>
+        </ProgCard>
+        <ProgCard label="Active jobs">
+          <span className="text-[13px] text-text-primary tabular-nums">
+            {stylist.current_active_count ?? 0}
+            {stylist.max_active_assignments
+              ? ` / ${stylist.max_active_assignments}`
+              : ""}
+          </span>
+        </ProgCard>
+        <ProgCard label="Badge">
+          {stylist.badge_token && !stylist.badge_revoked_at ? (
+            <Pill tone="success">Issued</Pill>
+          ) : (
+            <span className="text-[13px] text-text-faint">None</span>
+          )}
+        </ProgCard>
+      </div>
+
+      {/* Certifications */}
+      <ProgSection icon={<Award className="w-3.5 h-3.5" />} title={`Certifications · ${certList.length}`}>
+        {certList.length === 0 ? (
+          <p className="text-[12.5px] text-text-faint">No certifications yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {certList.map((c) => (
+              <div
+                key={c.certification_id}
+                className="flex items-center justify-between p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline"
+              >
+                <span className="text-[13px] text-text-primary capitalize">
+                  {c.tier_key}
+                </span>
+                <span className="text-[11px] text-text-faint">
+                  {c.revoked_at ? "Revoked" : `Awarded ${fmtShort(c.awarded_at)}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </ProgSection>
+
+      {/* Recent payouts */}
+      <ProgSection icon={<Wallet className="w-3.5 h-3.5" />} title={`Recent payouts · ${payoutList.length}`}>
+        {payoutList.length === 0 ? (
+          <p className="text-[12.5px] text-text-faint">No payouts yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {payoutList.slice(0, 6).map((p) => (
+              <div
+                key={p.payout_id}
+                className="flex items-center justify-between p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline"
+              >
+                <span className="text-[12px] text-text-muted">
+                  {fmtShort(p.period_start)} – {fmtShort(p.period_end)}
+                </span>
+                <span className="flex items-center gap-2">
+                  <MoneyText ngn={Number(p.net_payable ?? p.amount ?? 0)} />
+                  <Pill tone={p.status === "paid" ? "success" : "warn"} dot>
+                    {p.status}
+                  </Pill>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </ProgSection>
+
+      {/* Recent assignments */}
+      <ProgSection icon={<Scissors className="w-3.5 h-3.5" />} title={`Recent assignments · ${assignmentList.length}`}>
+        {assignmentList.length === 0 ? (
+          <p className="text-[12.5px] text-text-faint">No assignments yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {assignmentList.slice(0, 6).map((a, i) => (
+              <div
+                key={a.assignment_id ?? a.job_id ?? i}
+                className="flex items-center justify-between p-2.5 rounded-[10px] bg-text-primary/[0.04] border hairline"
+              >
+                <span className="text-[12px] text-text-muted">
+                  {a.scheduled_for ? fmtShort(a.scheduled_for) : "Unscheduled"}
+                </span>
+                <Pill tone="neutral" dot>
+                  {a.status}
+                </Pill>
+              </div>
+            ))}
+          </div>
+        )}
+      </ProgSection>
+    </div>
+  );
+}
+
+function ProgCard({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="p-3 rounded-[11px] bg-text-primary/[0.04] border hairline">
+      <div className="micro mb-1">{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function ProgSection({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <h3 className="text-[11px] tracking-widest uppercase text-accent-glow inline-flex items-center gap-1.5 mb-2">
+        {icon} {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function fmtShort(d?: string | null): string {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// ── Ambassador overlay tab ─────────────────────────────────────────────────
+
+function AmbassadorTab({ contact }: { contact: Contact }) {
+  const promote = usePromoteAmbassador(contact.contact_id);
+  const demote = useDemoteAmbassador(contact.contact_id);
+  const profile = contact.ambassador_profile ?? null;
+
+  const [commission, setCommission] = useState(
+    profile?.commission_pct != null
+      ? String(Math.round(profile.commission_pct * 100))
+      : "",
+  );
+  const [instagram, setInstagram] = useState(
+    profile?.social_handles?.instagram ?? contact.instagram_handle ?? "",
+  );
+  const [err, setErr] = useState("");
+
+  const save = async () => {
+    setErr("");
+    const pct = commission ? Number(commission) / 100 : null;
+    try {
+      await promote.mutateAsync({
+        commission_pct: pct,
+        ...(instagram.trim()
+          ? { social_handles: { instagram: instagram.trim() } }
+          : {}),
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save ambassador.");
+    }
+  };
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      <div className="flex items-center gap-2.5">
+        <span className="grid place-items-center w-9 h-9 rounded-xl bg-accent/[0.12] text-accent-glow">
+          <Sparkles className="w-4 h-4" />
+        </span>
+        <div>
+          <div className="text-[14px] font-medium text-text-primary">
+            {contact.is_ambassador ? "Active ambassador" : "Not an ambassador"}
+          </div>
+          <div className="text-[12px] text-text-faint">
+            {contact.is_ambassador
+              ? "Earns commission on attributed sales via their share link."
+              : "Promote this contact to start tracking referrals & commission."}
+          </div>
+        </div>
+      </div>
+
+      {err && (
+        <div className="px-3 py-2 rounded-[10px] bg-danger/[0.1] border border-danger/30 text-[12px] text-danger">
+          {err}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className="micro mb-1 block">Commission %</span>
+          <input
+            className={INPUT_CLS}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={100}
+            placeholder="e.g. 10"
+            value={commission}
+            onChange={(e) => setCommission(e.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="micro mb-1 block">Instagram handle</span>
+          <input
+            className={INPUT_CLS}
+            placeholder="amara.style"
+            value={instagram}
+            onChange={(e) => setInstagram(e.target.value.replace(/^@+/, ""))}
+          />
+        </label>
+      </div>
+
+      <div className="flex gap-2">
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Sparkles className="w-3.5 h-3.5" />}
+          disabled={promote.isPending}
+          onClick={save}
+        >
+          {promote.isPending
+            ? "Saving…"
+            : contact.is_ambassador
+              ? "Save ambassador"
+              : "Promote to ambassador"}
+        </Button>
+        {contact.is_ambassador && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Trash2 className="w-3.5 h-3.5" />}
+            disabled={demote.isPending}
+            onClick={() => demote.mutate()}
+          >
+            {demote.isPending ? "Removing…" : "Remove ambassador"}
+          </Button>
+        )}
+        <Link
+          to="/sales-campaigns"
+          className="inline-flex items-center gap-1.5 h-[33px] px-3 rounded-[10px] bg-text-primary/[0.04] border hairline text-[12px] font-semibold text-text-muted hover:text-text-primary transition-colors"
+        >
+          Campaigns
+          <ArrowUpRight className="w-3.5 h-3.5" />
+        </Link>
+      </div>
     </div>
   );
 }

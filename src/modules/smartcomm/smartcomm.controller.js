@@ -267,6 +267,17 @@ async function createOrderCapture(req, res) {
   res.status(201).json(data);
 }
 
+async function sendInvoiceIntoThread(req, res) {
+  const data = await service.sendInvoiceIntoThread({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    channel_id: req.params.id,
+    invoice_id: req.body.invoice_id,
+  });
+  res.status(201).json(data);
+}
+
 // ── Quick replies ─────────────────────────────────────────
 
 async function listQuickReplies(req, res) {
@@ -341,6 +352,7 @@ module.exports = {
   discardDraft,
   draftWithPraxis,
   createOrderCapture,
+  sendInvoiceIntoThread,
   listQuickReplies,
   createQuickReply,
   updateQuickReply,

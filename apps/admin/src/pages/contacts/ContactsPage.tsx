@@ -8,6 +8,7 @@ import {
   UserPlus,
   List,
   LayoutGrid,
+  Globe,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -23,6 +24,7 @@ import {
 import { ContactFormModal } from "./ContactFormModal";
 import { QuickAddModal } from "./QuickAddModal";
 import { WalkInQR } from "./WalkInQR";
+import { OnlineQR } from "./OnlineQR";
 import {
   directoryTabs,
   stakeholderForType,
@@ -112,6 +114,7 @@ export function ContactsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showOnlineQR, setShowOnlineQR] = useState(false);
   const [view, setView] = useState<"list" | "cards">(
     () =>
       (localStorage.getItem("pgh_contacts_view") as "list" | "cards") || "list",
@@ -425,6 +428,14 @@ export function ContactsPage() {
       >
         Walk-in QR
       </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={<Globe className="w-3.5 h-3.5" />}
+        onClick={() => setShowOnlineQR(true)}
+      >
+        Online QR
+      </Button>
     </div>
   );
 
@@ -697,6 +708,7 @@ export function ContactsPage() {
       )}
 
       {showQR && <WalkInQR onClose={() => setShowQR(false)} />}
+      {showOnlineQR && <OnlineQR onClose={() => setShowOnlineQR(false)} />}
     </div>
   );
 }

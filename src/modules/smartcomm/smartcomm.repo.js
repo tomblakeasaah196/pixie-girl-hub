@@ -9,8 +9,18 @@
 "use strict";
 
 const { query } = require("../../config/database");
+const { config } = require("../../config/env");
 
 const ex = (c) => (c ? c.query.bind(c) : query);
+
+// Build a browser-fetchable URL for a stored document file_path, mirroring
+// services/storage.service.js (CDN when configured, else the /media proxy).
+function mediaUrl(filePath) {
+  if (!filePath) return null;
+  return config.CDN_BASE_URL
+    ? `${config.CDN_BASE_URL}/${filePath}`
+    : `/media/${filePath}`;
+}
 
 // ── Channels ──────────────────────────────────────────────
 
@@ -278,8 +288,9 @@ async function insertMessage({ client, message }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.messages
        (channel_id, sender_user_id, sender_contact_id, message_type, content,
-        reply_to_id, external_ref, delivery_status, is_forwarded, forwarded_from_id)
-     VALUES ($1,$2,$3,COALESCE($4,'text'),$5,$6,$7,COALESCE($8,'sent'),COALESCE($9,false),$10)
+        reply_to_id, external_ref, delivery_status, is_forwarded, forwarded_from_id, metadata)
+     VALUES ($1,$2,$3,COALESCE($4,'text'),$5,$6,$7,COALESCE($8,'sent'),COALESCE($9,false),$10,
+             COALESCE($11::jsonb, '{}'::jsonb))
      RETURNING *`,
     [
       message.channel_id,
@@ -292,6 +303,7 @@ async function insertMessage({ client, message }) {
       message.delivery_status || null,
       message.is_forwarded || false,
       message.forwarded_from_id || null,
+      message.metadata ? JSON.stringify(message.metadata) : null,
     ],
   );
   return rows[0];
@@ -359,7 +371,8 @@ async function listMessages({ channel_id, before, limit = 50 }) {
                 ELSE 'System' END AS sender_name,
            CASE WHEN m.sender_user_id IS NOT NULL THEN 'staff'
                 WHEN m.sender_contact_id IS NOT NULL THEN 'customer'
-                ELSE 'system' END AS sender_kind
+                ELSE 'system' END AS sender_kind,
+           COALESCE(att.attachments, '[]'::jsonb) AS attachments
       FROM shared.messages m
       LEFT JOIN LATERAL (
         SELECT jsonb_agg(jsonb_build_object(
@@ -375,6 +388,18 @@ async function listMessages({ channel_id, before, limit = 50 }) {
          WHERE ms.message_id = m.message_id AND ms.user_id = m.sender_user_id
          LIMIT 1
       ) s ON true
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(jsonb_build_object(
+                 'document_id', ma.document_id,
+                 'display_name', COALESCE(ma.display_name, d.title),
+                 'mime_type', d.mime_type,
+                 'file_size_bytes', d.file_size_bytes,
+                 'file_path', d.file_path
+               ) ORDER BY ma.created_at) AS attachments
+          FROM shared.message_attachments ma
+          LEFT JOIN shared.documents d ON d.document_id = ma.document_id
+         WHERE ma.message_id = m.message_id
+      ) att ON true
       LEFT JOIN shared.messages rp ON rp.message_id = m.reply_to_id
       LEFT JOIN shared.users rp_sender ON rp_sender.user_id = rp.sender_user_id
       LEFT JOIN shared.users u ON u.user_id = m.sender_user_id
@@ -383,6 +408,19 @@ async function listMessages({ channel_id, before, limit = 50 }) {
      ORDER BY m.created_at ASC
      LIMIT $${params.length}`;
   const { rows } = await query(sql, params);
+  // Turn each attachment's storage file_path into a browser URL (and drop the
+  // raw path from the payload — the client only needs the URL + display meta).
+  for (const r of rows) {
+    if (Array.isArray(r.attachments)) {
+      r.attachments = r.attachments.map((a) => ({
+        document_id: a.document_id,
+        display_name: a.display_name,
+        mime_type: a.mime_type,
+        file_size_bytes: a.file_size_bytes,
+        url: mediaUrl(a.file_path),
+      }));
+    }
+  }
   return rows;
 }
 

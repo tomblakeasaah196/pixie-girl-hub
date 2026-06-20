@@ -14,6 +14,8 @@ const messageType = z.enum([
   "video",
   "sticker",
   "system",
+  "product_share",
+  "send_invoice",
 ]);
 
 const channelCreate = z
@@ -72,13 +74,19 @@ const postMessage = z
       )
       .optional(),
     is_template: z.boolean().optional(),
+    // Card payloads for `product_share` (carousel of products/services) and
+    // `send_invoice` (a card linking a posted invoice into the thread). The
+    // service whitelists keys before persisting.
+    metadata: z.record(z.any()).optional(),
   })
   .strict()
   .refine(
     (v) =>
       (v.content && v.content.length > 0) ||
-      (v.attachments && v.attachments.length > 0),
-    { message: "content or attachments required" },
+      (v.attachments && v.attachments.length > 0) ||
+      v.message_type === "product_share" ||
+      v.message_type === "send_invoice",
+    { message: "content, attachments, or a card payload is required" },
   );
 
 const editMessage = z.object({ content: z.string().min(1).max(8000) }).strict();
@@ -126,6 +134,8 @@ const draftSave = z
     generated_by: z.enum(["human", "praxis"]).optional(),
   })
   .strict();
+
+const sendInvoiceCard = z.object({ invoice_id: z.string().uuid() }).strict();
 
 const orderCaptureCreate = z
   .object({
@@ -214,4 +224,5 @@ module.exports = {
   validateQuickReplyCreate: mk(quickReplyCreate),
   validateQuickReplyUpdate: mk(quickReplyUpdate),
   validateOrderCaptureCreate: mk(orderCaptureCreate),
+  validateSendInvoiceCard: mk(sendInvoiceCard),
 };

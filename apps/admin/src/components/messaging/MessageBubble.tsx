@@ -18,6 +18,9 @@ import {
 } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
 import type { Message } from "@/lib/smartcomm-types";
+import { MessageAttachments } from "./MessageAttachments";
+import { ProductCarousel } from "./ProductCarousel";
+import { InvoiceCard } from "./InvoiceCard";
 
 interface Actions {
   onReply: (m: Message) => void;
@@ -116,16 +119,31 @@ export function MessageBubble({
                 : {message.reply_content}
               </div>
             )}
-            {message.message_type === "image" && (
-              <div className="mb-1.5 text-[11px] opacity-80">📷 Photo</div>
+            {message.message_type === "product_share" &&
+              message.metadata?.products && (
+                <ProductCarousel
+                  intro={message.metadata.intro}
+                  products={message.metadata.products}
+                  isOwn={isOwn}
+                />
+              )}
+            {message.message_type === "send_invoice" && (
+              <InvoiceCard message={message} isOwn={isOwn} />
             )}
-            {message.message_type === "document" && (
-              <div className="mb-1.5 text-[11px] opacity-80">
-                📄 {message.attachments?.[0]?.display_name ?? "Document"}
+            {message.message_type !== "text" &&
+              message.message_type !== "product_share" &&
+              message.message_type !== "send_invoice" && (
+                <MessageAttachments message={message} isOwn={isOwn} />
+              )}
+            {message.is_forwarded && (
+              <div
+                className={cn(
+                  "mb-0.5 flex items-center gap-1 text-[10.5px] italic",
+                  isOwn ? "text-bg/60" : "text-text-faint",
+                )}
+              >
+                <Forward className="w-3 h-3" /> Forwarded
               </div>
-            )}
-            {message.message_type === "voice_note" && (
-              <div className="mb-1.5 text-[11px] opacity-80">🎤 Voice note</div>
             )}
             {message.content && (
               <p className="whitespace-pre-wrap">{message.content}</p>

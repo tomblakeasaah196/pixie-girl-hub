@@ -23,6 +23,7 @@ async function upload(req, res) {
     title: req.body.title,
     reference_type: req.body.reference_type,
     reference_id: req.body.reference_id,
+    tags: req.body.tags,
     request_id: req.request_id,
   });
   res.status(201).json({ data: doc });
@@ -38,6 +39,7 @@ async function list(req, res) {
         reference_type: req.query.reference_type,
         reference_id: req.query.reference_id,
         q: req.query.q,
+        tag: req.query.tag,
       },
       page,
       page_size,

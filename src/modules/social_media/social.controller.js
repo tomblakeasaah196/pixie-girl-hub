@@ -55,6 +55,15 @@ async function publishPost(req, res) {
     }),
   });
 }
+async function reschedulePost(req, res) {
+  res.json({
+    data: await service.reschedule({
+      ...base(req),
+      id: req.params.id,
+      scheduled_for: req.body.scheduled_for,
+    }),
+  });
+}
 async function recordMetrics(req, res) {
   res.json({
     data: await service.recordMetrics({
@@ -84,6 +93,7 @@ module.exports = {
   getPost,
   createPost,
   publishPost,
+  reschedulePost,
   recordMetrics,
   refreshMetrics,
   ingestInboundDM,

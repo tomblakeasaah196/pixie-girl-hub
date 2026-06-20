@@ -148,6 +148,11 @@ async function sendCampaign({ brand, user, request_id, id }) {
         html: render(template.html_body, tokens),
         from_name: campaign.from_name || template.from_name,
         from_email: campaign.from_email || template.from_email,
+        // EMAIL_TWO_WAY_SETUP: pass the brand so the sender resolves the right
+        // FROM identity, and a conversational Reply-To (sales@<brand>) so a
+        // customer's reply threads back into the conversation.
+        reply_to: campaign.reply_to_email || template.reply_to_email,
+        brand,
       });
       await repo.setRecipientStatus({
         brand,

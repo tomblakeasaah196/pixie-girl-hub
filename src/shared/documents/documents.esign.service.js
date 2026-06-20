@@ -11,7 +11,9 @@
 "use strict";
 
 const crypto = require("crypto");
-const { withTransaction } = require("../../config/database");
+// config/database exports `transaction`; alias it so the existing
+// withTransaction(...) call sites below keep working.
+const { transaction: withTransaction } = require("../../config/database");
 const repo = require("./documents.esign.repo");
 const { audit } = require("../../middleware/audit");
 const {

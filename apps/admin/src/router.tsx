@@ -177,6 +177,21 @@ const InvoicingPage = lazyWithRetry(() =>
     default: m.InvoicingPage,
   })),
 );
+const SocialPage = lazyWithRetry(() =>
+  import("@/pages/social/SocialPage").then((m) => ({
+    default: m.SocialPage,
+  })),
+);
+const MarketingPage = lazyWithRetry(() =>
+  import("@/pages/marketing/MarketingPage").then((m) => ({
+    default: m.MarketingPage,
+  })),
+);
+const DocumentsPage = lazyWithRetry(() =>
+  import("@/pages/documents/DocumentsPage").then((m) => ({
+    default: m.DocumentsPage,
+  })),
+);
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -374,6 +389,32 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <CampaignBuilderPage />
+                </Suspense>
+              ),
+            },
+
+            // Social Media, Marketing & Email Campaigns, Documents & Signatures.
+            {
+              path: "social",
+              element: (
+                <Suspense fallback={null}>
+                  <SocialPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "marketing",
+              element: (
+                <Suspense fallback={null}>
+                  <MarketingPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "documents",
+              element: (
+                <Suspense fallback={null}>
+                  <DocumentsPage />
                 </Suspense>
               ),
             },

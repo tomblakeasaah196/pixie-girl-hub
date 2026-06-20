@@ -1,6 +1,16 @@
 /**
  * Email sender (V2.2 §6.16 — Nodemailer over transactional SMTP, no Klaviyo).
  * Used by: email campaigns, transactional notifications, retention workflows.
+ *
+ * Sends via the single configured SMTP relay (SMTP_*). The per-brand identity
+ * comes from the FROM address (business_config.email_from_address), not from a
+ * separate SMTP host.
+ *
+ * Reply-To rule (EMAIL_TWO_WAY_SETUP): every outbound message carries a
+ * conversational `Reply-To: sales@<brand-domain>` — even transactional mail
+ * whose From is `noreply@` — so a customer's reply lands on the monitored
+ * mailbox that Cloudflare Email Routing forwards into our inbound webhook and
+ * threads back into the conversation. A caller-supplied reply_to always wins.
  */
 
 "use strict";
@@ -53,6 +63,13 @@ async function getSender(brand) {
   };
 }
 
+/** Conversational reply address: `sales@<domain-of-from-address>` so customer
+ *  replies always reach a monitored, webhook-ingested mailbox. */
+function replyToFor(fromEmail) {
+  const domain = (fromEmail || "").split("@")[1];
+  return domain ? `sales@${domain}` : null;
+}
+
 async function send({
   to,
   subject,
@@ -60,15 +77,19 @@ async function send({
   text,
   from_email,
   from_name,
+  reply_to,
   headers,
   brand,
 }) {
   const t = getTransporter();
   const sender = await getSender(brand);
+  const fromEmail = from_email || sender.fromEmail;
+  const replyTo = reply_to || replyToFor(fromEmail);
 
   return t.sendMail({
     to,
-    from: `${from_name || sender.fromName} <${from_email || sender.fromEmail}>`,
+    from: `${from_name || sender.fromName} <${fromEmail}>`,
+    replyTo: replyTo || undefined,
     subject,
     html,
     text,

@@ -150,6 +150,25 @@ async function listMetrics({ post_id }) {
   return rows;
 }
 
+/**
+ * Detach planned drafts whose date has passed: a draft created from a future
+ * calendar day carries that day in scheduled_for so it shows on the calendar.
+ * Once the day is gone the planning date is meaningless, so we clear it — the
+ * draft floats free again, ready to publish or reschedule. (Drafts only; a
+ * real 'scheduled' post keeps its date.)
+ */
+async function detachStaleDrafts({ brand }) {
+  await query(
+    `UPDATE shared.social_posts
+        SET scheduled_for = NULL, updated_at = now()
+      WHERE business = $1
+        AND status = 'draft'
+        AND scheduled_for IS NOT NULL
+        AND scheduled_for < now()`,
+    [brand],
+  );
+}
+
 module.exports = {
   createAccount,
   listAccounts,
@@ -160,4 +179,5 @@ module.exports = {
   setPostStatus,
   upsertMetrics,
   listMetrics,
+  detachStaleDrafts,
 };

@@ -42,6 +42,51 @@ function extFor(filename, mime) {
   return (filename && path.extname(filename)) || EXT_BY_MIME[mime] || "";
 }
 
+// A document is auto-grouped by business area via one category tag derived
+// from its type, so every file is discoverable by domain without manual work.
+const CATEGORY_BY_TYPE = {
+  invoice: "finance",
+  receipt: "finance",
+  settlement: "finance",
+  intercompany_invoice: "finance",
+  payslip: "hr",
+  quotation: "sales",
+  contract: "commercial",
+  agreement: "commercial",
+  nda: "legal",
+  certificate: "compliance",
+  stylist_certificate: "stylists",
+  stylist_payout_remittance: "stylists",
+  delivery_note: "logistics",
+  purchase_order: "purchasing",
+  production_summary: "production",
+  report: "reports",
+  id_document: "identity",
+  image: "media",
+  export: "exports",
+  document: "general",
+  other: "general",
+};
+const CATEGORY_COLOUR = "#A8631D"; // bronze — distinguishes the auto category chip
+
+function categoryTagFor(document_type) {
+  return CATEGORY_BY_TYPE[document_type] || "general";
+}
+
+/** Normalise free-form tags: trim, lowercase, drop empties, cap length/count. */
+function normaliseTags(tags) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(tags) ? tags : []) {
+    const name = String(raw).trim().toLowerCase().slice(0, 40);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
 /**
  * Persist a file. Pass a Buffer (from an upload or generated in-process).
  * @returns {Promise<{document_id, document_number, title, mime_type, file_size_bytes, url, reference_type, reference_id}>}
@@ -56,6 +101,7 @@ async function store({
   title,
   reference_type = null,
   reference_id = null,
+  tags = [],
   client,
   request_id = null,
 }) {
@@ -82,6 +128,23 @@ async function store({
         uploaded_by: user_id,
       },
     });
+    // Tags: the auto category tag (by type) + any user tags. The documents row
+    // is immutable, so labels live in shared.document_tags.
+    const userTags = normaliseTags(tags);
+    const category = categoryTagFor(document_type);
+    await repo.addTags({
+      client: c,
+      document_id: doc.document_id,
+      business: brand,
+      tagged_by: user_id,
+      tags: [
+        { name: category, colour: CATEGORY_COLOUR },
+        ...userTags
+          .filter((t) => t !== category)
+          .map((name) => ({ name, colour: "#64748B" })),
+      ],
+    });
+    await repo.attachTags({ client: c, rows: [doc] });
     await audit({
       business: brand,
       user_id,
@@ -106,6 +169,7 @@ async function store({
 async function getById({ brand, id }) {
   const d = await repo.findById({ brand, id });
   if (!d) throw new NotFoundError("Document");
+  await repo.attachTags({ rows: [d] });
   return d;
 }
 

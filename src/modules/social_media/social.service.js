@@ -68,7 +68,9 @@ async function revokeAccount({ brand, user, request_id, id }) {
 }
 
 // ── Posts ──────────────────────────────────────────────────
-function listPosts(args) {
+async function listPosts(args) {
+  // Free any planned drafts whose date has passed before returning the feed.
+  await repo.detachStaleDrafts({ brand: args.brand });
   return repo.listPosts(args);
 }
 async function getPost({ brand, id }) {
@@ -78,7 +80,9 @@ async function getPost({ brand, id }) {
   return p;
 }
 async function createPost({ brand, user, request_id, input }) {
-  const status = input.scheduled_for ? "scheduled" : "draft";
+  // An explicit status wins (a planned draft carries scheduled_for as its
+  // calendar date but stays a draft); otherwise infer from scheduled_for.
+  const status = input.status || (input.scheduled_for ? "scheduled" : "draft");
   const post = await repo.createPost({ brand, post: { ...input, status } });
   await A(
     brand,
@@ -175,6 +179,39 @@ async function publishPost({ brand, user, request_id, id, external_post_id }) {
     );
   }
 }
+/**
+ * (Re)schedule a post to a date — also used to put a detached draft back on
+ * the calendar. Sets status 'scheduled' + scheduled_for. Published/publishing
+ * posts can't be rescheduled.
+ */
+async function reschedule({ brand, user, request_id, id, scheduled_for }) {
+  const p = await repo.getPost({ brand, id });
+  if (!p) throw new NotFoundError("Post");
+  if (p.status === "published" || p.status === "publishing")
+    throw new AppError(
+      "ALREADY_PUBLISHED",
+      "A published post can't be rescheduled",
+      409,
+    );
+  const updated = await repo.setPostStatus({
+    brand,
+    id,
+    status: "scheduled",
+    fields: { scheduled_for: new Date(scheduled_for).toISOString() },
+  });
+  await A(
+    brand,
+    user,
+    "social.post.reschedule",
+    "social_post",
+    id,
+    { scheduled_for },
+    request_id,
+  );
+  events.emit("post.updated", { brand, post_id: id });
+  return updated;
+}
+
 async function recordMetrics({ brand, id, metric_date, metrics }) {
   const p = await repo.getPost({ brand, id });
   if (!p) throw new NotFoundError("Post");
@@ -244,6 +281,7 @@ module.exports = {
   getPost,
   createPost,
   publishPost,
+  reschedule,
   recordMetrics,
   refreshMetrics,
   ingestInboundDM,

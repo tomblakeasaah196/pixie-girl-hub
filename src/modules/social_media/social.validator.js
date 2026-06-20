@@ -27,7 +27,15 @@ const postCreate = z
     media_urls: z.array(z.string()).optional(),
     tagged_product_ids: z.array(z.string().uuid()).optional(),
     scheduled_for: z.string().datetime().optional(),
+    // Optional explicit intent. A "planned draft" sends status:"draft" together
+    // with scheduled_for (its calendar date) so it shows on the day but stays a
+    // draft; omit to infer (scheduled_for ⇒ scheduled, else draft).
+    status: z.enum(["draft", "scheduled"]).optional(),
   })
+  .strict();
+
+const reschedule = z
+  .object({ scheduled_for: z.string().datetime() })
   .strict();
 
 const metrics = z
@@ -58,6 +66,7 @@ const mk = (schema) => (req, _res, next) => {
 module.exports = {
   validateAccountConnect: mk(accountConnect),
   validatePostCreate: mk(postCreate),
+  validateReschedule: mk(reschedule),
   validateMetrics: mk(metrics),
   validateDmIngest: mk(dmIngest),
   validatePublish: mk(publish),

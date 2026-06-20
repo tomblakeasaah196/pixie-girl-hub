@@ -35,6 +35,12 @@ router.post(
   c.publishPost,
 );
 router.post(
+  "/posts/:id/reschedule",
+  can("edit"),
+  v.validateReschedule,
+  c.reschedulePost,
+);
+router.post(
   "/posts/:id/metrics",
   can("edit"),
   v.validateMetrics,

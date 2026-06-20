@@ -52,6 +52,58 @@ async function findById({ client, brand, id }) {
   return rows[0] || null;
 }
 
+// ── Tags (shared.document_tags) ──────────────────────────────
+// Labels attached to a document for organisation/retrieval beyond the rigid
+// document_type. UNIQUE(document_id, tag_name, business) so re-tagging is
+// idempotent. The documents row itself stays immutable — tags live here.
+
+async function addTags({ client, document_id, business, tags = [], tagged_by }) {
+  if (!tags.length) return;
+  const run = ex(client);
+  for (const t of tags) {
+    const name = typeof t === "string" ? t : t.name;
+    const colour = (typeof t === "object" && t.colour) || "#64748B";
+    if (!name) continue;
+    await run(
+      `INSERT INTO shared.document_tags
+         (document_id, tag_name, business, colour, tagged_by)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (document_id, tag_name, business) DO NOTHING`,
+      [document_id, name, business, colour, tagged_by || null],
+    );
+  }
+}
+
+/** Fetch tags for a set of documents → Map(document_id → [{tag_name, colour}]). */
+async function tagsByDocument({ client, document_ids = [] }) {
+  const map = new Map();
+  if (!document_ids.length) return map;
+  const { rows } = await ex(client)(
+    `SELECT document_id, tag_name, colour
+       FROM shared.document_tags
+      WHERE document_id = ANY($1::uuid[])
+      ORDER BY created_at`,
+    [document_ids],
+  );
+  for (const r of rows) {
+    const arr = map.get(r.document_id) || [];
+    arr.push({ tag_name: r.tag_name, colour: r.colour });
+    map.set(r.document_id, arr);
+  }
+  return map;
+}
+
+/** Mutate `rows` in place, attaching a `tags` array to each. */
+async function attachTags({ client, rows = [] }) {
+  if (!rows.length) return rows;
+  const map = await tagsByDocument({
+    client,
+    document_ids: rows.map((r) => r.document_id),
+  });
+  for (const r of rows) r.tags = map.get(r.document_id) || [];
+  return rows;
+}
+
 async function listByReference({
   client,
   brand,
@@ -95,6 +147,15 @@ async function findAll({
     params.push(`%${filters.q}%`);
     i++;
   }
+  if (filters.tag) {
+    where.push(
+      `EXISTS (SELECT 1 FROM shared.document_tags dt
+                WHERE dt.document_id = shared.documents.document_id
+                  AND dt.tag_name = $${i})`,
+    );
+    params.push(filters.tag);
+    i++;
+  }
   const w = `WHERE ${where.join(" AND ")}`;
   const run = ex(client);
   const { rows: c } = await run(
@@ -105,6 +166,7 @@ async function findAll({
     `SELECT * FROM shared.documents ${w} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
+  await attachTags({ client, rows });
   return {
     data: rows,
     meta: {
@@ -131,4 +193,7 @@ module.exports = {
   listByReference,
   findAll,
   softDelete,
+  addTags,
+  tagsByDocument,
+  attachTags,
 };

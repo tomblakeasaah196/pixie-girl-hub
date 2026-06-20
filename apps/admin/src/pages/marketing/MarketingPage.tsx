@@ -60,6 +60,12 @@ import {
   type AdStatus,
   type AttributionRow,
 } from "@/lib/marketing-api";
+import {
+  TemplatesTab,
+  SegmentsTab,
+  CampaignAudienceSection,
+  CampaignVariantsSection,
+} from "./EmailExtras";
 
 /**
  * Marketing & Email Campaigns (`/marketing`, canon §6.15/§6.16).
@@ -141,10 +147,30 @@ function EmailTab() {
   const campaignsQ = useEmailCampaigns(status || undefined);
   const [building, setBuilding] = useState(false);
   const [detail, setDetail] = useState<EmailCampaign | null>(null);
-  const campaigns = campaignsQ.data?.data ?? [];
+  const [sub, setSub] = useState<"campaigns" | "templates" | "segments">("campaigns");
+  const campaigns = campaignsQ.data ?? [];
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-1">
+        {(["campaigns", "templates", "segments"] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => setSub(k)}
+            className={`px-3 py-1.5 rounded-full text-[12.5px] font-semibold capitalize transition-colors ${
+              sub === k ? "bg-accent/[0.12] text-accent-glow" : "text-text-muted hover:text-text-primary"
+            }`}
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+
+      {sub === "templates" && <TemplatesTab />}
+      {sub === "segments" && <SegmentsTab />}
+
+      {sub === "campaigns" && (
+      <>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="w-44">
           <Select
@@ -208,6 +234,8 @@ function EmailTab() {
             </button>
           ))}
         </Card>
+      )}
+      </>
       )}
 
       {building && <CampaignBuilder onClose={() => setBuilding(false)} />}
@@ -369,7 +397,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: EmailCampaign; onClos
   const pause = usePauseEmailCampaign();
   const cancel = useCancelEmailCampaign();
   const schedule = useScheduleEmailCampaign();
-  const stats = statsQ.data ?? {};
+  const stats = statsQ.data;
   const [when, setWhen] = useState("");
 
   const canEdit = can("email_campaigns", "edit");
@@ -385,21 +413,31 @@ function CampaignDetail({ campaign, onClose }: { campaign: EmailCampaign; onClos
           {statsQ.isLoading ? (
             <Skeleton style={{ height: 60 }} />
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              <Stat icon={<Send className="w-3.5 h-3.5" />} label="Delivered" value={stats.delivered ?? 0} />
-              <Stat icon={<Eye className="w-3.5 h-3.5" />} label="Opened" value={stats.opened ?? 0} />
-              <Stat icon={<MousePointerClick className="w-3.5 h-3.5" />} label="Clicked" value={stats.clicked ?? 0} />
-              <Stat icon={<Ban className="w-3.5 h-3.5" />} label="Bounced" value={stats.bounced ?? 0} />
-              <Stat icon={<Ban className="w-3.5 h-3.5" />} label="Unsub" value={stats.unsubscribed ?? 0} />
-              <Stat
-                icon={<TrendingUp className="w-3.5 h-3.5" />}
-                label="Open %"
-                value={Math.round((stats.open_rate ?? 0) * 100)}
-                suffix="%"
-              />
-            </div>
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <Stat icon={<Send className="w-3.5 h-3.5" />} label="Sent" value={stats?.totals?.sent ?? 0} />
+                <Stat icon={<Eye className="w-3.5 h-3.5" />} label="Delivered" value={stats?.totals?.delivered ?? 0} />
+                <Stat icon={<Eye className="w-3.5 h-3.5" />} label="Opened" value={stats?.totals?.opened ?? 0} />
+                <Stat icon={<MousePointerClick className="w-3.5 h-3.5" />} label="Clicked" value={stats?.totals?.clicked ?? 0} />
+                <Stat icon={<Ban className="w-3.5 h-3.5" />} label="Bounced" value={stats?.totals?.bounced ?? 0} />
+                <Stat icon={<Ban className="w-3.5 h-3.5" />} label="Unsub" value={stats?.totals?.unsubscribed ?? 0} />
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Open %" value={stats?.rates?.open_rate_pct ?? 0} suffix="%" />
+                <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Click %" value={stats?.rates?.click_rate_pct ?? 0} suffix="%" />
+                <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Bounce %" value={stats?.rates?.bounce_rate_pct ?? 0} suffix="%" />
+              </div>
+              {stats?.conversions && (stats.conversions.count ?? 0) > 0 && (
+                <p className="text-[12px] text-text-muted mt-2">
+                  {stats.conversions.count} conversions · {money(stats.conversions.revenue_ngn ?? 0)} revenue
+                </p>
+              )}
+            </>
           )}
         </div>
+
+        <CampaignAudienceSection campaign={campaign} />
+        <CampaignVariantsSection campaign={campaign} />
 
         {campaign.reply_to_email && (
           <p className="text-[12px] text-text-faint">
@@ -472,7 +510,7 @@ function AdsTab() {
   const [creating, setCreating] = useState(false);
 
   const accounts = accountsQ.data ?? [];
-  const campaigns = campaignsQ.data?.data ?? [];
+  const campaigns = campaignsQ.data ?? [];
   const report = attributionQ.data;
   const rows: AttributionRow[] = report?.ads ?? report?.rows ?? [];
 

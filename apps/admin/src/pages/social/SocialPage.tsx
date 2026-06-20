@@ -80,7 +80,7 @@ export function SocialPage() {
   const [detail, setDetail] = useState<SocialPost | null>(null);
 
   const postsQ = usePosts();
-  const posts = postsQ.data?.data ?? [];
+  const posts = postsQ.data ?? [];
   const canCreate = can("social", "create");
 
   if (!can("social", "view")) {

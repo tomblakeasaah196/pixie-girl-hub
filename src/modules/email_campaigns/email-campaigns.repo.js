@@ -13,6 +13,90 @@ const { t } = require("../../config/brands");
 
 const ex = (c) => (c ? c.query.bind(c) : query);
 
+/**
+ * Compile a saved-segment audience filter into SQL AND-clauses against
+ * shared.contacts (alias `a`). Pushes bound params onto `params` and returns
+ * the clause strings. Honoured keys:
+ *   contact_ids, contact_type[], priority_level[], source[], tag_names[],
+ *   min_lifetime_spend, purchased_within_days, birthday_within_days.
+ * Spend/recency read the brand's sales_orders. Unknown keys are ignored.
+ */
+function audienceClauses({ filter = {}, brand, alias = "a", params }) {
+  const out = [];
+  const add = (v) => {
+    params.push(v);
+    return params.length; // 1-based $ index
+  };
+  const arr = (v) => Array.isArray(v) && v.length > 0;
+
+  if (arr(filter.contact_ids))
+    out.push(`${alias}.contact_id = ANY($${add(filter.contact_ids)}::uuid[])`);
+  if (arr(filter.contact_type))
+    out.push(`${alias}.contact_type && $${add(filter.contact_type)}::text[]`);
+  if (arr(filter.priority_level))
+    out.push(
+      `${alias}.priority_level = ANY($${add(filter.priority_level)}::text[])`,
+    );
+  if (arr(filter.source))
+    out.push(`${alias}.source = ANY($${add(filter.source)}::text[])`);
+  if (arr(filter.tag_names)) {
+    const bi = add(brand);
+    const ti = add(filter.tag_names);
+    out.push(
+      `EXISTS (SELECT 1 FROM shared.contact_tags ct
+                WHERE ct.contact_id = ${alias}.contact_id
+                  AND ct.business = $${bi}
+                  AND ct.tag_name = ANY($${ti}::text[]))`,
+    );
+  }
+  if (
+    filter.min_lifetime_spend !== null &&
+    filter.min_lifetime_spend !== undefined &&
+    Number(filter.min_lifetime_spend) > 0
+  ) {
+    const i = add(Number(filter.min_lifetime_spend));
+    out.push(
+      `(SELECT COALESCE(SUM(o.amount_paid_ngn),0)
+          FROM ${t(brand, "sales_orders")} o
+         WHERE o.contact_id = ${alias}.contact_id) >= $${i}`,
+    );
+  }
+  if (
+    filter.purchased_within_days !== null &&
+    filter.purchased_within_days !== undefined &&
+    Number(filter.purchased_within_days) > 0
+  ) {
+    const i = add(String(Number(filter.purchased_within_days)));
+    out.push(
+      `EXISTS (SELECT 1 FROM ${t(brand, "sales_orders")} o
+                WHERE o.contact_id = ${alias}.contact_id
+                  AND o.status NOT IN ('draft','cancelled')
+                  AND o.created_at >= now() - ($${i} || ' days')::interval)`,
+    );
+  }
+  if (
+    filter.birthday_within_days !== null &&
+    filter.birthday_within_days !== undefined &&
+    Number(filter.birthday_within_days) > 0
+  ) {
+    const i = add(String(Number(filter.birthday_within_days)));
+    // Compare MMDD strings; handle the year-end wrap of the window.
+    out.push(
+      `(${alias}.date_of_birth IS NOT NULL AND (
+         to_char(${alias}.date_of_birth,'MMDD')
+           BETWEEN to_char(current_date,'MMDD')
+               AND to_char(current_date + ($${i} || ' days')::interval,'MMDD')
+         OR (
+           to_char(current_date,'MMDD') > to_char(current_date + ($${i} || ' days')::interval,'MMDD')
+           AND (to_char(${alias}.date_of_birth,'MMDD') >= to_char(current_date,'MMDD')
+                OR to_char(${alias}.date_of_birth,'MMDD') <= to_char(current_date + ($${i} || ' days')::interval,'MMDD'))
+         )
+       ))`,
+    );
+  }
+  return out;
+}
+
 async function nextNumber({ client, brand }) {
   const { rows } = await ex(client)(
     `SELECT ${t(brand, "fn_next_document_number")}('email_campaign') AS n`,
@@ -40,14 +124,14 @@ async function createTemplate({ brand, tpl }) {
     `INSERT INTO ${t(brand, "email_templates")}
        (template_key, display_name, subject_line, html_body, available_variables,
         from_name, from_email, reply_to_email, status)
-     VALUES ($1,$2,$3,$4,COALESCE($5,'{}'),$6,$7,$8,COALESCE($9,'draft'))
+     VALUES ($1,$2,$3,$4,COALESCE($5::text[],'{}'),$6,$7,$8,COALESCE($9,'draft'))
      RETURNING *`,
     [
       tpl.template_key,
       tpl.display_name,
       tpl.subject_line,
       tpl.html_body,
-      tpl.available_variables,
+      Array.isArray(tpl.available_variables) ? tpl.available_variables : null,
       tpl.from_name || null,
       tpl.from_email || null,
       tpl.reply_to_email || null,
@@ -168,14 +252,11 @@ async function incCampaignCounter({ client, brand, id, column, by = 1 }) {
 }
 
 // ── Recipients (sourced from contacts) ─────────────────────
-async function addRecipientsFromContacts({ brand, campaign_id, contact_ids }) {
-  // Brand-visible contacts with an email; optional explicit id filter.
+async function addRecipientsFromContacts({ brand, campaign_id, filter = {} }) {
+  // Brand-visible emailable contacts, narrowed by the segment filter.
   const params = [campaign_id, brand];
-  let filter = "";
-  if (Array.isArray(contact_ids) && contact_ids.length > 0) {
-    params.push(contact_ids);
-    filter = `AND c.contact_id = ANY($3)`;
-  }
+  const clauses = audienceClauses({ filter, brand, alias: "c", params });
+  const extra = clauses.length ? `AND ${clauses.join("\n        AND ")}` : "";
   const { rowCount } = await query(
     `INSERT INTO ${t(brand, "email_campaign_recipients")}
        (campaign_id, contact_id, email, contact_name_snapshot, status)
@@ -183,7 +264,7 @@ async function addRecipientsFromContacts({ brand, campaign_id, contact_ids }) {
        FROM shared.contacts c
       WHERE c.is_deleted = false AND c.email IS NOT NULL
         AND ($2 = ANY(c.visible_to) OR c.visible_to = '{}')
-        ${filter}
+        ${extra}
      ON CONFLICT (campaign_id, email) DO NOTHING`,
     params,
   );
@@ -405,19 +486,16 @@ async function deleteSegment({ brand, id }) {
   return rows[0] || null;
 }
 /** Resolve emailable contacts for an audience (optionally restricted to ids). */
-async function emailableContacts({ brand, contact_ids }) {
+async function emailableContacts({ brand, filter = {} }) {
   const params = [brand];
-  let filter = "";
-  if (Array.isArray(contact_ids) && contact_ids.length > 0) {
-    params.push(contact_ids);
-    filter = `AND c.contact_id = ANY($2)`;
-  }
+  const clauses = audienceClauses({ filter, brand, alias: "c", params });
+  const extra = clauses.length ? `AND ${clauses.join("\n        AND ")}` : "";
   const { rows } = await query(
     `SELECT c.contact_id, c.email, c.display_name
        FROM shared.contacts c
       WHERE c.is_deleted = false AND c.email IS NOT NULL
         AND ($1 = ANY(c.visible_to) OR c.visible_to = '{}')
-        ${filter}`,
+        ${extra}`,
     params,
   );
   return rows;

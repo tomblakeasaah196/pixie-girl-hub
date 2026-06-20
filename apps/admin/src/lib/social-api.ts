@@ -161,7 +161,14 @@ export function usePosts(
   return useQuery({
     enabled: Boolean(brand),
     queryKey: ["social", "posts", brand, qs.toString()],
-    queryFn: () => api.get<Paginated<SocialPost>>(`/social/posts?${qs}`),
+    // Endpoint returns { data, page, page_size, total } (no `meta`) → the api
+    // client unwraps to a bare array; normalise either shape to an array.
+    queryFn: async () => {
+      const r = await api.get<SocialPost[] | Paginated<SocialPost>>(
+        `/social/posts?${qs}`,
+      );
+      return Array.isArray(r) ? r : (r?.data ?? []);
+    },
     staleTime: 20_000,
   });
 }

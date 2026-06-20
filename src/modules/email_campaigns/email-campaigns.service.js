@@ -99,7 +99,7 @@ async function buildRecipients({ brand, user, request_id, id, contact_ids }) {
   const added = await repo.addRecipientsFromContacts({
     brand,
     campaign_id: id,
-    contact_ids,
+    filter: { contact_ids },
   });
   await audit({
     business: brand,
@@ -193,7 +193,9 @@ async function sendCampaign({ brand, user, request_id, id }) {
     brand,
     id,
     status,
-    fields: { sent_at: new Date().toISOString() },
+    // email_campaigns tracks send_completed_at (not sent_at — that's on the
+    // recipient). Only stamp it once the whole batch is done.
+    fields: status === "sent" ? { send_completed_at: new Date().toISOString() } : {},
   });
   await audit({
     business: brand,
@@ -499,10 +501,7 @@ async function previewSegment({ brand, id }) {
   const seg = await repo.getSegment({ brand, id });
   if (!seg) throw new NotFoundError("Segment");
   const filter = seg.filter || {};
-  const contacts = await repo.emailableContacts({
-    brand,
-    contact_ids: filter.contact_ids,
-  });
+  const contacts = await repo.emailableContacts({ brand, filter });
   await repo.updateSegmentCount({ brand, id, count: contacts.length });
   return {
     segment_id: id,
@@ -526,7 +525,7 @@ async function buildAudienceFromSegment({
   const added = await repo.addRecipientsFromContacts({
     brand,
     campaign_id: id,
-    contact_ids: filter.contact_ids,
+    filter,
   });
   await audit({
     business: brand,

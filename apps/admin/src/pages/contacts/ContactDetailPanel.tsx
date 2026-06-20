@@ -42,15 +42,23 @@ import type {
   PriorityLevel,
   ContactType,
 } from "./types";
+import { Link } from "react-router-dom";
+import { Briefcase, ShoppingCart, ArrowUpRight } from "lucide-react";
+import {
+  profileTabsFor,
+  PROFILE_TAB_LABELS,
+  type ProfileTabKey,
+} from "./stakeholders";
 
 // ── Helpers (shared with the drawer header) ────────────────────────────────
 
 export const TYPE_LABELS: Record<ContactType, string> = {
-  customer: "Customer",
+  customer: "Client",
   supplier: "Supplier",
-  staff: "Staff",
-  retail_partner: "Retail",
-  stylist_partner: "Stylist",
+  staff: "Employee",
+  subscriber: "Subscriber",
+  retail_partner: "Stylist Partner",
+  stylist_partner: "Stylist Partner",
 };
 
 export const PRIORITY_TONE: Record<PriorityLevel, Tone> = {
@@ -770,16 +778,7 @@ function OverviewTab({ contact }: { contact: Contact }) {
 
 // ── Reusable detail body ───────────────────────────────────────────────────
 
-const TABS = [
-  { key: "overview", label: "Overview" },
-  { key: "timeline", label: "Timeline" },
-  { key: "deals", label: "Deals" },
-  { key: "addresses", label: "Addresses" },
-  { key: "preferences", label: "Preferences" },
-  { key: "loyalty", label: "Loyalty" },
-] as const;
-
-type TabKey = (typeof TABS)[number]["key"];
+type TabKey = ProfileTabKey;
 
 /**
  * The inner body of the contact 360° view — summary strip, tab bar and tab
@@ -795,6 +794,15 @@ export function ContactDetailPanel({
 }) {
   const [tab, setTab] = useState<TabKey>("overview");
   const { data: contact, isLoading } = useContact(contactId);
+
+  // Tabs adapt to what the contact actually is — a Client sees
+  // Deals/Preferences/Loyalty, an Employee sees Employment, a Supplier sees
+  // Purchasing. If the active tab isn't valid for this contact, fall back to
+  // Overview rather than rendering nothing.
+  const tabs = contact
+    ? profileTabsFor(contact.contact_type, contact.is_ambassador)
+    : (["overview"] as TabKey[]);
+  const activeTab: TabKey = tabs.includes(tab) ? tab : "overview";
 
   if (isLoading) {
     return (
@@ -825,44 +833,127 @@ export function ContactDetailPanel({
       {/* Summary strip */}
       <SummaryStrip contactId={contact.contact_id} />
 
-      {/* Tab bar */}
+      {/* Tab bar — type-aware */}
       <div className="flex gap-0.5 mb-4 -mx-1 px-1 overflow-x-auto no-scrollbar">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
+            key={t}
+            onClick={() => setTab(t)}
             className={[
               "flex-shrink-0 px-3 py-1.5 rounded-[9px] text-[12px] font-semibold transition-all whitespace-nowrap",
-              tab === t.key
+              activeTab === t
                 ? "bg-accent-deep text-[#F4E9D9]"
                 : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
             ].join(" ")}
           >
-            {t.label}
+            {PROFILE_TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
-      {tab === "overview" && <OverviewTab contact={contact} />}
-      {tab === "timeline" && (
+      {activeTab === "overview" && <OverviewTab contact={contact} />}
+      {activeTab === "timeline" && (
         <TimelineTab
           contactId={contact.contact_id}
           contactName={contact.display_name}
         />
       )}
-      {tab === "deals" && <DealsTab contactId={contact.contact_id} />}
-      {tab === "addresses" && <AddressesTab contactId={contact.contact_id} />}
-      {tab === "preferences" && (
+      {activeTab === "deals" && <DealsTab contactId={contact.contact_id} />}
+      {activeTab === "addresses" && (
+        <AddressesTab contactId={contact.contact_id} />
+      )}
+      {activeTab === "preferences" && (
         <PreferencesTab contactId={contact.contact_id} />
       )}
-      {tab === "loyalty" && (
+      {activeTab === "loyalty" && (
         <LoyaltyTab
           contactId={contact.contact_id}
           contactName={contact.display_name}
         />
       )}
+      {activeTab === "employment" && <EmploymentTab contact={contact} />}
+      {activeTab === "purchasing" && <PurchasingTab contact={contact} />}
+      {activeTab === "subscription" && <SubscriptionTab contact={contact} />}
     </>
+  );
+}
+
+// ── Employment tab (lighter summary → deep-links into HR) ──────────────────
+
+function EmploymentTab({ contact }: { contact: Contact }) {
+  return (
+    <div className="rounded-[14px] glass border hairline p-6 text-center">
+      <span className="grid place-items-center w-11 h-11 rounded-xl bg-info/[0.12] text-info mx-auto mb-3">
+        <Briefcase className="w-5 h-5" />
+      </span>
+      <div className="font-display text-[16px] text-text-primary mb-1">
+        Employee record
+      </div>
+      <p className="text-[12.5px] text-text-muted max-w-[360px] mx-auto mb-4">
+        {contact.display_name}&rsquo;s role, schedule, attendance, salary and
+        documents live in the HR module — managed there so payroll and access
+        stay in sync.
+      </p>
+      <Link
+        to={`/hr?contact=${contact.contact_id}`}
+        className="inline-flex items-center gap-1.5 h-[34px] px-4 rounded-[10px] bg-accent-deep text-[#F4E9D9] text-[12px] font-semibold hover:opacity-90 transition-opacity"
+      >
+        Open in HR
+        <ArrowUpRight className="w-3.5 h-3.5" />
+      </Link>
+    </div>
+  );
+}
+
+// ── Purchasing tab (supplier → deep-links into Procurement) ────────────────
+
+function PurchasingTab({ contact }: { contact: Contact }) {
+  return (
+    <div className="rounded-[14px] glass border hairline p-6 text-center">
+      <span className="grid place-items-center w-11 h-11 rounded-xl bg-success/[0.13] text-success mx-auto mb-3">
+        <ShoppingCart className="w-5 h-5" />
+      </span>
+      <div className="font-display text-[16px] text-text-primary mb-1">
+        Supplier &amp; purchasing
+      </div>
+      <p className="text-[12.5px] text-text-muted max-w-[360px] mx-auto mb-4">
+        Purchase orders, bills and supplier terms for {contact.display_name} are
+        managed in Procurement.
+      </p>
+      <Link
+        to={`/purchasing/suppliers?contact=${contact.contact_id}`}
+        className="inline-flex items-center gap-1.5 h-[34px] px-4 rounded-[10px] bg-accent-deep text-[#F4E9D9] text-[12px] font-semibold hover:opacity-90 transition-opacity"
+      >
+        Open in Procurement
+        <ArrowUpRight className="w-3.5 h-3.5" />
+      </Link>
+    </div>
+  );
+}
+
+// ── Subscription tab (newsletter subscribers) ──────────────────────────────
+
+function SubscriptionTab({ contact }: { contact: Contact }) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-[12px] glass border hairline p-4 flex items-center justify-between">
+        <div>
+          <div className="micro mb-0.5">Newsletter</div>
+          <div className="text-[13px] text-text-primary">
+            Subscribed{contact.source ? ` · via ${contact.source}` : ""}
+          </div>
+        </div>
+        <Pill tone="success">Active</Pill>
+      </div>
+      <Link
+        to={`/email-campaigns?contact=${contact.contact_id}`}
+        className="inline-flex items-center gap-1.5 h-[33px] px-3 rounded-[10px] bg-text-primary/[0.04] border hairline text-[12px] font-semibold text-text-muted hover:text-text-primary transition-colors"
+      >
+        Email campaigns
+        <ArrowUpRight className="w-3.5 h-3.5" />
+      </Link>
+    </div>
   );
 }
 

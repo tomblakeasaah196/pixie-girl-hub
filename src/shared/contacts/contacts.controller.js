@@ -137,7 +137,33 @@ async function milestones(req, res) {
   res.json({ data: await service.milestones({ days: req.query.days }) });
 }
 
+async function listTags(req, res) {
+  res.json({
+    data: await service.listTags({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function addTag(req, res) {
+  res.status(201).json({
+    data: await service.addTag({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function removeTag(req, res) {
+  await service.removeTag({
+    ...base(req),
+    id: req.params.id,
+    tag_id: req.params.tagId,
+  });
+  res.status(204).end();
+}
+
 module.exports = {
+  listTags,
+  addTag,
+  removeTag,
   milestones,
   list,
   getById,

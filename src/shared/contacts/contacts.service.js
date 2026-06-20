@@ -276,7 +276,47 @@ function milestones({ days }) {
   return repo.upcomingMilestones({ days: d });
 }
 
+// ── Contact tags ─────────────────────────────────────────
+function listTags({ brand, id }) {
+  return repo.listTags({ brand, contact_id: id });
+}
+async function addTag({ brand, user, request_id, id, input }) {
+  const tag = await repo.addTag({
+    brand,
+    contact_id: id,
+    tag_name: input.tag_name,
+    colour: input.colour,
+    user_id: user.user_id,
+  });
+  await A(
+    brand,
+    user.user_id,
+    "contacts.tag.add",
+    "contact",
+    id,
+    { tag_name: input.tag_name },
+    request_id,
+  );
+  return tag;
+}
+async function removeTag({ brand, user, request_id, id, tag_id }) {
+  const ok = await repo.removeTag({ brand, contact_id: id, tag_id });
+  if (!ok) throw new NotFoundError("Tag");
+  await A(
+    brand,
+    user.user_id,
+    "contacts.tag.remove",
+    "contact",
+    id,
+    { tag_id },
+    request_id,
+  );
+}
+
 module.exports = {
+  listTags,
+  addTag,
+  removeTag,
   milestones,
   list,
   getById,

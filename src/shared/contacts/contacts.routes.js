@@ -52,6 +52,11 @@ router.delete("/:id", can("delete"), c.remove);
 router.get("/:id/timeline", can("view"), c.getTimeline);
 router.get("/:id/summary", can("view"), c.getSummary);
 
+// Tags (brand-scoped, under a contact)
+router.get("/:id/tags", can("view"), c.listTags);
+router.post("/:id/tags", can("edit"), v.validateTagCreate, c.addTag);
+router.delete("/:id/tags/:tagId", can("edit"), c.removeTag);
+
 // Addresses (under a contact)
 router.get("/:id/addresses", can("view"), c.listAddresses);
 router.post(

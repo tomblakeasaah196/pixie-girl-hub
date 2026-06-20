@@ -78,6 +78,16 @@ const addressCreate = z
   })
   .strict();
 
+const tagCreate = z
+  .object({
+    tag_name: z.string().min(1).max(60),
+    colour: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, "Invalid hex colour")
+      .optional(),
+  })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -90,6 +100,7 @@ module.exports = {
   validateSegmentUpdate: mw(segmentCreate.partial()),
   validateAddressCreate: mw(addressCreate),
   validateAddressUpdate: mw(addressCreate.partial()),
+  validateTagCreate: mw(tagCreate),
   contactCreate,
   segmentCreate,
   addressCreate,

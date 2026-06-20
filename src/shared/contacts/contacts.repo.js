@@ -307,7 +307,42 @@ async function upcomingMilestones({ days = 7, limit = 500 }) {
   return rows.map((r) => ({ ...r, milestone_type: "birthday" }));
 }
 
+// ── Contact tags (brand-scoped) ──────────────────────────
+async function listTags({ client, brand, contact_id }) {
+  const { rows } = await ex(client)(
+    `SELECT tag_id, tag_name, colour, created_at
+       FROM shared.contact_tags
+      WHERE contact_id = $1 AND business = $2
+      ORDER BY tag_name`,
+    [contact_id, brand],
+  );
+  return rows;
+}
+async function addTag({ client, brand, contact_id, tag_name, colour, user_id }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.contact_tags
+       (contact_id, tag_name, business, colour, created_by)
+     VALUES ($1, $2, $3, COALESCE($4, '#64748B'), $5)
+     ON CONFLICT (contact_id, tag_name, business) DO UPDATE
+       SET colour = COALESCE(EXCLUDED.colour, shared.contact_tags.colour)
+     RETURNING tag_id, tag_name, colour, created_at`,
+    [contact_id, tag_name, brand, colour || null, user_id || null],
+  );
+  return rows[0];
+}
+async function removeTag({ client, brand, contact_id, tag_id }) {
+  const { rowCount } = await ex(client)(
+    `DELETE FROM shared.contact_tags
+      WHERE tag_id = $1 AND contact_id = $2 AND business = $3`,
+    [tag_id, contact_id, brand],
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
+  listTags,
+  addTag,
+  removeTag,
   upcomingMilestones,
   findAll,
   findById,

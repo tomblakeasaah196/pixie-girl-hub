@@ -64,32 +64,17 @@ const paymentCreate = z
       "paystack_ussd",
       "opay",
       "nomba_terminal",
-      "bank_transfer",
-      "cash",
-      "pos_card",
-      "pay_on_delivery",
-      "wallet",
-      "points",
       "subscription_recurring",
     ]),
     amount_ngn: z.coerce.number().positive(),
-    provider: z.string().max(40).optional(),
-    provider_reference: z.string().max(200).optional(),
+    provider: z.string().max(40),
+    provider_reference: z.string().max(200),
     // Foreign-currency settlement (V2.2 §6.6 realised FX gain/loss).
     paid_currency: z.string().length(3).optional(),
     paid_amount: z.coerce.number().positive().optional(),
     fx_rate_used: z.coerce.number().positive().optional(),
     fee_ngn: money.optional(),
-    payment_path: z
-      .enum([
-        "tokenized_link",
-        "customer_account",
-        "staff_recorded",
-        "pos",
-        "intercompany",
-        "subscription_charge",
-      ])
-      .optional(),
+    payment_path: z.enum(["gateway"]),
     client_idempotency_key: z.string().max(120).optional(),
   })
   .strict();

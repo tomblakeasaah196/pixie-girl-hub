@@ -67,7 +67,7 @@ export function QuickSaleForm() {
   const [step, setStep] = useState(1);
 
   // Step 1: Channel
-  const [channel, setChannel] = useState<SalesChannel>("pos");
+  const [channel, setChannel] = useState<SalesChannel>("instagram");
 
   // Step 2: Customer
   const [contactSearch, setContactSearch] = useState("");
@@ -249,7 +249,7 @@ export function QuickSaleForm() {
           });
         }
       } catch {
-        /* toast error */
+        fireToast("Error", "Failed to load product variants", "order", "high");
       }
     } else if (productType === "styled") {
       try {
@@ -371,7 +371,7 @@ export function QuickSaleForm() {
 
   const reset = () => {
     setStep(1);
-    setChannel("pos");
+    setChannel("instagram");
     setContactId(null);
     setContactName("");
     setContactSearch("");
@@ -820,7 +820,7 @@ export function QuickSaleForm() {
               onClick={handleSubmit}
               disabled={submitting}
             >
-              {submitting ? "Sending…" : "Send Invoice & Pay Link"}
+              {submitting ? "Sending…" : "Create Order & Send Pay Link"}
             </Button>
           </div>
 
@@ -840,7 +840,7 @@ export function QuickSaleForm() {
             <Send className="w-6 h-6 text-success" />
           </div>
           <h3 className="font-display text-lg font-medium mb-1">
-            Invoice Sent!
+            Order Created!
           </h3>
           <p className="text-[13px] text-text-muted mb-4">
             Payment link has been sent to the customer. The order will be

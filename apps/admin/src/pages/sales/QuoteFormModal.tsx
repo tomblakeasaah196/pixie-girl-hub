@@ -148,7 +148,7 @@ export function QuoteFormModal({
         });
       }
     } catch {
-      /* ignore */
+      fireToast("Error", "Failed to load product variants", "order", "high");
     }
   };
 

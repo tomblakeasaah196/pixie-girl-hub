@@ -697,6 +697,19 @@ async function addPayment({ brand, user, request_id, id, input }) {
         409,
       );
 
+    // ── Gateway-only enforcement ────────────────────────────────
+    // Non-negotiable: stock can never leave without a verified payment-
+    // gateway webhook (Paystack / Opay / Nomba / Stripe). Staff-recorded
+    // and POS-originated payments are blocked at the service layer as
+    // defense-in-depth (the validator also blocks them at the HTTP edge).
+    if (input.payment_path !== "gateway") {
+      throw new AppError(
+        "PAYMENT_PATH_BLOCKED",
+        "Payments may only be recorded through an authorized payment gateway. Manual payment entry is disabled.",
+        403,
+      );
+    }
+
     const payment_number = await repo.nextNumber({
       client,
       brand,

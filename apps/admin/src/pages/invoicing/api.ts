@@ -110,5 +110,6 @@ export const searchContacts = (search: string) =>
       contact_id: string;
       display_name: string;
       email: string | null;
+      primary_phone: string | null;
     }>
   >(`/contacts${qs({ q: search, page_size: 6 })}`);

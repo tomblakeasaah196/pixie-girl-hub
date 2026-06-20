@@ -72,6 +72,15 @@ export const generateReceipt = (id: string) =>
 export const getOrderTimeline = (id: string) =>
   api.get<TimelineEvent[]>(`${S}/orders/${id}/timeline`);
 
+export const getOrderInvoice = (orderId: string) =>
+  api.get<
+    PaginatedResponse<{
+      invoice_id: string;
+      invoice_number: string;
+      status: string;
+    }>
+  >(`/invoicing/invoices${qs({ order_id: orderId, page_size: 1 })}`);
+
 // ── Quotations ──────────────────────────────────────────────
 
 export interface QuoteListParams {

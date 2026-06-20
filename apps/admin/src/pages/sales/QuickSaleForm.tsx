@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   Search,
   User,
@@ -67,7 +67,7 @@ export function QuickSaleForm() {
   const [step, setStep] = useState(1);
 
   // Step 1: Channel
-  const [channel, setChannel] = useState<SalesChannel>("pos");
+  const [channel, setChannel] = useState<SalesChannel>("instagram");
 
   // Step 2: Customer
   const [contactSearch, setContactSearch] = useState("");
@@ -134,32 +134,28 @@ export function QuickSaleForm() {
   const total = subtotal + vatAmount + shipping;
 
   // ── Contact search ───────────────────────────────────────
-  const searchContacts = useCallback(async (q: string) => {
+  const contactDebounce = useRef<ReturnType<typeof setTimeout>>();
+  const handleContactSearch = useCallback((q: string) => {
     setContactSearch(q);
+    clearTimeout(contactDebounce.current);
     if (q.length < 2) {
       setContactResults([]);
       return;
     }
-    try {
-      const { data } = await import("@/lib/api").then((m) =>
-        m.api.get<{
-          data: Array<{
-            contact_id: string;
-            display_name: string;
-            email: string | null;
-          }>;
-        }>(`/contacts?q=${encodeURIComponent(q)}&page_size=6`),
-      );
-      setContactResults(
-        data.map((c) => ({
-          id: c.contact_id,
-          label: c.display_name,
-          sub: c.email ?? "",
-        })),
-      );
-    } catch {
-      setContactResults([]);
-    }
+    contactDebounce.current = setTimeout(async () => {
+      try {
+        const res = await salesApi.searchContacts(q);
+        setContactResults(
+          (res.data ?? []).map((c) => ({
+            id: c.contact_id,
+            label: c.display_name,
+            sub: [c.primary_phone, c.email].filter(Boolean).join(" · ") || "",
+          })),
+        );
+      } catch {
+        setContactResults([]);
+      }
+    }, 300);
   }, []);
 
   const pickContact = (r: SearchResult) => {
@@ -253,7 +249,7 @@ export function QuickSaleForm() {
           });
         }
       } catch {
-        /* toast error */
+        fireToast("Error", "Failed to load product variants", "order", "high");
       }
     } else if (productType === "styled") {
       try {
@@ -375,7 +371,7 @@ export function QuickSaleForm() {
 
   const reset = () => {
     setStep(1);
-    setChannel("pos");
+    setChannel("instagram");
     setContactId(null);
     setContactName("");
     setContactSearch("");
@@ -455,7 +451,7 @@ export function QuickSaleForm() {
                 <input
                   placeholder="Search by name, email, or phone…"
                   value={contactSearch}
-                  onChange={(e) => searchContacts(e.target.value)}
+                  onChange={(e) => handleContactSearch(e.target.value)}
                   className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
                 />
                 {contactResults.length > 0 && (
@@ -824,7 +820,7 @@ export function QuickSaleForm() {
               onClick={handleSubmit}
               disabled={submitting}
             >
-              {submitting ? "Sending…" : "Send Invoice & Pay Link"}
+              {submitting ? "Sending…" : "Create Order & Send Pay Link"}
             </Button>
           </div>
 
@@ -844,7 +840,7 @@ export function QuickSaleForm() {
             <Send className="w-6 h-6 text-success" />
           </div>
           <h3 className="font-display text-lg font-medium mb-1">
-            Invoice Sent!
+            Order Created!
           </h3>
           <p className="text-[13px] text-text-muted mb-4">
             Payment link has been sent to the customer. The order will be

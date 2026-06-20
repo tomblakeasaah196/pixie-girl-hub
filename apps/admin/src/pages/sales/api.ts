@@ -72,6 +72,15 @@ export const generateReceipt = (id: string) =>
 export const getOrderTimeline = (id: string) =>
   api.get<TimelineEvent[]>(`${S}/orders/${id}/timeline`);
 
+export const getOrderInvoice = (orderId: string) =>
+  api.get<
+    PaginatedResponse<{
+      invoice_id: string;
+      invoice_number: string;
+      status: string;
+    }>
+  >(`/invoicing/invoices${qs({ order_id: orderId, page_size: 1 })}`);
+
 // ── Quotations ──────────────────────────────────────────────
 
 export interface QuoteListParams {
@@ -115,6 +124,13 @@ export const requestCancellation = (
 // ── KPIs ────────────────────────────────────────────────────
 
 export const getSalesKpis = () => api.get<SalesKpis>(`/dashboards/kpis/sales`);
+
+// ── Contact search ─────────────────────────────────────────
+
+export const searchContacts = (q: string, limit = 6) =>
+  api.get<PaginatedResponse<{ contact_id: string; display_name: string; email: string | null; primary_phone: string | null }>>(
+    `/contacts?q=${encodeURIComponent(q)}&page_size=${limit}`
+  );
 
 // ── Catalogue helpers (for product picker) ──────────────────
 

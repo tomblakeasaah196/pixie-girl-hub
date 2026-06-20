@@ -1,0 +1,84 @@
+-- ============================================================
+-- TEMPLATE 000044 — Catalogue merchandising (PR-A):
+--   • Lace-size as the third sellable variant axis (colour × size × lace)
+--   • Styled "module-primary" image pointer (card hero, overridable)
+--   • One-click Categories toggle (disable by default, restore from Config)
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000043) and to EXISTING brands by
+-- repair-business-schema.js (sentinel = styled_lace_sizes).
+-- ============================================================
+
+-- ── 1. Categories feature flag ───────────────────────────
+-- Owner directive: Categories come OUT of the catalogue by default, but must
+-- return with a single click from Products → Config. We only flip a flag and
+-- hide the UI — category_id data is never dropped, so re-enabling restores
+-- every prior categorisation intact.
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS categories_enabled BOOLEAN NOT NULL DEFAULT false;
+
+-- ── 2. Lace-size ladder (brand-wide, mirrors styled_size_tiers) ──
+-- premium_ngn is the ABSOLUTE amount added to a styled product's retail anchor
+-- for that lace construction (4×4 closure cheapest → 360 dearest). Editable
+-- from Products → Config.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.styled_lace_sizes (
+  lace_id        UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  lace_code      TEXT          NOT NULL UNIQUE,          -- '4X4','13X4','13X6','360'
+  label          TEXT          NOT NULL,                 -- '4×4 Closure','13×4 Frontal'
+  premium_ngn    NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (premium_ngn >= 0),
+  description    TEXT,                                   -- short customer-facing note
+  display_order  SMALLINT      NOT NULL DEFAULT 0,
+  is_active      BOOLEAN       NOT NULL DEFAULT true,
+  created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_styled_lace_sizes_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.styled_lace_sizes
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+-- ── 3. Supported lace set: base = source, styled = override ──
+-- The BASE product declares which lace constructions it can be made in; the
+-- STYLED inherits that set (lace_size_codes NULL/empty = "inherit base") and
+-- may narrow it. Stored as a code array referencing styled_lace_sizes.lace_code.
+ALTER TABLE {{BUSINESS}}.products
+  ADD COLUMN IF NOT EXISTS lace_size_codes TEXT[];
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS lace_size_codes TEXT[];
+
+-- ── 4. Lace becomes the third variant axis ───────────────
+-- The sellable matrix is now colour × size × lace. lace_code is NULL for
+-- products that don't use lace (so legacy variants are untouched). Effective
+-- retail gains the lace premium:
+--   COALESCE(price_override,
+--            anchor + colour.premium + size.premium + COALESCE(lace.premium,0))
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  ADD COLUMN IF NOT EXISTS lace_code TEXT
+    REFERENCES {{BUSINESS}}.styled_lace_sizes (lace_code) ON DELETE RESTRICT;
+-- Swap (colour,size) uniqueness for (colour,size,lace). COALESCE collapses a
+-- NULL lace to '' so a no-lace product still can't double up a (colour,size).
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  DROP CONSTRAINT IF EXISTS styled_product_variants_styled_id_colour_id_size_code_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_variant_combo
+  ON {{BUSINESS}}.styled_product_variants
+     (styled_id, colour_id, size_code, COALESCE(lace_code, ''));
+
+-- ── 5. Styled module-primary image ───────────────────────
+-- The card hero shown inside the Catalogue module (not just the website).
+-- NULL = fall back to the default colour's first picture. Set explicitly to
+-- override. ON DELETE SET NULL so removing the image just reverts to the
+-- fallback.
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS primary_image_id UUID
+    REFERENCES {{BUSINESS}}.product_images (image_id) ON DELETE SET NULL;
+
+-- ── 6. Seed a common lace ladder (premiums are an editable example) ──
+INSERT INTO {{BUSINESS}}.styled_lace_sizes
+  (lace_code, label, premium_ngn, description, display_order)
+VALUES
+  ('4X4',  '4×4 Closure',  0,     'Closure — natural part, budget-friendly.', 1),
+  ('5X5',  '5×5 Closure',  10000, 'Wider closure — more parting space.',      2),
+  ('13X4', '13×4 Frontal', 25000, 'Ear-to-ear frontal — versatile styling.',  3),
+  ('13X6', '13×6 Frontal', 40000, 'Deeper frontal — more parting depth.',     4),
+  ('360',  '360 Frontal',  55000, 'Full perimeter — ponytails up.',           5)
+ON CONFLICT (lace_code) DO NOTHING;

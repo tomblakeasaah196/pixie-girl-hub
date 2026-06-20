@@ -75,11 +75,12 @@ async function loadStyled({ client, brand, styled_id }) {
 
 // ── Size-tier ladder + head-size guide (one modal) ───────
 async function getSizeConfig({ brand }) {
-  const [tiers, config] = await Promise.all([
+  const [tiers, laceSizes, config] = await Promise.all([
     repo.listSizeTiers({ brand }),
+    repo.listLaceSizes({ brand }),
     repo.getConfig({ brand }),
   ]);
-  return { tiers, config: config || null };
+  return { tiers, lace_sizes: laceSizes, config: config || null };
 }
 
 /** Save the whole modal: tier premiums/ranges/tips + the guide copy. */
@@ -108,10 +109,30 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
         );
       }
     }
+    // Lace ladder upserts (same shape as size tiers).
+    const savedLace = [];
+    for (const lace of input.lace_sizes || []) {
+      const existing = await repo.getLaceSize({
+        client,
+        brand,
+        lace_code: lace.lace_code,
+      });
+      savedLace.push(
+        existing
+          ? await repo.updateLaceSize({
+              client,
+              brand,
+              lace_code: lace.lace_code,
+              patch: lace,
+            })
+          : await repo.createLaceSize({ client, brand, input: lace }),
+      );
+    }
     let config = before.config;
     if (
       input.size_guide_title !== undefined ||
-      input.head_size_guide_md !== undefined
+      input.head_size_guide_md !== undefined ||
+      input.categories_enabled !== undefined
     ) {
       config = await repo.upsertConfig({
         client,
@@ -119,6 +140,7 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
         patch: {
           size_guide_title: input.size_guide_title,
           head_size_guide_md: input.head_size_guide_md,
+          categories_enabled: input.categories_enabled,
         },
         user_id: user.user_id,
       });
@@ -134,7 +156,7 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
       before,
     );
     events.emit("catalogue.size_config.updated", { brand });
-    return { tiers: savedTiers, config };
+    return { tiers: savedTiers, lace_sizes: savedLace, config };
   });
 }
 
@@ -415,8 +437,37 @@ async function bulkCreateVariants({
       throw new AppError("INVALID_SIZES", "Pick at least one valid size", 422);
     }
 
+    // Resolve the lace set: the styled product's own list overrides, else it
+    // inherits the base's supported lace, else the product has no lace axis.
+    const laceTiers = await repo.listLaceSizes({
+      client,
+      brand,
+      activeOnly: true,
+    });
+    const laceByCode = new Map(laceTiers.map((l) => [l.lace_code, l]));
+    const supportedLace =
+      (styled.lace_size_codes && styled.lace_size_codes.length
+        ? styled.lace_size_codes
+        : styled.base_lace_size_codes) || [];
+    let laceCodes;
+    if (input.all_lace) {
+      laceCodes = supportedLace.filter((code) => laceByCode.has(code));
+    } else if (input.lace_codes && input.lace_codes.length) {
+      laceCodes = input.lace_codes.filter(
+        (code) => laceByCode.has(code) && supportedLace.includes(code),
+      );
+    } else {
+      laceCodes = [];
+    }
+    // [null] = generate the (colour × size) plane with no lace dimension.
+    const laceList = laceCodes.length ? laceCodes : [null];
+
     const existing = await repo.existingPairs({ client, brand, styled_id });
-    const seen = new Set(existing.map((e) => `${e.colour_id}:${e.size_code}`));
+    const key3 = (colour_id, size_code, lace_code) =>
+      `${colour_id}:${size_code}:${lace_code ?? ""}`;
+    const seen = new Set(
+      existing.map((e) => key3(e.colour_id, e.size_code, e.lace_code)),
+    );
 
     const created = [];
     let skipped = 0;
@@ -428,28 +479,32 @@ async function bulkCreateVariants({
     for (const colour of chosenColours) {
       const short = colourShort(colour);
       for (const size_code of sizeCodes) {
-        const key = `${colour.colour_id}:${size_code}`;
-        if (seen.has(key)) {
-          skipped++;
-          continue;
+        for (const lace_code of laceList) {
+          const key = key3(colour.colour_id, size_code, lace_code);
+          if (seen.has(key)) {
+            skipped++;
+            continue;
+          }
+          seen.add(key);
+          const laceSuffix = lace_code ? `-${lace_code}` : "";
+          const sku = `${styled.styled_code}-${short}-${size_code}${laceSuffix}`;
+          const is_default = !anyDefault;
+          anyDefault = true;
+          const variant = await repo.createVariant({
+            client,
+            brand,
+            styled_id,
+            input: {
+              colour_id: colour.colour_id,
+              size_code,
+              lace_code,
+              sku,
+              is_default,
+              display_order: order++,
+            },
+          });
+          created.push(variant);
         }
-        seen.add(key);
-        const sku = `${styled.styled_code}-${short}-${size_code}`;
-        const is_default = !anyDefault;
-        anyDefault = true;
-        const variant = await repo.createVariant({
-          client,
-          brand,
-          styled_id,
-          input: {
-            colour_id: colour.colour_id,
-            size_code,
-            sku,
-            is_default,
-            display_order: order++,
-          },
-        });
-        created.push(variant);
       }
     }
 

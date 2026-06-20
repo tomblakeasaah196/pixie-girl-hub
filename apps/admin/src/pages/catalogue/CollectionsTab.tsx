@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Layers } from "lucide-react";
+import { Plus, Layers, Image as ImageIcon, Pencil } from "lucide-react";
 import { Button, Card, EmptyState, Pill } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
@@ -8,8 +8,10 @@ import { useAuthStore } from "@/stores/auth";
 import {
   useCollections,
   useCreateCollection,
+  useUpdateCollection,
   type Collection,
 } from "@/lib/catalogue";
+import { CoverImageEditor } from "./CoverImageEditor";
 
 /**
  * Collections (manual + rule-based already exist in the backend). v1 lists
@@ -28,7 +30,9 @@ export function CollectionsTab() {
   const { can } = useAuthStore();
   const cols = useCollections();
   const [open, setOpen] = useState(false);
+  const [coverFor, setCoverFor] = useState<Collection | null>(null);
   const canCreate = can("catalogue", "create");
+  const canEdit = can("catalogue", "edit");
 
   return (
     <div className="space-y-5">
@@ -80,6 +84,28 @@ export function CollectionsTab() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(cols.data ?? []).map((c: Collection) => (
             <Card key={c.collection_id} className="p-4">
+              <div className="aspect-[16/9] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04] relative group">
+                {c.hero_image_url ? (
+                  <img
+                    src={c.hero_image_url}
+                    alt={c.name}
+                    loading="lazy"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full grid place-items-center text-text-faint">
+                    <ImageIcon className="w-7 h-7" />
+                  </div>
+                )}
+                {canEdit && (
+                  <button
+                    onClick={() => setCoverFor(c)}
+                    className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 h-7 rounded-[8px] text-[11px] font-semibold dropglass text-text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Pencil className="w-3 h-3" /> Cover
+                  </button>
+                )}
+              </div>
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="font-display text-[15px] truncate">
                   {c.name}
@@ -99,7 +125,37 @@ export function CollectionsTab() {
       )}
 
       <CreateCollectionModal open={open} onClose={() => setOpen(false)} />
+      <CollectionCoverModal
+        collection={coverFor}
+        onClose={() => setCoverFor(null)}
+      />
     </div>
+  );
+}
+
+function CollectionCoverModal({
+  collection,
+  onClose,
+}: {
+  collection: Collection | null;
+  onClose: () => void;
+}) {
+  const update = useUpdateCollection();
+  if (!collection) return null;
+  const save = (url: string | null) =>
+    update.mutate(
+      { id: collection.collection_id, patch: { hero_image_url: url } },
+      { onSuccess: onClose },
+    );
+  return (
+    <Modal open onClose={onClose} title={`Cover — ${collection.name}`}>
+      <CoverImageEditor
+        value={collection.hero_image_url}
+        referenceType="collection"
+        referenceId={collection.collection_id}
+        onChange={save}
+      />
+    </Modal>
   );
 }
 

@@ -58,6 +58,9 @@ const PROD_COLS = [
   "payment_model",
   "required_deposit_pct",
   "search_keywords",
+  // Controlled lace constructions the base supports (drives the styled lace
+  // axis). Distinct from the legacy free-text `lace_type` descriptor above.
+  "lace_size_codes",
   // Pre-order / production timeline (P0-7).
   "preorder_enabled",
   "expected_ready_date",
@@ -216,7 +219,12 @@ async function findAllProducts({
     params,
   );
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "products")} ${w} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+    `SELECT p.*,
+            (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+              WHERE pi.product_id = p.product_id
+              ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS primary_image_url
+       FROM ${t(brand, "products")} p ${w}
+      ORDER BY p.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {

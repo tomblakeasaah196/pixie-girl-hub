@@ -34,6 +34,10 @@ const styledCreate = z
     meta_title: z.string().max(200).nullable().optional(),
     meta_description: z.string().max(500).nullable().optional(),
     search_keywords: z.array(z.string()).optional(),
+    // Lace constructions this styled offers (NULL/empty = inherit the base).
+    lace_size_codes: z.array(z.string().max(8)).nullable().optional(),
+    // Explicit module-card hero image (NULL = default colour's first picture).
+    primary_image_id: z.string().uuid().nullable().optional(),
   })
   .strict();
 

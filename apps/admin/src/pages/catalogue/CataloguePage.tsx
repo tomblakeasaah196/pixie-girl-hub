@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
+import { useCategoriesEnabled } from "@/lib/catalogue";
 import { Tabs } from "./parts";
 import { BaseTab } from "./BaseTab";
 import { StyledTab } from "./StyledTab";
@@ -9,6 +10,7 @@ import { CategoriesTab } from "./CategoriesTab";
 import { CollectionsTab } from "./CollectionsTab";
 import { BundlesTab } from "./BundlesTab";
 import { ServicesTab } from "./ServicesTab";
+import { CatalogueSettingsTab } from "./CatalogueSettingsTab";
 
 /**
  * Catalogue (V2.2 §6.4) — the base→styled product model.
@@ -17,19 +19,12 @@ import { ServicesTab } from "./ServicesTab";
  *  • Categories / Collections — merchandising
  *  • Bundles — promotional offers (retention engine), surfaced here
  */
-const TABS = [
-  { key: "styled", label: "Styled" },
-  { key: "base", label: "Base" },
-  { key: "categories", label: "Categories" },
-  { key: "collections", label: "Collections" },
-  { key: "bundles", label: "Bundles" },
-  { key: "services", label: "Services" },
-];
-
 export function CataloguePage() {
   useBreadcrumbs([{ label: "Catalogue" }]);
   const { can } = useAuthStore();
   const [tab, setTab] = useState("styled");
+  // Categories are hidden unless re-enabled from Config (owner directive).
+  const categoriesOn = useCategoriesEnabled();
 
   if (!can("catalogue", "view")) {
     return (
@@ -37,15 +32,29 @@ export function CataloguePage() {
     );
   }
 
+  const tabs = [
+    { key: "styled", label: "Styled" },
+    { key: "base", label: "Base" },
+    ...(categoriesOn ? [{ key: "categories", label: "Categories" }] : []),
+    { key: "collections", label: "Collections" },
+    { key: "bundles", label: "Bundles" },
+    { key: "services", label: "Services" },
+    { key: "config", label: "Config" },
+  ];
+
+  // If Categories gets switched off while it's the active tab, fall back.
+  const active = tab === "categories" && !categoriesOn ? "styled" : tab;
+
   return (
     <div className="space-y-5">
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
-      {tab === "styled" && <StyledTab />}
-      {tab === "base" && <BaseTab />}
-      {tab === "categories" && <CategoriesTab />}
-      {tab === "collections" && <CollectionsTab />}
-      {tab === "bundles" && <BundlesTab />}
-      {tab === "services" && <ServicesTab />}
+      <Tabs tabs={tabs} active={active} onChange={setTab} />
+      {active === "styled" && <StyledTab />}
+      {active === "base" && <BaseTab />}
+      {active === "categories" && categoriesOn && <CategoriesTab />}
+      {active === "collections" && <CollectionsTab />}
+      {active === "bundles" && <BundlesTab />}
+      {active === "services" && <ServicesTab />}
+      {active === "config" && <CatalogueSettingsTab />}
     </div>
   );
 }

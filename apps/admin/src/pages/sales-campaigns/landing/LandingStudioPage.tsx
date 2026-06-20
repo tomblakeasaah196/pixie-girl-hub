@@ -149,14 +149,16 @@ export function LandingStudioPage() {
               <button
                 onClick={onSave}
                 disabled={saveDraft.isPending || !dirty}
+                title="Save your work in progress as a draft. This does NOT publish it live."
                 className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border hairline text-[13px] font-semibold text-text-muted hover:text-text-primary disabled:opacity-50"
               >
-                {saveDraft.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save draft
+                {saveDraft.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
               </button>
               <button
                 onClick={onPublish}
                 disabled={publish.isPending}
-                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[10px] bg-accent-deep text-text-primary text-[13px] font-semibold cta-sheen disabled:opacity-60"
+                title="Save and publish live in one step. Visitors will see this immediately."
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[10px] bg-accent-deep text-text-primary text-[13px] font-semibold cta-sheen disabled:opacity-60"
               >
                 {publish.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Publish
               </button>

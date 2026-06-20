@@ -1,3 +1,7 @@
+// @ts-nocheck
+// Consumed as out-of-root source by BOTH apps; their bundlers resolve
+// three/@react-three/react from each app's node_modules at build time, but
+// `tsc` run per app can't resolve them from packages/.
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";

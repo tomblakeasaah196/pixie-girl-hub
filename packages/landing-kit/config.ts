@@ -130,7 +130,7 @@ const PILLARS = [
   { numeral: "III.", title: "Limited", body: "When a chapter closes, it closes. No restocks. No second printings." },
 ];
 
-function baseConfig(): Omit<LandingConfig, "brandName" | "legalName" | "tagline" | "welcomeLine" | "domain" | "storefront" | "address" | "theme" | "three" | "socials" | "reveal"> {
+function baseConfig(): Omit<LandingConfig, "brandName" | "legalName" | "tagline" | "welcomeLine" | "domain" | "storefront" | "address" | "theme" | "three" | "socials" | "reveal" | "seo"> {
   return {
     background: { type: "color", imageUrl: null },
     logo: { url: null, headerTint: null, footerTint: null, headerScale: 1.15, footerScale: 1.15 },

@@ -1,3 +1,8 @@
+// @ts-nocheck
+// Consumed as out-of-root source by BOTH apps; their bundlers resolve
+// react/framer-motion/lucide-react from each app's node_modules at build time,
+// but `tsc` run per app can't resolve them from packages/. The ./config
+// contract (LandingConfig, withDefaults, …) stays fully type-checked.
 "use client";
 
 /**

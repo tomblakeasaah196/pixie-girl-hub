@@ -447,7 +447,7 @@ export function DocumentsTab({ contactId }: { contactId: string }) {
               variant="primary"
               size="sm"
               icon={<Upload className="w-3.5 h-3.5" />}
-              loading={upload.isPending}
+              disabled={upload.isPending}
               onClick={() => inputRef.current?.click()}
             >
               Upload

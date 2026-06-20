@@ -140,8 +140,14 @@ export function CreditNoteCreateDrawer({
       fireToast("Credit Note Created", `${note.credit_note_number} was created as a draft.`);
       reset();
       onCreated(note.credit_note_id);
-    } catch {
-      fireToast("Create Failed", "Failed to create the credit note. Check the form and try again.", "high");
+    } catch (err) {
+      fireToast(
+        "Create Failed",
+        err instanceof Error
+          ? err.message
+          : "Failed to create the credit note. Check the form and try again.",
+        "high",
+      );
     }
   };
 

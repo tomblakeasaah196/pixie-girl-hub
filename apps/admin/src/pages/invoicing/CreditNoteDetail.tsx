@@ -38,9 +38,13 @@ export function CreditNoteDetail({ creditNoteId, onClose }: { creditNoteId: stri
       await issueCreditNote.mutateAsync(creditNoteId);
       setConfirmIssue(false);
       fireToast("Credit Note Issued", "The credit note has been issued and posted to the ledger.");
-    } catch {
+    } catch (err) {
       setConfirmIssue(false);
-      fireToast("Issue Failed", "Failed to issue the credit note.", "high");
+      fireToast(
+        "Issue Failed",
+        err instanceof Error ? err.message : "Failed to issue the credit note.",
+        "high",
+      );
     }
   };
 

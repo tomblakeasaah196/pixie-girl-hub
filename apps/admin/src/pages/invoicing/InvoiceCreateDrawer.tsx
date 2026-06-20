@@ -157,8 +157,14 @@ export function InvoiceCreateDrawer({
       fireToast("Invoice Created", `${invoice.invoice_number} was created as a draft.`);
       reset();
       onCreated(invoice.invoice_id);
-    } catch {
-      fireToast("Create Failed", "Failed to create the invoice. Check the form and try again.", "high");
+    } catch (err) {
+      fireToast(
+        "Create Failed",
+        err instanceof Error
+          ? err.message
+          : "Failed to create the invoice. Check the form and try again.",
+        "high",
+      );
     }
   };
 

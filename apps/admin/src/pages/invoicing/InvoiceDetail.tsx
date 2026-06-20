@@ -84,8 +84,12 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
       await sendInvoice.mutateAsync({ sent_via: sentVia });
       setShowSendForm(false);
       fireToast("Invoice Sent", `Sent via ${sentVia.replace(/_/g, " ")}.`);
-    } catch {
-      fireToast("Send Failed", "Failed to send the invoice.", "high");
+    } catch (err) {
+      fireToast(
+        "Send Failed",
+        err instanceof Error ? err.message : "Failed to send the invoice.",
+        "high",
+      );
     }
   };
 
@@ -97,8 +101,12 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
       setPayAmount("");
       setPayNotes("");
       fireToast("Payment Recorded", `₦${Number(payAmount).toLocaleString()} applied to the invoice.`);
-    } catch {
-      fireToast("Payment Failed", "Failed to record the payment.", "high");
+    } catch (err) {
+      fireToast(
+        "Payment Failed",
+        err instanceof Error ? err.message : "Failed to record the payment.",
+        "high",
+      );
     }
   };
 
@@ -108,9 +116,13 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
       await voidInvoice.mutateAsync(invoiceId);
       setConfirmVoid(false);
       fireToast("Invoice Voided", "The invoice has been voided.");
-    } catch {
+    } catch (err) {
       setConfirmVoid(false);
-      fireToast("Void Failed", "Failed to void the invoice.", "high");
+      fireToast(
+        "Void Failed",
+        err instanceof Error ? err.message : "Failed to void the invoice.",
+        "high",
+      );
     }
   };
 
@@ -126,8 +138,12 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
       setShowReceiptForm(false);
       setReceiptAmount("");
       fireToast("Receipt Issued", "The receipt has been issued.");
-    } catch {
-      fireToast("Receipt Failed", "Failed to issue the receipt.", "high");
+    } catch (err) {
+      fireToast(
+        "Receipt Failed",
+        err instanceof Error ? err.message : "Failed to issue the receipt.",
+        "high",
+      );
     }
   };
 

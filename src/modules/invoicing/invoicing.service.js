@@ -280,6 +280,16 @@ async function recordPayment({ brand, user, request_id, id, input }) {
         `Cannot pay a ${inv.status} invoice`,
         409,
       );
+    // Guard overpayment: an invoice carries no customer-credit concept, so a
+    // payment beyond the outstanding balance would drive balance_due_ngn (a
+    // generated column) negative. Reject anything over the current balance.
+    const outstanding = money(inv.balance_due_ngn || 0);
+    if (money(input.amount_applied_ngn).gt(outstanding))
+      throw new AppError(
+        "OVERPAYMENT",
+        `Payment exceeds the outstanding balance of ${toCurrencyString(outstanding)}.`,
+        422,
+      );
     await repo.applyPayment({
       client,
       brand,
@@ -311,10 +321,13 @@ async function recordPayment({ brand, user, request_id, id, input }) {
 async function voidInvoice({ brand, user, request_id, id }) {
   const inv = await repo.findById({ brand, id });
   if (!inv) throw new NotFoundError("Invoice");
-  if (inv.status === "paid")
+  // Any recorded payment means money changed hands; voiding would orphan
+  // those payment rows. Block fully- AND partially-paid invoices alike and
+  // direct to a credit note / refund instead.
+  if (inv.status === "paid" || money(inv.amount_paid_ngn || 0).gt(0))
     throw new AppError(
       "INVALID_STATE",
-      "Paid invoices cannot be voided (issue a credit note)",
+      "Invoices with recorded payments cannot be voided — issue a credit note or refund instead.",
       409,
     );
   const updated = await repo.setStatus({ brand, id, status: "void" });

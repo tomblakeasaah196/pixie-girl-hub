@@ -63,6 +63,7 @@ export function useAddPayment(orderId: string) {
         queryKey: ["sales-orders", biz, "detail", orderId],
       });
       qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
     },
   });
 }
@@ -79,7 +80,11 @@ export function useCancelOrder() {
   const biz = useBiz();
   return useMutation({
     mutationFn: (id: string) => salesApi.cancelOrder(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sales-orders", biz] }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+    },
   });
 }
 
@@ -88,6 +93,18 @@ export function useOrderTimeline(orderId: string | null) {
   return useQuery({
     queryKey: ["sales-orders", biz, "timeline", orderId],
     queryFn: () => salesApi.getOrderTimeline(orderId!),
+    enabled: !!orderId,
+  });
+}
+
+export function useOrderInvoice(orderId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-orders", biz, "invoice", orderId],
+    queryFn: async () => {
+      const res = await salesApi.getOrderInvoice(orderId!);
+      return res.data?.[0] ?? null;
+    },
     enabled: !!orderId,
   });
 }
@@ -129,8 +146,10 @@ export function useSendQuotation() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: QuotationSendInput }) =>
       salesApi.sendQuotation(id, input),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["sales-quotations", biz] }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["sales-quotations", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-quotations", biz, "detail", id] });
+    },
   });
 }
 
@@ -139,8 +158,10 @@ export function useAcceptQuotation() {
   const biz = useBiz();
   return useMutation({
     mutationFn: (id: string) => salesApi.acceptQuotation(id),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["sales-quotations", biz] }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ["sales-quotations", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-quotations", biz, "detail", id] });
+    },
   });
 }
 
@@ -170,7 +191,10 @@ export function useRequestCancellation() {
       orderId: string;
       input: CancellationRequestInput;
     }) => salesApi.requestCancellation(orderId, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sales-orders", biz] }),
+    onSuccess: (_data, { orderId }) => {
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", orderId] });
+    },
   });
 }
 

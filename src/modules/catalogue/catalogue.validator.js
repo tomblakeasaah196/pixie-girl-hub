@@ -19,7 +19,7 @@ const categoryCreate = z
     slug,
     parent_category_id: z.string().uuid().nullable().optional(),
     description: z.string().max(2000).nullable().optional(),
-    hero_image_url: z.string().url().nullable().optional(),
+    hero_image_url: z.string().max(2000).nullable().optional(),
     meta_title: z.string().max(200).nullable().optional(),
     meta_description: z.string().max(500).nullable().optional(),
     display_order: z.coerce.number().int().min(0).optional(),
@@ -58,8 +58,11 @@ const productCreate = z
     care_instructions: z.string().max(2000).nullable().optional(),
     product_type: z.enum(["physical", "service", "digital"]).optional(),
     is_custom: z.boolean().optional(),
-    is_visible_storefront: z.boolean().optional(),
-    visible_on_channels: z.array(z.string()).optional(),
+    // NOTE: storefront visibility is intentionally NOT accepted here. A base
+    // product is the China-origin, stock-bearing record — it must never be
+    // published to the storefront. Only Styled products carry a storefront
+    // lifecycle (draft → live). Sending `is_visible_storefront` /
+    // `visible_on_channels` on a base product is rejected by `.strict()`.
     brand_name: z.string().max(120).nullable().optional(),
     meta_title: z.string().max(200).nullable().optional(),
     meta_description: z.string().max(500).nullable().optional(),
@@ -71,6 +74,9 @@ const productCreate = z
       .optional(),
     required_deposit_pct: z.coerce.number().min(0).max(100).optional(),
     search_keywords: z.array(z.string()).optional(),
+    // Lace constructions this base can be made in (4×4, 13×4, …). The styled
+    // products built on it inherit this set and may narrow it.
+    lace_size_codes: z.array(z.string().max(8)).nullable().optional(),
     // Pre-order / production timeline (P0-7). When the base is out of stock
     // and pre-order is enabled, styled listings show production-framed copy.
     preorder_enabled: z.boolean().optional(),
@@ -161,9 +167,9 @@ const collectionCreate = z
     name: z.string().min(1).max(160),
     slug,
     description: z.string().max(2000).nullable().optional(),
-    hero_image_url: z.string().url().nullable().optional(),
+    hero_image_url: z.string().max(2000).nullable().optional(),
     mode: z.enum(["manual", "rule"]).optional(),
-    display_image_url: z.string().url().nullable().optional(),
+    display_image_url: z.string().max(2000).nullable().optional(),
     display_order: z.coerce.number().int().min(0).optional(),
     is_visible_storefront: z.boolean().optional(),
     is_active: z.boolean().optional(),
@@ -248,8 +254,8 @@ const seoUpsert = z
   .object({
     meta_title_override: z.string().max(200).nullable().optional(),
     meta_description_override: z.string().max(500).nullable().optional(),
-    canonical_url: z.string().url().nullable().optional(),
-    og_image_url: z.string().url().nullable().optional(),
+    canonical_url: z.string().max(2000).nullable().optional(),
+    og_image_url: z.string().max(2000).nullable().optional(),
     og_title: z.string().max(200).nullable().optional(),
     og_description: z.string().max(500).nullable().optional(),
     twitter_card: z.string().max(40).optional(),

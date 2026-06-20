@@ -305,6 +305,25 @@ select {
     color: rgb(var(--text-faint));
     font-weight: 700;
   }
+  /* Compact input used across the Landing Studio editor panels. */
+  .input-sm {
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 9px;
+    background: rgb(var(--text) / 0.04);
+    border: 1px solid rgb(var(--border-c) / var(--border-alpha));
+    font-size: 12px;
+    color: rgb(var(--text));
+    outline: none;
+  }
+  textarea.input-sm {
+    height: auto;
+    padding: 8px 10px;
+    line-height: 1.45;
+  }
+  .input-sm:focus {
+    border-color: rgb(var(--accent) / 0.5);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════

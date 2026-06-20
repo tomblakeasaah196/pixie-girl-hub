@@ -87,11 +87,15 @@ export const useAuthStore = create<AuthState>()(
         set({ user, status: "authed" });
 
         // Ensure the business context is set immediately after login
-        // so X-Brand-Context is present on the very first API call.
+        // so X-Brand-Context is present on the very first API call. CEOs
+        // have no explicit default (they see every brand) — fall back to
+        // whatever's already active rather than leaving it unset, which
+        // would otherwise leave X-Brand-Context permanently absent until
+        // the user manually switches brand at least once.
         const { activeKey, setActive } = useBusinessStore.getState();
         const defaultKey =
-          user.defaultBusinessKey ?? user.availableBusinesses[0];
-        if (defaultKey && (!activeKey || activeKey !== defaultKey)) {
+          user.defaultBusinessKey ?? user.availableBusinesses[0] ?? activeKey;
+        if (defaultKey) {
           setActive(defaultKey);
         }
 

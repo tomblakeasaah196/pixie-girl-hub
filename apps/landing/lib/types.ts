@@ -8,6 +8,19 @@
  * still evolving and the landing renders state-by-state.
  */
 
+// ── Landing Studio config (published landing pages) ─────────────────
+// The contract + helpers live in the shared @landing-kit package so the
+// public page renders identically to the studio preview. Re-exported here
+// so existing imports from "@/lib/types" keep working unchanged.
+export type {
+  ChannelOption,
+  SocialLink,
+  LandingTheme,
+  RevealThreeD,
+  LandingConfig,
+} from "@landing-kit";
+export { hexToTriplet, withDefaults, defaultConfig } from "@landing-kit";
+
 export type LandingState = "before" | "live" | "ended";
 
 export interface Hero {

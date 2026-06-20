@@ -60,8 +60,13 @@ function render(sql, business) {
 }
 
 function findSentinel(sql) {
-  // First "CREATE TABLE {{BUSINESS}}.table_name" or "CREATE TABLE biz.table_name"
-  const m = sql.match(/CREATE TABLE (?:\{\{BUSINESS\}\}|\w+)\.(\w+)/i);
+  // First "CREATE TABLE [IF NOT EXISTS] {{BUSINESS}}.table_name" (or biz.table_name).
+  // The optional "IF NOT EXISTS" must be matched too — templates that use it
+  // otherwise yield no sentinel, so they are never skipped and re-run (and
+  // error on already-present triggers/indexes) on every repair.
+  const m = sql.match(
+    /CREATE TABLE\s+(?:IF NOT EXISTS\s+)?(?:\{\{BUSINESS\}\}|\w+)\.(\w+)/i,
+  );
   return m ? m[1] : null;
 }
 

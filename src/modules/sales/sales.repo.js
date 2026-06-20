@@ -375,13 +375,46 @@ async function listDiscounts({ client, brand, order_id }) {
   );
   return rows;
 }
+/**
+ * Insert a payment row. Idempotent (P1-2): a re-delivered webhook (same
+ * provider+provider_reference) or a retried client request (same
+ * order_id+client_idempotency_key) resolves to the existing row — via
+ * ON CONFLICT DO NOTHING against the unique indexes — instead of inserting a
+ * duplicate. Returned row carries `_alreadyExisted` so the caller can skip
+ * side effects (fee/FX journals, paid-state transition) that already ran.
+ */
 async function addPayment({ client, brand, payment }) {
   const { f, ph, p } = ins(PAY, payment);
   const { rows } = await ex(client)(
-    `INSERT INTO ${t(brand, "sales_order_payments")} (${f.join(",")}) VALUES (${ph.join(",")}) RETURNING *`,
+    `INSERT INTO ${t(brand, "sales_order_payments")} (${f.join(",")}) VALUES (${ph.join(",")})
+     ON CONFLICT DO NOTHING RETURNING *`,
     p,
   );
-  return rows[0];
+  if (rows[0]) return { ...rows[0], _alreadyExisted: false };
+  const existing = await findExistingPayment({ client, brand, payment });
+  if (existing) return { ...existing, _alreadyExisted: true };
+  throw new Error(
+    "addPayment: insert conflicted but no existing row was found",
+  );
+}
+async function findExistingPayment({ client, brand, payment }) {
+  if (payment.provider && payment.provider_reference) {
+    const { rows } = await ex(client)(
+      `SELECT * FROM ${t(brand, "sales_order_payments")}
+        WHERE provider = $1 AND provider_reference = $2 LIMIT 1`,
+      [payment.provider, payment.provider_reference],
+    );
+    if (rows[0]) return rows[0];
+  }
+  if (payment.order_id && payment.client_idempotency_key) {
+    const { rows } = await ex(client)(
+      `SELECT * FROM ${t(brand, "sales_order_payments")}
+        WHERE order_id = $1 AND client_idempotency_key = $2 LIMIT 1`,
+      [payment.order_id, payment.client_idempotency_key],
+    );
+    if (rows[0]) return rows[0];
+  }
+  return null;
 }
 async function listPayments({ client, brand, order_id }) {
   const { rows } = await ex(client)(

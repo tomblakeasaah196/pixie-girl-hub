@@ -32,7 +32,6 @@ export const QUOTE_STATUS: Record<QuoteStatus, StatusMeta> = {
 };
 
 export const SALES_CHANNELS: { value: SalesChannel; label: string }[] = [
-  { value: "pos", label: "Walk-in / POS" },
   { value: "instagram", label: "Instagram" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "phone", label: "Phone" },

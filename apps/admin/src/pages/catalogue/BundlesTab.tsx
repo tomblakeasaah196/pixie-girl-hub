@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Gift, X } from "lucide-react";
+import { Plus, Gift, X, Image as ImageIcon, Pencil } from "lucide-react";
 import {
   Button,
   Card,
@@ -21,11 +21,13 @@ import {
   useBundles,
   useCreateBundle,
   useToggleBundle,
+  useUpdateBundle,
   useBaseProducts,
   type Bundle,
   type BundleComponentInput,
   type BundleCreateInput,
 } from "@/lib/catalogue";
+import { CoverImageEditor } from "./CoverImageEditor";
 
 /**
  * Bundles run on the promotional engine in the retention module
@@ -52,6 +54,7 @@ export function BundlesTab() {
   const bundles = useBundles();
   const toggle = useToggleBundle();
   const [open, setOpen] = useState(false);
+  const [coverFor, setCoverFor] = useState<Bundle | null>(null);
 
   if (!can("retention", "view")) {
     return (
@@ -111,6 +114,28 @@ export function BundlesTab() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(bundles.data ?? []).map((b: Bundle) => (
             <Card key={b.bundle_id} className="p-4">
+              <div className="aspect-[16/9] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04] relative group">
+                {b.hero_image_url ? (
+                  <img
+                    src={b.hero_image_url}
+                    alt={b.display_name}
+                    loading="lazy"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full grid place-items-center text-text-faint">
+                    <ImageIcon className="w-7 h-7" />
+                  </div>
+                )}
+                {canEdit && (
+                  <button
+                    onClick={() => setCoverFor(b)}
+                    className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 h-7 rounded-[8px] text-[11px] font-semibold dropglass text-text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Pencil className="w-3 h-3" /> Cover
+                  </button>
+                )}
+              </div>
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="min-w-0">
                   <div className="font-display text-[15px] truncate">
@@ -147,7 +172,34 @@ export function BundlesTab() {
       )}
 
       <CreateBundleModal open={open} onClose={() => setOpen(false)} />
+      <BundleCoverModal bundle={coverFor} onClose={() => setCoverFor(null)} />
     </div>
+  );
+}
+
+function BundleCoverModal({
+  bundle,
+  onClose,
+}: {
+  bundle: Bundle | null;
+  onClose: () => void;
+}) {
+  const update = useUpdateBundle();
+  if (!bundle) return null;
+  const save = (url: string | null) =>
+    update.mutate(
+      { id: bundle.bundle_id, patch: { hero_image_url: url } },
+      { onSuccess: onClose },
+    );
+  return (
+    <Modal open onClose={onClose} title={`Cover — ${bundle.display_name}`}>
+      <CoverImageEditor
+        value={bundle.hero_image_url}
+        referenceType="bundle"
+        referenceId={bundle.bundle_id}
+        onChange={save}
+      />
+    </Modal>
   );
 }
 

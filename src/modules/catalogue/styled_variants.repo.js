@@ -99,6 +99,61 @@ async function updateSizeTier({ client, brand, size_code, patch }) {
   return rows[0] || null;
 }
 
+// ── Lace-size ladder (brand-wide, third variant axis) ────
+const LACE_COLS = [
+  "label",
+  "premium_ngn",
+  "description",
+  "display_order",
+  "is_active",
+];
+
+async function listLaceSizes({ client, brand, activeOnly = false }) {
+  const where = activeOnly ? "WHERE is_active = true" : "";
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "styled_lace_sizes")} ${where} ORDER BY display_order, lace_code`,
+  );
+  return rows;
+}
+
+async function getLaceSize({ client, brand, lace_code }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "styled_lace_sizes")} WHERE lace_code = $1`,
+    [lace_code],
+  );
+  return rows[0] || null;
+}
+
+async function createLaceSize({ client, brand, input }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "styled_lace_sizes")}
+       (lace_code, label, premium_ngn, description, display_order, is_active)
+     VALUES ($1,$2,COALESCE($3,0),$4,COALESCE($5,0),COALESCE($6,true))
+     RETURNING *`,
+    [
+      input.lace_code,
+      input.label,
+      input.premium_ngn,
+      input.description ?? null,
+      input.display_order,
+      input.is_active,
+    ],
+  );
+  return rows[0];
+}
+
+async function updateLaceSize({ client, brand, lace_code, patch }) {
+  const { f, p, next } = setClause(LACE_COLS, patch);
+  if (!f.length) return getLaceSize({ client, brand, lace_code });
+  p.push(lace_code);
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_lace_sizes")} SET ${f.join(",")}
+      WHERE lace_code = $${next} RETURNING *`,
+    p,
+  );
+  return rows[0] || null;
+}
+
 // ── Catalogue config (singleton) ─────────────────────────
 async function getConfig({ client, brand }) {
   const { rows } = await ex(client)(
@@ -109,17 +164,20 @@ async function getConfig({ client, brand }) {
 
 async function upsertConfig({ client, brand, patch, user_id }) {
   const { rows } = await ex(client)(
-    `INSERT INTO ${t(brand, "catalogue_config")} (singleton, size_guide_title, head_size_guide_md, updated_by)
-     VALUES (true, COALESCE($1,'How to find your head size'), $2, $3)
+    `INSERT INTO ${t(brand, "catalogue_config")}
+       (singleton, size_guide_title, head_size_guide_md, categories_enabled, updated_by)
+     VALUES (true, COALESCE($1,'How to find your head size'), $2, COALESCE($3,false), $4)
      ON CONFLICT (singleton) DO UPDATE SET
        size_guide_title = COALESCE(EXCLUDED.size_guide_title, ${t(brand, "catalogue_config")}.size_guide_title),
        head_size_guide_md = COALESCE(EXCLUDED.head_size_guide_md, ${t(brand, "catalogue_config")}.head_size_guide_md),
+       categories_enabled = COALESCE($3, ${t(brand, "catalogue_config")}.categories_enabled),
        updated_by = EXCLUDED.updated_by,
        updated_at = now()
      RETURNING *`,
     [
       patch.size_guide_title ?? null,
       patch.head_size_guide_md ?? null,
+      patch.categories_enabled ?? null,
       user_id || null,
     ],
   );
@@ -220,7 +278,7 @@ const VARIANT_COLS = [
   "display_order",
 ];
 
-/** Variants with the computed effective price (anchor + premiums). */
+/** Variants with the computed effective price (anchor + colour/size/lace premiums). */
 async function listVariants({ client, brand, styled_id }) {
   const { rows } = await ex(client)(
     `SELECT v.*,
@@ -228,15 +286,19 @@ async function listVariants({ client, brand, styled_id }) {
             c.display_order AS colour_order,
             st.label AS size_label, st.premium_ngn AS size_premium_ngn,
             st.display_order AS size_order,
+            ls.label AS lace_label, ls.premium_ngn AS lace_premium_ngn,
+            ls.display_order AS lace_order,
             sp.retail_price_ngn AS anchor_price_ngn,
             COALESCE(v.price_override_ngn,
-                     sp.retail_price_ngn + c.premium_ngn + st.premium_ngn) AS effective_price_ngn
+                     sp.retail_price_ngn + c.premium_ngn + st.premium_ngn
+                       + COALESCE(ls.premium_ngn, 0)) AS effective_price_ngn
        FROM ${t(brand, "styled_product_variants")} v
        JOIN ${t(brand, "styled_product_colours")} c ON c.colour_id = v.colour_id
        JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = v.size_code
+       LEFT JOIN ${t(brand, "styled_lace_sizes")} ls ON ls.lace_code = v.lace_code
        JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = v.styled_id
       WHERE v.styled_id = $1
-      ORDER BY c.display_order, c.name, st.display_order`,
+      ORDER BY c.display_order, c.name, st.display_order, ls.display_order`,
     [styled_id],
   );
   return rows;
@@ -251,10 +313,10 @@ async function getVariant({ client, brand, styled_id, styled_variant_id }) {
   return rows[0] || null;
 }
 
-/** Existing (colour_id,size_code) pairs — so bulk create can skip dupes. */
+/** Existing (colour_id,size_code,lace_code) combos — so bulk create can skip dupes. */
 async function existingPairs({ client, brand, styled_id }) {
   const { rows } = await ex(client)(
-    `SELECT colour_id, size_code FROM ${t(brand, "styled_product_variants")}
+    `SELECT colour_id, size_code, lace_code FROM ${t(brand, "styled_product_variants")}
       WHERE styled_id = $1`,
     [styled_id],
   );
@@ -264,14 +326,15 @@ async function existingPairs({ client, brand, styled_id }) {
 async function createVariant({ client, brand, styled_id, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "styled_product_variants")}
-       (styled_id, colour_id, size_code, sku, price_override_ngn, compare_at_price_ngn,
-        is_active, is_default, display_order)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,true),COALESCE($8,false),COALESCE($9,0))
+       (styled_id, colour_id, size_code, lace_code, sku, price_override_ngn,
+        compare_at_price_ngn, is_active, is_default, display_order)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,true),COALESCE($9,false),COALESCE($10,0))
      RETURNING *`,
     [
       styled_id,
       input.colour_id,
       input.size_code,
+      input.lace_code ?? null,
       input.sku,
       input.price_override_ngn ?? null,
       input.compare_at_price_ngn ?? null,
@@ -316,6 +379,10 @@ module.exports = {
   getSizeTier,
   createSizeTier,
   updateSizeTier,
+  listLaceSizes,
+  getLaceSize,
+  createLaceSize,
+  updateLaceSize,
   getConfig,
   upsertConfig,
   listColours,

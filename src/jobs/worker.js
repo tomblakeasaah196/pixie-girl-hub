@@ -219,7 +219,6 @@ async function startWorkers() {
     "30 3 2 * *",
     runChemicalReconciliation,
   );
-  scheduleCron("ad-spend-sync", "30 4 * * *", runAdSpendSync);
   scheduleCron(
     "geoip-db-update",
     config.CRON_GEOIP_DB_UPDATE,

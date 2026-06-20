@@ -416,7 +416,11 @@ CREATE TABLE {{BUSINESS}}.sales_order_payments (
 );
 CREATE INDEX idx_{{BUSINESS}}_sales_order_payments_order
   ON {{BUSINESS}}.sales_order_payments (order_id);
-CREATE INDEX idx_{{BUSINESS}}_sales_order_payments_provider_ref
+-- UNIQUE (P1-2): a gateway transaction reference is globally unique to that
+-- gateway — this is the race backstop so a re-delivered webhook can never
+-- insert a second payment row for the same charge (addPayment uses
+-- ON CONFLICT DO NOTHING against this index).
+CREATE UNIQUE INDEX idx_{{BUSINESS}}_sales_order_payments_provider_ref
   ON {{BUSINESS}}.sales_order_payments (provider, provider_reference) WHERE provider_reference IS NOT NULL;
 CREATE INDEX idx_{{BUSINESS}}_sales_order_payments_pending
   ON {{BUSINESS}}.sales_order_payments (recorded_at) WHERE status = 'pending';

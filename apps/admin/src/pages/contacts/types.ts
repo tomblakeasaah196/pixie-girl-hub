@@ -2,6 +2,7 @@ export type ContactType =
   | "customer"
   | "supplier"
   | "staff"
+  | "subscriber"
   | "retail_partner"
   | "stylist_partner";
 
@@ -41,6 +42,13 @@ export interface Contact {
   visible_to: string[];
   source: ContactSource | null;
   notes: string | null;
+  /** Ambassador overlay — a client (or anyone) promoted to ambassador. */
+  is_ambassador?: boolean;
+  ambassador_profile?: {
+    commission_pct?: number;
+    social_handles?: Record<string, string>;
+    [k: string]: unknown;
+  } | null;
   is_deleted: boolean;
   created_by: string;
   created_at: string;

@@ -1,31 +1,21 @@
 import { useState } from "react";
-import { CreditCard, Link2, XCircle } from "lucide-react";
+import { Link2, XCircle, FileText, Download } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
-import { ErrorState } from "@/components/ui/controls";
-import { FormGrid, Field } from "@/components/ui/Form";
-import { NumberField, Select, ConfirmDialog } from "@/components/ui/controls";
+import { ErrorState, ConfirmDialog } from "@/components/ui/controls";
+import { FormGrid } from "@/components/ui/Form";
 import {
   useOrder,
   useOrderTimeline,
-  useAddPayment,
   useCreatePaymentLink,
   useCancelOrder,
+  useOrderInvoice,
 } from "./hooks";
+import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { ORDER_STATUS, SALES_CHANNELS } from "./constants";
-import type { PaymentMethod, OrderPayment } from "./types";
-
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: "bank_transfer", label: "Bank Transfer" },
-  { value: "cash", label: "Cash" },
-  { value: "pos_card", label: "POS Card" },
-  { value: "paystack_card", label: "Paystack Card" },
-  { value: "paystack_transfer", label: "Paystack Transfer" },
-  { value: "opay", label: "OPay" },
-  { value: "nomba_terminal", label: "Nomba Terminal" },
-  { value: "wallet", label: "Wallet" },
-];
+import type { OrderPayment } from "./types";
 
 export function OrderDetail({
   orderId,
@@ -36,15 +26,13 @@ export function OrderDetail({
 }) {
   const { data: order, isLoading, isError, refetch } = useOrder(orderId);
   const { data: timeline } = useOrderTimeline(orderId);
-  const addPayment = useAddPayment(orderId ?? "");
+  const { data: invoice } = useOrderInvoice(orderId);
   const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
+  const navigate = useNavigate();
 
-  const [showPayForm, setShowPayForm] = useState(false);
-  const [payMethod, setPayMethod] = useState<PaymentMethod>("bank_transfer");
-  const [payAmount, setPayAmount] = useState("");
-  const [payRef, setPayRef] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [receiptLoading, setReceiptLoading] = useState(false);
   const toast = useToastStore();
   const fireToast = (
     title: string,
@@ -67,32 +55,6 @@ export function OrderDetail({
       read_at: null,
       created_at: new Date().toISOString(),
     });
-  };
-
-  const handleAddPayment = async () => {
-    if (!payAmount || !orderId) return;
-    try {
-      await addPayment.mutateAsync({
-        method: payMethod,
-        amount_ngn: Number(payAmount),
-        provider_reference: payRef || undefined,
-        payment_path: "staff_recorded",
-      });
-      setShowPayForm(false);
-      setPayAmount("");
-      setPayRef("");
-      fireToast(
-        "Payment Recorded",
-        `₦${Number(payAmount).toLocaleString()} recorded successfully.`,
-      );
-    } catch {
-      fireToast(
-        "Payment Failed",
-        "Failed to record payment.",
-        "payment",
-        "high",
-      );
-    }
   };
 
   const handlePayLink = async () => {
@@ -122,6 +84,19 @@ export function OrderDetail({
       fireToast("Order Cancelled", "The order has been cancelled.");
     } catch {
       fireToast("Cancel Failed", "Failed to cancel order.", "order", "high");
+    }
+  };
+
+  const handleReceipt = async () => {
+    if (!orderId) return;
+    setReceiptLoading(true);
+    try {
+      const res = await generateReceipt(orderId);
+      window.open(res.url, "_blank");
+    } catch {
+      fireToast("Receipt Failed", "Failed to generate receipt.", "order", "high");
+    } finally {
+      setReceiptLoading(false);
     }
   };
 
@@ -163,75 +138,40 @@ export function OrderDetail({
                     className="text-[22px] text-warn"
                   />
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={<Link2 className="w-3.5 h-3.5" />}
-                    onClick={handlePayLink}
-                    disabled={createLink.isPending}
-                  >
-                    {createLink.isPending ? "Generating…" : "Pay Link"}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon={<CreditCard className="w-3.5 h-3.5" />}
-                    onClick={() => setShowPayForm(!showPayForm)}
-                  >
-                    Record Payment
-                  </Button>
-                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Link2 className="w-3.5 h-3.5" />}
+                  onClick={handlePayLink}
+                  disabled={createLink.isPending}
+                >
+                  {createLink.isPending ? "Generating…" : "Send Pay Link"}
+                </Button>
               </div>
             )}
 
-            {/* Record payment form */}
-            {showPayForm && (
-              <Card className="p-4">
-                <div className="micro mb-3">Record Payment</div>
-                <FormGrid>
-                  <Field label="Method">
-                    <Select
-                      value={payMethod}
-                      onChange={setPayMethod}
-                      options={PAYMENT_METHODS}
-                    />
-                  </Field>
-                  <Field label="Amount (NGN)">
-                    <NumberField
-                      value={payAmount}
-                      onChange={setPayAmount}
-                      placeholder="0.00"
-                      suffix="NGN"
-                    />
-                  </Field>
-                  <Field label="Reference" hint="optional">
-                    <input
-                      value={payRef}
-                      onChange={(e) => setPayRef(e.target.value)}
-                      placeholder="Transaction ref"
-                      className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
-                    />
-                  </Field>
-                </FormGrid>
-                <div className="flex gap-2 mt-4">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleAddPayment}
-                    disabled={addPayment.isPending || !payAmount}
-                  >
-                    {addPayment.isPending ? "Saving…" : "Save Payment"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowPayForm(false)}
-                  >
-                    Cancel
-                  </Button>
+            {/* Invoice link */}
+            {invoice && (
+              <div className="flex items-center justify-between p-3 rounded-[11px] bg-success/[0.06] border border-success/20">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-success" />
+                  <div>
+                    <div className="text-[13px] font-semibold">
+                      Invoice {invoice.invoice_number}
+                    </div>
+                    <div className="text-[11px] text-text-faint capitalize">
+                      {invoice.status}
+                    </div>
+                  </div>
                 </div>
-              </Card>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(`/invoicing?tab=invoices`)}
+                >
+                  View Invoice
+                </Button>
+              </div>
             )}
 
             {/* Order info */}
@@ -249,7 +189,7 @@ export function OrderDetail({
                     {
                       SALES_CHANNELS.find(
                         (c) => c.value === order.sales_channel,
-                      )?.label
+                      )?.label ?? order.sales_channel
                     }
                   </div>
                 </div>
@@ -374,8 +314,19 @@ export function OrderDetail({
             )}
 
             {/* Actions */}
-            {order.status !== "cancelled" && order.status !== "completed" && (
-              <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {order.status === "paid" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Download className="w-3.5 h-3.5" />}
+                  onClick={handleReceipt}
+                  disabled={receiptLoading}
+                >
+                  {receiptLoading ? "Generating…" : "Download Receipt"}
+                </Button>
+              )}
+              {order.status !== "cancelled" && order.status !== "completed" && (
                 <Button
                   variant="danger"
                   size="sm"
@@ -384,8 +335,8 @@ export function OrderDetail({
                 >
                   Cancel Order
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </Drawer>

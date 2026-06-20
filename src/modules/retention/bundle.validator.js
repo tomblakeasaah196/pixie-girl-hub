@@ -47,7 +47,7 @@ const createSchema = z
     total_usage_limit: z.coerce.number().int().positive().optional(),
     per_customer_limit: z.coerce.number().int().positive().optional(),
     is_visible_storefront: z.boolean().optional(),
-    hero_image_url: z.string().url().max(500).optional(),
+    hero_image_url: z.string().max(2000).nullable().optional(),
     display_order: z.coerce.number().int().optional(),
     is_active: z.boolean().optional(),
     components: z.array(componentSchema).min(1),

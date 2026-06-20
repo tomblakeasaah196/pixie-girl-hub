@@ -1,17 +1,5 @@
-import { useState, useCallback, useMemo } from "react";
-import {
-  Search,
-  User,
-  Package,
-  Layers,
-  Box,
-  X,
-  Truck,
-  Store,
-  Send,
-  QrCode,
-  Copy,
-} from "lucide-react";
+import { useState, useCallback, useMemo, useRef } from "react";
+import { Search, User, X, Truck, Store, Send, QrCode, Copy } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Card, Button, MoneyText } from "@/components/ui/primitives";
 import { Toggle, Select, NumberField } from "@/components/ui/controls";
@@ -20,6 +8,8 @@ import {
   AddressAutocomplete,
   type PlaceAddress,
 } from "@/components/ui/AddressAutocomplete";
+import { ProductPicker } from "@/components/catalogue/ProductPicker";
+import { resolvePick, type ProductHit } from "@/lib/product-search";
 import { SALES_CHANNELS, FULFILMENT_OPTIONS } from "./constants";
 import { useCreateOrder } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
@@ -27,8 +17,6 @@ import { onboardingApi } from "@/lib/smartcomm-api";
 import { useBusinessStore } from "@/stores/business";
 import * as salesApi from "./api";
 import type { SalesChannel, FulfilmentType, OrderCreateInput } from "./types";
-
-type ProductType = "base" | "styled" | "bundle";
 
 interface CartLine {
   id: string;
@@ -45,16 +33,6 @@ interface SearchResult {
   sub: string;
 }
 
-const PRODUCT_TYPES: {
-  key: ProductType;
-  label: string;
-  icon: typeof Package;
-}[] = [
-  { key: "base", label: "Base Product", icon: Package },
-  { key: "styled", label: "Styled Product", icon: Layers },
-  { key: "bundle", label: "Bundle", icon: Box },
-];
-
 const CURRENCY_OPTIONS = [
   { value: "NGN", label: "NGN" },
   { value: "USD", label: "USD" },
@@ -67,7 +45,7 @@ export function QuickSaleForm() {
   const [step, setStep] = useState(1);
 
   // Step 1: Channel
-  const [channel, setChannel] = useState<SalesChannel>("pos");
+  const [channel, setChannel] = useState<SalesChannel>("instagram");
 
   // Step 2: Customer
   const [contactSearch, setContactSearch] = useState("");
@@ -77,9 +55,6 @@ export function QuickSaleForm() {
   const [showQr, setShowQr] = useState(false);
 
   // Step 3: Products
-  const [productType, setProductType] = useState<ProductType>("base");
-  const [productSearch, setProductSearch] = useState("");
-  const [productResults, setProductResults] = useState<SearchResult[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
 
   // Step 4: Config
@@ -134,32 +109,28 @@ export function QuickSaleForm() {
   const total = subtotal + vatAmount + shipping;
 
   // ── Contact search ───────────────────────────────────────
-  const searchContacts = useCallback(async (q: string) => {
+  const contactDebounce = useRef<ReturnType<typeof setTimeout>>();
+  const handleContactSearch = useCallback((q: string) => {
     setContactSearch(q);
+    clearTimeout(contactDebounce.current);
     if (q.length < 2) {
       setContactResults([]);
       return;
     }
-    try {
-      const { data } = await import("@/lib/api").then((m) =>
-        m.api.get<{
-          data: Array<{
-            contact_id: string;
-            display_name: string;
-            email: string | null;
-          }>;
-        }>(`/contacts?q=${encodeURIComponent(q)}&page_size=6`),
-      );
-      setContactResults(
-        data.map((c) => ({
-          id: c.contact_id,
-          label: c.display_name,
-          sub: c.email ?? "",
-        })),
-      );
-    } catch {
-      setContactResults([]);
-    }
+    contactDebounce.current = setTimeout(async () => {
+      try {
+        const res = await salesApi.searchContacts(q);
+        setContactResults(
+          (res.data ?? []).map((c) => ({
+            id: c.contact_id,
+            label: c.display_name,
+            sub: [c.primary_phone, c.email].filter(Boolean).join(" · ") || "",
+          })),
+        );
+      } catch {
+        setContactResults([]);
+      }
+    }, 300);
   }, []);
 
   const pickContact = (r: SearchResult) => {
@@ -170,156 +141,32 @@ export function QuickSaleForm() {
     setStep(3);
   };
 
-  // ── Product search ───────────────────────────────────────
-  const searchProducts = useCallback(
-    async (q: string) => {
-      setProductSearch(q);
-      if (q.length < 2) {
-        setProductResults([]);
+  // ── Product pick (type-first picker → resolved order lines) ──
+  const handlePick = async (hit: ProductHit) => {
+    try {
+      const { lines, bundle_id } = await resolvePick(hit);
+      if (bundle_id) setBundleId(bundle_id);
+      if (lines.length === 0) {
+        fireToast(
+          "Nothing to add",
+          "That product has no active variant to sell.",
+          "order",
+          "high",
+        );
         return;
       }
-      try {
-        if (productType === "base") {
-          const res = await salesApi.searchProducts(q);
-          setProductResults(
-            res.data.map((p) => ({
-              id: p.product_id,
-              label: p.name,
-              sub: p.slug,
-            })),
-          );
-        } else if (productType === "styled") {
-          const res = await salesApi.searchStyledProducts(q);
-          setProductResults(
-            res.data.map((p) => ({
-              id: p.styled_product_id,
-              label: p.name,
-              sub: `${p.styled_code} · ${p.retail_price_ngn ? `₦${Number(p.retail_price_ngn).toLocaleString()}` : "No price"}`,
-            })),
-          );
-        } else {
-          const bundles = await salesApi.searchBundles(q);
-          const lower = q.toLowerCase();
-          setProductResults(
-            bundles
-              .filter(
-                (b) =>
-                  b.display_name.toLowerCase().includes(lower) ||
-                  b.bundle_code.toLowerCase().includes(lower),
-              )
-              .slice(0, 10)
-              .map((b) => ({
-                id: b.bundle_id,
-                label: b.display_name,
-                sub: `${b.bundle_code} · ${b.bundle_price_ngn ? `₦${Number(b.bundle_price_ngn).toLocaleString()}` : b.pricing_model}`,
-              })),
-          );
+      setCart((prev) => {
+        const next = [...prev];
+        for (const l of lines) {
+          const i = next.findIndex((c) => c.variant_id === l.variant_id);
+          if (i >= 0)
+            next[i] = { ...next[i], quantity: next[i].quantity + l.quantity };
+          else next.push({ id: crypto.randomUUID(), ...l });
         }
-      } catch {
-        setProductResults([]);
-      }
-    },
-    [productType],
-  );
-
-  const pickProduct = async (r: SearchResult) => {
-    setProductSearch("");
-    setProductResults([]);
-    if (productType === "base") {
-      try {
-        const variants = await salesApi.getProductVariants(r.id);
-        const active = variants.filter((v) => v.is_active);
-        for (const v of active) {
-          const price = Number(v.price_storefront_ngn ?? v.price_pos_ngn ?? 0);
-          setCart((prev) => {
-            const existing = prev.find((l) => l.variant_id === v.variant_id);
-            if (existing)
-              return prev.map((l) =>
-                l.variant_id === v.variant_id
-                  ? { ...l, quantity: l.quantity + 1 }
-                  : l,
-              );
-            return [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                variant_id: v.variant_id,
-                label: `${r.label} — ${v.variant_name}`,
-                sku: v.sku,
-                unit_price: price,
-                quantity: 1,
-              },
-            ];
-          });
-        }
-      } catch {
-        /* toast error */
-      }
-    } else if (productType === "styled") {
-      try {
-        const sp = await salesApi.getStyledProduct(r.id);
-        setCart((prev) => {
-          if (prev.find((l) => l.variant_id === sp.base_variant_id))
-            return prev;
-          return [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              variant_id: sp.base_variant_id,
-              label: sp.name,
-              sku: r.sub.split(" · ")[0],
-              unit_price: Number(sp.retail_price_ngn ?? 0),
-              quantity: 1,
-            },
-          ];
-        });
-      } catch {
-        fireToast("Error", "Failed to load styled product", "order", "high");
-      }
-    } else {
-      try {
-        const bundle = await salesApi.getBundle(r.id);
-        setBundleId(bundle.bundle_id);
-        for (const comp of bundle.components) {
-          let variantId = comp.variant_id;
-          let variantName = comp.role;
-          let variantSku = "";
-          let price =
-            Number(bundle.bundle_price_ngn ?? 0) /
-            (bundle.components.length || 1);
-          if (comp.product_id) {
-            const variants = await salesApi.getProductVariants(comp.product_id);
-            const match = comp.variant_id
-              ? variants.find((v) => v.variant_id === comp.variant_id)
-              : variants.find((v) => v.is_active);
-            if (match) {
-              variantId = match.variant_id;
-              variantName = match.variant_name;
-              variantSku = match.sku;
-              price = Number(
-                match.price_storefront_ngn ?? match.price_pos_ngn ?? price,
-              );
-            }
-          }
-          if (!variantId) continue;
-          setCart((prev) => {
-            if (prev.find((l) => l.variant_id === variantId)) return prev;
-            return [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                variant_id: variantId!,
-                label: `${bundle.display_name} — ${variantName}`,
-                sku: variantSku || comp.bundle_product_id.slice(0, 8),
-                unit_price: price,
-                quantity: comp.quantity,
-              },
-            ];
-          });
-        }
-      } catch {
-        fireToast("Error", "Failed to load bundle", "order", "high");
-      }
+        return next;
+      });
+    } catch {
+      fireToast("Error", "Failed to add product", "order", "high");
     }
   };
 
@@ -375,7 +222,7 @@ export function QuickSaleForm() {
 
   const reset = () => {
     setStep(1);
-    setChannel("pos");
+    setChannel("instagram");
     setContactId(null);
     setContactName("");
     setContactSearch("");
@@ -455,7 +302,7 @@ export function QuickSaleForm() {
                 <input
                   placeholder="Search by name, email, or phone…"
                   value={contactSearch}
-                  onChange={(e) => searchContacts(e.target.value)}
+                  onChange={(e) => handleContactSearch(e.target.value)}
                   className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
                 />
                 {contactResults.length > 0 && (
@@ -548,56 +395,8 @@ export function QuickSaleForm() {
         <Card className="p-5">
           <div className="micro mb-3">Products</div>
 
-          <div className="flex gap-1.5 mb-4">
-            {PRODUCT_TYPES.map((pt) => {
-              const on = pt.key === productType;
-              const Icon = pt.icon;
-              return (
-                <button
-                  key={pt.key}
-                  type="button"
-                  onClick={() => {
-                    setProductType(pt.key);
-                    setProductSearch("");
-                    setProductResults([]);
-                  }}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 px-3 h-8 rounded-[9px] text-[12px] font-semibold border transition-colors",
-                    on
-                      ? "border-accent/50 text-accent-glow bg-accent/[0.1]"
-                      : "border-line text-text-muted hover:text-text-primary",
-                  )}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {pt.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
-            <input
-              placeholder={`Search ${productType === "bundle" ? "bundles" : "products"}…`}
-              value={productSearch}
-              onChange={(e) => searchProducts(e.target.value)}
-              className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
-            />
-            {productResults.length > 0 && (
-              <div className="absolute z-40 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] dropglass overflow-hidden py-1 max-h-[240px] overflow-y-auto">
-                {productResults.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => pickProduct(r)}
-                    className="w-full px-4 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors"
-                  >
-                    <div className="text-[13px] font-semibold">{r.label}</div>
-                    <div className="text-[11px] text-text-faint">{r.sub}</div>
-                  </button>
-                ))}
-              </div>
-            )}
+          <div className="mb-4">
+            <ProductPicker onPick={handlePick} />
           </div>
 
           {cart.length > 0 && (
@@ -824,7 +623,7 @@ export function QuickSaleForm() {
               onClick={handleSubmit}
               disabled={submitting}
             >
-              {submitting ? "Sending…" : "Send Invoice & Pay Link"}
+              {submitting ? "Sending…" : "Create Order & Send Pay Link"}
             </Button>
           </div>
 
@@ -844,7 +643,7 @@ export function QuickSaleForm() {
             <Send className="w-6 h-6 text-success" />
           </div>
           <h3 className="font-display text-lg font-medium mb-1">
-            Invoice Sent!
+            Order Created!
           </h3>
           <p className="text-[13px] text-text-muted mb-4">
             Payment link has been sent to the customer. The order will be

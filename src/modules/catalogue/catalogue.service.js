@@ -131,7 +131,9 @@ async function createProduct({ brand, user, request_id, input }) {
     // Operators no longer type the code: allocate the next one from the
     // Document Numbering sequence (FLH001N / PXG001N) when not supplied, and
     // derive a unique slug from the name when not supplied.
-    const prepared = { ...input };
+    // A base product can never be storefront-published (storefront lives on
+    // Styled products only).
+    const prepared = denyBasePublish(input);
     if (!prepared.product_code) {
       prepared.product_code = await numbering.nextProductCode(client, brand);
     }
@@ -307,13 +309,13 @@ async function bulkImportProducts({ brand, user, request_id, rows }) {
           client,
           brand,
           user_id: user.user_id,
-          input: {
+          input: denyBasePublish({
             product_code,
             name: row.name,
             slug,
             product_type: "physical",
             ...stripUndefined(fields),
-          },
+          }),
         });
         const variant = await createDefaultVariant(client, brand, product, row);
 
@@ -391,6 +393,21 @@ function stripUndefined(obj) {
   return out;
 }
 
+/**
+ * A base product is the China-origin, stock-bearing record — it must NEVER be
+ * publishable to the storefront (only Styled products carry a storefront
+ * lifecycle). The validators already reject these keys, but we also neutralise
+ * them here so no path (bulk import, future callers, legacy payloads) can ever
+ * flip a base product live. `is_visible_storefront` is pinned to false on
+ * write; any channel-visibility hint is dropped.
+ */
+function denyBasePublish(input) {
+  const out = { ...input };
+  delete out.visible_on_channels;
+  out.is_visible_storefront = false;
+  return out;
+}
+
 /** Create the stock-bearing default variant for an imported product. */
 function createDefaultVariant(client, brand, product, row) {
   return repo.createVariant({
@@ -441,7 +458,8 @@ async function resolveCategoryId(client, brand, name, user) {
 async function updateProduct({ brand, user, request_id, id, patch }) {
   const before = await repo.findProductById({ brand, id });
   if (!before) throw new NotFoundError("Product");
-  const p = await repo.updateProduct({ brand, id, patch });
+  // Never allow an update to publish a base product to the storefront.
+  const p = await repo.updateProduct({ brand, id, patch: denyBasePublish(patch) });
   await A(
     brand,
     user.user_id,
@@ -825,6 +843,41 @@ async function addImage({ brand, user, request_id, id, file, meta }) {
     return { ...image, document_id: doc.document_id };
   });
 }
+
+/**
+ * Generic cover-image upload (collections / bundles). Compresses + stores the
+ * file and hands back a CDN url — the caller saves it onto the entity's
+ * hero_image_url. No product_images row: a cover isn't tied to a product.
+ */
+async function uploadCoverImage({
+  brand,
+  user,
+  request_id,
+  file,
+  reference_type,
+  reference_id,
+}) {
+  if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
+    throw new AppError("IMAGE_TOO_LARGE", "Image exceeds the 10 MB limit", 413, {
+      user_message: "Images must be 10 MB or smaller.",
+    });
+  }
+  const shrunk = await compressImage(file.buffer, file.mimetype);
+  const doc = await documents.store({
+    brand,
+    user_id: user.user_id,
+    buffer: shrunk.buffer,
+    filename: file.originalname,
+    mime_type: shrunk.mime_type,
+    document_type: "cover_image",
+    title: file.originalname,
+    reference_type: reference_type || null,
+    reference_id: reference_id || null,
+    request_id,
+  });
+  return { cdn_url: doc.url, document_id: doc.document_id };
+}
+
 async function updateImage({ brand, user, request_id, id, image_id, patch }) {
   const img = await repo.updateImage({
     brand,
@@ -1070,6 +1123,7 @@ module.exports = {
   removeCollectionMember,
   listImages,
   addImage,
+  uploadCoverImage,
   updateImage,
   removeImage,
   listVideos,

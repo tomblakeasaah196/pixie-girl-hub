@@ -162,6 +162,15 @@ CREATE UNIQUE INDEX journal_entries_sales_src_uidx
   ON {{BUSINESS}}.journal_entries (source_id)
   WHERE source_type = 'sales' AND source_id IS NOT NULL;
 
+-- ── Generalised journal posting idempotency (P1-3) ───────
+-- Opt-in: a caller passes entry.idempotency_key when it needs a hard
+-- "post this exactly once" guarantee outside the sales path (payment fees,
+-- realised FX, intercompany legs). NULL keys (the majority of postings) are
+-- excluded by the partial WHERE — unaffected, no behaviour change.
+CREATE UNIQUE INDEX journal_entries_idempotency_uidx
+  ON {{BUSINESS}}.journal_entries (idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
 -- ============================================================
 -- No new tables in this file. ~30 cross-module indexes added.
 -- ============================================================

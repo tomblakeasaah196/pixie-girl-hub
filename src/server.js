@@ -79,7 +79,26 @@ async function bootstrap() {
   const clientDist = path.join(__dirname, "..", "apps/admin", "dist");
 
   app.use("/media", express.static(path.resolve(config.STORAGE_LOCAL_ROOT)));
-  app.use(express.static(clientDist));
+
+  // Cache policy is the difference between a deploy reaching users and a
+  // deploy silently dying in a stale client (see PR #100). Two rules:
+  //   - Vite emits content-hashed files under /assets/* — their URL changes
+  //     whenever the bytes change, so they are safe to cache forever.
+  //   - index.html and sw.js are the *entry points* that point at those
+  //     hashes; they must never be cached, or the browser keeps loading an
+  //     old shell that references old bundles and no deploy is ever seen.
+  app.use(
+    express.static(clientDist, {
+      setHeaders: (res, filePath) => {
+        const base = path.basename(filePath);
+        if (base === "index.html" || base === "sw.js") {
+          res.setHeader("Cache-Control", "no-cache, must-revalidate");
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    }),
+  );
 
   app.get("*", (req, res, next) => {
     // Never let the SPA fallback answer an API request — an unknown
@@ -87,11 +106,17 @@ async function bootstrap() {
     if (req.path.startsWith("/api") || req.path.startsWith("/media")) {
       return next();
     }
-    res.sendFile(path.join(clientDist, "index.html"), (err) => {
-      // If the build is missing (client/dist not built yet) fall
-      // through to the 404 rather than crashing the request.
-      if (err) next();
-    });
+    // The SPA shell must always be revalidated so a new build is picked up
+    // on the very next navigation — never served from a stale browser cache.
+    res.sendFile(
+      path.join(clientDist, "index.html"),
+      { headers: { "Cache-Control": "no-cache, must-revalidate" } },
+      (err) => {
+        // If the build is missing (client/dist not built yet) fall
+        // through to the 404 rather than crashing the request.
+        if (err) next();
+      },
+    );
   });
 
   // JSON 404 for unknown API routes and global error handler

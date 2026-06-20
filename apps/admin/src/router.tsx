@@ -5,6 +5,8 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { CommandCenter } from "@/pages/CommandCenter";
 
 import { ContactsPage } from "@/pages/contacts/ContactsPage";
+import { ContactProfilePage } from "@/pages/contacts/ContactProfilePage";
+import { EmployeeOnboardingPage } from "@/pages/contacts/EmployeeOnboardingPage";
 import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
 import { ContactTagsPage } from "@/pages/ContactTagsPage";
 import { CrmPage } from "@/pages/crm/CrmPage";
@@ -130,6 +132,16 @@ const CampaignBundlesPage = lazyWithRetry(() =>
     default: m.CampaignBundlesPage,
   })),
 );
+const LandingStudioPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/landing/LandingStudioPage").then((m) => ({
+    default: m.LandingStudioPage,
+  })),
+);
+const LandingPreviewPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/landing/LandingPreviewPage").then((m) => ({
+    default: m.LandingPreviewPage,
+  })),
+);
 const SaleLandingPublic = lazyWithRetry(() =>
   import("@/pages/sales-campaigns/public/SaleLandingPublic").then((m) => ({
     default: m.SaleLandingPublic,
@@ -158,6 +170,11 @@ const QuickRepliesPage = lazyWithRetry(() =>
 const WorkspacePage = lazyWithRetry(() =>
   import("@/pages/workspace/WorkspacePage").then((m) => ({
     default: m.WorkspacePage,
+  })),
+);
+const InvoicingPage = lazyWithRetry(() =>
+  import("@/pages/invoicing/InvoicingPage").then((m) => ({
+    default: m.InvoicingPage,
   })),
 );
 import { AppearancePage } from "@/pages/AppearancePage";
@@ -253,6 +270,25 @@ export const router = createBrowserRouter(
       element: <RequireAuth />,
       children: [
         { path: "/select-entity", element: <SelectEntityPage /> },
+        // Landing Studio — standalone full-screen editor + chrome-less
+        // preview tab. Authed (session restored by RequireAuth) but outside
+        // the AppShell so it owns the whole viewport.
+        {
+          path: "/landing-studio",
+          element: (
+            <Suspense fallback={null}>
+              <LandingStudioPage />
+            </Suspense>
+          ),
+        },
+        {
+          path: "/landing-studio/preview",
+          element: (
+            <Suspense fallback={null}>
+              <LandingPreviewPage />
+            </Suspense>
+          ),
+        },
         {
           path: "/",
           element: <AppShell />,
@@ -261,6 +297,8 @@ export const router = createBrowserRouter(
             { path: "sales", element: <SalesPage /> },
             { path: "contacts", element: <ContactsPage /> },
             { path: "contacts/milestones", element: <MilestonesPage /> },
+            { path: "contacts/staff/new", element: <EmployeeOnboardingPage /> },
+            { path: "contacts/:id", element: <ContactProfilePage /> },
             { path: "crm", element: <CrmPage /> },
             { path: "crm/deals/:id", element: <DealDetailPage /> },
             {
@@ -374,6 +412,15 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <PurchasingPage />
+                </Suspense>
+              ),
+            },
+            // Invoicing & Billing (V2.2 §6.5) — invoices, credit notes, AR ageing.
+            {
+              path: "invoicing",
+              element: (
+                <Suspense fallback={null}>
+                  <InvoicingPage />
                 </Suspense>
               ),
             },

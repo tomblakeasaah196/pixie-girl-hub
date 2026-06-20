@@ -1,6 +1,15 @@
 import { useRef, useState } from "react";
-import { Plus, Trash2, ImagePlus, Wand2, Palette } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ImagePlus,
+  Wand2,
+  Palette,
+  Video,
+  Star,
+} from "lucide-react";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
+import { cn } from "@/lib/cn";
 import {
   NumberField,
   Toggle,
@@ -8,6 +17,8 @@ import {
   ConfirmDialog,
 } from "@/components/ui/controls";
 import {
+  useStyledProduct,
+  useUpdateStyled,
   useStyledColours,
   useCreateColour,
   useUpdateColour,
@@ -27,11 +38,14 @@ import {
 /**
  * Colour + size management for a styled product (catalogue PR).
  *
- * Colours each own their pictures (2–3) and an optional video / IG link, plus
- * an optional per-colour price bump. The colour × size matrix is generated in
- * bulk; each variant's retail = the styled anchor + colour premium + size
- * premium, unless hand-overridden.
+ * Colours each own their own gallery (2–3 minimum, up to MAX_COLOUR_IMAGES)
+ * and an optional video / IG link, plus an optional per-colour price bump. The
+ * colour × size matrix is generated in bulk; each variant's retail = the
+ * styled anchor + colour premium + size premium, unless hand-overridden.
  */
+
+/** Storefront gallery ceiling per colour/variant (mirrors the API cap). */
+const MAX_COLOUR_IMAGES = 10;
 export function StyledVariantsManager({
   styledId,
   anchorPrice,
@@ -43,6 +57,11 @@ export function StyledVariantsManager({
 }) {
   const colours = useStyledColours(styledId);
   const variants = useStyledVariants(styledId);
+  const styled = useStyledProduct(styledId);
+  const setStyled = useUpdateStyled(styledId);
+  const primaryImageId = styled.data?.primary_image_id ?? null;
+  const setPrimary = (image_id: string) =>
+    setStyled.mutate({ primary_image_id: image_id });
 
   return (
     <div className="space-y-4">
@@ -50,6 +69,8 @@ export function StyledVariantsManager({
         styledId={styledId}
         canEdit={canEdit}
         colours={colours.data ?? []}
+        primaryImageId={primaryImageId}
+        onSetPrimary={setPrimary}
       />
       <VariantsCard
         styledId={styledId}
@@ -57,6 +78,11 @@ export function StyledVariantsManager({
         anchorPrice={anchorPrice}
         colours={colours.data ?? []}
         variants={variants.data ?? []}
+        laceOptions={
+          (styled.data?.lace_size_codes?.length
+            ? styled.data.lace_size_codes
+            : styled.data?.base_lace_size_codes) ?? []
+        }
       />
     </div>
   );
@@ -67,10 +93,14 @@ function ColoursCard({
   styledId,
   canEdit,
   colours,
+  primaryImageId,
+  onSetPrimary,
 }: {
   styledId: string;
   canEdit: boolean;
   colours: StyledColour[];
+  primaryImageId: string | null;
+  onSetPrimary: (imageId: string) => void;
 }) {
   const create = useCreateColour(styledId);
   const [name, setName] = useState("");
@@ -108,7 +138,8 @@ function ColoursCard({
       {colours.length === 0 && (
         <p className="text-[12.5px] text-text-muted my-3">
           No colours yet. Add the first colour (e.g. <em>Natural Black</em>),
-          then upload 2–3 pictures for it.
+          then upload its pictures (2–3 minimum, up to {MAX_COLOUR_IMAGES}) and
+          an optional video.
         </p>
       )}
 
@@ -119,6 +150,8 @@ function ColoursCard({
             styledId={styledId}
             colour={c}
             canEdit={canEdit}
+            primaryImageId={primaryImageId}
+            onSetPrimary={onSetPrimary}
           />
         ))}
       </div>
@@ -177,10 +210,14 @@ function ColourRow({
   styledId,
   colour,
   canEdit,
+  primaryImageId,
+  onSetPrimary,
 }: {
   styledId: string;
   colour: StyledColour;
   canEdit: boolean;
+  primaryImageId: string | null;
+  onSetPrimary: (imageId: string) => void;
 }) {
   const images = useColourImages(styledId, colour.colour_id);
   const addImage = useAddColourImage(styledId, colour.colour_id);
@@ -217,9 +254,16 @@ function ColourRow({
               </span>
             )}
           </div>
-          <div className="text-[11px] text-text-faint">
-            {imgs.length} picture{imgs.length === 1 ? "" : "s"}
-            {imgs.length < 2 && <span className="text-warn"> · add 2–3</span>}
+          <div className="text-[11px] text-text-faint flex items-center gap-2 flex-wrap">
+            <span>
+              {imgs.length} picture{imgs.length === 1 ? "" : "s"}
+            </span>
+            {imgs.length < 2 && <span className="text-warn">· add 2–3</span>}
+            {(colour.external_video_url || colour.video_url) && (
+              <span className="inline-flex items-center gap-1 text-accent-glow">
+                <Video className="w-3 h-3" /> video
+              </span>
+            )}
           </div>
         </div>
         {canEdit && (
@@ -243,25 +287,50 @@ function ColourRow({
 
       {/* Thumbnails */}
       <div className="flex flex-wrap gap-2 mt-3">
-        {imgs.map((im) => (
-          <div key={im.image_id} className="relative group">
-            <img
-              src={im.cdn_url ?? ""}
-              alt={im.alt_text ?? colour.name}
-              className="w-16 h-16 rounded-[10px] object-cover border border-line"
-            />
-            {canEdit && (
-              <button
-                onClick={() => removeImage.mutate(im.image_id)}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 grid place-items-center rounded-full bg-danger text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label="Remove picture"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        ))}
-        {canEdit && (
+        {imgs.map((im) => {
+          const isPrimary = im.image_id === primaryImageId;
+          return (
+            <div key={im.image_id} className="relative group">
+              <img
+                src={im.cdn_url ?? ""}
+                alt={im.alt_text ?? colour.name}
+                className={cn(
+                  "w-16 h-16 rounded-[10px] object-cover border",
+                  isPrimary
+                    ? "border-accent ring-2 ring-accent/50"
+                    : "border-line",
+                )}
+              />
+              {canEdit && (
+                <button
+                  onClick={() => onSetPrimary(im.image_id)}
+                  className={cn(
+                    "absolute -top-1.5 -left-1.5 w-5 h-5 grid place-items-center rounded-full transition-opacity",
+                    isPrimary
+                      ? "bg-accent text-white opacity-100"
+                      : "bg-text-primary/70 text-white opacity-0 group-hover:opacity-100",
+                  )}
+                  title={isPrimary ? "Module primary" : "Set as module primary"}
+                >
+                  <Star
+                    className="w-3 h-3"
+                    fill={isPrimary ? "currentColor" : "none"}
+                  />
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  onClick={() => removeImage.mutate(im.image_id)}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 grid place-items-center rounded-full bg-danger text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="Remove picture"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {canEdit && imgs.length < MAX_COLOUR_IMAGES && (
           <button
             onClick={() => fileRef.current?.click()}
             disabled={addImage.isPending}
@@ -284,10 +353,46 @@ function ColourRow({
           onChange={onPick}
         />
       </div>
+      {canEdit && (
+        <p className="text-[11px] text-text-faint mt-1.5">
+          {imgs.length >= MAX_COLOUR_IMAGES
+            ? `Gallery full (${MAX_COLOUR_IMAGES}). Remove a picture to add another.`
+            : `Add as many angles as you like — up to ${MAX_COLOUR_IMAGES} per colour.`}
+        </p>
+      )}
 
-      {/* Expanded editor: premium toggle default + video/IG link */}
+      {/* Video — always available (the storefront shows it on the colour) */}
+      {canEdit && (
+        <div className="mt-3">
+          <label className="micro block mb-1 flex items-center gap-1.5">
+            <Video className="w-3.5 h-3.5" /> Video / Instagram link (optional)
+          </label>
+          <div className="flex gap-2">
+            <input
+              value={igUrl}
+              onChange={(e) => setIgUrl(e.target.value)}
+              placeholder="Paste a YouTube / Instagram / TikTok / video URL…"
+              className="flex-1 h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+            />
+            <Button
+              size="sm"
+              disabled={igUrl === (colour.external_video_url ?? "")}
+              onClick={() =>
+                update.mutate({
+                  colourId: colour.colour_id,
+                  patch: { external_video_url: igUrl.trim() || null },
+                })
+              }
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Expanded editor: default + active toggles */}
       {expanded && canEdit && (
-        <div className="mt-3 pt-3 border-t hairline space-y-3">
+        <div className="mt-3 pt-3 border-t hairline">
           <div className="flex flex-wrap items-center gap-4">
             <Toggle
               checked={colour.is_default}
@@ -309,31 +414,6 @@ function ColourRow({
               }
               label="Active"
             />
-          </div>
-          <div>
-            <label className="micro block mb-1">
-              Video / Instagram link (optional)
-            </label>
-            <div className="flex gap-2">
-              <input
-                value={igUrl}
-                onChange={(e) => setIgUrl(e.target.value)}
-                placeholder="Paste an Instagram / TikTok / video URL…"
-                className="flex-1 h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
-              />
-              <Button
-                size="sm"
-                disabled={igUrl === (colour.external_video_url ?? "")}
-                onClick={() =>
-                  update.mutate({
-                    colourId: colour.colour_id,
-                    patch: { external_video_url: igUrl.trim() || null },
-                  })
-                }
-              >
-                Save
-              </Button>
-            </div>
           </div>
         </div>
       )}
@@ -362,19 +442,30 @@ function VariantsCard({
   anchorPrice,
   colours,
   variants,
+  laceOptions,
 }: {
   styledId: string;
   canEdit: boolean;
   anchorPrice: number | null;
   colours: StyledColour[];
   variants: StyledVariant[];
+  laceOptions: string[];
 }) {
   const sizeCfg = useSizeConfig();
   const bulk = useBulkCreateVariants(styledId);
   const tiers = (sizeCfg.data?.tiers ?? []).filter((t) => t.is_active);
+  const laceLadder = sizeCfg.data?.lace_sizes ?? [];
+  // Label each supported lace code from the brand ladder (falls back to code).
+  const laceChoices = laceOptions.map((code) => ({
+    value: code,
+    label: laceLadder.find((l) => l.lace_code === code)?.label ?? code,
+  }));
+  const hasLace = laceChoices.length > 0;
 
   const [allSizes, setAllSizes] = useState(true);
   const [pickedSizes, setPickedSizes] = useState<string[]>([]);
+  const [withLace, setWithLace] = useState(false);
+  const [pickedLace, setPickedLace] = useState<string[]>([]);
 
   const prices = variants
     .filter((v) => v.is_active && v.effective_price_ngn != null)
@@ -388,6 +479,12 @@ function VariantsCard({
     bulk.mutate({
       all_sizes: allSizes,
       size_codes: allSizes ? undefined : pickedSizes,
+      // Lace axis is opt-in; when on, pick a subset or use all supported lace.
+      ...(hasLace && withLace
+        ? pickedLace.length
+          ? { lace_codes: pickedLace }
+          : { all_lace: true }
+        : {}),
     });
   };
 
@@ -450,9 +547,35 @@ function VariantsCard({
               {bulk.isPending ? "Generating…" : "Generate variants"}
             </Button>
           </div>
+
+          {hasLace && (
+            <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t hairline">
+              <Toggle
+                checked={withLace}
+                onChange={setWithLace}
+                label="Include lace sizes"
+              />
+              {withLace && (
+                <MultiSelect
+                  values={pickedLace}
+                  onChange={setPickedLace}
+                  options={laceChoices}
+                />
+              )}
+              {withLace && (
+                <span className="text-[11px] text-text-faint">
+                  {pickedLace.length
+                    ? `${pickedLace.length} lace × sizes × colours`
+                    : "all supported lace"}
+                </span>
+              )}
+            </div>
+          )}
+
           <p className="text-[11px] text-text-faint mt-2">
-            Creates a SKU for every colour × size. Existing combinations are
-            skipped, so it's safe to run again after adding a colour or size.
+            Creates a SKU for every colour × size{hasLace ? " × lace" : ""}.
+            Existing combinations are skipped, so it's safe to run again after
+            adding a colour, size{hasLace ? ", lace" : ""} or option.
           </p>
           {!colours.length && (
             <p className="text-[11.5px] text-warn mt-1">
@@ -472,6 +595,7 @@ function VariantsCard({
               <tr className="text-text-faint text-left border-b hairline">
                 <th className="py-2 font-semibold">Colour</th>
                 <th className="py-2 font-semibold">Size</th>
+                <th className="py-2 font-semibold">Lace</th>
                 <th className="py-2 font-semibold">SKU</th>
                 <th className="py-2 font-semibold text-right">Retail</th>
                 <th className="py-2 font-semibold text-right">Override</th>
@@ -532,6 +656,9 @@ function VariantRow({
         </span>
       </td>
       <td className="py-2">{v.size_code}</td>
+      <td className="py-2 text-text-muted">
+        {v.lace_label ?? v.lace_code ?? "—"}
+      </td>
       <td className="py-2 font-mono text-[10.5px] text-text-faint">{v.sku}</td>
       <td className="py-2 text-right">
         {v.effective_price_ngn != null ? (

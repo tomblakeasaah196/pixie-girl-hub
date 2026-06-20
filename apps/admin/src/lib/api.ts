@@ -140,7 +140,14 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
   }
 
   // Backend wraps every successful payload in { data: ... }; unwrap.
-  return ((parsed as { data?: T })?.data ?? parsed) as T;
+  // Paginated list endpoints add a sibling `meta` (page/total/has_more) —
+  // that shape IS the payload callers expect (PaginatedResponse<T>), so
+  // leave it intact rather than unwrapping past it.
+  const obj = parsed as { data?: T; meta?: unknown } | null;
+  if (obj && typeof obj === "object" && "data" in obj) {
+    return ("meta" in obj ? obj : obj.data) as T;
+  }
+  return parsed as T;
 }
 
 function safeJson(s: string): Json {

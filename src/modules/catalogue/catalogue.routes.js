@@ -196,7 +196,8 @@ router.delete(
   can("edit"),
   styledVar.deleteColour,
 );
-// Per-colour images (2–3 pictures per colour). Literal 'images' before :imageId.
+// Per-colour images (gallery per colour/variant; 2–3 min, capped in service).
+// Literal 'images' before :imageId.
 router.get(
   "/styled-products/:id/colours/:colourId/images",
   can("view"),
@@ -296,6 +297,15 @@ router.patch(
   c.updateImage,
 );
 router.delete("/products/:id/images/:imageId", can("edit"), c.removeImage);
+
+// Generic cover-image upload for collections/bundles (compress → store → url).
+// The caller saves the returned cdn_url onto the entity's hero_image_url.
+router.post(
+  "/cover-image",
+  can("edit"),
+  upload.single("file"),
+  c.uploadCoverImage,
+);
 
 // Self-hosted media upload → stored + queued for FFmpeg processing (W-13).
 router.post("/media", can("edit"), upload.single("file"), c.uploadMedia);

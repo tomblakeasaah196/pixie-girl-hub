@@ -697,6 +697,19 @@ async function addPayment({ brand, user, request_id, id, input }) {
         409,
       );
 
+    // ── Gateway-only enforcement ────────────────────────────────
+    // Non-negotiable: stock can never leave without a verified payment-
+    // gateway webhook (Paystack / Opay / Nomba / Stripe). Staff-recorded
+    // and POS-originated payments are blocked at the service layer as
+    // defense-in-depth (the validator also blocks them at the HTTP edge).
+    if (input.payment_path !== "gateway") {
+      throw new AppError(
+        "PAYMENT_PATH_BLOCKED",
+        "Payments may only be recorded through an authorized payment gateway. Manual payment entry is disabled.",
+        403,
+      );
+    }
+
     const payment_number = await repo.nextNumber({
       client,
       brand,
@@ -723,6 +736,19 @@ async function addPayment({ brand, user, request_id, id, input }) {
       },
     });
 
+    // P1-2: a re-delivered webhook or a retried request resolves to the same
+    // (provider, provider_reference) / (order_id, client_idempotency_key) row
+    // instead of inserting a duplicate (see sales.repo.addPayment). The fee/FX
+    // journals and the paid-state transition already ran the first time this
+    // payment was recorded — re-running them now would double-post. No-op.
+    if (paymentRow._alreadyExisted) {
+      logger.info(
+        { brand, order_id: id, payment_id: paymentRow.payment_id },
+        "addPayment: payment already recorded — idempotent no-op",
+      );
+      return repo.findById({ client, brand, id });
+    }
+
     // Per-gateway processing fee (§6.6/§6.21): book the fee to the gateway's
     // dedicated 551x expense account, contra the same cash account the sale
     // journal debits — so cash nets to the actual settlement (net_received).
@@ -736,11 +762,12 @@ async function addPayment({ brand, user, request_id, id, input }) {
         brand,
         user_id: user.user_id,
         entry: {
-          source_type: "payment_fee",
+          source_type: "payment",
           source_table: "sales_order_payments",
           source_id: paymentRow.payment_id,
           reference: order.order_number,
           description: `${input.provider} processing fee — ${order.order_number}`,
+          idempotency_key: `payment_fee:${paymentRow.payment_id}`,
         },
         lines: [
           {
@@ -780,6 +807,7 @@ async function addPayment({ brand, user, request_id, id, input }) {
         description: `Realised FX on ${order.order_number} (${input.paid_currency})`,
         source_id: order.order_id,
         user_id: user.user_id,
+        idempotency_key: `fx_revaluation:${paymentRow.payment_id}`,
       });
     }
 

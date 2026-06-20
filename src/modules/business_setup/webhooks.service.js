@@ -482,7 +482,14 @@ async function confirmStripeCharge(log) {
     obj.payment_status !== "paid"
   )
     return;
-  const reference = obj.id;
+  // checkout.session.completed and payment_intent.succeeded both fire for the
+  // same charge but carry different ids (cs_... vs pi_...). Normalise onto the
+  // Payment Intent id so the two events dedupe to one payment instead of
+  // double-crediting the order (P0-2).
+  const reference =
+    evt.type === "checkout.session.completed"
+      ? obj.payment_intent || obj.id
+      : obj.id;
   const meta = metaOf(obj);
   if (meta.amount_ngn === null)
     throw new Error(

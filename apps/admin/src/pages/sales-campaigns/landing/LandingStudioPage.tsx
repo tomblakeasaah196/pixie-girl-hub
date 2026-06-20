@@ -148,9 +148,13 @@ export function LandingStudioPage() {
             <>
               <button
                 onClick={onSave}
-                disabled={saveDraft.isPending || !dirty}
-                title="Save your work in progress as a draft. This does NOT publish it live."
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border hairline text-[13px] font-semibold text-text-muted hover:text-text-primary disabled:opacity-50"
+                disabled={saveDraft.isPending}
+                title={dirty ? "Save your work in progress as a draft. This does NOT publish it live." : "No unsaved changes to save."}
+                className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] text-[13px] font-semibold transition-colors ${
+                  dirty
+                    ? "border hairline text-text-muted hover:text-text-primary hover:border-accent/40"
+                    : "border hairline text-text-faint border-line/50 cursor-default"
+                } disabled:opacity-60`}
               >
                 {saveDraft.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
               </button>

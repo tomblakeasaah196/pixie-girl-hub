@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 import { fetchSalesIndex, fetchPublishedLanding } from "@/lib/api";
 import { getBrand } from "@/lib/brand";
 import { LandingPreview } from "@/components/LandingPreview";
@@ -15,14 +16,42 @@ import type { LandingConfig } from "@/lib/types";
  *   between-drops experience; there is no hardcoded fallback design.
  */
 
-export const metadata = {
-  title: "Sales",
-  description: "Join the list to be first when the doors open.",
-};
-
-// Always render fresh per request so a freshly-published config shows
-// immediately (the studio publish should never be masked by a stale cache).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = getBrand();
+  let config: LandingConfig | null = null;
+  try {
+    config = (await fetchPublishedLanding(brand)) as LandingConfig | null;
+  } catch {
+    // use defaults below
+  }
+
+  const title = config?.brandName ?? (brand === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl Global");
+  const description = config?.tagline ?? "Join the list to be first when the doors open.";
+  const domain = config?.domain ?? (brand === "faitlynhair" ? "sales.thefaitlynbrand.com" : "sales.pixiegirlglobal.com");
+  const logoUrl = config?.logo?.url ?? null;
+
+  return {
+    title,
+    description,
+    icons: logoUrl ? { icon: logoUrl } : undefined,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      url: `https://${domain}`,
+      siteName: title,
+      images: logoUrl ? [{ url: logoUrl, width: 200, height: 200, alt: title }] : undefined,
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+      images: logoUrl ? [logoUrl] : undefined,
+    },
+  };
+}
 
 export default async function Page() {
   const brand = getBrand();

@@ -21,6 +21,7 @@ import type { Message } from "@/lib/smartcomm-types";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProductCarousel } from "./ProductCarousel";
 import { InvoiceCard } from "./InvoiceCard";
+import { EmailBody } from "./EmailBody";
 
 interface Actions {
   onReply: (m: Message) => void;
@@ -38,6 +39,7 @@ interface Props {
   isOwn: boolean;
   showSenderName: boolean;
   actions: Actions;
+  isEmail?: boolean;
 }
 
 export function MessageBubble({
@@ -45,6 +47,7 @@ export function MessageBubble({
   isOwn,
   showSenderName,
   actions,
+  isEmail,
 }: Props) {
   const [reactionBarOpen, setReactionBarOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -145,9 +148,12 @@ export function MessageBubble({
                 <Forward className="w-3 h-3" /> Forwarded
               </div>
             )}
-            {message.content && (
-              <p className="whitespace-pre-wrap">{message.content}</p>
-            )}
+            {message.content &&
+              (isEmail ? (
+                <EmailBody content={message.content} />
+              ) : (
+                <p className="whitespace-pre-wrap">{message.content}</p>
+              ))}
             <div className="mt-1 flex items-center gap-1 justify-end text-[10px] opacity-70">
               {message.edited_at && <span className="italic">edited</span>}
               <span>{fmtClockTime(message.created_at)}</span>

@@ -10,6 +10,7 @@
  *   PUT   /                → save draft
  *   POST  /publish         → publish draft → live
  *   POST  /upload-image    → store an image, returns { url }
+ *   POST  /upload-og       → compose a 1200×630 share banner, returns { url }
  */
 
 "use strict";
@@ -45,6 +46,12 @@ router.post(
   requirePermission("sales_campaigns", "edit"),
   imageUpload.single("file"),
   controller.uploadImage,
+);
+router.post(
+  "/upload-og",
+  requirePermission("sales_campaigns", "edit"),
+  imageUpload.single("file"),
+  controller.uploadOg,
 );
 
 module.exports = router;

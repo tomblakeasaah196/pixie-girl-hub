@@ -21,35 +21,41 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const brand = getBrand();
-  let config: LandingConfig | null = null;
+  let raw: Partial<LandingConfig> | null = null;
   try {
-    config = (await fetchPublishedLanding(brand)) as LandingConfig | null;
+    raw = (await fetchPublishedLanding(brand)) as Partial<LandingConfig> | null;
   } catch {
-    // use defaults below
+    // fall through to brand defaults
   }
+  // Merge over brand defaults so the SEO block is always present, even before
+  // a brand has published (or for a snapshot saved before SEO existed).
+  const config = withDefaults(brand, raw);
+  const { seo } = config;
 
-  const title = config?.brandName ?? (brand === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl Global");
-  const description = config?.tagline ?? "Join the list to be first when the doors open.";
-  const domain = config?.domain ?? (brand === "faitlynhair" ? "sales.thefaitlynbrand.com" : "sales.pixiegirlglobal.com");
-  const logoUrl = config?.logo?.url ?? null;
+  const title = seo.metaTitle || config.brandName;
+  const description = seo.metaDescription || config.tagline;
+  // The composed 1200×630 banner is preferred; fall back to the hero, then logo.
+  const ogImage = seo.ogImageUrl || config.hero.imageUrl || config.logo.url || null;
+  const favicon = seo.faviconUrl || config.logo.url || null;
 
   return {
     title,
     description,
-    icons: logoUrl ? { icon: logoUrl } : undefined,
+    icons: favicon ? { icon: favicon, apple: favicon } : undefined,
     openGraph: {
       title,
       description,
       type: "website",
-      url: `https://${domain}`,
-      siteName: title,
-      images: logoUrl ? [{ url: logoUrl, width: 200, height: 200, alt: title }] : undefined,
+      url: `https://${config.domain}`,
+      siteName: config.brandName,
+      images: ogImage ? [{ url: ogImage, width: 1200, height: 630, alt: title }] : undefined,
     },
     twitter: {
-      card: "summary",
+      card: ogImage ? "summary_large_image" : "summary",
       title,
       description,
-      images: logoUrl ? [logoUrl] : undefined,
+      site: seo.twitterHandle || undefined,
+      images: ogImage ? [ogImage] : undefined,
     },
   };
 }

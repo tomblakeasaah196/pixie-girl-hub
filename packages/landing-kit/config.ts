@@ -101,6 +101,16 @@ export interface LandingConfig {
     showScarcity: boolean;
     threeD?: RevealThreeD;
   };
+  /** Discovery & sharing: search-engine title/description, the social share
+   *  card (Open Graph / Twitter), and the favicon. ogImageUrl is a generated
+   *  1200×630 banner; faviconUrl falls back to the logo when unset. */
+  seo: {
+    metaTitle: string;
+    metaDescription: string;
+    ogImageUrl: string | null;
+    faviconUrl: string | null;
+    twitterHandle: string;
+  };
 }
 
 // ════════════════════════════════════════════════════════════
@@ -196,6 +206,14 @@ export function defaultConfig(brandKey: string): LandingConfig {
           glowIntensity: 0.8,
         },
       },
+      seo: {
+        metaTitle: "Faitlyn Hair — Quietly extraordinary.",
+        metaDescription:
+          "Join the private list. First access, private launch pricing, and curated gifts reserved for our earliest few.",
+        ogImageUrl: null,
+        faviconUrl: null,
+        twitterHandle: "@Faitlynhair",
+      },
     };
   }
   return {
@@ -231,6 +249,14 @@ export function defaultConfig(brandKey: string): LandingConfig {
         glowIntensity: 1.0,
       },
     },
+    seo: {
+      metaTitle: "Pixie Girl Global — The House of the Pixie",
+      metaDescription:
+        "Join the private list. First access, private launch pricing, and curated gifts reserved for our earliest few.",
+      ogImageUrl: null,
+      faviconUrl: null,
+      twitterHandle: "@pixiegirlg",
+    },
   };
 }
 
@@ -259,6 +285,7 @@ export function withDefaults(brandKey: string, cfg: Partial<LandingConfig> | nul
       ...(cfg.reveal ?? {}),
       threeD: { ...(d.reveal.threeD as RevealThreeD), ...(cfg.reveal?.threeD ?? {}) },
     },
+    seo: { ...d.seo, ...(cfg.seo ?? {}) },
   };
 }
 

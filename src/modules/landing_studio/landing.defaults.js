@@ -103,6 +103,14 @@ function defaultConfig(brandKey) {
           glowIntensity: 0.8,
         },
       },
+      seo: {
+        metaTitle: "Faitlyn Hair — Quietly extraordinary.",
+        metaDescription:
+          "Join the private list. First access, private launch pricing, and curated gifts reserved for our earliest few.",
+        ogImageUrl: null,
+        faviconUrl: null,
+        twitterHandle: "@Faitlynhair",
+      },
     };
   }
   return {
@@ -138,6 +146,14 @@ function defaultConfig(brandKey) {
         glowIntensity: 1.0,
       },
     },
+    seo: {
+      metaTitle: "Pixie Girl Global — The House of the Pixie",
+      metaDescription:
+        "Join the private list. First access, private launch pricing, and curated gifts reserved for our earliest few.",
+      ogImageUrl: null,
+      faviconUrl: null,
+      twitterHandle: "@pixiegirlg",
+    },
   };
 }
 
@@ -169,6 +185,7 @@ function withDefaults(brandKey, cfg) {
       ...(cfg.reveal || {}),
       threeD: { ...d.reveal.threeD, ...((cfg.reveal && cfg.reveal.threeD) || {}) },
     },
+    seo: { ...d.seo, ...(cfg.seo || {}) },
   };
 }
 

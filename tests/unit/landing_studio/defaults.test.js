@@ -73,4 +73,20 @@ describe("landing.defaults — withDefaults", () => {
     });
     expect(provided.socials).toHaveLength(1);
   });
+
+  it("injects the SEO block when a snapshot omits it, and merges partial SEO", () => {
+    // A snapshot saved before SEO existed (migration 000225 shape).
+    const seeded = { reveal: { enabled: true, tagline: "x", showScarcity: true } };
+    const merged = withDefaults("faitlynhair", seeded);
+    expect(merged.seo).toMatchObject({
+      metaTitle: expect.any(String),
+      ogImageUrl: null,
+      twitterHandle: "@Faitlynhair",
+    });
+
+    // Provided SEO keys win; the rest fall back to the brand default.
+    const partial = withDefaults("pixiegirl", { seo: { metaTitle: "Custom" } });
+    expect(partial.seo.metaTitle).toBe("Custom");
+    expect(partial.seo.twitterHandle).toBe("@pixiegirlg");
+  });
 });

@@ -91,17 +91,25 @@ export function LandingStudioPage() {
 
   async function onSave() {
     if (!config) return;
-    await saveDraft.mutateAsync(config);
-    setDirty(false);
-    flash("Draft saved");
+    try {
+      await saveDraft.mutateAsync(config);
+      setDirty(false);
+      flash("Draft saved");
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Couldn't save — please try again");
+    }
   }
 
   async function onPublish() {
     if (!config) return;
-    if (dirty) await saveDraft.mutateAsync(config);
-    await publish.mutateAsync();
-    setDirty(false);
-    flash("Published live");
+    try {
+      if (dirty) await saveDraft.mutateAsync(config);
+      await publish.mutateAsync();
+      setDirty(false);
+      flash("Published live");
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Couldn't publish — please try again");
+    }
   }
 
   function openPreviewTab() {
@@ -162,7 +170,7 @@ export function LandingStudioPage() {
                 onClick={onPublish}
                 disabled={publish.isPending}
                 title="Save and publish live in one step. Visitors will see this immediately."
-                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[10px] bg-accent-deep text-text-primary text-[13px] font-semibold cta-sheen disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[10px] bg-accent-deep text-text-primary text-[13px] font-semibold disabled:opacity-60"
               >
                 {publish.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Publish
               </button>

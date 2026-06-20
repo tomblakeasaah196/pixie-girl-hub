@@ -112,8 +112,13 @@ export const smartcommApi = {
       reply_to_id?: string;
       attachments?: { document_id: string; display_name?: string }[];
       is_template?: boolean;
+      metadata?: Record<string, unknown>;
     },
   ) => api.post<Message>(`/smartcomm/channels/${id}/messages`, input),
+  sendInvoiceCard: (channelId: string, invoice_id: string) =>
+    api.post<Message>(`/smartcomm/channels/${channelId}/send-invoice`, {
+      invoice_id,
+    }),
   editMessage: (message_id: string, content: string) =>
     api.patch<Message>(`/smartcomm/messages/${message_id}`, { content }),
   deleteMessage: (message_id: string) =>

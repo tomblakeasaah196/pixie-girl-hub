@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, Package, Layers, Box } from "lucide-react";
+import { Search, Package, Layers, Box, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   PRODUCT_KINDS,
@@ -21,11 +21,13 @@ const KIND_ICON: Record<ProductKind, typeof Package> = {
   base: Package,
   styled: Layers,
   bundle: Box,
+  service: Sparkles,
 };
 const KIND_NOUN: Record<ProductKind, string> = {
   base: "base products",
   styled: "styled products",
   bundle: "bundles",
+  service: "services",
 };
 
 export function ProductPicker({

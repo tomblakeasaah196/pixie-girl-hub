@@ -19,6 +19,8 @@ import {
 import { cn } from "@/lib/cn";
 import type { Message } from "@/lib/smartcomm-types";
 import { MessageAttachments } from "./MessageAttachments";
+import { ProductCarousel } from "./ProductCarousel";
+import { InvoiceCard } from "./InvoiceCard";
 
 interface Actions {
   onReply: (m: Message) => void;
@@ -117,9 +119,22 @@ export function MessageBubble({
                 : {message.reply_content}
               </div>
             )}
-            {message.message_type !== "text" && (
-              <MessageAttachments message={message} isOwn={isOwn} />
+            {message.message_type === "product_share" &&
+              message.metadata?.products && (
+                <ProductCarousel
+                  intro={message.metadata.intro}
+                  products={message.metadata.products}
+                  isOwn={isOwn}
+                />
+              )}
+            {message.message_type === "send_invoice" && (
+              <InvoiceCard message={message} isOwn={isOwn} />
             )}
+            {message.message_type !== "text" &&
+              message.message_type !== "product_share" &&
+              message.message_type !== "send_invoice" && (
+                <MessageAttachments message={message} isOwn={isOwn} />
+              )}
             {message.is_forwarded && (
               <div
                 className={cn(

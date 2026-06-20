@@ -288,8 +288,9 @@ async function insertMessage({ client, message }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.messages
        (channel_id, sender_user_id, sender_contact_id, message_type, content,
-        reply_to_id, external_ref, delivery_status, is_forwarded, forwarded_from_id)
-     VALUES ($1,$2,$3,COALESCE($4,'text'),$5,$6,$7,COALESCE($8,'sent'),COALESCE($9,false),$10)
+        reply_to_id, external_ref, delivery_status, is_forwarded, forwarded_from_id, metadata)
+     VALUES ($1,$2,$3,COALESCE($4,'text'),$5,$6,$7,COALESCE($8,'sent'),COALESCE($9,false),$10,
+             COALESCE($11::jsonb, '{}'::jsonb))
      RETURNING *`,
     [
       message.channel_id,
@@ -302,6 +303,7 @@ async function insertMessage({ client, message }) {
       message.delivery_status || null,
       message.is_forwarded || false,
       message.forwarded_from_id || null,
+      message.metadata ? JSON.stringify(message.metadata) : null,
     ],
   );
   return rows[0];

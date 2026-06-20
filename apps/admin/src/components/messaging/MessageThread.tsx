@@ -30,6 +30,7 @@ import {
   Mic,
   Search,
   Users,
+  Package,
 } from "lucide-react";
 import {
   fmtDayLabel,
@@ -61,6 +62,7 @@ import { ForwardModal } from "./ForwardModal";
 import { GroupInfoModal } from "./GroupInfoModal";
 import { ThreadSearch } from "./ThreadSearch";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { CataloguePickerModal } from "./CataloguePickerModal";
 
 interface Props {
   channelId: string;
@@ -83,6 +85,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [editing, setEditing] = useState<Message | null>(null);
   const [costOpen, setCostOpen] = useState(false);
   const [orderCaptureOpen, setOrderCaptureOpen] = useState(false);
+  const [catalogueOpen, setCatalogueOpen] = useState(false);
   const [praxisDrafted, setPraxisDrafted] = useState(false);
   const [busy, setBusy] = useState<"sending" | "uploading" | "drafting" | null>(
     null,
@@ -768,6 +771,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                       <ShoppingCart className="w-4 h-4" />
                     </button>
                   )}
+                  {isCustomerThread && (
+                    <button
+                      onClick={() => setCatalogueOpen(true)}
+                      className="p-1 text-text-faint hover:text-text-primary"
+                      title="Share catalogue"
+                    >
+                      <Package className="w-4 h-4" />
+                    </button>
+                  )}
                   {canPraxis("praxis_ai", "view") && (
                     <button
                       onClick={handleDraftWithPraxis}
@@ -861,6 +873,14 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         onClose={() => setOrderCaptureOpen(false)}
         channel={channel}
         onSentLink={sendOrderCaptureLink}
+      />
+
+      {/* Catalogue carousel picker */}
+      <CataloguePickerModal
+        open={catalogueOpen}
+        onClose={() => setCatalogueOpen(false)}
+        channel={channel}
+        onSent={invalidate}
       />
 
       {/* Cost-info modal */}

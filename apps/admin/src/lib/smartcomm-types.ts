@@ -208,6 +208,16 @@ export interface Customer360 {
     status: string;
     created_at: string;
   }[];
+  /** Outbound comms audit (receipts/invoices/tracking sent outside the chat). */
+  comms?: {
+    log_id: string;
+    channel: string;
+    event_key?: string | null;
+    subject?: string | null;
+    recipient?: string | null;
+    status: string;
+    created_at: string;
+  }[];
 }
 
 export interface QuickReply {

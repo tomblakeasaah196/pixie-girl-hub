@@ -719,7 +719,7 @@ async function enqueueOutboundForChannel({
   // Reachability of the customer is captured on the contact, not the
   // channel — channels only know who is in them.
   const member = await query(
-    `SELECT con.primary_phone, con.whatsapp_number, con.email,
+    `SELECT con.contact_id, con.primary_phone, con.whatsapp_number, con.email,
             h.handle AS ig_handle, h.external_user_id AS ig_user_id
        FROM shared.channel_members cm
        LEFT JOIN shared.contacts con ON con.contact_id = cm.contact_id
@@ -759,6 +759,9 @@ async function enqueueOutboundForChannel({
       in_reply_to: meta.in_reply_to,
       smartcomm_message_id: message.message_id,
       channel_id: channel.channel_id,
+      brand: channel.business,
+      contact_id: c.contact_id,
+      event_key: "smartcomm.email_reply",
     });
   }
 }

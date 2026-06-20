@@ -52,7 +52,7 @@ import { useActiveBusiness } from "@/stores/business";
 import { smartcommApi, onboardingApi } from "@/lib/smartcomm-api";
 import { emitTyping } from "@/lib/socket";
 import { cn } from "@/lib/cn";
-import type { Channel, Message } from "@/lib/smartcomm-types";
+import type { Channel, Message, QuickReply } from "@/lib/smartcomm-types";
 import { MessageBubble } from "./MessageBubble";
 import { WhatsAppWindowBadge } from "./WhatsAppWindowBadge";
 import { PlatformPill } from "./PlatformPill";
@@ -63,6 +63,7 @@ import { GroupInfoModal } from "./GroupInfoModal";
 import { ThreadSearch } from "./ThreadSearch";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { CataloguePickerModal } from "./CataloguePickerModal";
+import { QuickReplyVarsModal } from "./QuickReplyVarsModal";
 
 interface Props {
   channelId: string;
@@ -86,6 +87,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [costOpen, setCostOpen] = useState(false);
   const [orderCaptureOpen, setOrderCaptureOpen] = useState(false);
   const [catalogueOpen, setCatalogueOpen] = useState(false);
+  const [varReply, setVarReply] = useState<QuickReply | null>(null);
   const [praxisDrafted, setPraxisDrafted] = useState(false);
   const [busy, setBusy] = useState<"sending" | "uploading" | "drafting" | null>(
     null,
@@ -328,11 +330,26 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     }
   }
 
+  function insertReplyBody(body: string) {
+    setContent(body);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+        el.focus();
+      }
+    });
+  }
+
   async function applyQuickReply(slug: string) {
     const r = quickReplies.find((q) => q.slug === slug);
     if (!r) return;
-    setContent(r.body);
-    textareaRef.current?.focus();
+    if (r.variables && r.variables.length > 0) {
+      setVarReply(r);
+      return;
+    }
+    insertReplyBody(r.body);
   }
 
   async function sendOnboardingLink() {
@@ -411,11 +428,17 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         channel.members?.find((m) => m.user_id === uid)?.user_display_name,
     )
     .filter(Boolean) as string[];
+  const emailSubject =
+    platform === "email"
+      ? (channel.metadata?.subject as string | undefined)
+      : undefined;
   const subtitle = typingNames.length
     ? `${typingNames.join(", ")} ${typingNames.length === 1 ? "is" : "are"} typing…`
-    : channel.channel_type === "customer_thread"
-      ? `Customer · ${platform}`
-      : `${(channel.members ?? []).length} members`;
+    : emailSubject
+      ? `✉ ${emailSubject}`
+      : channel.channel_type === "customer_thread"
+        ? `Customer · ${platform}`
+        : `${(channel.members ?? []).length} members`;
 
   return (
     <div
@@ -567,6 +590,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                   message={m}
                   isOwn={isOwn}
                   showSenderName={showName}
+                  isEmail={platform === "email"}
                   actions={{
                     onReply: setReplyTo,
                     onEdit: (msg) => {
@@ -881,6 +905,17 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         onClose={() => setCatalogueOpen(false)}
         channel={channel}
         onSent={invalidate}
+      />
+
+      {/* Quick-reply variable fill */}
+      <QuickReplyVarsModal
+        reply={varReply}
+        prefill={{ customer_name: displayName }}
+        onCancel={() => setVarReply(null)}
+        onApply={(body) => {
+          setVarReply(null);
+          insertReplyBody(body);
+        }}
       />
 
       {/* Cost-info modal */}

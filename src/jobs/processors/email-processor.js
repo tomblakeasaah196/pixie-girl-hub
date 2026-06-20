@@ -15,6 +15,7 @@
 "use strict";
 
 const email = require("../../services/email.service");
+const commsLog = require("../../services/comms-log.service");
 const { logger } = require("../../config/logger");
 
 module.exports = async function process(job) {
@@ -23,7 +24,24 @@ module.exports = async function process(job) {
     logger.warn({ jobId: job.id }, "email-send: missing to/subject — skipping");
     return { skipped: true };
   }
-  const info = await email.send(job.data);
+
+  let info;
+  try {
+    info = await email.send(job.data);
+  } catch (err) {
+    await commsLog.record({
+      business: job.data.brand,
+      contact_id: job.data.contact_id,
+      channel: "email",
+      event_key: job.data.event_key,
+      recipient: to,
+      subject,
+      status: "failed",
+      error: err.message,
+    });
+    throw err;
+  }
+
   const messageId = info && info.messageId;
   // H-8: stamp the provider ref onto the originating smartcomm message.
   if (job.data.smartcomm_message_id && messageId) {
@@ -37,6 +55,16 @@ module.exports = async function process(job) {
       logger.warn({ e: e.message }, "email-send: external_ref stamp failed");
     }
   }
+  await commsLog.record({
+    business: job.data.brand,
+    contact_id: job.data.contact_id,
+    channel: "email",
+    event_key: job.data.event_key,
+    recipient: to,
+    subject,
+    status: "sent",
+    provider_ref: messageId,
+  });
   logger.info({ jobId: job.id, to, messageId }, "email sent");
   return { messageId };
 };

@@ -14,20 +14,29 @@
 import { api } from "@/lib/api";
 import type { Paginated } from "@/lib/catalogue";
 
-export type ProductKind = "base" | "styled" | "bundle";
+export type ProductKind = "base" | "styled" | "bundle" | "service";
 
+// The ERP-wide sellable kinds the shared ProductPicker offers (orders,
+// quotations, invoices). Services are sold through their own job flow, so
+// they are NOT in this list — the in-chat catalogue picker adds "service"
+// on its own (see CataloguePickerModal). resolvePick() intentionally has no
+// service branch for the same reason.
 export const PRODUCT_KINDS: { key: ProductKind; label: string }[] = [
   { key: "base", label: "Base Product" },
   { key: "styled", label: "Styled Product" },
   { key: "bundle", label: "Bundle" },
 ];
 
-/** A search result the picker renders. `id` is the kind's primary key. */
+/** A search result the picker renders. `id` is the kind's primary key.
+ * Optional fields surface the card preview (image + price) for in-chat
+ * sharing without forcing every existing caller to update. */
 export interface ProductHit {
   kind: ProductKind;
   id: string;
   label: string;
   sub: string;
+  image_url?: string | null;
+  price?: string | number | null;
 }
 
 /** A concrete, sellable line resolved from a pick — ready for any cart. */
@@ -50,12 +59,15 @@ interface BaseRow {
   product_id: string;
   name: string;
   slug: string;
+  primary_image_url?: string | null;
+  hero_image_url?: string | null;
 }
 interface StyledRow {
   styled_id: string;
   name: string;
   styled_code: string;
   retail_price_ngn: string | number | null;
+  primary_image_url?: string | null;
 }
 interface BundleRow {
   bundle_id: string;
@@ -63,6 +75,16 @@ interface BundleRow {
   display_name: string;
   bundle_price_ngn: string | number | null;
   pricing_model: string;
+  hero_image_url?: string | null;
+}
+interface ServiceRow {
+  service_id: string;
+  name: string;
+  slug: string;
+  base_price_ngn: number | null;
+  image_url: string | null;
+  is_active: boolean;
+  category: string | null;
 }
 interface VariantRow {
   variant_id: string;
@@ -116,6 +138,7 @@ export async function searchByKind(
       id: p.product_id,
       label: p.name,
       sub: p.slug,
+      image_url: p.primary_image_url ?? p.hero_image_url ?? null,
     }));
   }
 
@@ -128,26 +151,54 @@ export async function searchByKind(
       id: p.styled_id,
       label: p.name,
       sub: `${p.styled_code} · ${ngn(p.retail_price_ngn)}`,
+      image_url: p.primary_image_url ?? null,
+      price: p.retail_price_ngn ?? null,
     }));
   }
 
-  // bundle — the list endpoint returns a bare array; filter client-side.
-  const bundles = await api.get<BundleRow[]>(`/retention/bundles?active=true`);
+  if (kind === "bundle") {
+    const bundles = await api.get<BundleRow[]>(
+      `/retention/bundles?active=true`,
+    );
+    const lower = term.toLowerCase();
+    return (bundles ?? [])
+      .filter(
+        (b) =>
+          b.display_name.toLowerCase().includes(lower) ||
+          b.bundle_code.toLowerCase().includes(lower),
+      )
+      .slice(0, 10)
+      .map((b) => ({
+        kind,
+        id: b.bundle_id,
+        label: b.display_name,
+        sub: `${b.bundle_code} · ${
+          b.bundle_price_ngn != null ? ngn(b.bundle_price_ngn) : b.pricing_model
+        }`,
+        image_url: b.hero_image_url ?? null,
+        price: b.bundle_price_ngn ?? null,
+      }));
+  }
+
+  // service — fetch all (small list) and filter client-side.
+  const services = await api.get<ServiceRow[]>("/service-catalogue");
   const lower = term.toLowerCase();
-  return (bundles ?? [])
+  return (services ?? [])
     .filter(
-      (b) =>
-        b.display_name.toLowerCase().includes(lower) ||
-        b.bundle_code.toLowerCase().includes(lower),
+      (s) =>
+        s.is_active &&
+        (s.name.toLowerCase().includes(lower) ||
+          s.slug.toLowerCase().includes(lower) ||
+          (s.category && s.category.toLowerCase().includes(lower))),
     )
     .slice(0, 10)
-    .map((b) => ({
+    .map((s) => ({
       kind,
-      id: b.bundle_id,
-      label: b.display_name,
-      sub: `${b.bundle_code} · ${
-        b.bundle_price_ngn != null ? ngn(b.bundle_price_ngn) : b.pricing_model
-      }`,
+      id: s.service_id,
+      label: s.name,
+      sub: `${s.category ?? "Service"} · ${ngn(s.base_price_ngn)}`,
+      image_url: s.image_url,
+      price: s.base_price_ngn,
     }));
 }
 
@@ -202,7 +253,8 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
 
   // bundle — expand each component into a line.
   const bundle = await api.get<BundleDetail>(`/retention/bundles/${hit.id}`);
-  const fallback = num(bundle.bundle_price_ngn) / (bundle.components.length || 1);
+  const fallback =
+    num(bundle.bundle_price_ngn) / (bundle.components.length || 1);
   const lines: ResolvedLine[] = [];
   for (const comp of bundle.components) {
     let variantId = comp.variant_id;
@@ -220,7 +272,8 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
         variantId = match.variant_id;
         label = `${bundle.display_name} — ${match.variant_name ?? match.sku}`;
         sku = match.sku;
-        price = num(match.price_storefront_ngn ?? match.price_pos_ngn) || fallback;
+        price =
+          num(match.price_storefront_ngn ?? match.price_pos_ngn) || fallback;
       }
     }
     if (!variantId) continue;

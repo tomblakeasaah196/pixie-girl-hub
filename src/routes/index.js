@@ -122,6 +122,7 @@ const helpCenterRouter = require("../modules/help_center/help-center.routes");
 
 // Public (storefront-facing, no auth)
 const publicCatalogueRouter = require("../modules/storefront/public.routes");
+const publicServicesRouter = require("../modules/service_catalogue/service-catalogue.public.routes");
 const publicTrackingRouter = require("../modules/logistics/tracking.routes");
 const publicOrderTimelineRouter = require("../modules/sales/order-timeline.routes");
 const publicPayLinkRouter = require("../modules/sales/payment-link.public.routes");
@@ -154,6 +155,7 @@ function mountRoutes(app) {
   // ── Public endpoints (no auth) ─────────────────────────
   const publicRouter = express.Router();
   publicRouter.use("/catalogue", publicCatalogueRouter);
+  publicRouter.use("/services", publicServicesRouter);
   publicRouter.use("/tracking", publicTrackingRouter);
   publicRouter.use("/order-timeline", publicOrderTimelineRouter);
   // Public WRITE endpoints (H-10): stricter per-IP throttle to blunt abuse on

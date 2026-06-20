@@ -19,7 +19,9 @@ export type MessageType =
   | "voice_note"
   | "video"
   | "sticker"
-  | "system";
+  | "system"
+  | "product_share"
+  | "send_invoice";
 export type ChannelStatus = "open" | "resolved";
 export type ParticipantRole = "member" | "admin";
 export type SenderKind = "staff" | "customer" | "system";
@@ -90,6 +92,10 @@ export interface MessageAttachment {
   attachment_id?: string;
   document_id: string;
   display_name?: string | null;
+  /** Browser-fetchable URL (CDN or /media proxy). Present on read. */
+  url?: string | null;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
 }
 
 export interface ReplyPreview {
@@ -125,6 +131,33 @@ export interface Message {
   reactions?: MessageReaction[];
   is_starred?: boolean;
   attachments?: MessageAttachment[];
+  /**
+   * Card payload for commerce kinds. `product_share` carries a `products`
+   * array; `send_invoice` carries the invoice ref/url. Server sanitises
+   * keys so untrusted fields can't ride in.
+   */
+  metadata?: {
+    products?: ProductCard[];
+    intro?: string;
+    invoice_id?: string;
+    invoice_number?: string;
+    amount_due?: string;
+    due_date?: string;
+    url?: string;
+  } | null;
+}
+
+/** A card inside a product_share carousel. `kind` matches the catalogue
+ * picker domain (base/styled/bundle/service). `capture_url` is the
+ * tap-to-order JWT link for product kinds; service cards skip it. */
+export interface ProductCard {
+  kind: "base" | "styled" | "bundle" | "service";
+  id: string;
+  name: string;
+  price?: string | number | null;
+  image_url?: string | null;
+  capture_url?: string | null;
+  sub?: string | null;
 }
 
 export interface UnreadCount {
@@ -172,6 +205,16 @@ export interface Customer360 {
   deliveries: {
     delivery_id: string;
     delivery_number: string;
+    status: string;
+    created_at: string;
+  }[];
+  /** Outbound comms audit (receipts/invoices/tracking sent outside the chat). */
+  comms?: {
+    log_id: string;
+    channel: string;
+    event_key?: string | null;
+    subject?: string | null;
+    recipient?: string | null;
     status: string;
     created_at: string;
   }[];

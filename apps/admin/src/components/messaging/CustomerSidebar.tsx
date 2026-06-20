@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink,
   Mail,
@@ -7,8 +9,12 @@ import {
   Truck,
   User,
   FileText,
+  Send,
+  Loader2,
+  Wallet,
 } from "lucide-react";
 import { useCustomer360 } from "@/hooks/useSmartcomm";
+import { smartcommApi } from "@/lib/smartcomm-api";
 import type { Channel } from "@/lib/smartcomm-types";
 import { PlatformPill } from "./PlatformPill";
 
@@ -16,11 +22,34 @@ interface Props {
   channel: Channel;
 }
 
+const ngnShort = (n: number) => {
+  if (n >= 1_000_000)
+    return `₦${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M`;
+  if (n >= 1_000) return `₦${(n / 1_000).toFixed(n % 1_000 ? 1 : 0)}k`;
+  return `₦${n.toLocaleString()}`;
+};
+
 export function CustomerSidebar({ channel }: Props) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const customer = channel.members?.find((m) => m.contact_id);
   const contactId = customer?.contact_id ?? undefined;
   const { data, isLoading } = useCustomer360(contactId);
+  const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
+
+  async function sendInvoice(invoiceId: string) {
+    setSendingInvoice(invoiceId);
+    try {
+      await smartcommApi.sendInvoiceCard(channel.channel_id, invoiceId);
+      qc.invalidateQueries({
+        queryKey: ["smartcomm", "messages", channel.channel_id],
+      });
+    } catch {
+      // surfaced by the thread error path; keep the sidebar quiet
+    } finally {
+      setSendingInvoice(null);
+    }
+  }
 
   if (channel.channel_type !== "customer_thread" || !contactId) {
     return (
@@ -95,6 +124,34 @@ export function CustomerSidebar({ channel }: Props) {
         )}
       </div>
 
+      {/* Lifetime snapshot */}
+      <div className="grid grid-cols-2 border-b hairline">
+        <div className="px-4 py-3 border-r hairline">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-text-faint">
+            <Wallet className="w-3 h-3" /> Recent value
+          </div>
+          <div className="mt-0.5 font-mono text-[15px] font-semibold text-text-primary">
+            {ngnShort(
+              data.orders.reduce((s, o) => s + Number(o.total || 0), 0),
+            )}
+          </div>
+        </div>
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-text-faint">
+            <FileText className="w-3 h-3" /> Outstanding
+          </div>
+          <div
+            className={`mt-0.5 font-mono text-[15px] font-semibold ${
+              data.invoices.length ? "text-amber-300" : "text-text-primary"
+            }`}
+          >
+            {ngnShort(
+              data.invoices.reduce((s, i) => s + Number(i.amount_due || 0), 0),
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Recent orders */}
       <Section
         title="Recent orders"
@@ -140,14 +197,26 @@ export function CustomerSidebar({ channel }: Props) {
           data.invoices.slice(0, 4).map((i) => (
             <div
               key={i.invoice_id}
-              className="flex items-center justify-between rounded-lg px-3 py-1.5"
+              className="flex items-center gap-2 rounded-lg px-3 py-1.5 group"
             >
-              <div className="text-[12px] text-text-primary">
+              <div className="text-[12px] text-text-primary flex-1 truncate">
                 {i.invoice_number}
               </div>
               <div className="text-[11.5px] font-semibold text-amber-300 tabular-nums">
                 ₦{Number(i.amount_due).toLocaleString()}
               </div>
+              <button
+                onClick={() => sendInvoice(i.invoice_id)}
+                disabled={sendingInvoice === i.invoice_id}
+                title="Send to chat"
+                className="text-text-faint hover:text-accent-glow disabled:opacity-50 shrink-0"
+              >
+                {sendingInvoice === i.invoice_id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+              </button>
             </div>
           ))
         )}
@@ -171,6 +240,50 @@ export function CustomerSidebar({ channel }: Props) {
               <span className="text-[10.5px] uppercase tracking-widest text-text-muted">
                 {d.status?.replace(/_/g, " ")}
               </span>
+            </div>
+          ))
+        )}
+      </Section>
+
+      {/* Comms log — "did she get her receipt?" */}
+      <Section
+        title="Comms log"
+        icon={<Send className="w-3.5 h-3.5" />}
+        count={data.comms?.length ?? 0}
+      >
+        {!data.comms || data.comms.length === 0 ? (
+          <Empty>No emails or notifications sent yet</Empty>
+        ) : (
+          data.comms.slice(0, 6).map((m) => (
+            <div
+              key={m.log_id}
+              className="flex items-center gap-2 rounded-lg px-3 py-1.5"
+            >
+              <span
+                className={`grid place-items-center w-5 h-5 rounded-full shrink-0 ${
+                  m.status === "failed"
+                    ? "bg-danger/15 text-danger"
+                    : "bg-accent/15 text-accent-glow"
+                }`}
+              >
+                {m.channel === "email" ? (
+                  <Mail className="w-3 h-3" />
+                ) : (
+                  <Send className="w-3 h-3" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] text-text-primary truncate">
+                  {m.subject || m.event_key || m.channel}
+                </div>
+                <div className="text-[10px] text-text-faint">
+                  {new Date(m.created_at).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                  {m.status === "failed" && " · failed"}
+                </div>
+              </div>
             </div>
           ))
         )}

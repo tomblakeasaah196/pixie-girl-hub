@@ -186,10 +186,43 @@ async function postForm<T>(path: string, form: FormData): Promise<T> {
   return ((parsed as { data?: T })?.data ?? parsed) as T;
 }
 
+/**
+ * Authenticated file download (xlsx exports / import templates). Fetches the
+ * blob with the bearer token + brand context, then triggers a browser save.
+ * Falls back to a sensible filename when the server doesn't set one.
+ */
+async function download(path: string, fallbackName = "download"): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const brand = brandContext();
+  if (brand) headers["X-Brand-Context"] = brand;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers,
+    credentials: "include",
+  });
+  if (!res.ok) throw new ApiError(res.status, null, `HTTP ${res.status}`);
+
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match ? match[1] : fallbackName;
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   get: <T>(path: string, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "GET", scope }),
   postForm,
+  download,
   post: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "POST", body, scope }),
   patch: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>

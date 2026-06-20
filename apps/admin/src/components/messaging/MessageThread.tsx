@@ -5,6 +5,8 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent,
+  type ClipboardEvent,
+  type DragEvent,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -25,6 +27,10 @@ import {
   AlertTriangle,
   Sparkles,
   ShoppingCart,
+  Mic,
+  Search,
+  Users,
+  Package,
 } from "lucide-react";
 import {
   fmtDayLabel,
@@ -46,12 +52,18 @@ import { useActiveBusiness } from "@/stores/business";
 import { smartcommApi, onboardingApi } from "@/lib/smartcomm-api";
 import { emitTyping } from "@/lib/socket";
 import { cn } from "@/lib/cn";
-import type { Channel, Message } from "@/lib/smartcomm-types";
+import type { Channel, Message, QuickReply } from "@/lib/smartcomm-types";
 import { MessageBubble } from "./MessageBubble";
 import { WhatsAppWindowBadge } from "./WhatsAppWindowBadge";
 import { PlatformPill } from "./PlatformPill";
 import { CostInfoModal } from "./CostInfoModal";
 import { OrderCaptureModal } from "./OrderCaptureModal";
+import { ForwardModal } from "./ForwardModal";
+import { GroupInfoModal } from "./GroupInfoModal";
+import { ThreadSearch } from "./ThreadSearch";
+import { VoiceRecorder } from "./VoiceRecorder";
+import { CataloguePickerModal } from "./CataloguePickerModal";
+import { QuickReplyVarsModal } from "./QuickReplyVarsModal";
 
 interface Props {
   channelId: string;
@@ -74,11 +86,24 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [editing, setEditing] = useState<Message | null>(null);
   const [costOpen, setCostOpen] = useState(false);
   const [orderCaptureOpen, setOrderCaptureOpen] = useState(false);
+  const [catalogueOpen, setCatalogueOpen] = useState(false);
+  const [varReply, setVarReply] = useState<QuickReply | null>(null);
   const [praxisDrafted, setPraxisDrafted] = useState(false);
   const [busy, setBusy] = useState<"sending" | "uploading" | "drafting" | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [mention, setMention] = useState<{
+    query: string;
+    start: number;
+    end: number;
+  } | null>(null);
 
   const canPraxis = useAuthStore((s) => s.can);
 
@@ -104,6 +129,20 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         : [],
     [slashOpen, slashQuery, quickReplies],
   );
+
+  // @mention autocomplete — internal/group channels.
+  const mentionMatches = useMemo(() => {
+    if (!mention) return [];
+    return (channel?.members ?? [])
+      .filter(
+        (m) =>
+          m.user_id &&
+          m.user_id !== user?.id &&
+          m.user_display_name &&
+          (m.user_display_name as string).toLowerCase().includes(mention.query),
+      )
+      .slice(0, 6);
+  }, [mention, channel?.members, user?.id]);
 
   const platform = channel ? getChannelPlatform(channel) : "internal";
   const isWhatsapp = platform === "whatsapp";
@@ -180,11 +219,24 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   }
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
-    setContent(e.target.value);
+    const value = e.target.value;
+    setContent(value);
     const el = textareaRef.current;
     if (el) {
       el.style.height = "auto";
       el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    }
+    // @mention detection (internal/group threads only).
+    const caret = e.target.selectionStart ?? value.length;
+    const mm = /(^|\s)@(\w*)$/.exec(value.slice(0, caret));
+    if (mm && channel?.channel_type !== "customer_thread") {
+      setMention({
+        query: mm[2].toLowerCase(),
+        start: caret - mm[2].length - 1,
+        end: caret,
+      });
+    } else if (mention) {
+      setMention(null);
     }
     const now = Date.now();
     if (now - lastTyping.current > 1500) {
@@ -193,7 +245,55 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     }
   }
 
-  async function handleFiles(files: FileList | null) {
+  function applyMention(name: string) {
+    if (!mention) return;
+    const next = `${content.slice(0, mention.start)}@${name} ${content.slice(
+      mention.end,
+    )}`;
+    setContent(next);
+    setMention(null);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (files.length) {
+      e.preventDefault();
+      void handleFiles(files);
+    }
+  }
+
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer?.files?.length) void handleFiles(e.dataTransfer.files);
+  }
+
+  async function handleVoiceNote(blob: Blob) {
+    setRecording(false);
+    const ext = blob.type.includes("ogg")
+      ? "ogg"
+      : blob.type.includes("mp4")
+        ? "m4a"
+        : "webm";
+    const file = new File([blob], `voice-${Date.now()}.${ext}`, {
+      type: blob.type || "audio/webm",
+    });
+    await handleFiles([file]);
+  }
+
+  function jumpToMessage(messageId: string) {
+    setSearchOpen(false);
+    setHighlightId(messageId);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`msg-${messageId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    window.setTimeout(() => setHighlightId(null), 2200);
+  }
+
+  async function handleFiles(files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     setBusy("uploading");
     setError(null);
@@ -230,11 +330,26 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     }
   }
 
+  function insertReplyBody(body: string) {
+    setContent(body);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+        el.focus();
+      }
+    });
+  }
+
   async function applyQuickReply(slug: string) {
     const r = quickReplies.find((q) => q.slug === slug);
     if (!r) return;
-    setContent(r.body);
-    textareaRef.current?.focus();
+    if (r.variables && r.variables.length > 0) {
+      setVarReply(r);
+      return;
+    }
+    insertReplyBody(r.body);
   }
 
   async function sendOnboardingLink() {
@@ -313,14 +428,38 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         channel.members?.find((m) => m.user_id === uid)?.user_display_name,
     )
     .filter(Boolean) as string[];
+  const emailSubject =
+    platform === "email"
+      ? (channel.metadata?.subject as string | undefined)
+      : undefined;
   const subtitle = typingNames.length
     ? `${typingNames.join(", ")} ${typingNames.length === 1 ? "is" : "are"} typing…`
-    : channel.channel_type === "customer_thread"
-      ? `Customer · ${platform}`
-      : `${(channel.members ?? []).length} members`;
+    : emailSubject
+      ? `✉ ${emailSubject}`
+      : channel.channel_type === "customer_thread"
+        ? `Customer · ${platform}`
+        : `${(channel.members ?? []).length} members`;
 
   return (
-    <div className="flex h-full flex-col bg-bg">
+    <div
+      className="relative flex h-full flex-col bg-bg"
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!dragOver) setDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDragOver(false);
+      }}
+      onDrop={onDrop}
+    >
+      {dragOver && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/80 backdrop-blur-sm border-2 border-dashed border-accent/50 rounded-xl pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-accent-glow">
+            <Paperclip className="w-7 h-7" />
+            <span className="text-[13px]">Drop files to send</span>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-3 border-b hairline px-4 py-2.5">
         {onBack && (
@@ -353,6 +492,25 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           </p>
         </div>
 
+        <button
+          onClick={() => setSearchOpen((v) => !v)}
+          title="Search in conversation"
+          className={cn(
+            "text-text-muted hover:text-text-primary",
+            searchOpen && "text-accent-glow",
+          )}
+        >
+          <Search className="w-4 h-4" />
+        </button>
+        {channel.channel_type === "group" && (
+          <button
+            onClick={() => setGroupOpen(true)}
+            title="Group info"
+            className="text-text-muted hover:text-text-primary"
+          >
+            <Users className="w-4 h-4" />
+          </button>
+        )}
         {isWhatsapp && channel.wa_window_expires_at && (
           <WhatsAppWindowBadge expiresAt={channel.wa_window_expires_at} />
         )}
@@ -374,6 +532,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           }
         />
       </div>
+
+      {/* In-thread search */}
+      {searchOpen && (
+        <ThreadSearch
+          channelId={channelId}
+          onJump={jumpToMessage}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-2.5">
@@ -403,7 +570,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
               m.message_type !== "system" &&
               m.sender_user_id !== prev?.sender_user_id;
             return (
-              <div key={m.message_id}>
+              <div
+                key={m.message_id}
+                id={`msg-${m.message_id}`}
+                className={cn(
+                  "rounded-xl transition-colors",
+                  highlightId === m.message_id &&
+                    "bg-accent/10 ring-1 ring-accent/40",
+                )}
+              >
                 {newDay && (
                   <div className="flex justify-center py-1.5">
                     <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-panel-2 border hairline text-text-faint">
@@ -415,6 +590,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                   message={m}
                   isOwn={isOwn}
                   showSenderName={showName}
+                  isEmail={platform === "email"}
                   actions={{
                     onReply: setReplyTo,
                     onEdit: (msg) => {
@@ -427,10 +603,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                       await smartcommApi.deleteMessage(msg.message_id);
                       invalidate();
                     },
-                    onForward: (msg) => {
-                      // Forwarding picker is a PR 3 modal; for now copy to clipboard
-                      navigator.clipboard?.writeText(msg.content ?? "");
-                    },
+                    onForward: (msg) => setForwardMsg(msg),
                     onStar: async (msg) => {
                       await smartcommApi.starMessage(msg.message_id);
                       invalidate();
@@ -516,6 +689,31 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         </div>
       )}
 
+      {/* @mention menu */}
+      {mention && mentionMatches.length > 0 && (
+        <div className="mx-3 sm:mx-4 mb-1 rounded-xl border hairline bg-panel-2 max-h-44 overflow-y-auto">
+          {mentionMatches.map((m) => (
+            <button
+              key={m.user_id}
+              onClick={() => applyMention(m.user_display_name as string)}
+              className="flex items-center gap-2 w-full text-left px-3 py-2 text-[12.5px] hover:bg-panel"
+            >
+              <span
+                className="grid place-items-center w-6 h-6 rounded-full text-[9px] font-semibold text-white shrink-0"
+                style={{
+                  backgroundColor: getAvatarColour(
+                    m.user_display_name as string,
+                  ),
+                }}
+              >
+                {getInitials(m.user_display_name as string)}
+              </span>
+              <span className="text-accent-glow">@{m.user_display_name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Composer */}
       {!isResolved && (
         <div className="border-t hairline px-3 sm:px-4 py-2.5">
@@ -534,111 +732,163 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
             <div className="mb-2 text-[11.5px] text-danger">{error}</div>
           )}
 
-          <div className="flex items-end gap-2">
-            <div className="relative flex-1 rounded-2xl border hairline bg-panel-2">
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={handleChange}
-                onKeyDown={handleKey}
-                placeholder={
-                  composerLocked
-                    ? "Free-form blocked — use a template"
-                    : "Type a message… (Enter = send, Shift+Enter = newline, '/' = quick reply)"
-                }
-                rows={1}
-                disabled={composerLocked && !editing}
-                className="w-full resize-none bg-transparent px-3.5 py-2.5 text-[13px] focus:outline-none placeholder:text-text-faint disabled:opacity-50"
-                style={{ maxHeight: 120 }}
-              />
-              <div className="flex items-center gap-1 border-t hairline px-2 py-1">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-1 text-text-faint hover:text-text-primary"
-                  disabled={busy === "uploading"}
-                  title="Attach file"
-                >
-                  {busy === "uploading" ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Paperclip className="w-4 h-4" />
-                  )}
-                </button>
-                {isCustomerThread && (
+          {recording ? (
+            <VoiceRecorder
+              onComplete={(b) => handleVoiceNote(b)}
+              onCancel={() => setRecording(false)}
+            />
+          ) : (
+            <div className="flex items-end gap-2">
+              <div className="relative flex-1 rounded-2xl border hairline bg-panel-2">
+                <textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={handleChange}
+                  onKeyDown={handleKey}
+                  onPaste={handlePaste}
+                  placeholder={
+                    composerLocked
+                      ? "Free-form blocked — use a template"
+                      : "Type a message… (Enter = send, Shift+Enter = newline, '/' = quick reply)"
+                  }
+                  rows={1}
+                  disabled={composerLocked && !editing}
+                  className="w-full resize-none bg-transparent px-3.5 py-2.5 text-[13px] focus:outline-none placeholder:text-text-faint disabled:opacity-50"
+                  style={{ maxHeight: 120 }}
+                />
+                <div className="flex items-center gap-1 border-t hairline px-2 py-1">
                   <button
-                    onClick={sendOnboardingLink}
+                    onClick={() => fileInputRef.current?.click()}
                     className="p-1 text-text-faint hover:text-text-primary"
-                    title="Send Online QR welcome form"
+                    disabled={busy === "uploading"}
+                    title="Attach file"
                   >
-                    <Link2 className="w-4 h-4" />
-                  </button>
-                )}
-                {isCustomerThread && (
-                  <button
-                    onClick={() => setOrderCaptureOpen(true)}
-                    className="p-1 text-text-faint hover:text-text-primary"
-                    title="Capture an order"
-                  >
-                    <ShoppingCart className="w-4 h-4" />
-                  </button>
-                )}
-                {canPraxis("praxis_ai", "view") && (
-                  <button
-                    onClick={handleDraftWithPraxis}
-                    disabled={busy === "drafting"}
-                    className="p-1 text-accent-glow hover:text-accent disabled:opacity-50"
-                    title="Draft with Praxis"
-                  >
-                    {busy === "drafting" ? (
+                    {busy === "uploading" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Sparkles className="w-4 h-4" />
+                      <Paperclip className="w-4 h-4" />
                     )}
                   </button>
-                )}
-                <button
-                  onClick={() => {
-                    const e = "👍";
-                    setContent((c) => c + e);
-                    textareaRef.current?.focus();
-                  }}
-                  className="p-1 text-text-faint hover:text-text-primary"
-                  title="Emoji"
-                >
-                  <Smile className="w-4 h-4" />
-                </button>
-                <span className="ml-1 text-[10px] text-text-faint">
-                  / = quick reply
-                </span>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    void handleFiles(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
+                  <button
+                    onClick={() => setRecording(true)}
+                    className="p-1 text-text-faint hover:text-text-primary disabled:opacity-40"
+                    disabled={composerLocked}
+                    title="Record voice note"
+                  >
+                    <Mic className="w-4 h-4" />
+                  </button>
+                  {isCustomerThread && (
+                    <button
+                      onClick={sendOnboardingLink}
+                      className="p-1 text-text-faint hover:text-text-primary"
+                      title="Send Online QR welcome form"
+                    >
+                      <Link2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {isCustomerThread && (
+                    <button
+                      onClick={() => setOrderCaptureOpen(true)}
+                      className="p-1 text-text-faint hover:text-text-primary"
+                      title="Capture an order"
+                    >
+                      <ShoppingCart className="w-4 h-4" />
+                    </button>
+                  )}
+                  {isCustomerThread && (
+                    <button
+                      onClick={() => setCatalogueOpen(true)}
+                      className="p-1 text-text-faint hover:text-text-primary"
+                      title="Share catalogue"
+                    >
+                      <Package className="w-4 h-4" />
+                    </button>
+                  )}
+                  {canPraxis("praxis_ai", "view") && (
+                    <button
+                      onClick={handleDraftWithPraxis}
+                      disabled={busy === "drafting"}
+                      className="p-1 text-accent-glow hover:text-accent disabled:opacity-50"
+                      title="Draft with Praxis"
+                    >
+                      {busy === "drafting" ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      const e = "👍";
+                      setContent((c) => c + e);
+                      textareaRef.current?.focus();
+                    }}
+                    className="p-1 text-text-faint hover:text-text-primary"
+                    title="Emoji"
+                  >
+                    <Smile className="w-4 h-4" />
+                  </button>
+                  <span className="ml-1 text-[10px] text-text-faint">
+                    / = quick reply
+                  </span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      void handleFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
               </div>
+              <button
+                onClick={handleSend}
+                disabled={
+                  !content.trim() || busy === "sending" || composerLocked
+                }
+                className={cn(
+                  "grid place-items-center w-10 h-10 rounded-2xl shrink-0 transition-all",
+                  "bg-accent text-bg hover:bg-accent-glow disabled:opacity-40",
+                )}
+                title={editing ? "Save edit" : "Send"}
+              >
+                {busy === "sending" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </button>
             </div>
-            <button
-              onClick={handleSend}
-              disabled={!content.trim() || busy === "sending" || composerLocked}
-              className={cn(
-                "grid place-items-center w-10 h-10 rounded-2xl shrink-0 transition-all",
-                "bg-accent text-bg hover:bg-accent-glow disabled:opacity-40",
-              )}
-              title={editing ? "Save edit" : "Send"}
-            >
-              {busy === "sending" ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
-          </div>
+          )}
         </div>
+      )}
+
+      {/* Forward picker */}
+      <ForwardModal
+        open={!!forwardMsg}
+        message={forwardMsg}
+        currentUserId={user?.id}
+        onClose={() => setForwardMsg(null)}
+        onDone={invalidate}
+      />
+
+      {/* Group info */}
+      {channel.channel_type === "group" && (
+        <GroupInfoModal
+          open={groupOpen}
+          channel={channel}
+          currentUserId={user?.id}
+          onClose={() => setGroupOpen(false)}
+          onChanged={() =>
+            qc.invalidateQueries({
+              queryKey: ["smartcomm", "channel", channelId],
+            })
+          }
+          onLeft={onBack}
+        />
       )}
 
       {/* Order Capture modal */}
@@ -647,6 +897,25 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         onClose={() => setOrderCaptureOpen(false)}
         channel={channel}
         onSentLink={sendOrderCaptureLink}
+      />
+
+      {/* Catalogue carousel picker */}
+      <CataloguePickerModal
+        open={catalogueOpen}
+        onClose={() => setCatalogueOpen(false)}
+        channel={channel}
+        onSent={invalidate}
+      />
+
+      {/* Quick-reply variable fill */}
+      <QuickReplyVarsModal
+        reply={varReply}
+        prefill={{ customer_name: displayName }}
+        onCancel={() => setVarReply(null)}
+        onApply={(body) => {
+          setVarReply(null);
+          insertReplyBody(body);
+        }}
       />
 
       {/* Cost-info modal */}

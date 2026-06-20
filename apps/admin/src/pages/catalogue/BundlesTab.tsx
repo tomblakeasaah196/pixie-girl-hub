@@ -28,6 +28,7 @@ import {
   type BundleCreateInput,
 } from "@/lib/catalogue";
 import { CoverImageEditor } from "./CoverImageEditor";
+import { ImportExportControls } from "@/components/catalogue/ImportExportControls";
 
 /**
  * Bundles run on the promotional engine in the retention module
@@ -66,7 +67,16 @@ export function BundlesTab() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center">
+      <div className="flex items-center gap-2 flex-wrap">
+        {canCreate && (
+          <ImportExportControls
+            label="Bundles"
+            templatePath="/catalogue/bundles/import-template"
+            exportPath="/catalogue/bundles/export"
+            importPath="/catalogue/bundles/import"
+            onImported={() => bundles.refetch()}
+          />
+        )}
         {canCreate && (
           <Button
             size="sm"

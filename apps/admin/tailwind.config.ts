@@ -8,7 +8,14 @@ import type { Config } from "tailwindcss";
  * so the whole app is re-themeable with no rebuild. See FRONTEND canon §2.
  */
 const config: Config = {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  content: [
+    "./index.html",
+    "./src/**/*.{ts,tsx}",
+    // The shared sales-landing renderer lives outside this app's src. Tailwind
+    // must scan it here or every utility class it uses (the whole Atelier
+    // design) is purged from the admin build. See packages/landing-kit.
+    "../../packages/landing-kit/**/*.{ts,tsx}",
+  ],
   theme: {
     extend: {
       colors: {

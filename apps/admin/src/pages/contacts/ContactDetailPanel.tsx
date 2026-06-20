@@ -35,6 +35,15 @@ import { AddressFormModal } from "./AddressFormModal";
 import { LogActivityModal } from "./LogActivityModal";
 import { LoyaltyTab } from "./LoyaltyTab";
 import { TagPicker } from "./TagPicker";
+import {
+  TasksTab,
+  CalendarTab,
+  InvoicesTab,
+  NotesTab,
+  DocumentsTab,
+  AuditTab,
+  ConciergeTab,
+} from "./contactTabs";
 import type {
   Contact,
   Deal,
@@ -900,6 +909,24 @@ export function ContactDetailPanel({
       {activeTab === "subscription" && <SubscriptionTab contact={contact} />}
       {activeTab === "programme" && <ProgrammeTab contact={contact} />}
       {activeTab === "ambassador" && <AmbassadorTab contact={contact} />}
+      {activeTab === "tasks" && (
+        <TasksTab
+          contactId={contact.contact_id}
+          contactName={contact.display_name}
+        />
+      )}
+      {activeTab === "calendar" && (
+        <CalendarTab contactId={contact.contact_id} />
+      )}
+      {activeTab === "invoices" && (
+        <InvoicesTab contactId={contact.contact_id} />
+      )}
+      {activeTab === "concierge" && <ConciergeTab contact={contact} />}
+      {activeTab === "notes" && <NotesTab contact={contact} />}
+      {activeTab === "documents" && (
+        <DocumentsTab contactId={contact.contact_id} />
+      )}
+      {activeTab === "audit" && <AuditTab contactId={contact.contact_id} />}
     </>
   );
 }

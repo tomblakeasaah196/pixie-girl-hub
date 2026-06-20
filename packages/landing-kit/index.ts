@@ -13,5 +13,8 @@
 export * from "./config";
 export { LandingPreview, type LandingSubmit } from "./LandingPreview";
 export { AtelierRevealPreview } from "./AtelierRevealPreview";
+export { AtelierStage } from "./AtelierStage";
+// Retained for back-compat with existing app-level shims; the reveal now uses
+// AtelierStage (the faithful logo-plane scene) rather than these variants.
 export { ThreeDLogoReveal } from "./ThreeDLogoReveal";
 export { ThreeDTextReveal } from "./ThreeDTextReveal";

@@ -382,18 +382,6 @@ function Editor({
               {config.reveal.threeD.enabled && (
                 <>
                   <div className="mt-3">
-                    <label className="text-[12px] font-semibold block mb-1.5">3D Variant</label>
-                    <select
-                      value={config.reveal.threeD.variant}
-                      onChange={(e) => update((d) => { if (d.reveal.threeD) d.reveal.threeD.variant = e.target.value as "text-dual" | "logo-static"; })}
-                      className="input-sm w-full"
-                    >
-                      <option value="text-dual">Text (Pixie Girl + Global)</option>
-                      <option value="logo-static">Logo (Faitlyn Hair)</option>
-                    </select>
-                  </div>
-
-                  <div className="mt-3">
                     <label className="text-[12px] font-semibold block mb-1.5">Rotation Speed</label>
                     <input
                       type="range"

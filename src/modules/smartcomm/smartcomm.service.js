@@ -27,6 +27,29 @@ function isCeo(user) {
   return !!(user && (user.is_ceo || user.role === "ceo"));
 }
 
+// Allowed metadata keys per card-type. Clients can submit any JSON, but only
+// these fields make it onto the message row — this prevents trojan keys (e.g.
+// "is_admin", "delivery_status") from leaking in via the open metadata channel.
+const METADATA_WHITELIST = {
+  product_share: ["products", "intro"],
+  send_invoice: [
+    "invoice_id",
+    "invoice_number",
+    "amount_due",
+    "due_date",
+    "url",
+  ],
+};
+
+function sanitiseMessageMetadata(messageType, metadata) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const allowed = METADATA_WHITELIST[messageType];
+  if (!allowed) return null;
+  const out = {};
+  for (const k of allowed) if (k in metadata) out[k] = metadata[k];
+  return Object.keys(out).length ? out : null;
+}
+
 /** Resolve whether the user is allowed to act on a platform for a brand. */
 async function assertPlatformAccess({
   user,
@@ -346,6 +369,7 @@ async function postMessage({ brand, user, request_id, id, input }) {
         reply_to_id: input.reply_to_id,
         delivery_status:
           channel.channel_type === "customer_thread" ? "queued" : "sent",
+        metadata: sanitiseMessageMetadata(input.message_type, input.metadata),
       },
     });
     // Attach documents if supplied.
@@ -695,7 +719,7 @@ async function enqueueOutboundForChannel({
   // Reachability of the customer is captured on the contact, not the
   // channel — channels only know who is in them.
   const member = await query(
-    `SELECT con.primary_phone, con.whatsapp_number, con.email,
+    `SELECT con.contact_id, con.primary_phone, con.whatsapp_number, con.email,
             h.handle AS ig_handle, h.external_user_id AS ig_user_id
        FROM shared.channel_members cm
        LEFT JOIN shared.contacts con ON con.contact_id = cm.contact_id
@@ -735,6 +759,9 @@ async function enqueueOutboundForChannel({
       in_reply_to: meta.in_reply_to,
       smartcomm_message_id: message.message_id,
       channel_id: channel.channel_id,
+      brand: channel.business,
+      contact_id: c.contact_id,
+      event_key: "smartcomm.email_reply",
     });
   }
 }
@@ -988,6 +1015,48 @@ async function addAttachment({ brand, user, request_id, message_id, input }) {
   return a;
 }
 
+/**
+ * Send-invoice card: posts a `send_invoice` message into the channel that
+ * references an existing invoice (no PDF embedded — the customer taps the
+ * link to view + pay). Reads the invoice from the brand's invoices table
+ * and resolves a per-brand storefront URL via brand-urls.
+ */
+async function sendInvoiceIntoThread({
+  brand,
+  user,
+  request_id,
+  channel_id,
+  invoice_id,
+}) {
+  if (!brand)
+    throw new AppError("BRAND_REQUIRED", "Brand context required", 400);
+  const invoicingRepo = require("../invoicing/invoicing.repo");
+  const brandUrls = require("../../utils/brand-urls");
+
+  const invoice = await invoicingRepo.findById({ brand, id: invoice_id });
+  if (!invoice) throw new NotFoundError("Invoice");
+
+  const base = await brandUrls.publicBaseUrl(brand);
+  const url = `${base}/invoice/${invoice_id}`;
+
+  return postMessage({
+    brand,
+    user,
+    request_id,
+    id: channel_id,
+    input: {
+      message_type: "send_invoice",
+      metadata: {
+        invoice_id,
+        invoice_number: invoice.invoice_number,
+        amount_due: String(invoice.amount_due_ngn ?? "0"),
+        due_date: invoice.due_date,
+        url,
+      },
+    },
+  });
+}
+
 module.exports = {
   listChannels,
   getChannel,
@@ -1019,6 +1088,7 @@ module.exports = {
   deleteQuickReply,
   getCustomer360,
   sendToCustomer,
+  sendInvoiceIntoThread,
   recordInboundFromCustomer,
   findOrCreateCustomerThread,
   addAttachment,

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://velvet-drop-reveal.lovable.app/sitemap.xml

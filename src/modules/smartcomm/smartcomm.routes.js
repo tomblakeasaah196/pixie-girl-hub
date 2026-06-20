@@ -45,6 +45,16 @@ router.post(
   c.createOrderCapture,
 );
 
+// Send an existing invoice as a card into the chat thread (Customer-360
+// quick-action). Requires both smartcomm.edit and invoicing.view.
+router.post(
+  "/channels/:id/send-invoice",
+  can("edit"),
+  requirePermission("invoicing", "view"),
+  v.validateSendInvoiceCard,
+  c.sendInvoiceIntoThread,
+);
+
 // ── Quick replies ──────────────────────────────────────────
 router.get("/quick-replies", can("view"), c.listQuickReplies);
 router.post(

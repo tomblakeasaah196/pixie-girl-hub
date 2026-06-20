@@ -37,7 +37,7 @@ function baseConfig() {
       headlineAccent: "on purpose.",
       body: "The next chapter is being written. Doors closed for now — but the list inside hears first, pays less, and receives the curated gifts reserved for our earliest few. Add your name. Be first through the door.",
       ctaLabel: "Request your invitation",
-      launchSeasonLabel: "The doors open in the season ahead",
+      launchSeasonLabel: "The doors open in the season of {season}",
     },
     invitation: {
       eyebrow: "The Inner Circle",
@@ -97,8 +97,6 @@ function defaultConfig(brandKey) {
         showScarcity: true,
         threeD: {
           enabled: true,
-          brandType: "faitlynhair",
-          variant: "logo-static",
           rotationSpeed: 1.2,
           glowIntensity: 0.8,
         },
@@ -140,8 +138,6 @@ function defaultConfig(brandKey) {
       showScarcity: true,
       threeD: {
         enabled: true,
-        brandType: "pixiegirl",
-        variant: "text-dual",
         rotationSpeed: 0.8,
         glowIntensity: 1.0,
       },

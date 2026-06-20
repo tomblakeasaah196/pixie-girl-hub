@@ -141,6 +141,16 @@ router.put(
   styledVarV.validateSizeConfig,
   styledVar.saveSizeConfig,
 );
+// Import / export engine (PR-B): multi-sheet .xlsx (styled + colours +
+// reference). Literal segments before :id so they're never shadowed.
+router.get("/styled-products/import-template", can("view"), c.styledTemplate);
+router.get("/styled-products/export", can("view"), c.exportStyled);
+router.post(
+  "/styled-products/import",
+  can("create"),
+  upload.single("file"),
+  c.importStyled,
+);
 // Trash bin — soft-deleted styled products available to restore.
 router.get("/styled-products/trash", can("view"), styled.listTrash);
 // AI draft (P0-8: only ever creates a DRAFT; gated by the products_ai_drafting
@@ -244,6 +254,33 @@ router.delete(
 
 // Collections (+ rules + members)
 router.get("/collections", can("view"), c.listCollections);
+// Import / export (single sheet, created independently). Literal segments
+// before :colId so they're never shadowed.
+router.get("/collections/import-template", can("view"), c.collectionsTemplate);
+router.get("/collections/export", can("view"), c.exportCollections);
+router.post(
+  "/collections/import",
+  can("create"),
+  upload.single("file"),
+  c.importCollections,
+);
+// Bundle import/export surfaced here for the catalogue UI; gated by retention.
+router.get(
+  "/bundles/import-template",
+  requirePermission("retention", "view"),
+  c.bundlesTemplate,
+);
+router.get(
+  "/bundles/export",
+  requirePermission("retention", "view"),
+  c.exportBundles,
+);
+router.post(
+  "/bundles/import",
+  requirePermission("retention", "create"),
+  upload.single("file"),
+  c.importBundles,
+);
 router.post(
   "/collections",
   can("create"),

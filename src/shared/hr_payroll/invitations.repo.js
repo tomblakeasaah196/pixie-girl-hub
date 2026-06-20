@@ -104,8 +104,10 @@ async function createUser({ client, user }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.users
        (email, password_hash, display_name, status, is_ceo,
-        default_business, permitted_businesses, force_password_reset)
-     VALUES ($1,$2,$3,'active',COALESCE($4,false),$5,$6::text[],false)
+        default_business, permitted_businesses, force_password_reset,
+        staff_profile_id)
+     VALUES ($1,$2,$3,'active',COALESCE($4,false),$5,$6::text[],
+             COALESCE($7,false),$8)
      RETURNING user_id, email`,
     [
       user.email,
@@ -114,6 +116,8 @@ async function createUser({ client, user }) {
       user.is_ceo === undefined ? null : user.is_ceo,
       user.default_business || null,
       user.permitted_businesses || [],
+      user.force_password_reset === undefined ? null : user.force_password_reset,
+      user.staff_profile_id || null,
     ],
   );
   return rows[0];

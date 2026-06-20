@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ChevronLeft, Pencil, Sparkles, UserX } from "lucide-react";
+import { ChevronLeft, Pencil, Sparkles, UserX, Briefcase } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Button, Pill, Skeleton } from "@/components/ui/primitives";
 import { useContact } from "./hooks";
@@ -125,6 +125,20 @@ export function ContactProfilePage() {
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <MessageButton contact={contact} />
+            {!contact.contact_type.includes("staff") && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Briefcase className="w-3.5 h-3.5" />}
+                onClick={() =>
+                  navigate(
+                    `/contacts/staff/new?contact_id=${contact.contact_id}`,
+                  )
+                }
+              >
+                Onboard as employee
+              </Button>
+            )}
             <Button
               size="sm"
               variant="primary"

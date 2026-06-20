@@ -39,11 +39,21 @@ export default defineConfig({
     },
   ],
   resolve: {
-    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    alias: {
+      // Shared landing renderer + config, consumed as source. Listed before
+      // "@" so the longer, more specific prefix wins.
+      "@landing-kit": fileURLToPath(
+        new URL("../../packages/landing-kit", import.meta.url),
+      ),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
   },
   server: {
     port: 5173,
     host: true,
+    // Allow the dev server to read the shared package that lives outside this
+    // app's root (../../packages/landing-kit).
+    fs: { allow: [fileURLToPath(new URL("../../", import.meta.url))] },
     proxy: {
       "/api": {
         target: process.env.VITE_API_PROXY_TARGET ?? "http://localhost:7000",

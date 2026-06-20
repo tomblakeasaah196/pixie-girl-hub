@@ -126,6 +126,16 @@ const configSchema = z
       .max(16)
       .optional(),
     reveal: z.object({}).passthrough().optional(),
+    seo: z
+      .object({
+        metaTitle: z.string().max(200).optional(),
+        metaDescription: z.string().max(400).optional(),
+        ogImageUrl: nullableMediaUrl,
+        faviconUrl: nullableMediaUrl,
+        twitterHandle: z.string().max(40).optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 

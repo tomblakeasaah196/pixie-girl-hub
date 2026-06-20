@@ -40,4 +40,9 @@ async function uploadImage(req, res) {
   res.status(201).json({ data });
 }
 
-module.exports = { get, save, publish, uploadImage };
+async function uploadOg(req, res) {
+  const data = await service.uploadOgBanner({ brand: req.brand, file: req.file });
+  res.status(201).json({ data });
+}
+
+module.exports = { get, save, publish, uploadImage, uploadOg };

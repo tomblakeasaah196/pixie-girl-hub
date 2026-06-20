@@ -29,6 +29,7 @@ import {
   useSaveLandingDraft,
   usePublishLanding,
   uploadLandingImage,
+  uploadLandingOgBanner,
   withDefaults,
   defaultConfig,
   type LandingConfig,
@@ -359,6 +360,15 @@ function Editor({
         <button onClick={() => update((d) => { d.socials.push({ platform: "instagram", href: "", label: "" }); })} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-accent-glow"><Plus className="w-3.5 h-3.5" /> Add social</button>
       </Section>
 
+      <Section title="Discovery & sharing">
+        <Text label="Search title" value={config.seo.metaTitle} onChange={(v) => update((d) => { d.seo.metaTitle = v; })} />
+        <Area label="Search & share description" value={config.seo.metaDescription} onChange={(v) => update((d) => { d.seo.metaDescription = v; })} />
+        <OgImageField value={config.seo.ogImageUrl} onChange={(v) => update((d) => { d.seo.ogImageUrl = v; })} />
+        <Img label="Favicon (a square logo works best)" value={config.seo.faviconUrl} onChange={(v) => update((d) => { d.seo.faviconUrl = v; })} />
+        <Text label="Twitter / X handle" value={config.seo.twitterHandle} onChange={(v) => update((d) => { d.seo.twitterHandle = v; })} />
+        <p className="text-[11px] text-text-faint">Controls the title, description, preview image and favicon shown by Google and when the link is shared (WhatsApp, X, Instagram…). Leave the share image empty to use the hero.</p>
+      </Section>
+
       <Section title="Reveal">
         <Toggle label="Cinematic reveal enabled" checked={config.reveal.enabled} onChange={(v) => update((d) => { d.reveal.enabled = v; })} />
         <Toggle label="Show scarcity counter" checked={config.reveal.showScarcity} onChange={(v) => update((d) => { d.reveal.showScarcity = v; })} />
@@ -596,6 +606,53 @@ function Img({ label, value, onChange }: { label: string; value: string | null; 
           {err && <p className="text-[11px] text-danger">{err}</p>}
         </div>
       </div>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+    </div>
+  );
+}
+
+/** Open Graph share-image picker. Any uploaded image is composed server-side
+ *  into a 1200×630 banner (portrait/square/landscape all welcome). */
+function OgImageField({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function pick(file?: File) {
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      onChange(await uploadLandingOgBanner(file));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't build the share image");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+  return (
+    <div>
+      <span className="micro block mb-1">Share image (Open Graph)</span>
+      <div className="relative rounded-[10px] border hairline overflow-hidden bg-text-primary/[0.04] grid place-items-center" style={{ aspectRatio: "1200 / 630" }}>
+        {value ? (
+          <img src={value} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-[11px] text-text-faint px-3 text-center">1200×630 — auto-built from any image you upload</span>
+        )}
+        {busy && <div className="absolute inset-0 grid place-items-center bg-bg/60"><Loader2 className="w-5 h-5 animate-spin text-accent-glow" /></div>}
+      </div>
+      <div className="flex gap-1.5 mt-2">
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-[9px] border hairline text-[12px] font-semibold text-text-muted hover:text-text-primary disabled:opacity-50">
+          <Upload className="w-3.5 h-3.5" /> {value ? "Replace" : "Upload & build"}
+        </button>
+        {value && (
+          <button type="button" onClick={() => onChange(null)} className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-[9px] border hairline text-[12px] font-semibold text-text-faint hover:text-danger">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] text-text-faint mt-1">Upload a portrait, square or landscape — we crop it to a 1200×630 share banner.</p>
+      {err && <p className="text-[11px] text-danger mt-1">{err}</p>}
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
     </div>
   );

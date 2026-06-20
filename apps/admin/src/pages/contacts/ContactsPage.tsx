@@ -1,6 +1,14 @@
 import { useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, Users, QrCode, Search, UserPlus } from "lucide-react";
+import {
+  Plus,
+  Users,
+  QrCode,
+  Search,
+  UserPlus,
+  List,
+  LayoutGrid,
+} from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button, Pill, KpiTile, type Tone } from "@/components/ui/primitives";
@@ -104,6 +112,14 @@ export function ContactsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [view, setView] = useState<"list" | "cards">(
+    () =>
+      (localStorage.getItem("pgh_contacts_view") as "list" | "cards") || "list",
+  );
+  const setViewPersist = (v: "list" | "cards") => {
+    setView(v);
+    localStorage.setItem("pgh_contacts_view", v);
+  };
 
   // The active stakeholder tab IS the contact_type server filter — so when you
   // open Clients, only clients come back from the API.
@@ -458,6 +474,34 @@ export function ContactsPage() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {!isProgrammeTab && (
+            <div className="flex items-center rounded-[10px] border border-line overflow-hidden mr-1">
+              <button
+                onClick={() => setViewPersist("list")}
+                className={`grid place-items-center w-[34px] h-[34px] transition-colors ${
+                  view === "list"
+                    ? "bg-accent-deep text-[#F4E9D9]"
+                    : "text-text-muted hover:text-text-primary"
+                }`}
+                aria-label="List view"
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewPersist("cards")}
+                className={`grid place-items-center w-[34px] h-[34px] transition-colors ${
+                  view === "cards"
+                    ? "bg-accent-deep text-[#F4E9D9]"
+                    : "text-text-muted hover:text-text-primary"
+                }`}
+                aria-label="Cards view"
+                title="Cards view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           {!isProgrammeTab && activeTab !== "staff" && (
             <Button
               variant="ghost"
@@ -546,6 +590,52 @@ export function ContactsPage() {
             message: activeDef?.blurb ?? "",
           }}
         />
+      ) : view === "cards" ? (
+        <>
+          {toolbar}
+          {isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mt-4">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="h-28 rounded-[14px] glass border hairline animate-pulse"
+                />
+              ))}
+            </div>
+          ) : contacts.length === 0 ? (
+            <div className="rounded-[14px] glass border hairline grid place-items-center text-center py-16 mt-4">
+              <div>
+                <span className="grid place-items-center w-12 h-12 rounded-xl bg-text-primary/[0.06] text-text-faint mb-3 mx-auto">
+                  <Users className="w-6 h-6" />
+                </span>
+                <div className="font-display text-[16px] text-text-primary mb-1">
+                  No {emptyLabel} yet
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="mt-3"
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                  onClick={onPrimaryAdd}
+                >
+                  {primaryLabel}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mt-4">
+              {contacts.map((c, i) => (
+                <ContactCard
+                  key={c.contact_id}
+                  contact={c}
+                  idx={i}
+                  onClick={() => openContact(c)}
+                />
+              ))}
+            </div>
+          )}
+          {pagination}
+        </>
       ) : (
         <>
           <DataTable
@@ -568,11 +658,7 @@ export function ContactsPage() {
                   icon={<Plus className="w-3.5 h-3.5" />}
                   onClick={onPrimaryAdd}
                 >
-                  {activeTab === "staff"
-                    ? "Onboard Employee"
-                    : activeDef
-                      ? `New ${activeDef.label}`
-                      : "New Contact"}
+                  {primaryLabel}
                 </Button>
               ),
             }}
@@ -612,6 +698,58 @@ export function ContactsPage() {
 
       {showQR && <WalkInQR onClose={() => setShowQR(false)} />}
     </div>
+  );
+}
+
+function ContactCard({
+  contact,
+  idx,
+  onClick,
+}: {
+  contact: Contact;
+  idx: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-left rounded-[14px] glass border hairline p-4 hover:border-accent/40 transition-colors"
+    >
+      <div className="flex items-center gap-3">
+        <ContactAvatar name={contact.display_name} idx={idx} />
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-medium text-text-primary truncate">
+            {contact.display_name}
+          </div>
+          {contact.company_name && (
+            <div className="text-[11px] text-text-faint truncate">
+              {contact.company_name}
+            </div>
+          )}
+        </div>
+        <Pill tone={PRIORITY_TONE[contact.priority_level]} dot={false}>
+          {contact.priority_level}
+        </Pill>
+      </div>
+      <div className="flex flex-wrap gap-1 mt-3">
+        {contact.contact_type.slice(0, 3).map((t) => {
+          const def = stakeholderForType(t);
+          return (
+            <Pill key={t} tone={def?.tone ?? "neutral"} dot={false}>
+              {TYPE_LABELS[t] ?? t}
+            </Pill>
+          );
+        })}
+        {contact.is_ambassador && (
+          <Pill tone="accent" dot={false}>
+            Ambassador
+          </Pill>
+        )}
+      </div>
+      <div className="mt-3 text-[12px] text-text-muted font-mono truncate">
+        {contact.primary_phone ?? contact.email ?? "—"}
+      </div>
+    </button>
   );
 }
 

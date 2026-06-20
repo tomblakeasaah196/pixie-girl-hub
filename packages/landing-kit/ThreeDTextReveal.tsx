@@ -13,6 +13,10 @@ interface ThreeDTextRevealProps {
   glowIntensity: number;
   primaryColor: string;
   accentColor: string;
+  /** Scales the floating sway speed so the studio's Rotation Speed control
+   *  affects the text reveal too (kept as a sway, not a full spin, so the
+   *  words stay readable). */
+  rotationSpeed?: number;
 }
 
 function AnimatedWord({
@@ -22,6 +26,7 @@ function AnimatedWord({
   fontSize,
   floatOffset,
   phase,
+  rotationSpeed,
 }: {
   children: string;
   position: [number, number, number];
@@ -29,6 +34,7 @@ function AnimatedWord({
   fontSize: number;
   floatOffset: number;
   phase: MotionValue<"reveal" | "done" | "seam" | "part" | "untie">;
+  rotationSpeed: number;
 }) {
   const ref = useRef<THREE.Group>(null);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -39,8 +45,9 @@ function AnimatedWord({
 
   useFrame((state) => {
     if (!ref.current) return;
-    ref.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.4 + floatOffset) * 0.25;
-    ref.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 0.8 + floatOffset) * 0.06;
+    const t = state.clock.elapsedTime * rotationSpeed;
+    ref.current.rotation.y = Math.sin(t * 0.4 + floatOffset) * 0.25;
+    ref.current.position.y = position[1] + Math.sin(t * 0.8 + floatOffset) * 0.06;
     const target = isRevealing ? 1 : 0.001;
     ref.current.scale.lerp(new THREE.Vector3(target, target, target), 0.12);
   });
@@ -61,6 +68,7 @@ export function ThreeDTextReveal({
   glowIntensity,
   primaryColor,
   accentColor,
+  rotationSpeed = 1,
 }: ThreeDTextRevealProps) {
   return (
     <Canvas
@@ -72,12 +80,12 @@ export function ThreeDTextReveal({
       <pointLight position={[5, 5, 5]} intensity={1.2 * (1 + glowIntensity)} color={accentColor} />
       <pointLight position={[-5, -5, 3]} intensity={0.6} color={primaryColor} />
 
-      <AnimatedWord position={[0, 0.7, 0]} color={primaryColor} fontSize={1} floatOffset={0} phase={phase}>
+      <AnimatedWord position={[0, 0.7, 0]} color={primaryColor} fontSize={1} floatOffset={0} phase={phase} rotationSpeed={rotationSpeed}>
         {text1}
       </AnimatedWord>
 
       {text2 && (
-        <AnimatedWord position={[0, -0.7, 0]} color={accentColor} fontSize={0.7} floatOffset={1.5} phase={phase}>
+        <AnimatedWord position={[0, -0.7, 0]} color={accentColor} fontSize={0.7} floatOffset={1.5} phase={phase} rotationSpeed={rotationSpeed}>
           {text2}
         </AnimatedWord>
       )}

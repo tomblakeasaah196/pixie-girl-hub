@@ -232,6 +232,7 @@ export function AtelierRevealPreview({
                             text2="Global"
                             phase={phaseMotion}
                             glowIntensity={config.reveal.threeD.glowIntensity}
+                            rotationSpeed={config.reveal.threeD.rotationSpeed}
                             primaryColor={config.three.primary}
                             accentColor={config.three.accent}
                           />

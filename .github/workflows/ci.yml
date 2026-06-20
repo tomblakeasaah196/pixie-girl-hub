@@ -5,6 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Serialize deploys so two runs never race on the same VPS working tree and
+# build output. Overlapping `next build`s corrupt apps/landing/.next and make
+# the build fail with ENOENT on .next/server/pages-manifest.json. Queue runs
+# rather than cancelling — never kill a production deploy mid-flight.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 env:
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
   PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -124,6 +132,11 @@ jobs:
             npm install
 
             echo "--- Building landing app (.next)"
+            # Always build from a clean output dir. `git checkout`/`git pull`
+            # don't touch .next (it's gitignored), so a stale or half-written
+            # .next left by a previous interrupted/overlapping build makes
+            # `next build` fail with ENOENT on .next/server/pages-manifest.json.
+            rm -rf .next
             npm run build
 
             cd ../..

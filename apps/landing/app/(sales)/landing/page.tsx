@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { fetchPublishedLanding } from "@/lib/api";
 import { getBrand } from "@/lib/brand";
-import { LandingPreview } from "@/components/LandingPreview";
+import { withDefaults } from "@landing-kit";
+import { PublicLanding } from "@/components/PublicLanding";
 
 interface PageProps {
   searchParams: Promise<{ brand?: string }>;
@@ -11,7 +12,7 @@ async function LandingContent({ brand }: { brand: string }) {
   let config = null;
   try {
     const response = await fetchPublishedLanding(brand);
-    config = response.data || response;
+    config = response?.data || response;
   } catch (err) {
     console.error("Failed to load published landing config:", err);
   }
@@ -27,7 +28,10 @@ async function LandingContent({ brand }: { brand: string }) {
     );
   }
 
-  return <LandingPreview config={config} />;
+  // Hydrate the published snapshot with the brand defaults — the SAME merge
+  // the studio applies — so the live page matches the preview field-for-field
+  // (including the 3D reveal, which older snapshots may omit).
+  return <PublicLanding config={withDefaults(brand, config)} />;
 }
 
 export const metadata = {

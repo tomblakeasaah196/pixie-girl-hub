@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { fetchSalesIndex, fetchPublishedLanding } from "@/lib/api";
 import { getBrand } from "@/lib/brand";
-import { LandingPreview } from "@/components/LandingPreview";
+import { withDefaults } from "@landing-kit";
+import { PublicLanding } from "@/components/PublicLanding";
 import type { LandingConfig } from "@/lib/types";
 
 /**
@@ -78,7 +79,9 @@ export default async function Page() {
     return <OpeningSoon brand={brand} />;
   }
 
-  return <LandingPreview config={config} />;
+  // Hydrate with brand defaults (same merge the studio uses) so the live page
+  // is a field-for-field match with the studio preview.
+  return <PublicLanding config={withDefaults(brand, config)} />;
 }
 
 /**

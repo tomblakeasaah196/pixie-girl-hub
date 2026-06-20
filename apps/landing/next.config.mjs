@@ -1,3 +1,5 @@
+import path from "node:path";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -30,6 +32,19 @@ const nextConfig = {
   },
   experimental: {
     typedRoutes: false,
+    // Compile the shared @landing-kit source that lives outside this app's
+    // root (../../packages/landing-kit) instead of erroring on it.
+    externalDir: true,
+  },
+  // The shared kit is imported as source from outside node_modules, so its
+  // bare deps (react, three, framer-motion, …) must resolve against THIS
+  // app's node_modules — keeping a single React instance.
+  webpack: (config) => {
+    config.resolve.modules = [
+      path.join(process.cwd(), "node_modules"),
+      ...(config.resolve.modules ?? ["node_modules"]),
+    ];
+    return config;
   },
 };
 

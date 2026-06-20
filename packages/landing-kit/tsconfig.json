@@ -1,0 +1,17 @@
+{
+  "comment": "Editor-only config. The kit is compiled as source by each consuming app (apps/admin via Vite, apps/landing via Next.js), each using its own tsconfig + JSX runtime. This file just gives editors/standalone type-checks sane defaults.",
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true
+  },
+  "include": ["*.ts", "*.tsx"]
+}

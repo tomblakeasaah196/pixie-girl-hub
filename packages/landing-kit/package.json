@@ -1,0 +1,24 @@
+{
+  "name": "@pixie/landing-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared landing-page renderer + config (the single source of truth for the studio preview and the public sales page).",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./config": "./config.ts",
+    "./*": "./*.tsx"
+  },
+  "sideEffects": false,
+  "peerDependencies": {
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.0",
+    "framer-motion": "^11.11.0",
+    "lucide-react": "^0.452.0",
+    "react": ">=18",
+    "react-dom": ">=18",
+    "three": "^0.169.0"
+  }
+}

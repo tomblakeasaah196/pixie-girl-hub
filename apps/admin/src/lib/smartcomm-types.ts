@@ -90,6 +90,10 @@ export interface MessageAttachment {
   attachment_id?: string;
   document_id: string;
   display_name?: string | null;
+  /** Browser-fetchable URL (CDN or /media proxy). Present on read. */
+  url?: string | null;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
 }
 
 export interface ReplyPreview {

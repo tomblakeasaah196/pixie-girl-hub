@@ -35,8 +35,9 @@ export interface LandingTheme {
 
 export interface RevealThreeD {
   enabled: boolean;
-  brandType: "pixiegirl" | "faitlynhair";
-  variant: "text-dual" | "logo-static";
+  /** Drives the AtelierStage (the logo-plane scene) — the reveal uses one
+   *  scene for every brand, matching the Lovable reference. The legacy
+   *  `variant`/`brandType` selectors were removed; only motion knobs remain. */
   rotationSpeed: number;
   glowIntensity: number;
 }
@@ -200,8 +201,6 @@ export function defaultConfig(brandKey: string): LandingConfig {
         showScarcity: true,
         threeD: {
           enabled: true,
-          brandType: "faitlynhair",
-          variant: "logo-static",
           rotationSpeed: 1.2,
           glowIntensity: 0.8,
         },
@@ -243,8 +242,6 @@ export function defaultConfig(brandKey: string): LandingConfig {
       showScarcity: true,
       threeD: {
         enabled: true,
-        brandType: "pixiegirl",
-        variant: "text-dual",
         rotationSpeed: 0.8,
         glowIntensity: 1.0,
       },

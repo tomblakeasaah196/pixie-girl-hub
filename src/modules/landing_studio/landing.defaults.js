@@ -97,8 +97,6 @@ function defaultConfig(brandKey) {
         showScarcity: true,
         threeD: {
           enabled: true,
-          brandType: "faitlynhair",
-          variant: "logo-static",
           rotationSpeed: 1.2,
           glowIntensity: 0.8,
         },
@@ -140,8 +138,6 @@ function defaultConfig(brandKey) {
       showScarcity: true,
       threeD: {
         enabled: true,
-        brandType: "pixiegirl",
-        variant: "text-dual",
         rotationSpeed: 0.8,
         glowIntensity: 1.0,
       },

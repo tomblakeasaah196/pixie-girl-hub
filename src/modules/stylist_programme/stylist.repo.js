@@ -65,13 +65,17 @@ async function createPartner({ client, p }) {
   );
   return rows[0];
 }
-async function listPartners({ status, country_code, city }) {
+async function listPartners({ status, country_code, city, contact_id }) {
   const where = [];
   const params = [];
   let i = 1;
   if (status) {
     where.push(`status = $${i++}`);
     params.push(status);
+  }
+  if (contact_id) {
+    where.push(`contact_id = $${i++}`);
+    params.push(contact_id);
   }
   if (country_code) {
     where.push(`country_code = $${i++}`);

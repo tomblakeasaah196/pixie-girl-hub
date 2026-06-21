@@ -64,6 +64,7 @@ import {
   TemplatesTab,
   SegmentsTab,
   CampaignAudienceSection,
+  CampaignSaleSection,
   CampaignVariantsSection,
 } from "./EmailExtras";
 
@@ -437,6 +438,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: EmailCampaign; onClos
         </div>
 
         <CampaignAudienceSection campaign={campaign} />
+        <CampaignSaleSection campaign={campaign} />
         <CampaignVariantsSection campaign={campaign} />
 
         {campaign.reply_to_email && (

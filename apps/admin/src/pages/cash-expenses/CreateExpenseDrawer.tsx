@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Check, Receipt } from "lucide-react";
+import { Loader2, Receipt } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/primitives";
 import { Select, NumberField } from "@/components/ui/controls";

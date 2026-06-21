@@ -21,8 +21,6 @@
   --accent: 168 29 29; /* #A81D1D working red (legible on black) */
   --accent-deep: 105 9 9; /* #690909 Pixie anchor (filled buttons) */
   --accent-glow: 216 92 87;
-  --gold: 212 175 122; /* #D4AF7A champagne — editorial accent on the sales landing
-                          (per-brand override is applied inline by LandingRender) */
   --sage: 127 160 106;
   --rose: 233 122 126;
   --info: 110 134 168;
@@ -73,7 +71,6 @@
   --accent: 105 9 9; /* pure #690909 — great on white */
   --accent-deep: 105 9 9;
   --accent-glow: 140 20 20;
-  --gold: 150 115 50; /* #967332 deeper gold — legible champagne on light */
   --rose: 201 90 96;
   --sage: 94 126 80;
   --info: 24 120 185; /* Pixie intl blue #1878B9 */

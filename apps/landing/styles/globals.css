@@ -18,12 +18,6 @@
   --accent-deep: 105 9 9;
   --accent-glow: 216 92 87;
 
-  /* Champagne — the editorial metallic the "between drops" reference uses for
-     eyebrows, italic emphasis words and numerals. Keeping it distinct from the
-     maroon --accent (which stays the action/CTA colour) is what makes the sale
-     page read as a continuation of that page rather than a louder sibling. */
-  --gold: 212 175 122; /* #D4AF7A champagne (Pixie) */
-
   --success: 127 160 106;
   --warn: 201 162 75;
   --danger: 229 84 78;
@@ -51,7 +45,6 @@ html[data-business="faitlynhair"] {
   --accent: 127 112 61;
   --accent-deep: 127 112 61;
   --accent-glow: 213 184 164;
-  --gold: 217 191 168; /* #D9BFA8 warm taupe (Faitlyn) */
 }
 
 * {
@@ -215,94 +208,5 @@ body::before {
   }
   to {
     filter: grayscale(85%) saturate(60%);
-  }
-}
-
-/* ── Champagne editorial accents (the "continuation" language) ─────── */
-.text-gold {
-  color: rgb(var(--gold));
-}
-/* Eyebrow micro-label in champagne, wider tracking — matches the reference. */
-.eyebrow {
-  font-size: 10.5px;
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
-  font-weight: 700;
-  color: rgb(var(--gold));
-}
-/* Hairline divider that fades through champagne, used between editorial beats. */
-.lux-rule {
-  height: 1px;
-  width: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgb(var(--gold) / 0.45) 50%,
-    transparent
-  );
-}
-
-/* ── Full-bleed cinematic hero ─────────────────────────────────────── */
-.hero-screen {
-  min-height: 100svh;
-}
-/* Layered veil that lifts the headline off the photograph and melts the
-   bottom edge into the page background — same recipe as the reference hero. */
-.hero-veil {
-  background:
-    radial-gradient(
-      120% 80% at 50% 0%,
-      transparent 0%,
-      rgb(var(--bg) / 0.28) 58%,
-      rgb(var(--bg) / 0.72) 100%
-    ),
-    linear-gradient(
-      180deg,
-      rgb(0 0 0 / 0.55) 0%,
-      rgb(0 0 0 / 0.12) 30%,
-      rgb(0 0 0 / 0.22) 60%,
-      rgb(var(--bg)) 100%
-    );
-}
-/* Oversized brand monogram drifting behind the hero copy. */
-.hero-monogram {
-  font-family: var(--font-display);
-  font-style: italic;
-  line-height: 0.8;
-  letter-spacing: -0.04em;
-  color: rgb(var(--text) / 0.045);
-  user-select: none;
-  animation: monogram-drift 26s ease-in-out infinite;
-}
-@keyframes monogram-drift {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  50% {
-    transform: translate(2.5%, -2%);
-  }
-}
-
-/* ── Gallery marquee (two opposing rows, masked edges) ─────────────── */
-@keyframes lux-marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-.animate-marquee {
-  animation: lux-marquee 48s linear infinite;
-}
-.animate-marquee-rev {
-  animation: lux-marquee 72s linear infinite reverse;
-}
-@media (prefers-reduced-motion: reduce) {
-  .hero-monogram,
-  .animate-marquee,
-  .animate-marquee-rev {
-    animation: none;
   }
 }

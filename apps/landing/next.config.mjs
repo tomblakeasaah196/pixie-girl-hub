@@ -15,8 +15,6 @@ const nextConfig = {
       { protocol: "https", hostname: "**.cdninstagram.com" },
       { protocol: "https", hostname: "**.fbcdn.net" },
       { protocol: "https", hostname: "**.scdn.co" },
-      // Placeholder imagery used by preview/seed campaigns.
-      { protocol: "https", hostname: "picsum.photos" },
       // The Hub backend's /media static mount is at the same origin in
       // some configs; allow http for dev only.
       { protocol: "http", hostname: "localhost" },

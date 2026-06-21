@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./contacts.service");
+const io = require("./contacts-io.service");
 const { parsePagination } = require("../../utils/pagination");
 
 const base = (req) => ({
@@ -12,6 +13,50 @@ const base = (req) => ({
   user: req.user,
   request_id: req.request_id,
 });
+
+function sendCsv(res, buffer, filename) {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
+}
+
+function requireFile(req, res) {
+  if (req.file) return true;
+  res.status(400).json({
+    error: { code: "NO_FILE", message: "Multipart field 'file' is required" },
+    request_id: req.request_id,
+  });
+  return false;
+}
+
+// ── Bulk import / export (clients & suppliers) ───────────
+async function importTemplate(req, res) {
+  const kind =
+    io.normaliseKind(req.query.kind) === "suppliers" ? "suppliers" : "clients";
+  sendCsv(res, io.template({ kind }), `${kind}-import-template.csv`);
+}
+
+async function importContacts(req, res) {
+  if (!requireFile(req, res)) return;
+  const kind = req.body?.kind ?? req.query.kind;
+  res.status(201).json({
+    data: await io.importContacts({
+      ...base(req),
+      kind,
+      buffer: req.file.buffer,
+      filename: req.file.originalname,
+    }),
+  });
+}
+
+async function exportContacts(req, res) {
+  const { kind, from, to } = req.query;
+  sendCsv(
+    res,
+    await io.exportContacts({ kind, from, to }),
+    io.exportFilename({ kind, from, to }),
+  );
+}
 
 async function list(req, res) {
   const { page, page_size } = parsePagination(req.query);
@@ -170,6 +215,9 @@ module.exports = {
   addTag,
   removeTag,
   milestones,
+  importTemplate,
+  importContacts,
+  exportContacts,
   list,
   getById,
   getTimeline,

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   Users,
@@ -22,6 +23,7 @@ import {
   type StylistPartner,
 } from "./programmesApi";
 import { ContactFormModal } from "./ContactFormModal";
+import { ContactsImportExport } from "./ContactsImportExport";
 import { QuickAddModal } from "./QuickAddModal";
 import { WalkInQR } from "./WalkInQR";
 import { OnlineQR } from "./OnlineQR";
@@ -99,6 +101,7 @@ export function ContactsPage() {
   useBreadcrumbs([{ label: "Contacts" }]);
 
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const tabs = directoryTabs(); // shipped stakeholders
@@ -421,6 +424,15 @@ export function ContactsPage() {
 
       <div className="flex-1" />
 
+      {!isProgrammeTab && (
+        <ContactsImportExport
+          onImported={() => {
+            queryClient.invalidateQueries({ queryKey: ["contacts"] });
+            queryClient.invalidateQueries({ queryKey: ["contact-stats"] });
+          }}
+        />
+      )}
+
       <Button
         variant="ghost"
         size="sm"
@@ -575,7 +587,9 @@ export function ContactsPage() {
         />
         <KpiTile
           label="New this month"
-          value={contactStats ? contactStats.new_this_month.toLocaleString() : "—"}
+          value={
+            contactStats ? contactStats.new_this_month.toLocaleString() : "—"
+          }
           tone="info"
         />
         <KpiTile

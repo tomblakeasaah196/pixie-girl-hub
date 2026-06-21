@@ -98,6 +98,7 @@ const variantBulkCreate = z
 
 const variantUpdate = z
   .object({
+    base_product_id: z.string().uuid().nullable().optional(),
     price_override_ngn: money.nullable().optional(),
     compare_at_price_ngn: money.nullable().optional(),
     is_active: z.boolean().optional(),

@@ -269,8 +269,9 @@ async function deleteColour({ client, brand, styled_id, colour_id }) {
   return rowCount > 0;
 }
 
-// ── Variants (colour × size) ─────────────────────────────
+// ── Variants (colour × size × lace) ──────────────────────
 const VARIANT_COLS = [
+  "base_product_id",
   "price_override_ngn",
   "compare_at_price_ngn",
   "is_active",
@@ -283,11 +284,12 @@ async function listVariants({ client, brand, styled_id }) {
   const { rows } = await ex(client)(
     `SELECT v.*,
             c.name AS colour_name, c.hex AS colour_hex, c.premium_ngn AS colour_premium_ngn,
-            c.display_order AS colour_order,
+            c.display_order AS colour_order, c.is_default AS colour_is_default,
             st.label AS size_label, st.premium_ngn AS size_premium_ngn,
             st.display_order AS size_order,
             ls.label AS lace_label, ls.premium_ngn AS lace_premium_ngn,
             ls.display_order AS lace_order,
+            pr.name AS base_product_name,
             sp.retail_price_ngn AS anchor_price_ngn,
             COALESCE(v.price_override_ngn,
                      sp.retail_price_ngn + c.premium_ngn + st.premium_ngn
@@ -296,6 +298,7 @@ async function listVariants({ client, brand, styled_id }) {
        JOIN ${t(brand, "styled_product_colours")} c ON c.colour_id = v.colour_id
        JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = v.size_code
        LEFT JOIN ${t(brand, "styled_lace_sizes")} ls ON ls.lace_code = v.lace_code
+       LEFT JOIN ${t(brand, "products")} pr ON pr.product_id = v.base_product_id
        JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = v.styled_id
       WHERE v.styled_id = $1
       ORDER BY c.display_order, c.name, st.display_order, ls.display_order`,
@@ -326,15 +329,16 @@ async function existingPairs({ client, brand, styled_id }) {
 async function createVariant({ client, brand, styled_id, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "styled_product_variants")}
-       (styled_id, colour_id, size_code, lace_code, sku, price_override_ngn,
-        compare_at_price_ngn, is_active, is_default, display_order)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,true),COALESCE($9,false),COALESCE($10,0))
+       (styled_id, colour_id, size_code, lace_code, base_product_id, sku,
+        price_override_ngn, compare_at_price_ngn, is_active, is_default, display_order)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,true),COALESCE($10,false),COALESCE($11,0))
      RETURNING *`,
     [
       styled_id,
       input.colour_id,
       input.size_code,
       input.lace_code ?? null,
+      input.base_product_id ?? null,
       input.sku,
       input.price_override_ngn ?? null,
       input.compare_at_price_ngn ?? null,

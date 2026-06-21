@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { fetchCampaign } from "@/lib/api";
+import { fetchCampaign, fetchPublishedLanding } from "@/lib/api";
+import { getBrand } from "@/lib/brand";
 import { deriveState } from "@/lib/state-engine";
-import { LandingShell } from "@/components/LandingShell";
-import { IntroOverlay } from "@/components/IntroOverlay";
+import { withDefaults, type LandingConfig } from "@landing-kit";
+import { AfterShell } from "./_components/AfterShell";
 
 interface Params {
   slug: string;
@@ -16,33 +17,67 @@ export async function generateMetadata({
 }: {
   params: Params;
 }): Promise<Metadata> {
-  const payload = await fetchCampaign(params.slug).catch(() => null);
-  if (!payload) return { title: "Sale not found" };
-  const title = payload.seo.meta_title || `${payload.name} — ended`;
+  const brand = getBrand();
+  const [campaign, raw] = await Promise.all([
+    fetchCampaign(params.slug).catch(() => null),
+    fetchPublishedLanding(brand).catch(() => null),
+  ]);
+  if (!campaign) return { title: "Sale not found" };
+
+  const brandConfig = withDefaults(brand, raw as Partial<LandingConfig> | null);
+  const title =
+    campaign.seo?.meta_title ||
+    `${campaign.name} — ended · ${brandConfig.brandName}`;
   const description =
-    payload.seo.meta_description ||
-    `${payload.name} has ended. Visit our storefront for the full collection.`;
+    campaign.seo?.meta_description ||
+    `${campaign.name} has ended. Stay close — the next chapter is being prepared.`;
+  const ogImage =
+    campaign.seo?.og_image_url ||
+    brandConfig.seo.ogImageUrl ||
+    campaign.hero?.image_url ||
+    brandConfig.hero.imageUrl ||
+    brandConfig.logo.url ||
+    null;
+  const favicon = brandConfig.seo.faviconUrl || brandConfig.logo.url || null;
+
   return {
     title,
     description,
+    icons: favicon ? { icon: favicon, apple: favicon } : undefined,
+    // The after page is a memento — don't compete with the apex or the next
+    // campaign's before page in search results.
     robots: { index: false, follow: true },
-    openGraph: { title, description, type: "website" },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      url: `https://${brandConfig.domain}/sale/${params.slug}/ended`,
+      siteName: brandConfig.brandName,
+      images: ogImage
+        ? [{ url: ogImage, width: 1200, height: 630, alt: title }]
+        : undefined,
+    },
+    twitter: {
+      card: ogImage ? "summary_large_image" : "summary",
+      title,
+      description,
+      site: brandConfig.seo.twitterHandle || undefined,
+      images: ogImage ? [ogImage] : undefined,
+    },
   };
 }
 
 export default async function Page({ params }: { params: Params }) {
-  const payload = await fetchCampaign(params.slug);
+  const brand = getBrand();
+  const [payload, raw] = await Promise.all([
+    fetchCampaign(params.slug),
+    fetchPublishedLanding(brand).catch(() => null),
+  ]);
   if (!payload) notFound();
+
   const { state } = deriveState(payload);
   if (state !== "ended") redirect(`/sale/${params.slug}/${state}`);
-  return (
-    <>
-      <IntroOverlay
-        brand={payload.brand?.business_key}
-        campaignName={payload.name}
-        sessionKey={`pgh-intro-seen:${payload.slug}`}
-      />
-      <LandingShell payload={payload} />
-    </>
-  );
+
+  const brandConfig = withDefaults(brand, raw as Partial<LandingConfig> | null);
+  return <AfterShell payload={payload} brandConfig={brandConfig} />;
 }

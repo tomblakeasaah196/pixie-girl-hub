@@ -6,14 +6,19 @@ import { Text } from "@react-three/drei";
 import * as THREE from "three";
 
 export type HourglassTier = 1 | 2 | 3 | 4 | 5;
+export type HourglassMode = "countdown" | "memento";
 
 interface Props {
-  /** 0..1 — how full the upper chamber is. */
+  /** 0..1 — how full the upper chamber is. Ignored in "memento" mode. */
   topFraction: number;
   tier: HourglassTier;
   /** Four strings — one per rotated face. */
   displayFaces: string[];
   faceLabels: string[];
+  /** "countdown" = live ticking centrepiece (before state).
+   *  "memento" = frozen artefact (ended state): sand all settled, no stream,
+   *  ultra-slow rotation, no tier escalation, faces show campaign meta. */
+  mode?: HourglassMode;
   /** Brand-driven palette pulled from the Atelier theme. Hex strings. */
   palette: {
     sandRest: string;
@@ -57,6 +62,7 @@ interface SandProps {
   streamCount: number;
   sandRest: string;
   sandUrgent: string;
+  mode: HourglassMode;
 }
 
 function Sand({
@@ -66,7 +72,10 @@ function Sand({
   streamCount,
   sandRest,
   sandUrgent,
+  mode,
 }: SandProps) {
+  const isMemento = mode === "memento";
+  const effectiveTop = isMemento ? 0 : topFraction;
   const topRef = useRef<THREE.Points>(null!);
   const botRef = useRef<THREE.Points>(null!);
   const streamRef = useRef<THREE.Points>(null!);
@@ -122,12 +131,12 @@ function Sand({
   }, [streamCount]);
 
   const colorBuf = useMemo(() => new THREE.Color(), []);
-  const targetHex = tier >= 2 ? sandUrgent : sandRest;
+  const targetHex = isMemento ? sandRest : tier >= 2 ? sandUrgent : sandRest;
 
   useFrame((_, dt) => {
     const dtClamped = Math.min(dt, 0.05);
-    const topY = -0.05 + topFraction * 1.55;
-    const botY = -1.55 + (1 - topFraction) * 1.45;
+    const topY = -0.05 + effectiveTop * 1.55;
+    const botY = -1.55 + (1 - effectiveTop) * 1.45;
 
     const top = topPositions;
     for (let i = 0; i < particleCount; i++) {
@@ -161,28 +170,34 @@ function Sand({
     }
     botRef.current.geometry.attributes.position.needsUpdate = true;
 
-    const speed = tier >= 4 ? 2.4 : tier >= 3 ? 1.5 : 1.0;
-    const stream = streamPositions;
-    for (let i = 0; i < streamCount; i++) {
-      const ix = i * 3;
-      let y = stream[ix + 1];
-      y -= dtClamped * (0.9 + Math.random() * 0.4) * speed;
-      if (y < botY + 0.05) {
-        y = 0.2 + Math.random() * 0.1;
+    const m3 = streamRef.current.material as THREE.PointsMaterial;
+    if (isMemento) {
+      // No falling stream — the chapter is closed; the sand has all settled.
+      m3.opacity = 0;
+    } else {
+      m3.opacity = 1;
+      const speed = tier >= 4 ? 2.4 : tier >= 3 ? 1.5 : 1.0;
+      const stream = streamPositions;
+      for (let i = 0; i < streamCount; i++) {
+        const ix = i * 3;
+        let y = stream[ix + 1];
+        y -= dtClamped * (0.9 + Math.random() * 0.4) * speed;
+        if (y < botY + 0.05) {
+          y = 0.2 + Math.random() * 0.1;
+        }
+        stream[ix] = streamSeeds[i * 2];
+        stream[ix + 1] = y;
+        stream[ix + 2] = streamSeeds[i * 2 + 1];
       }
-      stream[ix] = streamSeeds[i * 2];
-      stream[ix + 1] = y;
-      stream[ix + 2] = streamSeeds[i * 2 + 1];
+      streamRef.current.geometry.attributes.position.needsUpdate = true;
     }
-    streamRef.current.geometry.attributes.position.needsUpdate = true;
 
     colorBuf.set(targetHex);
     const m1 = topRef.current.material as THREE.PointsMaterial;
     const m2 = botRef.current.material as THREE.PointsMaterial;
-    const m3 = streamRef.current.material as THREE.PointsMaterial;
     m1.color.lerp(colorBuf, 0.04);
     m2.color.lerp(colorBuf, 0.04);
-    m3.color.lerp(colorBuf, 0.06);
+    if (!isMemento) m3.color.lerp(colorBuf, 0.06);
   });
 
   return (
@@ -245,18 +260,24 @@ function Vessel({
   particleCount,
   streamCount,
   showAllFaces,
+  mode,
 }: Props & {
   particleCount: number;
   streamCount: number;
   showAllFaces: boolean;
+  mode: HourglassMode;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const glowRef = useRef<THREE.PointLight>(null!);
   const geom = useMemo(() => vesselGeometry(), []);
+  const isMemento = mode === "memento";
 
   useFrame((state, dt) => {
     const dtClamped = Math.min(dt, 0.05);
-    if (tier < 4) {
+    if (isMemento) {
+      // 1 revolution / 180 s — half the speed of the resting countdown tier.
+      groupRef.current.rotation.y += (dtClamped * Math.PI * 2) / 180;
+    } else if (tier < 4) {
       groupRef.current.rotation.y += (dtClamped * Math.PI * 2) / 90;
     } else if (tier === 4) {
       groupRef.current.rotation.y += (dtClamped * Math.PI * 2) / 180;
@@ -270,9 +291,11 @@ function Vessel({
 
     const t = state.clock.elapsedTime;
     let scale = 1;
-    if (tier === 3) scale = 1 + Math.sin(t * Math.PI) * 0.01;
-    if (tier === 4) scale = 1.18 + Math.sin(t * 2) * 0.015;
-    if (tier === 5) scale = 1.24 + Math.sin(t * Math.PI * 2) * 0.02;
+    if (!isMemento) {
+      if (tier === 3) scale = 1 + Math.sin(t * Math.PI) * 0.01;
+      if (tier === 4) scale = 1.18 + Math.sin(t * 2) * 0.015;
+      if (tier === 5) scale = 1.24 + Math.sin(t * Math.PI * 2) * 0.02;
+    }
     const s = THREE.MathUtils.lerp(
       groupRef.current.scale.x,
       scale,
@@ -281,9 +304,13 @@ function Vessel({
     groupRef.current.scale.setScalar(s);
 
     if (glowRef.current) {
-      const base = tier >= 3 ? 4 : tier >= 2 ? 2.2 : 0.6;
-      glowRef.current.intensity =
-        base + (tier >= 3 ? Math.sin(t * 2) * 0.6 : 0);
+      if (isMemento) {
+        glowRef.current.intensity = 0.5;
+      } else {
+        const base = tier >= 3 ? 4 : tier >= 2 ? 2.2 : 0.6;
+        glowRef.current.intensity =
+          base + (tier >= 3 ? Math.sin(t * 2) * 0.6 : 0);
+      }
     }
   });
 
@@ -294,14 +321,14 @@ function Vessel({
       <mesh geometry={geom}>
         <meshPhysicalMaterial
           color={palette.glassTint}
-          transmission={0.92}
+          transmission={isMemento ? 0.88 : 0.92}
           thickness={0.6}
-          roughness={0.08}
+          roughness={isMemento ? 0.12 : 0.08}
           ior={1.45}
           transparent
-          opacity={0.35}
+          opacity={isMemento ? 0.25 : 0.35}
           side={THREE.DoubleSide}
-          envMapIntensity={1.2}
+          envMapIntensity={isMemento ? 0.9 : 1.2}
         />
       </mesh>
 
@@ -312,6 +339,7 @@ function Vessel({
         streamCount={streamCount}
         sandRest={palette.sandRest}
         sandUrgent={palette.sandUrgent}
+        mode={mode}
       />
 
       {Array.from({ length: visibleFaces }).map((_, i) => {
@@ -319,22 +347,30 @@ function Vessel({
         const r = 0.98;
         const val = displayFaces[i] ?? displayFaces[0] ?? "";
         const label = faceLabels[i] ?? faceLabels[0] ?? "";
+        const faceFontSize = isMemento
+          ? Math.max(0.16, Math.min(0.26, 1.6 / Math.max(val.length, 6)))
+          : tier >= 4
+            ? 0.85
+            : 0.6;
         return (
           <group key={i} rotation={[0, angle, 0]}>
             <Text
-              position={[0, 0.55, r]}
-              fontSize={tier >= 4 ? 0.85 : 0.6}
+              position={[0, isMemento ? 0.35 : 0.55, r]}
+              fontSize={faceFontSize}
               color="#fff8ec"
               anchorX="center"
               anchorY="middle"
-              fillOpacity={0.92}
+              fillOpacity={isMemento ? 0.82 : 0.92}
               outlineWidth={0.003}
               outlineColor={palette.glow}
-              outlineOpacity={0.5}
+              outlineOpacity={isMemento ? 0.35 : 0.5}
+              letterSpacing={isMemento ? 0.25 : 0}
+              maxWidth={2.0}
+              textAlign="center"
             >
               {val}
             </Text>
-            {tier < 5 && (
+            {!isMemento && tier < 5 && (
               <Text
                 position={[0, 0.18, r]}
                 fontSize={0.11}
@@ -398,11 +434,14 @@ function StaticFallback({
   displayFaces,
   faceLabels,
   palette,
+  mode,
 }: {
   displayFaces: string[];
   faceLabels: string[];
   palette: Props["palette"];
+  mode: HourglassMode;
 }) {
+  const isMemento = mode === "memento";
   return (
     <svg
       viewBox="0 0 200 320"
@@ -412,39 +451,61 @@ function StaticFallback({
     >
       <defs>
         <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={palette.glassTint} stopOpacity="0.35" />
-          <stop offset="100%" stopColor={palette.glassTint} stopOpacity="0.1" />
+          <stop
+            offset="0%"
+            stopColor={palette.glassTint}
+            stopOpacity={isMemento ? "0.22" : "0.35"}
+          />
+          <stop
+            offset="100%"
+            stopColor={palette.glassTint}
+            stopOpacity={isMemento ? "0.08" : "0.1"}
+          />
+        </linearGradient>
+        <linearGradient id="settled" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={palette.sandRest} stopOpacity="0" />
+          <stop offset="100%" stopColor={palette.sandRest} stopOpacity="0.6" />
         </linearGradient>
       </defs>
       <path
         d="M55 20 Q60 90 100 160 Q140 230 145 300 L55 300 Q60 230 100 160 Q140 90 145 20 Z"
         fill="url(#glass)"
         stroke={palette.glow}
-        strokeOpacity="0.35"
+        strokeOpacity={isMemento ? "0.25" : "0.35"}
         strokeWidth="0.6"
       />
+      {isMemento && (
+        <path
+          d="M62 215 Q70 260 100 280 Q130 260 138 215 L138 300 L62 300 Z"
+          fill="url(#settled)"
+          opacity="0.85"
+        />
+      )}
       <text
         x="100"
-        y="170"
+        y={isMemento ? "150" : "170"}
         textAnchor="middle"
         fill="#fff8ec"
         fontFamily="var(--font-atelier-display, serif)"
-        fontSize="40"
+        fontSize={isMemento ? "16" : "40"}
         fontStyle="italic"
+        letterSpacing={isMemento ? "3" : "0"}
       >
         {displayFaces[0]}
       </text>
-      <text
-        x="100"
-        y="200"
-        textAnchor="middle"
-        fill={palette.glow}
-        fontFamily="var(--font-atelier-body, sans-serif)"
-        fontSize="10"
-        letterSpacing="3"
-      >
-        {faceLabels[0]}
-      </text>
+      {!isMemento && (
+        <text
+          x="100"
+          y="200"
+          textAnchor="middle"
+          fill={palette.glow}
+          fontFamily="var(--font-atelier-body, sans-serif)"
+          fontSize="10"
+          letterSpacing="3"
+        >
+          {faceLabels[0]}
+        </text>
+      )}
     </svg>
   );
 }
@@ -503,6 +564,7 @@ export function AtelierHourglass(props: Props) {
   const perf = usePerfTier();
   const reduceMotion = usePrefersReducedMotion();
   useEffect(() => setMounted(true), []);
+  const mode: HourglassMode = props.mode ?? "countdown";
 
   if (!mounted || reduceMotion) {
     return (
@@ -510,6 +572,7 @@ export function AtelierHourglass(props: Props) {
         displayFaces={props.displayFaces}
         faceLabels={props.faceLabels}
         palette={props.palette}
+        mode={mode}
       />
     );
   }
@@ -521,10 +584,10 @@ export function AtelierHourglass(props: Props) {
       gl={{ alpha: true, antialias: true }}
       resize={{ scroll: false }}
     >
-      <ambientLight intensity={0.35} />
+      <ambientLight intensity={mode === "memento" ? 0.28 : 0.35} />
       <directionalLight
         position={[3, 4, 4]}
-        intensity={0.6}
+        intensity={mode === "memento" ? 0.45 : 0.6}
         color="#fff1d6"
       />
       <directionalLight
@@ -534,11 +597,14 @@ export function AtelierHourglass(props: Props) {
       />
       <Vessel
         {...props}
+        mode={mode}
         particleCount={perf.particleCount}
         streamCount={perf.streamCount}
         showAllFaces={perf.showAllFaces}
       />
-      <RingPulse tier={props.tier} color={props.palette.glow} />
+      {mode === "countdown" && (
+        <RingPulse tier={props.tier} color={props.palette.glow} />
+      )}
     </Canvas>
   );
 }

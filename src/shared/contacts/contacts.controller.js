@@ -137,6 +137,10 @@ async function milestones(req, res) {
   res.json({ data: await service.milestones({ days: req.query.days }) });
 }
 
+async function stats(req, res) {
+  res.json({ data: await service.stats({ brand: req.brand }) });
+}
+
 async function listTags(req, res) {
   res.json({
     data: await service.listTags({ brand: req.brand, id: req.params.id }),
@@ -161,6 +165,7 @@ async function removeTag(req, res) {
 }
 
 module.exports = {
+  stats,
   listTags,
   addTag,
   removeTag,

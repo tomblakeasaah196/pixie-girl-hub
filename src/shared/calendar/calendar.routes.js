@@ -15,6 +15,9 @@ const router = express.Router();
 const can = (action) => requirePermission("calendar", action);
 
 router.get("/", can("view"), c.listEvents);
+// Alias: the admin calendar fetches GET /calendar/events?start&end. Declared
+// before "/:id" so it isn't captured as an event id.
+router.get("/events", can("view"), c.listEvents);
 router.get("/by-reference", can("view"), c.listForReference);
 router.post("/", can("create"), v.validateEventCreate, c.createEvent);
 router.get("/:id", can("view"), c.getEvent);

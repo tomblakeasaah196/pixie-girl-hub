@@ -189,6 +189,39 @@ function invoiceHtml({ brand, invoice }) {
   });
 }
 
+// Quotation (reuses the invoice layout)
+function quotationHtml({ brand, quotation }) {
+  const q = quotation || {};
+  const lines = Array.isArray(q.lines) ? q.lines : [];
+  const rows =
+    lines
+      .map(
+        (l) => `<tr>
+          <td>${esc(l.description || l.item || l.name || "-")}</td>
+          <td class="right">${esc(l.quantity ?? l.qty ?? "")}</td>
+          <td class="right">${esc(ngn(l.unit_price_ngn ?? l.unit_price ?? 0))}</td>
+          <td class="right">${esc(ngn(l.line_total_ngn ?? l.amount_ngn ?? 0))}</td>
+        </tr>`,
+      )
+      .join("") || `<tr><td colspan="4" class="muted">No line items</td></tr>`;
+  let totals = totalsRow("Subtotal", q.subtotal_ngn);
+  if (present(q.discount_amount_ngn))
+    totals += totalsRow("Discount", q.discount_amount_ngn);
+  if (present(q.tax_amount_ngn))
+    totals += totalsRow("Tax / VAT", q.tax_amount_ngn);
+  totals += totalsRow("Total", q.total_ngn);
+  return render("invoice", `Quotation ${q.quotation_number || ""}`, {
+    invoice_number: q.quotation_number || q.quotation_id || "",
+    brand,
+    status: q.status || "-",
+    bill_to: q.contact_name || q.customer_name || q.bill_to || "-",
+    issue_date: day(q.created_at) || "-",
+    due_date: day(q.valid_until || q.expires_at) || "-",
+    rows,
+    totals,
+  });
+}
+
 // Sales / POS receipt
 function receiptHtml({ brand, order }) {
   const o = order || {};
@@ -318,6 +351,7 @@ module.exports = {
   reportHtml,
   deliveryLetterHtml,
   invoiceHtml,
+  quotationHtml,
   receiptHtml,
   payslipHtml,
   purchaseOrderHtml,

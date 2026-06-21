@@ -13,8 +13,11 @@ const BASE = "/purchasing";
 
 // ── Suppliers ─────────────────────────────────────────────
 
-export function listSuppliers() {
-  return api.get<Supplier[]>(`${BASE}/suppliers`);
+export async function listSuppliers() {
+  // The endpoint returns { data, meta }; the api client passes that through.
+  // Suppliers are consumed as a bare array, so normalise either shape.
+  const r = await api.get<Supplier[] | { data: Supplier[] }>(`${BASE}/suppliers`);
+  return Array.isArray(r) ? r : (r?.data ?? []);
 }
 
 export function getSupplier(id: string) {

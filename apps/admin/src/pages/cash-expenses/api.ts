@@ -145,15 +145,24 @@ export function listExpenseCategories() {
   return api.get<ExpenseCategory[]>(`${EX}/categories`);
 }
 
-export function createExpense(input: {
-  category_key: string;
-  expense_type: string;
-  amount_ngn: number;
+export interface ExpenseLineInput {
+  category_id: string;
   description: string;
-  expense_date: string;
+  amount_ngn: number;
+  vat_amount_ngn?: number;
   vendor_name?: string;
-  lines: { amount_ngn: number; description?: string; account_id?: string }[];
-}) {
+  receipt_date?: string;
+}
+export interface CreateExpenseInput {
+  title: string;
+  expense_date: string;
+  expense_type?: string;
+  description?: string;
+  lines: ExpenseLineInput[];
+}
+
+// Matches the backend expenseCreate schema (title + dated line items).
+export function createExpense(input: CreateExpenseInput) {
   return api.post<Expense>(EX, input);
 }
 

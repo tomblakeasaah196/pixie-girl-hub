@@ -268,7 +268,26 @@ async function send({ brand, user, request_id, id, input = {} }) {
     brand,
     invoice: { ...inv, sent_via: input.sent_via || inv.sent_via },
   }).catch(() => {});
+  // Best-effort: archive the sent invoice PDF in Documents. Non-blocking and
+  // skipped cleanly if PDF rendering is disabled.
+  archiveInvoicePdf({ brand, user, id }).catch(() => {});
   return updated;
+}
+
+/** Render the invoice to PDF and register it in shared.documents. */
+async function archiveInvoicePdf({ brand, user, id }) {
+  const full = await getById({ brand, id });
+  if (!full) return;
+  const { invoiceHtml } = require("../../services/pdf.templates");
+  await pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html: invoiceHtml({ brand, invoice: full }),
+    title: `Invoice ${full.invoice_number || id}`,
+    document_type: "invoice",
+    reference_type: "invoice",
+    reference_id: id,
+  });
 }
 async function recordPayment({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {

@@ -25,7 +25,30 @@ export interface CrmKpiRaw {
   avg_days_to_close: number | null;
 }
 
-export const getCrmKpis = () => api.get<CrmKpiRaw>("/crm/kpis");
+interface CrmKpiServer {
+  open_deals: number;
+  open_pipeline_ngn: string | number;
+  won_this_month: number;
+  won_value_this_month_ngn: string | number;
+  win_rate: number | null;
+}
+
+// The /crm/kpis endpoint returns a different field set than the dashboard
+// reads; map it (and derive the two values the backend doesn't send).
+export const getCrmKpis = async (): Promise<CrmKpiRaw> => {
+  const r = await api.get<CrmKpiServer>("/crm/kpis");
+  const won = Number(r.won_this_month) || 0;
+  const wonValue = Number(r.won_value_this_month_ngn) || 0;
+  return {
+    open_deals: Number(r.open_deals) || 0,
+    total_pipeline_value_ngn: Number(r.open_pipeline_ngn) || 0,
+    deals_won_this_month: won,
+    revenue_this_month_ngn: wonValue,
+    win_rate_pct: r.win_rate != null ? Number(r.win_rate) * 100 : 0,
+    avg_deal_value_ngn: won > 0 ? wonValue / won : 0,
+    avg_days_to_close: null,
+  };
+};
 
 // ── Today feed aggregation ────────────────────────────────────────────────
 // Composed on the frontend from multiple fast endpoints.

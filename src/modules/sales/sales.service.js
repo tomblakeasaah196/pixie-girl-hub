@@ -1235,7 +1235,7 @@ async function createQuotation({ brand, user, request_id, input }) {
   });
 }
 async function sendQuotation({ brand, user, request_id, id, input = {} }) {
-  return transaction(async (client) => {
+  const updated = await transaction(async (client) => {
     const q = await repo.findQuotationById({ client, brand, id });
     if (!q) throw new NotFoundError("Quotation");
     if (!["draft", "sent"].includes(q.status))
@@ -1244,7 +1244,7 @@ async function sendQuotation({ brand, user, request_id, id, input = {} }) {
         `Cannot send a '${q.status}' quotation`,
         409,
       );
-    const updated = await repo.setQuotationStatus({
+    const u = await repo.setQuotationStatus({
       client,
       brand,
       id,
@@ -1264,7 +1264,27 @@ async function sendQuotation({ brand, user, request_id, id, input = {} }) {
       request_id,
     });
     events.emit("quotation.sent", { brand, quotation_id: id });
-    return updated;
+    return u;
+  });
+  // Best-effort: archive the quotation PDF in Documents (non-blocking; skipped
+  // cleanly if PDF rendering is disabled).
+  archiveQuotationPdf({ brand, user, id }).catch(() => {});
+  return updated;
+}
+
+/** Render the quotation to PDF and register it in shared.documents. */
+async function archiveQuotationPdf({ brand, user, id }) {
+  const full = await repo.findQuotationById({ brand, id });
+  if (!full) return;
+  const { quotationHtml } = require("../../services/pdf.templates");
+  await pdf.renderAndStore({
+    brand,
+    user_id: user ? user.user_id : null,
+    html: quotationHtml({ brand, quotation: full }),
+    title: `Quotation ${full.quotation_number || id}`,
+    document_type: "quotation",
+    reference_type: "quotation",
+    reference_id: id,
   });
 }
 async function decideQuotation({

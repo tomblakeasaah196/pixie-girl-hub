@@ -49,6 +49,14 @@ function qs(params: object) {
 export const listContacts = (params: ContactListParams = {}) =>
   api.get<PaginatedResponse<Contact>>(`${C}${qs(params)}`);
 
+export interface ContactStats {
+  total: number;
+  vip: number;
+  new_this_month: number;
+  at_risk: number;
+}
+export const getContactStats = () => api.get<ContactStats>(`${C}/stats`);
+
 export const getContact = (id: string) => api.get<Contact>(`${C}/${id}`);
 
 export const createContact = (input: ContactCreateInput) =>

@@ -320,7 +320,7 @@ export const router = createBrowserRouter(
               path: "expenses",
               element: (
                 <Suspense fallback={null}>
-                  <CashExpensesHome defaultTab="expenses" />
+                  <CashExpensesHome mode="expenses" />
                 </Suspense>
               ),
             },
@@ -328,7 +328,7 @@ export const router = createBrowserRouter(
               path: "cash-requests",
               element: (
                 <Suspense fallback={null}>
-                  <CashExpensesHome defaultTab="my-requests" />
+                  <CashExpensesHome mode="cash" />
                 </Suspense>
               ),
             },

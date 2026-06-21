@@ -29,6 +29,15 @@ export function useContacts(params: contactsApi.ContactListParams = {}) {
   });
 }
 
+export function useContactStats() {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["contact-stats", biz],
+    queryFn: contactsApi.getContactStats,
+    staleTime: 60_000,
+  });
+}
+
 export function useContact(id: string | null) {
   const biz = useBiz();
   return useQuery({

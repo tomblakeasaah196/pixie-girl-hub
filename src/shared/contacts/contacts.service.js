@@ -313,7 +313,12 @@ async function removeTag({ brand, user, request_id, id, tag_id }) {
   );
 }
 
+function stats({ brand }) {
+  return repo.stats({ brand });
+}
+
 module.exports = {
+  stats,
   listTags,
   addTag,
   removeTag,

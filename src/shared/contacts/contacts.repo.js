@@ -8,8 +8,39 @@
 
 const { query } = require("../../config/database");
 
-const { VALID } = require("../../config/brands");
+const { VALID, t } = require("../../config/brands");
 const ex = (c) => (c ? c.query.bind(c) : query);
+
+/**
+ * Directory KPIs. total/vip/new are global (contacts are shared); at_risk is
+ * per-brand — customers who have ordered from this brand but not in 90 days.
+ */
+async function stats({ brand }) {
+  const { rows } = await query(
+    `SELECT
+        count(*)::int AS total,
+        count(*) FILTER (WHERE priority_level = 'vip')::int AS vip,
+        count(*) FILTER (WHERE created_at >= date_trunc('month', now()))::int AS new_this_month
+       FROM shared.contacts
+      WHERE is_deleted = false`,
+  );
+  let at_risk = 0;
+  if (brand && VALID.has(brand)) {
+    const { rows: ar } = await query(
+      `SELECT count(*)::int AS at_risk
+         FROM shared.contacts c
+        WHERE c.is_deleted = false
+          AND 'customer' = ANY(c.contact_type)
+          AND EXISTS (SELECT 1 FROM ${t(brand, "sales_orders")} o
+                       WHERE o.contact_id = c.contact_id)
+          AND NOT EXISTS (SELECT 1 FROM ${t(brand, "sales_orders")} o
+                           WHERE o.contact_id = c.contact_id
+                             AND o.created_at >= now() - interval '90 days')`,
+    );
+    at_risk = ar[0].at_risk;
+  }
+  return { ...rows[0], at_risk };
+}
 
 const C_COLS = [
   "contact_type",
@@ -340,6 +371,7 @@ async function removeTag({ client, brand, contact_id, tag_id }) {
 }
 
 module.exports = {
+  stats,
   listTags,
   addTag,
   removeTag,

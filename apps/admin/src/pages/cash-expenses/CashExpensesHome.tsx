@@ -7,6 +7,7 @@ import {
   Banknote,
   AlertTriangle,
   Lock,
+  FileText,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -39,16 +40,35 @@ import type {
 
 const CashRequestDetailDrawer = lazy(() => import("./CashRequestDetailDrawer"));
 const CreateCashRequestDrawer = lazy(() => import("./CreateCashRequestDrawer"));
+const CreateExpenseDrawer = lazy(() =>
+  import("./CreateExpenseDrawer").then((m) => ({
+    default: m.CreateExpenseDrawer,
+  })),
+);
 const SettlementWizardDrawer = lazy(() => import("./SettlementWizardDrawer"));
 const ExpenseDetailDrawer = lazy(() => import("./ExpenseDetailDrawer"));
 
-type Tab = "my-requests" | "approval-queue" | "all-requests" | "expenses";
+type Tab =
+  | "my-requests"
+  | "drafts"
+  | "approval-queue"
+  | "all-requests"
+  | "expenses";
 
-export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
-  useBreadcrumbs([{ label: "Cash & Expenses" }]);
+export default function CashExpensesHome({
+  mode = "cash",
+  defaultTab,
+}: {
+  mode?: "cash" | "expenses";
+  defaultTab?: Tab;
+}) {
+  const isExpenses = mode === "expenses";
+  useBreadcrumbs([{ label: isExpenses ? "Expenses" : "Cash Requests" }]);
   const can = useAuthStore((s) => s.can);
 
-  const [tab, setTab] = useState<Tab>(defaultTab ?? "my-requests");
+  const [tab, setTab] = useState<Tab>(
+    defaultTab ?? (isExpenses ? "expenses" : "my-requests"),
+  );
   const [crStatusFilter, setCrStatusFilter] = useState("");
   const [exStatusFilter, setExStatusFilter] = useState("");
   const [crPage, setCrPage] = useState(1);
@@ -57,6 +77,7 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
   const [selectedCr, setSelectedCr] = useState<CashRequest | null>(null);
   const [selectedEx, setSelectedEx] = useState<Expense | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showCreateExpense, setShowCreateExpense] = useState(false);
   const [showSettle, setShowSettle] = useState<CashRequest | null>(null);
 
   if (!can("expenses", "view")) {
@@ -83,54 +104,73 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
       key: "my-requests",
       label: "My Requests",
       icon: <Wallet className="w-4 h-4" />,
-      show: true,
+      show: !isExpenses,
+    },
+    {
+      key: "drafts",
+      label: "Drafts",
+      icon: <FileText className="w-4 h-4" />,
+      show: !isExpenses,
     },
     {
       key: "approval-queue",
       label: "Approval Queue",
       icon: <ClipboardCheck className="w-4 h-4" />,
-      show: canApprove,
+      show: !isExpenses && canApprove,
     },
     {
       key: "all-requests",
       label: "All Cash Requests",
       icon: <Banknote className="w-4 h-4" />,
-      show: canApprove,
+      show: !isExpenses && canApprove,
     },
     {
       key: "expenses",
       label: "Expenses",
       icon: <Receipt className="w-4 h-4" />,
-      show: true,
+      show: isExpenses,
     },
   ];
+  const visibleTabs = tabs.filter((t) => t.show);
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-2xl font-medium">Cash & Expenses</h1>
+          <h1 className="font-display text-2xl font-medium">
+            {isExpenses ? "Expenses" : "Cash Requests"}
+          </h1>
           <p className="text-text-muted text-sm mt-0.5">
-            Requests, approvals, disbursements & expenses
+            {isExpenses
+              ? "Record and track company expenses"
+              : "Requests, approvals & disbursements"}
           </p>
         </div>
-        {can("expenses", "create") && (
-          <Button
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => setShowCreate(true)}
-          >
-            New Cash Request
-          </Button>
-        )}
+        {can("expenses", "create") &&
+          (isExpenses ? (
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setShowCreateExpense(true)}
+            >
+              New Expense
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setShowCreate(true)}
+            >
+              New Cash Request
+            </Button>
+          ))}
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 p-1 glass rounded-2xl overflow-x-auto">
-        {tabs
-          .filter((t) => t.show)
-          .map((t) => (
+      {/* Tab bar — hidden when a module has a single view */}
+      {visibleTabs.length > 1 && (
+        <div className="flex gap-1 p-1 glass rounded-2xl overflow-x-auto">
+          {visibleTabs.map((t) => (
             <button
               key={t.key}
               onClick={() => {
@@ -149,7 +189,8 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
               {t.label}
             </button>
           ))}
-      </div>
+        </div>
+      )}
 
       {/* Tab content */}
       {tab === "my-requests" && (
@@ -161,6 +202,18 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
           onSelect={setSelectedCr}
           onCreate={() => setShowCreate(true)}
           canCreate={can("expenses", "create")}
+        />
+      )}
+      {tab === "drafts" && (
+        <MyRequestsTab
+          statusFilter="draft"
+          onStatusFilter={() => {}}
+          page={crPage}
+          onPage={setCrPage}
+          onSelect={setSelectedCr}
+          onCreate={() => setShowCreate(true)}
+          canCreate={can("expenses", "create")}
+          lockStatus
         />
       )}
       {tab === "approval-queue" && (
@@ -199,6 +252,9 @@ export default function CashExpensesHome({ defaultTab }: { defaultTab?: Tab }) {
         )}
         {showCreate && (
           <CreateCashRequestDrawer onClose={() => setShowCreate(false)} />
+        )}
+        {showCreateExpense && (
+          <CreateExpenseDrawer onClose={() => setShowCreateExpense(false)} />
         )}
         {showSettle && (
           <SettlementWizardDrawer
@@ -364,6 +420,7 @@ function MyRequestsTab({
   onSelect,
   onCreate,
   canCreate,
+  lockStatus,
 }: {
   statusFilter: string;
   onStatusFilter: (v: string) => void;
@@ -372,6 +429,7 @@ function MyRequestsTab({
   onSelect: (cr: CashRequest) => void;
   onCreate: () => void;
   canCreate: boolean;
+  lockStatus?: boolean;
 }) {
   const { data, isLoading, isError, refetch } = useCashRequests({
     status: statusFilter || undefined,
@@ -461,11 +519,13 @@ function MyRequestsTab({
         onRowClick={onSelect}
         loading={isLoading}
         toolbar={
-          <StatusFilters
-            tabs={CR_STATUS_TABS}
-            value={statusFilter}
-            onChange={onStatusFilter}
-          />
+          lockStatus ? undefined : (
+            <StatusFilters
+              tabs={CR_STATUS_TABS}
+              value={statusFilter}
+              onChange={onStatusFilter}
+            />
+          )
         }
         empty={{
           icon: <Wallet className="w-7 h-7" />,

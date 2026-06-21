@@ -42,8 +42,9 @@ router.delete("/segments/:segId", can("delete"), c.deleteSegment);
 // Contacts (global)
 router.get("/", can("view"), c.list);
 router.post("/", can("create"), v.validateCreate, c.create);
-// Literal — declared before /:id so "milestones" isn't captured as an id.
+// Literal — declared before /:id so "milestones"/"stats" aren't captured as ids.
 router.get("/milestones", can("view"), c.milestones);
+router.get("/stats", can("view"), c.stats);
 router.get("/:id", can("view"), c.getById);
 router.patch("/:id", can("edit"), v.validateUpdate, c.update);
 router.delete("/:id", can("delete"), c.remove);

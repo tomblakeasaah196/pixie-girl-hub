@@ -26,15 +26,24 @@ async function salesKpis({ brand, from, to }) {
   }
   const { rows } = await query(
     `SELECT
-        count(*) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed'))::int AS paid_orders,
-        COALESCE(SUM(total_ngn) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed')),0) AS revenue_ngn,
-        count(*) FILTER (WHERE status = 'pending_payment')::int AS pending_orders,
-        COALESCE(SUM(balance_due_ngn) FILTER (WHERE status = 'pending_payment'),0) AS outstanding_ngn
+        count(*) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed'))::int AS orders_mtd,
+        COALESCE(SUM(total_ngn) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed')),0)::text AS revenue_mtd,
+        count(*) FILTER (WHERE status = 'pending_payment')::int AS pending_payment_count,
+        COALESCE(ROUND(
+          SUM(total_ngn) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed'))
+          / NULLIF(count(*) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed')), 0)
+        , 2), 0)::text AS avg_order_value
        FROM ${t(brand, "sales_orders")}
       WHERE true ${range}`,
     params,
   );
-  return rows[0];
+  // Open quotations (awaiting customer action).
+  const { rows: q } = await query(
+    `SELECT count(*)::int AS open_quotes
+       FROM ${t(brand, "quotations")}
+      WHERE status IN ('sent','viewed')`,
+  );
+  return { ...rows[0], open_quotes: q[0].open_quotes };
 }
 
 // ── Ops KPIs ───────────────────────────────────────────────

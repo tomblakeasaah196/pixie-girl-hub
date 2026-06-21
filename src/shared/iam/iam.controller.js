@@ -186,7 +186,15 @@ async function exportReview(req, res) {
 
 async function queryAuditLog(req, res) {
   const result = await service.queryAuditLog(ctx(req), req.query);
-  res.json(result);
+  // The admin audit table reads { rows, total }. Return that shape flat (no
+  // top-level `data` key) so the api client doesn't unwrap it to a bare array
+  // and drop the total.
+  res.json({
+    rows: result.rows ?? result.data ?? [],
+    total: result.total ?? 0,
+    page: result.page,
+    page_size: result.page_size,
+  });
 }
 
 async function getAuditEntry(req, res) {
@@ -217,7 +225,13 @@ async function exportAuditLog(req, res) {
 
 async function listSecurityEvents(req, res) {
   const result = await service.listSecurityEvents(ctx(req), req.query);
-  res.json(result);
+  // Admin reads { rows, total } — return flat so the api client keeps total.
+  res.json({
+    rows: result.rows ?? result.data ?? [],
+    total: result.total ?? 0,
+    page: result.page,
+    page_size: result.page_size,
+  });
 }
 
 module.exports = {

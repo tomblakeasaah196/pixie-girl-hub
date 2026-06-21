@@ -2,12 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { ArrowUpDown, Download, Plus } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/primitives";
-import {
-  ErrorState,
-  MultiSelect,
-  Select,
-  NumberField,
-} from "@/components/ui/controls";
+import { ErrorState, Select, NumberField } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -252,15 +247,13 @@ export default function MovementsTab() {
   const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
 
   const [page, setPage] = useState(1);
-  const [typeFilters, setTypeFilters] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState<string>("");
   const [locationFilter, setLocationFilter] = useState("");
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
 
-  /* The API accepts a single movement_type, so when multiple are selected
-     we fetch all and filter client-side. When exactly one is selected,
-     we pass it to the API for efficiency. */
-  const apiMovementType = typeFilters.length === 1 ? typeFilters[0] : undefined;
+  // Single movement-type filter ("" = all); passed straight to the API.
+  const apiMovementType = typeFilter || undefined;
 
   const {
     data: movementsData,
@@ -296,10 +289,6 @@ export default function MovementsTab() {
   const filteredRows = useMemo(() => {
     let rows = movementsData?.data ?? [];
 
-    if (typeFilters.length > 1) {
-      rows = rows.filter((r) => typeFilters.includes(r.movement_type));
-    }
-
     if (locationFilter) {
       rows = rows.filter((r) => r.location_id === locationFilter);
     }
@@ -319,7 +308,7 @@ export default function MovementsTab() {
     }
 
     return rows;
-  }, [movementsData?.data, typeFilters, locationFilter, search]);
+  }, [movementsData?.data, locationFilter, search]);
 
   const handleExport = useCallback(() => {
     exportCsv(filteredRows, locationMap);
@@ -436,13 +425,14 @@ export default function MovementsTab() {
     <div className="flex flex-col gap-4">
       {/* Filters bar */}
       <div className="flex flex-col gap-3">
-        <MultiSelect
-          values={typeFilters}
+        <Select
+          value={typeFilter}
           onChange={(v) => {
-            setTypeFilters(v);
+            setTypeFilter(v);
             setPage(1);
           }}
-          options={[...MOVEMENT_TYPES]}
+          options={[{ value: "", label: "All types" }, ...MOVEMENT_TYPES]}
+          className="w-[220px]"
         />
         <div className="flex items-center gap-2 flex-wrap">
           <Select

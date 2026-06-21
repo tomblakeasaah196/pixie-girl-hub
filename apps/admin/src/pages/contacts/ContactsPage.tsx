@@ -14,7 +14,7 @@ import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button, Pill, KpiTile, type Tone } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
-import { useContacts } from "./hooks";
+import { useContacts, useContactStats } from "./hooks";
 import {
   useAmbassadors,
   useStylists,
@@ -146,6 +146,7 @@ export function ContactsPage() {
 
   const { data, isLoading } = useContacts(params);
   const contacts = data?.data ?? [];
+  const { data: contactStats } = useContactStats();
   const meta = data?.meta;
 
   // Programme data sources (only the active one matters; the others idle).
@@ -567,9 +568,21 @@ export function ContactsPage() {
           label={`Total ${emptyLabel}`}
           value={totalCount != null ? totalCount.toLocaleString() : "—"}
         />
-        <KpiTile label="VIP" value="—" tone="accent" />
-        <KpiTile label="New this month" value="—" tone="info" />
-        <KpiTile label="At-risk" value="—" tone="warn" />
+        <KpiTile
+          label="VIP"
+          value={contactStats ? contactStats.vip.toLocaleString() : "—"}
+          tone="accent"
+        />
+        <KpiTile
+          label="New this month"
+          value={contactStats ? contactStats.new_this_month.toLocaleString() : "—"}
+          tone="info"
+        />
+        <KpiTile
+          label="At-risk"
+          value={contactStats ? contactStats.at_risk.toLocaleString() : "—"}
+          tone="warn"
+        />
       </div>
 
       {isAmbassadorTab ? (

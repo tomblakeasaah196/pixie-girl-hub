@@ -37,6 +37,7 @@ export function SaleLandingPublic() {
       slug: d.slug,
       name: d.name,
       state: d.state,
+      brand,
       hero: d.hero,
       countdown_to: d.countdown_to,
       countdown_message: d.countdown_message,
@@ -46,7 +47,7 @@ export function SaleLandingPublic() {
       ended: d.ended,
       gallery: galleryFromBlocks(d.blocks),
     };
-  }, [q.data]);
+  }, [q.data, brand]);
 
   if (q.isLoading) {
     return (

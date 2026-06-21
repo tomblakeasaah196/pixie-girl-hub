@@ -39,7 +39,16 @@ import { SaleFooter } from "./blocks/SaleFooter";
 
 const NULL_RENDERERS: Record<string, () => null> = {};
 
-export function LandingShell({ payload }: { payload: LandingPayload }) {
+export function LandingShell({
+  payload,
+  omitHero = false,
+}: {
+  payload: LandingPayload;
+  /** When true the built-in <Hero> is skipped so a host (the live-state page)
+   *  can mount its own Atelier hero above this commerce body. All blocks and
+   *  the live overlays render exactly as before. */
+  omitHero?: boolean;
+}) {
   const { state, derived, msToEnd } = useMemo(
     () => deriveState(payload),
     [payload],
@@ -72,8 +81,11 @@ export function LandingShell({ payload }: { payload: LandingPayload }) {
         isEnded && "ended-fade",
       )}
     >
-      {/* Hero is always first — its variant depends on the derived state. */}
-      <Hero payload={payload} derived={derived} msToEnd={msToEnd} />
+      {/* Hero is always first — its variant depends on the derived state.
+          The live-state page omits it and mounts its own Atelier hero. */}
+      {!omitHero && (
+        <Hero payload={payload} derived={derived} msToEnd={msToEnd} />
+      )}
 
       {/* Before-state cinematic reveal (animated curtain on first load). */}
       <AnimatePresence>

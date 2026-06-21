@@ -213,21 +213,25 @@ export function KpiTile({
 /* ── MoneyText — NGN truth + display currency (canon §4.6) ── */
 export function MoneyText({
   ngn,
+  usd,
   display,
   currency = "NGN",
   className,
 }: {
   ngn: number;
+  usd?: number;
   display?: number;
   currency?: string;
   className?: string;
 }) {
+  const displayValue = display ?? usd;
+  const displayCurrency = display ? currency : (usd ? "USD" : "NGN");
   const primary =
-    display != null && currency !== "NGN"
-      ? fmtMoney(display, currency)
+    displayValue != null && displayCurrency !== "NGN"
+      ? fmtMoney(displayValue, displayCurrency)
       : fmtMoney(ngn, "NGN");
   const secondary =
-    display != null && currency !== "NGN" ? fmtMoney(ngn, "NGN") : null;
+    displayValue != null && displayCurrency !== "NGN" ? fmtMoney(ngn, "NGN") : null;
   return (
     <span className={cn("font-display font-medium tabular-nums", className)}>
       {primary}

@@ -1,0 +1,38 @@
+-- ============================================================
+-- TEMPLATE 000046 — Catalogue: USD pricing (dual-currency)
+-- Add USD columns alongside existing NGN prices (no conversions,
+-- prices set manually per product).
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- ============================================================
+
+-- ── 1. Product variant prices (USD) ─────────────────────
+ALTER TABLE {{BUSINESS}}.product_variants
+  ADD COLUMN IF NOT EXISTS price_storefront_usd   NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS price_pos_usd          NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS price_wholesale_usd    NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS price_partner_usd      NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS compare_at_price_usd   NUMERIC(14,2);
+
+-- ── 2. Styled product prices (USD) ─────────────────────
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS retail_price_usd NUMERIC(14,2);
+
+-- ── 3. Styled variant price overrides (USD) ────────────
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  ADD COLUMN IF NOT EXISTS price_override_usd   NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS compare_at_price_usd NUMERIC(14,2);
+
+-- ── 4. Bundle pricing (USD) ────────────────────────────
+ALTER TABLE {{BUSINESS}}.bundle_offers
+  ADD COLUMN IF NOT EXISTS bundle_price_usd NUMERIC(14,2);
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}'
+--       AND table_name IN ('product_variants', 'styled_products', 'styled_product_variants', 'bundle_offers')
+--       AND column_name LIKE '%_usd'
+--     ORDER BY table_name, column_name;            -- should show 10 new columns
+-- ============================================================

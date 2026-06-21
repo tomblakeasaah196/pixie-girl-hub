@@ -75,10 +75,15 @@ const VAR_COLS = [
   "variant_density",
   "variant_cap_size",
   "price_storefront_ngn",
+  "price_storefront_usd",
   "price_pos_ngn",
+  "price_pos_usd",
   "price_wholesale_ngn",
+  "price_wholesale_usd",
   "price_partner_ngn",
+  "price_partner_usd",
   "compare_at_price_ngn",
+  "compare_at_price_usd",
   // cost_price_ngn / min_price_ngn DEPRECATED (P0-1) — true cost lives
   // encrypted in product_variant_cost_vault, never written here.
   "min_margin_pct",

@@ -20,6 +20,7 @@ const BUNDLE_COLS = [
   "description",
   "pricing_model",
   "bundle_price_ngn",
+  "bundle_price_usd",
   "discount_value",
   "buy_quantity",
   "get_quantity",

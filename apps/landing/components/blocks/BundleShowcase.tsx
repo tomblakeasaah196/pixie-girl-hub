@@ -215,14 +215,15 @@ export function SectionHeader({
   title: string;
   subtitle?: string;
 }) {
+  const words = title.trim().split(/\s+/);
+  const last = words.length > 1 ? words[words.length - 1] : "";
+  const head = words.length > 1 ? words.slice(0, -1).join(" ") : title;
   return (
     <div className="text-center max-w-[680px] mx-auto">
-      {eyebrow && <div className="micro mb-3">{eyebrow}</div>}
+      {eyebrow && <div className="eyebrow mb-3">{eyebrow}</div>}
       <h2 className="font-display text-[clamp(30px,5vw,52px)] leading-[1.05]">
-        {title.replace(/\s\S+$/, "")}{" "}
-        <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">
-          {title.split(/\s+/).slice(-1)[0]}
-        </em>
+        {head}{" "}
+        {last && <em className="italic text-gold">{last}</em>}
       </h2>
       {subtitle && (
         <p className="mt-4 text-[rgb(var(--text-muted))]">{subtitle}</p>

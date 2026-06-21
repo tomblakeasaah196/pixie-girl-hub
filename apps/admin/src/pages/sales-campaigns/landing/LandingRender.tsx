@@ -5,10 +5,12 @@
  *   1. the full-screen Studio preview (live, from in-progress edits)
  *   2. the public /sale/:slug page (from the public landing payload)
  *
- * It is intentionally self-contained and token-driven (Maroon Noir + the
- * per-brand tint) so it reads as a real luxury storefront, not an admin form.
- * Blocks render in the order the builder set; unknown/empty blocks degrade to
- * an elegant editorial section rather than a broken placeholder.
+ * It is intentionally self-contained and token-driven (Maroon Noir + a per-brand
+ * champagne accent) so it reads as a real luxury storefront — and so the admin
+ * preview matches the production landing app (apps/landing) one-to-one: the same
+ * cinematic hero, the same always-on countdown to the hour, the same editorial
+ * champagne language. Blocks render in the order the builder set; unknown/empty
+ * blocks degrade to an elegant editorial section rather than a broken placeholder.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -29,6 +31,8 @@ export interface LandingModel {
   slug: string;
   name: string;
   state: PublicState;
+  /** Brand key — drives the champagne tint + wordmark. Optional; defaults to PXG. */
+  brand?: string | null;
   hero: {
     title?: string | null;
     subtitle?: string | null;
@@ -44,6 +48,16 @@ export interface LandingModel {
   gallery?: string[];
 }
 
+/** Champagne accent per brand — mirrors apps/landing globals (--gold). */
+const GOLD_BY_BRAND: Record<string, string> = {
+  pixiegirl: "212 175 122", // #D4AF7A champagne
+  faitlynhair: "217 191 168", // #D9BFA8 warm taupe
+};
+const BRAND_LABEL: Record<string, string> = {
+  pixiegirl: "Pixie Girl Global",
+  faitlynhair: "Faitlyn Hair",
+};
+
 const NGN = new Intl.NumberFormat("en-NG", {
   style: "currency",
   currency: "NGN",
@@ -58,7 +72,7 @@ function ngn(v: number | string | null | undefined): string {
 export function placeholderBg(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
-  return `linear-gradient(150deg, rgb(var(--accent-deep)/0.55), rgb(var(--panel)/0.92)), conic-gradient(from ${h}deg at 70% 20%, rgb(var(--accent)/0.35), transparent 40%)`;
+  return `linear-gradient(150deg, rgb(var(--accent-deep)/0.55), rgb(var(--panel)/0.92)), conic-gradient(from ${h}deg at 70% 20%, rgb(var(--gold)/0.35), transparent 40%)`;
 }
 
 /** Pull editable body copy from a block (stored under props.body). */
@@ -114,6 +128,20 @@ const BLOCK_TITLE: Record<
   vip_signup: { eyebrow: "The list", title: "Join the inner circle" },
 };
 
+/** Editorial heading — italicises the final word in champagne. */
+function GoldHeadline({ title }: { title: string }) {
+  const words = title.trim().split(/\s+/);
+  if (words.length <= 1)
+    return <em className="italic text-[rgb(var(--gold))]">{title}</em>;
+  const last = words[words.length - 1];
+  const head = words.slice(0, -1).join(" ");
+  return (
+    <>
+      {head} <em className="italic text-[rgb(var(--gold))]">{last}</em>
+    </>
+  );
+}
+
 /** Section shell — consistent rhythm + editorial heading. */
 function Section({
   eyebrow,
@@ -140,13 +168,13 @@ function Section({
         {(eyebrow || title) && (
           <div className="mb-8 md:mb-12 text-center">
             {eyebrow && (
-              <div className="text-[11px] tracking-[0.3em] uppercase text-accent-glow/90 font-semibold mb-3">
+              <div className="text-[10.5px] tracking-[0.34em] uppercase text-[rgb(var(--gold))] font-bold mb-3">
                 {eyebrow}
               </div>
             )}
             {title && (
               <h2 className="font-display text-[28px] md:text-[42px] leading-[1.05]">
-                {title}
+                <GoldHeadline title={title} />
               </h2>
             )}
           </div>
@@ -154,6 +182,46 @@ function Section({
         {children}
       </div>
     </section>
+  );
+}
+
+/** Countdown cells, glassy — the always-on hero timer (Before → start, Live → end). */
+function CountdownCells({
+  cd,
+  label,
+}: {
+  cd: NonNullable<ReturnType<typeof useCountdown>>;
+  label?: string | null;
+}) {
+  const units: [number, string][] = [
+    [cd.days, "Days"],
+    [cd.hours, "Hrs"],
+    [cd.mins, "Min"],
+    [cd.secs, "Sec"],
+  ];
+  return (
+    <div className="mt-8">
+      {label && (
+        <div className="text-[10.5px] tracking-[0.34em] uppercase text-[rgb(var(--gold))] font-bold mb-3">
+          {label}
+        </div>
+      )}
+      <div className="flex gap-2.5 md:gap-3.5">
+        {units.map(([value, unit]) => (
+          <div
+            key={unit}
+            className="min-w-[60px] md:min-w-[78px] rounded-[16px] bg-black/35 backdrop-blur-md border border-white/15 px-3.5 md:px-5 py-3 md:py-4 text-center"
+          >
+            <div className="font-mono tabular-nums text-[28px] md:text-[44px] leading-none text-white">
+              {String(value).padStart(2, "0")}
+            </div>
+            <div className="mt-1.5 text-[9px] tracking-[0.22em] uppercase text-white/55">
+              {unit}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -176,6 +244,18 @@ export function LandingRender({
   );
   const featured = (model.products || []).filter((p) => p.name);
 
+  const brandKey = model.brand || "pixiegirl";
+  const gold = GOLD_BY_BRAND[brandKey] || GOLD_BY_BRAND.pixiegirl;
+  const brandLabel = BRAND_LABEL[brandKey] || "Pixie Girl Global";
+  const monogram = brandLabel.trim().charAt(0).toUpperCase();
+
+  const stateBadge =
+    model.state === "live"
+      ? "Live now"
+      : model.state === "ended"
+        ? "Sale ended"
+        : "Coming soon";
+
   return (
     <div
       className={cn(
@@ -183,85 +263,114 @@ export function LandingRender({
         scrollable && "h-full overflow-y-auto",
         className,
       )}
-      style={{ scrollBehavior: "smooth" }}
+      style={
+        { "--gold": gold, scrollBehavior: "smooth" } as React.CSSProperties
+      }
     >
-      {/* Announcement bar */}
-      <div className="bg-accent-deep text-[#F4E9D9] text-center text-[11.5px] tracking-[0.2em] uppercase py-2.5 font-semibold">
-        {model.state === "live"
-          ? "The sale is live — complimentary delivery on orders over ₦150,000"
-          : model.state === "ended"
-            ? "This drop has closed — join the list for the next one"
-            : "Doors open soon — secure your early access"}
-      </div>
-
-      {/* ── HERO ───────────────────────────────────────────── */}
-      <header className="relative min-h-[78vh] md:min-h-[88vh] flex items-end overflow-hidden">
+      {/* ── HERO ─────────────────────────────────────────────── */}
+      <header className="relative min-h-[86vh] flex flex-col overflow-hidden">
+        {/* Full-bleed photograph (or a tasteful gradient). */}
         <div
-          className="absolute inset-0"
+          className="absolute inset-0 -z-20"
+          style={
+            model.hero.image_url
+              ? {
+                  backgroundImage: `url("${model.hero.image_url}")`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }
+              : { background: placeholderBg(model.slug || model.name || "hero") }
+          }
+        />
+        {/* Layered veil melting into the page background. */}
+        <div
+          className="absolute inset-0 -z-10"
           style={{
-            backgroundImage: model.hero.image_url
-              ? `linear-gradient(180deg, rgb(0 0 0/0.15) 0%, rgb(0 0 0/0.35) 45%, rgb(var(--bg)/0.96) 100%), url("${model.hero.image_url}")`
-              : placeholderBg(model.slug || model.name || "hero"),
-            backgroundSize: "cover",
-            backgroundPosition: "center",
+            background:
+              "radial-gradient(120% 80% at 50% 0%, transparent 0%, rgb(var(--bg)/0.3) 58%, rgb(var(--bg)/0.72) 100%), linear-gradient(180deg, rgb(0 0 0/0.5) 0%, rgb(0 0 0/0.12) 32%, rgb(0 0 0/0.25) 62%, rgb(var(--bg)) 100%)",
           }}
         />
-        <div className="relative w-full px-6 md:px-12 pb-14 md:pb-20">
-          <div className="max-w-[1140px] mx-auto">
-            <div className="max-w-[680px]">
-              <div className="inline-flex items-center gap-2 text-[11px] tracking-[0.32em] uppercase text-[#F4E9D9]/90 mb-5 px-3 py-1.5 rounded-full border border-[#F4E9D9]/25 backdrop-blur-sm">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-glow animate-pulse" />
-                {model.name}
-              </div>
-              <h1 className="font-display text-[clamp(40px,7vw,84px)] leading-[0.98] text-white drop-shadow-[0_2px_30px_rgb(0_0_0/0.5)]">
-                {model.hero.title || model.name}
-              </h1>
-              {model.hero.subtitle && (
-                <p className="mt-5 text-[15px] md:text-[18px] text-white/85 max-w-[560px] leading-relaxed">
-                  {model.hero.subtitle}
-                </p>
-              )}
+        {/* Ambient brand monogram. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 grid place-items-center overflow-hidden pointer-events-none"
+        >
+          <span
+            className="font-display italic leading-[0.8] tracking-[-0.04em] select-none"
+            style={{
+              fontSize: "clamp(16rem, 38vw, 36rem)",
+              color: "rgb(var(--text)/0.05)",
+            }}
+          >
+            {monogram}
+          </span>
+        </div>
 
-              {/* Countdown */}
-              {cd && model.state !== "ended" && (
-                <div className="mt-8 flex items-center gap-3 md:gap-4">
-                  {[
-                    { v: cd.days, l: "Days" },
-                    { v: cd.hours, l: "Hrs" },
-                    { v: cd.mins, l: "Min" },
-                    { v: cd.secs, l: "Sec" },
-                  ].map((u) => (
-                    <div
-                      key={u.l}
-                      className="min-w-[58px] md:min-w-[72px] rounded-[14px] bg-black/35 backdrop-blur-md border border-white/15 px-3 py-2.5 text-center"
-                    >
-                      <div className="font-mono text-[24px] md:text-[32px] tabular-nums text-white leading-none">
-                        {String(u.v).padStart(2, "0")}
-                      </div>
-                      <div className="text-[9px] tracking-[0.22em] uppercase text-white/55 mt-1.5">
-                        {u.l}
-                      </div>
-                    </div>
-                  ))}
-                  {model.countdown_message && (
-                    <span className="hidden md:block text-white/70 text-[13px] ml-2">
-                      {model.countdown_message}
+        {/* Top bar — wordmark + sales domain. */}
+        <div className="relative z-10 w-full max-w-[1140px] mx-auto px-6 md:px-12 pt-6 md:pt-8 flex items-center justify-between gap-4">
+          <span className="font-display text-[19px] md:text-[23px] leading-none text-white">
+            {brandLabel}
+          </span>
+          <span className="hidden md:block text-[10px] tracking-[0.34em] uppercase text-white/45">
+            /sale/{model.slug}
+          </span>
+        </div>
+
+        {/* Hero copy — bottom-weighted. */}
+        <div className="relative z-10 flex-1 flex items-end md:items-center">
+          <div className="w-full px-6 md:px-12 py-[clamp(32px,7vh,80px)]">
+            <div className="max-w-[1140px] mx-auto">
+              <div className="max-w-[700px]">
+                <div className="inline-flex items-center gap-2 mb-6 rounded-full border border-[rgb(var(--gold)/0.4)] bg-black/30 backdrop-blur-sm px-3.5 py-1.5">
+                  {model.state === "live" ? (
+                    <span className="relative w-1.5 h-1.5 rounded-full bg-success">
+                      <span className="absolute inset-0 rounded-full bg-success animate-ping" />
                     </span>
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[rgb(var(--gold))]" />
                   )}
+                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.3em] text-white">
+                    {stateBadge}
+                  </span>
                 </div>
-              )}
 
-              <div className="mt-9 flex flex-wrap items-center gap-3">
-                <button className="h-[52px] px-8 rounded-full bg-accent text-[#F4E9D9] font-semibold text-[15px] tracking-wide hover:brightness-110 transition shadow-[0_12px_40px_rgb(var(--accent)/0.45)]">
-                  {model.state === "ended"
-                    ? "Join the list"
-                    : model.state === "before"
-                      ? "Notify me"
-                      : model.hero.cta_text || "Shop the drop"}
-                </button>
-                <button className="h-[52px] px-7 rounded-full border border-white/25 text-white font-semibold text-[14px] hover:bg-white/10 transition backdrop-blur-sm">
-                  Explore the look book
-                </button>
+                <h1 className="font-display text-[clamp(42px,7.5vw,88px)] leading-[1.0] tracking-[-0.01em] text-white drop-shadow-[0_2px_30px_rgb(0_0_0/0.45)]">
+                  <GoldHeadline title={model.hero.title || model.name} />
+                </h1>
+
+                {model.hero.subtitle && (
+                  <p className="mt-5 max-w-[560px] text-[15px] md:text-[19px] text-white/85 leading-relaxed font-light">
+                    {model.hero.subtitle}
+                  </p>
+                )}
+
+                {/* Always-on countdown for Before / Live. */}
+                {cd && model.state !== "ended" && (
+                  <CountdownCells
+                    cd={cd}
+                    label={
+                      model.countdown_message ||
+                      (model.state === "before"
+                        ? "Doors open in"
+                        : "Sale ends in")
+                    }
+                  />
+                )}
+
+                <div className="mt-9 flex flex-wrap items-center gap-3">
+                  <button className="h-[52px] px-7 rounded-full bg-accent-deep text-[#F4E9D9] font-semibold text-[15px] tracking-wide hover:brightness-110 transition shadow-[0_12px_40px_rgb(var(--accent-deep)/0.5)]">
+                    {model.state === "ended"
+                      ? "Shop our collection"
+                      : model.state === "before"
+                        ? model.hero.cta_text || "Notify me"
+                        : model.hero.cta_text || "Shop the drop"}
+                  </button>
+                  <button className="inline-flex items-center gap-1.5 h-[52px] px-2 text-[13px] text-white/70 hover:text-white transition-colors">
+                    <span className="border-b border-[rgb(var(--gold)/0.4)] pb-1">
+                      Explore the drop
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -271,6 +380,13 @@ export function LandingRender({
       {/* ── ENDED state takes over the body ─────────────────── */}
       {model.state === "ended" ? (
         <Section className="text-center">
+          <div
+            className="h-px w-[120px] mx-auto mb-8"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent, rgb(var(--gold)/0.45) 50%, transparent)",
+            }}
+          />
           <h2 className="font-display text-[32px] md:text-[48px] leading-tight max-w-[760px] mx-auto">
             {model.ended?.message ||
               "The drop has ended — but our shelves are full of beautiful things."}
@@ -282,7 +398,7 @@ export function LandingRender({
           <div className="mt-8 flex justify-center gap-3">
             <a
               href={model.ended?.redirect_to || "#"}
-              className="h-[50px] inline-flex items-center px-8 rounded-full bg-accent text-[#F4E9D9] font-semibold"
+              className="h-[50px] inline-flex items-center px-8 rounded-full bg-accent-deep text-[#F4E9D9] font-semibold"
             >
               Shop our collection
             </a>
@@ -304,13 +420,13 @@ export function LandingRender({
       )}
 
       {/* Footer */}
-      <footer className="border-t border-line/60 px-6 md:px-12 py-12 mt-6">
+      <footer className="border-t border-[rgb(var(--gold)/0.16)] px-6 md:px-12 py-12 mt-6">
         <div className="max-w-[1140px] mx-auto flex flex-col md:flex-row gap-6 md:items-center justify-between">
-          <div className="font-display text-[22px]">{model.name}</div>
+          <div className="font-display text-[22px]">{brandLabel}</div>
           <div className="flex gap-6 text-[12.5px] text-text-muted">
             <span>Instagram</span>
             <span>WhatsApp</span>
-            <span>Shipping & returns</span>
+            <span>Shipping &amp; returns</span>
             <span>Contact</span>
           </div>
           <div className="text-[11px] text-text-faint">/sale/{model.slug}</div>
@@ -361,7 +477,7 @@ function BlockSection({
                     A fixed, curated composition — styled to wear together.
                   </p>
                   <div className="mt-4 flex items-baseline gap-2">
-                    <span className="font-mono text-[20px] text-accent-glow">
+                    <span className="font-mono text-[20px] text-[rgb(var(--gold))]">
                       {ngn(180000 - n * 20000)}
                     </span>
                     <span className="text-text-faint text-[13px] line-through">
@@ -386,7 +502,7 @@ function BlockSection({
             ].map((t) => (
               <div
                 key={t.q}
-                className="rounded-[18px] border border-accent/30 bg-accent/[0.06] p-6 text-center"
+                className="rounded-[18px] border border-[rgb(var(--gold)/0.3)] bg-[rgb(var(--gold)/0.06)] p-6 text-center"
               >
                 <div className="font-display text-[40px] leading-none">
                   {t.q}+
@@ -394,7 +510,7 @@ function BlockSection({
                 <div className="text-text-muted text-[13px] mt-2">
                   bundles in one order
                 </div>
-                <div className="mt-4 font-mono text-accent-glow text-[18px]">
+                <div className="mt-4 font-mono text-[rgb(var(--gold))] text-[18px]">
                   save {ngn(t.s)}
                 </div>
               </div>
@@ -430,7 +546,7 @@ function BlockSection({
                   <div className="font-medium text-[13.5px] truncate">
                     {prod.name || "Styled piece"}
                   </div>
-                  <div className="font-mono text-accent-glow text-[13px]">
+                  <div className="font-mono text-[rgb(var(--gold))] text-[13px]">
                     {ngn(prod.campaign_price_ngn ?? 95000 + n * 10000)}
                   </div>
                 </article>
@@ -477,11 +593,11 @@ function BlockSection({
               style={{ background: placeholderBg(`story-${model.slug}`) }}
             />
             <div>
-              <div className="text-[11px] tracking-[0.3em] uppercase text-accent-glow/90 font-semibold mb-3">
+              <div className="text-[10.5px] tracking-[0.34em] uppercase text-[rgb(var(--gold))] font-bold mb-3">
                 {meta?.eyebrow}
               </div>
               <h2 className="font-display text-[30px] md:text-[40px] leading-[1.05]">
-                {meta?.title}
+                <GoldHeadline title={meta?.title || "Why this drop"} />
               </h2>
               <p className="text-text-muted mt-5 leading-relaxed">
                 {blockBody(block) ||
@@ -501,7 +617,7 @@ function BlockSection({
               "We don't do ordinary. We do the piece she remembers."}
             ”
           </blockquote>
-          <div className="mt-6 text-[12px] tracking-[0.25em] uppercase text-text-muted">
+          <div className="mt-6 text-[11px] tracking-[0.3em] uppercase text-[rgb(var(--gold))] font-bold">
             — The Founder
           </div>
         </Section>
@@ -519,7 +635,10 @@ function BlockSection({
               ["Made to last", "Wears, washes and styles like your own."],
               ["Loved by thousands", "A community of women who don't settle."],
             ].map(([t, d]) => (
-              <div key={t} className="rounded-[18px] border border-line/70 p-6">
+              <div
+                key={t}
+                className="rounded-[18px] border border-line/70 p-6"
+              >
                 <div className="font-display text-[20px]">{t}</div>
                 <p className="text-text-muted text-[13.5px] mt-2 leading-relaxed">
                   {d}
@@ -539,7 +658,9 @@ function BlockSection({
                 key={n}
                 className="rounded-[18px] bg-panel/40 border border-line/70 p-6"
               >
-                <div className="text-accent-glow text-[15px] mb-3">★★★★★</div>
+                <div className="text-[rgb(var(--gold))] text-[15px] mb-3">
+                  ★★★★★
+                </div>
                 <blockquote className="text-[14px] leading-relaxed text-text-primary/90">
                   “Easily the best I've ordered. The quality speaks before I
                   do.”
@@ -574,7 +695,7 @@ function BlockSection({
               <details key={q} className="group py-5">
                 <summary className="flex items-center justify-between cursor-pointer list-none font-medium text-[15px]">
                   {q}
-                  <span className="text-accent-glow text-[20px] transition-transform group-open:rotate-45">
+                  <span className="text-[rgb(var(--gold))] text-[20px] transition-transform group-open:rotate-45">
                     +
                   </span>
                 </summary>
@@ -591,12 +712,12 @@ function BlockSection({
     case "vip_signup":
       return (
         <Section className="text-center">
-          <div className="max-w-[620px] mx-auto rounded-[24px] border border-accent/30 bg-accent/[0.05] p-8 md:p-12">
-            <div className="text-[11px] tracking-[0.3em] uppercase text-accent-glow/90 font-semibold mb-3">
+          <div className="max-w-[620px] mx-auto rounded-[24px] border border-[rgb(var(--gold)/0.3)] bg-[rgb(var(--gold)/0.05)] p-8 md:p-12">
+            <div className="text-[10.5px] tracking-[0.34em] uppercase text-[rgb(var(--gold))] font-bold mb-3">
               {meta?.eyebrow}
             </div>
             <h2 className="font-display text-[28px] md:text-[36px]">
-              {meta?.title}
+              <GoldHeadline title={meta?.title || "Be first, always"} />
             </h2>
             <p className="text-text-muted mt-3 text-[14px]">
               First access to every drop, private prices and the occasional
@@ -608,9 +729,9 @@ function BlockSection({
             >
               <input
                 placeholder="you@email.com"
-                className="flex-1 h-[52px] px-5 rounded-full bg-bg/60 border border-line outline-none focus:border-accent/60 text-[14px]"
+                className="flex-1 h-[52px] px-5 rounded-full bg-bg/60 border border-line outline-none focus:border-[rgb(var(--gold)/0.6)] text-[14px]"
               />
-              <button className="h-[52px] px-7 rounded-full bg-accent text-[#F4E9D9] font-semibold whitespace-nowrap">
+              <button className="h-[52px] px-7 rounded-full bg-accent-deep text-[#F4E9D9] font-semibold whitespace-nowrap">
                 Join the list
               </button>
             </form>

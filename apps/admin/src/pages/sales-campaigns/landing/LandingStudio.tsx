@@ -30,6 +30,7 @@ import {
   type LandingBlock,
   type PublicState,
   uploadCampaignImage,
+  useBrand,
   useUpdateCampaign,
 } from "@/lib/campaigns";
 import { LandingRender, type LandingModel } from "./LandingRender";
@@ -116,6 +117,7 @@ export function LandingStudio({
   canEdit: boolean;
 }) {
   const update = useUpdateCampaign(campaign.campaign_id);
+  const brand = useBrand();
 
   const [heroTitle, setHeroTitle] = useState(campaign.landing_hero_title || "");
   const [heroSubtitle, setHeroSubtitle] = useState(
@@ -271,6 +273,7 @@ export function LandingStudio({
     slug: campaign.slug,
     name: campaign.name,
     state: previewState,
+    brand,
     hero: {
       title: heroTitle,
       subtitle: heroSubtitle,

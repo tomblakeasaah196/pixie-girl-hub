@@ -65,6 +65,18 @@ export function LandingShell({ payload }: { payload: LandingPayload }) {
   const blocks = (payload.blocks || []).filter((b) => b.enabled !== false);
   const isEnded = state === "ended";
 
+  // The hero's "Get on the list" CTA jumps to #signup, an anchor only the
+  // newsletter_capture block provides (vip_signup uses #vip-signup and renders
+  // nothing unless a VIP window is configured). Guarantee #signup exists in the
+  // Before state whenever the campaign collects notifications.
+  const hasNewsletterBlock = blocks.some(
+    (b) => b.key === "newsletter_capture",
+  );
+  const needsSignupFallback =
+    state === "before" &&
+    payload.signup_for_notifications &&
+    !hasNewsletterBlock;
+
   return (
     <main
       className={cn(
@@ -99,6 +111,8 @@ export function LandingShell({ payload }: { payload: LandingPayload }) {
           derived={derived}
         />
       ))}
+
+      {needsSignupFallback && <NewsletterCapture payload={payload} />}
 
       {isEnded && <EndedFarewell payload={payload} />}
 

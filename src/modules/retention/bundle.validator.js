@@ -34,7 +34,7 @@ const createSchema = z
     description: z.string().max(1000).optional(),
     pricing_model: pricingModel,
     bundle_price_ngn: z.coerce.number().nonnegative().optional(),
-    bundle_price_usd: z.coerce.number().nonnegative().optional(),
+    bundle_price_usd: z.coerce.number().nonnegative().nullable().optional(),
     discount_value: z.coerce.number().nonnegative().optional(),
     buy_quantity: z.coerce.number().int().positive().optional(),
     get_quantity: z.coerce.number().int().positive().optional(),

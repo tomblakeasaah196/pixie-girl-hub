@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, Boxes, Factory } from "lucide-react";
+import { ArrowLeft, Plus, Boxes, Factory, Trash2 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
 import {
   ErrorState,
+  ConfirmDialog,
   NumberField,
   Toggle,
   MultiSelect,
@@ -16,6 +17,7 @@ import {
   useBaseProduct,
   useCreateBaseProduct,
   useUpdateBaseProduct,
+  useDeleteBaseProduct,
   useVariants,
   useAddVariant,
   useSizeConfig,
@@ -23,7 +25,6 @@ import {
   type Variant,
 } from "@/lib/catalogue";
 import { CostVaultSection } from "./CostVaultSection";
-import { AddToCollection } from "./AddToCollection";
 
 function slugify(s: string) {
   return s
@@ -191,9 +192,20 @@ function BaseEditor({
   canCreate: boolean;
   onBack: () => void;
 }) {
+  const nav = useNavigate();
   const update = useUpdateBaseProduct(p.product_id);
+  const remove = useDeleteBaseProduct();
   const variants = useVariants(p.product_id);
   const [addOpen, setAddOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Editable core details (name + descriptors).
+  const [name, setName] = useState(p.name);
+  const [texture, setTexture] = useState(p.texture_type ?? "");
+  const [lace, setLace] = useState(p.lace_type ?? "");
+  const [length, setLength] = useState(
+    p.hair_length_inches != null ? String(p.hair_length_inches) : "",
+  );
 
   // Pre-order / production timeline state.
   const [preorder, setPreorder] = useState(p.preorder_enabled);
@@ -203,12 +215,30 @@ function BaseEditor({
   );
 
   useEffect(() => {
+    setName(p.name);
+    setTexture(p.texture_type ?? "");
+    setLace(p.lace_type ?? "");
+    setLength(p.hair_length_inches != null ? String(p.hair_length_inches) : "");
     setPreorder(p.preorder_enabled);
     setReadyDate(p.expected_ready_date ?? "");
     setLeadDays(
       p.production_lead_days != null ? String(p.production_lead_days) : "",
     );
   }, [p]);
+
+  const detailsDirty =
+    name !== p.name ||
+    texture !== (p.texture_type ?? "") ||
+    lace !== (p.lace_type ?? "") ||
+    length !== (p.hair_length_inches != null ? String(p.hair_length_inches) : "");
+
+  const saveDetails = () =>
+    update.mutate({
+      name: name.trim(),
+      texture_type: texture.trim() || null,
+      lace_type: lace.trim() || null,
+      hair_length_inches: length ? Number(length) : null,
+    } as Partial<BaseProduct>);
 
   const preorderDirty =
     preorder !== p.preorder_enabled ||
@@ -251,8 +281,67 @@ function BaseEditor({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-        {/* Variants + stock */}
+        {/* Details + Variants + stock */}
         <div className="space-y-4">
+          {/* Editable core details */}
+          <Card className="p-5">
+            <FormSection title="Details">
+              <Field label="Name">
+                <input
+                  value={name}
+                  disabled={!canEdit}
+                  onChange={(e) => setName(e.target.value)}
+                  className={inputCls}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Texture" hint="optional">
+                  <input
+                    value={texture}
+                    disabled={!canEdit}
+                    onChange={(e) => setTexture(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Lace" hint="optional">
+                  <input
+                    value={lace}
+                    disabled={!canEdit}
+                    onChange={(e) => setLace(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <Field label="Length (inches)" hint="optional">
+                <NumberField
+                  value={length}
+                  onChange={setLength}
+                  allowDecimal={false}
+                  disabled={!canEdit}
+                  suffix='"'
+                />
+              </Field>
+            </FormSection>
+            {canEdit && (
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-faint hover:text-danger transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete base
+                </button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!detailsDirty || !name.trim() || update.isPending}
+                  onClick={saveDetails}
+                >
+                  {update.isPending ? "Saving…" : "Save details"}
+                </Button>
+              </div>
+            )}
+          </Card>
+
           <Card className="p-4">
             <div className="flex items-center mb-3">
               <span className="micro">Variants · stock-bearing</span>
@@ -352,11 +441,6 @@ function BaseEditor({
             )}
           </Card>
           <LaceCard p={p} canEdit={canEdit} />
-          {canEdit && (
-            <Card className="p-4">
-              <AddToCollection productId={p.product_id} />
-            </Card>
-          )}
         </div>
       </div>
 
@@ -367,6 +451,18 @@ function BaseEditor({
           onClose={() => setAddOpen(false)}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() =>
+          remove.mutate(p.product_id, { onSuccess: () => nav("/catalogue") })
+        }
+        title="Delete base product?"
+        message="This moves the base product to Trash and frees its name. Styled listings that draw from it keep their own data; stock records are detached."
+        confirmLabel="Delete"
+        busy={remove.isPending}
+      />
     </div>
   );
 }
@@ -479,7 +575,9 @@ function AddVariantModal({
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [storefront, setStorefront] = useState("");
+  const [storefrontUsd, setStorefrontUsd] = useState("");
   const [wholesale, setWholesale] = useState("");
+  const [wholesaleUsd, setWholesaleUsd] = useState("");
 
   const submit = () => {
     if (!sku.trim() || !name.trim()) return;
@@ -488,14 +586,18 @@ function AddVariantModal({
         sku: sku.trim(),
         variant_name: name.trim(),
         price_storefront_ngn: storefront ? Number(storefront) : undefined,
+        price_storefront_usd: storefrontUsd ? Number(storefrontUsd) : undefined,
         price_wholesale_ngn: wholesale ? Number(wholesale) : undefined,
+        price_wholesale_usd: wholesaleUsd ? Number(wholesaleUsd) : undefined,
       } as Partial<Variant>,
       {
         onSuccess: () => {
           setSku("");
           setName("");
           setStorefront("");
+          setStorefrontUsd("");
           setWholesale("");
+          setWholesaleUsd("");
           onClose();
         },
       },
@@ -541,20 +643,34 @@ function AddVariantModal({
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Storefront price">
+          <Field label="Storefront price" hint="Naira">
             <NumberField
               value={storefront}
               onChange={setStorefront}
               suffix="₦"
             />
           </Field>
-          <Field label="Wholesale price">
+          <Field label="Storefront price" hint="US Dollar">
+            <NumberField
+              value={storefrontUsd}
+              onChange={setStorefrontUsd}
+              suffix="$"
+            />
+          </Field>
+          <Field label="Wholesale price" hint="Naira">
             <NumberField value={wholesale} onChange={setWholesale} suffix="₦" />
+          </Field>
+          <Field label="Wholesale price" hint="US Dollar">
+            <NumberField
+              value={wholesaleUsd}
+              onChange={setWholesaleUsd}
+              suffix="$"
+            />
           </Field>
         </div>
         <p className="text-[11px] text-text-faint">
-          True cost + supplier are set separately in the cost vault — never
-          here.
+          Set Naira and US Dollar prices directly — leave a currency blank to
+          skip it. True cost + supplier live in the cost vault, never here.
         </p>
         {add.isError && (
           <p className="text-[12px] text-danger">

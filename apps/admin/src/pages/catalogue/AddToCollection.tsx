@@ -15,12 +15,12 @@ function slugify(s: string) {
 }
 
 /**
- * Quick add-to-collection from a product (catalogue PR). Search existing
+ * Quick add-to-collection from a STYLED product. Collections curate finished,
+ * sellable listings (styled products) — never base products. Search existing
  * collections and add in one click; if it doesn't exist yet, create it inline
- * and the product lands in it immediately. Same easy pattern the owner asked
- * for so merchandising never means leaving the product.
+ * and the styled product lands in it immediately.
  */
-export function AddToCollection({ productId }: { productId: string }) {
+export function AddToCollection({ styledId }: { styledId: string }) {
   const collections = useCollections();
   const addMember = useAddCollectionMember();
   const createCollection = useCreateCollection();
@@ -49,7 +49,7 @@ export function AddToCollection({ productId }: { productId: string }) {
 
   const add = (collectionId: string, name: string) => {
     addMember.mutate(
-      { collectionId, productId },
+      { collectionId, styledId },
       {
         onSuccess: () => {
           setDone(name);

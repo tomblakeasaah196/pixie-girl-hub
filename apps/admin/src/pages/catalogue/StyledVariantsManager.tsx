@@ -598,7 +598,8 @@ function VariantsCard({
                 <th className="py-2 font-semibold">Lace</th>
                 <th className="py-2 font-semibold">SKU</th>
                 <th className="py-2 font-semibold text-right">Retail</th>
-                <th className="py-2 font-semibold text-right">Override</th>
+                <th className="py-2 font-semibold text-right">Override ₦</th>
+                <th className="py-2 font-semibold text-right">Override $</th>
                 <th className="py-2 font-semibold text-center">Active</th>
                 <th className="py-2" />
               </tr>
@@ -634,13 +635,22 @@ function VariantRow({
   const [override, setOverride] = useState(
     v.price_override_ngn != null ? String(v.price_override_ngn) : "",
   );
+  const [overrideUsd, setOverrideUsd] = useState(
+    v.price_override_usd != null ? String(v.price_override_usd) : "",
+  );
+
+  const ngnStr = v.price_override_ngn != null ? String(v.price_override_ngn) : "";
+  const usdStr = v.price_override_usd != null ? String(v.price_override_usd) : "";
+  const overrideDirty = override !== ngnStr || overrideUsd !== usdStr;
 
   const saveOverride = () => {
-    const next = override.trim() === "" ? null : Number(override);
-    if (next === (v.price_override_ngn ?? null)) return;
     update.mutate({
       variantId: v.styled_variant_id,
-      patch: { price_override_ngn: next },
+      patch: {
+        price_override_ngn: override.trim() === "" ? null : Number(override),
+        price_override_usd:
+          overrideUsd.trim() === "" ? null : Number(overrideUsd),
+      },
     });
   };
 
@@ -680,10 +690,7 @@ function VariantRow({
               suffix="₦"
               className="[&_input]:h-[34px]"
             />
-            {override !==
-              (v.price_override_ngn != null
-                ? String(v.price_override_ngn)
-                : "") && (
+            {overrideDirty && (
               <button
                 onClick={saveOverride}
                 className="text-[10.5px] text-accent-glow font-semibold mt-0.5"
@@ -697,6 +704,23 @@ function VariantRow({
             ngn={Number(v.price_override_ngn)}
             className="text-[12.5px]"
           />
+        ) : (
+          <span className="text-text-faint">—</span>
+        )}
+      </td>
+      <td className="py-2 text-right">
+        {canEdit ? (
+          <div className="w-[110px] ml-auto">
+            <NumberField
+              value={overrideUsd}
+              onChange={setOverrideUsd}
+              placeholder="—"
+              suffix="$"
+              className="[&_input]:h-[34px]"
+            />
+          </div>
+        ) : v.price_override_usd != null ? (
+          <span className="text-[12.5px]">${v.price_override_usd}</span>
         ) : (
           <span className="text-text-faint">—</span>
         )}

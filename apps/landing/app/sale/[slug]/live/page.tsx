@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { fetchCampaign } from "@/lib/api";
+import { fetchCampaign, fetchPublishedLanding } from "@/lib/api";
+import { getBrand } from "@/lib/brand";
 import { deriveState } from "@/lib/state-engine";
-import { LandingShell } from "@/components/LandingShell";
-import { IntroOverlay } from "@/components/IntroOverlay";
+import { withDefaults, type LandingConfig } from "@landing-kit";
+import { LiveShell } from "./_components/LiveShell";
 
 interface Params {
   slug: string;
@@ -16,40 +17,49 @@ export async function generateMetadata({
 }: {
   params: Params;
 }): Promise<Metadata> {
-  const payload = await fetchCampaign(params.slug).catch(() => null);
+  const brand = getBrand();
+  const [payload, raw] = await Promise.all([
+    fetchCampaign(params.slug).catch(() => null),
+    fetchPublishedLanding(brand).catch(() => null),
+  ]);
   if (!payload) return { title: "Sale not found" };
-  const title = payload.seo.meta_title || payload.name;
+
+  const brandConfig = withDefaults(brand, raw as Partial<LandingConfig> | null);
+  const title = payload.seo.meta_title || `${payload.name} — live now`;
   const description =
     payload.seo.meta_description ||
-    `${payload.name} — a time-bound sale from ${payload.brand?.display_name || "us"}.`;
+    `${payload.name} is live. The doors are open — shop the drop before the clock runs out.`;
+  const ogImage =
+    payload.seo.og_image_url ||
+    payload.hero?.image_url ||
+    brandConfig.seo.ogImageUrl ||
+    brandConfig.hero.imageUrl ||
+    null;
   return {
     title,
     description,
     openGraph: {
       title,
       description,
-      images: payload.seo.og_image_url
-        ? [{ url: payload.seo.og_image_url, width: 1200, height: 630 }]
-        : undefined,
       type: "website",
+      url: `https://${brandConfig.domain}/sale/${params.slug}`,
+      images: ogImage ? [{ url: ogImage, width: 1200, height: 630 }] : undefined,
     },
     twitter: { card: "summary_large_image", title, description },
   };
 }
 
 export default async function Page({ params }: { params: Params }) {
-  const payload = await fetchCampaign(params.slug);
+  const brand = getBrand();
+  const [payload, raw] = await Promise.all([
+    fetchCampaign(params.slug),
+    fetchPublishedLanding(brand).catch(() => null),
+  ]);
   if (!payload) notFound();
+
   const { state } = deriveState(payload);
   if (state !== "live") redirect(`/sale/${params.slug}/${state}`);
-  return (
-    <>
-      <IntroOverlay
-        brand={payload.brand?.business_key}
-        campaignName={payload.name}
-        sessionKey={`pgh-intro-seen:${payload.slug}`}
-      />
-      <LandingShell payload={payload} />
-    </>
-  );
+
+  const brandConfig = withDefaults(brand, raw as Partial<LandingConfig> | null);
+  return <LiveShell payload={payload} brandConfig={brandConfig} />;
 }

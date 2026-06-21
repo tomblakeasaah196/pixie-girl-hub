@@ -244,10 +244,16 @@ export type LandingSubmit = (fields: {
 export function LandingPreview({
   config,
   onSubmit,
+  omitHero = false,
 }: {
   config: LandingConfig;
   /** Optional. When omitted, the form runs the studio's local success ritual. */
   onSubmit?: LandingSubmit;
+  /** When true, the hero section is skipped so the host can compose its own
+   *  hero above the body (used by the campaign before-state page, which
+   *  layers a cinematic 3D countdown hero over the same Atelier body). The
+   *  apex never sets this — its behaviour is unchanged. */
+  omitHero?: boolean;
 }) {
   usePreviewAssets();
 
@@ -366,6 +372,8 @@ export function LandingPreview({
       style={{ ...brandVars, background: "rgb(var(--brand-paper))", color: "rgb(var(--brand-primary-deep))", fontFamily: BODY_FONT, fontFeatureSettings: '"ss01", "cv11"' }}
       className="min-h-screen"
     >
+      {!omitHero && (
+      <>
       {/* ─── HERO ─── */}
       <section
         ref={heroRef}
@@ -465,6 +473,8 @@ export function LandingPreview({
           </motion.p>
         </div>
       </section>
+      </>
+      )}
 
       {/* ─── INVITATION ─── */}
       <section id="lp-invitation" className="relative py-28 md:py-40 px-6 md:px-12 overflow-hidden">

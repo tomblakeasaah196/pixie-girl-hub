@@ -100,7 +100,9 @@ const variantUpdate = z
   .object({
     base_product_id: z.string().uuid().nullable().optional(),
     price_override_ngn: money.nullable().optional(),
+    price_override_usd: money.nullable().optional(),
     compare_at_price_ngn: money.nullable().optional(),
+    compare_at_price_usd: money.nullable().optional(),
     is_active: z.boolean().optional(),
     is_default: z.boolean().optional(),
     display_order: z.coerce.number().int().optional(),

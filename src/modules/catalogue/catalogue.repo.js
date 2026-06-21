@@ -480,10 +480,19 @@ async function removeCollectionRule({ client, brand, collection_id, rule_id }) {
   return rowCount > 0;
 }
 async function listCollectionMembers({ client, brand, collection_id }) {
+  // Members are STYLED products (storefront listings). The hero image resolves
+  // to the styled product's primary picture or its default colour's first shot.
   const { rows } = await ex(client)(
-    `SELECT m.*, p.name AS product_name FROM ${t(brand, "product_collection_members")} m
-       JOIN ${t(brand, "products")} p ON p.product_id = m.product_id
-      WHERE m.collection_id = $1 ORDER BY m.display_order`,
+    `SELECT m.*,
+            sp.name AS styled_name, sp.slug AS styled_slug,
+            sp.status AS styled_status, sp.retail_price_ngn, sp.retail_price_usd,
+            (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+              WHERE pi.styled_id = sp.styled_id
+              ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS image_url
+       FROM ${t(brand, "product_collection_members")} m
+       JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = m.styled_id
+      WHERE m.collection_id = $1 AND m.styled_id IS NOT NULL
+      ORDER BY m.display_order`,
     [collection_id],
   );
   return rows;
@@ -492,15 +501,16 @@ async function addCollectionMember({
   client,
   brand,
   collection_id,
-  product_id,
+  styled_id,
   display_order,
   user_id,
 }) {
   const { rows } = await ex(client)(
-    `INSERT INTO ${t(brand, "product_collection_members")} (collection_id, product_id, display_order, added_by, source)
+    `INSERT INTO ${t(brand, "product_collection_members")} (collection_id, styled_id, display_order, added_by, source)
      VALUES ($1,$2,COALESCE($3,0),$4,'manual')
-     ON CONFLICT (collection_id, product_id) DO UPDATE SET display_order = EXCLUDED.display_order RETURNING *`,
-    [collection_id, product_id, display_order, user_id || null],
+     ON CONFLICT (collection_id, styled_id) WHERE styled_id IS NOT NULL
+       DO UPDATE SET display_order = EXCLUDED.display_order RETURNING *`,
+    [collection_id, styled_id, display_order, user_id || null],
   );
   return rows[0];
 }
@@ -508,11 +518,11 @@ async function removeCollectionMember({
   client,
   brand,
   collection_id,
-  product_id,
+  styled_id,
 }) {
   const { rowCount } = await ex(client)(
-    `DELETE FROM ${t(brand, "product_collection_members")} WHERE collection_id = $1 AND product_id = $2`,
-    [collection_id, product_id],
+    `DELETE FROM ${t(brand, "product_collection_members")} WHERE collection_id = $1 AND styled_id = $2`,
+    [collection_id, styled_id],
   );
   return rowCount > 0;
 }

@@ -94,9 +94,24 @@ async function removeComponent({ brand, bundle_id, bundle_product_id }) {
 }
 
 async function listComponents({ client, brand, bundle_id }) {
+  // Unit price for the subtotal preview: the specific variant's price when the
+  // component pins a variant, else the product's default-variant storefront
+  // price. NULL-safe — a freshly created base may not be priced yet.
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "bundle_offer_products")}
-      WHERE bundle_id = $1 ORDER BY display_order`,
+    `SELECT bop.*,
+            p.name AS product_name, p.product_code,
+            COALESCE(
+              v.price_storefront_ngn,
+              (SELECT dv.price_storefront_ngn
+                 FROM ${t(brand, "product_variants")} dv
+                WHERE dv.product_id = bop.product_id
+                ORDER BY dv.is_default DESC, dv.display_order
+                LIMIT 1)
+            ) AS unit_price_ngn
+       FROM ${t(brand, "bundle_offer_products")} bop
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = bop.product_id
+       LEFT JOIN ${t(brand, "product_variants")} v ON v.variant_id = bop.variant_id
+      WHERE bop.bundle_id = $1 ORDER BY bop.display_order`,
     [bundle_id],
   );
   return rows;
@@ -158,6 +173,15 @@ async function setActive({ brand, id, is_active }) {
   return rows[0] || null;
 }
 
+/** Hard-delete a bundle. Component rows cascade via the FK. */
+async function remove({ brand, id }) {
+  const { rowCount } = await query(
+    `DELETE FROM ${t(brand, "bundle_offers")} WHERE bundle_id = $1`,
+    [id],
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   createBundle,
   addComponent,
@@ -167,5 +191,6 @@ module.exports = {
   getById,
   update,
   setActive,
+  remove,
   bumpUsage,
 };

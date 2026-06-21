@@ -248,11 +248,33 @@ export interface EmailTemplate {
   created_at?: string;
 }
 
-/** Merge tokens the backend actually substitutes at send (see render() in
- *  email-campaigns.service): customer_name + email. */
-export const TEMPLATE_VARIABLES: { token: string; label: string }[] = [
-  { token: "{{customer_name}}", label: "Customer name" },
-  { token: "{{email}}", label: "Email address" },
+/** Merge tokens the send pipeline substitutes (src/modules/email_campaigns/
+ *  email-render.js). `auto` tokens fill themselves from brand Settings or the
+ *  recipient — you never set them by hand. Sale tokens come from a campaign's
+ *  "Sale details" (merge_data). */
+export const TEMPLATE_VARIABLES: {
+  token: string;
+  label: string;
+  group: "recipient" | "brand" | "sale";
+  auto?: boolean;
+}[] = [
+  // Recipient (auto)
+  { token: "{{first_name}}", label: "First name", group: "recipient", auto: true },
+  { token: "{{customer_name}}", label: "Full name", group: "recipient", auto: true },
+  { token: "{{email}}", label: "Email address", group: "recipient", auto: true },
+  { token: "{{unsubscribe_url}}", label: "Unsubscribe link", group: "recipient", auto: true },
+  // Brand identity (auto, from Settings)
+  { token: "{{brand_name}}", label: "Brand name", group: "brand", auto: true },
+  { token: "{{logo_url}}", label: "Logo URL", group: "brand", auto: true },
+  { token: "{{brand_color}}", label: "Accent colour", group: "brand", auto: true },
+  { token: "{{website_url}}", label: "Website", group: "brand", auto: true },
+  { token: "{{support_email}}", label: "Support email", group: "brand", auto: true },
+  // Sale / campaign (from this campaign's Sale details)
+  { token: "{{discount}}", label: "Discount %", group: "sale" },
+  { token: "{{sale_url}}", label: "Sale link", group: "sale" },
+  { token: "{{sale_end_display}}", label: "End date", group: "sale" },
+  { token: "{{deadline_phrase}}", label: "Countdown phrase", group: "sale" },
+  { token: "{{days_left}}", label: "Days left", group: "sale" },
 ];
 
 export interface EmailSegment {
@@ -275,12 +297,24 @@ export interface EmailCampaign {
   from_email: string | null;
   reply_to_email: string | null;
   scheduled_for: string | null;
+  /** Campaign-level merge variables (sale discount, link, end date, …). */
+  merge_data?: Record<string, string | number | boolean | null> | null;
   recipients_count?: number;
   sent_count?: number;
   created_at: string;
   updated_at: string;
   /** Client-only: whether the WhatsApp companion blast is requested. */
   whatsapp_enabled?: boolean;
+}
+
+/** Sale details a campaign carries → the email's countdown, discount and CTA. */
+export interface CampaignMergeData {
+  discount?: string;
+  sale_url?: string;
+  /** ISO datetime; the send pipeline derives days_left + deadline_phrase. */
+  sale_ends_at?: string;
+  cta_label?: string;
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 export interface EmailStats {
@@ -424,6 +458,27 @@ export function useCreateEmailCampaign() {
     }) => api.post<EmailCampaign>("/email-campaigns", body),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["email", "campaigns", brand] }),
+  });
+}
+
+export function useUpdateEmailCampaign(id: string | undefined) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (patch: {
+      campaign_name?: string;
+      segment_id?: string | null;
+      default_template_id?: string | null;
+      from_name?: string | null;
+      from_email?: string | null;
+      reply_to_email?: string | null;
+      scheduled_for?: string | null;
+      merge_data?: CampaignMergeData;
+    }) => api.patch<EmailCampaign>(`/email-campaigns/${id}`, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["email", "campaigns", brand] });
+      qc.invalidateQueries({ queryKey: ["email", "campaign", brand, id] });
+    },
   });
 }
 

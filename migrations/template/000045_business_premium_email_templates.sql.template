@@ -1,0 +1,14 @@
+-- ============================================================
+-- TEMPLATE 000045 — Premium email templates for a new brand
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Runs after the bare seed (000035) during bootstrap and upgrades the brand's
+-- system email templates (welcome, order confirmation, shipped, birthday,
+-- abandoned cart) to the premium, brand-aware skin and adds the
+-- `sale_announcement` template — by calling the shared installer created in
+-- migration 000231 (single source of truth: src/services/email-theme.js).
+--
+-- Idempotent: the installer upserts on template_key.
+-- ============================================================
+
+SELECT shared.fn_install_premium_email_templates('{{BUSINESS}}');

@@ -60,6 +60,15 @@ async function createCampaign(req, res) {
     data: await service.createCampaign({ ...base(req), input: req.body }),
   });
 }
+async function updateCampaign(req, res) {
+  res.json({
+    data: await service.updateCampaign({
+      ...base(req),
+      id: req.params.id,
+      patch: req.body,
+    }),
+  });
+}
 async function buildRecipients(req, res) {
   res.json({
     data: await service.buildRecipients({
@@ -232,6 +241,7 @@ module.exports = {
   listCampaigns,
   getCampaign,
   createCampaign,
+  updateCampaign,
   buildRecipients,
   sendCampaign,
   pauseCampaign,

@@ -12,18 +12,13 @@
 const repo = require("./email-campaigns.repo");
 const events = require("./email-campaigns.events");
 const email = require("../../services/email.service");
+const render = require("./email-render");
 const { audit } = require("../../middleware/audit");
 const { transaction, query } = require("../../config/database");
 const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
 const SEND_CAP = 1000; // synchronous send cap per call
-
-function render(str, tokens) {
-  return String(str || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) =>
-    tokens[k] === null ? "" : String(tokens[k]),
-  );
-}
 
 // ── Templates ──────────────────────────────────────────────
 function listTemplates({ brand }) {
@@ -86,6 +81,30 @@ async function createCampaign({ brand, user, request_id, input }) {
   });
 }
 
+/** Edit a draft/scheduled campaign — incl. merge_data (sale discount, link,
+ *  end date) that the render pipeline turns into the countdown + CTA. */
+async function updateCampaign({ brand, user, request_id, id, patch }) {
+  const c = await repo.getCampaign({ brand, id });
+  if (!c) throw new NotFoundError("Campaign");
+  if (!["draft", "scheduled"].includes(c.status))
+    throw new AppError(
+      "INVALID_STATE",
+      `Cannot edit a '${c.status}' campaign`,
+      409,
+    );
+  const updated = await repo.updateCampaign({ brand, id, patch });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.update",
+    target_type: "email_campaign",
+    target_id: id,
+    request_id,
+  });
+  events.emit("updated", { brand, id });
+  return updated;
+}
+
 /** Populate recipients from contacts (optionally a specific id list). */
 async function buildRecipients({ brand, user, request_id, id, contact_ids }) {
   const c = await repo.getCampaign({ brand, id });
@@ -138,14 +157,28 @@ async function sendCampaign({ brand, user, request_id, id }) {
     limit: SEND_CAP,
   });
 
+  // Resolve the per-brand identity (logo, accent, name, links from Settings)
+  // and the campaign-level merge data (sale discount/link/deadline) once, then
+  // personalise + send per recipient.
+  const brandTokens = await render.resolveBrandTokens(brand);
+  const campaignTokens = render.resolveCampaignTokens(campaign);
+
   let sent = 0;
   for (const r of recipients) {
-    const tokens = { customer_name: r.contact_name_snapshot, email: r.email };
     try {
+      const { subject, html, text, headers } = render.buildEmail({
+        template,
+        brandTokens,
+        campaignTokens,
+        recipient: r,
+        brand,
+      });
       await email.send({
         to: r.email,
-        subject: render(template.subject_line, tokens),
-        html: render(template.html_body, tokens),
+        subject,
+        html,
+        text,
+        headers,
         from_name: campaign.from_name || template.from_name,
         from_email: campaign.from_email || template.from_email,
         // EMAIL_TWO_WAY_SETUP: pass the brand so the sender resolves the right
@@ -642,6 +675,7 @@ module.exports = {
   listCampaigns,
   getCampaign,
   createCampaign,
+  updateCampaign,
   buildRecipients,
   sendCampaign,
   setStatus,

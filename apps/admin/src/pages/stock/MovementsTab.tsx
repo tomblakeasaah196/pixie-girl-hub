@@ -425,15 +425,29 @@ export default function MovementsTab() {
     <div className="flex flex-col gap-4">
       {/* Filters bar */}
       <div className="flex flex-col gap-3">
-        <Select
-          value={typeFilter}
-          onChange={(v) => {
-            setTypeFilter(v);
-            setPage(1);
-          }}
-          options={[{ value: "", label: "All types" }, ...MOVEMENT_TYPES]}
-          className="w-[220px]"
-        />
+        {/* Movement type — chip row, single-select (one at a time). */}
+        <div className="flex flex-wrap gap-1.5">
+          {[{ value: "", label: "All types" }, ...MOVEMENT_TYPES].map((o) => {
+            const on = typeFilter === o.value;
+            return (
+              <button
+                key={o.value || "all"}
+                type="button"
+                onClick={() => {
+                  setTypeFilter(o.value);
+                  setPage(1);
+                }}
+                className={`px-2.5 py-1.5 rounded-[9px] text-[12px] font-semibold border transition-colors ${
+                  on
+                    ? "border-accent/45 text-accent-glow bg-accent/[0.1]"
+                    : "border-line text-text-muted hover:text-text-primary"
+                }`}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Select
             value={locationFilter}

@@ -35,6 +35,12 @@ import {
   type LandingConfig,
   type ChannelOption,
 } from "@/lib/landing-studio";
+import {
+  CURATED_FONTS,
+  googleFamilyFromUrl,
+  type FontSelection,
+  type TypographyRole,
+} from "@landing-kit";
 import { DeniedState } from "@/components/ui/controls";
 import { LandingPreview } from "./LandingPreview";
 import { AtelierRevealPreview } from "./AtelierRevealPreview";
@@ -266,6 +272,49 @@ function Editor({
           ))}
         </div>
         <p className="text-[11px] text-text-faint mt-1">Reveal drape colours follow Primary / Accent / Ink automatically.</p>
+      </Section>
+
+      <Section title="Typography">
+        <FontPicker
+          label="Display font (headings & numerals)"
+          value={config.typography.display}
+          kind="serif"
+          onChange={(v) => update((d) => { d.typography.display = v; })}
+        />
+        <FontPicker
+          label="Body font (paragraphs & eyebrows)"
+          value={config.typography.body}
+          kind="sans"
+          onChange={(v) => update((d) => { d.typography.body = v; })}
+        />
+        <Range
+          label={`Master size ×${config.typography.scale.toFixed(2)}`}
+          value={config.typography.scale}
+          min={0.85}
+          max={1.3}
+          step={0.01}
+          onChange={(v) => update((d) => { d.typography.scale = v; })}
+        />
+        <div className="pt-1 space-y-2.5">
+          <span className="micro block">Per-role weight · spacing · leading</span>
+          {(["heading", "body", "eyebrow", "numerals"] as TypographyRole[]).map((role) => (
+            <RoleEditor
+              key={role}
+              role={role}
+              value={config.typography.roles[role]}
+              onChange={(patch) => update((d) => { Object.assign(d.typography.roles[role], patch); })}
+            />
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Textures">
+        <Range label={`Paper grain ${Math.round(config.texture.grain * 100)}%`} value={config.texture.grain} min={0} max={1} step={0.01} onChange={(v) => update((d) => { d.texture.grain = v; })} />
+        <Range label={`Glass blur ${config.texture.glassBlur.toFixed(0)}px`} value={config.texture.glassBlur} min={0} max={40} step={1} onChange={(v) => update((d) => { d.texture.glassBlur = v; })} />
+        <Range label={`Glass opacity ${Math.round(config.texture.glassOpacity * 100)}%`} value={config.texture.glassOpacity} min={0.4} max={1} step={0.01} onChange={(v) => update((d) => { d.texture.glassOpacity = v; })} />
+        <Range label={`Vignette ${Math.round(config.texture.vignette * 100)}%`} value={config.texture.vignette} min={0} max={1} step={0.01} onChange={(v) => update((d) => { d.texture.vignette = v; })} />
+        <Range label={`Hero image overlay ${Math.round(config.texture.heroOverlay * 100)}%`} value={config.texture.heroOverlay} min={0} max={1} step={0.01} onChange={(v) => update((d) => { d.texture.heroOverlay = v; })} />
+        <p className="text-[11px] text-text-faint">Grain & vignette wrap the whole page; glass affects the form card and pills; hero overlay darkens the hero image for legibility.</p>
       </Section>
 
       <Section title="Background">
@@ -502,12 +551,148 @@ function Num({ label, value, onChange }: { label: string; value: number; onChang
   );
 }
 
-function Range({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void }) {
+function Range({ label, value, min, max, step = 0.05, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
   return (
     <label className="block">
       <span className="micro block mb-1">{label}</span>
-      <input type="range" value={value} min={min} max={max} step={0.05} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[rgb(var(--accent))]" />
+      <input type="range" value={value} min={min} max={max} step={step} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[rgb(var(--accent))]" />
     </label>
+  );
+}
+
+// ── Typography primitives ────────────────────────────────────
+
+const ROLE_LABEL: Record<TypographyRole, string> = {
+  heading: "Headings",
+  body: "Body",
+  eyebrow: "Eyebrows",
+  numerals: "Numerals",
+};
+
+function FontPicker({
+  label,
+  value,
+  kind,
+  onChange,
+}: {
+  label: string;
+  value: FontSelection;
+  kind: "serif" | "sans";
+  onChange: (v: FontSelection) => void;
+}) {
+  const isCustom = value.source === "custom";
+  return (
+    <div>
+      <span className="micro block mb-1">{label}</span>
+      <select
+        value={isCustom ? "__custom__" : value.family}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "__custom__") {
+            onChange({ family: isCustom ? value.family : "", source: "custom", cssUrl: value.cssUrl ?? "" });
+          } else {
+            onChange({ family: v, source: "curated", cssUrl: null });
+          }
+        }}
+        className="input-sm w-full"
+        style={!isCustom && value.family ? { fontFamily: `"${value.family}"` } : undefined}
+      >
+        {(kind === "serif" ? ["serif", "sans"] : ["sans", "serif"]).map((k) => {
+          const base = k === "serif" ? "Serif / display" : "Sans / mono";
+          return (
+            <optgroup key={k} label={k === kind ? `${base} (recommended)` : base}>
+              {CURATED_FONTS.filter((f) => (k === "serif" ? f.kind === "serif" : f.kind !== "serif")).map((f) => (
+                <option key={f.family} value={f.family}>{f.family}</option>
+              ))}
+            </optgroup>
+          );
+        })}
+        <option value="__custom__">Custom (Google Fonts)…</option>
+      </select>
+      {isCustom && (
+        <div className="mt-2 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="micro">Google Fonts link</span>
+            <Info
+              text={
+                "Add any Google Font:\n" +
+                "1. Open fonts.google.com\n" +
+                "2. Pick a font → “Get font” → “Get embed code”\n" +
+                "3. Copy the <link> href that starts with\n" +
+                "   https://fonts.googleapis.com/css2?family=…\n" +
+                "4. Paste it below — we detect the name automatically."
+              }
+            />
+          </div>
+          <input
+            value={value.cssUrl ?? ""}
+            placeholder="https://fonts.googleapis.com/css2?family=…"
+            onChange={(e) => {
+              const url = e.target.value;
+              onChange({ family: googleFamilyFromUrl(url) || value.family, source: "custom", cssUrl: url });
+            }}
+            className="input-sm w-full font-mono text-[11px]"
+          />
+          {value.family ? (
+            <p className="text-[11px] text-text-faint">
+              Detected: <span className="font-semibold">{value.family}</span>
+            </p>
+          ) : (
+            <p className="text-[11px] text-text-faint">Paste a Google Fonts link to load a custom face.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Info({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        className="w-4 h-4 grid place-items-center rounded-full border border-line text-[10px] font-semibold text-text-faint hover:text-accent-glow"
+        aria-label="How to get a Google Fonts link"
+      >
+        i
+      </button>
+      {open && (
+        <span className="absolute right-0 top-5 z-20 w-64 rounded-[10px] border hairline bg-panel p-3 text-[11px] leading-relaxed text-text-muted whitespace-pre-line shadow-lg">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function RoleEditor({
+  role,
+  value,
+  onChange,
+}: {
+  role: TypographyRole;
+  value: { weight: number; letterSpacing: number; lineHeight: number };
+  onChange: (patch: Partial<{ weight: number; letterSpacing: number; lineHeight: number }>) => void;
+}) {
+  return (
+    <div className="rounded-[10px] border hairline p-2.5 space-y-2">
+      <div className="text-[12px] font-semibold">{ROLE_LABEL[role]}</div>
+      <label className="block">
+        <span className="micro block mb-1">Weight {value.weight}</span>
+        <input type="range" min={300} max={800} step={100} value={value.weight} onChange={(e) => onChange({ weight: Number(e.target.value) })} className="w-full accent-[rgb(var(--accent))]" />
+      </label>
+      <label className="block">
+        <span className="micro block mb-1">Letter spacing {value.letterSpacing.toFixed(2)}em</span>
+        <input type="range" min={-0.05} max={0.5} step={0.01} value={value.letterSpacing} onChange={(e) => onChange({ letterSpacing: Number(e.target.value) })} className="w-full accent-[rgb(var(--accent))]" />
+      </label>
+      <label className="block">
+        <span className="micro block mb-1">Line height {value.lineHeight.toFixed(2)}</span>
+        <input type="range" min={0.9} max={2} step={0.05} value={value.lineHeight} onChange={(e) => onChange({ lineHeight: Number(e.target.value) })} className="w-full accent-[rgb(var(--accent))]" />
+      </label>
+    </div>
   );
 }
 

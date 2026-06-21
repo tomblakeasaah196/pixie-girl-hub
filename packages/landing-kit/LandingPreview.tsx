@@ -42,7 +42,7 @@ import {
   Copy,
 } from "lucide-react";
 import type { LandingConfig } from "./config";
-import { hexToTriplet } from "./config";
+import { hexToTriplet, fontStack, fontHrefs } from "./config";
 
 // The Atelier faces are loaded by the host app (admin index.html / landing
 // layout.tsx) and exposed as --font-atelier-*; we consume them here with a
@@ -58,6 +58,9 @@ const BODY_FONT =
 const DISPLAY = {
   fontFamily: DISPLAY_FONT,
   fontVariationSettings: '"opsz" 144, "SOFT" 30',
+  // Heading-role tokens (set by the studio); fall back to the Atelier defaults.
+  fontWeight: "var(--type-heading-weight, 400)",
+  letterSpacing: "var(--type-heading-tracking, -0.02em)",
 } as const;
 
 /** Shared easing — the slow, settled curve the whole reference moves on. */
@@ -88,6 +91,39 @@ function usePreviewAssets() {
     `;
     document.head.appendChild(style);
   }, []);
+}
+
+/** Inject the chosen fonts' Google Fonts stylesheets once each. Curated and
+ *  custom (pasted-URL) fonts both flow through here, so changing a font in the
+ *  studio loads it live in the preview, and the public page loads exactly the
+ *  same sheets. Tagged with data-landing-font so we never double-insert. */
+function useFontLinks(config: LandingConfig) {
+  const hrefs = useMemo(() => fontHrefs(config.typography), [config.typography]);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    // Preconnect to the Google Fonts hosts once (faster first paint).
+    for (const host of [
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com",
+    ]) {
+      if (!document.querySelector(`link[data-landing-font-pre="${host}"]`)) {
+        const pre = document.createElement("link");
+        pre.rel = "preconnect";
+        pre.href = host;
+        if (host.includes("gstatic")) pre.crossOrigin = "anonymous";
+        pre.setAttribute("data-landing-font-pre", host);
+        document.head.appendChild(pre);
+      }
+    }
+    for (const href of hrefs) {
+      if (document.querySelector(`link[data-landing-font="${href}"]`)) continue;
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = href;
+      link.setAttribute("data-landing-font", href);
+      document.head.appendChild(link);
+    }
+  }, [hrefs]);
 }
 
 function SocialIcon({ platform }: { platform: string }) {
@@ -256,20 +292,42 @@ export function LandingPreview({
   omitHero?: boolean;
 }) {
   usePreviewAssets();
+  useFontLinks(config);
 
-  const brandVars = useMemo(
-    () =>
-      ({
-        "--brand-ink": hexToTriplet(config.theme.ink),
-        "--brand-paper": hexToTriplet(config.theme.paper),
-        "--brand-primary": hexToTriplet(config.theme.primary),
-        "--brand-primary-deep": hexToTriplet(config.theme.primaryDeep),
-        "--brand-accent": hexToTriplet(config.theme.accent),
-        "--brand-muted": hexToTriplet(config.theme.muted),
-        "--brand-glow": hexToTriplet(config.theme.glow),
-      }) as React.CSSProperties,
-    [config.theme],
-  );
+  const brandVars = useMemo(() => {
+    const t = config.typography;
+    const tx = config.texture;
+    return {
+      "--brand-ink": hexToTriplet(config.theme.ink),
+      "--brand-paper": hexToTriplet(config.theme.paper),
+      "--brand-primary": hexToTriplet(config.theme.primary),
+      "--brand-primary-deep": hexToTriplet(config.theme.primaryDeep),
+      "--brand-accent": hexToTriplet(config.theme.accent),
+      "--brand-muted": hexToTriplet(config.theme.muted),
+      "--brand-glow": hexToTriplet(config.theme.glow),
+      // Typography tokens — the renderer already consumes
+      // --font-atelier-display / --font-atelier-body everywhere, so setting
+      // them here re-skins all type. Roles + scale drive size/weight/spacing.
+      "--font-atelier-display": fontStack(t?.display, "serif"),
+      "--font-atelier-body": fontStack(t?.body, "sans"),
+      "--type-scale": String(t?.scale ?? 1),
+      "--type-heading-weight": String(t?.roles.heading.weight ?? 400),
+      "--type-heading-tracking": `${t?.roles.heading.letterSpacing ?? -0.02}em`,
+      "--type-heading-leading": String(t?.roles.heading.lineHeight ?? 1),
+      "--type-body-weight": String(t?.roles.body.weight ?? 400),
+      "--type-body-tracking": `${t?.roles.body.letterSpacing ?? 0}em`,
+      "--type-body-leading": String(t?.roles.body.lineHeight ?? 1.6),
+      "--type-eyebrow-weight": String(t?.roles.eyebrow.weight ?? 500),
+      "--type-eyebrow-tracking": `${t?.roles.eyebrow.letterSpacing ?? 0.35}em`,
+      "--type-numerals-weight": String(t?.roles.numerals.weight ?? 400),
+      // Texture tokens.
+      "--glass-blur": `${tx?.glassBlur ?? 12}px`,
+      "--glass-opacity": String(tx?.glassOpacity ?? 1),
+      "--tx-grain": String(tx?.grain ?? 0.45),
+      "--tx-vignette": String(tx?.vignette ?? 0.35),
+      "--tx-hero-overlay": String(tx?.heroOverlay ?? 0.55),
+    } as React.CSSProperties;
+  }, [config.theme, config.typography, config.texture]);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -369,9 +427,35 @@ export function LandingPreview({
 
   return (
     <main
-      style={{ ...brandVars, background: "rgb(var(--brand-paper))", color: "rgb(var(--brand-primary-deep))", fontFamily: BODY_FONT, fontFeatureSettings: '"ss01", "cv11"' }}
-      className="min-h-screen"
+      style={{
+        ...brandVars,
+        background: "rgb(var(--brand-paper))",
+        color: "rgb(var(--brand-primary-deep))",
+        fontFamily: BODY_FONT,
+        fontWeight: "var(--type-body-weight, 400)" as React.CSSProperties["fontWeight"],
+        fontFeatureSettings: '"ss01", "cv11"',
+      }}
+      className="relative min-h-screen"
     >
+      {/* Texture overlays — paper grain + edge vignette, both studio-driven. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-[1]"
+        style={{
+          opacity: "calc(var(--tx-grain, 0.45) * 0.16)",
+          mixBlendMode: "overlay",
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-[1]"
+        style={{
+          background:
+            "radial-gradient(120% 90% at 50% 50%, transparent 58%, rgb(var(--brand-ink) / calc(var(--tx-vignette, 0.35) * 0.6)) 100%)",
+        }}
+      />
       {!omitHero && (
       <>
       {/* ─── HERO ─── */}
@@ -413,6 +497,12 @@ export function LandingPreview({
           }}
         />
         <motion.div style={{ opacity: veilOpacity }} aria-hidden className="absolute inset-0 bg-black/25" />
+        {/* Studio-driven hero scrim — darkens the image for legibility. */}
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{ background: "rgb(0 0 0 / calc(var(--tx-hero-overlay, 0.55) * 0.55))" }}
+        />
 
         {/* Top bar */}
         <div className="absolute top-0 inset-x-0 z-10 flex items-center justify-between gap-4 px-5 sm:px-6 md:px-12 py-5 md:py-6">
@@ -428,8 +518,15 @@ export function LandingPreview({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 1, ease: [0.22, 1, 0.36, 1] }}
-            className="mb-6 inline-flex w-fit items-center gap-2 rounded-full px-4 py-1.5 text-[10px] md:text-[11px] tracking-[0.35em] uppercase text-white"
-            style={{ border: "1px solid rgb(255 255 255 / 0.25)", background: "rgb(255 255 255 / 0.05)", backdropFilter: "blur(12px)" }}
+            className="mb-6 inline-flex w-fit items-center gap-2 rounded-full px-4 py-1.5 text-[10px] md:text-[11px] uppercase text-white"
+            style={{
+              border: "1px solid rgb(255 255 255 / 0.25)",
+              background: "rgb(255 255 255 / 0.05)",
+              backdropFilter: "blur(var(--glass-blur, 12px))",
+              WebkitBackdropFilter: "blur(var(--glass-blur, 12px))",
+              letterSpacing: "var(--type-eyebrow-tracking, 0.35em)",
+              fontWeight: "var(--type-eyebrow-weight, 500)" as React.CSSProperties["fontWeight"],
+            }}
           >
             <span aria-hidden className="text-base leading-none">✨</span>
             {config.hero.eyebrow}
@@ -438,8 +535,12 @@ export function LandingPreview({
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4, duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-            className="text-[clamp(2.5rem,8vw,6.5rem)] font-semibold leading-[0.92] tracking-[-0.025em] text-white max-w-4xl"
-            style={DISPLAY}
+            className="font-semibold leading-[0.92] text-white max-w-4xl"
+            style={{
+              ...DISPLAY,
+              fontSize: "calc(var(--type-scale, 1) * clamp(2.5rem, 8vw, 6.5rem))",
+              lineHeight: "var(--type-heading-leading, 0.92)",
+            }}
           >
             {config.hero.headline}{" "}
             <em className="italic font-light">{config.hero.headlineAccent}</em>
@@ -491,7 +592,7 @@ export function LandingPreview({
             <div className="text-[10px] tracking-[0.4em] uppercase mb-6 inline-flex items-center gap-2" style={{ color: "rgb(var(--brand-primary))" }}>
               <span aria-hidden>✨</span> {config.invitation.eyebrow}
             </div>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-[-0.02em] leading-[0.98]" style={DISPLAY}>
+            <h2 className="font-semibold leading-[0.98]" style={{ ...DISPLAY, fontSize: "calc(var(--type-scale, 1) * clamp(2.25rem, 4.5vw, 3.75rem))" }}>
               {config.invitation.heading} <em className="italic font-light">{config.invitation.headingAccent}</em>
             </h2>
             <p className="mt-8 text-base md:text-lg leading-relaxed max-w-md" style={{ color: "rgb(var(--brand-muted))" }}>
@@ -566,12 +667,12 @@ export function LandingPreview({
                   exit={{ opacity: 0, y: -8, filter: "blur(6px)" }}
                   transition={{ duration: 0.5 }}
                   className="relative rounded-[2.5rem] p-8 md:p-12 space-y-7 overflow-hidden"
-                  style={{ background: "rgb(var(--brand-primary-deep))", boxShadow: "0 40px 80px -30px rgb(var(--brand-primary-deep)/0.65), inset 0 1px 0 rgb(var(--brand-paper)/0.08)" }}
+                  style={{ background: "rgb(var(--brand-primary-deep) / var(--glass-opacity, 1))", backdropFilter: "blur(var(--glass-blur, 12px))", WebkitBackdropFilter: "blur(var(--glass-blur, 12px))", boxShadow: "0 40px 80px -30px rgb(var(--brand-primary-deep)/0.65), inset 0 1px 0 rgb(var(--brand-paper)/0.08)" }}
                 >
                   <div aria-hidden className="absolute inset-0 pointer-events-none rounded-[2.5rem]" style={{ background: "linear-gradient(140deg, rgb(var(--brand-paper)/0.08), transparent 35%, rgb(0 0 0 / 0.25))" }} />
                   <div className="relative">
                     <div className="text-[10px] tracking-[0.3em] uppercase font-medium mb-3" style={{ color: "rgb(var(--brand-paper)/0.5)" }}>{config.invitation.formEyebrow}</div>
-                    <h3 className="text-3xl md:text-4xl leading-[1.1]" style={{ ...DISPLAY, color: "rgb(var(--brand-paper))" }}>
+                    <h3 className="leading-[1.1]" style={{ ...DISPLAY, fontSize: "calc(var(--type-scale, 1) * clamp(1.875rem, 3.2vw, 2.25rem))", color: "rgb(var(--brand-paper))" }}>
                       {config.invitation.formTitle} <em className="italic font-light" style={{ color: "rgb(var(--brand-paper)/0.8)" }}>{config.invitation.formTitleAccent}</em>
                     </h3>
                   </div>
@@ -640,7 +741,7 @@ export function LandingPreview({
                   animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                   transition={{ duration: 0.8 }}
                   className="relative rounded-[2.5rem] p-8 md:p-12 overflow-hidden"
-                  style={{ background: "rgb(var(--brand-primary-deep))", boxShadow: "0 40px 80px -30px rgb(var(--brand-primary-deep)/0.65)" }}
+                  style={{ background: "rgb(var(--brand-primary-deep) / var(--glass-opacity, 1))", backdropFilter: "blur(var(--glass-blur, 12px))", WebkitBackdropFilter: "blur(var(--glass-blur, 12px))", boxShadow: "0 40px 80px -30px rgb(var(--brand-primary-deep)/0.65)" }}
                 >
                   <div aria-hidden className="absolute inset-0 pointer-events-none rounded-[2.5rem]" style={{ background: "radial-gradient(80% 60% at 50% 0%, rgb(var(--brand-accent)/0.25), transparent 60%)" }} />
                   <div className="relative text-center">
@@ -654,7 +755,7 @@ export function LandingPreview({
                       <Check className="w-7 h-7" style={{ color: "rgb(var(--brand-accent))" }} strokeWidth={1.5} />
                     </motion.div>
                     <div className="text-[10px] tracking-[0.35em] uppercase mb-4" style={{ color: "rgb(var(--brand-accent))" }}>Welcome to the Inner Circle</div>
-                    <h3 className="text-3xl md:text-4xl leading-[1.1]" style={{ ...DISPLAY, color: "rgb(var(--brand-paper))" }}>
+                    <h3 className="leading-[1.1]" style={{ ...DISPLAY, fontSize: "calc(var(--type-scale, 1) * clamp(1.875rem, 3.2vw, 2.25rem))", color: "rgb(var(--brand-paper))" }}>
                       You&apos;re in, <em className="italic font-light" style={{ color: "rgb(var(--brand-paper)/0.85)" }}>{submitted.name}.</em>
                     </h3>
                     <p className="mt-5 text-sm md:text-base leading-relaxed max-w-sm mx-auto" style={{ color: "rgb(var(--brand-paper)/0.6)" }}>
@@ -710,7 +811,7 @@ export function LandingPreview({
             <div className="text-[10px] tracking-[0.4em] uppercase mb-4 inline-flex items-center gap-2" style={{ color: "rgb(var(--brand-primary))" }}>
               <span aria-hidden>⚡</span> {config.galleryEyebrow}
             </div>
-            <h3 className="text-3xl md:text-5xl font-semibold tracking-[-0.02em] leading-[0.98]" style={DISPLAY}>{config.galleryHeading}</h3>
+            <h3 className="font-semibold leading-[0.98]" style={{ ...DISPLAY, fontSize: "calc(var(--type-scale, 1) * clamp(1.875rem, 4vw, 3rem))" }}>{config.galleryHeading}</h3>
           </div>
           <div className="lp-marquee-wrap relative overflow-hidden" style={{ maskImage: "linear-gradient(90deg,transparent,black 8%,black 92%,transparent)", WebkitMaskImage: "linear-gradient(90deg,transparent,black 8%,black 92%,transparent)" }}>
             <div className="lp-marquee flex gap-6 w-max">
@@ -744,7 +845,7 @@ export function LandingPreview({
           {config.pillars.map((p, i) => (
             <div key={`${p.numeral}-${i}`} className="pt-8" style={{ borderTop: "1px solid rgb(var(--brand-accent)/0.3)" }}>
               <div className="text-3xl italic" style={{ ...DISPLAY, color: "rgb(var(--brand-primary))" }}>{p.numeral}</div>
-              <h4 className="text-2xl md:text-3xl mt-2" style={DISPLAY}>{p.title}</h4>
+              <h4 className="mt-2" style={{ ...DISPLAY, fontSize: "calc(var(--type-scale, 1) * clamp(1.5rem, 2.6vw, 1.875rem))" }}>{p.title}</h4>
               {/* primary-deep @ 0.8 (not the faint --brand-muted) so the pillar
                   body copy is actually legible on the light paper background. */}
               <p className="mt-4 leading-relaxed" style={{ color: "rgb(var(--brand-primary-deep) / 0.8)" }}>{p.body}</p>

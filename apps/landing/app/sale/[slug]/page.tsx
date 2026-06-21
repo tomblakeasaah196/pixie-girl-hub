@@ -1,48 +1,29 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { fetchCampaign } from "@/lib/api";
-import { LandingShell } from "@/components/LandingShell";
-import { IntroOverlay } from "@/components/IntroOverlay";
+import { deriveState } from "@/lib/state-engine";
 
 interface Params {
   slug: string;
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Params;
-}): Promise<Metadata> {
-  const payload = await fetchCampaign(params.slug).catch(() => null);
-  if (!payload) {
-    return { title: "Sale not found" };
-  }
-  const title = payload.seo.meta_title || payload.name;
-  const description =
-    payload.seo.meta_description ||
-    `${payload.name} — a time-bound sale from ${payload.brand?.display_name || "us"}.`;
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      images: payload.seo.og_image_url
-        ? [{ url: payload.seo.og_image_url, width: 1200, height: 630 }]
-        : undefined,
-      type: "website",
-    },
-    twitter: { card: "summary_large_image", title, description },
-  };
-}
+export const dynamic = "force-dynamic";
 
+/**
+ * State router for /sale/[slug]. Server-only — no UI.
+ *
+ * The four states each own their own URL so the browser bar and any shared
+ * links accurately describe what the visitor is looking at:
+ *   /sale/[slug]/before  → cinematic countdown (Atelier Hourglass)
+ *   /sale/[slug]/live    → the live drop (LandingShell)
+ *   /sale/[slug]/ended   → the ended farewell (LandingShell)
+ *
+ * deriveState is the same engine the live shell uses; it tolerates a small
+ * lag between the backend's cron flip and render time by using the times as
+ * a tiebreaker.
+ */
 export default async function Page({ params }: { params: Params }) {
   const payload = await fetchCampaign(params.slug);
   if (!payload) notFound();
-  return (
-    <>
-      <IntroOverlay brand={payload.brand?.business_key} campaignName={payload.name} />
-      <LandingShell payload={payload} />
-    </>
-  );
+  const { state } = deriveState(payload);
+  redirect(`/sale/${params.slug}/${state}`);
 }

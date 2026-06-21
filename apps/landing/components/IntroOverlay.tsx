@@ -10,7 +10,7 @@ import { motion, useReducedMotion } from "framer-motion";
  * sessionStorage so repeat navigation within the same session is silent.
  */
 
-const SESSION_KEY = "pgh-intro-seen";
+const DEFAULT_SESSION_KEY = "pgh-intro-seen";
 const EASE = [0.76, 0, 0.24, 1] as const;
 
 const BRAND_WORDMARK: Record<string, string> = {
@@ -23,17 +23,23 @@ type Phase = "hidden" | "seal" | "open";
 export function IntroOverlay({
   brand,
   campaignName,
+  sessionKey,
 }: {
   brand?: string | null;
   campaignName?: string | null;
+  /** Override the sessionStorage key — pass per-slug for the campaign before
+   *  page so each sale plays its own intro the first time. Defaults to the
+   *  global "pgh-intro-seen" used by the live/ended states. */
+  sessionKey?: string;
 }) {
   const [phase, setPhase] = useState<Phase>("hidden");
   const reduceMotion = useReducedMotion();
+  const storageKey = sessionKey || DEFAULT_SESSION_KEY;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (sessionStorage.getItem(SESSION_KEY)) return;
-    sessionStorage.setItem(SESSION_KEY, "1");
+    if (sessionStorage.getItem(storageKey)) return;
+    sessionStorage.setItem(storageKey, "1");
 
     if (reduceMotion) return; // skip the spectacle, never block the page
 
@@ -44,7 +50,7 @@ export function IntroOverlay({
       clearTimeout(untie);
       clearTimeout(done);
     };
-  }, [reduceMotion]);
+  }, [reduceMotion, storageKey]);
 
   if (phase === "hidden") return null;
 

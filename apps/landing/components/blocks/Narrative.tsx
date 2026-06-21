@@ -93,7 +93,7 @@ export function WhyBuy({ payload }: { payload: LandingPayload }) {
               transition={{ delay: i * 0.08, duration: 0.5 }}
               className="glass rounded-[var(--radius)] p-6"
             >
-              <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--gold)/0.12)] text-[rgb(var(--gold))] mb-4">
+              <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))] mb-4">
                 <Heart className="w-5 h-5" />
               </span>
               <h3 className="font-display text-[20px] leading-tight mb-2">
@@ -130,7 +130,7 @@ export function Testimonials({ payload }: { payload: LandingPayload }) {
                 {[0, 1, 2, 3, 4].map((s) => (
                   <Star
                     key={s}
-                    className="w-3.5 h-3.5 fill-[rgb(var(--gold))] text-[rgb(var(--gold))]"
+                    className="w-3.5 h-3.5 fill-[rgb(var(--accent-glow))] text-[rgb(var(--accent-glow))]"
                   />
                 ))}
               </div>
@@ -191,7 +191,7 @@ export function Faq({ payload }: { payload: LandingPayload }) {
                 >
                   <span className="font-display text-[17px]">{it.q}</span>
                   <ChevronDown
-                    className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180 text-[rgb(var(--gold))]" : ""}`}
+                    className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180 text-[rgb(var(--accent-glow))]" : ""}`}
                   />
                 </button>
                 <motion.div
@@ -237,7 +237,7 @@ export function WigCare({ payload }: { payload: LandingPayload }) {
             ["Store braided + zipped", "Tangle-free between wears."],
           ].map(([title, body], i) => (
             <li key={i} className="flex gap-3">
-              <span className="font-display text-[26px] text-[rgb(var(--gold))] leading-none">
+              <span className="font-display text-[26px] text-[rgb(var(--accent-glow))] leading-none">
                 {i + 1}
               </span>
               <div>
@@ -264,7 +264,7 @@ export function StylistSpotlight({ payload }: { payload: LandingPayload }) {
   return (
     <section className="section-tight">
       <div className="mx-auto max-w-[760px] glass rounded-[var(--radius)] p-7 flex items-start gap-4">
-        <span className="grid place-items-center w-12 h-12 rounded-xl bg-[rgb(var(--gold)/0.12)] text-[rgb(var(--gold))] flex-shrink-0">
+        <span className="grid place-items-center w-12 h-12 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))] flex-shrink-0">
           <Scissors className="w-5 h-5" />
         </span>
         <div>
@@ -286,7 +286,7 @@ export function ShippingReturns({ payload }: { payload: LandingPayload }) {
     <section className="section-tight">
       <div className="mx-auto max-w-[920px] glass rounded-[var(--radius)] p-6 grid grid-cols-1 md:grid-cols-3 gap-5">
         <div className="flex gap-3 items-start">
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--gold)/0.12)] text-[rgb(var(--gold))]">
+          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))]">
             <Truck className="w-4.5 h-4.5" />
           </span>
           <div>
@@ -297,7 +297,7 @@ export function ShippingReturns({ payload }: { payload: LandingPayload }) {
           </div>
         </div>
         <div className="flex gap-3 items-start">
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--gold)/0.12)] text-[rgb(var(--gold))]">
+          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))]">
             <Heart className="w-4.5 h-4.5" />
           </span>
           <div>
@@ -308,7 +308,7 @@ export function ShippingReturns({ payload }: { payload: LandingPayload }) {
           </div>
         </div>
         <div className="flex gap-3 items-start">
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--gold)/0.12)] text-[rgb(var(--gold))]">
+          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))]">
             <Quote className="w-4.5 h-4.5" />
           </span>
           <div>

@@ -32,7 +32,8 @@ export function middleware(req: NextRequest) {
   const brand = resolveBrand(hostname);
 
   // Clone the inbound request headers and stamp the brand on them. This is
-  // what makes the brand visible to `headers()` inside Server Components.
+  // what makes the brand visible to `headers()` inside Server Components,
+  // which is how lib/api.ts forwards X-Brand-Context to the Hub backend.
   const requestHeaders = new Headers(req.headers);
   if (brand) {
     requestHeaders.set("x-brand", brand);

@@ -112,6 +112,20 @@ async function removeComponent({ brand, id, bundle_product_id }) {
   return { removed: true };
 }
 
+async function deleteBundle({ brand, user, request_id, id }) {
+  const ok = await repo.remove({ brand, id });
+  if (!ok) throw new NotFoundError("Bundle");
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.bundle.delete",
+    target_type: "bundle_offer",
+    target_id: id,
+    request_id,
+  });
+  return { deleted: true };
+}
+
 /**
  * Quote a bundle's discount for a component subtotal (NGN).
  * @returns {{ pricing_model:string, discount_ngn?:string, bundle_price_ngn?:string, params?:object }}
@@ -252,6 +266,7 @@ module.exports = {
   setBundleActive,
   addComponent,
   removeComponent,
+  deleteBundle,
   priceBundle,
   quantityBundleDiscount,
 };

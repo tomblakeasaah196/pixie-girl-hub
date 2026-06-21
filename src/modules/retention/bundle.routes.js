@@ -40,5 +40,6 @@ router.delete(
   can("edit"),
   controller.removeComponent,
 );
+router.delete("/:id", can("delete"), controller.remove);
 
 module.exports = router;

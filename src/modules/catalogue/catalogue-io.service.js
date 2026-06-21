@@ -189,14 +189,14 @@ async function colourImageMap(brand, styled_id) {
   }
   return map;
 }
-async function collectionsForBase(brand, base_product_id) {
-  if (!base_product_id) return "";
+async function collectionsForStyled(brand, styled_id) {
+  if (!styled_id) return "";
   try {
     const { rows } = await query(
       `SELECT c.name FROM ${t(brand, "product_collections")} c
          JOIN ${t(brand, "product_collection_members")} m ON m.collection_id = c.collection_id
-        WHERE m.product_id = $1 ORDER BY c.name`,
-      [base_product_id],
+        WHERE m.styled_id = $1 ORDER BY c.name`,
+      [styled_id],
     );
     return rows.map((r) => r.name).join(", ");
   } catch {
@@ -227,7 +227,7 @@ async function exportStyled({ brand }) {
     const [variants, imagesByColour, collections, bundles] = await Promise.all([
       variantsRepo.listVariants({ brand, styled_id: s.styled_id }),
       colourImageMap(brand, s.styled_id),
-      collectionsForBase(brand, s.base_product_id),
+      collectionsForStyled(brand, s.styled_id),
       bundlesForBase(brand, s.base_product_id),
     ]);
     if (!variants.length) {
@@ -333,7 +333,7 @@ async function importStyled({ brand, user, request_id, buffer }) {
     const slug = str(first["Slug"]) || slugify(group.name);
     const laceLabels = [...new Set(group.items.map((it) => str(it.raw["Lace"])).filter(Boolean))];
     const laceCodeList = laceLabels.map(laceCodeOf).filter(Boolean);
-    const prices = group.items.map((it) => num(it.raw["Retail Price (NGN)*"])).filter((x) => x != null);
+    const prices = group.items.map((it) => num(it.raw["Retail Price (NGN)*"])).filter((x) => x !== null && x !== undefined);
     const anchor = prices.length ? Math.min(...prices) : null;
 
     const input = {
@@ -457,7 +457,9 @@ async function importStyled({ brand, user, request_id, buffer }) {
       results.push({ sheet: STYLED_SHEET, row: firstLine, status: "info", reason: `${vCreated} variants for "${group.name}"` });
     }
 
-    // Collections + bundles (union across the group), keyed on the base.
+    // Collections (STYLED membership) + bundles (BASE components). Union the
+    // values across the group's rows; collections key on the styled product,
+    // bundles on the representative base.
     const cols = new Set();
     const bdls = new Set();
     for (const it of group.items) {
@@ -471,7 +473,7 @@ async function importStyled({ brand, user, request_id, buffer }) {
         continue;
       }
       await catalogueService
-        .addCollectionMember({ brand, user, request_id, id: col.collection_id, input: { product_id: repBase.product_id } })
+        .addCollectionMember({ brand, user, request_id, id: col.collection_id, input: { styled_id: styled.styled_id } })
         .catch(() => {});
     }
     for (const bName of bdls) {

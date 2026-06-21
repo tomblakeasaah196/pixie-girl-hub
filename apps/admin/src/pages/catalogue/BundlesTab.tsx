@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { Plus, Gift, X, Image as ImageIcon, Pencil } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Plus,
+  Gift,
+  X,
+  Image as ImageIcon,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import {
   Button,
   Card,
@@ -10,6 +17,7 @@ import {
 import {
   ErrorState,
   DeniedState,
+  ConfirmDialog,
   Toggle,
   Select,
   NumberField,
@@ -22,6 +30,10 @@ import {
   useCreateBundle,
   useToggleBundle,
   useUpdateBundle,
+  useDeleteBundle,
+  useBundle,
+  useAddBundleComponent,
+  useRemoveBundleComponent,
   useBaseProducts,
   type Bundle,
   type BundleComponentInput,
@@ -34,12 +46,30 @@ import { ImportExportControls } from "@/components/catalogue/ImportExportControl
  * Bundles run on the promotional engine in the retention module
  * (bundle_offers), surfaced here as a Catalogue tab. Permissions follow the
  * `retention` key (not catalogue), so the UI gates on those.
+ *
+ * Pricing in plain terms (owner-confirmed):
+ *  • Fixed bundle price — one flat price for the whole bundle.
+ *  • % off — take a percentage off the total of everything inside.
+ *  • Amount off — take a fixed ₦ amount off the whole bundle. It STAYS THE SAME
+ *    no matter how many products you add (a flat, per-bundle discount).
  */
 const PRICING_MODELS = [
   { value: "fixed_bundle_price", label: "Fixed bundle price" },
-  { value: "pct_off", label: "% off components" },
-  { value: "amount_off", label: "Amount off components" },
+  { value: "pct_off", label: "% off the bundle total" },
+  { value: "amount_off", label: "Fixed ₦ off the bundle" },
 ];
+
+const PRICING_HELP: Record<string, string> = {
+  fixed_bundle_price:
+    "One flat price for the whole bundle, whatever it contains.",
+  pct_off:
+    "Take this percentage off the total of everything in the bundle (scales naturally as you add products).",
+  amount_off:
+    "Take this fixed ₦ amount off the whole bundle. It stays the same no matter how many products you add.",
+};
+
+const inputCls =
+  "w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50";
 
 function code(name: string) {
   return name
@@ -56,6 +86,7 @@ export function BundlesTab() {
   const toggle = useToggleBundle();
   const [open, setOpen] = useState(false);
   const [coverFor, setCoverFor] = useState<Bundle | null>(null);
+  const [editFor, setEditFor] = useState<Bundle | null>(null);
 
   if (!can("retention", "view")) {
     return (
@@ -106,7 +137,7 @@ export function BundlesTab() {
           <EmptyState
             icon={<Gift className="w-8 h-8" />}
             title="No bundles yet"
-            message="Bundle styled products into a promotional offer."
+            message="Bundle base products into a promotional offer."
             action={
               canCreate ? (
                 <Button
@@ -173,9 +204,22 @@ export function BundlesTab() {
                   {b.pricing_model.replace(/_/g, " ")}
                 </Pill>
                 {b.bundle_price_ngn != null && (
-                  <MoneyText ngn={b.bundle_price_ngn} className="text-[14px]" />
+                  <MoneyText
+                    ngn={b.bundle_price_ngn}
+                    usd={b.bundle_price_usd ?? undefined}
+                    className="text-[14px]"
+                  />
                 )}
               </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setEditFor(b)}
+                  className="mt-3 inline-flex items-center gap-1 text-[11.5px] font-semibold text-accent-glow"
+                >
+                  <Pencil className="w-3 h-3" /> Edit & manage products
+                </button>
+              )}
             </Card>
           ))}
         </div>
@@ -183,6 +227,7 @@ export function BundlesTab() {
 
       <CreateBundleModal open={open} onClose={() => setOpen(false)} />
       <BundleCoverModal bundle={coverFor} onClose={() => setCoverFor(null)} />
+      <BundleEditorModal bundle={editFor} onClose={() => setEditFor(null)} />
     </div>
   );
 }
@@ -213,6 +258,227 @@ function BundleCoverModal({
   );
 }
 
+/** Full editor: rename, change pricing (NGN + USD), add/remove products, delete. */
+function BundleEditorModal({
+  bundle,
+  onClose,
+}: {
+  bundle: Bundle | null;
+  onClose: () => void;
+}) {
+  const detail = useBundle(bundle?.bundle_id ?? null);
+  const update = useUpdateBundle();
+  const del = useDeleteBundle();
+  const addComp = useAddBundleComponent(bundle?.bundle_id ?? "");
+  const removeComp = useRemoveBundleComponent(bundle?.bundle_id ?? "");
+  const bases = useBaseProducts();
+
+  const [name, setName] = useState("");
+  const [model, setModel] = useState("fixed_bundle_price");
+  const [priceNgn, setPriceNgn] = useState("");
+  const [priceUsd, setPriceUsd] = useState("");
+  const [amount, setAmount] = useState("");
+  const [pick, setPick] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    if (bundle) {
+      setName(bundle.display_name);
+      setModel(bundle.pricing_model);
+      setPriceNgn(
+        bundle.bundle_price_ngn != null ? String(bundle.bundle_price_ngn) : "",
+      );
+      setPriceUsd(
+        bundle.bundle_price_usd != null ? String(bundle.bundle_price_usd) : "",
+      );
+      // pct_off stores a fraction (0.10) — show it as a whole percent.
+      setAmount(
+        bundle.discount_value != null
+          ? String(
+              bundle.pricing_model === "pct_off"
+                ? bundle.discount_value * 100
+                : bundle.discount_value,
+            )
+          : "",
+      );
+      setPick("");
+    }
+  }, [bundle]);
+
+  if (!bundle) return null;
+
+  const components = detail.data?.components ?? [];
+  const componentIds = new Set(components.map((c) => c.product_id));
+  const pickOptions = [
+    { value: "", label: "Add a base product…" },
+    ...(bases.data ?? [])
+      .filter((b) => !componentIds.has(b.product_id))
+      .map((b) => ({ value: b.product_id, label: `${b.name} · ${b.product_code}` })),
+  ];
+
+  // Live subtotal preview from component unit prices × quantity.
+  const subtotal = components.reduce(
+    (sum, c) => sum + (c.unit_price_ngn ?? 0) * (c.quantity ?? 1),
+    0,
+  );
+
+  const saveMeta = () => {
+    const num = amount ? Number(amount) : undefined;
+    const patch: Partial<Bundle> = {
+      display_name: name.trim(),
+      pricing_model: model,
+    };
+    if (model === "fixed_bundle_price") {
+      patch.bundle_price_ngn = priceNgn ? Number(priceNgn) : 0;
+      patch.bundle_price_usd = priceUsd ? Number(priceUsd) : null;
+    } else if (model === "pct_off") {
+      patch.discount_value = (num ?? 0) / 100;
+    } else if (model === "amount_off") {
+      patch.discount_value = num ?? 0;
+    }
+    update.mutate({ id: bundle.bundle_id, patch });
+  };
+
+  const add = (productId: string) => {
+    if (!productId) return;
+    addComp.mutate({ product_id: productId, quantity: 1, role: "core" });
+    setPick("");
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Edit — ${bundle.display_name}`}
+      footer={
+        <>
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-faint hover:text-danger transition-colors mr-auto"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Delete bundle
+          </button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!name.trim() || update.isPending}
+            onClick={saveMeta}
+          >
+            {update.isPending ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Display name">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={inputCls}
+          />
+        </Field>
+        <Field label="Pricing model">
+          <Select value={model} onChange={setModel} options={PRICING_MODELS} />
+        </Field>
+        <p className="text-[11.5px] text-text-faint -mt-1">
+          {PRICING_HELP[model]}
+        </p>
+
+        {model === "fixed_bundle_price" ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Bundle price" hint="Naira">
+              <NumberField value={priceNgn} onChange={setPriceNgn} suffix="₦" />
+            </Field>
+            <Field label="Bundle price" hint="US Dollar">
+              <NumberField value={priceUsd} onChange={setPriceUsd} suffix="$" />
+            </Field>
+          </div>
+        ) : (
+          <Field
+            label={model === "pct_off" ? "Discount percentage" : "Discount amount"}
+            hint={model === "pct_off" ? "percent off the total" : "flat ₦ off the bundle"}
+          >
+            <NumberField
+              value={amount}
+              onChange={setAmount}
+              suffix={model === "pct_off" ? "%" : "₦"}
+            />
+          </Field>
+        )}
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="micro">Products in this bundle</div>
+            {subtotal > 0 && (
+              <div className="text-[11px] text-text-faint">
+                Components total <MoneyText ngn={subtotal} className="text-[12px]" />
+              </div>
+            )}
+          </div>
+          <Select value={pick} onChange={add} options={pickOptions} />
+          <div className="mt-3 space-y-2">
+            {detail.isLoading ? (
+              <div className="h-10 rounded-[11px] bg-text-primary/[0.05] animate-pulse" />
+            ) : components.length === 0 ? (
+              <p className="text-[11.5px] text-text-faint">
+                No products yet. A bundle needs at least one base product.
+              </p>
+            ) : (
+              components.map((c) => (
+                <div
+                  key={c.bundle_product_id}
+                  className="flex items-center gap-2 rounded-[11px] border border-line bg-text-primary/[0.03] px-3 py-2"
+                >
+                  <span className="flex-1 min-w-0 truncate text-[13px]">
+                    {c.product_name ?? c.product_code ?? "Product"}
+                    {c.quantity > 1 && (
+                      <span className="text-text-faint"> × {c.quantity}</span>
+                    )}
+                  </span>
+                  {c.unit_price_ngn != null && (
+                    <MoneyText
+                      ngn={c.unit_price_ngn}
+                      className="text-[12px] text-text-faint"
+                    />
+                  )}
+                  <button
+                    onClick={() => removeComp.mutate(c.bundle_product_id)}
+                    disabled={removeComp.isPending}
+                    className="grid place-items-center w-7 h-7 rounded-[8px] text-text-faint hover:text-danger hover:bg-danger/10 transition-colors"
+                    aria-label="Remove product"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() =>
+          del.mutate(bundle.bundle_id, {
+            onSuccess: () => {
+              setConfirmDelete(false);
+              onClose();
+            },
+          })
+        }
+        title="Delete bundle?"
+        message="This removes the bundle offer. The base products inside it are not affected."
+        confirmLabel="Delete"
+        busy={del.isPending}
+      />
+    </Modal>
+  );
+}
+
 function CreateBundleModal({
   open,
   onClose,
@@ -225,6 +491,7 @@ function CreateBundleModal({
   const [name, setName] = useState("");
   const [model, setModel] = useState("fixed_bundle_price");
   const [amount, setAmount] = useState("");
+  const [amountUsd, setAmountUsd] = useState("");
   // A bundle MUST have ≥1 component (server-enforced). We pick base products.
   const [components, setComponents] = useState<
     { product_id: string; name: string; quantity: number }[]
@@ -234,6 +501,7 @@ function CreateBundleModal({
   const reset = () => {
     setName("");
     setAmount("");
+    setAmountUsd("");
     setModel("fixed_bundle_price");
     setComponents([]);
     setPick("");
@@ -279,6 +547,7 @@ function CreateBundleModal({
     };
     if (model === "fixed_bundle_price") {
       payload.bundle_price_ngn = num ?? 0;
+      payload.bundle_price_usd = amountUsd ? Number(amountUsd) : undefined;
     } else if (model === "pct_off") {
       // priceBundle multiplies the subtotal by discount_value, so it expects a
       // FRACTION (0.10), not a whole percent. Convert here.
@@ -330,24 +599,41 @@ function CreateBundleModal({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+            className={inputCls}
           />
         </Field>
         <Field label="Pricing model">
           <Select value={model} onChange={setModel} options={PRICING_MODELS} />
         </Field>
-        <Field
-          label={
-            model === "fixed_bundle_price" ? "Bundle price" : "Discount value"
-          }
-          hint={model === "pct_off" ? "percent" : "NGN"}
-        >
-          <NumberField
-            value={amount}
-            onChange={setAmount}
-            suffix={model === "pct_off" ? "%" : "₦"}
-          />
-        </Field>
+        <p className="text-[11.5px] text-text-faint -mt-1">
+          {PRICING_HELP[model]}
+        </p>
+
+        {model === "fixed_bundle_price" ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Bundle price" hint="Naira">
+              <NumberField value={amount} onChange={setAmount} suffix="₦" />
+            </Field>
+            <Field label="Bundle price" hint="US Dollar">
+              <NumberField
+                value={amountUsd}
+                onChange={setAmountUsd}
+                suffix="$"
+              />
+            </Field>
+          </div>
+        ) : (
+          <Field
+            label={model === "pct_off" ? "Discount percentage" : "Discount amount"}
+            hint={model === "pct_off" ? "percent off the total" : "flat ₦ off the bundle"}
+          >
+            <NumberField
+              value={amount}
+              onChange={setAmount}
+              suffix={model === "pct_off" ? "%" : "₦"}
+            />
+          </Field>
+        )}
 
         <Field label="Products in this bundle" hint="at least one">
           <Select value={pick} onChange={addComponent} options={pickOptions} />

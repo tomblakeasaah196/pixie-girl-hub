@@ -730,10 +730,11 @@ async function removeCollectionRule({ brand, user, request_id, id, rule_id }) {
 }
 async function addCollectionMember({ brand, user, request_id, id, input }) {
   await ensureCollection({ brand, id });
+  // Collections curate STYLED products only — a base product never joins one.
   const m = await repo.addCollectionMember({
     brand,
     collection_id: id,
-    product_id: input.product_id,
+    styled_id: input.styled_id,
     display_order: input.display_order,
     user_id: user.user_id,
   });
@@ -754,12 +755,12 @@ async function removeCollectionMember({
   user,
   request_id,
   id,
-  product_id,
+  styled_id,
 }) {
   const ok = await repo.removeCollectionMember({
     brand,
     collection_id: id,
-    product_id,
+    styled_id,
   });
   if (!ok) throw new NotFoundError("Collection member");
   await A(
@@ -768,7 +769,7 @@ async function removeCollectionMember({
     "catalogue.collection.member.remove",
     "product_collection",
     id,
-    { product_id },
+    { styled_id },
     request_id,
   );
 }

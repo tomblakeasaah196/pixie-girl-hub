@@ -273,7 +273,9 @@ async function deleteColour({ client, brand, styled_id, colour_id }) {
 const VARIANT_COLS = [
   "base_product_id",
   "price_override_ngn",
+  "price_override_usd",
   "compare_at_price_ngn",
+  "compare_at_price_usd",
   "is_active",
   "is_default",
   "display_order",
@@ -330,8 +332,8 @@ async function createVariant({ client, brand, styled_id, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "styled_product_variants")}
        (styled_id, colour_id, size_code, lace_code, base_product_id, sku,
-        price_override_ngn, compare_at_price_ngn, is_active, is_default, display_order)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,true),COALESCE($10,false),COALESCE($11,0))
+        price_override_ngn, price_override_usd, compare_at_price_ngn, compare_at_price_usd, is_active, is_default, display_order)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,true),COALESCE($12,false),COALESCE($13,0))
      RETURNING *`,
     [
       styled_id,
@@ -341,7 +343,9 @@ async function createVariant({ client, brand, styled_id, input }) {
       input.base_product_id ?? null,
       input.sku,
       input.price_override_ngn ?? null,
+      input.price_override_usd ?? null,
       input.compare_at_price_ngn ?? null,
+      input.compare_at_price_usd ?? null,
       input.is_active,
       input.is_default,
       input.display_order,

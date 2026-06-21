@@ -313,7 +313,7 @@ router.post(
   c.addCollectionMember,
 );
 router.delete(
-  "/collections/:colId/members/:productId",
+  "/collections/:colId/members/:styledId",
   can("edit"),
   c.removeCollectionMember,
 );

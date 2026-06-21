@@ -276,7 +276,7 @@ const removeCollectionMember = async (req, res) => {
   await service.removeCollectionMember({
     ...base(req),
     id: req.params.colId,
-    product_id: req.params.productId,
+    styled_id: req.params.styledId,
   });
   res.status(204).end();
 };

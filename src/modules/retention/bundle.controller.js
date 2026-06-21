@@ -87,6 +87,16 @@ async function price(req, res) {
   });
 }
 
+async function remove(req, res) {
+  await service.deleteBundle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+  });
+  res.status(204).end();
+}
+
 module.exports = {
   create,
   list,
@@ -96,4 +106,5 @@ module.exports = {
   addComponent,
   removeComponent,
   price,
+  remove,
 };

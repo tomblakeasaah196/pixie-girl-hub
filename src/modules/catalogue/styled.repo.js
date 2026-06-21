@@ -45,7 +45,9 @@ const STYLED_COLS = [
   // Styled retail is its OWN price (the size-S anchor). style_addon_price_ngn
   // is retained for legacy rows but is no longer the pricing source.
   "retail_price_ngn",
+  "retail_price_usd",
   "compare_at_price_ngn",
+  "compare_at_price_usd",
   "style_addon_price_ngn",
   "category_id",
   "visible_on_channels",

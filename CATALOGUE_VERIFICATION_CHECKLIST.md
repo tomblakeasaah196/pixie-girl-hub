@@ -14,11 +14,17 @@ Legend: ☐ = to verify · 💡 = expected result · ⚠ = watch out
 
 - [ ] Pull the branch and install: `npm install` (root) and `cd apps/admin && npm install`
 - [ ] Apply the migration to the brand schema: run `repair-business-schema` for **faitlynhair**
-      💡 it adds `styled_product_variants.base_product_id` and corrects the size ladder
+      💡 it applies 000045 (base link + size ladder), **000046 (USD price columns)**, **000047 (collections hold styled products)**
+- [ ] Apply the shared migration **000231** (service USD columns) via the normal migrate step
 - [ ] Confirm the size ladder is now **S 0 / M 0 / L 15000 / XL 25000**
       `SELECT size_code, premium_ngn FROM faitlynhair.styled_size_tiers ORDER BY display_order;`
-- [ ] Confirm the new column exists
+- [ ] Confirm the base link column exists
       `SELECT 1 FROM information_schema.columns WHERE table_schema='faitlynhair' AND table_name='styled_product_variants' AND column_name='base_product_id';`
+- [ ] Confirm the USD columns exist (10 across the brand schema)
+      `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='faitlynhair' AND column_name LIKE '%_usd' ORDER BY 1,2;`
+- [ ] Confirm collections now target styled products
+      `SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='faitlynhair' AND table_name='product_collection_members' AND column_name IN ('styled_id','product_id');`
+      💡 `styled_id` present; `product_id` is_nullable = YES
 - [ ] Backend up (`npm run dev`), admin up (`cd apps/admin && npm run dev`), log in to Faitlynhair
 
 ---
@@ -71,12 +77,29 @@ Legend: ☐ = to verify · 💡 = expected result · ⚠ = watch out
 For each: **Create → Read (list+detail) → Update → Delete** all work and persist after refresh.
 
 - [ ] **Styled** — create / edit name, description, colours, variants, prices / delete (+ Trash & Restore)
-- [ ] **Base** — open an existing base, **edit** it, save; create + delete a throwaway base ⚠ do **not** disturb seeded bases
-- [ ] **Collections** — create / edit / delete; add & remove a member; Template/Export/Import
-- [ ] **Bundles** — create / edit / delete; Template/Export/Import
-- [ ] **Services** — create / edit / delete; Template/Export/Import
-- [ ] **Categories** — (if enabled in Config) create / edit / delete
+- [ ] **Base** — open a base → **Details** card edits name/texture/lace/length and saves; **Delete base** works (→ Trash) ⚠ do **not** disturb seeded bases
+      💡 the base page no longer shows "Add to collection" (bases never join collections)
+- [ ] **Collections** — create; click a card → editor opens → rename, **add & remove styled products**, delete; Template/Export/Import
+      ⚠ the product picker lists **styled** products only
+- [ ] **Bundles** — create; click "Edit & manage products" → rename, change pricing (NGN+USD), **add & remove base products**, delete; Template/Export/Import
+- [ ] **Services** — create; **Edit** (full form) and **Delete**; Template/Export/Import
+- [ ] **Categories** — (if enabled in Config) create / **edit** / delete
 - [ ] **Config** — edit size ladder, head‑size guide, Categories toggle; save persists
+
+## 3a. USD pricing (set manually, never auto‑converted)
+
+- [ ] **Base variant** modal has Naira **and** US Dollar fields for storefront + wholesale
+- [ ] **Styled** detail has Naira + USD for retail and compare‑at; the variant table has an **Override ₦** and **Override $** column
+- [ ] **Bundle** fixed price takes Naira + USD; card shows USD under NGN when set
+- [ ] **Service** create/edit takes a USD base price
+- [ ] Leaving a USD field blank stores nothing (no phantom $0); the price simply shows NGN only
+
+## 3b. Bundle discount model (owner‑confirmed)
+
+- [ ] **Fixed bundle price** — one flat price for the whole bundle
+- [ ] **% off the bundle total** — e.g. 10% scales with the component subtotal
+- [ ] **Fixed ₦ off the bundle** — stays **flat** (e.g. ₦30k) no matter how many products are added
+      💡 the editor spells each of these out in plain language under the model picker
 
 ---
 

@@ -100,6 +100,41 @@ describe("computeEffective (styled retail = anchor + colour + size premiums)", (
       }),
     ).toBe(120000);
   });
+
+  test("lace premium is included (matches the SQL: + lace.premium)", () => {
+    expect(
+      computeEffective({
+        anchor: 389000,
+        colour_premium: 0,
+        size_premium: 15000,
+        lace_premium: 40000,
+        override: null,
+      }),
+    ).toBe(444000);
+  });
+
+  test("missing lace premium defaults to 0 (no-lace products)", () => {
+    expect(
+      computeEffective({
+        anchor: 389000,
+        colour_premium: 0,
+        size_premium: 0,
+        override: null,
+      }),
+    ).toBe(389000);
+  });
+
+  test("override still wins even with a lace premium present", () => {
+    expect(
+      computeEffective({
+        anchor: 389000,
+        colour_premium: 0,
+        size_premium: 15000,
+        lace_premium: 40000,
+        override: 425000,
+      }),
+    ).toBe(425000);
+  });
 });
 
 describe("colourShort (deterministic, collision-safe SKU code)", () => {

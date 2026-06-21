@@ -15,8 +15,6 @@ interface ImportResult {
   created?: number;
   updated?: number;
   total?: number;
-  styled_total?: number;
-  colour_total?: number;
   results?: ImportRow[];
 }
 
@@ -77,7 +75,10 @@ export function ImportExportControls({
   };
 
   const problems = (result?.results ?? []).filter(
-    (r) => r.status !== "created" && r.status !== "updated",
+    (r) =>
+      r.status !== "created" &&
+      r.status !== "updated" &&
+      r.status !== "info",
   );
 
   return (

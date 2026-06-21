@@ -1,0 +1,57 @@
+-- ============================================================
+-- TEMPLATE 000045 — Catalogue: per-variant base link + size-seed
+-- correction (no new table — every statement is idempotent, so the
+-- repair runner re-applies it harmlessly each pass).
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000044) and to EXISTING brands
+-- by repair-business-schema.js. There is intentionally NO CREATE TABLE here:
+-- the runner uses the first CREATE TABLE as a skip-sentinel, so this file has
+-- none and is re-run every repair — which is safe because ADD COLUMN /
+-- CREATE INDEX use IF NOT EXISTS and the UPDATEs are tightly guarded.
+--
+-- WHY (owner directive, June 2026):
+--   • A styled product is ONE name (e.g. "All Classic") that sells MANY base
+--     SKUs — one per colour × lace × size. Each sellable variant is cut from a
+--     specific base product, so the variant must remember WHICH base it draws
+--     from. This makes "pull the exact wig from the back room" exact, and lets
+--     export emit the precise Base Product per row for a clean import round-trip.
+--   • Lace is a per-product priced VARIANT (price lives on the variant via
+--     price_override_ngn), never a global add-on. The size ladder is only a
+--     convenience for manual entry; imported variants carry their own price.
+--   • The original size seed (000041) set M +5,000 / XL +30,000. The real ladder
+--     is S 0 / M 0 / L +15,000 / XL +25,000 — correct it, but only when the rows
+--     are still at the old wrong defaults, so an owner's edits are never clobbered.
+-- ============================================================
+
+-- ── 1. Per-variant base link ─────────────────────────────
+-- The specific base product this colour×lace×size variant is made from.
+-- ON DELETE SET NULL so retiring a base never deletes the sellable variant.
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  ADD COLUMN IF NOT EXISTS base_product_id UUID
+    REFERENCES {{BUSINESS}}.products (product_id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_variants_base
+  ON {{BUSINESS}}.styled_product_variants (base_product_id)
+  WHERE base_product_id IS NOT NULL;
+
+-- ── 2. Correct the size-tier ladder (guarded — only old defaults) ──
+-- M equals S (no premium); XL is +25k, not +30k. L (+15k) was already right.
+UPDATE {{BUSINESS}}.styled_size_tiers
+   SET premium_ngn = 0
+ WHERE size_code = 'M' AND premium_ngn = 5000;
+
+UPDATE {{BUSINESS}}.styled_size_tiers
+   SET premium_ngn = 25000
+ WHERE size_code = 'XL' AND premium_ngn = 30000;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}'
+--       AND table_name = 'styled_product_variants'
+--       AND column_name = 'base_product_id';            -- one row
+--   SELECT size_code, premium_ngn FROM {{BUSINESS}}.styled_size_tiers
+--     ORDER BY display_order;                            -- S 0, M 0, L 15000, XL 25000
+-- ============================================================

@@ -46,11 +46,28 @@ const A = (
 const num = (v) =>
   v === null || v === undefined || v === "" ? null : Number(v);
 
-/** Effective retail of a colour×size, or null when the anchor isn't set yet. */
-function computeEffective({ anchor, colour_premium, size_premium, override }) {
+/**
+ * Effective retail of a colour×size×lace variant, or null when the anchor
+ * isn't set yet. Mirrors the SQL in styled_variants.repo.listVariants exactly:
+ *   override ?? anchor + colour_premium + size_premium + lace_premium
+ * An explicit override (the per-variant price set on import) always wins, so
+ * imported prices are exact and never recomputed from the ladders.
+ */
+function computeEffective({
+  anchor,
+  colour_premium,
+  size_premium,
+  lace_premium,
+  override,
+}) {
   if (override !== null && override !== undefined) return num(override);
   if (anchor === null || anchor === undefined) return null;
-  return num(anchor) + Number(colour_premium || 0) + Number(size_premium || 0);
+  return (
+    num(anchor) +
+    Number(colour_premium || 0) +
+    Number(size_premium || 0) +
+    Number(lace_premium || 0)
+  );
 }
 
 /** Deterministic, collision-safe short code for a colour's SKUs. */
@@ -522,6 +539,58 @@ async function bulkCreateVariants({
   });
 }
 
+/**
+ * Create ONE colour×size×lace variant with its own base product + price.
+ * Used by the import engine (one row = one variant). The price is stored as
+ * price_override_ngn so the imported figure is exact. The (colour,size,lace)
+ * combo is unique per styled product; a duplicate throws (the importer catches
+ * it and updates the existing row instead).
+ */
+async function createVariant({ brand, user, request_id, styled_id, input }) {
+  return transaction(async (client) => {
+    const styled = await loadStyled({ client, brand, styled_id });
+    const colour = await repo.getColour({
+      client,
+      brand,
+      styled_id,
+      colour_id: input.colour_id,
+    });
+    if (!colour) throw new NotFoundError("Colour");
+    const existing = await repo.existingPairs({ client, brand, styled_id });
+    const short = colourShort(colour);
+    const laceSuffix = input.lace_code ? `-${input.lace_code}` : "";
+    const variant = await repo.createVariant({
+      client,
+      brand,
+      styled_id,
+      input: {
+        colour_id: input.colour_id,
+        size_code: input.size_code,
+        lace_code: input.lace_code ?? null,
+        base_product_id: input.base_product_id ?? null,
+        sku:
+          input.sku ||
+          `${styled.styled_code}-${short}-${input.size_code}${laceSuffix}`,
+        price_override_ngn: input.price_override_ngn ?? null,
+        compare_at_price_ngn: input.compare_at_price_ngn ?? null,
+        is_default: input.is_default ?? existing.length === 0,
+        display_order: input.display_order ?? existing.length,
+      },
+    });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.styled_variant.create",
+      "styled_variant",
+      variant.styled_variant_id,
+      { styled_id, sku: variant.sku },
+      request_id,
+    );
+    events.emit("styled.updated", { brand, id: styled_id });
+    return variant;
+  });
+}
+
 async function updateVariant({
   brand,
   user,
@@ -595,6 +664,7 @@ module.exports = {
   removeColourImage,
   listVariants,
   bulkCreateVariants,
+  createVariant,
   updateVariant,
   deleteVariant,
 };

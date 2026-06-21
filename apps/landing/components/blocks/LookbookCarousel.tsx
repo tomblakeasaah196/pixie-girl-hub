@@ -7,11 +7,24 @@ import type { LandingPayload } from "@/lib/types";
 import { SectionHeader } from "./BundleShowcase";
 
 export function LookbookCarousel({ payload }: { payload: LandingPayload }) {
-  // Pull catalogue product images that came down with the payload.
-  const tiles = (payload.products || [])
+  // Prefer the builder-curated images on the lookbook block, then fall back to
+  // catalogue product images that came down with the payload. Curated images
+  // are how a campaign tells its own visual story before any product is linked.
+  const curated = (payload.blocks || [])
+    .filter((b) => b.key === "lookbook_carousel")
+    .flatMap((b) => {
+      const imgs = (b.props as { images?: unknown } | undefined)?.images;
+      return Array.isArray(imgs) ? (imgs as unknown[]) : [];
+    })
+    .filter((s): s is string => typeof s === "string" && s.length > 0)
+    .map((src) => ({ src, alt: "" }));
+  const fromProducts = (payload.products || [])
     .filter((p) => p.image_url)
-    .slice(0, 12)
     .map((p) => ({ src: p.image_url!, alt: p.name || "" }));
+  const seen = new Set<string>();
+  const tiles = [...curated, ...fromProducts]
+    .filter((t) => (seen.has(t.src) ? false : (seen.add(t.src), true)))
+    .slice(0, 12);
   const trackRef = useRef<HTMLDivElement>(null);
 
   if (tiles.length < 3) return null;

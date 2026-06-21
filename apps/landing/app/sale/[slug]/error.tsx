@@ -10,11 +10,10 @@ export default function Error({
   return (
     <main className="min-h-screen grid place-items-center px-6 py-16">
       <div className="glass rounded-[var(--radius)] p-8 max-w-md text-center space-y-4">
-        <div className="micro">Something interrupted us</div>
+        <div className="eyebrow">Something interrupted us</div>
         <h1 className="font-display text-3xl leading-tight">
-          We hit a{" "}
-          <span className="italic text-[rgb(var(--accent-glow))]">snag</span>{" "}
-          loading this sale.
+          We hit a <span className="italic text-gold">snag</span> loading this
+          sale.
         </h1>
         <p className="text-[rgb(var(--text-muted))] text-sm">
           {error?.message?.startsWith("Hub returned")

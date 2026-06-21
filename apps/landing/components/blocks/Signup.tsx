@@ -129,14 +129,14 @@ function Form({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="w-full h-12 px-4 rounded-xl bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.4)] text-[14px]"
+            className="w-full h-12 px-4 rounded-xl bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--gold)/0.5)] text-[14px]"
           />
           <input
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+234 ..."
-            className="w-full h-12 px-4 rounded-xl bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.4)] text-[14px]"
+            className="w-full h-12 px-4 rounded-xl bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--gold)/0.5)] text-[14px]"
           />
           <div className="flex gap-2 text-[12px]">
             {(["email", "whatsapp", "both"] as const).map((v) => (
@@ -144,9 +144,9 @@ function Form({
                 key={v}
                 type="button"
                 onClick={() => setVia(v)}
-                className={`px-3 py-1.5 rounded-[10px] font-semibold capitalize border ${
+                className={`px-3 py-1.5 rounded-[10px] font-semibold capitalize border transition-colors ${
                   via === v
-                    ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.1)] text-[rgb(var(--accent-glow))]"
+                    ? "border-[rgb(var(--gold)/0.5)] bg-[rgb(var(--gold)/0.1)] text-gold"
                     : "border-[rgb(var(--border-c)/0.1)] text-[rgb(var(--text-muted))]"
                 }`}
               >

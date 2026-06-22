@@ -188,9 +188,11 @@ input:-webkit-autofill:focus,
 input:-webkit-autofill:active,
 textarea:-webkit-autofill,
 select:-webkit-autofill {
-  -webkit-text-fill-color: rgb(var(--text));
-  -webkit-box-shadow: 0 0 0 1000px rgb(var(--panel-2)) inset;
-  box-shadow: 0 0 0 1000px rgb(var(--panel-2)) inset;
+  /* !important — Chrome's UA autofill style is stubborn and otherwise paints a
+     pale wash + dark glyphs, which on our dark forms reads as cream-on-cream. */
+  -webkit-text-fill-color: rgb(var(--text)) !important;
+  -webkit-box-shadow: 0 0 0 1000px rgb(var(--panel-2)) inset !important;
+  box-shadow: 0 0 0 1000px rgb(var(--panel-2)) inset !important;
   caret-color: rgb(var(--text));
   /* Defer the UA's background repaint indefinitely so our inset wins. */
   transition: background-color 9999s ease-in-out 0s;

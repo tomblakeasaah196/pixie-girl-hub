@@ -4,9 +4,9 @@ import { CheckCircle2, Loader2, Store } from "lucide-react";
 import { api } from "@/lib/api";
 import {
   AddressAutocomplete,
-  StaticMapImage,
   type PlaceAddress,
 } from "@/components/ui/AddressAutocomplete";
+import { usePublicBrand } from "@/lib/public-brand";
 
 /**
  * Public Walk-in Registration form.
@@ -69,7 +69,8 @@ const blankForm = {
 
 export function WalkInPublic() {
   const { brand = "" } = useParams<{ brand: string }>();
-  const brandName = BRAND_NAMES[brand] ?? titleCase(brand);
+  const brandInfo = usePublicBrand(brand, BRAND_NAMES[brand] ?? titleCase(brand));
+  const brandName = brandInfo.name ?? BRAND_NAMES[brand] ?? titleCase(brand);
 
   const [stage, setStage] = useState<"form" | "submitting" | "done">("form");
   const [form, setForm] = useState({ ...blankForm });
@@ -85,19 +86,23 @@ export function WalkInPublic() {
   const set = (k: keyof typeof blankForm, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  // Defensive merge: a full Places selection fills every field, while a GPS
+  // capture sends only lat/lng — so empty siblings must never wipe what the
+  // customer already typed.
   const onPlace = (p: PlaceAddress) =>
-    setAddress({
-      line1: p.line1,
-      area: p.area,
-      city: p.city || "Lagos",
-      state: p.state || "Lagos",
-      country: p.country || "Nigeria",
-      country_code: p.country_code || "NG",
-      postal_code: p.postal_code,
-      google_maps_url: p.google_maps_url,
-      latitude: p.latitude,
-      longitude: p.longitude,
-    });
+    setAddress((a) => ({
+      ...a,
+      line1: p.line1 || a.line1,
+      area: p.area || a.area,
+      city: p.city || a.city,
+      state: p.state || a.state,
+      country: p.country || a.country,
+      country_code: p.country_code || a.country_code,
+      postal_code: p.postal_code || a.postal_code,
+      google_maps_url: p.google_maps_url || a.google_maps_url,
+      latitude: p.latitude ?? a.latitude,
+      longitude: p.longitude ?? a.longitude,
+    }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -151,7 +156,11 @@ export function WalkInPublic() {
 
   if (stage === "done") {
     return (
-      <Shell brandName={brandName}>
+      <Shell
+      brandName={brandName}
+      logoUrl={brandInfo.logoUrl}
+      styleVars={brandInfo.styleVars}
+    >
         <div className="text-center py-10">
           <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-green-400" />
           <p className="font-display text-[21px] mb-1">You&rsquo;re in 🌹</p>
@@ -173,7 +182,11 @@ export function WalkInPublic() {
   const submitting = stage === "submitting";
 
   return (
-    <Shell brandName={brandName}>
+    <Shell
+      brandName={brandName}
+      logoUrl={brandInfo.logoUrl}
+      styleVars={brandInfo.styleVars}
+    >
       <form onSubmit={submit} className="space-y-5">
         <p className="text-[13px] text-text-muted leading-relaxed">
           Welcome! Add your details so we can look after you — it takes about 30
@@ -237,15 +250,9 @@ export function WalkInPublic() {
               onPlaceSelected={onPlace}
               countryCode={address.country_code || "NG"}
               placeholder="Start typing your street, estate or landmark…"
+              enableGps
             />
           </label>
-          {address.latitude != null && address.longitude != null && (
-            <StaticMapImage
-              lat={address.latitude}
-              lng={address.longitude}
-              label={form.first_name || brandName}
-            />
-          )}
           <Row>
             <Field
               label="Area"
@@ -327,20 +334,36 @@ function titleCase(s: string) {
 
 function Shell({
   brandName,
+  logoUrl,
+  styleVars,
   children,
 }: {
   brandName: string;
+  logoUrl?: string | null;
+  styleVars?: React.CSSProperties;
   children: React.ReactNode;
 }) {
   return (
     // h-[100dvh] + own scroll: the app pins `body { overflow:hidden }` for the
     // authenticated shell, so this standalone public page must scroll itself or
     // tall content (and the submit button) is unreachable on a phone.
-    <div className="h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary px-4 py-6 sm:px-6 sm:py-10">
+    // styleVars re-tint --accent/--accent-deep to the real brand colour.
+    <div
+      style={styleVars}
+      className="h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary px-4 py-6 sm:px-6 sm:py-10"
+    >
       <div className="max-w-[520px] mx-auto">
         <div className="flex items-center gap-2 mb-5">
-          <div className="grid place-items-center w-10 h-10 rounded-xl bg-accent text-bg">
-            <Store className="w-5 h-5" />
+          <div className="grid place-items-center w-10 h-10 rounded-xl bg-accent text-bg overflow-hidden">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={brandName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Store className="w-5 h-5" />
+            )}
           </div>
           <div>
             <p className="font-display text-[18px] leading-none">{brandName}</p>

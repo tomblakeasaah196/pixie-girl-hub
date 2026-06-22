@@ -301,6 +301,8 @@ async function setTarget({ brand, user, request_id, input }) {
  * converge on one countdown.
  */
 async function updateTargetProgress({ brand, user, request_id, id, current_value }) {
+  const before = await repo.findTarget({ brand, id });
+  if (!before) throw new NotFoundError("Target");
   const updated = await repo.updateTargetProgress({
     brand, id, currentValue: current_value,
   });
@@ -317,6 +319,11 @@ async function updateTargetProgress({ brand, user, request_id, id, current_value
     });
   }
   events.emit("target_progress", { brand, target_id: id, status: updated.status });
+  // Distinct transition event (active → achieved), so the bonus subscriber
+  // awards exactly once even though progress updates fire repeatedly.
+  if (before.status === "active" && updated.status === "achieved") {
+    events.emit("target_achieved", { brand, target_id: id });
+  }
   return updated;
 }
 

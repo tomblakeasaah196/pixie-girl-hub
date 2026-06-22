@@ -94,13 +94,26 @@ PIN → pay each employee's bank**, on top of the existing payroll engine.
 
 **Verified:** 285/285 backend tests; ESLint clean; admin `tsc` → 0 errors.
 
-## PR 4 (remaining) — performance payout, contracts, dashboards, automation
+## PR 4 — contract generation + target→bonus automation ✅
 
-- Monthly-target → bonus payout on achievement (event-subscriber, idempotent).
-- **Contract generation** (PDF from template) + **e-signature** on
-  `staff_contracts` (esignature tables already exist).
+- **Contract generation:** `contractHtml` PDF template + `contracts.service`
+  generates an employment-contract PDF, stores it via the documents service, and
+  records a `staff_contracts` row linked to the document. Routed at
+  `POST /hr/employees/:id/contract` (+ `GET …/contracts`). The stored document
+  flows through the existing e-signature module (send-for-signing) — no separate
+  e-sign build needed. Frontend: "Generate contract" modal in HR & Staff;
+  contracts already surface in My HR.
+- **Target → bonus:** `updateTargetProgress` emits a distinct `target_achieved`
+  transition event; `target.subscribers` awards a pending-approval bonus exactly
+  once (pct-of-salary or fixed ₦), defensively (failures logged, never block
+  progress). Still flows through HR approval + payroll.
+
+## PR 5 (remaining) — reviews UI, dashboards, automation
+
 - Performance reviews UI (quarterly weighted KPIs); HR dashboards/analytics.
 - Nightly reconcile + query-reminder cron; leave/query workflow escalation.
 - Praxis-AI HR actions; **Operations module** wires stylist target progress +
   quality ratings into `updateTargetProgress` (seam documented in
   `hr_ops.service.js`).
+- Bank-code capture for Nomba NIP transfers + payout-status webhook (pending
+  the Nomba payout endpoint confirmation).

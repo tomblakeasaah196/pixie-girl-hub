@@ -40,6 +40,7 @@ const purchasingRouter = require("../modules/purchasing/purchasing.routes");
 const stockRouter = require("../modules/stock/stock.routes");
 const logisticsRouter = require("../modules/logistics/logistics.routes");
 const hrPayrollRouter = require("../shared/hr_payroll/hr.routes");
+const hrOpsRouter = require("../shared/hr_payroll/hr_ops.routes");
 const attendanceRouter = require("../shared/attendance/attendance.routes");
 const contactsRouter = require("../shared/contacts/contacts.routes");
 const documentsRouter = require("../shared/documents/documents.routes");
@@ -239,6 +240,7 @@ function mountRoutes(app) {
   api.use("/purchasing", purchasingRouter);
   api.use("/stock", stockRouter);
   api.use("/logistics", logisticsRouter);
+  api.use("/hr", hrOpsRouter);
   api.use("/hr", hrPayrollRouter);
   api.use("/staff-invitations", staffInvitationsAdminRouter);
   api.use("/walk-in", walkinAdminRouter);

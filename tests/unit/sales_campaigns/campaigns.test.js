@@ -182,6 +182,24 @@ describe("URL safety on landing fields", () => {
       }),
     ).not.toThrow();
   });
+  test("accepts an uploaded same-origin /media path (no CDN configured)", () => {
+    // The blocker behind "Invalid input" on every landing save: uploads come
+    // back as "/media/..." which the old safeUrl (.url()) rejected.
+    expect(() =>
+      updateSchema.parse({
+        landing_hero_image_url:
+          "/media/campaigns/faitlynhair/00d73466/hero.jpg",
+        og_image_url: "/media/campaigns/faitlynhair/00d73466/og.jpg",
+      }),
+    ).not.toThrow();
+  });
+  test("rejects protocol-relative //host (cross-origin)", () => {
+    expect(() =>
+      updateSchema.parse({
+        landing_hero_image_url: "//evil.example.com/x.jpg",
+      }),
+    ).toThrow();
+  });
 });
 
 describe("landing_blocks bounds", () => {

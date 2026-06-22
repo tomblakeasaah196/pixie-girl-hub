@@ -347,6 +347,45 @@ function statementHtml({ brand, statement }) {
   });
 }
 
+// Employment contract (HR — contract generation)
+function contractHtml({ brand, contract, staff }) {
+  const c = contract || {};
+  const s = staff || {};
+  const brandName = (brand && (brand.display_name || brand.name)) || "The Company";
+  const typeLabel = String(c.contract_type || "full_time").replace(/_/g, " ");
+  const body = `
+    <h1>Employment Contract</h1>
+    <div class="meta">${esc(brandName)} · ${esc(typeLabel)} · effective ${esc(c.effective_from || "")}</div>
+    <p>This agreement is made between <strong>${esc(brandName)}</strong> ("the Company")
+       and <strong>${esc(s.display_name || "the Employee")}</strong> ("the Employee"),
+       employee no. <strong>${esc(s.employee_number || "-")}</strong>.</p>
+    <h2>1. Position</h2>
+    <p>The Employee is engaged as <strong>${esc(s.job_title || "-")}</strong>${
+      s.department ? ` in ${esc(s.department)}` : ""
+    }, commencing ${esc(c.effective_from || "")}${
+      c.effective_to ? ` until ${esc(c.effective_to)}` : " (open-ended)"
+    }.</p>
+    <h2>2. Remuneration</h2>
+    <p>Gross monthly salary: <strong>${esc(ngn(c.gross_salary))}</strong>, paid monthly to the
+       Employee's registered bank account, subject to statutory deductions (PAYE, pension, NHF).</p>
+    <h2>3. Hours, attendance & conduct</h2>
+    <p>The Employee shall observe the Company's working schedule, clock-in/attendance policy
+       (including geofenced clock-in where applicable), and lateness/deduction rules as set out
+       in the Staff Handbook and the Hub.</p>
+    <h2>4. Performance</h2>
+    <p>The Employee's performance is reviewed against targets and KPIs communicated each period;
+       bonuses and commissions accrue per Company policy.</p>
+    ${c.notes ? `<h2>5. Additional terms</h2><p>${esc(c.notes)}</p>` : ""}
+    <h2>Signatures</h2>
+    <table>
+      <tr><td>Employee: ____________________</td><td>Date: __________</td></tr>
+      <tr><td>For the Company: ____________________</td><td>Date: __________</td></tr>
+    </table>
+    <p class="muted">Contract ${esc(c.contract_number || c.contract_id || "")} ·
+       generated ${esc(new Date().toISOString().slice(0, 10))}</p>`;
+  return shell("Employment Contract", body);
+}
+
 module.exports = {
   reportHtml,
   deliveryLetterHtml,
@@ -356,6 +395,7 @@ module.exports = {
   payslipHtml,
   purchaseOrderHtml,
   statementHtml,
+  contractHtml,
   shell,
   render,
   esc,

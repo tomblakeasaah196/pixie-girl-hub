@@ -32,6 +32,7 @@ import {
   Scissors,
   Palette,
   ArrowLeftRight,
+  Gauge,
   type LucideIcon,
 } from "lucide-react";
 
@@ -256,6 +257,14 @@ export const MODULES: AppModule[] = [
     group: "people",
     route: "/payroll",
     icon: Wallet,
+  },
+  {
+    key: "performance",
+    label: "Performance",
+    description: "Appraisals & reviews",
+    group: "people",
+    route: "/performance",
+    icon: Gauge,
   },
   {
     key: "contacts",

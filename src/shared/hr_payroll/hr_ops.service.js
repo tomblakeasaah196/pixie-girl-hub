@@ -301,6 +301,8 @@ async function setTarget({ brand, user, request_id, input }) {
  * converge on one countdown.
  */
 async function updateTargetProgress({ brand, user, request_id, id, current_value }) {
+  const before = await repo.findTarget({ brand, id });
+  if (!before) throw new NotFoundError("Target");
   const updated = await repo.updateTargetProgress({
     brand, id, currentValue: current_value,
   });
@@ -317,6 +319,11 @@ async function updateTargetProgress({ brand, user, request_id, id, current_value
     });
   }
   events.emit("target_progress", { brand, target_id: id, status: updated.status });
+  // Distinct transition event (active → achieved), so the bonus subscriber
+  // awards exactly once even though progress updates fire repeatedly.
+  if (before.status === "active" && updated.status === "achieved") {
+    events.emit("target_achieved", { brand, target_id: id });
+  }
   return updated;
 }
 
@@ -545,6 +552,25 @@ async function applyLapsedOffsite({ brand, user, request_id }) {
     }
     return { lapsed: lapsed.length, marked_absent: absent };
   });
+}
+
+/**
+ * Bump reminders on open queries past their deadline (meeting §3.1: "reminds
+ * after 2 days while showing the deductions"). Emits a per-query event the
+ * notification layer can surface. Returns how many were reminded.
+ */
+async function bumpDueReminders({ brand }) {
+  const due = await repo.dueReminderQueries({ brand });
+  for (const q of due) {
+    await repo.bumpReminder({ id: q.query_id });
+    events.emit("query_reminder", {
+      brand,
+      query_id: q.query_id,
+      profile_id: q.profile_id,
+      query_type: q.query_type,
+    });
+  }
+  return { reminded: due.length };
 }
 
 // ── Self clock-in / today (My HR + top-bar widget) ─────────
@@ -822,6 +848,7 @@ module.exports = {
   removeTarget,
   reconcileDay,
   applyLapsedOffsite,
+  bumpDueReminders,
   getMyToday,
   selfClock,
   getOverview,

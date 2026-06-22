@@ -342,6 +342,27 @@ export const createStaff = (body: Record<string, unknown>) =>
 export const updateStaff = (id: string, patch: Record<string, unknown>) =>
   api.patch<StaffRow>(`/hr/employees/${id}`, patch);
 
+export interface StaffContract {
+  contract_id: string;
+  contract_type: string;
+  effective_from: string;
+  effective_to: string | null;
+  gross_salary: number;
+  document_id: string | null;
+}
+export const listEmployeeContracts = (id: string) =>
+  api.get<{ data: StaffContract[] }>(`/hr/employees/${id}/contracts`).then((r) => r.data);
+export const generateContract = (
+  id: string,
+  body: {
+    contract_type?: string;
+    effective_from?: string;
+    effective_to?: string | null;
+    gross_salary?: number;
+    notes?: string;
+  },
+) => api.post<StaffContract>(`/hr/employees/${id}/contract`, body);
+
 // ── Payroll (Phase 2) ──────────────────────────────────────
 export interface PayrollRun {
   run_id: string;
@@ -395,6 +416,46 @@ export const payPayrollRun = (id: string, pin?: string) =>
   );
 export const listPayslips = (runId: string) =>
   api.get<Payslip[]>(`/hr/payslips?payroll_run_id=${encodeURIComponent(runId)}`);
+
+// ── Performance appraisal (cycles, KPIs, reviews) ──────────
+export interface PerfCycle {
+  cycle_id: string;
+  cycle_name: string;
+  cycle_type: string;
+  starts_on: string;
+  ends_on: string;
+  status: string;
+}
+export interface PerfReview {
+  review_id: string;
+  cycle_id: string;
+  user_id: string;
+  staff_name?: string;
+  overall_weighted_score: number;
+  overall_rating_band: string;
+  status: string;
+  acknowledged_by_employee: boolean;
+}
+export interface KpiWeightSummary {
+  total: number;
+  target: number;
+  balanced: boolean;
+}
+
+export const listPerfCycles = () =>
+  api.get<PerfCycle[]>("/hr/performance-cycles");
+export const createPerfCycle = (body: {
+  cycle_name: string;
+  cycle_type: string;
+  starts_on: string;
+  ends_on: string;
+}) => api.post<PerfCycle>("/hr/performance-cycles", body);
+export const kpiWeightSummary = () =>
+  api.get<KpiWeightSummary>("/hr/kpi-definitions/weight-summary");
+export const listPerfReviews = (params: Record<string, string> = {}) =>
+  api.get<PerfReview[]>(`/hr/performance-reviews${qs(params)}`);
+export const advancePerfReview = (id: string, status: string) =>
+  api.post<PerfReview>(`/hr/performance-reviews/${id}/advance`, { status });
 
 function qs(params: Record<string, string>): string {
   const entries = Object.entries(params).filter(([, v]) => v != null && v !== "");

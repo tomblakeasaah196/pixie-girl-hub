@@ -671,6 +671,30 @@ async function lapsedOffsiteQueries({ client, brand }) {
   return rows;
 }
 
+/** Open queries due for a reminder today (deadline reached, not reminded today). */
+async function dueReminderQueries({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT * FROM shared.hr_queries
+      WHERE business = $1 AND status = 'open'
+        AND remind_after IS NOT NULL AND remind_after <= CURRENT_DATE
+        AND (last_reminded_at IS NULL OR last_reminded_at::date < CURRENT_DATE)
+      ORDER BY remind_after ASC
+      LIMIT 500`,
+    [brand],
+  );
+  return rows;
+}
+
+/** Stamp a reminder onto a query (count + timestamp). */
+async function bumpReminder({ client, id }) {
+  await exec(client)(
+    `UPDATE shared.hr_queries
+        SET reminder_count = reminder_count + 1, last_reminded_at = now()
+      WHERE query_id = $1`,
+    [id],
+  );
+}
+
 /** profile_id → leave_id for any approved leave covering the date. */
 async function approvedLeaveForDate({ client, profileIds, dateStr }) {
   if (!profileIds.length) return {};
@@ -775,6 +799,8 @@ module.exports = {
   todayClockEvents,
   markDayAbsent,
   lapsedOffsiteQueries,
+  dueReminderQueries,
+  bumpReminder,
   tasksForUser,
   contractsForProfile,
 };

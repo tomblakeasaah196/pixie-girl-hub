@@ -7,6 +7,7 @@
 "use strict";
 
 const service = require("./hr_ops.service");
+const contracts = require("./contracts.service");
 
 const ctx = (req) => ({
   brand: req.brand,
@@ -120,6 +121,19 @@ async function removeTarget(req, res) {
   res.status(204).end();
 }
 
+async function listContracts(req, res) {
+  res.json(await contracts.listForProfile({ brand: req.brand, profileId: req.params.id }));
+}
+async function generateContract(req, res) {
+  res.status(201).json({
+    data: await contracts.generateContract({
+      ...ctx(req),
+      profileId: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+
 async function getSettings(req, res) {
   res.json({ data: await service.getSettings({ brand: req.brand }) });
 }
@@ -151,6 +165,8 @@ module.exports = {
   setTarget,
   updateTargetProgress,
   removeTarget,
+  listContracts,
+  generateContract,
   getSettings,
   updateSettings,
   setPayoutPin,

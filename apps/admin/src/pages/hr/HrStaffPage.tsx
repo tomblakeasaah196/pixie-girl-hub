@@ -24,6 +24,7 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   MapPin,
+  FileText,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState, KpiTile } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
@@ -49,6 +50,7 @@ import {
   setPayoutPin,
   applyLapsedOffsite,
   listStaff,
+  generateContract,
   type HrSettings,
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
@@ -311,6 +313,68 @@ function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void 
         <p className="text-xs text-text-faint">
           Progress is auto-counted from {form.source === "sales" ? "Sales" : "Operations"} as work
           completes. (Operations module wires in later — see code seam.)
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Generate-contract modal ────────────────────────────────
+function GenerateContractModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const notify = useNotify();
+  const { data: staff } = useQuery({
+    queryKey: ["hr", "staff", "for-contract"],
+    queryFn: () => listStaff({ page_size: "200" }),
+    enabled: open,
+  });
+  const [form, setForm] = useState({ profile_id: "", contract_type: "full_time", effective_from: "", notes: "" });
+  const mut = useMutation({
+    mutationFn: () =>
+      generateContract(form.profile_id, {
+        contract_type: form.contract_type,
+        effective_from: form.effective_from || undefined,
+        notes: form.notes || undefined,
+      }),
+    onSuccess: () => {
+      notify("Contract generated", "Saved as a PDF on the employee. Send for e-signature from Documents.");
+      onClose();
+      setForm({ profile_id: "", contract_type: "full_time", effective_from: "", notes: "" });
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+  return (
+    <Modal open={open} onClose={onClose} title="Generate contract"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!form.profile_id || mut.isPending} onClick={() => mut.mutate()}>
+            {mut.isPending ? "Generating…" : "Generate PDF"}
+          </Button>
+        </>
+      }>
+      <div className="space-y-3">
+        <select value={form.profile_id} onChange={(e) => setForm({ ...form, profile_id: e.target.value })}
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
+          <option value="">— select employee —</option>
+          {staff?.data?.map((s) => (<option key={s.profile_id} value={s.profile_id}>{s.display_name}</option>))}
+        </select>
+        <div className="grid grid-cols-2 gap-3">
+          <select value={form.contract_type} onChange={(e) => setForm({ ...form, contract_type: e.target.value })}
+            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
+            {["full_time", "part_time", "contract", "amendment", "termination"].map((t) => (
+              <option key={t} value={t}>{t.replace("_", " ")}</option>
+            ))}
+          </select>
+          <input type="date" value={form.effective_from}
+            onChange={(e) => setForm({ ...form, effective_from: e.target.value })}
+            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+        </div>
+        <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          rows={3} placeholder="Additional terms (optional)"
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+        <p className="text-xs text-text-faint">
+          Salary defaults to the employee's base salary. The PDF is stored on the employee and can be
+          routed for e-signature from Documents.
         </p>
       </div>
     </Modal>
@@ -601,6 +665,7 @@ export default function HrStaffPage() {
   const [tab, setTab] = useState("overview");
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [targetOpen, setTargetOpen] = useState(false);
+  const [contractOpen, setContractOpen] = useState(false);
 
   const allowed = can("hr_payroll", "view");
   const { data: overview, isLoading } = useQuery({
@@ -641,6 +706,11 @@ export default function HrStaffPage() {
           <Button icon={<Users className="h-4 w-4" />} onClick={() => navigate("/contacts?tab=staff")}>
             Directory
           </Button>
+          {can("hr_payroll", "edit") && (
+            <Button icon={<FileText className="h-4 w-4" />} onClick={() => setContractOpen(true)}>
+              Generate contract
+            </Button>
+          )}
           <Button variant="primary" icon={<UserPlus className="h-4 w-4" />}
             onClick={() => navigate("/contacts/staff/new")}>
             Onboard employee
@@ -722,6 +792,7 @@ export default function HrStaffPage() {
 
       <RaiseQueryModal open={raiseOpen} onClose={() => setRaiseOpen(false)} />
       <SetTargetModal open={targetOpen} onClose={() => setTargetOpen(false)} />
+      <GenerateContractModal open={contractOpen} onClose={() => setContractOpen(false)} />
     </div>
   );
 }

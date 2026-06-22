@@ -18,14 +18,16 @@ const slug = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be kebab-case (a-z, 0-9, -)");
 const moneyNgn = z.coerce.number().nonnegative();
 
-// http/https-only URL — used wherever a value is rendered as an <a href>,
-// a redirect target, or a CSS url(). Blocks javascript:, data:, file:, etc.
+// An http(s) URL OR a root-relative same-origin path. Uploaded media comes back
+// as "/media/..." when no CDN_BASE_URL is configured, so image/redirect fields
+// must accept that — requiring a full URL here is what 400'd ("Invalid input")
+// every landing save that had an uploaded hero/OG image. Still blocks
+// javascript:, data:, file:, and protocol-relative "//host" (cross-origin).
 const safeUrl = z
   .string()
   .max(2048)
-  .url()
-  .refine((u) => /^https?:\/\//i.test(u), {
-    message: "URL must use http or https",
+  .refine((u) => /^https?:\/\//i.test(u) || /^\/(?!\/)/.test(u), {
+    message: "must be an https URL or a same-origin /path",
   });
 
 const discountTypes = [

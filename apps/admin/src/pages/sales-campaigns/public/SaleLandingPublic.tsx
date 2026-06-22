@@ -9,7 +9,12 @@
 import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import { type LandingBlock, usePublicLanding } from "@/lib/campaigns";
+import {
+  type LandingBlock,
+  usePublicLanding,
+  usePublicLandingConfig,
+} from "@/lib/campaigns";
+import { withDefaults } from "@landing-kit";
 import {
   LandingRender,
   type LandingModel,
@@ -29,6 +34,19 @@ export function SaleLandingPublic() {
   const [params] = useSearchParams();
   const brand = params.get("brand") || undefined;
   const q = usePublicLanding(slug, brand);
+
+  // Resolve the brand so the page renders in the brand's palette (banner,
+  // fonts, surfaces) — without it LandingRender falls back to the platform's
+  // default oxblood, which is wrong for every brand but Pixie Girl. Prefer the
+  // explicit ?brand= hint, then the brand the API resolved onto the payload.
+  const brandKey = brand || q.data?.brand?.business_key;
+  const cfgQ = usePublicLandingConfig(brandKey);
+  // Merge the published Studio config over the brand defaults; when nothing is
+  // published yet we still get a complete, on-brand theme (never the default).
+  const brandConfig = useMemo(
+    () => (brandKey ? withDefaults(brandKey, cfgQ.data ?? null) : null),
+    [brandKey, cfgQ.data],
+  );
 
   const model: LandingModel | null = useMemo(() => {
     if (!q.data) return null;
@@ -76,6 +94,11 @@ export function SaleLandingPublic() {
   }
 
   return (
-    <LandingRender model={model} scrollable={false} className="min-h-screen" />
+    <LandingRender
+      model={model}
+      brandConfig={brandConfig}
+      scrollable={false}
+      className="min-h-screen"
+    />
   );
 }

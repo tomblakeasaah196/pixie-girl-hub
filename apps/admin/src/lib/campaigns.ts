@@ -8,6 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { LandingConfig } from "@landing-kit";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
 
@@ -1052,6 +1053,14 @@ export interface PublicLanding {
     meta_description: string | null;
     og_image_url: string | null;
   };
+  /** Brand public identity attached by the API (withBrandInfo). Present once
+   *  the campaign resolves to a brand; drives the public page's theme. */
+  brand?: {
+    business_key: string;
+    display_name: string | null;
+    storefront_domain: string | null;
+    sales_subdomain: string | null;
+  } | null;
 }
 
 /** Public landing payload. `brand` is required when not served from the sales
@@ -1062,6 +1071,51 @@ export function usePublicLanding(slug: string | undefined, brand?: string) {
     enabled: Boolean(slug),
     queryKey: ["public-landing", slug, brand || ""],
     queryFn: () => api.get<PublicLanding>(`/sale/${slug}${qs}`, "public"),
+    retry: false,
+  });
+}
+
+/**
+ * Absolute URL to a campaign's public sale page.
+ *
+ * Prefers the brand's configured sales subdomain (Settings → Business Setup →
+ * Public Identity), then the storefront domain, so links like "View live page"
+ * open the live sale site rather than the admin hub. Falls back to a
+ * host-relative path (with a ?brand= hint so the API can resolve the brand)
+ * only when neither domain is configured — e.g. local dev.
+ */
+export function publicSaleUrl(
+  slug: string,
+  opts?: {
+    salesSubdomain?: string | null;
+    storefrontDomain?: string | null;
+    brand?: string;
+  },
+): string {
+  const host = (opts?.salesSubdomain || opts?.storefrontDomain || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (host) {
+    const base = /^https?:\/\//i.test(host) ? host : `https://${host}`;
+    return `${base}/sale/${slug}`;
+  }
+  return `/sale/${slug}${opts?.brand ? `?brand=${encodeURIComponent(opts.brand)}` : ""}`;
+}
+
+/**
+ * Published brand-level Landing Studio config (no auth) — the source of the
+ * public sale page's theme (palette, fonts). 404s (never published) surface as
+ * an error so callers can fall back to the brand defaults via `withDefaults`.
+ */
+export function usePublicLandingConfig(brand?: string) {
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["public-landing-config", brand || ""],
+    queryFn: () =>
+      api.get<LandingConfig & { business_key: string }>(
+        `/landing?brand=${encodeURIComponent(brand as string)}`,
+        "public",
+      ),
     retry: false,
   });
 }

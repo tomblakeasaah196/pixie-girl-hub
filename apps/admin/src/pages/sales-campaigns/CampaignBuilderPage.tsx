@@ -83,7 +83,9 @@ import {
   useUpdateCampaign,
   useUpsertTier,
   useUpsertUpsell,
+  publicSaleUrl,
 } from "@/lib/campaigns";
+import { useBusinessConfig } from "@/lib/settings";
 import { type StyledProduct } from "@/lib/catalogue";
 import { StyledProductPicker } from "@/components/campaign/StyledProductPicker";
 import { LandingStudio } from "./landing/LandingStudio";
@@ -297,6 +299,7 @@ function CampaignHeader({
   onPraxis: () => void;
 }) {
   const brand = useBrand();
+  const cfg = useBusinessConfig();
   return (
     <Card className="p-5 relative overflow-hidden">
       <div
@@ -329,7 +332,11 @@ function CampaignHeader({
             icon={<Eye className="w-4 h-4" />}
             onClick={() =>
               window.open(
-                `/sale/${campaign.slug}?brand=${brand}`,
+                publicSaleUrl(campaign.slug, {
+                  salesSubdomain: cfg.data?.sales_subdomain,
+                  storefrontDomain: cfg.data?.storefront_domain,
+                  brand,
+                }),
                 "_blank",
                 "noopener",
               )
@@ -2383,6 +2390,7 @@ function LandingStep({
   onNext?: () => void;
 }) {
   const brand = useBrand();
+  const cfg = useBusinessConfig();
   const [studioOpen, setStudioOpen] = useState(false);
   const blocks = campaign.landing_blocks || [];
   const enabledCount = blocks.filter((b) => b.enabled !== false).length;
@@ -2451,7 +2459,11 @@ function LandingStep({
 
         <div className="flex items-center justify-between gap-3 pt-3 border-t border-line/60">
           <a
-            href={`/sale/${campaign.slug}?brand=${brand}`}
+            href={publicSaleUrl(campaign.slug, {
+              salesSubdomain: cfg.data?.sales_subdomain,
+              storefrontDomain: cfg.data?.storefront_domain,
+              brand,
+            })}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-accent-glow hover:underline"

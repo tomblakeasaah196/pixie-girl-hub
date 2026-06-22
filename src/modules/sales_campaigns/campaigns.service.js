@@ -649,9 +649,31 @@ function buildLandingPayload(c, products, state) {
   };
 }
 
+/**
+ * Public base URL for a brand's sales landing pages.
+ *
+ * Sales campaigns are served from the brand's dedicated sales subdomain
+ * (business_config.sales_subdomain, e.g. sales.pixiegirlglobal.com), which
+ * the CEO sets in Settings → Business Setup. We prefer it over the general
+ * storefront_domain so share links, go-live blasts and the payment-gateway
+ * return URL all point at the live sale site — never the admin hub. Falls
+ * back to storefront_domain, then APP_URL (dev / unconfigured).
+ *
+ * Accepts a value with or without scheme; trims trailing slashes and
+ * prepends https:// when no scheme is present.
+ */
+function publicSaleBaseUrl(brand_config) {
+  const raw =
+    (brand_config &&
+      (brand_config.sales_subdomain || brand_config.storefront_domain)) ||
+    null;
+  const trimmed = raw ? String(raw).trim().replace(/\/+$/, "") : "";
+  if (!trimmed) return config.APP_URL || "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 function shareKit({ brand_config, campaign }) {
-  const domain = brand_config && brand_config.storefront_domain;
-  const base = domain ? `https://${domain}` : config.APP_URL;
+  const base = publicSaleBaseUrl(brand_config);
   const url = `${base}/sale/${campaign.slug}`;
   const utm = (source, medium) =>
     `${url}?utm_source=${source}&utm_medium=${medium}&utm_campaign=${encodeURIComponent(campaign.slug)}`;
@@ -767,6 +789,8 @@ async function uploadImage({ brand, id, file }) {
 module.exports = {
   resolveState,
   buildLandingPayload,
+  publicSaleBaseUrl,
+  buildShareKit: shareKit,
   list,
   getById,
   create,

@@ -19,7 +19,6 @@ const businessConfig = require("../business_setup/business-config.repo");
 const email = require("../../services/email.service");
 const whatsapp = require("../../services/whatsapp.service");
 const documents = require("../../shared/documents/documents.service");
-const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 
 async function fireGoLiveBlast({ brand, campaign_id }) {
@@ -30,10 +29,9 @@ async function fireGoLiveBlast({ brand, campaign_id }) {
   const kit = main.buildShareKit
     ? main.buildShareKit({ brand, brand_config: cfg, campaign })
     : null;
-  const base =
-    cfg && cfg.storefront_domain
-      ? `https://${cfg.storefront_domain}`
-      : config.APP_URL;
+  // Prefer the brand's sales subdomain (set in Settings) over storefront_domain
+  // so the go-live blast links land on the live sale site, not the admin hub.
+  const base = main.publicSaleBaseUrl(cfg);
   const url = `${base}/sale/${campaign.slug}?utm_source=blast&utm_medium=launch&utm_campaign=${encodeURIComponent(campaign.slug)}`;
 
   const signups = await repo.listPendingSignups({ brand, campaign_id });

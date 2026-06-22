@@ -164,6 +164,17 @@ async function removeProduct(req, res) {
   res.status(204).end();
 }
 
+async function addProductsBatch(req, res) {
+  const data = await service.addProductsBatch({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    id: req.params.id,
+    items: req.body.items,
+  });
+  res.json({ data });
+}
+
 async function uploadImage(req, res) {
   const data = await service.uploadImage({
     brand: req.brand,
@@ -264,6 +275,7 @@ module.exports = {
   duplicate,
   listProducts,
   addProduct,
+  addProductsBatch,
   updateProduct,
   removeProduct,
   uploadImage,

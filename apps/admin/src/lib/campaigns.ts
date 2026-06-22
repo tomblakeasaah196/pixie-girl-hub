@@ -86,11 +86,53 @@ export interface Campaign {
   exit_intent_discount_ngn: number | null;
   abandonment_recovery_enabled: boolean;
   allow_multi_currency_display: boolean;
+  delivery_weeks: number | null;
+  preorder_extra_weeks: number;
+  position_ladder: PositionLadderItem[] | null;
+  stacking_bonus: StackingBonus | null;
+  bulk_tiers: BulkTier[] | null;
   public_state?: PublicState;
   approved_at: string | null;
   approved_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PositionLadderItem {
+  position: number;
+  discount_ngn: number;
+  label?: string;
+}
+
+export interface StackingBonus {
+  min_distinct_bundles: number;
+  discount_ngn: number;
+  label?: string;
+}
+
+export interface BulkTier {
+  min_qty: number;
+  discount_per_item_ngn: number;
+  label?: string;
+}
+
+export interface CampaignProduct {
+  link_id: string;
+  campaign_id: string;
+  product_id: string | null;
+  category_id: string | null;
+  styled_id: string | null;
+  include_exclude: "include" | "exclude";
+  campaign_price_ngn: number | null;
+  regular_price_ngn: number | null;
+  image_url: string | null;
+  display_order: number;
+  is_featured: boolean;
+  preorder_enabled: boolean;
+  styled_name?: string | null;
+  styled_slug?: string | null;
+  product_name?: string | null;
+  resolved_image_url?: string | null;
 }
 
 export interface LandingBlock {
@@ -133,6 +175,7 @@ export interface BundleItem {
   bundle_id: string;
   product_id: string | null;
   variant_id: string | null;
+  styled_id: string | null;
   quantity: number;
   per_item_discount_ngn: number | null;
   display_position: number;
@@ -140,6 +183,9 @@ export interface BundleItem {
   variant_sku?: string;
   unit_price_ngn?: number;
   hero_image_url?: string;
+  styled_name?: string | null;
+  styled_slug?: string | null;
+  display_name?: string;
 }
 
 export interface CampaignBundleLink {
@@ -492,6 +538,94 @@ export function useDetachCampaignBundle(campaignId: string | undefined) {
       qc.invalidateQueries({
         queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
       }),
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// Campaign products (styled-product links)
+// ════════════════════════════════════════════════════════════
+
+export function useCampaignProducts(campaignId: string | undefined) {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand && campaignId),
+    queryKey: ["campaigns", "products", brand, campaignId],
+    queryFn: () =>
+      api.get<{ data: CampaignProduct[] }>(
+        `/sales-campaigns/${campaignId}/products`,
+      ),
+  });
+}
+
+export function useAddProductsBatch(campaignId: string | undefined) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (
+      items: Array<{
+        styled_id: string;
+        product_id?: string;
+        image_url?: string | null;
+        regular_price_ngn?: number | null;
+        include_exclude?: string;
+        is_featured?: boolean;
+      }>,
+    ) =>
+      api.post<{ data: CampaignProduct[] }>(
+        `/sales-campaigns/${campaignId}/products/batch`,
+        { items },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "products", brand, campaignId],
+      }),
+  });
+}
+
+export function useRemoveCampaignProduct(campaignId: string | undefined) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (linkId: string) =>
+      api.delete<void>(`/sales-campaigns/${campaignId}/products/${linkId}`),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "products", brand, campaignId],
+      }),
+  });
+}
+
+export function useCloneBundlesToCampaign(campaignId: string | undefined) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (body: { campaign_slug?: string }) =>
+      api.post<{ data: unknown[] }>(
+        `/sales-campaigns/${campaignId}/bundles/clone`,
+        body,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
+      });
+      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
+    },
+  });
+}
+
+export function useDuplicateBundle() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (args: { bundleId: string; campaign_id?: string }) =>
+      api.post<Bundle>(
+        `/sales-campaigns/bundles/${args.bundleId}/duplicate`,
+        { campaign_id: args.campaign_id },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
+      qc.invalidateQueries({ queryKey: ["campaigns", "campaign-bundles", brand] });
+    },
   });
 }
 

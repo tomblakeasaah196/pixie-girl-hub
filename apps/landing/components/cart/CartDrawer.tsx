@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
+import { Gift, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import type { LandingPayload } from "@/lib/types";
@@ -18,6 +18,14 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
   const subtotal = useCart((s) => s.subtotalNgn());
   const retail = useCart((s) => s.retailSubtotalNgn());
   const savings = useCart((s) => s.savingsNgn());
+  const distinctBundles = useCart((s) => s.distinctBundleCount());
+
+  const stacking = payload.stacking_bonus;
+  const stackingUnlocked =
+    stacking &&
+    stacking.min_distinct_bundles > 0 &&
+    distinctBundles >= stacking.min_distinct_bundles;
+  const stackingDiscount = stackingUnlocked ? stacking.discount_ngn : 0;
 
   useEffect(() => {
     if (!open) return;
@@ -72,6 +80,34 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                   </p>
                 </div>
               )}
+              {stackingUnlocked && (
+                <div className="rounded-[14px] p-3.5 bg-[rgb(var(--success)/0.1)] border border-[rgb(var(--success)/0.3)] flex items-center gap-3">
+                  <Gift className="w-5 h-5 text-[rgb(var(--success))] flex-shrink-0" />
+                  <div>
+                    <div className="text-[13px] font-semibold text-[rgb(var(--success))]">
+                      You unlocked {money(stacking.discount_ngn)} off!
+                    </div>
+                    <div className="text-[11px] text-[rgb(var(--text-muted))] mt-0.5">
+                      {stacking.label ||
+                        `Bonus for combining ${distinctBundles} bundles`}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!stackingUnlocked &&
+                stacking &&
+                stacking.min_distinct_bundles > 0 &&
+                distinctBundles > 0 &&
+                distinctBundles < stacking.min_distinct_bundles && (
+                  <div className="rounded-[14px] p-3 bg-[rgb(var(--accent)/0.06)] border border-[rgb(var(--accent)/0.2)] text-[12px] text-[rgb(var(--text-muted))]">
+                    Add{" "}
+                    <span className="font-semibold text-[rgb(var(--accent-glow))]">
+                      {stacking.min_distinct_bundles - distinctBundles} more
+                      bundle{stacking.min_distinct_bundles - distinctBundles !== 1 ? "s" : ""}
+                    </span>{" "}
+                    to unlock {money(stacking.discount_ngn)} off
+                  </div>
+                )}
               {items.map((it) => (
                 <div
                   key={it.id}
@@ -145,11 +181,21 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                   {money(subtotal)}
                 </span>
               </div>
+              {stackingDiscount > 0 && (
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-[rgb(var(--success))]">
+                    Bundle bonus
+                  </span>
+                  <span className="font-mono tabular-nums text-[rgb(var(--success))]">
+                    −{money(stackingDiscount)}
+                  </span>
+                </div>
+              )}
               {savings > 0 && (
                 <div className="flex justify-between text-[13px]">
                   <span className="text-[rgb(var(--success))]">You save</span>
                   <span className="font-mono tabular-nums text-[rgb(var(--success))]">
-                    −{money(savings)}
+                    −{money(savings + stackingDiscount)}
                   </span>
                 </div>
               )}
@@ -171,7 +217,8 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                     : "bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))]"
                 }`}
               >
-                Checkout · {money(subtotal)}
+                Checkout ·{" "}
+                {money(Math.max(0, subtotal - stackingDiscount))}
               </Link>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 DHL rates apply. Pay with Paystack · Opay · Nomba · Stripe.

@@ -152,6 +152,171 @@ async function reorderBundleItems({
   });
 }
 
+/**
+ * Clone every active bundle from the catalogue into a campaign.
+ * Bundles are prefixed with the campaign slug to keep them distinguishable.
+ * Already-cloned bundles (same derived slug) are re-used rather than
+ * duplicated, making this idempotent.
+ */
+async function cloneAllBundlesToCampaign({
+  brand,
+  user,
+  request_id,
+  campaign_id,
+  campaign_slug,
+}) {
+  return transaction(async (client) => {
+    const { data: bundles } = await repo.listBundles({
+      client,
+      brand,
+      filters: { status: "active" },
+    });
+    const results = [];
+    for (const b of bundles) {
+      const items = await repo.listBundleItems({
+        client,
+        brand,
+        bundle_id: b.bundle_id,
+      });
+      const newSlug = `${campaign_slug}-${b.slug}`.slice(0, 120);
+      const existing = await repo.findBundleBySlug({
+        client,
+        brand,
+        slug: newSlug,
+      });
+      if (existing) {
+        results.push(existing);
+        continue;
+      }
+      const clone = await repo.createBundle({
+        client,
+        brand,
+        user_id: user.user_id,
+        input: {
+          slug: newSlug,
+          name: b.name,
+          description: b.description,
+          hero_image_url: b.hero_image_url,
+          category_id: b.category_id,
+          is_fixed_composition: b.is_fixed_composition,
+          default_per_item_discount_ngn: b.default_per_item_discount_ngn,
+          default_preorder_loss_pct: b.default_preorder_loss_pct,
+          status: "active",
+          display_order: b.display_order,
+        },
+      });
+      for (const item of items) {
+        await repo.addBundleItem({
+          client,
+          brand,
+          bundle_id: clone.bundle_id,
+          input: {
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            styled_id: item.styled_id,
+            quantity: item.quantity,
+            per_item_discount_ngn: item.per_item_discount_ngn,
+            display_position: item.display_position,
+          },
+        });
+      }
+      await repo.attachCampaignBundle({
+        client,
+        brand,
+        campaign_id,
+        input: {
+          bundle_id: clone.bundle_id,
+          per_item_discount_ngn: b.default_per_item_discount_ngn,
+          is_featured: false,
+        },
+      });
+      results.push(clone);
+    }
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales_campaigns.bundle.clone_all",
+      target_type: "sales_campaigns",
+      target_id: campaign_id,
+      after: { cloned: results.length },
+      request_id,
+    });
+    return results;
+  });
+}
+
+/**
+ * Duplicate a single bundle, optionally attaching the copy to a campaign.
+ * Resolves slug collisions automatically by appending -copy[-N].
+ */
+async function duplicateBundle({ brand, user, request_id, bundle_id, campaign_id }) {
+  return transaction(async (client) => {
+    const original = await repo.findBundle({ client, brand, id: bundle_id });
+    if (!original) throw new NotFoundError("Bundle");
+    const items = await repo.listBundleItems({
+      client,
+      brand,
+      bundle_id,
+    });
+    let newSlug = `${original.slug}-copy`;
+    let attempt = 0;
+    while (await repo.findBundleBySlug({ client, brand, slug: newSlug })) {
+      attempt++;
+      newSlug = `${original.slug}-copy-${attempt}`;
+    }
+    const clone = await repo.createBundle({
+      client,
+      brand,
+      user_id: user.user_id,
+      input: {
+        slug: newSlug,
+        name: `${original.name} (copy)`,
+        description: original.description,
+        hero_image_url: original.hero_image_url,
+        category_id: original.category_id,
+        is_fixed_composition: original.is_fixed_composition,
+        default_per_item_discount_ngn: original.default_per_item_discount_ngn,
+        default_preorder_loss_pct: original.default_preorder_loss_pct,
+        status: "active",
+        display_order: original.display_order,
+      },
+    });
+    for (const item of items) {
+      await repo.addBundleItem({
+        client,
+        brand,
+        bundle_id: clone.bundle_id,
+        input: {
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          styled_id: item.styled_id,
+          quantity: item.quantity,
+          per_item_discount_ngn: item.per_item_discount_ngn,
+          display_position: item.display_position,
+        },
+      });
+    }
+    if (campaign_id) {
+      await repo.attachCampaignBundle({
+        client,
+        brand,
+        campaign_id,
+        input: { bundle_id: clone.bundle_id, is_featured: false },
+      });
+    }
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales_campaigns.bundle.duplicate",
+      target_type: "product_bundles",
+      target_id: clone.bundle_id,
+      after: clone,
+      request_id,
+    });
+    return clone;
+  });
+}
+
 // ── Campaign attachment ──────────────────────────────────
 async function listCampaignBundles({ brand, campaign_id }) {
   return repo.listCampaignBundles({ brand, campaign_id });
@@ -403,6 +568,8 @@ module.exports = {
   createBundle,
   updateBundle,
   archiveBundle,
+  cloneAllBundlesToCampaign,
+  duplicateBundle,
   addBundleItem,
   removeBundleItem,
   reorderBundleItems,

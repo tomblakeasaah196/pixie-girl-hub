@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
+  Clock,
+  Copy,
   Eye,
   Image as ImageIcon,
   Layers,
@@ -12,6 +14,7 @@ import {
   Plus,
   Send,
   Settings,
+  ShoppingBag,
   Sparkles,
   Trash2,
   Users,
@@ -44,29 +47,45 @@ import { money } from "@/lib/format";
 import {
   type Campaign,
   type CampaignBundleLink,
+  type CampaignProduct,
+  type PositionLadderItem,
+  type StackingBonus,
+  type BulkTier,
   type QuantityTier,
   type CartUpsell,
   type Bundle,
+  type BundleItem,
   type CampaignStatus,
+  useAddBundleItem,
+  useAddProductsBatch,
   useAttachCampaignBundle,
   useBrand,
   useBundleList,
+  useBundle,
   useCampaign,
   useCampaignAmbassadors,
   useCampaignBundles,
+  useCampaignProducts,
   useCampaignTransition,
   useCampaignTiers,
   useCampaignUpsells,
+  useCloneBundlesToCampaign,
+  useCreateBundle,
   useDeleteTier,
   useDeleteUpsell,
   useDetachCampaignBundle,
+  useDuplicateBundle,
   usePraxisDraftCopy,
   usePraxisSuggestLayout,
   usePraxisAccept,
+  useRemoveBundleItem,
+  useRemoveCampaignProduct,
   useUpdateCampaign,
   useUpsertTier,
   useUpsertUpsell,
 } from "@/lib/campaigns";
+import { type StyledProduct } from "@/lib/catalogue";
+import { StyledProductPicker } from "@/components/campaign/StyledProductPicker";
 import { LandingStudio } from "./landing/LandingStudio";
 
 const TONE_FOR: Record<CampaignStatus, Tone> = {
@@ -91,6 +110,7 @@ const STATUS_LABEL: Record<CampaignStatus, string> = {
 
 const STEPS = [
   { key: "brief", label: "Brief", icon: Settings },
+  { key: "products", label: "Products", icon: ShoppingBag },
   { key: "bundles", label: "Bundles", icon: PackagePlus },
   { key: "pricing", label: "Pricing", icon: Wand2 },
   { key: "landing", label: "Landing page", icon: Layers },
@@ -171,6 +191,11 @@ const BLOCK_LIBRARY: Array<{
     label: "VIP Signup",
     description: "Pre-launch heads-up",
   },
+  {
+    key: "reseller_bulk",
+    label: "Reseller / Bulk",
+    description: "Bulk-buy tier rates",
+  },
 ];
 
 export function CampaignBuilderPage() {
@@ -228,8 +253,11 @@ export function CampaignBuilderPage() {
             <BriefStep
               campaign={campaign}
               canEdit={canEdit}
-              onNext={() => setStep("bundles")}
+              onNext={() => setStep("products")}
             />
+          )}
+          {step === "products" && (
+            <ProductsStep campaign={campaign} canEdit={canEdit} />
           )}
           {step === "bundles" && (
             <BundlesStep campaign={campaign} canEdit={canEdit} />
@@ -384,9 +412,11 @@ function PraxisSidebar({
         </div>
         <div className="text-[12.5px] text-text-muted leading-relaxed">
           {step === "brief" &&
-            "Set the campaign name, slug and dates. Praxis uses your voice profile to write copy in the next steps."}
+            "Set the campaign name, slug, dates and delivery timeline. Praxis uses your voice profile to write copy in the next steps."}
+          {step === "products" &&
+            "Pick styled products to feature individually on the landing page. Each product shows with its campaign price + delivery timeline."}
           {step === "bundles" &&
-            "Bundles are catalogue entities. Attach existing bundles or create new ones — fixed composition, per-item ₦ discount."}
+            "Create bundles inside this campaign, clone from your catalogue, or duplicate & swap. Each bundle is a curated set of styled products."}
           {step === "pricing" &&
             "Goal-seek margin, charm round, configure the tier ladder + cart upsell escalator. Floors are enforced — Praxis refuses any breach."}
           {step === "landing" &&
@@ -493,6 +523,12 @@ function BriefStep({
   const [abandonment, setAbandonment] = useState(
     campaign.abandonment_recovery_enabled,
   );
+  const [deliveryWeeks, setDeliveryWeeks] = useState<string>(
+    campaign.delivery_weeks != null ? String(campaign.delivery_weeks) : "",
+  );
+  const [preorderExtraWeeks, setPreorderExtraWeeks] = useState<string>(
+    String(campaign.preorder_extra_weeks ?? 4),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -522,7 +558,12 @@ function BriefStep({
         ? String(campaign.exit_intent_discount_ngn)
         : "") ||
     multiCurrency !== campaign.allow_multi_currency_display ||
-    abandonment !== campaign.abandonment_recovery_enabled;
+    abandonment !== campaign.abandonment_recovery_enabled ||
+    deliveryWeeks !==
+      (campaign.delivery_weeks != null
+        ? String(campaign.delivery_weeks)
+        : "") ||
+    preorderExtraWeeks !== String(campaign.preorder_extra_weeks ?? 4);
 
   async function save(advance = false) {
     setSaving(true);
@@ -550,7 +591,9 @@ function BriefStep({
           exitEnabled && exitDiscount ? Number(exitDiscount) : null,
         allow_multi_currency_display: multiCurrency,
         abandonment_recovery_enabled: abandonment,
-      });
+        delivery_weeks: deliveryWeeks ? Number(deliveryWeeks) : null,
+        preorder_extra_weeks: Number(preorderExtraWeeks) || 4,
+      } as Partial<Campaign>);
       if (cleanSlug) setSlug(cleanSlug);
       setSavedAt(Date.now());
       if (advance) onNext?.();
@@ -775,6 +818,44 @@ function BriefStep({
         </div>
       </FormSection>
 
+      <FormSection title="Delivery timeline">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field
+            label="Default delivery (weeks)"
+            hint="Applies to all styled products in this campaign. e.g. 2-3 weeks"
+          >
+            <NumberField
+              value={deliveryWeeks}
+              onChange={setDeliveryWeeks}
+              allowDecimal={false}
+              suffix="weeks"
+              disabled={!canEdit}
+            />
+          </Field>
+          <Field
+            label="Preorder extra weeks"
+            hint="Added on top of delivery time for preorder items"
+          >
+            <NumberField
+              value={preorderExtraWeeks}
+              onChange={setPreorderExtraWeeks}
+              allowDecimal={false}
+              suffix="weeks"
+              disabled={!canEdit}
+            />
+          </Field>
+        </div>
+        {deliveryWeeks && (
+          <div className="flex items-center gap-2 text-[12px] text-text-muted mt-1">
+            <Clock className="w-3.5 h-3.5" />
+            <span>
+              In-stock: {deliveryWeeks} weeks · Preorder:{" "}
+              {Number(deliveryWeeks) + Number(preorderExtraWeeks || 4)} weeks
+            </span>
+          </div>
+        )}
+      </FormSection>
+
       {error && (
         <div className="rounded-[12px] border border-danger/40 bg-danger/[0.08] px-4 py-3 text-[13px] text-danger">
           {error}
@@ -830,7 +911,160 @@ function finalizeSlug(raw: string): string {
   return raw.replace(/^-+|-+$/g, "");
 }
 
-// ── Step 2: Bundles ──────────────────────────────────────
+// ── Step 2: Products ────────────────────────────────────
+function ProductsStep({
+  campaign,
+  canEdit,
+}: {
+  campaign: Campaign;
+  canEdit: boolean;
+}) {
+  const productsQ = useCampaignProducts(campaign.campaign_id);
+  const addBatch = useAddProductsBatch(campaign.campaign_id);
+  const removeProduct = useRemoveCampaignProduct(campaign.campaign_id);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const products = (productsQ.data?.data || []) as CampaignProduct[];
+  const excludeIds = new Set(
+    products.filter((p) => p.styled_id).map((p) => p.styled_id!),
+  );
+
+  async function handleAdd(items: StyledProduct[]) {
+    await addBatch.mutateAsync(
+      items.map((sp) => ({
+        styled_id: sp.styled_id,
+        product_id: sp.base_product_id,
+        image_url: sp.primary_image_url || null,
+        regular_price_ngn: sp.effective_price_ngn ?? sp.retail_price_ngn ?? null,
+        include_exclude: "include",
+        is_featured: false,
+      })),
+    );
+  }
+
+  return (
+    <Card className="p-5 space-y-4">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h2 className="font-display text-[22px] leading-tight">
+            Featured products
+          </h2>
+          <p className="text-text-muted text-[13px] mt-1">
+            Pick styled products to feature individually on the landing page.
+            These are sold outside of bundles — buyers can pick one wig at a
+            time.
+          </p>
+        </div>
+        {canEdit && (
+          <Button
+            variant="primary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => setPickerOpen(true)}
+          >
+            Add products
+          </Button>
+        )}
+      </div>
+
+      {productsQ.isLoading && <Skeleton style={{ height: 80 }} />}
+      {productsQ.isError && (
+        <ErrorState onRetry={() => productsQ.refetch()} />
+      )}
+      {!productsQ.isLoading && products.length === 0 && (
+        <EmptyState
+          icon={<ShoppingBag className="w-7 h-7" />}
+          title="No products added yet"
+          message="Add styled products from your catalogue. They'll appear on the campaign landing page."
+          action={
+            canEdit ? (
+              <Button
+                variant="primary"
+                onClick={() => setPickerOpen(true)}
+                icon={<Plus className="w-4 h-4" />}
+              >
+                Add products
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {products.map((p) => (
+          <div
+            key={p.link_id}
+            className="glass rounded-[var(--radius)] p-3 flex gap-3 items-start"
+          >
+            <div
+              className="w-12 h-12 rounded-[10px] flex-shrink-0 bg-text-primary/[0.06] grid place-items-center overflow-hidden"
+              style={
+                p.resolved_image_url || p.image_url
+                  ? {
+                      backgroundImage: `url(${p.resolved_image_url || p.image_url})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }
+                  : undefined
+              }
+            >
+              {!p.resolved_image_url && !p.image_url && (
+                <ImageIcon className="w-5 h-5 text-text-faint" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-[13px] truncate">
+                {p.styled_name || p.product_name || "Unknown product"}
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                {p.regular_price_ngn != null && (
+                  <MoneyText
+                    ngn={Number(p.regular_price_ngn)}
+                    className="text-[12px] text-text-muted"
+                  />
+                )}
+                {p.is_featured && (
+                  <Pill tone="accent" dot={false}>
+                    Featured
+                  </Pill>
+                )}
+              </div>
+            </div>
+            {canEdit && (
+              <button
+                onClick={() => removeProduct.mutate(p.link_id)}
+                aria-label="Remove product"
+                className="text-text-faint hover:text-danger p-1"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {products.length > 0 && (
+        <div className="text-[12px] text-text-faint">
+          {products.length} product{products.length !== 1 ? "s" : ""} added
+        </div>
+      )}
+
+      <Modal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title="Add styled products"
+        size="lg"
+      >
+        <StyledProductPicker
+          excludeIds={excludeIds}
+          onAdd={handleAdd}
+          onClose={() => setPickerOpen(false)}
+        />
+      </Modal>
+    </Card>
+  );
+}
+
+// ── Step 3: Bundles ──────────────────────────────────────
 function BundlesStep({
   campaign,
   canEdit,
@@ -842,35 +1076,87 @@ function BundlesStep({
   const bundlesQ = useBundleList();
   const attach = useAttachCampaignBundle(campaign.campaign_id);
   const detach = useDetachCampaignBundle(campaign.campaign_id);
+  const cloneBundles = useCloneBundlesToCampaign(campaign.campaign_id);
+  const createBundle = useCreateBundle();
+  const duplicate = useDuplicateBundle();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [bundleDetailId, setBundleDetailId] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newSlug, setNewSlug] = useState("");
+
   const links = (linksQ.data?.data || []) as CampaignBundleLink[];
   const available = (bundlesQ.data?.data || []) as Bundle[];
 
-  async function add(bundleId: string) {
+  async function handleAttach(bundleId: string) {
     await attach.mutateAsync({ bundle_id: bundleId });
     setPickerOpen(false);
   }
 
+  async function handleClone() {
+    await cloneBundles.mutateAsync({ campaign_slug: campaign.slug });
+  }
+
+  async function handleCreate() {
+    if (!newName || !newSlug) return;
+    const b = await createBundle.mutateAsync({
+      name: newName,
+      slug: newSlug.replace(/[^a-z0-9-]/g, "-").replace(/-{2,}/g, "-"),
+      status: "active",
+    });
+    await attach.mutateAsync({ bundle_id: b.bundle_id });
+    setCreateOpen(false);
+    setNewName("");
+    setNewSlug("");
+    setBundleDetailId(b.bundle_id);
+  }
+
+  async function handleDuplicate(bundleId: string) {
+    const b = await duplicate.mutateAsync({
+      bundleId,
+      campaign_id: campaign.campaign_id,
+    });
+    setBundleDetailId(b.bundle_id);
+  }
+
   return (
     <Card className="p-5 space-y-4">
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display text-[22px] leading-tight">
-            Bundles in this campaign
+            Campaign bundles
           </h2>
           <p className="text-text-muted text-[13px] mt-1">
-            Bundles are curated catalogue entities. Fixed composition, per-item
-            ₦ discount, displayed before/after totals on the landing.
+            Create bundles for this campaign, clone from your catalogue, or
+            duplicate & swap products. Each bundle is a curated set of styled
+            wigs.
           </p>
         </div>
         {canEdit && (
-          <Button
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => setPickerOpen(true)}
-          >
-            Attach bundle
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              icon={<Copy className="w-4 h-4" />}
+              onClick={handleClone}
+              disabled={cloneBundles.isPending}
+            >
+              {cloneBundles.isPending ? "Cloning…" : "Clone from catalogue"}
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setCreateOpen(true)}
+            >
+              New bundle
+            </Button>
+            <Button
+              variant="primary"
+              icon={<PackagePlus className="w-4 h-4" />}
+              onClick={() => setPickerOpen(true)}
+            >
+              Attach existing
+            </Button>
+          </div>
         )}
       </div>
 
@@ -879,27 +1165,34 @@ function BundlesStep({
       {!linksQ.isLoading && links.length === 0 && (
         <EmptyState
           icon={<PackagePlus className="w-7 h-7" />}
-          title="No bundles attached yet"
-          message="Attach bundles from your catalogue or create new ones."
+          title="No bundles in this campaign"
+          message="Create new bundles, clone all from the catalogue, or attach existing ones."
           action={
             canEdit ? (
-              <div className="flex gap-2 justify-center">
-                <Button variant="primary" onClick={() => setPickerOpen(true)}>
-                  Attach bundle
+              <div className="flex gap-2 justify-center flex-wrap">
+                <Button
+                  variant="primary"
+                  onClick={handleClone}
+                  disabled={cloneBundles.isPending}
+                  icon={<Copy className="w-4 h-4" />}
+                >
+                  {cloneBundles.isPending
+                    ? "Cloning…"
+                    : "Clone from catalogue"}
                 </Button>
-                <Link to="/sales-campaigns/bundles">
-                  <Button
-                    variant="secondary"
-                    icon={<PackagePlus className="w-4 h-4" />}
-                  >
-                    Manage all bundles
-                  </Button>
-                </Link>
+                <Button
+                  variant="secondary"
+                  onClick={() => setCreateOpen(true)}
+                  icon={<Plus className="w-4 h-4" />}
+                >
+                  Create new
+                </Button>
               </div>
             ) : undefined
           }
         />
       )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {links.map((l) => (
           <div
@@ -907,7 +1200,8 @@ function BundlesStep({
             className="glass rounded-[var(--radius)] p-4 flex gap-3 items-start"
           >
             <div
-              className="w-16 h-16 rounded-[14px] flex-shrink-0 bg-text-primary/[0.06] grid place-items-center text-text-faint"
+              className="w-16 h-16 rounded-[14px] flex-shrink-0 bg-text-primary/[0.06] grid place-items-center text-text-faint cursor-pointer"
+              onClick={() => setBundleDetailId(l.bundle_id)}
               style={
                 l.bundle_hero_image_url
                   ? {
@@ -921,9 +1215,13 @@ function BundlesStep({
               {!l.bundle_hero_image_url && <ImageIcon className="w-6 h-6" />}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="font-display font-medium text-[15px] truncate">
+              <button
+                type="button"
+                onClick={() => setBundleDetailId(l.bundle_id)}
+                className="font-display font-medium text-[15px] truncate text-left hover:text-accent-glow block"
+              >
                 {l.bundle_name}
-              </div>
+              </button>
               <div className="micro mt-0.5 truncate">/{l.bundle_slug}</div>
               <div className="flex flex-wrap gap-1.5 mt-2 text-[11px]">
                 {l.is_featured && (
@@ -936,32 +1234,44 @@ function BundlesStep({
                     Preorder on
                   </Pill>
                 )}
-                {l.current_stock_snapshot != null && (
-                  <Pill tone="neutral" dot={false}>
-                    Stock: {l.current_stock_snapshot}
-                  </Pill>
-                )}
                 {l.per_item_discount_ngn != null &&
                   Number(l.per_item_discount_ngn) > 0 && (
                     <Pill tone="success" dot={false}>
                       −{money(Number(l.per_item_discount_ngn))} / item
                     </Pill>
                   )}
+                {l.campaign_bundle_price_ngn != null && (
+                  <MoneyText
+                    ngn={Number(l.campaign_bundle_price_ngn)}
+                    className="text-[11px]"
+                  />
+                )}
               </div>
             </div>
             {canEdit && (
-              <button
-                onClick={() => detach.mutate(l.link_id)}
-                aria-label="Remove bundle"
-                className="text-text-faint hover:text-danger p-2"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => handleDuplicate(l.bundle_id)}
+                  aria-label="Duplicate bundle"
+                  className="text-text-faint hover:text-accent-glow p-1"
+                  title="Duplicate & swap"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => detach.mutate(l.link_id)}
+                  aria-label="Remove bundle"
+                  className="text-text-faint hover:text-danger p-1"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </div>
         ))}
       </div>
 
+      {/* Attach existing bundle */}
       <Modal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -969,23 +1279,18 @@ function BundlesStep({
       >
         <div className="space-y-2 max-h-[55vh] overflow-y-auto">
           {available.length === 0 ? (
-            <div className="text-center py-6">
-              <p className="text-text-muted mb-3">
-                No bundles in the catalogue yet.
-              </p>
-              <Link to="/sales-campaigns/bundles">
-                <Button variant="primary" icon={<Plus className="w-4 h-4" />}>
-                  Create a bundle
-                </Button>
-              </Link>
+            <div className="text-center py-6 text-text-muted">
+              No bundles in the catalogue yet. Create one above.
             </div>
           ) : (
             available.map((b) => {
-              const isAttached = links.some((l) => l.bundle_id === b.bundle_id);
+              const isAttached = links.some(
+                (l) => l.bundle_id === b.bundle_id,
+              );
               return (
                 <button
                   key={b.bundle_id}
-                  onClick={() => !isAttached && add(b.bundle_id)}
+                  onClick={() => !isAttached && handleAttach(b.bundle_id)}
                   disabled={isAttached}
                   className={cn(
                     "w-full text-left flex items-center gap-3 p-3 rounded-[12px] border",
@@ -1014,11 +1319,219 @@ function BundlesStep({
           )}
         </div>
       </Modal>
+
+      {/* Create new bundle */}
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Create a new bundle"
+      >
+        <div className="space-y-4">
+          <Field label="Bundle name">
+            <input
+              value={newName}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                setNewSlug(
+                  e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-")
+                    .replace(/-{2,}/g, "-")
+                    .replace(/^-|-$/g, ""),
+                );
+              }}
+              placeholder="e.g. 5 Frontal Set"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            />
+          </Field>
+          <Field label="Slug" hint="Auto-generated from name">
+            <input
+              value={newSlug}
+              onChange={(e) => setNewSlug(e.target.value)}
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] font-mono"
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleCreate}
+              disabled={
+                !newName || !newSlug || createBundle.isPending
+              }
+            >
+              {createBundle.isPending ? "Creating…" : "Create & attach"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bundle detail drawer with product picker */}
+      <BundleDetailDrawer
+        bundleId={bundleDetailId}
+        onClose={() => setBundleDetailId(null)}
+        canEdit={canEdit}
+      />
     </Card>
   );
 }
 
-// ── Step 3: Pricing ──────────────────────────────────────
+function BundleDetailDrawer({
+  bundleId,
+  onClose,
+  canEdit,
+}: {
+  bundleId: string | null;
+  onClose: () => void;
+  canEdit: boolean;
+}) {
+  const bundleQ = useBundle(bundleId || undefined);
+  const addItem = useAddBundleItem(bundleId || undefined);
+  const removeItem = useRemoveBundleItem(bundleId || undefined);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const bundle = bundleQ.data;
+  const items = (bundle?.items || []) as BundleItem[];
+  const excludeIds = new Set(
+    items.filter((i) => i.styled_id).map((i) => i.styled_id!),
+  );
+
+  async function handleAddProducts(styledProducts: StyledProduct[]) {
+    for (const sp of styledProducts) {
+      await addItem.mutateAsync({
+        styled_id: sp.styled_id,
+        product_id: sp.base_product_id,
+        quantity: 1,
+      } as Partial<BundleItem>);
+    }
+  }
+
+  return (
+    <Drawer
+      open={Boolean(bundleId)}
+      onClose={onClose}
+      wide
+      title={bundle?.name || "Loading…"}
+      subtitle={bundle ? `/${bundle.slug}` : undefined}
+    >
+      <div className="space-y-4">
+        {bundleQ.isLoading && <Skeleton style={{ height: 120 }} />}
+        {bundle && (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[13px] text-text-muted">
+                {items.length} product{items.length !== 1 ? "s" : ""} in this
+                bundle
+              </span>
+              {canEdit && (
+                <Button
+                  variant="primary"
+                  icon={<Plus className="w-4 h-4" />}
+                  onClick={() => setPickerOpen(true)}
+                  size="sm"
+                >
+                  Add products
+                </Button>
+              )}
+            </div>
+
+            {items.length === 0 && (
+              <EmptyState
+                icon={<PackagePlus className="w-6 h-6" />}
+                title="Empty bundle"
+                message="Add styled products to this bundle."
+                action={
+                  canEdit ? (
+                    <Button
+                      variant="primary"
+                      onClick={() => setPickerOpen(true)}
+                      icon={<Plus className="w-4 h-4" />}
+                    >
+                      Add products
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )}
+
+            <div className="space-y-1.5">
+              {items.map((item) => (
+                <div
+                  key={item.bundle_item_id}
+                  className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
+                >
+                  <div
+                    className="w-10 h-10 rounded-[8px] bg-text-primary/[0.06] grid place-items-center flex-shrink-0 overflow-hidden"
+                    style={
+                      item.hero_image_url
+                        ? {
+                            backgroundImage: `url(${item.hero_image_url})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                          }
+                        : undefined
+                    }
+                  >
+                    {!item.hero_image_url && (
+                      <ImageIcon className="w-4 h-4 text-text-faint" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-medium truncate">
+                      {item.display_name ||
+                        item.styled_name ||
+                        item.product_name ||
+                        "Product"}
+                    </div>
+                    <div className="text-[11px] text-text-faint">
+                      Qty: {item.quantity}
+                      {item.per_item_discount_ngn != null &&
+                        Number(item.per_item_discount_ngn) > 0 &&
+                        ` · −${money(Number(item.per_item_discount_ngn))}/ea`}
+                    </div>
+                  </div>
+                  {item.unit_price_ngn != null && (
+                    <MoneyText
+                      ngn={Number(item.unit_price_ngn)}
+                      className="text-[12px] text-text-muted shrink-0"
+                    />
+                  )}
+                  {canEdit && (
+                    <button
+                      onClick={() =>
+                        removeItem.mutate(item.bundle_item_id)
+                      }
+                      className="text-text-faint hover:text-danger p-1"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <Modal
+              open={pickerOpen}
+              onClose={() => setPickerOpen(false)}
+              title={`Add products to "${bundle.name}"`}
+              size="lg"
+            >
+              <StyledProductPicker
+                excludeIds={excludeIds}
+                onAdd={handleAddProducts}
+                onClose={() => setPickerOpen(false)}
+              />
+            </Modal>
+          </>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
+// ── Step 4: Pricing ──────────────────────────────────────
 function PricingStep({
   campaign,
   canEdit,
@@ -1026,6 +1539,7 @@ function PricingStep({
   campaign: Campaign;
   canEdit: boolean;
 }) {
+  const update = useUpdateCampaign(campaign.campaign_id);
   const tiersQ = useCampaignTiers(campaign.campaign_id);
   const upsellsQ = useCampaignUpsells(campaign.campaign_id);
   const upsertTier = useUpsertTier(campaign.campaign_id);
@@ -1038,6 +1552,69 @@ function PricingStep({
 
   return (
     <div className="space-y-4">
+      {/* Per-position discount ladder */}
+      <Card className="p-5 space-y-4">
+        <div>
+          <h2 className="font-display text-[22px] leading-tight">
+            Per-position discount ladder
+          </h2>
+          <p className="text-text-muted text-[13px] mt-1">
+            Discounts for individual wig purchases. 1st wig gets X off, 2nd gets
+            more, 3rd gets even more — encourages buying multiple individual wigs
+            (not bundles).
+          </p>
+        </div>
+        <PositionLadderEditor
+          ladder={campaign.position_ladder || []}
+          canEdit={canEdit}
+          onSave={(ladder) =>
+            update.mutateAsync({ position_ladder: ladder } as Partial<Campaign>)
+          }
+        />
+      </Card>
+
+      {/* Stacking bonus */}
+      <Card className="p-5 space-y-4">
+        <div>
+          <h2 className="font-display text-[22px] leading-tight">
+            Bundle stacking bonus
+          </h2>
+          <p className="text-text-muted text-[13px] mt-1">
+            Auto-apply extra discount when a customer buys 2+ separate bundles.
+            Shows a "You unlocked ₦X off!" banner in the cart.
+          </p>
+        </div>
+        <StackingBonusEditor
+          bonus={campaign.stacking_bonus}
+          canEdit={canEdit}
+          onSave={(bonus) =>
+            update.mutateAsync({ stacking_bonus: bonus } as Partial<Campaign>)
+          }
+        />
+      </Card>
+
+      {/* Reseller / bulk tiers */}
+      <Card className="p-5 space-y-4">
+        <div>
+          <h2 className="font-display text-[22px] leading-tight">
+            Reseller / bulk tiers
+          </h2>
+          <p className="text-text-muted text-[13px] mt-1">
+            Visible on the landing page so wholesale buyers know the discounts.
+            12+ items = factory rate, 20+ = deeper cut. Display-only on
+            frontend; backend enforces at checkout.
+          </p>
+        </div>
+        <BulkTierEditor
+          tiers={campaign.bulk_tiers || []}
+          canEdit={canEdit}
+          onSave={(bt) =>
+            update.mutateAsync({ bulk_tiers: bt } as Partial<Campaign>)
+          }
+        />
+      </Card>
+
+      {/* Quantity tier ladder (existing) */}
       <Card className="p-5 space-y-4">
         <div>
           <h2 className="font-display text-[22px] leading-tight">
@@ -1073,6 +1650,360 @@ function PricingStep({
           onDelete={(id) => deleteUpsell.mutate(id)}
         />
       </Card>
+    </div>
+  );
+}
+
+// ── Position ladder editor ──────────────────────────────
+function PositionLadderEditor({
+  ladder,
+  canEdit,
+  onSave,
+}: {
+  ladder: PositionLadderItem[];
+  canEdit: boolean;
+  onSave: (items: PositionLadderItem[]) => Promise<unknown>;
+}) {
+  const [items, setItems] = useState<PositionLadderItem[]>(ladder);
+  const [pos, setPos] = useState("");
+  const [disc, setDisc] = useState("");
+  const [lbl, setLbl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const dirty =
+    JSON.stringify(items) !== JSON.stringify(ladder);
+
+  function addRow() {
+    if (!pos || !disc) return;
+    const p = Number(pos);
+    const next = items
+      .filter((r) => r.position !== p)
+      .concat({ position: p, discount_ngn: Number(disc), label: lbl || undefined });
+    next.sort((a, b) => a.position - b.position);
+    setItems(next);
+    setPos("");
+    setDisc("");
+    setLbl("");
+  }
+
+  function removeRow(position: number) {
+    setItems(items.filter((r) => r.position !== position));
+  }
+
+  async function save() {
+    setSaving(true);
+    await onSave(items.length ? items : []);
+    setSaving(false);
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.length === 0 ? (
+        <div className="text-[13px] text-text-faint italic py-3">
+          No position discounts. Add one below — e.g. 1st wig ₦16,000 off, 2nd
+          ₦25,000 off.
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map((r) => (
+            <div
+              key={r.position}
+              className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
+            >
+              <span className="font-display font-medium text-[16px] w-16 text-center tabular-nums">
+                {ordinal(r.position)} wig
+              </span>
+              <span className="text-text-muted text-[13px]">→</span>
+              <span className="text-accent-glow font-mono text-[13px]">
+                −{money(r.discount_ngn)}
+              </span>
+              <span className="text-text-muted text-[12px] truncate flex-1">
+                {r.label || ""}
+              </span>
+              {canEdit && (
+                <button
+                  onClick={() => removeRow(r.position)}
+                  className="text-text-faint hover:text-danger p-1"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {canEdit && (
+        <>
+          <div className="rounded-[14px] border border-line bg-text-primary/[0.02] p-4 space-y-3">
+            <div className="micro">Add a position</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label="Position (nth wig)">
+                <NumberField
+                  value={pos}
+                  onChange={setPos}
+                  allowDecimal={false}
+                  suffix="th"
+                />
+              </Field>
+              <Field label="Discount off">
+                <NumberField
+                  value={disc}
+                  onChange={setDisc}
+                  suffix="NGN"
+                  allowDecimal={false}
+                />
+              </Field>
+              <Field label="Label (optional)">
+                <input
+                  value={lbl}
+                  onChange={(e) => setLbl(e.target.value)}
+                  placeholder={`${ordinal(Number(pos) || 1)} wig discount`}
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                />
+              </Field>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                variant="secondary"
+                onClick={addRow}
+                icon={<Plus className="w-4 h-4" />}
+                disabled={!pos || !disc}
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+          {dirty && (
+            <div className="flex justify-end">
+              <Button variant="primary" onClick={save} disabled={saving}>
+                {saving ? "Saving…" : "Save position ladder"}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+// ── Stacking bonus editor ───────────────────────────────
+function StackingBonusEditor({
+  bonus,
+  canEdit,
+  onSave,
+}: {
+  bonus: StackingBonus | null;
+  canEdit: boolean;
+  onSave: (b: StackingBonus | null) => Promise<unknown>;
+}) {
+  const [enabled, setEnabled] = useState(Boolean(bonus));
+  const [minBundles, setMinBundles] = useState(
+    String(bonus?.min_distinct_bundles ?? 2),
+  );
+  const [disc, setDisc] = useState(String(bonus?.discount_ngn ?? ""));
+  const [label, setLabel] = useState(bonus?.label ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    if (!enabled) {
+      await onSave(null);
+    } else {
+      await onSave({
+        min_distinct_bundles: Number(minBundles) || 2,
+        discount_ngn: Number(disc) || 0,
+        label: label || undefined,
+      });
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="space-y-3">
+      <Toggle
+        checked={enabled}
+        onChange={setEnabled}
+        disabled={!canEdit}
+        label={enabled ? "Stacking bonus active" : "Off"}
+      />
+      {enabled && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Field label="Min distinct bundles">
+            <NumberField
+              value={minBundles}
+              onChange={setMinBundles}
+              allowDecimal={false}
+              suffix="bundles"
+              disabled={!canEdit}
+            />
+          </Field>
+          <Field label="Bonus discount">
+            <NumberField
+              value={disc}
+              onChange={setDisc}
+              suffix="NGN"
+              allowDecimal={false}
+              disabled={!canEdit}
+            />
+          </Field>
+          <Field label="Banner label (optional)">
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              disabled={!canEdit}
+              placeholder="You unlocked ₦120,000 off!"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+            />
+          </Field>
+        </div>
+      )}
+      {canEdit && (
+        <div className="flex justify-end">
+          <Button variant="primary" onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save stacking bonus"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Bulk tier editor ────────────────────────────────────
+function BulkTierEditor({
+  tiers,
+  canEdit,
+  onSave,
+}: {
+  tiers: BulkTier[];
+  canEdit: boolean;
+  onSave: (items: BulkTier[]) => Promise<unknown>;
+}) {
+  const [items, setItems] = useState<BulkTier[]>(tiers);
+  const [qty, setQty] = useState("");
+  const [disc, setDisc] = useState("");
+  const [lbl, setLbl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const dirty = JSON.stringify(items) !== JSON.stringify(tiers);
+
+  function addRow() {
+    if (!qty || !disc) return;
+    const q = Number(qty);
+    const next = items
+      .filter((r) => r.min_qty !== q)
+      .concat({
+        min_qty: q,
+        discount_per_item_ngn: Number(disc),
+        label: lbl || undefined,
+      });
+    next.sort((a, b) => a.min_qty - b.min_qty);
+    setItems(next);
+    setQty("");
+    setDisc("");
+    setLbl("");
+  }
+
+  function removeRow(minQty: number) {
+    setItems(items.filter((r) => r.min_qty !== minQty));
+  }
+
+  async function save() {
+    setSaving(true);
+    await onSave(items);
+    setSaving(false);
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.length === 0 ? (
+        <div className="text-[13px] text-text-faint italic py-3">
+          No bulk tiers. Add one below — e.g. 12+ items = ₦67,000 off each.
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map((r) => (
+            <div
+              key={r.min_qty}
+              className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
+            >
+              <span className="font-display font-medium text-[16px] w-12 text-center tabular-nums">
+                {r.min_qty}+
+              </span>
+              <span className="text-text-muted text-[13px]">→</span>
+              <span className="text-accent-glow font-mono text-[13px]">
+                −{money(r.discount_per_item_ngn)}/each
+              </span>
+              <span className="text-text-muted text-[12px] truncate flex-1">
+                {r.label || ""}
+              </span>
+              {canEdit && (
+                <button
+                  onClick={() => removeRow(r.min_qty)}
+                  className="text-text-faint hover:text-danger p-1"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {canEdit && (
+        <>
+          <div className="rounded-[14px] border border-line bg-text-primary/[0.02] p-4 space-y-3">
+            <div className="micro">Add a bulk tier</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label="Minimum quantity">
+                <NumberField
+                  value={qty}
+                  onChange={setQty}
+                  allowDecimal={false}
+                  suffix="items"
+                />
+              </Field>
+              <Field label="Discount per item">
+                <NumberField
+                  value={disc}
+                  onChange={setDisc}
+                  suffix="NGN"
+                  allowDecimal={false}
+                />
+              </Field>
+              <Field label="Label (optional)">
+                <input
+                  value={lbl}
+                  onChange={(e) => setLbl(e.target.value)}
+                  placeholder={`${qty || "N"}+ = factory rate`}
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                />
+              </Field>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                variant="secondary"
+                onClick={addRow}
+                icon={<Plus className="w-4 h-4" />}
+                disabled={!qty || !disc}
+              >
+                Add tier
+              </Button>
+            </div>
+          </div>
+          {dirty && (
+            <div className="flex justify-end">
+              <Button variant="primary" onClick={save} disabled={saving}>
+                {saving ? "Saving…" : "Save bulk tiers"}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

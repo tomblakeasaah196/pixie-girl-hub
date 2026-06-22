@@ -12,6 +12,8 @@
 const express = require("express");
 const controller = require("./logistics.controller");
 const validator = require("./logistics.validator");
+const zonesController = require("./zones.controller");
+const zonesValidator = require("./zones.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 // Side-effect: register sales.order.paid → dispatch delivery (G-2).
@@ -19,6 +21,14 @@ require("./logistics.subscribers");
 
 const router = express.Router();
 const can = (action) => requirePermission("logistics", action);
+
+// ── Delivery zones (geofenced fees) ──────────────────────
+// Literal "/zones/quote" declared before "/zones/:id" so it isn't shadowed.
+router.get("/zones", can("view"), zonesController.list);
+router.get("/zones/quote", can("view"), zonesController.quote);
+router.post("/zones", can("create"), zonesValidator.validateCreate, zonesController.create);
+router.patch("/zones/:id", can("edit"), zonesValidator.validateUpdate, zonesController.update);
+router.delete("/zones/:id", can("delete"), zonesController.remove);
 
 // ── Couriers (Tier-1 admin config) ───────────────────────
 router.get("/couriers", can("view"), controller.listCouriers);

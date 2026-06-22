@@ -641,6 +641,22 @@ async function createOrderTx({ brand, user, request_id, input }) {
       order_id: order.order_id,
       contact_id: order.contact_id,
     });
+    // A confirmed dispatch order goes straight to the logistics queue (H-2):
+    // enqueue `order.confirmed` so logistics auto-creates a queued delivery —
+    // covers pay-on-delivery orders that never fire `order.paid` before they
+    // ship. Idempotent downstream (no-ops if a delivery already exists).
+    if ((input.order_type || "dispatch") === "dispatch") {
+      await outbox.enqueue(client, {
+        business: brand,
+        event_type: "order.confirmed",
+        payload: {
+          brand,
+          order_id: order.order_id,
+          contact_id: order.contact_id,
+        },
+        dedup_key: `order.confirmed:${order.order_id}`,
+      });
+    }
     return repo.findById({ client, brand, id: order.order_id });
   });
 }

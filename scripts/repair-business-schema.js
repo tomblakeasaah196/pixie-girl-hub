@@ -71,7 +71,7 @@ function findSentinel(sql) {
 }
 
 async function repairBusiness(business) {
-  console.log(`\n── Repairing schema: ${business} ──`);
+  console.warn(`\n── Repairing schema: ${business} ──`);
 
   const files = (await fs.readdir(TEMPLATE_DIR))
     .filter((f) => f.endsWith(".sql.template"))
@@ -93,7 +93,7 @@ async function repairBusiness(business) {
       const sentinel = findSentinel(raw);
 
       if (sentinel && existingTables.has(sentinel)) {
-        console.log(`  SKIP  ${file} (${sentinel} exists)`);
+        console.warn(`  SKIP  ${file} (${sentinel} exists)`);
         skipped++;
         continue;
       }
@@ -102,7 +102,7 @@ async function repairBusiness(business) {
         await client.query(`SAVEPOINT repair_${applied}`);
         await client.query(sql);
         await client.query(`RELEASE SAVEPOINT repair_${applied}`);
-        console.log(
+        console.warn(
           `  APPLY ${file}${sentinel ? ` (created ${sentinel}…)` : ""}`,
         );
         applied++;
@@ -113,7 +113,7 @@ async function repairBusiness(business) {
     }
 
     await client.query("COMMIT");
-    console.log(`  Done: ${applied} applied, ${skipped} skipped`);
+    console.warn(`  Done: ${applied} applied, ${skipped} skipped`);
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(`  FATAL for ${business}: ${err.message}`);
@@ -135,7 +135,7 @@ async function main() {
   let businesses;
   if (args.includes("--all")) {
     businesses = await getExistingBrands();
-    console.log(
+    console.warn(
       `Repairing all ${businesses.length} brands: ${businesses.join(", ")}`,
     );
   } else {
@@ -147,7 +147,7 @@ async function main() {
   }
 
   await pool.end();
-  console.log("\nRepair complete.");
+  console.warn("\nRepair complete.");
 }
 
 main().catch((err) => {

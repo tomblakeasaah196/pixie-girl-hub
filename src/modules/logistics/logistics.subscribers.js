@@ -32,9 +32,13 @@ let registered = false;
 function register() {
   if (registered) return;
   registered = true;
+  // A dispatch order reaches the queue at confirmation (covers pay-on-delivery,
+  // which never fires order.paid pre-shipment) and again at payment as a
+  // fallback. createForOrder is idempotent, so the second event no-ops.
+  outbox.register("order.confirmed", "logistics", autoDelivery);
   outbox.register("order.paid", "logistics", autoDelivery);
   logger.info(
-    "logistics subscribers registered (outbox order.paid → dispatch delivery)",
+    "logistics subscribers registered (outbox order.confirmed/order.paid → dispatch delivery)",
   );
 }
 

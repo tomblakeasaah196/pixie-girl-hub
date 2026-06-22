@@ -128,6 +128,7 @@ const publicOrderTimelineRouter = require("../modules/sales/order-timeline.route
 const publicPayLinkRouter = require("../modules/sales/payment-link.public.routes");
 const publicOrderFormRouter = require("../modules/storefront/order-form.routes");
 const publicInstallHubRouter = require("../modules/storefront/install-hub.routes");
+const publicStorefrontGeoRouter = require("../modules/storefront/geo.routes");
 const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.routes");
 const publicReferralRouter = require("../modules/retention/referral.routes");
 const publicHairQuizRouter = require("../modules/retention/hair-quiz.routes");
@@ -162,6 +163,9 @@ function mountRoutes(app) {
   // unauthenticated record-creating routes.
   publicRouter.use("/order-form", publicWriteLimiter, publicOrderFormRouter);
   publicRouter.use("/install-hub", publicInstallHubRouter);
+  // Storefront geo: currency/FX + geofenced delivery quote (the website calls
+  // these to localise prices and resolve the delivery fee from the address).
+  publicRouter.use("/storefront", publicStorefrontGeoRouter);
   publicRouter.use("/stylist-verify", publicStylistVerifyRouter);
   publicRouter.use("/referral", publicWriteLimiter, publicReferralRouter);
   publicRouter.use("/hair-quiz", publicWriteLimiter, publicHairQuizRouter);

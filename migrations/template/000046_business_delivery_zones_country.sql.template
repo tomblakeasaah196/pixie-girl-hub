@@ -1,0 +1,17 @@
+-- ============================================================
+-- TEMPLATE 000046 — Delivery zones: add the 'country' geometry type
+-- Pixie Girl Hub · JBS Praxis
+--
+-- A 'country' zone covers a whole country (flat international shipping fee);
+-- matching is by country_code, not a coordinate test. This ALTER upgrades the
+-- delivery_zones table created in 000045 for existing installs (idempotent).
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.delivery_zones
+  DROP CONSTRAINT IF EXISTS delivery_zones_geometry_type_check;
+ALTER TABLE {{BUSINESS}}.delivery_zones
+  ADD CONSTRAINT delivery_zones_geometry_type_check
+    CHECK (geometry_type IN ('polygon','radius','country'));
+
+ALTER TABLE {{BUSINESS}}.delivery_zones
+  ALTER COLUMN geometry SET DEFAULT '{}'::jsonb;

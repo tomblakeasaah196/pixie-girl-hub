@@ -192,6 +192,11 @@ const DocumentsPage = lazyWithRetry(() =>
     default: m.DocumentsPage,
   })),
 );
+const LogisticsPage = lazyWithRetry(() =>
+  import("@/pages/logistics/LogisticsPage").then((m) => ({
+    default: m.LogisticsPage,
+  })),
+);
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -415,6 +420,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <DocumentsPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "logistics",
+              element: (
+                <Suspense fallback={null}>
+                  <LogisticsPage />
                 </Suspense>
               ),
             },

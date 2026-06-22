@@ -338,19 +338,24 @@ export function CustomerOnboardingPublic() {
                 .join(", "),
             }}
             onChange={(p) =>
-              setForm({
-                ...form,
-                delivery_line1: p.line1,
-                delivery_area: p.area ?? "",
-                delivery_city: p.city,
-                delivery_state: p.state,
-                delivery_country: p.country,
-                delivery_country_code: p.country_code,
-                delivery_postal_code: p.postal_code ?? "",
-                delivery_latitude: p.latitude,
-                delivery_longitude: p.longitude,
-                delivery_google_maps_url: p.google_maps_url ?? "",
-              })
+              setForm((f) => ({
+                ...f,
+                // Defensive merge: a manually-typed address sends only line1
+                // (empty siblings), so keep the existing values rather than
+                // wiping city/state/area on every keystroke.
+                delivery_line1: p.line1 || f.delivery_line1,
+                delivery_area: p.area || f.delivery_area,
+                delivery_city: p.city || f.delivery_city,
+                delivery_state: p.state || f.delivery_state,
+                delivery_country: p.country || f.delivery_country,
+                delivery_country_code:
+                  p.country_code || f.delivery_country_code,
+                delivery_postal_code: p.postal_code || f.delivery_postal_code,
+                delivery_latitude: p.latitude ?? f.delivery_latitude,
+                delivery_longitude: p.longitude ?? f.delivery_longitude,
+                delivery_google_maps_url:
+                  p.google_maps_url || f.delivery_google_maps_url,
+              }))
             }
           />
           <label className="flex items-center gap-2 text-[12px] text-text-muted">

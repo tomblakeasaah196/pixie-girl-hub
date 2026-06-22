@@ -193,10 +193,58 @@ function verifyWebhookSignature(rawBody, headers = {}, creds) {
   }
 }
 
+/**
+ * Salary payout / bank transfer (HR payroll disbursement).
+ *
+ * Sends a single payout to a Nigerian bank account. `amount_ngn` is in NGN
+ * major units. Returns { ok, reference, raw } — never throws on a "not
+ * configured" state (the caller queues those for manual settlement), but does
+ * throw on a real network/API error so the caller can mark the slip failed.
+ *
+ * NOTE: Nomba's payout endpoint + payload were still being confirmed at build
+ * time (meeting action item — Jaffa & Baji). The path/shape below follows
+ * Nomba's transfer API convention; verify against the live account before
+ * go-live. When creds are absent the function reports not_configured so payroll
+ * falls back to a manual bank schedule rather than blocking.
+ */
+async function disburseSalary(
+  { account_number, bank_code, amount_ngn, narration, reference },
+  creds,
+) {
+  if (!isConfigured(creds)) {
+    return { ok: false, reason: "not_configured", reference: null };
+  }
+  const raw = await authed(
+    "post",
+    "/v1/transfers/bank",
+    {
+      amount: Number(amount_ngn),
+      currency: "NGN",
+      accountNumber: account_number,
+      bankCode: bank_code || undefined,
+      narration: narration || "Salary",
+      merchantTxRef: reference,
+    },
+    creds,
+  );
+  // Nomba wraps results in { data: { ... } }; success shape varies by account.
+  const data = (raw && raw.data) || raw || {};
+  const ok =
+    data.status === "success" ||
+    data.success === true ||
+    Boolean(data.transactionId || data.id);
+  return {
+    ok,
+    reference: data.transactionId || data.id || reference || null,
+    raw: data,
+  };
+}
+
 module.exports = {
   isConfigured,
   initializePayment,
   requestTerminalPayment,
   verifyTransaction,
   verifyWebhookSignature,
+  disburseSalary,
 };

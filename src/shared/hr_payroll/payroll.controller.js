@@ -50,7 +50,11 @@ async function approveRun(req, res) {
 }
 async function payRun(req, res) {
   res.json({
-    data: await service.markRunPaid({ ...ctx(req), run_id: req.params.id }),
+    data: await service.payRun({
+      ...ctx(req),
+      run_id: req.params.id,
+      pin: req.body && req.body.pin,
+    }),
   });
 }
 async function reverseRun(req, res) {

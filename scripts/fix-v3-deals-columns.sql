@@ -30,11 +30,16 @@ BEGIN
     $f$, s);
 
     -- sales_campaign_products: styled reference + denormalised display fields
+    -- (image, both-currency prices, long + short copy — snapshotted on add).
     EXECUTE format($f$
       ALTER TABLE %I.sales_campaign_products
-        ADD COLUMN IF NOT EXISTS styled_id         UUID,
-        ADD COLUMN IF NOT EXISTS image_url         TEXT,
-        ADD COLUMN IF NOT EXISTS regular_price_ngn NUMERIC(14,4)
+        ADD COLUMN IF NOT EXISTS styled_id          UUID,
+        ADD COLUMN IF NOT EXISTS image_url          TEXT,
+        ADD COLUMN IF NOT EXISTS regular_price_ngn  NUMERIC(14,4),
+        ADD COLUMN IF NOT EXISTS regular_price_usd  NUMERIC(14,4),
+        ADD COLUMN IF NOT EXISTS campaign_price_usd NUMERIC(14,4),
+        ADD COLUMN IF NOT EXISTS short_description  TEXT,
+        ADD COLUMN IF NOT EXISTS long_description   TEXT
     $f$, s);
 
     RAISE NOTICE 'v3 deals columns ensured on schema %', s;
@@ -50,5 +55,7 @@ SELECT table_schema, table_name, column_name
                               'position_ladder','stacking_bonus','bulk_tiers'))
       OR (table_name = 'product_bundle_items' AND column_name = 'styled_id')
       OR (table_name = 'sales_campaign_products'
-          AND column_name IN ('styled_id','image_url','regular_price_ngn')) )
+          AND column_name IN ('styled_id','image_url','regular_price_ngn',
+                              'regular_price_usd','campaign_price_usd',
+                              'short_description','long_description')) )
  ORDER BY table_schema, table_name, column_name;

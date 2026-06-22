@@ -19,11 +19,20 @@ import { hexToTriplet, fontStack } from "@landing-kit";
 
 export interface LandingProduct {
   product_id?: string | null;
+  styled_id?: string | null;
   category_id?: string | null;
   name?: string | null;
+  short_description?: string | null;
+  long_description?: string | null;
   campaign_price_ngn?: number | string | null;
+  campaign_price_usd?: number | string | null;
+  regular_price_ngn?: number | string | null;
+  regular_price_usd?: number | string | null;
   is_featured?: boolean;
   stock_remaining?: number | null;
+  // The public payload sends `image_url`; `hero_image_url` is kept as a legacy
+  // fallback so older saved models still render their picture.
+  image_url?: string | null;
   hero_image_url?: string | null;
 }
 
@@ -54,6 +63,18 @@ const NGN = new Intl.NumberFormat("en-NG", {
 function ngn(v: number | string | null | undefined): string {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? NGN.format(n) : "₦—";
+}
+
+const USD = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+/** Format a USD price, or null when there is no figure to show. */
+function usd(v: number | string | null | undefined): string | null {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) && n > 0 ? USD.format(n) : null;
 }
 
 /** A deterministic tasteful gradient when an image is missing — never a grey box. */
@@ -440,15 +461,23 @@ function BlockSection({
               : Array.from({ length: 4 })
             ).map((p, n) => {
               const prod = (p || {}) as LandingProduct;
+              const img = prod.image_url || prod.hero_image_url;
+              // Real price: the campaign override if set, else the snapshotted
+              // regular price. No more fabricated "95000 + n*10000" placeholder.
+              const priceNgn =
+                prod.campaign_price_ngn ?? prod.regular_price_ngn ?? null;
+              const priceUsd = usd(
+                prod.campaign_price_usd ?? prod.regular_price_usd,
+              );
+              const hasPrice =
+                priceNgn != null && Number.isFinite(Number(priceNgn));
               return (
                 <article key={n} className="group">
                   <div
                     className="aspect-[3/4] rounded-[16px] overflow-hidden mb-3"
                     style={{
-                      backgroundImage: prod.hero_image_url
-                        ? `url("${prod.hero_image_url}")`
-                        : undefined,
-                      background: prod.hero_image_url
+                      backgroundImage: img ? `url("${img}")` : undefined,
+                      background: img
                         ? undefined
                         : placeholderBg(`prod-${model.slug}-${n}`),
                       backgroundSize: "cover",
@@ -458,9 +487,19 @@ function BlockSection({
                   <div className="font-medium text-[13.5px] truncate">
                     {prod.name || "Styled piece"}
                   </div>
-                  <div className="font-mono text-accent-glow text-[13px]">
-                    {ngn(prod.campaign_price_ngn ?? 95000 + n * 10000)}
-                  </div>
+                  {prod.short_description && (
+                    <div className="text-[11.5px] opacity-70 line-clamp-2 mt-0.5">
+                      {prod.short_description}
+                    </div>
+                  )}
+                  {hasPrice && (
+                    <div className="font-mono text-accent-glow text-[13px] mt-1">
+                      {ngn(priceNgn)}
+                      {priceUsd && (
+                        <span className="opacity-60"> · {priceUsd}</span>
+                      )}
+                    </div>
+                  )}
                 </article>
               );
             })}

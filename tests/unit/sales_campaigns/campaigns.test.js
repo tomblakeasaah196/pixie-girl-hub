@@ -15,6 +15,8 @@ const {
   createSchema,
   updateSchema,
   signupSchema,
+  addProductSchema,
+  bundleItemSchema,
 } = require("../../../src/modules/sales_campaigns/campaigns.validator");
 
 function liveCampaign(over = {}) {
@@ -98,6 +100,64 @@ describe("signupSchema", () => {
   test("requires email or phone", () => {
     expect(() => signupSchema.parse({ notify_via: "email" })).toThrow();
     expect(() => signupSchema.parse({ email: "a@b.com" })).not.toThrow();
+  });
+});
+
+describe("addProductSchema (campaign builder 'Add products')", () => {
+  const styledId = "22222222-2222-2222-2222-222222222222";
+  const productId = "33333333-3333-3333-3333-333333333333";
+
+  test("accepts a styled product with a null image + null prices", () => {
+    // This is exactly what the picker sends for an image-less product. Before
+    // the fix, image_url was .optional() (not .nullable()) so null 400'd the
+    // whole batch — the silent 'nothing adds' bug.
+    expect(() =>
+      addProductSchema.parse({
+        styled_id: styledId,
+        product_id: productId,
+        include_exclude: "include",
+        image_url: null,
+        regular_price_ngn: null,
+        regular_price_usd: null,
+        is_featured: false,
+      }),
+    ).not.toThrow();
+  });
+
+  test("accepts both-currency prices + long/short descriptions", () => {
+    expect(() =>
+      addProductSchema.parse({
+        styled_id: styledId,
+        product_id: productId,
+        include_exclude: "include",
+        image_url: "https://cdn.example.com/wig.jpg",
+        regular_price_ngn: 425000,
+        regular_price_usd: 280,
+        short_description: "HD lace pixie wig",
+        long_description: "A longer editorial description ".repeat(10),
+      }),
+    ).not.toThrow();
+  });
+
+  test("requires at least one of styled_id / product_id / category_id", () => {
+    expect(() =>
+      addProductSchema.parse({ include_exclude: "include" }),
+    ).toThrow();
+  });
+});
+
+describe("bundleItemSchema (campaign builder bundle picker)", () => {
+  test("accepts styled_id + base product_id", () => {
+    expect(() =>
+      bundleItemSchema.parse({
+        styled_id: "44444444-4444-4444-4444-444444444444",
+        product_id: "55555555-5555-5555-5555-555555555555",
+        quantity: 1,
+      }),
+    ).not.toThrow();
+  });
+  test("requires styled_id / product_id / variant_id", () => {
+    expect(() => bundleItemSchema.parse({ quantity: 1 })).toThrow();
   });
 });
 

@@ -124,8 +124,12 @@ export interface CampaignProduct {
   styled_id: string | null;
   include_exclude: "include" | "exclude";
   campaign_price_ngn: number | null;
+  campaign_price_usd: number | null;
   regular_price_ngn: number | null;
+  regular_price_usd: number | null;
   image_url: string | null;
+  short_description: string | null;
+  long_description: string | null;
   display_order: number;
   is_featured: boolean;
   preorder_enabled: boolean;
@@ -133,6 +137,11 @@ export interface CampaignProduct {
   styled_slug?: string | null;
   product_name?: string | null;
   resolved_image_url?: string | null;
+  // Live styled fallbacks (rows added before the snapshot existed).
+  styled_short_description?: string | null;
+  styled_long_description?: string | null;
+  styled_retail_price_ngn?: number | null;
+  styled_retail_price_usd?: number | null;
 }
 
 export interface LandingBlock {
@@ -563,10 +572,14 @@ export function useAddProductsBatch(campaignId: string | undefined) {
   return useMutation({
     mutationFn: (
       items: Array<{
-        styled_id: string;
-        product_id?: string;
+        styled_id?: string | null;
+        product_id?: string | null;
         image_url?: string | null;
         regular_price_ngn?: number | null;
+        regular_price_usd?: number | null;
+        campaign_price_usd?: number | null;
+        short_description?: string | null;
+        long_description?: string | null;
         include_exclude?: string;
         is_featured?: boolean;
       }>,
@@ -600,7 +613,9 @@ export function useCloneBundlesToCampaign(campaignId: string | undefined) {
   const brand = useBrand();
   return useMutation({
     mutationFn: (body: { campaign_slug?: string }) =>
-      api.post<{ data: unknown[] }>(
+      // Resolves to the cloned-bundle array (the API's { data } is unwrapped by
+      // lib/api). May be empty when the catalogue has no active bundles.
+      api.post<unknown[]>(
         `/sales-campaigns/${campaignId}/bundles/clone`,
         body,
       ),

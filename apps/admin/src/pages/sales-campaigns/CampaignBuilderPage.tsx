@@ -930,12 +930,18 @@ function ProductsStep({
   );
 
   async function handleAdd(items: StyledProduct[]) {
+    // Snapshot the styled product onto the campaign link: image, both-currency
+    // reference prices, and the long + short copy (so the landing page can show
+    // them and they stay stable if the styled product is later re-priced).
     await addBatch.mutateAsync(
       items.map((sp) => ({
         styled_id: sp.styled_id,
-        product_id: sp.base_product_id,
+        product_id: sp.base_product_id || null,
         image_url: sp.primary_image_url || null,
         regular_price_ngn: sp.effective_price_ngn ?? sp.retail_price_ngn ?? null,
+        regular_price_usd: sp.retail_price_usd ?? null,
+        short_description: sp.short_description ?? null,
+        long_description: sp.long_description ?? null,
         include_exclude: "include",
         is_featured: false,
       })),
@@ -1015,19 +1021,35 @@ function ProductsStep({
               <div className="font-medium text-[13px] truncate">
                 {p.styled_name || p.product_name || "Unknown product"}
               </div>
-              <div className="flex items-center gap-2 mt-1">
-                {p.regular_price_ngn != null && (
-                  <MoneyText
-                    ngn={Number(p.regular_price_ngn)}
-                    className="text-[12px] text-text-muted"
-                  />
-                )}
-                {p.is_featured && (
-                  <Pill tone="accent" dot={false}>
-                    Featured
-                  </Pill>
-                )}
-              </div>
+              {(() => {
+                const ngn = p.regular_price_ngn ?? p.styled_retail_price_ngn;
+                const usd = p.regular_price_usd ?? p.styled_retail_price_usd;
+                const shortDesc =
+                  p.short_description || p.styled_short_description;
+                return (
+                  <>
+                    <div className="flex items-center gap-2 mt-1">
+                      {ngn != null && (
+                        <MoneyText
+                          ngn={Number(ngn)}
+                          usd={usd != null ? Number(usd) : undefined}
+                          className="text-[12px] text-text-muted"
+                        />
+                      )}
+                      {p.is_featured && (
+                        <Pill tone="accent" dot={false}>
+                          Featured
+                        </Pill>
+                      )}
+                    </div>
+                    {shortDesc && (
+                      <p className="text-[11px] text-text-faint mt-1 line-clamp-2">
+                        {shortDesc}
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
             {canEdit && (
               <button
@@ -1084,39 +1106,81 @@ function BundlesStep({
   const [bundleDetailId, setBundleDetailId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newSlug, setNewSlug] = useState("");
+  // Surface failures from the non-picker actions (clone / attach / create /
+  // duplicate) instead of letting a rejected mutation vanish — these used to
+  // look like dead buttons when the request errored.
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const links = (linksQ.data?.data || []) as CampaignBundleLink[];
   const available = (bundlesQ.data?.data || []) as Bundle[];
 
+  function describeError(e: unknown, fallback: string) {
+    setNotice(null);
+    setError((e as Error)?.message || fallback);
+  }
+
   async function handleAttach(bundleId: string) {
-    await attach.mutateAsync({ bundle_id: bundleId });
-    setPickerOpen(false);
+    setError(null);
+    setNotice(null);
+    try {
+      await attach.mutateAsync({ bundle_id: bundleId });
+      setPickerOpen(false);
+    } catch (e) {
+      describeError(e, "Couldn't attach that bundle. Please try again.");
+    }
   }
 
   async function handleClone() {
-    await cloneBundles.mutateAsync({ campaign_slug: campaign.slug });
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await cloneBundles.mutateAsync({
+        campaign_slug: campaign.slug,
+      });
+      const count = Array.isArray(res) ? res.length : 0;
+      if (count === 0) {
+        setNotice(
+          "No active bundles in your catalogue to clone yet. Create one here, or build bundles in Catalogue first.",
+        );
+      }
+    } catch (e) {
+      describeError(e, "Couldn't clone bundles from the catalogue.");
+    }
   }
 
   async function handleCreate() {
     if (!newName || !newSlug) return;
-    const b = await createBundle.mutateAsync({
-      name: newName,
-      slug: newSlug.replace(/[^a-z0-9-]/g, "-").replace(/-{2,}/g, "-"),
-      status: "active",
-    });
-    await attach.mutateAsync({ bundle_id: b.bundle_id });
-    setCreateOpen(false);
-    setNewName("");
-    setNewSlug("");
-    setBundleDetailId(b.bundle_id);
+    setError(null);
+    setNotice(null);
+    try {
+      const b = await createBundle.mutateAsync({
+        name: newName,
+        slug: newSlug.replace(/[^a-z0-9-]/g, "-").replace(/-{2,}/g, "-"),
+        status: "active",
+      });
+      await attach.mutateAsync({ bundle_id: b.bundle_id });
+      setCreateOpen(false);
+      setNewName("");
+      setNewSlug("");
+      setBundleDetailId(b.bundle_id);
+    } catch (e) {
+      describeError(e, "Couldn't create the bundle. Please try again.");
+    }
   }
 
   async function handleDuplicate(bundleId: string) {
-    const b = await duplicate.mutateAsync({
-      bundleId,
-      campaign_id: campaign.campaign_id,
-    });
-    setBundleDetailId(b.bundle_id);
+    setError(null);
+    setNotice(null);
+    try {
+      const b = await duplicate.mutateAsync({
+        bundleId,
+        campaign_id: campaign.campaign_id,
+      });
+      setBundleDetailId(b.bundle_id);
+    } catch (e) {
+      describeError(e, "Couldn't duplicate the bundle. Please try again.");
+    }
   }
 
   return (
@@ -1159,6 +1223,20 @@ function BundlesStep({
           </div>
         )}
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-[11px] border border-danger/40 bg-danger/[0.08] px-3 py-2 text-[12.5px] text-danger"
+        >
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div className="rounded-[11px] border border-warn/30 bg-warn/[0.08] px-3 py-2 text-[12.5px] text-warn">
+          {notice}
+        </div>
+      )}
 
       {linksQ.isLoading && <Skeleton style={{ height: 80 }} />}
       {linksQ.isError && <ErrorState onRetry={() => linksQ.refetch()} />}
@@ -1399,10 +1477,13 @@ function BundleDetailDrawer({
   );
 
   async function handleAddProducts(styledProducts: StyledProduct[]) {
+    // product_id (the base) is sent alongside styled_id because a bundle item
+    // requires a product_id or variant_id at the DB level; styled_id is the
+    // storefront reference. Errors propagate to the picker, which surfaces them.
     for (const sp of styledProducts) {
       await addItem.mutateAsync({
         styled_id: sp.styled_id,
-        product_id: sp.base_product_id,
+        product_id: sp.base_product_id || undefined,
         quantity: 1,
       } as Partial<BundleItem>);
     }

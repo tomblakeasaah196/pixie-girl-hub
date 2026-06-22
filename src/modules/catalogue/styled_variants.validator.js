@@ -61,6 +61,9 @@ const sizeConfig = z
     head_size_guide_md: z.string().max(8000).nullable().optional(),
     // One-click Categories toggle (Products → Config).
     categories_enabled: z.boolean().optional(),
+    // One-click: allow base (stock-room) products in collections + bundles.
+    // Default off — only styled products may be added.
+    allow_base_in_collections_bundles: z.boolean().optional(),
   })
   .strict();
 

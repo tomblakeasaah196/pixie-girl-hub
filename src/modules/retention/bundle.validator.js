@@ -16,6 +16,10 @@ const pricingModel = z.enum([
 
 const componentSchema = z
   .object({
+    // Styled product is the preferred (and default-allowed) bundle target.
+    styled_id: z.string().uuid().optional(),
+    // Base product / variant — only accepted when the catalogue config flag
+    // allow_base_in_collections_bundles is on (enforced in the service).
     product_id: z.string().uuid().optional(),
     variant_id: z.string().uuid().optional(),
     quantity: z.coerce.number().int().positive().optional(),
@@ -23,8 +27,8 @@ const componentSchema = z
     display_order: z.coerce.number().int().optional(),
   })
   .strict()
-  .refine((c) => c.product_id || c.variant_id, {
-    message: "component needs product_id or variant_id",
+  .refine((c) => c.styled_id || c.product_id || c.variant_id, {
+    message: "component needs a styled_id (or product_id/variant_id base target)",
   });
 
 const createSchema = z

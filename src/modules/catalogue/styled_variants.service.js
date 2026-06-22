@@ -149,7 +149,8 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
     if (
       input.size_guide_title !== undefined ||
       input.head_size_guide_md !== undefined ||
-      input.categories_enabled !== undefined
+      input.categories_enabled !== undefined ||
+      input.allow_base_in_collections_bundles !== undefined
     ) {
       config = await repo.upsertConfig({
         client,
@@ -158,6 +159,8 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
           size_guide_title: input.size_guide_title,
           head_size_guide_md: input.head_size_guide_md,
           categories_enabled: input.categories_enabled,
+          allow_base_in_collections_bundles:
+            input.allow_base_in_collections_bundles,
         },
         user_id: user.user_id,
       });

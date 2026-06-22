@@ -169,12 +169,15 @@ async function getConfig({ client, brand }) {
 async function upsertConfig({ client, brand, patch, user_id }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "catalogue_config")}
-       (singleton, size_guide_title, head_size_guide_md, categories_enabled, updated_by)
-     VALUES (true, COALESCE($1,'How to find your head size'), $2, COALESCE($3,false), $4)
+       (singleton, size_guide_title, head_size_guide_md, categories_enabled,
+        allow_base_in_collections_bundles, updated_by)
+     VALUES (true, COALESCE($1,'How to find your head size'), $2, COALESCE($3,false),
+             COALESCE($5,false), $4)
      ON CONFLICT (singleton) DO UPDATE SET
        size_guide_title = COALESCE(EXCLUDED.size_guide_title, ${t(brand, "catalogue_config")}.size_guide_title),
        head_size_guide_md = COALESCE(EXCLUDED.head_size_guide_md, ${t(brand, "catalogue_config")}.head_size_guide_md),
        categories_enabled = COALESCE($3, ${t(brand, "catalogue_config")}.categories_enabled),
+       allow_base_in_collections_bundles = COALESCE($5, ${t(brand, "catalogue_config")}.allow_base_in_collections_bundles),
        updated_by = EXCLUDED.updated_by,
        updated_at = now()
      RETURNING *`,
@@ -183,9 +186,21 @@ async function upsertConfig({ client, brand, patch, user_id }) {
       patch.head_size_guide_md ?? null,
       patch.categories_enabled ?? null,
       user_id || null,
+      patch.allow_base_in_collections_bundles ?? null,
     ],
   );
   return rows[0];
+}
+
+/** The one-click flag: may base (stock-room) products join collections/bundles?
+ *  Default false — only styled products may. Read by the collection + bundle
+ *  services before accepting a base target. */
+async function allowBaseTargets({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT allow_base_in_collections_bundles AS allow
+       FROM ${t(brand, "catalogue_config")} WHERE singleton = true`,
+  );
+  return rows[0] ? rows[0].allow === true : false;
 }
 
 // ── Colours ──────────────────────────────────────────────
@@ -397,6 +412,7 @@ module.exports = {
   updateLaceSize,
   getConfig,
   upsertConfig,
+  allowBaseTargets,
   listColours,
   getColour,
   createColour,

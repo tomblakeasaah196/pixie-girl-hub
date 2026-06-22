@@ -208,14 +208,14 @@ async function collectionsForStyled(brand, styled_id) {
     return "";
   }
 }
-async function bundlesForBase(brand, base_product_id) {
-  if (!base_product_id) return "";
+async function bundlesForStyled(brand, styled_id) {
+  if (!styled_id) return "";
   try {
     const { rows } = await query(
       `SELECT b.display_name FROM ${t(brand, "bundle_offers")} b
          JOIN ${t(brand, "bundle_offer_products")} bp ON bp.bundle_id = b.bundle_id
-        WHERE bp.product_id = $1 ORDER BY b.display_name`,
-      [base_product_id],
+        WHERE bp.styled_id = $1 ORDER BY b.display_name`,
+      [styled_id],
     );
     return rows.map((r) => r.display_name).join(", ");
   } catch {
@@ -233,7 +233,7 @@ async function exportStyled({ brand }) {
       variantsRepo.listVariants({ brand, styled_id: s.styled_id }),
       colourImageMap(brand, s.styled_id),
       collectionsForStyled(brand, s.styled_id),
-      bundlesForBase(brand, s.base_product_id),
+      bundlesForStyled(brand, s.styled_id),
     ]);
     if (!variants.length) {
       rows.push({
@@ -484,9 +484,8 @@ async function importStyled({ brand, user, request_id, buffer }) {
       results.push({ sheet: STYLED_SHEET, row: firstLine, status: "info", reason: `${vCreated} variants for "${group.name}"` });
     }
 
-    // Collections (STYLED membership) + bundles (BASE components). Union the
-    // values across the group's rows; collections key on the styled product,
-    // bundles on the representative base.
+    // Collections + bundles both curate the STYLED product (never the base).
+    // Union the membership values across the group's rows.
     const cols = new Set();
     const bdls = new Set();
     for (const it of group.items) {
@@ -510,7 +509,7 @@ async function importStyled({ brand, user, request_id, buffer }) {
         continue;
       }
       await bundleService
-        .addComponent({ brand, id: bdl.bundle_id, component: { product_id: repBase.product_id, quantity: 1, role: "core" } })
+        .addComponent({ brand, id: bdl.bundle_id, component: { styled_id: styled.styled_id, quantity: 1, role: "core" } })
         .catch(() => {});
     }
   }

@@ -323,6 +323,27 @@ export const createStaff = (body: Record<string, unknown>) =>
 export const updateStaff = (id: string, patch: Record<string, unknown>) =>
   api.patch<StaffRow>(`/hr/employees/${id}`, patch);
 
+export interface StaffContract {
+  contract_id: string;
+  contract_type: string;
+  effective_from: string;
+  effective_to: string | null;
+  gross_salary: number;
+  document_id: string | null;
+}
+export const listEmployeeContracts = (id: string) =>
+  api.get<{ data: StaffContract[] }>(`/hr/employees/${id}/contracts`).then((r) => r.data);
+export const generateContract = (
+  id: string,
+  body: {
+    contract_type?: string;
+    effective_from?: string;
+    effective_to?: string | null;
+    gross_salary?: number;
+    notes?: string;
+  },
+) => api.post<StaffContract>(`/hr/employees/${id}/contract`, body);
+
 // ── Payroll (Phase 2) ──────────────────────────────────────
 export interface PayrollRun {
   run_id: string;

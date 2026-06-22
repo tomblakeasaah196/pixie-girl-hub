@@ -15,6 +15,9 @@ const c = require("./hr_ops.controller");
 const v = require("./hr_ops.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
+// Side-effect: register target-achieved → auto-bonus subscriber.
+require("./target.subscribers");
+
 const router = express.Router();
 const P = (action) => requirePermission("hr_payroll", action);
 
@@ -47,6 +50,10 @@ router.get("/targets", P("view"), c.listTargets);
 router.post("/targets", P("edit"), v.targetCreate, c.setTarget);
 router.patch("/targets/:id/progress", P("edit"), v.targetProgress, c.updateTargetProgress);
 router.delete("/targets/:id", P("delete"), c.removeTarget);
+
+// ── Contracts (generate PDF + record; route to e-sign separately) ──
+router.get("/employees/:id/contracts", P("view"), c.listContracts);
+router.post("/employees/:id/contract", P("edit"), v.contractGenerate, c.generateContract);
 
 // ── HR settings / config tab ───────────────────────────────
 router.get("/settings", P("view"), c.getSettings);

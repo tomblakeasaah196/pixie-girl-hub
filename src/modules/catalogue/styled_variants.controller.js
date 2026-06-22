@@ -63,6 +63,26 @@ async function deleteColour(req, res) {
   res.status(204).end();
 }
 
+async function restoreColour(req, res) {
+  res.json({
+    data: await service.restoreColour({
+      ...base(req),
+      styled_id: req.params.id,
+      colour_id: req.params.colourId,
+    }),
+  });
+}
+
+// Per-product Trash bin: soft-deleted colours + variants (with purge dates).
+async function listTrash(req, res) {
+  res.json({
+    data: await service.listTrash({
+      brand: req.brand,
+      styled_id: req.params.id,
+    }),
+  });
+}
+
 // ── Per-colour images ────────────────────────────────────
 async function listColourImages(req, res) {
   res.json({
@@ -141,6 +161,16 @@ async function deleteVariant(req, res) {
   res.status(204).end();
 }
 
+async function restoreVariant(req, res) {
+  res.json({
+    data: await service.restoreVariant({
+      ...base(req),
+      styled_id: req.params.id,
+      styled_variant_id: req.params.variantId,
+    }),
+  });
+}
+
 module.exports = {
   getSizeConfig,
   saveSizeConfig,
@@ -148,6 +178,8 @@ module.exports = {
   createColour,
   updateColour,
   deleteColour,
+  restoreColour,
+  listTrash,
   listColourImages,
   addColourImage,
   removeColourImage,
@@ -155,4 +187,5 @@ module.exports = {
   bulkCreateVariants,
   updateVariant,
   deleteVariant,
+  restoreVariant,
 };

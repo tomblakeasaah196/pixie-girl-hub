@@ -314,6 +314,28 @@ async function importStyled({ brand, user, request_id, buffer }) {
   const results = [];
   let created = 0;
   let updated = 0;
+  let skippedMissingBase = 0;
+
+  // Every base referenced by name that doesn't exist yet. Keyed by the base
+  // name; collects the styled products + sizes that need it, so the import can
+  // hand Operations one grouped "create these bases, then re-import" list
+  // instead of failing the whole file (owner directive: let the rest succeed).
+  const missingBases = new Map();
+  const noteMissingBase = (name, styledName, sizeRaw) => {
+    const key = lc(name);
+    if (!missingBases.has(key))
+      missingBases.set(key, {
+        base: String(name).trim(),
+        rows: 0,
+        styled_products: new Set(),
+        sizes: new Set(),
+      });
+    const m = missingBases.get(key);
+    m.rows += 1;
+    if (styledName) m.styled_products.add(styledName);
+    const size = str(sizeRaw);
+    if (size) m.sizes.add(size);
+  };
 
   // Group rows by Styled Name (first-seen order preserved).
   const groups = new Map();
@@ -333,10 +355,36 @@ async function importStyled({ brand, user, request_id, buffer }) {
   for (const group of groups.values()) {
     const first = group.items[0].raw;
     const firstLine = group.items[0].line;
-    const repBaseName = str(first["Base Product*"]);
-    const repBase = repBaseName && baseByName.get(lc(repBaseName));
+    // The styled product's seed base = the first row that names an EXISTING
+    // base. A group isn't lost just because its first row's base is missing —
+    // we scan all its rows for one that resolves. (Per-row missing bases are
+    // noted + skipped in the variant loop below, so we don't double-count here.)
+    let repBase = null;
+    for (const it of group.items) {
+      const bn = str(it.raw["Base Product*"]);
+      if (!bn) continue;
+      const resolved = baseByName.get(lc(bn));
+      if (resolved) {
+        repBase = resolved;
+        break;
+      }
+    }
     if (!repBase) {
-      results.push({ sheet: STYLED_SHEET, row: firstLine, status: "error", reason: `base "${repBaseName || ""}" not found for "${group.name}"` });
+      // No row in the whole group cites a base that exists — can't create a
+      // styled product without a base, so block it and report every base it
+      // wanted (don't hard-fail the file; other groups still import).
+      for (const it of group.items) {
+        const bn = str(it.raw["Base Product*"]);
+        if (bn) noteMissingBase(bn, group.name, it.raw["Size*"]);
+      }
+      const repBaseName = str(first["Base Product*"]);
+      skippedMissingBase += group.items.length;
+      results.push({
+        sheet: STYLED_SHEET,
+        row: firstLine,
+        status: "error",
+        reason: `base "${repBaseName || ""}" not found for "${group.name}" — create the base product, then re-import`,
+      });
       continue;
     }
     const slug = str(first["Slug"]) || slugify(group.name);
@@ -439,7 +487,25 @@ async function importStyled({ brand, user, request_id, buffer }) {
       const compare_at = num(it.raw["Compare-at Price (NGN)"]) ?? null;
       const compare_at_usd = num(it.raw["Compare-at Price (USD)"]) ?? null;
       const rowBaseName = str(it.raw["Base Product*"]);
-      const rowBase = (rowBaseName && baseByName.get(lc(rowBaseName))) || repBase;
+      // A row that names a base which doesn't exist is skipped + reported (never
+      // silently re-homed onto the seed base). A row that leaves base blank
+      // inherits the styled product's seed base.
+      let rowBase = repBase;
+      if (rowBaseName) {
+        const resolved = baseByName.get(lc(rowBaseName));
+        if (!resolved) {
+          noteMissingBase(rowBaseName, group.name, it.raw["Size*"]);
+          skippedMissingBase += 1;
+          results.push({
+            sheet: STYLED_SHEET,
+            row: it.line,
+            status: "skipped",
+            reason: `base "${rowBaseName}" not found — create it, then re-import this row`,
+          });
+          continue;
+        }
+        rowBase = resolved;
+      }
       if (!colour_id) {
         results.push({ sheet: STYLED_SHEET, row: it.line, status: "warn", reason: `colour "${cname || ""}" unresolved` });
         continue;
@@ -514,7 +580,26 @@ async function importStyled({ brand, user, request_id, buffer }) {
     }
   }
 
-  return { created, updated, total: rows.length, results };
+  // Grouped "missing base" report: one entry per referenced base that doesn't
+  // exist, with the styled products + sizes that need it. Operations creates
+  // these bases, then re-imports — the rows that succeeded stay put.
+  const missing_bases = [...missingBases.values()]
+    .map((m) => ({
+      base: m.base,
+      rows: m.rows,
+      styled_products: [...m.styled_products].sort(),
+      sizes: [...m.sizes].sort(),
+    }))
+    .sort((a, b) => a.base.localeCompare(b.base));
+
+  return {
+    created,
+    updated,
+    total: rows.length,
+    skipped_missing_base: skippedMissingBase,
+    missing_bases,
+    results,
+  };
 }
 
 // ════════════════════════════════════════════════════════════

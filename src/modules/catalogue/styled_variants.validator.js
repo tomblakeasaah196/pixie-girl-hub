@@ -103,7 +103,9 @@ const variantBulkCreate = z
 
 const variantUpdate = z
   .object({
-    base_product_id: z.string().uuid().nullable().optional(),
+    // Every variant must keep a base — it can be REPOINTED to another base, but
+    // never cleared (DB backstop: chk_styled_variant_has_base, 000049).
+    base_product_id: z.string().uuid().optional(),
     price_override_ngn: money.nullable().optional(),
     price_override_usd: money.nullable().optional(),
     compare_at_price_ngn: money.nullable().optional(),

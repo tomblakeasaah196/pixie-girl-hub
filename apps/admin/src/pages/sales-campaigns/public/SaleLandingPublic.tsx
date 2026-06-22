@@ -2,11 +2,13 @@
  * Public sales-campaign landing page — /sale/:slug (no auth).
  *
  * Served at the sales subdomain (Host → brand) or, when previewed from the
- * admin, with an explicit ?brand= hint. Renders the same LandingRender the
- * Studio previews, so the admin sees exactly what the customer will.
+ * admin, with an explicit ?brand= hint. The "before/coming-soon" state renders
+ * the shared @landing-kit Atelier composition — the exact same components the
+ * live sales site uses — so the admin preview is true WYSIWYG. (Live/ended
+ * still use LandingRender pending their Atelier slices.)
  */
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import {
@@ -14,7 +16,13 @@ import {
   usePublicLanding,
   usePublicLandingConfig,
 } from "@/lib/campaigns";
-import { withDefaults } from "@landing-kit";
+import {
+  BeforeState,
+  withDefaults,
+  hexToTriplet,
+  type LandingPayload,
+  type LandingSubmit,
+} from "@landing-kit";
 import {
   LandingRender,
   type LandingModel,
@@ -46,6 +54,53 @@ export function SaleLandingPublic() {
   const brandConfig = useMemo(
     () => (brandKey ? withDefaults(brandKey, cfgQ.data ?? null) : null),
     [brandKey, cfgQ.data],
+  );
+
+  // Map the platform skin tokens to the brand palette so even the brief intro
+  // curtain (which reads --accent-deep/--bg) is on-brand, not the admin's
+  // default oxblood. The Atelier hero/body theme themselves from brandConfig.
+  const tokenVars = useMemo(() => {
+    if (!brandConfig) return undefined;
+    const t = brandConfig.theme;
+    return {
+      "--bg": hexToTriplet(t.ink),
+      "--text": hexToTriplet(t.paper),
+      "--accent": hexToTriplet(t.primary),
+      "--accent-deep": hexToTriplet(t.primaryDeep),
+      "--accent-glow": hexToTriplet(t.glow),
+    } as React.CSSProperties;
+  }, [brandConfig]);
+
+  // Live signup handler for the Atelier invitation form (mirrors the public
+  // site): POST to the campaign-scoped signup endpoint, return a sample code.
+  const onSignup: LandingSubmit = useCallback(
+    async ({ name, email, whatsapp, channel }) => {
+      const notify_via =
+        channel === "whatsapp"
+          ? "whatsapp"
+          : channel === "both"
+            ? "both"
+            : "email";
+      const res = await fetch(
+        `/api/public/sale/${encodeURIComponent(slug || "")}/signup`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email || undefined,
+            phone: whatsapp || undefined,
+            notify_via,
+            source: "before",
+          }),
+        },
+      );
+      if (!res.ok) throw new Error(`Signup failed: ${res.status}`);
+      const prefix =
+        (name || "FRIEND").replace(/[^A-Za-z]/g, "").slice(0, 6).toUpperCase() ||
+        "FRIEND";
+      return { code: `${prefix}-${Math.floor(100 + Math.random() * 900)}` };
+    },
+    [slug],
   );
 
   const model: LandingModel | null = useMemo(() => {
@@ -89,6 +144,21 @@ export function SaleLandingPublic() {
             the list, to be the first to know the moment it opens.
           </p>
         </div>
+      </div>
+    );
+  }
+
+  // Before/coming-soon: render the exact shared Atelier composition (3D
+  // hourglass hero + invitation body + reveal) the live site renders, so the
+  // admin preview is true WYSIWYG. Live/ended still use LandingRender.
+  if (model.state === "before" && brandConfig) {
+    return (
+      <div style={tokenVars}>
+        <BeforeState
+          payload={q.data as unknown as LandingPayload}
+          brandConfig={brandConfig}
+          onSignup={onSignup}
+        />
       </div>
     );
   }

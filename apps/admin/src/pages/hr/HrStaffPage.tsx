@@ -25,7 +25,7 @@ import {
   ShieldCheck,
   MapPin,
 } from "lucide-react";
-import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
+import { Card, Button, Pill, Skeleton, EmptyState, KpiTile } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -33,6 +33,7 @@ import { useAuthStore } from "@/stores/auth";
 import { money } from "@/lib/format";
 import {
   getOverview,
+  getAnalytics,
   reconcileDay,
   listLeave,
   approveLeave,
@@ -558,6 +559,38 @@ function TargetsTab({ onAdd }: { onAdd: () => void }) {
   );
 }
 
+// ── Analytics tab ──────────────────────────────────────────
+function AnalyticsTab() {
+  const { data, isLoading } = useQuery({ queryKey: ["hr", "analytics"], queryFn: getAnalytics });
+  if (isLoading || !data) return <Skeleton className="h-48 rounded-[var(--radius)]" />;
+  const a = data.attendance;
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <KpiTile label="Headcount" value={String(data.headcount)} />
+        <KpiTile label="Punctuality (MTD)" value={`${a.punctuality_pct}%`}
+          tone={a.punctuality_pct >= 90 ? "accent" : "warn"} />
+        <KpiTile label="Earned (MTD)" value={money(data.earned_mtd_ngn)} />
+        <KpiTile label="Lateness deductions" value={money(data.lateness_deductions_ngn)} tone="warn" />
+        <KpiTile label="Late days" value={String(a.late_days)} tone="warn" />
+        <KpiTile label="Absent days" value={String(a.absent_days)} tone="warn" />
+        <KpiTile label="Off-site days" value={String(a.offsite_days)} tone="warn" />
+        <KpiTile label="On leave (days)" value={String(a.leave_days)} tone="info" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Open queries" value={data.open_queries} tone="danger" />
+        <StatCard label="Pending leave" value={data.pending_leave} tone="accent" />
+        <StatCard label="Active targets" value={data.targets.active} />
+        <StatCard label="Targets achieved" value={data.targets.achieved} tone="success" />
+      </div>
+      <p className="text-xs text-text-faint">
+        Month-to-date for the current brand. Run “Reconcile today” (or the nightly sweep)
+        to keep attendance figures current.
+      </p>
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────
 export default function HrStaffPage() {
   useBreadcrumbs([{ label: "HR & Staff" }]);
@@ -624,6 +657,7 @@ export default function HrStaffPage() {
           { key: "attendance", label: "Attendance" },
           { key: "queries", label: "Queries", badge: c?.open_queries || undefined },
           { key: "targets", label: "Targets" },
+          { key: "analytics", label: "Analytics" },
           { key: "settings", label: "Settings" },
         ]}
       />
@@ -677,6 +711,7 @@ export default function HrStaffPage() {
         </div>
       )}
       {tab === "targets" && <TargetsTab onAdd={() => setTargetOpen(true)} />}
+      {tab === "analytics" && <AnalyticsTab />}
       {tab === "settings" && (
         can("hr_payroll", "edit")
           ? <SettingsTab />

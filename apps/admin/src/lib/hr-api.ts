@@ -230,6 +230,25 @@ export const clock = (body: {
 // ── Management ─────────────────────────────────────────────
 export const getOverview = () => api.get<HrOverview>("/hr/overview");
 
+export interface HrAnalytics {
+  period: { year: number; month: number };
+  headcount: number;
+  attendance: {
+    present_days: number;
+    late_days: number;
+    absent_days: number;
+    leave_days: number;
+    offsite_days: number;
+    punctuality_pct: number;
+  };
+  lateness_deductions_ngn: number;
+  open_queries: number;
+  pending_leave: number;
+  targets: { active: number; achieved: number };
+  earned_mtd_ngn: number;
+}
+export const getAnalytics = () => api.get<HrAnalytics>("/hr/analytics");
+
 export const reconcileDay = (date?: string) =>
   api.post<{ date: string; records_created: number; late_count: number }>(
     "/hr/attendance/reconcile",

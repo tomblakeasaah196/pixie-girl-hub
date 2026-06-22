@@ -25,8 +25,9 @@ router.post("/me/clock", v.clock, c.selfClock);
 router.post("/me/leave", v.leaveRequest, c.requestLeave);
 router.post("/me/queries/:id/respond", v.queryRespond, c.respondToQuery);
 
-// ── Overview + reconcile ───────────────────────────────────
+// ── Overview + analytics + reconcile ───────────────────────
 router.get("/overview", P("view"), c.getOverview);
+router.get("/analytics", P("view"), c.getAnalytics);
 router.post("/attendance/reconcile", P("edit"), v.reconcile, c.reconcile);
 router.post("/attendance/apply-lapsed-offsite", P("edit"), c.applyLapsedOffsite);
 router.get("/attendance-days", P("view"), c.listAttendanceDays);

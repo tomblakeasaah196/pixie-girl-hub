@@ -51,6 +51,15 @@ async function selfClock(req, res) {
 async function getOverview(req, res) {
   res.json({ data: await service.getOverview({ brand: req.brand }) });
 }
+async function getAnalytics(req, res) {
+  res.json({
+    data: await service.getAnalytics({
+      brand: req.brand,
+      year: req.query.year,
+      month: req.query.month,
+    }),
+  });
+}
 async function reconcile(req, res) {
   res.json({ data: await service.reconcileDay({ ...ctx(req), date: req.body.date }) });
 }
@@ -128,6 +137,7 @@ module.exports = {
   getMyToday,
   selfClock,
   getOverview,
+  getAnalytics,
   reconcile,
   applyLapsedOffsite,
   listLeave,

@@ -686,6 +686,39 @@ async function getOverview({ brand }) {
   return { counts, pending_justifications };
 }
 
+// ── Analytics (HR dashboard) ───────────────────────────────
+async function getAnalytics({ brand, year, month }) {
+  const now = new Date();
+  const y = Number(year) || now.getUTCFullYear();
+  const m = Number(month) || now.getUTCMonth() + 1;
+  const a = await repo.analytics({ brand, year: y, month: m });
+  const presentDays = Number(a.present_days || 0);
+  const lateDays = Number(a.late_days || 0);
+  const punctuality_pct = presentDays > 0
+    ? Math.round(((presentDays - lateDays) / presentDays) * 100)
+    : 0;
+  return {
+    period: { year: y, month: m },
+    headcount: Number(a.headcount || 0),
+    attendance: {
+      present_days: presentDays,
+      late_days: lateDays,
+      absent_days: Number(a.absent_days || 0),
+      leave_days: Number(a.leave_days || 0),
+      offsite_days: Number(a.offsite_days || 0),
+      punctuality_pct,
+    },
+    lateness_deductions_ngn: Number(a.lateness_deductions_ngn || 0),
+    open_queries: Number(a.open_queries || 0),
+    pending_leave: Number(a.pending_leave || 0),
+    targets: {
+      active: Number(a.active_targets || 0),
+      achieved: Number(a.achieved_targets || 0),
+    },
+    earned_mtd_ngn: Number(a.earned_mtd_ngn || 0),
+  };
+}
+
 // ── My HR (self-service dashboard) ─────────────────────────
 async function getMyHr({ brand, user }) {
   const profile = await repo.profileForUser({ brand, userId: user.user_id });
@@ -792,5 +825,6 @@ module.exports = {
   getMyToday,
   selfClock,
   getOverview,
+  getAnalytics,
   getMyHr,
 };

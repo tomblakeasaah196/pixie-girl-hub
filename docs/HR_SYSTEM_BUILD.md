@@ -104,3 +104,26 @@ PIN → pay each employee's bank**, on top of the existing payroll engine.
 - Praxis-AI HR actions; **Operations module** wires stylist target progress +
   quality ratings into `updateTargetProgress` (seam documented in
   `hr_ops.service.js`).
+
+> Note: contract generation, target→bonus, nightly automation and the
+> performance-reviews UI ship in open PRs #139 and #141 (stacked on the prior
+> branches). This branch (PR 6) is based on `main` for an independent deploy fix
+> + analytics.
+
+## PR 6 — deploy fix + HR analytics ✅
+
+- **Deploy fix:** `OfficeGeofenceSettings` branched on `isGoogleMapsConfigured()`
+  synchronously, but on `main` that function is async (`Promise<boolean>`), so
+  `tsc -b` failed (TS2801) and the production deploy aborted. Now resolved into
+  state via `useEffect`. Verified with the deploy's exact `tsc -b && vite build`.
+- **HR analytics:** `GET /hr/analytics` returns month-to-date headcount,
+  punctuality %, present/late/absent/leave/off-site days, lateness deductions,
+  open queries, pending leave, target active/achieved and earned-MTD. Surfaced
+  as an **Analytics** tab on HR & Staff (KPI tiles + counts).
+
+## Remaining — escalation, AI, operations
+
+- Leave/query **workflow escalation** (§6.27 engine).
+- KPI **scoring-entry** UI (enter per-staff scores → generate review).
+- Praxis-AI HR actions; **Operations module** target-progress + quality wiring.
+- Nomba bank-code capture + payout-status webhook (pending endpoint confirmation).

@@ -56,6 +56,48 @@ describe("resolveState", () => {
   });
 });
 
+describe("publicSaleBaseUrl (share/blast/return-url base)", () => {
+  test("prefers the sales subdomain over the storefront domain", () => {
+    expect(
+      service.publicSaleBaseUrl({
+        sales_subdomain: "sales.thefaitlynbrand.com",
+        storefront_domain: "thefaitlynbrand.com",
+      }),
+    ).toBe("https://sales.thefaitlynbrand.com");
+  });
+  test("falls back to the storefront domain when no subdomain is set", () => {
+    expect(
+      service.publicSaleBaseUrl({ storefront_domain: "pixiegirlglobal.com" }),
+    ).toBe("https://pixiegirlglobal.com");
+  });
+  test("normalises an existing scheme and trailing slash", () => {
+    expect(
+      service.publicSaleBaseUrl({
+        sales_subdomain: "https://sales.pixiegirlglobal.com/",
+      }),
+    ).toBe("https://sales.pixiegirlglobal.com");
+  });
+});
+
+describe("buildShareKit", () => {
+  test("links point at the brand's sales subdomain, not the hub", () => {
+    const kit = service.buildShareKit({
+      brand_config: {
+        sales_subdomain: "sales.thefaitlynbrand.com",
+        storefront_domain: "thefaitlynbrand.com",
+      },
+      campaign: liveCampaign({ slug: "summer-sale" }),
+    });
+    expect(kit.base_url).toBe(
+      "https://sales.thefaitlynbrand.com/sale/summer-sale",
+    );
+    expect(kit.links.whatsapp).toContain(
+      "https://sales.thefaitlynbrand.com/sale/summer-sale?",
+    );
+    expect(kit.base_url).not.toContain("hub.");
+  });
+});
+
 describe("workflow normaliseStages", () => {
   test("defaults to a CEO stage when none given", () => {
     const s = wf.normaliseStages({ stages: [{ order: 1 }] });

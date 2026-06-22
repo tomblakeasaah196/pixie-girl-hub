@@ -554,6 +554,25 @@ async function applyLapsedOffsite({ brand, user, request_id }) {
   });
 }
 
+/**
+ * Bump reminders on open queries past their deadline (meeting §3.1: "reminds
+ * after 2 days while showing the deductions"). Emits a per-query event the
+ * notification layer can surface. Returns how many were reminded.
+ */
+async function bumpDueReminders({ brand }) {
+  const due = await repo.dueReminderQueries({ brand });
+  for (const q of due) {
+    await repo.bumpReminder({ id: q.query_id });
+    events.emit("query_reminder", {
+      brand,
+      query_id: q.query_id,
+      profile_id: q.profile_id,
+      query_type: q.query_type,
+    });
+  }
+  return { reminded: due.length };
+}
+
 // ── Self clock-in / today (My HR + top-bar widget) ─────────
 /**
  * Resolve today's working mode for a staff profile from their schedule and
@@ -796,6 +815,7 @@ module.exports = {
   removeTarget,
   reconcileDay,
   applyLapsedOffsite,
+  bumpDueReminders,
   getMyToday,
   selfClock,
   getOverview,

@@ -108,10 +108,23 @@ PIN → pay each employee's bank**, on top of the existing payroll engine.
   once (pct-of-salary or fixed ₦), defensively (failures logged, never block
   progress). Still flows through HR approval + payroll.
 
-## PR 5 (remaining) — reviews UI, dashboards, automation
+## PR 5 — automation + performance reviews UI ✅
 
-- Performance reviews UI (quarterly weighted KPIs); HR dashboards/analytics.
-- Nightly reconcile + query-reminder cron; leave/query workflow escalation.
+- **Nightly HR attendance sweep** (`schedulers/hr-attendance.js`, 23:30 Lagos,
+  fans out across brands): reconcile today + bump query reminders + apply lapsed
+  off-site penalties — the daily loop now runs without manual "Reconcile today".
+- **Query reminders** (`bumpDueReminders` + repo): open queries past their
+  deadline get reminded once/day ("reminds after 2 days") via a `query_reminder`
+  event the notification layer can surface.
+- **Performance page** (`/performance`): appraisal cycles (list + create),
+  weighted-KPI balance banner, reviews list with status advance/acknowledge —
+  surfaces the existing appraisal backend. Nav "Performance".
+
+## PR 6 (remaining) — deeper analytics, escalation, AI, operations
+
+- HR dashboards/analytics (trends, per-department rollups).
+- Leave/query **workflow escalation** (route through the §6.27 engine).
+- KPI **scoring entry** UI (enter per-staff scores → generate review).
 - Praxis-AI HR actions; **Operations module** wires stylist target progress +
   quality ratings into `updateTargetProgress` (seam documented in
   `hr_ops.service.js`).

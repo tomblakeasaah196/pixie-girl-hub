@@ -19,6 +19,7 @@ type Row = SizeTier & {
   _inMin: string;
   _inMax: string;
   _premium: string;
+  _premiumUsd: string;
   _tip: string;
 };
 
@@ -41,6 +42,7 @@ export function SizeGuideModal({
       cfg.data.tiers.map((t) => ({
         ...t,
         _premium: t.premium_ngn != null ? String(t.premium_ngn) : "",
+        _premiumUsd: t.premium_usd != null ? String(t.premium_usd) : "",
         _inMin:
           t.circumference_min_in != null ? String(t.circumference_min_in) : "",
         _inMax:
@@ -64,6 +66,7 @@ export function SizeGuideModal({
       size_code: r.size_code,
       label: r.label,
       premium_ngn: num(r._premium) ?? 0,
+      premium_usd: num(r._premiumUsd),
       circumference_min_in: num(r._inMin),
       circumference_max_in: num(r._inMax),
       // Keep cm in step with inches so the storefront can show either.
@@ -107,7 +110,8 @@ export function SizeGuideModal({
               <thead>
                 <tr className="text-text-faint text-left border-b hairline">
                   <th className="py-2 font-semibold">Size</th>
-                  <th className="py-2 font-semibold">Premium</th>
+                  <th className="py-2 font-semibold">Premium (₦)</th>
+                  <th className="py-2 font-semibold">Premium ($)</th>
                   <th className="py-2 font-semibold">
                     Head circumference (inches)
                   </th>
@@ -126,11 +130,20 @@ export function SizeGuideModal({
                         {r.label}
                       </div>
                     </td>
-                    <td className="py-2 pr-2 w-[130px]">
+                    <td className="py-2 pr-2 w-[120px]">
                       <NumberField
                         value={r._premium}
                         onChange={(v) => patch(r.size_code, "_premium", v)}
                         suffix="₦+"
+                        className="[&_input]:h-[36px]"
+                      />
+                    </td>
+                    <td className="py-2 pr-2 w-[120px]">
+                      <NumberField
+                        value={r._premiumUsd}
+                        onChange={(v) => patch(r.size_code, "_premiumUsd", v)}
+                        suffix="$+"
+                        placeholder="—"
                         className="[&_input]:h-[36px]"
                       />
                     </td>
@@ -166,9 +179,9 @@ export function SizeGuideModal({
               </tbody>
             </table>
             <p className="text-[11px] text-text-faint mt-1.5">
-              Premiums are cumulative from the base size (e.g. S 0 · M +5,000 ·
-              L +15,000 · XL +30,000). A styled product's retail price is its
-              anchor + the size premium.
+              Premiums are absolute amounts added to the styled anchor for that
+              size. The USD premium is independent — set it for USD-priced
+              products; leave it blank to skip. Nothing is auto-converted.
             </p>
           </div>
 

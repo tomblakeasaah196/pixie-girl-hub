@@ -1,0 +1,56 @@
+-- ============================================================
+-- TEMPLATE 000049 — Every styled variant carries its OWN base product.
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000048) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose: the runner uses
+-- the first CREATE TABLE as a skip-sentinel, so this file is re-run every
+-- repair — safe because every statement is idempotent / guarded.
+--
+-- WHY (owner directive, June 2026):
+--   "Now every variant gets its own base product." A styled product is one
+--   storefront name that sells many SKUs (colour × size × lace); each sellable
+--   variant is cut from a SPECIFIC base in the back room. The per-variant base
+--   column already exists (000045) — this migration makes it the rule:
+--     1. backfill any variant still missing a base from its styled product's
+--        (always-present) base, so live data becomes consistent;
+--     2. require a base on every NEW/edited variant going forward.
+--   The styled product keeps its own base as the create-time seed ("never a
+--   style without a base"); publishing is additionally gated in the service on
+--   having ≥1 sellable variant. The DB stays the backstop.
+--
+-- Altered:
+--   styled_product_variants — base_product_id backfilled + required (NOT VALID)
+-- ============================================================
+
+-- ── 1. Backfill: inherit the styled product's base where a variant has none ──
+-- Guarded to only touch NULLs, so any per-variant base an operator already set
+-- (via import or the variant editor) is never clobbered.
+UPDATE {{BUSINESS}}.styled_product_variants v
+   SET base_product_id = s.base_product_id
+  FROM {{BUSINESS}}.styled_products s
+ WHERE v.styled_id = s.styled_id
+   AND v.base_product_id IS NULL
+   AND s.base_product_id IS NOT NULL;
+
+-- ── 2. Require a base on every variant going forward ─────
+-- NOT VALID: enforced on every INSERT/UPDATE from now on, without scanning (or
+-- failing on) any historic row that the backfill above couldn't resolve — e.g.
+-- a variant whose styled product's base was itself retired. New writes always
+-- supply a base (the service seeds it from the styled product), so this only
+-- ever bites a genuine mistake.
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  DROP CONSTRAINT IF EXISTS chk_styled_variant_has_base;
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  ADD CONSTRAINT chk_styled_variant_has_base
+    CHECK (base_product_id IS NOT NULL)
+    NOT VALID;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT count(*) FROM {{BUSINESS}}.styled_product_variants
+--     WHERE base_product_id IS NULL AND is_deleted = false;   -- ideally 0
+--   SELECT conname, convalidated FROM pg_constraint
+--     WHERE conname = 'chk_styled_variant_has_base';          -- convalidated = f
+-- ============================================================

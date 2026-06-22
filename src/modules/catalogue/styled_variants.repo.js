@@ -38,6 +38,7 @@ function setClause(cols, src, start = 1) {
 const TIER_COLS = [
   "label",
   "premium_ngn",
+  "premium_usd",
   "circumference_min_in",
   "circumference_max_in",
   "circumference_min_cm",
@@ -67,14 +68,15 @@ async function getSizeTier({ client, brand, size_code }) {
 async function createSizeTier({ client, brand, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "styled_size_tiers")}
-       (size_code, label, premium_ngn, circumference_min_in, circumference_max_in,
+       (size_code, label, premium_ngn, premium_usd, circumference_min_in, circumference_max_in,
         circumference_min_cm, circumference_max_cm, guidance_text, display_order, is_active)
-     VALUES ($1,$2,COALESCE($3,0),$4,$5,$6,$7,$8,COALESCE($9,0),COALESCE($10,true))
+     VALUES ($1,$2,COALESCE($3,0),$4,$5,$6,$7,$8,$9,COALESCE($10,0),COALESCE($11,true))
      RETURNING *`,
     [
       input.size_code,
       input.label,
       input.premium_ngn,
+      input.premium_usd ?? null,
       input.circumference_min_in ?? null,
       input.circumference_max_in ?? null,
       input.circumference_min_cm ?? null,
@@ -103,6 +105,7 @@ async function updateSizeTier({ client, brand, size_code, patch }) {
 const LACE_COLS = [
   "label",
   "premium_ngn",
+  "premium_usd",
   "description",
   "display_order",
   "is_active",
@@ -127,13 +130,14 @@ async function getLaceSize({ client, brand, lace_code }) {
 async function createLaceSize({ client, brand, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "styled_lace_sizes")}
-       (lace_code, label, premium_ngn, description, display_order, is_active)
-     VALUES ($1,$2,COALESCE($3,0),$4,COALESCE($5,0),COALESCE($6,true))
+       (lace_code, label, premium_ngn, premium_usd, description, display_order, is_active)
+     VALUES ($1,$2,COALESCE($3,0),$4,$5,COALESCE($6,0),COALESCE($7,true))
      RETURNING *`,
     [
       input.lace_code,
       input.label,
       input.premium_ngn,
+      input.premium_usd ?? null,
       input.description ?? null,
       input.display_order,
       input.is_active,
@@ -165,12 +169,15 @@ async function getConfig({ client, brand }) {
 async function upsertConfig({ client, brand, patch, user_id }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "catalogue_config")}
-       (singleton, size_guide_title, head_size_guide_md, categories_enabled, updated_by)
-     VALUES (true, COALESCE($1,'How to find your head size'), $2, COALESCE($3,false), $4)
+       (singleton, size_guide_title, head_size_guide_md, categories_enabled,
+        allow_base_in_collections_bundles, updated_by)
+     VALUES (true, COALESCE($1,'How to find your head size'), $2, COALESCE($3,false),
+             COALESCE($5,false), $4)
      ON CONFLICT (singleton) DO UPDATE SET
        size_guide_title = COALESCE(EXCLUDED.size_guide_title, ${t(brand, "catalogue_config")}.size_guide_title),
        head_size_guide_md = COALESCE(EXCLUDED.head_size_guide_md, ${t(brand, "catalogue_config")}.head_size_guide_md),
        categories_enabled = COALESCE($3, ${t(brand, "catalogue_config")}.categories_enabled),
+       allow_base_in_collections_bundles = COALESCE($5, ${t(brand, "catalogue_config")}.allow_base_in_collections_bundles),
        updated_by = EXCLUDED.updated_by,
        updated_at = now()
      RETURNING *`,
@@ -179,9 +186,21 @@ async function upsertConfig({ client, brand, patch, user_id }) {
       patch.head_size_guide_md ?? null,
       patch.categories_enabled ?? null,
       user_id || null,
+      patch.allow_base_in_collections_bundles ?? null,
     ],
   );
   return rows[0];
+}
+
+/** The one-click flag: may base (stock-room) products join collections/bundles?
+ *  Default false — only styled products may. Read by the collection + bundle
+ *  services before accepting a base target. */
+async function allowBaseTargets({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT allow_base_in_collections_bundles AS allow
+       FROM ${t(brand, "catalogue_config")} WHERE singleton = true`,
+  );
+  return rows[0] ? rows[0].allow === true : false;
 }
 
 // ── Colours ──────────────────────────────────────────────
@@ -202,8 +221,23 @@ async function listColours({ client, brand, styled_id }) {
             (SELECT COUNT(*)::int FROM ${t(brand, "product_images")} pi
               WHERE pi.styled_colour_id = c.colour_id) AS image_count
        FROM ${t(brand, "styled_product_colours")} c
-      WHERE c.styled_id = $1
+      WHERE c.styled_id = $1 AND c.is_deleted = false
       ORDER BY c.display_order, c.name`,
+    [styled_id],
+  );
+  return rows;
+}
+
+/** Soft-deleted colours of a styled product, with the date they purge for good
+ *  (deleted_at + 15 days). Powers the per-product Trash list. */
+async function listTrashedColours({ client, brand, styled_id }) {
+  const { rows } = await ex(client)(
+    `SELECT c.*, (c.deleted_at + INTERVAL '15 days') AS purge_at,
+            (SELECT COUNT(*)::int FROM ${t(brand, "product_images")} pi
+              WHERE pi.styled_colour_id = c.colour_id) AS image_count
+       FROM ${t(brand, "styled_product_colours")} c
+      WHERE c.styled_id = $1 AND c.is_deleted = true
+      ORDER BY c.deleted_at DESC NULLS LAST`,
     [styled_id],
   );
   return rows;
@@ -260,13 +294,84 @@ async function clearDefaultColours({ client, brand, styled_id, except_id }) {
   );
 }
 
-async function deleteColour({ client, brand, styled_id, colour_id }) {
-  const { rowCount } = await ex(client)(
-    `DELETE FROM ${t(brand, "styled_product_colours")}
-      WHERE colour_id = $1 AND styled_id = $2`,
+/** Soft-delete ONE colour (Trash). Drops its default flag so a live colour can
+ *  take over; the partial-unique indexes free its name for re-use. Returns the
+ *  trashed row (carrying deleted_at) so the caller can cascade its variants with
+ *  the SAME timestamp. */
+async function softDeleteColour({ client, brand, styled_id, colour_id, user_id }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_product_colours")}
+        SET is_deleted = true, deleted_at = now(), deleted_by = $3,
+            is_default = false
+      WHERE colour_id = $1 AND styled_id = $2 AND is_deleted = false
+      RETURNING *`,
+    [colour_id, styled_id, user_id || null],
+  );
+  return rows[0] || null;
+}
+
+/** Soft-delete EVERY live colour of a styled product (whole-product Trash
+ *  cascade). All rows share this transaction's now() so restore can match them. */
+async function softDeleteColoursForStyled({ client, brand, styled_id, user_id }) {
+  await ex(client)(
+    `UPDATE ${t(brand, "styled_product_colours")}
+        SET is_deleted = true, deleted_at = now(), deleted_by = $2,
+            is_default = false
+      WHERE styled_id = $1 AND is_deleted = false`,
+    [styled_id, user_id || null],
+  );
+}
+
+/** Is this colour name already used by a LIVE colour of the styled product?
+ *  Guards restore against the partial-unique (styled_id, name) index. */
+async function colourNameTaken({ client, brand, styled_id, name, except_id }) {
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "styled_product_colours")}
+      WHERE styled_id = $1 AND lower(name) = lower($2) AND is_deleted = false
+        AND colour_id <> $3 LIMIT 1`,
+    [styled_id, name, except_id || "00000000-0000-0000-0000-000000000000"],
+  );
+  return rows.length > 0;
+}
+
+/** Restore a trashed colour (optionally under a new, collision-free name). */
+async function restoreColour({ client, brand, styled_id, colour_id, name }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_product_colours")}
+        SET is_deleted = false, deleted_at = null, deleted_by = null,
+            name = COALESCE($3, name)
+      WHERE colour_id = $1 AND styled_id = $2 AND is_deleted = true
+      RETURNING *`,
+    [colour_id, styled_id, name || null],
+  );
+  return rows[0] || null;
+}
+
+async function getTrashedColour({ client, brand, styled_id, colour_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "styled_product_colours")}
+      WHERE colour_id = $1 AND styled_id = $2 AND is_deleted = true`,
     [colour_id, styled_id],
   );
-  return rowCount > 0;
+  return rows[0] || null;
+}
+
+/** Restore colours trashed AT THE SAME MOMENT as their parent styled product
+ *  (matched by the shared deleted_at) — used by whole-product restore. Names
+ *  can't collide: every colour of the product went down together, so none is
+ *  live to clash with. */
+async function restoreColoursDeletedAt({
+  client,
+  brand,
+  styled_id,
+  deleted_at,
+}) {
+  await ex(client)(
+    `UPDATE ${t(brand, "styled_product_colours")}
+        SET is_deleted = false, deleted_at = null, deleted_by = null
+      WHERE styled_id = $1 AND is_deleted = true AND deleted_at = $2`,
+    [styled_id, deleted_at],
+  );
 }
 
 // ── Variants (colour × size × lace) ──────────────────────
@@ -302,8 +407,26 @@ async function listVariants({ client, brand, styled_id }) {
        LEFT JOIN ${t(brand, "styled_lace_sizes")} ls ON ls.lace_code = v.lace_code
        LEFT JOIN ${t(brand, "products")} pr ON pr.product_id = v.base_product_id
        JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = v.styled_id
-      WHERE v.styled_id = $1
+      WHERE v.styled_id = $1 AND v.is_deleted = false
       ORDER BY c.display_order, c.name, st.display_order, ls.display_order`,
+    [styled_id],
+  );
+  return rows;
+}
+
+/** Soft-deleted variants of a styled product, with their purge date and the
+ *  colour/size/lace labels needed to render the Trash list. */
+async function listTrashedVariants({ client, brand, styled_id }) {
+  const { rows } = await ex(client)(
+    `SELECT v.*, (v.deleted_at + INTERVAL '15 days') AS purge_at,
+            c.name AS colour_name, c.hex AS colour_hex,
+            st.label AS size_label, ls.label AS lace_label
+       FROM ${t(brand, "styled_product_variants")} v
+       JOIN ${t(brand, "styled_product_colours")} c ON c.colour_id = v.colour_id
+       LEFT JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = v.size_code
+       LEFT JOIN ${t(brand, "styled_lace_sizes")} ls ON ls.lace_code = v.lace_code
+      WHERE v.styled_id = $1 AND v.is_deleted = true
+      ORDER BY v.deleted_at DESC NULLS LAST`,
     [styled_id],
   );
   return rows;
@@ -318,11 +441,13 @@ async function getVariant({ client, brand, styled_id, styled_variant_id }) {
   return rows[0] || null;
 }
 
-/** Existing (colour_id,size_code,lace_code) combos — so bulk create can skip dupes. */
+/** Existing (colour_id,size_code,lace_code) combos among LIVE variants — so bulk
+ *  create skips dupes. A trashed combo is free to re-create (the partial-unique
+ *  combo index spans live rows only). */
 async function existingPairs({ client, brand, styled_id }) {
   const { rows } = await ex(client)(
     `SELECT colour_id, size_code, lace_code FROM ${t(brand, "styled_product_variants")}
-      WHERE styled_id = $1`,
+      WHERE styled_id = $1 AND is_deleted = false`,
     [styled_id],
   );
   return rows;
@@ -373,13 +498,135 @@ async function updateVariant({
   return rows[0] || null;
 }
 
-async function deleteVariant({ client, brand, styled_id, styled_variant_id }) {
-  const { rowCount } = await ex(client)(
-    `DELETE FROM ${t(brand, "styled_product_variants")}
-      WHERE styled_variant_id = $1 AND styled_id = $2`,
+/** Soft-delete ONE variant (Trash). Drops its default flag so a live variant can
+ *  take over (the default partial-unique spans live rows only). */
+async function softDeleteVariant({
+  client,
+  brand,
+  styled_id,
+  styled_variant_id,
+  user_id,
+}) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_product_variants")}
+        SET is_deleted = true, deleted_at = now(), deleted_by = $3,
+            is_default = false
+      WHERE styled_variant_id = $1 AND styled_id = $2 AND is_deleted = false
+      RETURNING *`,
+    [styled_variant_id, styled_id, user_id || null],
+  );
+  return rows[0] || null;
+}
+
+/** Soft-delete every live variant of a COLOUR (colour-Trash cascade) — shares
+ *  this transaction's now() with the colour for matched restore. */
+async function softDeleteVariantsForColour({
+  client,
+  brand,
+  styled_id,
+  colour_id,
+  user_id,
+}) {
+  await ex(client)(
+    `UPDATE ${t(brand, "styled_product_variants")}
+        SET is_deleted = true, deleted_at = now(), deleted_by = $3,
+            is_default = false
+      WHERE styled_id = $1 AND colour_id = $2 AND is_deleted = false`,
+    [styled_id, colour_id, user_id || null],
+  );
+}
+
+/** Soft-delete every live variant of a styled product (whole-product cascade). */
+async function softDeleteVariantsForStyled({
+  client,
+  brand,
+  styled_id,
+  user_id,
+}) {
+  await ex(client)(
+    `UPDATE ${t(brand, "styled_product_variants")}
+        SET is_deleted = true, deleted_at = now(), deleted_by = $2,
+            is_default = false
+      WHERE styled_id = $1 AND is_deleted = false`,
+    [styled_id, user_id || null],
+  );
+}
+
+/** Is this (colour,size,lace) combo or sku already taken by a LIVE variant?
+ *  Guards restore against the partial-unique combo + sku indexes. */
+async function variantComboTaken({
+  client,
+  brand,
+  styled_id,
+  colour_id,
+  size_code,
+  lace_code,
+  sku,
+  except_id,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "styled_product_variants")}
+      WHERE styled_id = $1 AND is_deleted = false
+        AND styled_variant_id <> $6
+        AND ( (colour_id = $2 AND size_code = $3
+               AND COALESCE(lace_code,'') = COALESCE($4,''))
+              OR sku = $5 )
+      LIMIT 1`,
+    [
+      styled_id,
+      colour_id,
+      size_code,
+      lace_code || null,
+      sku,
+      except_id || "00000000-0000-0000-0000-000000000000",
+    ],
+  );
+  return rows.length > 0;
+}
+
+async function getTrashedVariant({ client, brand, styled_id, styled_variant_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "styled_product_variants")}
+      WHERE styled_variant_id = $1 AND styled_id = $2 AND is_deleted = true`,
     [styled_variant_id, styled_id],
   );
-  return rowCount > 0;
+  return rows[0] || null;
+}
+
+/** Restore ONE trashed variant. */
+async function restoreVariant({ client, brand, styled_id, styled_variant_id }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_product_variants")}
+        SET is_deleted = false, deleted_at = null, deleted_by = null
+      WHERE styled_variant_id = $1 AND styled_id = $2 AND is_deleted = true
+      RETURNING *`,
+    [styled_variant_id, styled_id],
+  );
+  return rows[0] || null;
+}
+
+/** Restore variants trashed AT THE SAME MOMENT as their parent (colour or whole
+ *  product) — matched by the shared deleted_at — so a parent restore brings back
+ *  exactly the children that went down with it, not ones trashed separately. */
+async function restoreVariantsDeletedAt({
+  client,
+  brand,
+  styled_id,
+  deleted_at,
+  colour_id,
+}) {
+  const params = [styled_id, deleted_at];
+  let extra = "";
+  if (colour_id) {
+    params.push(colour_id);
+    extra = ` AND colour_id = $3`;
+  }
+  await ex(client)(
+    `UPDATE ${t(brand, "styled_product_variants")}
+        SET is_deleted = false, deleted_at = null, deleted_by = null
+      WHERE styled_id = $1 AND is_deleted = true AND deleted_at = $2${extra}`,
+    params,
+  );
 }
 
 module.exports = {
@@ -393,16 +640,30 @@ module.exports = {
   updateLaceSize,
   getConfig,
   upsertConfig,
+  allowBaseTargets,
   listColours,
+  listTrashedColours,
   getColour,
   createColour,
   updateColour,
   clearDefaultColours,
-  deleteColour,
+  softDeleteColour,
+  softDeleteColoursForStyled,
+  colourNameTaken,
+  restoreColour,
+  restoreColoursDeletedAt,
+  getTrashedColour,
   listVariants,
+  listTrashedVariants,
   getVariant,
   existingPairs,
   createVariant,
   updateVariant,
-  deleteVariant,
+  softDeleteVariant,
+  softDeleteVariantsForColour,
+  softDeleteVariantsForStyled,
+  variantComboTaken,
+  getTrashedVariant,
+  restoreVariant,
+  restoreVariantsDeletedAt,
 };

@@ -216,6 +216,23 @@ async function publish({ brand, user, request_id, id }) {
   const before = await repo.getById({ brand, id });
   if (!before) throw new NotFoundError("Styled product");
   if (before.status === "live") return before;
+  // "Never a style without a base." The styled product carries its seed base,
+  // and every sellable variant carries its own base — so a product can only go
+  // live once it has at least one live variant to sell. This is the publish-time
+  // guarantee that replaces a styled-level-only base requirement.
+  const variants = await variantsRepo.listVariants({ brand, styled_id: id });
+  const sellable = variants.filter((v) => v.is_active);
+  if (sellable.length === 0) {
+    throw new AppError(
+      "STYLED_NO_VARIANTS",
+      "Add at least one active variant before publishing",
+      422,
+      {
+        user_message:
+          "Add at least one colour & size (a sellable variant) before going live. Each variant draws from its own base product.",
+      },
+    );
+  }
   const updated = await repo.setStatus({
     brand,
     id,
@@ -262,11 +279,35 @@ async function unpublish({ brand, user, request_id, id, archive }) {
   return updated;
 }
 
+/** Delete an ENTIRE styled product → Trash (15-day purge). Its colours and
+ *  variants are soft-deleted in the SAME transaction, so they share one
+ *  deleted_at and a later restore brings the whole product back intact. */
 async function remove({ brand, user, request_id, id }) {
-  const ok = await repo.softDelete({ brand, id });
-  if (!ok) throw new NotFoundError("Styled product");
-  await A(brand, user.user_id, "catalogue.styled.delete", id, null, request_id);
-  events.emit("styled.deleted", { brand, id });
+  return transaction(async (client) => {
+    const ok = await repo.softDelete({ client, brand, id });
+    if (!ok) throw new NotFoundError("Styled product");
+    await variantsRepo.softDeleteVariantsForStyled({
+      client,
+      brand,
+      styled_id: id,
+      user_id: user.user_id,
+    });
+    await variantsRepo.softDeleteColoursForStyled({
+      client,
+      brand,
+      styled_id: id,
+      user_id: user.user_id,
+    });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.styled.delete",
+      id,
+      { trashed: true },
+      request_id,
+    );
+    events.emit("styled.deleted", { brand, id });
+  });
 }
 
 // ── Trash + Restore ──────────────────────────────────────
@@ -295,6 +336,20 @@ async function restore({ brand, user, request_id, id }) {
       renamed = true;
     }
     const s = await repo.restore({ client, brand, id, slug, styled_code });
+    // Bring back the colours + variants that were trashed in the same breath as
+    // the product (matched by the shared deleted_at), so a restore is whole.
+    await variantsRepo.restoreColoursDeletedAt({
+      client,
+      brand,
+      styled_id: id,
+      deleted_at: trashed.deleted_at,
+    });
+    await variantsRepo.restoreVariantsDeletedAt({
+      client,
+      brand,
+      styled_id: id,
+      deleted_at: trashed.deleted_at,
+    });
     await A(
       brand,
       user.user_id,

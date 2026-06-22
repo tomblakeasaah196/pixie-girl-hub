@@ -30,6 +30,7 @@ import { AvailabilityPill, StyledStatusBadge } from "./parts";
 import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
 import { AddToCollection } from "./AddToCollection";
+import { AddToBundle } from "./AddToBundle";
 
 function slugify(s: string) {
   return s
@@ -429,6 +430,11 @@ function StyledEditor({
               <AddToCollection styledId={s.styled_id} />
             </Card>
           )}
+          {canEdit && (
+            <Card className="p-4">
+              <AddToBundle styledId={s.styled_id} />
+            </Card>
+          )}
         </div>
       </div>
 
@@ -446,8 +452,8 @@ function StyledEditor({
         onClose={() => setConfirmDelete(false)}
         onConfirm={() => remove.mutate(s.styled_id, { onSuccess: onBack })}
         title="Delete styled product?"
-        message="This removes the styled listing. The base product and its stock are unaffected."
-        confirmLabel="Delete"
+        message="This moves the styled product, its colours, and all variants to the trash. They can be restored within 15 days — after that they are permanently purged. The base product and its stock are unaffected."
+        confirmLabel="Move to trash"
         busy={remove.isPending}
       />
     </div>

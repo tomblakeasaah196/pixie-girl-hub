@@ -187,6 +187,10 @@ router.post(
 );
 router.delete("/styled-products/:id", can("delete"), styled.remove);
 
+// Per-product Trash bin — soft-deleted colours + variants (with purge dates).
+// Literal 'trash' declared before the param-bearing colour/variant routes.
+router.get("/styled-products/:id/trash", can("view"), styledVar.listTrash);
+
 // ── Styled colours (each colour owns its pictures + optional video) ──
 router.get("/styled-products/:id/colours", can("view"), styledVar.listColours);
 router.post(
@@ -205,6 +209,12 @@ router.delete(
   "/styled-products/:id/colours/:colourId",
   can("edit"),
   styledVar.deleteColour,
+);
+// Restore a soft-deleted colour (brings back the variants trashed with it).
+router.post(
+  "/styled-products/:id/colours/:colourId/restore",
+  can("edit"),
+  styledVar.restoreColour,
 );
 // Per-colour images (gallery per colour/variant; 2–3 min, capped in service).
 // Literal 'images' before :imageId.
@@ -250,6 +260,12 @@ router.delete(
   "/styled-products/:id/variants/:variantId",
   can("edit"),
   styledVar.deleteVariant,
+);
+// Restore a soft-deleted variant (refused if its combo/SKU was re-used live).
+router.post(
+  "/styled-products/:id/variants/:variantId/restore",
+  can("edit"),
+  styledVar.restoreVariant,
 );
 
 // Collections (+ rules + members)

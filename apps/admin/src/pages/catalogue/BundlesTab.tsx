@@ -34,7 +34,10 @@ import {
   useBundle,
   useAddBundleComponent,
   useRemoveBundleComponent,
+  useAddStyledToBundle,
   useBaseProducts,
+  useStyledProducts,
+  useAllowBaseInCollectionsBundles,
   type Bundle,
   type BundleComponentInput,
   type BundleCreateInput,
@@ -270,8 +273,11 @@ function BundleEditorModal({
   const update = useUpdateBundle();
   const del = useDeleteBundle();
   const addComp = useAddBundleComponent(bundle?.bundle_id ?? "");
+  const addStyled = useAddStyledToBundle();
   const removeComp = useRemoveBundleComponent(bundle?.bundle_id ?? "");
   const bases = useBaseProducts();
+  const styledProducts = useStyledProducts();
+  const allowBase = useAllowBaseInCollectionsBundles();
 
   const [name, setName] = useState("");
   const [model, setModel] = useState("fixed_bundle_price");
@@ -279,6 +285,7 @@ function BundleEditorModal({
   const [priceUsd, setPriceUsd] = useState("");
   const [amount, setAmount] = useState("");
   const [pick, setPick] = useState("");
+  const [pickStyled, setPickStyled] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -302,6 +309,7 @@ function BundleEditorModal({
           : "",
       );
       setPick("");
+      setPickStyled("");
     }
   }, [bundle]);
 
@@ -309,11 +317,25 @@ function BundleEditorModal({
 
   const components = detail.data?.components ?? [];
   const componentIds = new Set(components.map((c) => c.product_id));
-  const pickOptions = [
-    { value: "", label: "Add a base product…" },
-    ...(bases.data ?? [])
-      .filter((b) => !componentIds.has(b.product_id))
-      .map((b) => ({ value: b.product_id, label: `${b.name} · ${b.product_code}` })),
+  const componentStyledIds = new Set(
+    components.filter((c) => c.styled_id).map((c) => c.styled_id),
+  );
+  const pickOptions = allowBase
+    ? [
+        { value: "", label: "Add a base product…" },
+        ...(bases.data ?? [])
+          .filter((b) => !componentIds.has(b.product_id))
+          .map((b) => ({
+            value: b.product_id,
+            label: `${b.name} · ${b.product_code}`,
+          })),
+      ]
+    : [];
+  const styledPickOptions = [
+    { value: "", label: "Add a styled product…" },
+    ...(styledProducts.data ?? [])
+      .filter((s) => !componentStyledIds.has(s.styled_id))
+      .map((s) => ({ value: s.styled_id, label: s.name })),
   ];
 
   // Live subtotal preview from component unit prices × quantity.
@@ -418,13 +440,26 @@ function BundleEditorModal({
               </div>
             )}
           </div>
-          <Select value={pick} onChange={add} options={pickOptions} />
+          <div className="space-y-2">
+            <Select
+              value={pickStyled}
+              onChange={(id) => {
+                if (!id) return;
+                addStyled.mutate({ bundleId: bundle.bundle_id, styledId: id });
+                setPickStyled("");
+              }}
+              options={styledPickOptions}
+            />
+            {allowBase && (
+              <Select value={pick} onChange={add} options={pickOptions} />
+            )}
+          </div>
           <div className="mt-3 space-y-2">
             {detail.isLoading ? (
               <div className="h-10 rounded-[11px] bg-text-primary/[0.05] animate-pulse" />
             ) : components.length === 0 ? (
               <p className="text-[11.5px] text-text-faint">
-                No products yet. A bundle needs at least one base product.
+                No products yet. A bundle needs at least one product.
               </p>
             ) : (
               components.map((c) => (
@@ -433,7 +468,12 @@ function BundleEditorModal({
                   className="flex items-center gap-2 rounded-[11px] border border-line bg-text-primary/[0.03] px-3 py-2"
                 >
                   <span className="flex-1 min-w-0 truncate text-[13px]">
-                    {c.product_name ?? c.product_code ?? "Product"}
+                    {c.styled_name ?? c.product_name ?? c.product_code ?? "Product"}
+                    {c.styled_name && (
+                      <Pill tone="accent" dot={false} className="ml-1.5 text-[9px]">
+                        styled
+                      </Pill>
+                    )}
                     {c.quantity > 1 && (
                       <span className="text-text-faint"> × {c.quantity}</span>
                     )}

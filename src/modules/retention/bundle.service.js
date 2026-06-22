@@ -17,6 +17,29 @@ const { audit } = require("../../middleware/audit");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
+/**
+ * Bundles curate STYLED products. A base (stock-room) product / variant is
+ * rejected unless an admin has flipped allow_base_in_collections_bundles in
+ * the Catalogue config tab. Keeps "what goes in a bundle" unambiguous.
+ */
+async function assertComponentAllowed({ client, brand, component }) {
+  const isBaseTarget =
+    !component.styled_id && (component.product_id || component.variant_id);
+  if (!isBaseTarget) return;
+  const allow = await repo.allowBaseTargets({ client, brand });
+  if (!allow) {
+    throw new AppError(
+      "BASE_NOT_ALLOWED_IN_BUNDLE",
+      "Only styled products can be added to bundles.",
+      422,
+      {
+        user_message:
+          "Add a styled product. Base products are off for bundles — turn on “Allow base products in collections & bundles” in Catalogue settings if you need them.",
+      },
+    );
+  }
+}
+
 async function createBundle({ brand, user, request_id, input }) {
   const components = input.components || [];
   if (components.length === 0)
@@ -34,6 +57,7 @@ async function createBundle({ brand, user, request_id, input }) {
       user_id: user.user_id,
     });
     for (const comp of components) {
+      await assertComponentAllowed({ client, brand, component: comp });
       await repo.addComponent({
         client,
         brand,
@@ -97,9 +121,10 @@ async function setBundleActive({ brand, user, request_id, id, is_active }) {
 
 async function addComponent({ brand, id, component }) {
   await getBundle({ brand, id }); // 404 if missing
-  return transaction((client) =>
-    repo.addComponent({ client, brand, bundle_id: id, component }),
-  );
+  return transaction(async (client) => {
+    await assertComponentAllowed({ client, brand, component });
+    return repo.addComponent({ client, brand, bundle_id: id, component });
+  });
 }
 
 async function removeComponent({ brand, id, bundle_product_id }) {

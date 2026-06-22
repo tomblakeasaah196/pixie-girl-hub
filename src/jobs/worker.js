@@ -24,6 +24,7 @@
  *   every 30m        — Invoice reminder sweep (F-10)
  *   every 30m        — Webhook replay sweep (H-4 — re-drive stuck webhooks)
  *   daily 03:00      — Soft-FK reconciliation sweep (F-13)
+ *   daily 03:30      — Catalogue Trash purge (15-day grace window)
  *   Sun 02:00        — GeoLite2-Country database auto-update (MaxMind)
  */
 
@@ -153,6 +154,9 @@ async function startWorkers() {
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
   const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
   const { runGeoIpDatabaseUpdate } = require("./schedulers/geoip-updater");
+  const {
+    runCatalogueTrashPurge,
+  } = require("./schedulers/catalogue-trash-purge");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart.
@@ -214,6 +218,8 @@ async function startWorkers() {
   scheduleCron("invoice-reminders", "*/30 * * * *", runInvoiceReminderSweep);
   scheduleCron("webhook-replay", "*/30 * * * *", runWebhookReplaySweep);
   scheduleCron("soft-fk-reconciliation", "0 3 * * *", runSoftFkReconciliation);
+  // Daily 03:30 — purge catalogue Trash past its 15-day grace window.
+  scheduleCron("catalogue-trash-purge", "30 3 * * *", runCatalogueTrashPurge);
   scheduleCron(
     "chemical-reconciliation",
     "30 3 2 * *",

@@ -27,6 +27,7 @@ import {
   StylistSpotlight,
   ShippingReturns,
 } from "./blocks/Narrative";
+import { ResellerBulkSection } from "./blocks/ResellerBulkSection";
 import { NewsletterCapture, VipSignup } from "./blocks/Signup";
 import { UgcCarousel } from "./blocks/UgcCarousel";
 import { CartButton } from "./cart/CartButton";
@@ -185,6 +186,8 @@ function BlockRouter({
       return <StylistSpotlight payload={payload} />;
     case "shipping_returns":
       return <ShippingReturns payload={payload} />;
+    case "reseller_bulk":
+      return <ResellerBulkSection payload={payload} />;
     case "newsletter_capture":
       return state === "before" ? (
         <NewsletterCapture payload={payload} />

@@ -191,6 +191,11 @@ const BLOCK_LIBRARY: Array<{
     label: "VIP Signup",
     description: "Pre-launch heads-up",
   },
+  {
+    key: "reseller_bulk",
+    label: "Reseller / Bulk",
+    description: "Bulk-buy tier rates",
+  },
 ];
 
 export function CampaignBuilderPage() {

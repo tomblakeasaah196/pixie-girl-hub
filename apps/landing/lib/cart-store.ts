@@ -38,6 +38,7 @@ interface CartState {
   subtotalNgn: () => number;
   retailSubtotalNgn: () => number;
   savingsNgn: () => number;
+  distinctBundleCount: () => number;
 }
 
 export const useCart = create<CartState>()(
@@ -116,6 +117,13 @@ export const useCart = create<CartState>()(
       },
       savingsNgn() {
         return Math.max(0, get().retailSubtotalNgn() - get().subtotalNgn());
+      },
+      distinctBundleCount() {
+        return new Set(
+          get()
+            .items.filter((i) => i.type === "bundle")
+            .map((i) => i.id),
+        ).size;
       },
     }),
     {

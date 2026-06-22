@@ -7,6 +7,7 @@ import { IntroOverlay } from "@/components/IntroOverlay";
 import { BrandThemeProvider } from "@/components/BrandThemeProvider";
 import { LandingShell } from "@/components/LandingShell";
 import { LiveHero } from "./LiveHero";
+import { CurrencyFloater } from "./CurrencyFloater";
 
 /**
  * Live-state composition:
@@ -53,6 +54,7 @@ export function LiveShell({
       <BrandThemeProvider brandConfig={brandConfig}>
         <LandingShell payload={payload} omitHero />
       </BrandThemeProvider>
+      <CurrencyFloater />
     </>
   );
 }

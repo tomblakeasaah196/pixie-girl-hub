@@ -153,6 +153,7 @@ async function startWorkers() {
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
   const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
   const { runGeoIpDatabaseUpdate } = require("./schedulers/geoip-updater");
+  const { runHrAttendanceSweep } = require("./schedulers/hr-attendance");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart.
@@ -194,6 +195,8 @@ async function startWorkers() {
     runPendingActionExpirySweep,
   );
   scheduleCron("layaway-reminders", "*/30 * * * *", runLayawayReminders);
+  // Nightly HR attendance: reconcile + query reminders + lapsed off-site (23:30 Lagos).
+  scheduleCron("hr-attendance-sweep", "30 23 * * *", runHrAttendanceSweep);
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);

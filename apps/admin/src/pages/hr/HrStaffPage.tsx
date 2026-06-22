@@ -516,6 +516,13 @@ function SettingsTab() {
             );
           })}
         </div>
+        <label className="mt-4 block text-xs font-medium text-text-muted">
+          Leave needing CEO approval (days)
+          <input type="number" min={0} max={60} defaultValue={data.leave_escalation_days}
+            onBlur={(e) => save.mutate({ leave_escalation_days: Number(e.target.value) })}
+            className="ml-2 w-20 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+          <span className="ml-2 text-[11px] text-text-faint">0 = HR/managers can approve any length</span>
+        </label>
       </Card>
     </div>
   );

@@ -197,6 +197,8 @@ const DocumentsPage = lazyWithRetry(() =>
     default: m.DocumentsPage,
   })),
 );
+const MyHrPage = lazyWithRetry(() => import("@/pages/hr/MyHrPage"));
+const HrStaffPage = lazyWithRetry(() => import("@/pages/hr/HrStaffPage"));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -329,6 +331,22 @@ export const router = createBrowserRouter(
             { path: "contacts/milestones", element: <MilestonesPage /> },
             { path: "contacts/staff/new", element: <EmployeeOnboardingPage /> },
             { path: "contacts/:id", element: <ContactProfilePage /> },
+            {
+              path: "my-hr",
+              element: (
+                <Suspense fallback={null}>
+                  <MyHrPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "hr",
+              element: (
+                <Suspense fallback={null}>
+                  <HrStaffPage />
+                </Suspense>
+              ),
+            },
             { path: "crm", element: <CrmPage /> },
             { path: "crm/deals/:id", element: <DealDetailPage /> },
             {

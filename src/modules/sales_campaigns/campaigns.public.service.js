@@ -431,7 +431,10 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     request_id: input.client_idempotency_key,
     input: {
       contact_id: contact.contact_id,
-      sales_channel: "campaign_landing",
+      // 'storefront' = an online store sale (the public sale landing is the
+      // brand's storefront). 'campaign_landing' is not a valid channel per the
+      // sales_orders.sales_channel CHECK constraint.
+      sales_channel: "storefront",
       order_type: "dispatch",
       sales_campaign_id: campaign.campaign_id,
       campaign_slug: campaign.slug,
@@ -445,20 +448,25 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   });
 
   // ── 4. Record checkout metadata (best-effort) ──────────
+  // sales_orders carries customer_notes (human, fulfilment-facing) and
+  // internal_notes (structured: gift instructions, consent, request origin).
   const c = input.contact;
   if (c.notes || c.gift || c.consent) {
-    const meta = {};
-    if (c.notes) meta.customer_notes = c.notes;
-    if (c.gift) meta.gift = c.gift;
-    if (c.consent) meta.consent = c.consent;
-    meta.ip = ip;
-    meta.user_agent = user_agent;
+    const internal = {};
+    if (c.gift) internal.gift = c.gift;
+    if (c.consent) internal.consent = c.consent;
+    internal.ip = ip;
+    internal.user_agent = user_agent;
     try {
       await query(
         `UPDATE ${resolvedBrand}.sales_orders
-            SET notes = $1
-          WHERE order_id = $2`,
-        [JSON.stringify(meta), order.order_id],
+            SET customer_notes = $1, internal_notes = $2
+          WHERE order_id = $3`,
+        [
+          c.notes || null,
+          Object.keys(internal).length ? JSON.stringify(internal) : null,
+          order.order_id,
+        ],
       );
     } catch (err) {
       logger.warn({ err, order_id: order.order_id }, "checkout meta skipped");

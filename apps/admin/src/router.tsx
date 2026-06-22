@@ -3,7 +3,6 @@ import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { CommandCenter } from "@/pages/CommandCenter";
-
 import { ContactsPage } from "@/pages/contacts/ContactsPage";
 import { ContactProfilePage } from "@/pages/contacts/ContactProfilePage";
 import { EmployeeOnboardingPage } from "@/pages/contacts/EmployeeOnboardingPage";
@@ -15,6 +14,44 @@ import { DealDetailPage } from "@/pages/crm/deals/DealDetailPage";
 import { CataloguePage } from "@/pages/catalogue/CataloguePage";
 import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
 import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
+import { AppearancePage } from "@/pages/AppearancePage";
+import { LoginEditorPage } from "@/pages/LoginEditorPage";
+import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
+import { OrgWorkflowPage } from "@/pages/OrgWorkflowPage";
+import { LoginPage } from "@/pages/LoginPage";
+import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
+import { SelectEntityPage } from "@/pages/SelectEntityPage";
+// Settings (full module)
+import { SettingsHome } from "@/pages/SettingsHome";
+import { BusinessSetupPage } from "@/pages/BusinessSetupPage";
+import { BusinessesPage } from "@/pages/BusinessesPage";
+import { CurrenciesPage } from "@/pages/CurrenciesPage";
+import { TaxRatesPage } from "@/pages/TaxRatesPage";
+import { PaymentGatewaysPage } from "@/pages/PaymentGatewaysPage";
+import { BankAccountsPage } from "@/pages/BankAccountsPage";
+import { DocumentNumberingPage } from "@/pages/DocumentNumberingPage";
+import { CustomFieldsPage } from "@/pages/CustomFieldsPage";
+import { PipelineStagesPage } from "@/pages/PipelineStagesPage";
+import { DocumentTemplatesPage } from "@/pages/DocumentTemplatesPage";
+import { EmailSignaturesPage } from "@/pages/EmailSignaturesPage";
+import { NotificationPreferencesPage } from "@/pages/NotificationPreferencesPage";
+import { ScheduledReportsPage } from "@/pages/ScheduledReportsPage";
+import { IntegrationSecretsPage } from "@/pages/IntegrationSecretsPage";
+import { BusinessPoliciesPage } from "@/pages/BusinessPoliciesPage";
+// IAM & Security (full module)
+import { IamSecurityPage } from "@/pages/IamSecurityPage";
+import { IamUsersPage } from "@/pages/IamUsersPage";
+import { IamAuditPage } from "@/pages/IamAuditPage";
+import { IamSecurityEventsPage } from "@/pages/IamSecurityEventsPage";
+import { IamSessionsPage } from "@/pages/IamSessionsPage";
+import { IamAccessReviewsPage } from "@/pages/IamAccessReviewsPage";
+import { IamMfaPage } from "@/pages/IamMfaPage";
+// Notifications
+import { NotificationsPage } from "@/pages/NotificationsPage";
+// Other module placeholders
+import { HelpCenterPage } from "@/pages/HelpCenterPage";
+import { HelpArticlePage } from "@/pages/HelpArticlePage";
+
 
 /**
  * Lazy-import wrapper that survives a redeploy. When a new build ships, the
@@ -92,6 +129,11 @@ const MessagingAccountsPage = lazyWithRetry(() =>
 const CustomerOnboardingPublic = lazyWithRetry(() =>
   import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({
     default: m.CustomerOnboardingPublic,
+  })),
+);
+const WalkInPublic = lazyWithRetry(() =>
+  import("@/pages/walkin/WalkInPublic").then((m) => ({
+    default: m.WalkInPublic,
   })),
 );
 const OrderCapturePublic = lazyWithRetry(() =>
@@ -197,43 +239,10 @@ const LogisticsPage = lazyWithRetry(() =>
     default: m.LogisticsPage,
   })),
 );
-import { AppearancePage } from "@/pages/AppearancePage";
-import { LoginEditorPage } from "@/pages/LoginEditorPage";
-import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
-import { OrgWorkflowPage } from "@/pages/OrgWorkflowPage";
-import { LoginPage } from "@/pages/LoginPage";
-import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
-import { SelectEntityPage } from "@/pages/SelectEntityPage";
-// Settings (full module)
-import { SettingsHome } from "@/pages/SettingsHome";
-import { BusinessSetupPage } from "@/pages/BusinessSetupPage";
-import { BusinessesPage } from "@/pages/BusinessesPage";
-import { CurrenciesPage } from "@/pages/CurrenciesPage";
-import { TaxRatesPage } from "@/pages/TaxRatesPage";
-import { PaymentGatewaysPage } from "@/pages/PaymentGatewaysPage";
-import { BankAccountsPage } from "@/pages/BankAccountsPage";
-import { DocumentNumberingPage } from "@/pages/DocumentNumberingPage";
-import { CustomFieldsPage } from "@/pages/CustomFieldsPage";
-import { PipelineStagesPage } from "@/pages/PipelineStagesPage";
-import { DocumentTemplatesPage } from "@/pages/DocumentTemplatesPage";
-import { EmailSignaturesPage } from "@/pages/EmailSignaturesPage";
-import { NotificationPreferencesPage } from "@/pages/NotificationPreferencesPage";
-import { ScheduledReportsPage } from "@/pages/ScheduledReportsPage";
-import { IntegrationSecretsPage } from "@/pages/IntegrationSecretsPage";
-import { BusinessPoliciesPage } from "@/pages/BusinessPoliciesPage";
-// IAM & Security (full module)
-import { IamSecurityPage } from "@/pages/IamSecurityPage";
-import { IamUsersPage } from "@/pages/IamUsersPage";
-import { IamAuditPage } from "@/pages/IamAuditPage";
-import { IamSecurityEventsPage } from "@/pages/IamSecurityEventsPage";
-import { IamSessionsPage } from "@/pages/IamSessionsPage";
-import { IamAccessReviewsPage } from "@/pages/IamAccessReviewsPage";
-import { IamMfaPage } from "@/pages/IamMfaPage";
-// Notifications
-import { NotificationsPage } from "@/pages/NotificationsPage";
-// Other module placeholders
-import { HelpCenterPage } from "@/pages/HelpCenterPage";
-import { HelpArticlePage } from "@/pages/HelpArticlePage";
+const MyHrPage = lazyWithRetry(() => import("@/pages/hr/MyHrPage"));
+const HrStaffPage = lazyWithRetry(() => import("@/pages/hr/HrStaffPage"));
+const PayrollPage = lazyWithRetry(() => import("@/pages/hr/PayrollPage"));
+const PerformancePage = lazyWithRetry(() => import("@/pages/hr/PerformancePage"));
 
 /**
  * Two trees:
@@ -250,6 +259,16 @@ export const router = createBrowserRouter(
   [
     { path: "/login", element: <LoginPage /> },
     { path: "/reset-password", element: <ResetPasswordPage /> },
+    // Public Walk-in registration (the counter QR opens this; no auth). The
+    // brand rides in the path; the form POSTs to /api/public/walk-in.
+    {
+      path: "/walkin/:brand",
+      element: (
+        <Suspense fallback={null}>
+          <WalkInPublic />
+        </Suspense>
+      ),
+    },
     // Public Online QR welcome form (token-protected, no auth required).
     {
       path: "/welcome/:business/:token",
@@ -319,6 +338,38 @@ export const router = createBrowserRouter(
             { path: "contacts/milestones", element: <MilestonesPage /> },
             { path: "contacts/staff/new", element: <EmployeeOnboardingPage /> },
             { path: "contacts/:id", element: <ContactProfilePage /> },
+            {
+              path: "my-hr",
+              element: (
+                <Suspense fallback={null}>
+                  <MyHrPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "hr",
+              element: (
+                <Suspense fallback={null}>
+                  <HrStaffPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "payroll",
+              element: (
+                <Suspense fallback={null}>
+                  <PayrollPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "performance",
+              element: (
+                <Suspense fallback={null}>
+                  <PerformancePage />
+                </Suspense>
+              ),
+            },
             { path: "crm", element: <CrmPage /> },
             { path: "crm/deals/:id", element: <DealDetailPage /> },
             {

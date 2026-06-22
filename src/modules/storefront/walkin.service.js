@@ -13,14 +13,29 @@
 const QRCode = require("qrcode");
 const { URLSearchParams } = require("url");
 const repo = require("./storefront.repo");
+const contactsRepo = require("../../shared/contacts/contacts.repo");
 const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
 const { VALID } = require("../../config/brands");
 const { AppError } = require("../../utils/errors");
+const { sendWelcomeEmail } = require("../../services/welcome-email");
 
 function assertBrand(brand) {
   if (!brand || !VALID.has(brand))
     throw new AppError("INVALID_BRAND", "Unknown or missing brand", 422);
+}
+
+/**
+ * Build a DATE from a birthday's month + day. Walk-ins give us the day they
+ * celebrate, not the year, so we anchor to a leap year (1904) — that keeps
+ * 29 Feb valid and the year is irrelevant to birthday reminders (which match
+ * on month/day). Returns null unless BOTH parts are present.
+ */
+function dobFromParts(month, day) {
+  if (!month || !day) return null;
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `1904-${mm}-${dd}`;
 }
 
 /**
@@ -37,7 +52,12 @@ async function registerWalkIn({ brand, input }) {
       422,
     );
 
-  return transaction(async (client) => {
+  // Set inside the transaction, read after it commits — so the welcome email
+  // only goes out once the contact is durably saved (and never to a returning
+  // walk-in, who already had their welcome the first time round).
+  let welcome = null;
+
+  const result = await transaction(async (client) => {
     const existing = await repo.findContactByEmailOrPhone({
       client,
       email: input.email,
@@ -61,11 +81,41 @@ async function registerWalkIn({ brand, input }) {
         first_name: input.first_name,
         last_name: input.last_name,
         primary_phone: input.primary_phone,
+        whatsapp_number: input.whatsapp_number,
         email: input.email,
+        date_of_birth: dobFromParts(input.dob_month, input.dob_day),
       },
     });
+
+    // Capture the walk-in's address (with Google-Places lat/lng when supplied)
+    // as their default delivery address — important for dispatch + service.
+    if (input.address && input.address.line1) {
+      await contactsRepo.addAddress({
+        client,
+        contact_id: contact.contact_id,
+        input: {
+          ...input.address,
+          address_type: "delivery",
+          is_default: true,
+          recipient_name: display_name,
+          recipient_phone: input.primary_phone || input.whatsapp_number,
+        },
+        user_id: null,
+      });
+    }
+
+    if (input.email) {
+      welcome = { to: input.email, firstName: input.first_name };
+    }
     return { contact_id: contact.contact_id, returning: false };
   });
+
+  // Fire-and-forget the curated welcome (best-effort; never blocks the reply).
+  if (welcome) {
+    await sendWelcomeEmail({ brand, to: welcome.to, firstName: welcome.firstName });
+  }
+
+  return result;
 }
 
 /**
@@ -74,10 +124,14 @@ async function registerWalkIn({ brand, input }) {
  */
 async function generateQr({ brand, location }) {
   assertBrand(brand);
-  const base = config.APP_URL.replace(/\/$/, "");
-  const params = new URLSearchParams({ b: brand });
-  if (location) params.set("loc", location);
-  const url = `${base}/walk-in?${params.toString()}`;
+  const base = (config.ADMIN_BASE_URL || config.APP_URL).replace(/\/$/, "");
+  // Must match the admin SPA route `/walkin/:brand` (WalkInPublic.tsx reads the
+  // brand from the path, not a query string). An optional loc tags the QR's
+  // physical location for analytics.
+  const qs = location
+    ? `?${new URLSearchParams({ loc: location }).toString()}`
+    : "";
+  const url = `${base}/walkin/${encodeURIComponent(brand)}${qs}`;
   const qr_data_url = await QRCode.toDataURL(url, {
     errorCorrectionLevel: "M",
     margin: 1,

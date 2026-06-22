@@ -45,7 +45,9 @@ const STYLED_COLS = [
   // Styled retail is its OWN price (the size-S anchor). style_addon_price_ngn
   // is retained for legacy rows but is no longer the pricing source.
   "retail_price_ngn",
+  "retail_price_usd",
   "compare_at_price_ngn",
+  "compare_at_price_usd",
   "style_addon_price_ngn",
   "category_id",
   "visible_on_channels",
@@ -272,7 +274,8 @@ async function listTrashed({
     `SELECT COUNT(*)::int AS total FROM ${t(brand, "styled_products")} WHERE is_deleted = true`,
   );
   const { rows } = await run(
-    `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code
+    `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
+            (s.deleted_at + INTERVAL '15 days') AS purge_at
        FROM ${t(brand, "styled_products")} s
        JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
       WHERE s.is_deleted = true

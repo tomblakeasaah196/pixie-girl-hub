@@ -161,8 +161,8 @@ async function getCollectionBySlug({ brand, slug }) {
   );
   if (!rows[0]) return null;
   const collection = rows[0];
-  // Collection membership is keyed on the BASE product; surface the LIVE
-  // styled products that sit on those bases (base products never reach the
+  // Collection membership points at the STYLED product directly (000047); show
+  // the LIVE styled products in this collection (base products never reach the
   // web). DISTINCT ON keeps one row per styled product.
   const { rows: products } = await query(
     `SELECT DISTINCT ON (s.styled_id)
@@ -171,8 +171,8 @@ async function getCollectionBySlug({ brand, slug }) {
               WHERE img.styled_id = s.styled_id
               ORDER BY img.is_primary DESC, img.display_order LIMIT 1) AS primary_image_url
        FROM ${t(brand, "product_collection_members")} m
-       JOIN ${t(brand, "styled_products")} s ON s.base_product_id = m.product_id
-      WHERE m.collection_id = $1
+       JOIN ${t(brand, "styled_products")} s ON s.styled_id = m.styled_id
+      WHERE m.collection_id = $1 AND m.styled_id IS NOT NULL
         AND s.status = 'live' AND s.is_visible_storefront = true
         AND s.is_deleted = false
       ORDER BY s.styled_id, s.published_at DESC NULLS LAST`,
@@ -191,9 +191,19 @@ async function listBundles({ brand }) {
             COALESCE(
               (SELECT json_agg(json_build_object(
                         'product_id', bp.product_id, 'variant_id', bp.variant_id,
+                        'styled_id', bp.styled_id,
+                        'name', sp.name, 'slug', sp.slug,
+                        'price_ngn', sp.retail_price_ngn,
+                        'image_url', (SELECT img.cdn_url
+                                        FROM ${t(brand, "product_images")} img
+                                       WHERE img.styled_id = sp.styled_id
+                                       ORDER BY img.is_primary DESC, img.display_order
+                                       LIMIT 1),
                         'quantity', bp.quantity, 'role', bp.role)
                         ORDER BY bp.display_order)
                  FROM ${t(brand, "bundle_offer_products")} bp
+                 LEFT JOIN ${t(brand, "styled_products")} sp
+                        ON sp.styled_id = bp.styled_id
                 WHERE bp.bundle_id = b.bundle_id),
               '[]'::json) AS components
        FROM ${t(brand, "bundle_offers")} b
@@ -231,15 +241,17 @@ async function createContact({ client, brand, contact }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.contacts
        (contact_type, display_name, first_name, last_name, primary_phone,
-        email, visible_to)
-     VALUES (ARRAY['customer'], $1, $2, $3, $4, $5, ARRAY[$6])
+        whatsapp_number, email, date_of_birth, visible_to)
+     VALUES (ARRAY['customer'], $1, $2, $3, $4, $5, $6, $7, ARRAY[$8])
      RETURNING *`,
     [
       contact.display_name,
       contact.first_name || null,
       contact.last_name || null,
-      contact.primary_phone,
+      contact.primary_phone || null,
+      contact.whatsapp_number || null,
       contact.email || null,
+      contact.date_of_birth || null,
       brand,
     ],
   );

@@ -82,6 +82,44 @@ export const getContactTimeline = (id: string, params: TimelineParams = {}) =>
     meta: { total: number; has_more: boolean };
   }>(`${C}/${id}/timeline${qs(params)}`);
 
+// ── Bulk import / export (clients & suppliers via CSV/Excel) ──────────────
+
+export type ContactImportKind = "clients" | "suppliers";
+
+export interface ContactImportRow {
+  row?: number;
+  status: "created" | "duplicate" | "warn" | "error" | string;
+  name?: string;
+  reason?: string;
+}
+
+export interface ContactImportResult {
+  kind: ContactImportKind;
+  created: number;
+  duplicates: number;
+  total: number;
+  results: ContactImportRow[];
+}
+
+/** Path for an authenticated CSV template download (clients | suppliers). */
+export const contactsTemplatePath = (kind: ContactImportKind) =>
+  `${C}/import-template${qs({ kind })}`;
+
+/** Path for an authenticated CSV export — period + kind. Owner/CEO only. */
+export const contactsExportPath = (params: {
+  kind?: "clients" | "suppliers" | "all";
+  from?: string;
+  to?: string;
+}) => `${C}/export${qs(params)}`;
+
+/** Upload a filled CSV/Excel for bulk import. Returns a per-row summary. */
+export const importContacts = (kind: ContactImportKind, file: File) => {
+  const form = new FormData();
+  form.append("kind", kind);
+  form.append("file", file);
+  return api.postForm<ContactImportResult>(`${C}/import`, form);
+};
+
 // ── Addresses ────────────────────────────────────────────────────────────
 
 export const listAddresses = (contactId: string) =>

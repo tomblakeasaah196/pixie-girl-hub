@@ -14,6 +14,8 @@ import {
   Code2,
   ArrowUp,
   ArrowDown,
+  Tag,
+  Clock,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useActiveBusiness } from "@/stores/business";
@@ -52,11 +54,13 @@ import {
   useDeclareWinner,
   useBuildAudienceFromSegment,
   useBuildRecipients,
+  useUpdateEmailCampaign,
   TEMPLATE_VARIABLES,
   type EmailTemplate,
   type EmailSegment,
   type SegmentPreview,
   type EmailCampaign,
+  type CampaignMergeData,
 } from "@/lib/marketing-api";
 
 /* ════════════════════════════════════════════════════════════
@@ -257,14 +261,23 @@ function TemplateEditor({
           <StudioEditor design={design} setDesign={setDesign} />
         ) : (
           <Field label="HTML body">
+            <p className="text-[11px] text-text-faint mb-1.5">
+              Tokens fill in at send — <span className="text-text-muted">brand</span> items
+              (logo, colours, name) come from Settings; <span className="text-text-muted">sale</span> items
+              from the campaign&rsquo;s Sale details.
+            </p>
             <div className="flex flex-wrap gap-1.5 mb-1.5">
               {TEMPLATE_VARIABLES.map((v) => (
                 <button
                   key={v.token}
                   type="button"
                   onClick={() => insertToken(v.token)}
-                  className="text-[11px] rounded-md border border-line px-2 py-1 text-text-muted hover:text-accent-glow hover:border-accent/40"
-                  title={`Insert ${v.label}`}
+                  className={`text-[11px] rounded-md border px-2 py-1 hover:text-accent-glow hover:border-accent/40 ${
+                    v.group === "sale"
+                      ? "border-accent/30 text-accent-glow/80"
+                      : "border-line text-text-muted"
+                  }`}
+                  title={`Insert ${v.label}${v.auto ? " (auto from Settings)" : ""}`}
                 >
                   {v.token}
                 </button>
@@ -336,6 +349,8 @@ const ADD_BLOCKS: EmailBlockType[] = [
   "heading",
   "text",
   "button",
+  "price",
+  "deadline",
   "image",
   "hero",
   "divider",
@@ -448,8 +463,8 @@ function BlockFields({ block, onChange }: { block: EmailBlock; onChange: (p: Par
           )}
           <div className="flex items-center justify-between">
             <AlignToggle value={block.align ?? "left"} onChange={(a) => onChange({ align: a })} />
-            <div className="flex gap-1">
-              {["{{customer_name}}", "{{email}}"].map((tok) => (
+            <div className="flex flex-wrap gap-1 justify-end">
+              {["{{first_name}}", "{{brand_name}}", "{{discount}}", "{{sale_url}}"].map((tok) => (
                 <button
                   key={tok}
                   type="button"
@@ -466,8 +481,28 @@ function BlockFields({ block, onChange }: { block: EmailBlock; onChange: (p: Par
       {t === "button" && (
         <>
           <Input value={block.label ?? ""} onChange={(v) => onChange({ label: v })} placeholder="Button label" />
-          <Input value={block.href ?? ""} onChange={(v) => onChange({ href: v })} placeholder="https://…" />
+          <Input value={block.href ?? ""} onChange={(v) => onChange({ href: v })} placeholder="https://… or {{sale_url}}" />
           <AlignToggle value={block.align ?? "center"} onChange={(a) => onChange({ align: a })} />
+        </>
+      )}
+      {t === "price" && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Input value={block.text ?? ""} onChange={(v) => onChange({ text: v })} placeholder="Was ₦120,000" />
+            <Input value={block.label ?? ""} onChange={(v) => onChange({ label: v })} placeholder="Now ₦84,000" />
+          </div>
+          <Input value={block.alt ?? ""} onChange={(v) => onChange({ alt: v })} placeholder="Caption (e.g. Sale price)" />
+          <AlignToggle value={block.align ?? "center"} onChange={(a) => onChange({ align: a })} />
+        </>
+      )}
+      {t === "deadline" && (
+        <>
+          <Input value={block.text ?? ""} onChange={(v) => onChange({ text: v })} placeholder="Headline (e.g. {{deadline_phrase}})" />
+          <Input value={block.label ?? ""} onChange={(v) => onChange({ label: v })} placeholder="Subline (e.g. Sale ends {{sale_end_display}})" />
+          <p className="text-[11px] text-text-faint">
+            Set the discount &amp; end date in the campaign&rsquo;s Sale details —
+            the countdown fills automatically at send.
+          </p>
         </>
       )}
       {t === "spacer" && (
@@ -849,6 +884,123 @@ export function CampaignAudienceSection({ campaign }: { campaign: EmailCampaign 
       ) : (
         <p className="text-[12px] text-text-faint">
           The audience is locked once a campaign leaves draft.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Mirror of the server's countdown (email-render.js) so the builder previews
+ *  exactly what recipients will read. */
+function previewCountdown(iso: string): string {
+  const end = new Date(iso).getTime();
+  if (Number.isNaN(end)) return "";
+  const ms = end - Date.now();
+  const hours = ms / 3_600_000;
+  if (ms <= 0) return "Last chance";
+  if (hours <= 24) return "Final hours — ends today";
+  const days = Math.max(1, Math.round(hours / 24));
+  return days <= 1 ? "Only 1 day left" : `Only ${days} days left`;
+}
+
+function toLocalInput(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  // datetime-local wants YYYY-MM-DDTHH:mm in local time.
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Sale details a campaign carries — discount, link and end date — which the
+ *  Sale Announcement template turns into the countdown, price framing and CTA. */
+export function CampaignSaleSection({ campaign }: { campaign: EmailCampaign }) {
+  const { can } = useAuthStore();
+  const update = useUpdateEmailCampaign(campaign.campaign_id);
+  const md = (campaign.merge_data ?? {}) as CampaignMergeData;
+  const [discount, setDiscount] = useState(md.discount ? String(md.discount) : "");
+  const [saleUrl, setSaleUrl] = useState(md.sale_url ? String(md.sale_url) : "");
+  const [endsAt, setEndsAt] = useState(toLocalInput(md.sale_ends_at));
+  const [saved, setSaved] = useState(false);
+
+  const editable = campaign.status === "draft" || campaign.status === "scheduled";
+  if (!can("email_campaigns", "edit")) return null;
+
+  const countdownPreview = endsAt ? previewCountdown(new Date(endsAt).toISOString()) : "";
+
+  function save() {
+    setSaved(false);
+    update.mutate(
+      {
+        merge_data: {
+          ...md,
+          discount: discount || undefined,
+          sale_url: saleUrl || undefined,
+          sale_ends_at: endsAt ? new Date(endsAt).toISOString() : undefined,
+        },
+      },
+      { onSuccess: () => setSaved(true) },
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-line p-3 space-y-2.5">
+      <div className="micro inline-flex items-center gap-1.5">
+        <Tag className="w-3.5 h-3.5 text-accent-glow" /> Sale details
+      </div>
+      {editable ? (
+        <>
+          <div className="grid grid-cols-2 gap-2.5">
+            <Field label="Discount %">
+              <input
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+                inputMode="numeric"
+                placeholder="30"
+                className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 tabular-nums"
+              />
+            </Field>
+            <Field label="Ends at">
+              <input
+                type="datetime-local"
+                value={endsAt}
+                onChange={(e) => setEndsAt(e.target.value)}
+                className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50"
+              />
+            </Field>
+          </div>
+          <Field label="Sale link (where the button goes)">
+            <Input value={saleUrl} onChange={setSaleUrl} placeholder="pixiegirlglobal.com/sale" />
+          </Field>
+          {countdownPreview && (
+            <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
+              <Clock className="w-3.5 h-3.5 text-accent-glow" />
+              Recipients will see: <span className="text-text-primary font-medium">⏳ {countdownPreview}</span>
+            </div>
+          )}
+          <p className="text-[11px] text-text-faint">
+            Feeds the Sale Announcement template&rsquo;s countdown, discount and
+            button. The logo and colours come from Settings automatically.
+          </p>
+          {update.isError && <p className="text-[12px] text-danger">Couldn&rsquo;t save.</p>}
+          <div className="flex items-center justify-end gap-2">
+            {saved && !update.isPending && <span className="text-[12px] text-success">Saved.</span>}
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={update.isPending}
+              onClick={save}
+              icon={update.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            >
+              Save sale details
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="text-[12px] text-text-faint">
+          {md.discount ? `Up to ${md.discount}% off` : "No sale details"}
+          {md.sale_ends_at && ` · ends ${new Date(md.sale_ends_at).toLocaleDateString()}`}
+          {" · "}locked once the campaign leaves draft.
         </p>
       )}
     </div>

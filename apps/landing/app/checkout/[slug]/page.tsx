@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
-import { fetchCampaign } from "@/lib/api";
+import { fetchCampaign, fetchPublishedLanding } from "@/lib/api";
+import { getBrand } from "@/lib/brand";
+import { withDefaults, type LandingConfig } from "@landing-kit";
+import { BrandThemeProvider } from "@/components/BrandThemeProvider";
 import { CheckoutClient } from "@/components/checkout/CheckoutClient";
 
 export default async function CheckoutPage({
@@ -7,7 +10,17 @@ export default async function CheckoutPage({
 }: {
   params: { slug: string };
 }) {
-  const payload = await fetchCampaign(params.slug);
+  const brand = getBrand();
+  const [payload, raw] = await Promise.all([
+    fetchCampaign(params.slug),
+    fetchPublishedLanding(brand).catch(() => null),
+  ]);
   if (!payload) notFound();
-  return <CheckoutClient payload={payload} />;
+
+  const brandConfig = withDefaults(brand, raw as Partial<LandingConfig> | null);
+  return (
+    <BrandThemeProvider brandConfig={brandConfig}>
+      <CheckoutClient payload={payload} />
+    </BrandThemeProvider>
+  );
 }

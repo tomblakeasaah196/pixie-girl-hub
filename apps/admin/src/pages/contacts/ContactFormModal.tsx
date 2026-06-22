@@ -65,7 +65,7 @@ function PhoneField({
   };
 
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/[^\d\s\-]/g, "");
+    const raw = e.target.value.replace(/[^\d\s-]/g, "");
     setRawNumber(raw);
     const stripped = raw.replace(/\D/g, "");
     onChange(stripped ? `${selectedDial.dial}${stripped}` : "");

@@ -128,6 +128,9 @@ CREATE TABLE {{BUSINESS}}.email_campaigns (
   from_name             TEXT,
   from_email            CITEXT,
   reply_to_email        CITEXT,
+  -- Campaign-level merge variables (e.g. a sale's discount, link and end date).
+  -- The render pipeline turns sale_ends_at into the static countdown tokens.
+  merge_data            JSONB       NOT NULL DEFAULT '{}'::jsonb,
   -- Scheduling
   status                TEXT        NOT NULL DEFAULT 'draft'
                         CHECK (status IN ('draft','scheduled','sending','sent','paused','cancelled','completed')),

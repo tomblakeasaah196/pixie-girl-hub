@@ -104,7 +104,7 @@ describe("resetPassword", () => {
   test("rejects an invalid/expired token", async () => {
     mockRedis.get.mockResolvedValue(null);
     await expect(
-      auth.resetPassword({ token: "abc", new_password: "longenough1" }),
+      auth.resetPassword({ token: "abc", new_password: "LongEnough1!" }),
     ).rejects.toMatchObject({ code: "INVALID_RESET_TOKEN" });
     expect(mockStaffRepo.updatePassword).not.toHaveBeenCalled();
   });
@@ -126,12 +126,12 @@ describe("resetPassword", () => {
 
     await auth.resetPassword({
       token: "rawtok",
-      new_password: "newpassword123",
+      new_password: "NewPassword123!",
     });
 
     expect(mockStaffRepo.updatePassword).toHaveBeenCalledWith(
       "u1",
-      "hashed:newpassword123",
+      "hashed:NewPassword123!",
     );
     expect(mockRedis.del).toHaveBeenCalledWith(`pwreset:${sha256("rawtok")}`); // single-use
     expect(mockRedis.del).toHaveBeenCalledWith("refresh:j1"); // revoked

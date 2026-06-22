@@ -25,6 +25,30 @@ const listFonts = async (_req, res) =>
 const getPublicBranding = async (_req, res) =>
   res.json({ data: await service.getPublicBranding() });
 
+/**
+ * GET /api/public/config — runtime client config for unauthenticated pages.
+ *
+ * Today it surfaces the Google Maps/Places browser key so the public address
+ * forms enable autocomplete from a SERVER env var (no admin rebuild needed —
+ * a baked-in VITE_* var can't be changed without one). Forgiving on the var
+ * name so whatever the operator already set on the host is picked up. The key
+ * is a public, referrer-restricted browser key — safe to expose here.
+ */
+const getPublicConfig = (_req, res) => {
+  const mapsKey =
+    process.env.GOOGLE_MAPS_API_KEY ||
+    process.env.GOOGLE_PLACES_API_KEY ||
+    process.env.VITE_GOOGLE_PLACES_API_KEY ||
+    process.env.VITE_GOOGLE_MAPS_KEY ||
+    "";
+  res.set("Cache-Control", "public, max-age=300");
+  res.json({
+    data: {
+      maps: { places_key: mapsKey || null, configured: Boolean(mapsKey) },
+    },
+  });
+};
+
 const getWebManifest = async (_req, res) => {
   const manifest = await service.getWebManifest();
   res.set("Cache-Control", "public, max-age=300");
@@ -86,6 +110,7 @@ module.exports = {
   updateSettings,
   listFonts,
   getPublicBranding,
+  getPublicConfig,
   getWebManifest,
   getGeoWelcome,
   getGeoCurrency,

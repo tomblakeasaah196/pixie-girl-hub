@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Scissors, Clock, Globe, Star } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, Scissors, Clock, Globe, Star, Pencil } from "lucide-react";
 import {
   Button,
   Card,
@@ -10,6 +10,7 @@ import {
 import {
   ErrorState,
   DeniedState,
+  ConfirmDialog,
   Toggle,
   NumberField,
   Select,
@@ -22,9 +23,11 @@ import {
   useCreateService,
   useToggleService,
   useUpdateService,
+  useDeleteService,
   type ServiceOffering,
   type ServiceInput,
 } from "@/lib/catalogue";
+import { Trash2 } from "lucide-react";
 import { ImportExportControls } from "@/components/catalogue/ImportExportControls";
 
 /**
@@ -46,6 +49,7 @@ export function ServicesTab() {
   const toggle = useToggleService();
   const update = useUpdateService();
   const [open, setOpen] = useState(false);
+  const [editFor, setEditFor] = useState<ServiceOffering | null>(null);
 
   if (!can("service_catalogue", "view")) {
     return (
@@ -191,13 +195,27 @@ export function ServicesTab() {
                       ? "Enquiry"
                       : "Bookable"}
                 </Pill>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setEditFor(s)}
+                    className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-accent-glow"
+                  >
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
+                )}
               </div>
             </Card>
           ))}
         </div>
       )}
 
-      <CreateServiceModal open={open} onClose={() => setOpen(false)} />
+      <ServiceModal open={open} onClose={() => setOpen(false)} />
+      <ServiceModal
+        open={!!editFor}
+        service={editFor}
+        onClose={() => setEditFor(null)}
+      />
     </div>
   );
 }
@@ -217,18 +235,24 @@ const LOCATIONS = [
   { value: "virtual", label: "Virtual" },
 ];
 
-function CreateServiceModal({
+function ServiceModal({
   open,
+  service,
   onClose,
 }: {
   open: boolean;
+  service?: ServiceOffering | null;
   onClose: () => void;
 }) {
   const create = useCreateService();
+  const update = useUpdateService();
+  const del = useDeleteService();
+  const isEdit = !!service;
   const [name, setName] = useState("");
   const [shortDesc, setShortDesc] = useState("");
   const [longDesc, setLongDesc] = useState("");
   const [price, setPrice] = useState("");
+  const [priceUsd, setPriceUsd] = useState("");
   const [priceFrom, setPriceFrom] = useState(false);
   const [compareAt, setCompareAt] = useState("");
   const [duration, setDuration] = useState("");
@@ -241,12 +265,14 @@ function CreateServiceModal({
   const [location, setLocation] = useState("");
   const [depositReq, setDepositReq] = useState(false);
   const [depositPct, setDepositPct] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const reset = () => {
     setName("");
     setShortDesc("");
     setLongDesc("");
     setPrice("");
+    setPriceUsd("");
     setPriceFrom(false);
     setCompareAt("");
     setDuration("");
@@ -261,6 +287,39 @@ function CreateServiceModal({
     setDepositPct("");
   };
 
+  // Pre-fill when editing (or clear when opened for create).
+  useEffect(() => {
+    if (service) {
+      setName(service.name);
+      setShortDesc(service.short_description ?? "");
+      setLongDesc(service.long_description ?? "");
+      setPrice(service.base_price_ngn != null ? String(service.base_price_ngn) : "");
+      setPriceUsd(
+        service.base_price_usd != null ? String(service.base_price_usd) : "",
+      );
+      setPriceFrom(service.price_is_from);
+      setCompareAt(
+        service.compare_at_price_ngn != null
+          ? String(service.compare_at_price_ngn)
+          : "",
+      );
+      setDuration(
+        service.duration_minutes != null ? String(service.duration_minutes) : "",
+      );
+      setCategory(service.category ?? "");
+      setTags((service.tags ?? []).join(", "));
+      setImageUrl(service.image_url ?? "");
+      setVisible(service.is_visible_storefront);
+      setFeatured(service.is_featured);
+      setSaleMode(service.sale_mode);
+      setLocation(service.location_type ?? "");
+      setDepositReq(service.deposit_required);
+      setDepositPct(service.deposit_pct != null ? String(service.deposit_pct) : "");
+    } else {
+      reset();
+    }
+  }, [service]);
+
   const submit = () => {
     if (!name.trim()) return;
     const input: ServiceInput = {
@@ -269,6 +328,7 @@ function CreateServiceModal({
       short_description: shortDesc.trim() || null,
       long_description: longDesc.trim() || null,
       base_price_ngn: price ? Number(price) : 0,
+      base_price_usd: priceUsd ? Number(priceUsd) : null,
       price_is_from: priceFrom,
       compare_at_price_ngn: compareAt ? Number(compareAt) : null,
       duration_minutes: duration ? Number(duration) : null,
@@ -287,31 +347,48 @@ function CreateServiceModal({
       deposit_required: depositReq,
       deposit_pct: depositReq && depositPct ? Number(depositPct) : null,
     };
-    create.mutate(input, {
-      onSuccess: () => {
-        reset();
-        onClose();
-      },
-    });
+    if (isEdit && service) {
+      update.mutate(
+        { id: service.service_id, patch: input },
+        { onSuccess: onClose },
+      );
+    } else {
+      create.mutate(input, {
+        onSuccess: () => {
+          reset();
+          onClose();
+        },
+      });
+    }
   };
+
+  const busy = create.isPending || update.isPending;
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="New service"
+      title={isEdit ? `Edit — ${service?.name}` : "New service"}
       footer={
         <>
+          {isEdit && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-faint hover:text-danger transition-colors mr-auto"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </button>
+          )}
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button
             variant="primary"
             size="sm"
-            disabled={!name.trim() || create.isPending}
+            disabled={!name.trim() || busy}
             onClick={submit}
           >
-            {create.isPending ? "Creating…" : "Create"}
+            {busy ? "Saving…" : isEdit ? "Save changes" : "Create"}
           </Button>
         </>
       }
@@ -334,8 +411,11 @@ function CreateServiceModal({
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Base price">
+          <Field label="Base price" hint="Naira">
             <NumberField value={price} onChange={setPrice} suffix="₦" />
+          </Field>
+          <Field label="Base price" hint="US Dollar">
+            <NumberField value={priceUsd} onChange={setPriceUsd} suffix="$" />
           </Field>
           <Field label="Compare-at" hint="optional 'was' price">
             <NumberField value={compareAt} onChange={setCompareAt} suffix="₦" />
@@ -438,14 +518,33 @@ function CreateServiceModal({
           />
         </Field>
 
-        {create.isError && (
+        {(create.isError || update.isError) && (
           <p className="text-[12px] text-danger">
-            {create.error instanceof Error
-              ? create.error.message
-              : "Could not create service."}
+            {(create.error || update.error) instanceof Error
+              ? (create.error || update.error)!.message
+              : "Could not save service."}
           </p>
         )}
       </div>
+
+      {isEdit && service && (
+        <ConfirmDialog
+          open={confirmDelete}
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={() =>
+            del.mutate(service.service_id, {
+              onSuccess: () => {
+                setConfirmDelete(false);
+                onClose();
+              },
+            })
+          }
+          title="Delete service?"
+          message="This removes the service offering from the catalogue and the website."
+          confirmLabel="Delete"
+          busy={del.isPending}
+        />
+      )}
     </Modal>
   );
 }

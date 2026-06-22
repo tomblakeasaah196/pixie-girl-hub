@@ -6,13 +6,29 @@
 "use strict";
 
 const express = require("express");
+const multer = require("multer");
 const c = require("./contacts.controller");
 const v = require("./contacts.validator");
+const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
-const { NotFoundError } = require("../../utils/errors");
+const { NotFoundError, PermissionDeniedError } = require("../../utils/errors");
 
 const router = express.Router();
 const can = (a) => requirePermission("contacts", a);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.MEDIA_MAX_FILE_SIZE_MB * 1024 * 1024 },
+});
+
+// Owner-only gate for bulk export. The directive is "hidden except for the
+// owner (CEO)" — so this is a hard CEO check, NOT merely contacts.export
+// (which a delegated role could be granted). CEO already bypasses RBAC.
+function ceoOnly(req, _res, next) {
+  if (!req.user || req.user.is_ceo !== true) {
+    throw new PermissionDeniedError("Export is restricted to the owner (CEO)");
+  }
+  next();
+}
 
 // Any :id that isn't a UUID → clean 404 (avoids a 500 from a bad uuid cast).
 const UUID_RE =
@@ -45,6 +61,16 @@ router.post("/", can("create"), v.validateCreate, c.create);
 // Literal — declared before /:id so "milestones"/"stats" aren't captured as ids.
 router.get("/milestones", can("view"), c.milestones);
 router.get("/stats", can("view"), c.stats);
+
+// Bulk import / export (clients & suppliers via CSV/Excel). Literal segments,
+// declared before /:id so they're never captured as a contact id.
+//   GET  /import-template?kind=clients|suppliers → CSV template + sample row
+//   POST /import        (multipart 'file', field 'kind') → bulk create
+//   GET  /export?kind=&from=&to=                 → CSV export (OWNER/CEO only)
+router.get("/import-template", can("create"), c.importTemplate);
+router.post("/import", can("create"), upload.single("file"), c.importContacts);
+router.get("/export", ceoOnly, c.exportContacts);
+
 router.get("/:id", can("view"), c.getById);
 router.patch("/:id", can("edit"), v.validateUpdate, c.update);
 router.delete("/:id", can("delete"), c.remove);

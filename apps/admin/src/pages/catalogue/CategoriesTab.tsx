@@ -1,13 +1,14 @@
-import { useState } from "react";
-import { Plus, Tags, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, Tags, Trash2, Pencil } from "lucide-react";
 import { Button, Card, EmptyState, Pill } from "@/components/ui/primitives";
-import { ErrorState } from "@/components/ui/controls";
+import { ErrorState, Toggle } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
 import {
   useCategories,
   useCreateCategory,
+  useUpdateCategory,
   useArchiveCategory,
   type Category,
 } from "@/lib/catalogue";
@@ -26,7 +27,9 @@ export function CategoriesTab() {
   const cats = useCategories();
   const archive = useArchiveCategory();
   const [open, setOpen] = useState(false);
+  const [editFor, setEditFor] = useState<Category | null>(null);
   const canCreate = can("catalogue", "create");
+  const canEdit = can("catalogue", "edit");
   const canDelete = can("catalogue", "delete");
 
   return (
@@ -94,6 +97,15 @@ export function CategoriesTab() {
                   Hidden
                 </Pill>
               )}
+              {canEdit && (
+                <button
+                  onClick={() => setEditFor(c)}
+                  className="grid place-items-center w-8 h-8 rounded-[9px] text-text-faint hover:text-accent-glow hover:bg-text-primary/[0.06] transition-colors"
+                  aria-label="Edit category"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
               {canDelete && (
                 <button
                   onClick={() => archive.mutate(c.category_id)}
@@ -110,7 +122,95 @@ export function CategoriesTab() {
       )}
 
       <CreateCategoryModal open={open} onClose={() => setOpen(false)} />
+      <EditCategoryModal category={editFor} onClose={() => setEditFor(null)} />
     </div>
+  );
+}
+
+function EditCategoryModal({
+  category,
+  onClose,
+}: {
+  category: Category | null;
+  onClose: () => void;
+}) {
+  const update = useUpdateCategory(category?.category_id ?? "");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    if (category) {
+      setName(category.name);
+      setDescription(category.description ?? "");
+      setVisible(category.is_visible_storefront);
+    }
+  }, [category]);
+
+  if (!category) return null;
+
+  const submit = () => {
+    if (!name.trim()) return;
+    update.mutate(
+      {
+        name: name.trim(),
+        description: description.trim() || null,
+        is_visible_storefront: visible,
+      },
+      { onSuccess: onClose },
+    );
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Edit — ${category.name}`}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!name.trim() || update.isPending}
+            onClick={submit}
+          >
+            {update.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Name">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+          />
+        </Field>
+        <Field label="Description" hint="optional">
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+          />
+        </Field>
+        <Toggle
+          checked={visible}
+          onChange={setVisible}
+          label="Show on website"
+        />
+        {update.isError && (
+          <p className="text-[12px] text-danger">
+            {update.error instanceof Error
+              ? update.error.message
+              : "Could not update category."}
+          </p>
+        )}
+      </div>
+    </Modal>
   );
 }
 

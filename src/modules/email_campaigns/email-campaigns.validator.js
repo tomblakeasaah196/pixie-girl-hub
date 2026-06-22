@@ -33,6 +33,14 @@ const templateUpdate = z
   })
   .strict();
 
+// Campaign-level merge variables (e.g. the sale's discount, link and end
+// date). Scalar values only; the render pipeline turns sale_ends_at into the
+// countdown tokens. Permissive on keys so a campaign can carry custom tokens.
+const mergeData = z.record(
+  z.string().max(80),
+  z.union([z.string().max(2000), z.number(), z.boolean(), z.null()]),
+);
+
 const campaignCreate = z
   .object({
     campaign_name: z.string().min(1).max(200),
@@ -45,6 +53,23 @@ const campaignCreate = z
     from_email: z.string().email().optional(),
     reply_to_email: z.string().email().optional(),
     scheduled_for: z.string().datetime().optional(),
+    merge_data: mergeData.optional(),
+  })
+  .strict();
+
+const campaignUpdate = z
+  .object({
+    campaign_name: z.string().min(1).max(200).optional(),
+    campaign_type: z
+      .enum(["one_off", "recurring", "triggered", "milestone", "ab_test"])
+      .optional(),
+    segment_id: z.string().uuid().nullable().optional(),
+    default_template_id: z.string().uuid().nullable().optional(),
+    from_name: z.string().max(120).nullable().optional(),
+    from_email: z.string().email().nullable().optional(),
+    reply_to_email: z.string().email().nullable().optional(),
+    scheduled_for: z.string().datetime().nullable().optional(),
+    merge_data: mergeData.optional(),
   })
   .strict();
 
@@ -113,6 +138,7 @@ module.exports = {
   validateTemplateCreate: mk(templateCreate),
   validateTemplateUpdate: mk(templateUpdate),
   validateCampaignCreate: mk(campaignCreate),
+  validateCampaignUpdate: mk(campaignUpdate),
   validateBuildRecipients: mk(buildRecipients),
   validateEventIngest: mk(eventIngest),
   validateNewsletter: mk(newsletter),

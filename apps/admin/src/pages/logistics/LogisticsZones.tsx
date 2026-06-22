@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   MapPin,
   Plus,
@@ -312,6 +312,12 @@ function ZoneEditor({ zone, onClose }: { zone: DeliveryZone | null; onClose: () 
 
   const busy = create.isPending || update.isPending;
 
+  const [mapsReady, setMapsReady] = useState(false);
+
+  useEffect(() => {
+    isGoogleMapsConfigured().then((ok) => setMapsReady(ok));
+  }, []);
+
   function buildGeometry(): ZoneGeometry | null {
     if (type === "country") return {}; // matched by country, no geometry
     if (type === "radius") {
@@ -390,7 +396,7 @@ function ZoneEditor({ zone, onClose }: { zone: DeliveryZone | null; onClose: () 
           </Field>
         ) : (
           <>
-            {isGoogleMapsConfigured() && (
+            {mapsReady && (
               <ZoneMap
                 type={type}
                 initialPoints={parsePoints(pointsText)}
@@ -497,10 +503,16 @@ function PointTester({ onClose }: { onClose: () => void }) {
     [runQuote],
   );
 
+  const [mapsReady, setMapsReady] = useState(false);
+
+  useEffect(() => {
+    isGoogleMapsConfigured().then((ok) => setMapsReady(ok));
+  }, []);
+
   return (
     <Drawer open onClose={onClose} title="Test a point" subtitle="Which zone covers it?">
       <div className="space-y-4 p-1">
-        {isGoogleMapsConfigured() && (
+        {mapsReady && (
           <GooglePlacesAutocomplete
             label="Search an address"
             countryRestriction={null}

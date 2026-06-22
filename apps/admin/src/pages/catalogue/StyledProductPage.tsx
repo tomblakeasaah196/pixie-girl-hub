@@ -29,6 +29,8 @@ import {
 import { AvailabilityPill, StyledStatusBadge } from "./parts";
 import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
+import { AddToCollection } from "./AddToCollection";
+import { AddToBundle } from "./AddToBundle";
 
 function slugify(s: string) {
   return s
@@ -188,8 +190,14 @@ function StyledEditor({
   const [retail, setRetail] = useState(
     s.retail_price_ngn != null ? String(s.retail_price_ngn) : "",
   );
+  const [retailUsd, setRetailUsd] = useState(
+    s.retail_price_usd != null ? String(s.retail_price_usd) : "",
+  );
   const [compareAt, setCompareAt] = useState(
     s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "",
+  );
+  const [compareAtUsd, setCompareAtUsd] = useState(
+    s.compare_at_price_usd != null ? String(s.compare_at_price_usd) : "",
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -198,8 +206,12 @@ function StyledEditor({
     setShortDesc(s.short_description ?? "");
     setLongDesc(s.long_description ?? "");
     setRetail(s.retail_price_ngn != null ? String(s.retail_price_ngn) : "");
+    setRetailUsd(s.retail_price_usd != null ? String(s.retail_price_usd) : "");
     setCompareAt(
       s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "",
+    );
+    setCompareAtUsd(
+      s.compare_at_price_usd != null ? String(s.compare_at_price_usd) : "",
     );
   }, [s]);
 
@@ -208,8 +220,12 @@ function StyledEditor({
     shortDesc !== (s.short_description ?? "") ||
     longDesc !== (s.long_description ?? "") ||
     retail !== (s.retail_price_ngn != null ? String(s.retail_price_ngn) : "") ||
+    retailUsd !==
+      (s.retail_price_usd != null ? String(s.retail_price_usd) : "") ||
     compareAt !==
-      (s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "");
+      (s.compare_at_price_ngn != null ? String(s.compare_at_price_ngn) : "") ||
+    compareAtUsd !==
+      (s.compare_at_price_usd != null ? String(s.compare_at_price_usd) : "");
 
   const save = () =>
     update.mutate({
@@ -217,7 +233,9 @@ function StyledEditor({
       short_description: shortDesc.trim() || null,
       long_description: longDesc.trim() || null,
       retail_price_ngn: retail ? Number(retail) : null,
+      retail_price_usd: retailUsd ? Number(retailUsd) : null,
       compare_at_price_ngn: compareAt ? Number(compareAt) : null,
+      compare_at_price_usd: compareAtUsd ? Number(compareAtUsd) : null,
     });
 
   return (
@@ -308,7 +326,7 @@ function StyledEditor({
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Retail price" hint="own price at size S">
+              <Field label="Retail price" hint="Naira · size S">
                 <NumberField
                   value={retail}
                   onChange={setRetail}
@@ -316,11 +334,27 @@ function StyledEditor({
                   disabled={!canEdit}
                 />
               </Field>
-              <Field label="Compare-at" hint="optional was/now">
+              <Field label="Retail price" hint="US Dollar · size S">
+                <NumberField
+                  value={retailUsd}
+                  onChange={setRetailUsd}
+                  suffix="$"
+                  disabled={!canEdit}
+                />
+              </Field>
+              <Field label="Compare-at" hint="Naira · was/now">
                 <NumberField
                   value={compareAt}
                   onChange={setCompareAt}
                   suffix="₦"
+                  disabled={!canEdit}
+                />
+              </Field>
+              <Field label="Compare-at" hint="US Dollar · was/now">
+                <NumberField
+                  value={compareAtUsd}
+                  onChange={setCompareAtUsd}
+                  suffix="$"
                   disabled={!canEdit}
                 />
               </Field>
@@ -391,6 +425,16 @@ function StyledEditor({
               wholesale base · stock source
             </p>
           </Card>
+          {canEdit && (
+            <Card className="p-4">
+              <AddToCollection styledId={s.styled_id} />
+            </Card>
+          )}
+          {canEdit && (
+            <Card className="p-4">
+              <AddToBundle styledId={s.styled_id} />
+            </Card>
+          )}
         </div>
       </div>
 
@@ -408,8 +452,8 @@ function StyledEditor({
         onClose={() => setConfirmDelete(false)}
         onConfirm={() => remove.mutate(s.styled_id, { onSuccess: onBack })}
         title="Delete styled product?"
-        message="This removes the styled listing. The base product and its stock are unaffected."
-        confirmLabel="Delete"
+        message="This moves the styled product, its colours, and all variants to the trash. They can be restored within 15 days — after that they are permanently purged. The base product and its stock are unaffected."
+        confirmLabel="Move to trash"
         busy={remove.isPending}
       />
     </div>

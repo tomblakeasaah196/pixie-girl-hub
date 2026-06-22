@@ -32,6 +32,7 @@ import {
   Scissors,
   Palette,
   ArrowLeftRight,
+  Gauge,
   type LucideIcon,
 } from "lucide-react";
 
@@ -234,12 +235,36 @@ export const MODULES: AppModule[] = [
     icon: ArrowLeftRight,
   },
   {
+    key: "my-hr",
+    label: "My HR",
+    description: "My earnings, leave & targets",
+    group: "people",
+    route: "/my-hr",
+    icon: Wallet,
+  },
+  {
     key: "hr",
-    label: "HR & Payroll",
-    description: "People & pay",
+    label: "HR & Staff",
+    description: "People, attendance & pay",
     group: "people",
     route: "/hr",
     icon: UserCog,
+  },
+  {
+    key: "payroll",
+    label: "Payroll",
+    description: "Runs, payslips & disbursement",
+    group: "people",
+    route: "/payroll",
+    icon: Wallet,
+  },
+  {
+    key: "performance",
+    label: "Performance",
+    description: "Appraisals & reviews",
+    group: "people",
+    route: "/performance",
+    icon: Gauge,
   },
   {
     key: "contacts",

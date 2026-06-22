@@ -71,11 +71,16 @@ export interface Variant {
   variant_length_inches: number | null;
   variant_colour: string | null;
   price_storefront_ngn: number | null;
+  price_storefront_usd: number | null;
   price_pos_ngn: number | null;
+  price_pos_usd: number | null;
   // Operational wholesale price stays visible to ops/sales (NOT cost).
   price_wholesale_ngn: number | null;
+  price_wholesale_usd: number | null;
   price_partner_ngn: number | null;
+  price_partner_usd: number | null;
   compare_at_price_ngn: number | null;
+  compare_at_price_usd: number | null;
   reorder_point: number | null;
   is_default: boolean;
   is_active: boolean;
@@ -108,7 +113,9 @@ export interface StyledProduct {
   style_addon_price_ngn: number | null;
   // Styled retail is its OWN price (the size-S anchor), not base + add-on.
   retail_price_ngn: number | null;
+  retail_price_usd: number | null;
   compare_at_price_ngn: number | null;
+  compare_at_price_usd: number | null;
   category_id: string | null;
   status: StyledStatus;
   is_visible_storefront: boolean;
@@ -138,6 +145,10 @@ export interface StyledProduct {
   colours?: StyledColour[];
   variants?: StyledVariant[];
   price_range?: { min: number; max: number } | null;
+  // Trash list only: the date this product is purged for good (deleted_at + 15d).
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  purge_at?: string | null;
   created_at: string;
 }
 
@@ -155,6 +166,10 @@ export interface StyledColour {
   is_default: boolean;
   is_active: boolean;
   image_count?: number;
+  // Trash (soft-delete). purge_at = deleted_at + 15 days (set on trashed rows).
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  purge_at?: string | null;
 }
 
 /** A sellable colour × size SKU. effective_price_ngn is the computed retail
@@ -166,9 +181,13 @@ export interface StyledVariant {
   size_code: string;
   // Third axis (optional): lace construction. NULL = no lace dimension.
   lace_code: string | null;
+  // The specific base SKU this variant is cut from (every variant has its own).
+  base_product_id: string | null;
   sku: string;
   price_override_ngn: number | null;
+  price_override_usd: number | null;
   compare_at_price_ngn: number | null;
+  compare_at_price_usd: number | null;
   is_active: boolean;
   is_default: boolean;
   display_order: number;
@@ -180,8 +199,20 @@ export interface StyledVariant {
   size_premium_ngn: number;
   lace_label: string | null;
   lace_premium_ngn: number | null;
+  base_product_name?: string | null;
   anchor_price_ngn: number | null;
   effective_price_ngn: number | null;
+  // Trash (soft-delete). purge_at = deleted_at + 15 days (set on trashed rows).
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  purge_at?: string | null;
+}
+
+/** The per-product Trash bin: colours + variants soft-deleted, each carrying the
+ *  date it is purged for good (deleted_at + 15 days). */
+export interface StyledTrashContents {
+  colours: StyledColour[];
+  variants: StyledVariant[];
 }
 
 /** Brand-wide head-size ladder (S/M/L/XL) — premium + circumference + tip. */
@@ -190,6 +221,9 @@ export interface SizeTier {
   size_code: string;
   label: string;
   premium_ngn: number;
+  // Absolute USD premium added to a USD-priced styled product for this size
+  // (set manually beside premium_ngn — never auto-converted).
+  premium_usd: number | null;
   circumference_min_in: number | null;
   circumference_max_in: number | null;
   circumference_min_cm: number | null;
@@ -204,6 +238,8 @@ export interface LaceSize {
   lace_code: string;
   label: string;
   premium_ngn: number;
+  // Absolute USD premium for this lace construction (manual, beside premium_ngn).
+  premium_usd: number | null;
   description: string | null;
   display_order: number;
   is_active: boolean;
@@ -213,6 +249,9 @@ export interface CatalogueConfig {
   head_size_guide_md: string | null;
   // One-click Categories toggle — off by default, restored from Config.
   categories_enabled: boolean;
+  // One-click: allow base (stock-room) products in collections + bundles.
+  // Off by default — only styled products may be added.
+  allow_base_in_collections_bundles: boolean;
 }
 export interface SizeConfig {
   tiers: SizeTier[];
@@ -270,7 +309,9 @@ export interface ServiceOffering {
   short_description: string | null;
   long_description: string | null;
   base_price_ngn: number | null;
+  base_price_usd: number | null;
   compare_at_price_ngn: number | null;
+  compare_at_price_usd: number | null;
   price_is_from: boolean;
   duration_minutes: number | null;
   category: string | null;
@@ -325,6 +366,7 @@ export interface Bundle {
   description: string | null;
   pricing_model: string;
   bundle_price_ngn: number | null;
+  bundle_price_usd: number | null;
   discount_value: number | null;
   valid_from: string;
   valid_to: string | null;
@@ -332,6 +374,48 @@ export interface Bundle {
   is_active: boolean;
   display_order: number;
   hero_image_url?: string | null;
+  // Attached on the detail fetch (GET /retention/bundles/:id).
+  components?: BundleComponent[];
+}
+
+/** A component inside a bundle. Going forward this is a STYLED product
+ *  (styled_id); legacy base product / variant fields are kept for historical
+ *  rows + the one-click base-allowed path. Carries the joined name + unit price
+ *  the editor uses to preview the bundle subtotal. */
+export interface BundleComponent {
+  bundle_product_id: string;
+  bundle_id: string;
+  product_id: string | null;
+  variant_id: string | null;
+  styled_id: string | null;
+  quantity: number;
+  role: string;
+  display_order: number;
+  product_name: string | null;
+  product_code: string | null;
+  styled_name: string | null;
+  styled_slug: string | null;
+  styled_status: StyledStatus | null;
+  unit_price_ngn: number | null;
+}
+
+/** A STYLED product curated into a collection (collections never hold bases). */
+export interface CollectionMember {
+  member_id: string;
+  collection_id: string;
+  styled_id: string;
+  display_order: number;
+  styled_name: string;
+  styled_slug: string;
+  styled_status: StyledStatus;
+  retail_price_ngn: number | null;
+  retail_price_usd: number | null;
+  image_url: string | null;
+}
+
+/** Collection detail (GET /catalogue/collections/:id) carries its members. */
+export interface CollectionDetail extends Collection {
+  members: CollectionMember[];
 }
 
 // ════════════════════════════════════════════════════════════
@@ -537,6 +621,8 @@ export interface StyledFilters {
   status?: StyledStatus;
   base_product_id?: string;
   category_id?: string;
+  page?: number;
+  page_size?: number;
 }
 
 export function useStyledProducts(filters: StyledFilters = {}) {
@@ -551,7 +637,8 @@ export function useStyledProducts(filters: StyledFilters = {}) {
             status: filters.status,
             base_product_id: filters.base_product_id,
             category_id: filters.category_id,
-            page_size: "100",
+            page: filters.page ? String(filters.page) : undefined,
+            page_size: String(filters.page_size ?? 100),
           })}`,
         )
         .then(toList),
@@ -752,7 +839,9 @@ export interface ServiceInput {
   short_description?: string | null;
   long_description?: string | null;
   base_price_ngn?: number;
+  base_price_usd?: number | null;
   compare_at_price_ngn?: number | null;
+  compare_at_price_usd?: number | null;
   price_is_from?: boolean;
   duration_minutes?: number | null;
   category?: string | null;
@@ -815,6 +904,16 @@ export function useUpdateService() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<ServiceInput> }) =>
       api.patch<ServiceOffering>(`/service-catalogue/${id}`, patch),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
+  });
+}
+
+export function useDeleteService() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/service-catalogue/${id}`),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["catalogue", "services", brand] }),
   });
@@ -926,9 +1025,11 @@ export function useBundles() {
   });
 }
 
-/** A bundle component points at a base product (or a specific variant) with a
- *  quantity. The backend requires at least one. */
+/** A bundle component. Prefer styled_id (the storefront listing); product_id /
+ *  variant_id (a base target) are only accepted when the catalogue config flag
+ *  allow_base_in_collections_bundles is on. The backend requires at least one. */
 export interface BundleComponentInput {
+  styled_id?: string;
   product_id?: string;
   variant_id?: string;
   quantity?: number;
@@ -941,6 +1042,7 @@ export interface BundleCreateInput {
   description?: string | null;
   pricing_model: string;
   bundle_price_ngn?: number;
+  bundle_price_usd?: number;
   discount_value?: number;
   is_visible_storefront?: boolean;
   components: BundleComponentInput[];
@@ -974,8 +1076,64 @@ export function useUpdateBundle() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Bundle> }) =>
       api.patch<Bundle>(`/retention/bundles/${id}`, patch),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] });
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "bundles", brand, "one", vars.id],
+      });
+    },
+  });
+}
+
+/** Bundle detail — carries its component products (base products / variants). */
+export function useBundle(id: string | null) {
+  const brand = useBrand();
+  return useQuery<Bundle>({
+    queryKey: ["catalogue", "bundles", brand, "one", id],
+    queryFn: () => api.get<Bundle>(`/retention/bundles/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useDeleteBundle() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/retention/bundles/${id}`),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
+  });
+}
+
+function invalidateBundle(qc: QueryClient, brand: string, id: string) {
+  qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] });
+  qc.invalidateQueries({
+    queryKey: ["catalogue", "bundles", brand, "one", id],
+  });
+}
+
+export function useAddBundleComponent(bundleId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (component: BundleComponentInput) =>
+      api.post<BundleComponent>(
+        `/retention/bundles/${bundleId}/components`,
+        component,
+      ),
+    onSuccess: () => invalidateBundle(qc, brand, bundleId),
+  });
+}
+
+export function useRemoveBundleComponent(bundleId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (componentId: string) =>
+      api.delete<void>(
+        `/retention/bundles/${bundleId}/components/${componentId}`,
+      ),
+    onSuccess: () => invalidateBundle(qc, brand, bundleId),
   });
 }
 
@@ -1052,6 +1210,14 @@ export interface SaveSizeConfigInput {
   size_guide_title?: string | null;
   head_size_guide_md?: string | null;
   categories_enabled?: boolean;
+  allow_base_in_collections_bundles?: boolean;
+}
+
+/** Convenience: may base products be added to collections + bundles? Defaults to
+ *  false while the config loads, so the UI shows styled-only until we know. */
+export function useAllowBaseInCollectionsBundles(): boolean {
+  const { data } = useSizeConfig();
+  return data?.config?.allow_base_in_collections_bundles ?? false;
 }
 
 /** Convenience: is the Categories feature switched on? Defaults to false while
@@ -1121,7 +1287,7 @@ export function useDeleteColour(styledId: string) {
       api.delete<void>(
         `/catalogue/styled-products/${styledId}/colours/${colourId}`,
       ),
-    onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
+    onSuccess: () => invalidateStyledProductTrash(qc, brand, styledId),
   });
 }
 
@@ -1239,7 +1405,57 @@ export function useDeleteStyledVariant(styledId: string) {
       api.delete<void>(
         `/catalogue/styled-products/${styledId}/variants/${variantId}`,
       ),
-    onSuccess: () => invalidateStyledDetail(qc, brand, styledId),
+    onSuccess: () => invalidateStyledProductTrash(qc, brand, styledId),
+  });
+}
+
+// ── Per-product Trash (colours + variants, 15-day purge) ──
+function invalidateStyledProductTrash(
+  qc: QueryClient,
+  brand: string,
+  styledId: string,
+) {
+  invalidateStyledDetail(qc, brand, styledId);
+  qc.invalidateQueries({
+    queryKey: ["catalogue", "styled-trash", brand, styledId],
+  });
+}
+
+/** The Trash bin for one styled product: soft-deleted colours + variants, each
+ *  with its purge date (deleted_at + 15 days). */
+export function useStyledProductTrash(styledId: string | null, enabled = true) {
+  const brand = useBrand();
+  return useQuery<StyledTrashContents>({
+    queryKey: ["catalogue", "styled-trash", brand, styledId],
+    queryFn: () =>
+      api.get<StyledTrashContents>(
+        `/catalogue/styled-products/${styledId}/trash`,
+      ),
+    enabled: enabled && !!styledId,
+  });
+}
+
+export function useRestoreColour(styledId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (colourId: string) =>
+      api.post<StyledColour>(
+        `/catalogue/styled-products/${styledId}/colours/${colourId}/restore`,
+      ),
+    onSuccess: () => invalidateStyledProductTrash(qc, brand, styledId),
+  });
+}
+
+export function useRestoreStyledVariant(styledId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (variantId: string) =>
+      api.post<StyledVariant>(
+        `/catalogue/styled-products/${styledId}/variants/${variantId}/restore`,
+      ),
+    onSuccess: () => invalidateStyledProductTrash(qc, brand, styledId),
   });
 }
 
@@ -1308,21 +1524,87 @@ export function useRestoreStyled() {
 // ════════════════════════════════════════════════════════════
 // Quick add-to-collection (from a product)
 // ════════════════════════════════════════════════════════════
+/** Add a STYLED product to a collection (collections never hold base products). */
 export function useAddCollectionMember() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
     mutationFn: ({
       collectionId,
-      productId,
+      styledId,
     }: {
       collectionId: string;
-      productId: string;
+      styledId: string;
     }) =>
       api.post<{ member_id: string }>(
         `/catalogue/collections/${collectionId}/members`,
-        { product_id: productId },
+        { styled_id: styledId },
       ),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] });
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "collections", brand, "one", vars.collectionId],
+      });
+    },
+  });
+}
+
+/** Add a STYLED product to a bundle (bundles curate styled products; a base is
+ *  only accepted when allow_base_in_collections_bundles is on). Mirror of
+ *  useAddCollectionMember so the same picker works for both targets. */
+export function useAddStyledToBundle() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({
+      bundleId,
+      styledId,
+    }: {
+      bundleId: string;
+      styledId: string;
+    }) =>
+      api.post<BundleComponent>(`/retention/bundles/${bundleId}/components`, {
+        styled_id: styledId,
+        quantity: 1,
+        role: "core",
+      }),
+    onSuccess: (_d, vars) => invalidateBundle(qc, brand, vars.bundleId),
+  });
+}
+
+export function useRemoveCollectionMember(collectionId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (styledId: string) =>
+      api.delete<void>(
+        `/catalogue/collections/${collectionId}/members/${styledId}`,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] });
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "collections", brand, "one", collectionId],
+      });
+    },
+  });
+}
+
+/** Collection detail — carries its styled-product members. */
+export function useCollection(id: string | null) {
+  const brand = useBrand();
+  return useQuery<CollectionDetail>({
+    queryKey: ["catalogue", "collections", brand, "one", id],
+    queryFn: () => api.get<CollectionDetail>(`/catalogue/collections/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useDeleteCollection() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.delete<void>(`/catalogue/collections/${id}`),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] }),
   });

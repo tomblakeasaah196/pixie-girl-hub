@@ -78,7 +78,11 @@ async function buildWorkbook({ sheets, reference = [] }) {
     const ws = wb.addWorksheet(REFERENCE_SHEET, {
       properties: { tabColor: { argb: "FF690909" } },
     });
-    ws.columns = reference.map((b) => ({ header: b.title, key: b.title, width: 28 }));
+    ws.columns = reference.map((b) => ({
+      header: b.title,
+      key: b.title,
+      width: 28,
+    }));
     const maxLen = Math.max(...reference.map((b) => b.values.length), 0);
     for (let r = 0; r < maxLen; r++) {
       ws.addRow(reference.map((b) => b.values[r] ?? null));
@@ -172,4 +176,126 @@ function cellValue(cell) {
   return v;
 }
 
-module.exports = { buildWorkbook, parseWorkbook, REFERENCE_SHEET };
+// ════════════════════════════════════════════════════════════
+// CSV — a single-sheet, Excel-friendly text format. Templates and exports
+// are emitted as CSV (every spreadsheet app opens it, no library needed to
+// edit), while imports accept BOTH CSV and .xlsx (auto-detected by magic
+// bytes — an .xlsx is a ZIP archive starting "PK\x03\x04").
+// ════════════════════════════════════════════════════════════
+
+/** Quote a CSV cell per RFC 4180 (escape embedded quotes, wrap if needed). */
+function csvCell(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * Build a CSV buffer (UTF-8 with a BOM so Excel renders Naira names / accents
+ * correctly). Rows are objects keyed by each column's `key`.
+ * @param {{columns:{header:string,key:string}[], rows?:Object[]}} opts
+ * @returns {Buffer}
+ */
+function buildCsv({ columns, rows = [] }) {
+  const lines = [columns.map((c) => csvCell(c.header)).join(",")];
+  for (const row of rows) {
+    lines.push(columns.map((c) => csvCell(row[c.key])).join(","));
+  }
+  return Buffer.from(`\uFEFF${lines.join("\r\n")}\r\n`, "utf8");
+}
+
+/**
+ * Parse CSV text (RFC 4180: quoted fields, "" escapes, CRLF/LF, BOM) into an
+ * array of objects keyed by the trimmed header row. Fully blank rows skipped.
+ * @param {string|Buffer} input
+ * @returns {Object[]}
+ */
+function parseCsv(input) {
+  let text = Buffer.isBuffer(input) ? input.toString("utf8") : String(input);
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // strip BOM
+
+  const grid = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  const endField = () => {
+    row.push(field);
+    field = "";
+  };
+  const endRow = () => {
+    endField();
+    grid.push(row);
+    row = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else quoted = false;
+      } else field += ch;
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === ",") {
+      endField();
+    } else if (ch === "\n") {
+      endRow();
+    } else if (ch === "\r") {
+      if (text[i + 1] !== "\n") endRow(); // lone CR = EOL; CRLF handled by \n
+    } else field += ch;
+  }
+  if (field !== "" || row.length) endRow(); // flush trailing field/row
+
+  if (!grid.length) return [];
+  const headers = grid[0].map((h) => String(h ?? "").trim());
+  const out = [];
+  for (let r = 1; r < grid.length; r++) {
+    const cells = grid[r];
+    if (cells.every((c) => String(c ?? "").trim() === "")) continue;
+    const obj = {};
+    headers.forEach((h, idx) => {
+      if (h) obj[h] = cells[idx] ?? "";
+    });
+    out.push(obj);
+  }
+  return out;
+}
+
+/** An .xlsx is a ZIP — its first bytes are the local-file-header magic "PK". */
+function looksLikeXlsx(buffer) {
+  return (
+    Buffer.isBuffer(buffer) &&
+    buffer.length >= 2 &&
+    buffer[0] === 0x50 &&
+    buffer[1] === 0x4b
+  );
+}
+
+/**
+ * Parse an uploaded import file (CSV or .xlsx) into a single array of header-
+ * keyed rows. Format is auto-detected by content, so the same import endpoint
+ * accepts either — the filename is advisory only.
+ * @param {{buffer:Buffer, filename?:string}} opts
+ * @returns {Promise<Object[]>}
+ */
+async function parseUpload({ buffer, filename = "" }) {
+  if (looksLikeXlsx(buffer)) {
+    const sheets = await parseWorkbook(buffer);
+    const names = Object.keys(sheets);
+    return names.length ? sheets[names[0]] : [];
+  }
+  // Extension is a last-resort hint; content detection above is authoritative.
+  void filename;
+  return parseCsv(buffer);
+}
+
+module.exports = {
+  buildWorkbook,
+  parseWorkbook,
+  buildCsv,
+  parseCsv,
+  parseUpload,
+  REFERENCE_SHEET,
+};

@@ -158,6 +158,44 @@ select {
   background: rgb(var(--panel));
 }
 
+/* Raw <input>/<textarea> — pin the glyph colour to the ACTIVE theme's --text so
+   it always pairs with the same theme's --panel-2 background. Without this the
+   colour merely inherits, which on the public Walk-in / Online-QR forms read as
+   cream-on-cream (a WCAG failure) the moment a control was rendered with a
+   mismatched/late theme. A Tailwind `text-*` utility still wins where set. */
+input,
+textarea {
+  color: rgb(var(--text));
+}
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--text-faint));
+  opacity: 1;
+}
+input,
+textarea,
+select {
+  caret-color: rgb(var(--accent));
+}
+
+/* Browser autofill: Chrome/Safari paint their own near-white swatch + dark
+   glyphs over filled name/email/phone fields, which on our dark forms looks
+   like cream-on-cream. Force the fill back onto the theme tokens so an
+   autofilled field stays as legible as a typed one. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: rgb(var(--text));
+  -webkit-box-shadow: 0 0 0 1000px rgb(var(--panel-2)) inset;
+  box-shadow: 0 0 0 1000px rgb(var(--panel-2)) inset;
+  caret-color: rgb(var(--text));
+  /* Defer the UA's background repaint indefinitely so our inset wins. */
+  transition: background-color 9999s ease-in-out 0s;
+}
+
 @keyframes slide-in-right {
   from {
     opacity: 0;

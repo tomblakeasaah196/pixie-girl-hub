@@ -184,6 +184,96 @@ async function softDelete({ client, id }) {
   return rowCount > 0;
 }
 
+// ── Bulk import / export (global) ────────────────────────
+/** First non-deleted contact with this exact phone — the import de-dupe key. */
+async function findByPhone({ client, phone }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.contacts
+      WHERE primary_phone = $1 AND is_deleted = false
+      ORDER BY created_at LIMIT 1`,
+    [phone],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * First non-deleted contact matching phone OR email — the de-dupe key now that
+ * a contact may carry only one of the two. Returns null when neither is given.
+ */
+async function findByPhoneOrEmail({ client, phone, email }) {
+  if (!phone && !email) return null;
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.contacts
+      WHERE is_deleted = false
+        AND ( ($1::text   IS NOT NULL AND primary_phone = $1)
+           OR ($2::citext IS NOT NULL AND email = $2) )
+      ORDER BY created_at LIMIT 1`,
+    [phone || null, email || null],
+  );
+  return rows[0] || null;
+}
+
+/** Union extra types into a contact's contact_type[] (idempotent, de-duped). */
+async function addContactTypes({ client, id, types }) {
+  const { rowCount } = await ex(client)(
+    `UPDATE shared.contacts
+        SET contact_type = ARRAY(
+              SELECT DISTINCT e FROM unnest(contact_type || $2::text[]) AS e
+            )
+      WHERE contact_id = $1 AND is_deleted = false`,
+    [id, types],
+  );
+  return rowCount > 0;
+}
+
+/**
+ * Rows for a bulk export: contacts of an optional `type` ('customer' |
+ * 'supplier'; null = both) created within [from, to] (inclusive day bounds),
+ * each with their default delivery address flattened in.
+ */
+async function exportRows({ type, from, to, limit = 50000 }) {
+  const where = ["c.is_deleted = false"];
+  const params = [];
+  let i = 1;
+  if (type) {
+    where.push(`$${i++} = ANY(c.contact_type)`);
+    params.push(type);
+  } else {
+    where.push(`(c.contact_type && ARRAY['customer','supplier']::text[])`);
+  }
+  if (from) {
+    where.push(`c.created_at >= $${i++}::date`);
+    params.push(from);
+  }
+  if (to) {
+    where.push(`c.created_at < ($${i++}::date + INTERVAL '1 day')`);
+    params.push(to);
+  }
+  params.push(limit);
+  const { rows } = await query(
+    `SELECT c.contact_id, c.contact_type, c.display_name, c.first_name,
+            c.last_name, c.company_name, c.gender, c.date_of_birth, c.tin,
+            c.cac_number, c.primary_phone, c.whatsapp_number, c.email,
+            c.country_code, c.instagram_handle, c.tiktok_handle,
+            c.facebook_handle, c.priority_level, c.source, c.notes,
+            c.created_at,
+            a.line1, a.area, a.city, a.state, a.country
+       FROM shared.contacts c
+       LEFT JOIN LATERAL (
+         SELECT line1, area, city, state, country
+           FROM shared.contact_addresses
+          WHERE contact_id = c.contact_id
+          ORDER BY is_default DESC, created_at
+          LIMIT 1
+       ) a ON true
+      WHERE ${where.join(" AND ")}
+      ORDER BY c.created_at DESC
+      LIMIT $${i}`,
+    params,
+  );
+  return rows;
+}
+
 // ── Segments (brand-scoped) ──────────────────────────────
 function assertBrand(b) {
   if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
@@ -349,7 +439,14 @@ async function listTags({ client, brand, contact_id }) {
   );
   return rows;
 }
-async function addTag({ client, brand, contact_id, tag_name, colour, user_id }) {
+async function addTag({
+  client,
+  brand,
+  contact_id,
+  tag_name,
+  colour,
+  user_id,
+}) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.contact_tags
        (contact_id, tag_name, business, colour, created_by)
@@ -381,6 +478,10 @@ module.exports = {
   create,
   update,
   softDelete,
+  findByPhone,
+  findByPhoneOrEmail,
+  addContactTypes,
+  exportRows,
   listSegments,
   getSegment,
   createSegment,

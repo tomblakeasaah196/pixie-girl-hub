@@ -12,10 +12,17 @@
 "use strict";
 
 const repo = require("./campaigns.repo");
+const bundleRepo = require("./campaigns.bundles.repo");
+const bundleService = require("./campaigns.bundles.service");
 const main = require("./campaigns.service");
 const events = require("./campaigns.events");
+const salesService = require("../sales/sales.service");
+const salesRepo = require("../sales/sales.repo");
+const paymentLink = require("../sales/payment-link.service");
+const contactsRepo = require("../../shared/contacts/contacts.repo");
 const { transaction, query } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
 
 const { BRANDS } = require("../../config/brands");
 
@@ -74,21 +81,85 @@ async function resolveCampaign({ slug, brand, brandHint }) {
   return c ? { campaign: c, brand: targetBrand } : null;
 }
 
+const NIGERIAN_CITIES = [
+  "Lagos", "Abuja", "Port Harcourt", "Ibadan", "Lekki",
+  "Ikeja", "Victoria Island", "Ikoyi", "Ajah", "Surulere",
+  "Yaba", "Enugu", "Kaduna", "Benin City", "Warri",
+];
+
+function generateSimulatedSocialProof(campaign, bundles) {
+  const bundleNames = bundles.map((b) => b.bundle_name).filter(Boolean);
+  if (!bundleNames.length) return { recent_orders: [], live_viewers: 0 };
+
+  const now = Date.now();
+  const recent_orders = [];
+  const count = 3 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < count; i++) {
+    recent_orders.push({
+      bundle_name: bundleNames[Math.floor(Math.random() * bundleNames.length)],
+      city: NIGERIAN_CITIES[Math.floor(Math.random() * NIGERIAN_CITIES.length)],
+      at: now - Math.floor(Math.random() * 30 * 60_000),
+    });
+  }
+  recent_orders.sort((a, b) => b.at - a.at);
+
+  const floor = campaign.viewer_count_floor || 15;
+  const live_viewers = floor + Math.floor(Math.random() * Math.ceil(floor * 0.6));
+
+  return { recent_orders, live_viewers };
+}
+
 async function getLanding({ slug, brand, brandHint }) {
   const found = await resolveCampaign({ slug, brand, brandHint });
   if (!found || !PUBLIC_STATUSES.has(found.campaign.status)) {
     throw new NotFoundError("Campaign");
   }
   const { campaign, brand: resolvedBrand } = found;
-  const products = await repo.listProducts({
-    brand: resolvedBrand,
-    campaign_id: campaign.campaign_id,
-  });
-  const payload = main.buildLandingPayload(
-    campaign,
-    products,
-    main.resolveState(campaign),
-  );
+  const state = main.resolveState(campaign);
+
+  const [products, bundles, tiers, upsells] = await Promise.all([
+    repo.listProducts({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    }),
+    bundleService.listCampaignBundles({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    }),
+    bundleService.listTiers({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    }),
+    bundleService.listUpsells({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    }),
+  ]);
+
+  const payload = main.buildLandingPayload(campaign, products, state);
+
+  if (state === "live" || state === "before") {
+    payload.bundles = bundles || [];
+    payload.tiers = tiers || [];
+    payload.upsells = upsells || [];
+  }
+
+  if (state === "live") {
+    const proof = generateSimulatedSocialProof(campaign, bundles || []);
+    payload.recent_orders = proof.recent_orders;
+    payload.live_viewers = proof.live_viewers;
+  }
+
+  payload.starts_at = campaign.starts_at;
+  payload.ends_at = campaign.ends_at;
+  payload.exit_intent_enabled = campaign.exit_intent_enabled || false;
+  payload.exit_intent_code = campaign.exit_intent_code || null;
+  payload.exit_intent_discount_ngn = campaign.exit_intent_discount_ngn || null;
+  payload.show_viewer_count_policy = campaign.show_viewer_count_policy || null;
+  payload.viewer_count_floor = campaign.viewer_count_floor || null;
+  payload.last_call_surge_minutes = campaign.last_call_surge_minutes || 0;
+  payload.vip_early_access_minutes = campaign.vip_early_access_minutes || 0;
+
   const brandInfo = await getBrandPublic(resolvedBrand);
   return withBrandInfo(payload, brandInfo);
 }
@@ -281,4 +352,272 @@ async function signup({ slug, brand, brandHint, input, ip, user_agent }) {
   });
 }
 
-module.exports = { getIndex, getLanding, getStock, signup };
+/**
+ * Public checkout — the public landing page submits a cart + contact + gateway.
+ *
+ * Flow:
+ *   1. Resolve campaign (must be live).
+ *   2. Find-or-create a shared CRM contact (+ address).
+ *   3. Map the client cart (bundle_id / product_id + qty) to order lines by
+ *      resolving each to its constituent variant(s). Prices are NEVER trusted
+ *      from the client — the discount engine re-prices server-side.
+ *   4. Create the Sales Order via salesService.createOrder (handles discount,
+ *      margin-floor, stock reservation, idempotency, audit).
+ *   5. Initiate payment via paymentLink.createPaymentLink (gateway chain +
+ *      automatic fallback).
+ *   6. Return { order_id, payment_url } — the frontend redirects the customer.
+ */
+async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
+  const found = await resolveCampaign({ slug, brand, brandHint });
+  if (!found) throw new NotFoundError("Campaign");
+  const { campaign, brand: resolvedBrand } = found;
+
+  if (main.resolveState(campaign) !== "live") {
+    throw new AppError(
+      "CAMPAIGN_NOT_LIVE",
+      "This sale is not currently open for purchases",
+      409,
+    );
+  }
+
+  // ── 1. Find or create CRM contact + address ────────────
+  // Runs in its own transaction so it doesn't nest inside salesService's.
+  const contact = await transaction(async (client) => {
+    const c = input.contact;
+    const email = c.email.toLowerCase().trim();
+    const phone = c.phone.trim();
+
+    let ct = await contactsRepo.findByPhoneOrEmail({ client, phone, email });
+    if (!ct) {
+      ct = await contactsRepo.create({
+        client,
+        input: {
+          contact_type: ["customer"],
+          display_name: `${c.first_name} ${c.last_name}`,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email,
+          primary_phone: phone,
+          source: "campaign_checkout",
+          instagram_handle: c.instagram_handle || null,
+          visible_to: [resolvedBrand],
+        },
+        user_id: null,
+      });
+    } else {
+      await contactsRepo.addContactTypes({
+        client,
+        id: ct.contact_id,
+        types: ["customer"],
+      });
+    }
+
+    const addr = c.address;
+    const addresses = await contactsRepo.listAddresses({
+      client,
+      contact_id: ct.contact_id,
+    });
+    if (!addresses.some((a) => a.address_type === "shipping" && a.is_default)) {
+      await contactsRepo.addAddress({
+        client,
+        contact_id: ct.contact_id,
+        input: {
+          address_type: "shipping",
+          is_default: true,
+          line1: addr.line1,
+          line2: addr.line2 || null,
+          city: addr.city,
+          state: addr.state || null,
+          country: addr.country || "Nigeria",
+        },
+        user_id: null,
+      });
+    }
+    return ct;
+  });
+
+  // ── 2. Map cart items → order lines (variant-level) ────
+  // The client sends bundle_id or product_id. We resolve each to its
+  // constituent variant(s) so salesService.createOrder can do its job.
+  // Prices are NEVER trusted from the client.
+  const orderLines = [];
+
+  for (const cartItem of input.cart) {
+    if (cartItem.bundle_id) {
+      const items = await bundleRepo.listBundleItems({
+        brand: resolvedBrand,
+        bundle_id: cartItem.bundle_id,
+      });
+      if (!items.length) {
+        throw new AppError(
+          "BUNDLE_EMPTY",
+          `Bundle ${cartItem.bundle_id} has no items`,
+          409,
+        );
+      }
+      for (const bi of items) {
+        if (!bi.variant_id) continue;
+        orderLines.push({
+          variant_id: bi.variant_id,
+          quantity: (bi.quantity || 1) * cartItem.quantity,
+        });
+      }
+    } else if (cartItem.product_id) {
+      const { rows } = await query(
+        `SELECT variant_id FROM ${resolvedBrand}.product_variants
+           WHERE product_id = $1 AND is_active = true
+           ORDER BY display_order ASC, created_at ASC
+           LIMIT 1`,
+        [cartItem.product_id],
+      );
+      if (!rows[0]) {
+        throw new AppError(
+          "PRODUCT_NO_VARIANT",
+          `Product ${cartItem.product_id} has no active variant`,
+          409,
+        );
+      }
+      orderLines.push({
+        variant_id: rows[0].variant_id,
+        quantity: cartItem.quantity,
+      });
+    }
+  }
+
+  if (!orderLines.length) {
+    throw new AppError("EMPTY_ORDER", "No valid items in the cart", 400);
+  }
+
+  // ── 3. Create the Sales Order ──────────────────────────
+  // salesService.createOrder runs its own transaction (discount engine,
+  // margin-floor, stock reservation, idempotency, audit — all atomic).
+  const order = await salesService.createOrder({
+    brand: resolvedBrand,
+    user: { user_id: null },
+    request_id: input.client_idempotency_key,
+    input: {
+      contact_id: contact.contact_id,
+      // 'storefront' = an online store sale (the public sale landing is the
+      // brand's storefront). 'campaign_landing' is not a valid channel per the
+      // sales_orders.sales_channel CHECK constraint.
+      sales_channel: "storefront",
+      order_type: "dispatch",
+      sales_campaign_id: campaign.campaign_id,
+      campaign_slug: campaign.slug,
+      lines: orderLines,
+      coupon_code: input.coupon_code || null,
+      client_idempotency_key: input.client_idempotency_key,
+      utm_source: input.utm?.utm_source || null,
+      utm_medium: input.utm?.utm_medium || null,
+      utm_campaign: input.utm?.utm_campaign || campaign.slug,
+    },
+  });
+
+  // ── 4. Record checkout metadata (best-effort) ──────────
+  // sales_orders carries customer_notes (human, fulfilment-facing) and
+  // internal_notes (structured: gift instructions, consent, request origin).
+  const c = input.contact;
+  if (c.notes || c.gift || c.consent) {
+    const internal = {};
+    if (c.gift) {
+      internal.gift = c.gift;
+      if (c.gift.ship_to_recipient && c.gift.recipient_address) {
+        internal.ship_to = "recipient";
+        internal.recipient_address = c.gift.recipient_address;
+      }
+    }
+    if (c.consent) internal.consent = c.consent;
+    internal.ip = ip;
+    internal.user_agent = user_agent;
+
+    const customerParts = [];
+    if (c.notes) customerParts.push(c.notes);
+    if (c.gift) {
+      customerParts.push(`GIFT ORDER for ${c.gift.recipient_name}`);
+      if (c.gift.message) customerParts.push(`Gift message: ${c.gift.message}`);
+      if (c.gift.ship_to_recipient && c.gift.recipient_address) {
+        const ra = c.gift.recipient_address;
+        customerParts.push(
+          `Ship to recipient: ${ra.line1}${ra.line2 ? `, ${ra.line2}` : ""}, ${ra.city}${ra.state ? `, ${ra.state}` : ""}, ${ra.country || "Nigeria"}`,
+        );
+      }
+    }
+    try {
+      await query(
+        `UPDATE ${resolvedBrand}.sales_orders
+            SET customer_notes = $1, internal_notes = $2
+          WHERE order_id = $3`,
+        [
+          customerParts.length ? customerParts.join("\n") : null,
+          Object.keys(internal).length ? JSON.stringify(internal) : null,
+          order.order_id,
+        ],
+      );
+    } catch (err) {
+      logger.warn({ err, order_id: order.order_id }, "checkout meta skipped");
+    }
+  }
+
+  // ── 5. Initiate payment ────────────────────────────────
+  // Payment init hits external APIs — kept outside DB transactions so a
+  // gateway timeout doesn't hold locks. If it fails the order still exists
+  // in pending_payment state and the customer can retry via the pay link.
+  //
+  // The return_url_base points the gateway callback to the landing thank-you
+  // page so the customer is redirected back after payment.
+  const brandConfig = await getBrandPublic(resolvedBrand);
+  const saleDomain = brandConfig?.sales_subdomain || brandConfig?.storefront_domain;
+  const landingBase = saleDomain
+    ? `https://${saleDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+    : null;
+  const returnUrlBase = landingBase
+    ? `${landingBase}/checkout/${slug}/thank-you`
+    : undefined;
+
+  try {
+    const payResult = await paymentLink.createPaymentLink({
+      brand: resolvedBrand,
+      order_id: order.order_id,
+      currency: "NGN",
+      return_url_base: returnUrlBase,
+      preferred_provider: input.payment_gateway,
+    });
+    events.emit("checkout_completed", {
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+      order_id: order.order_id,
+      gateway: payResult.provider,
+    });
+    return { order_id: order.order_id, payment_url: payResult.checkout_url };
+  } catch (err) {
+    logger.error(
+      { err, order_id: order.order_id },
+      "payment gateway init failed after order creation",
+    );
+    throw new AppError(
+      "PAYMENT_INIT_FAILED",
+      "Order created but payment could not be initiated. Please try again.",
+      502,
+      { metadata: { order_id: order.order_id } },
+    );
+  }
+}
+
+async function getOrderStatus({ slug, brand, brandHint, orderId }) {
+  const found = await resolveCampaign({ slug, brand, brandHint });
+  if (!found) throw new NotFoundError("Campaign");
+  const { brand: resolvedBrand } = found;
+
+  const order = await salesRepo.findById({ brand: resolvedBrand, id: orderId });
+  if (!order) throw new NotFoundError("Order");
+
+  return {
+    order_id: order.order_id,
+    order_number: order.order_number,
+    status: order.status,
+    total_ngn: order.total_ngn,
+    currency: "NGN",
+  };
+}
+
+module.exports = { getIndex, getLanding, getStock, signup, checkout, getOrderStatus };

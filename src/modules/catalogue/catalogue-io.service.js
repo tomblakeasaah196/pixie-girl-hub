@@ -91,33 +91,37 @@ function nameIndex(rows, key) {
 // Styled products (multi-sheet)
 // ════════════════════════════════════════════════════════════
 const STYLED_SHEET = "Styled Products";
-const COLOUR_SHEET = "Colours";
 
+// One row per SELLABLE variant (colour × lace × size). A styled product is the
+// set of rows that share a "Styled Name". Styled-level fields (Status, Slug,
+// Short Description) are taken from the first row of each group; everything else
+// is per-variant. Export emits this EXACT shape, so an export re-imports 1:1
+// (the round-trip the owner relies on for Faitlynhair → Pixie Girl).
 const STYLED_COLUMNS = [
-  { header: "Base product*", key: "base", width: 28, ref: "Existing base products" },
-  { header: "Name*", key: "name", width: 28 },
-  { header: "Slug", key: "slug", width: 22 },
-  { header: "Short description", key: "short_description", width: 32 },
-  { header: "Long description", key: "long_description", width: 40 },
-  { header: "Retail price (NGN)", key: "retail_price_ngn", width: 16 },
-  { header: "Compare-at price", key: "compare_at_price_ngn", width: 16 },
-  { header: "Lace codes (comma)", key: "lace_size_codes", width: 18 },
+  { header: "Styled Name*", key: "styled_name", width: 24 },
+  { header: "Base Product*", key: "base", width: 34, ref: "Existing base products" },
+  { header: "Colour*", key: "colour", width: 18 },
+  { header: "Hex", key: "hex", width: 10 },
+  { header: "Lace", key: "lace", width: 16, ref: "Lace codes" },
+  { header: "Size*", key: "size", width: 8, ref: "Size codes" },
+  { header: "Retail Price (NGN)*", key: "price", width: 16 },
+  { header: "Retail Price (USD)", key: "price_usd", width: 16 },
+  { header: "Compare-at Price (NGN)", key: "compare_at", width: 18 },
+  { header: "Compare-at Price (USD)", key: "compare_at_usd", width: 18 },
+  { header: "Default Colour?", key: "is_default_colour", width: 14, list: ["yes", "no"] },
   { header: "Collections (comma)", key: "collections", width: 24 },
   { header: "Bundles (comma)", key: "bundles", width: 24 },
-  { header: "Meta title", key: "meta_title", width: 22 },
-  { header: "Meta description", key: "meta_description", width: 30 },
-  { header: "Status", key: "status", width: 12, list: ["draft", "live"] },
+  { header: "Status", key: "status", width: 10, list: ["draft", "live"] },
+  { header: "Short Description", key: "short_description", width: 30 },
+  { header: "Long Description", key: "long_description", width: 40 },
+  { header: "Slug", key: "slug", width: 20 },
+  { header: "Image URLs (comma)", key: "images", width: 36 },
 ];
 
-const COLOUR_COLUMNS = [
-  { header: "Styled name*", key: "styled", width: 28 },
-  { header: "Colour name*", key: "name", width: 22 },
-  { header: "Hex", key: "hex", width: 12 },
-  { header: "Premium (NGN)", key: "premium_ngn", width: 14 },
-  { header: "Video URL", key: "external_video_url", width: 28 },
-  { header: "Image URLs (comma)", key: "images", width: 40 },
-  { header: "Default?", key: "is_default", width: 10, list: ["yes", "no"] },
-];
+// Canonical lace CODE from a human label ("HD6x6 Center" → "HD6X6CENTER"); the
+// original text is kept as the lace label. Keeps codes FK-safe + dropdown-clean.
+const laceCodeOf = (s) =>
+  isBlank(s) ? null : String(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 function templateCols(cols, refLetters) {
   return cols.map((c) => ({
@@ -139,54 +143,134 @@ async function styledTemplate({ brand }) {
     { title: "Lace codes", values: ref.lace },
   ];
   const refTitles = reference.map((r) => r.title);
+  const base0 = ref.bases[0] ?? "";
+  const lace0 = ref.lace[0] ?? "";
+  const sizeS = ref.sizes.includes("S") ? "S" : ref.sizes[0] ?? "S";
+  const sizeM = ref.sizes.includes("M") ? "M" : ref.sizes[1] ?? sizeS;
+  // Two sample rows: one product + colour in two sizes (price steps by size).
+  const sample = (size, price) => ({
+    styled_name: "Sample Pixie",
+    base: base0,
+    colour: "Natural Black",
+    hex: "#1B1B1B",
+    lace: lace0,
+    size,
+    price,
+    is_default_colour: "yes",
+    collections: ref.collections[0] ?? "",
+    status: "draft",
+    short_description: "Soft natural-black pixie.",
+    long_description:
+      "A lightweight everyday pixie in a soft natural black, pre-plucked hairline and bleached knots for a scalp-real finish.",
+  });
   return buildWorkbook({
     sheets: [
       {
         name: STYLED_SHEET,
         columns: templateCols(STYLED_COLUMNS, refTitles),
-        rows: [
-          {
-            base: ref.bases[0] ?? "",
-            name: "Full Frontal Curly Pixie",
-            retail_price_ngn: 180000,
-            lace_size_codes: ref.lace.slice(0, 2).join(", "),
-            collections: ref.collections[0] ?? "",
-            status: "draft",
-          },
-        ],
-      },
-      {
-        name: COLOUR_SHEET,
-        columns: templateCols(COLOUR_COLUMNS),
-        rows: [
-          {
-            styled: "Full Frontal Curly Pixie",
-            name: "Natural Black",
-            hex: "#1B1B1B",
-            is_default: "yes",
-          },
-        ],
+        rows: [sample(sizeS, 389000), sample(sizeM, 389000)],
       },
     ],
     reference,
   });
 }
 
+// Per-colour image URLs for a styled product (best-effort; never fails export).
+async function colourImageMap(brand, styled_id) {
+  const map = new Map();
+  try {
+    const { rows } = await query(
+      `SELECT styled_colour_id, cdn_url FROM ${t(brand, "product_images")}
+        WHERE styled_id = $1 AND styled_colour_id IS NOT NULL AND cdn_url IS NOT NULL
+        ORDER BY display_order`,
+      [styled_id],
+    );
+    for (const r of rows) {
+      if (!map.has(r.styled_colour_id)) map.set(r.styled_colour_id, []);
+      map.get(r.styled_colour_id).push(r.cdn_url);
+    }
+  } catch {
+    /* images are a bonus in export */
+  }
+  return map;
+}
+async function collectionsForStyled(brand, styled_id) {
+  if (!styled_id) return "";
+  try {
+    const { rows } = await query(
+      `SELECT c.name FROM ${t(brand, "product_collections")} c
+         JOIN ${t(brand, "product_collection_members")} m ON m.collection_id = c.collection_id
+        WHERE m.styled_id = $1 ORDER BY c.name`,
+      [styled_id],
+    );
+    return rows.map((r) => r.name).join(", ");
+  } catch {
+    return "";
+  }
+}
+async function bundlesForStyled(brand, styled_id) {
+  if (!styled_id) return "";
+  try {
+    const { rows } = await query(
+      `SELECT b.display_name FROM ${t(brand, "bundle_offers")} b
+         JOIN ${t(brand, "bundle_offer_products")} bp ON bp.bundle_id = b.bundle_id
+        WHERE bp.styled_id = $1 ORDER BY b.display_name`,
+      [styled_id],
+    );
+    return rows.map((r) => r.display_name).join(", ");
+  } catch {
+    return "";
+  }
+}
+
+// Export EXACTLY the import shape: one row per variant, so a downloaded export
+// re-imports 1:1 (the Faitlynhair → Pixie Girl round-trip).
 async function exportStyled({ brand }) {
   const { data } = await styledRepo.list({ brand, page_size: 1000 });
-  const rows = data.map((s) => ({
-    base: s.base_name,
-    name: s.name,
-    slug: s.slug,
-    short_description: s.short_description,
-    long_description: s.long_description,
-    retail_price_ngn: s.retail_price_ngn,
-    compare_at_price_ngn: s.compare_at_price_ngn,
-    lace_size_codes: Array.isArray(s.lace_size_codes)
-      ? s.lace_size_codes.join(", ")
-      : "",
-    status: s.status,
-  }));
+  const rows = [];
+  for (const s of data) {
+    const [variants, imagesByColour, collections, bundles] = await Promise.all([
+      variantsRepo.listVariants({ brand, styled_id: s.styled_id }),
+      colourImageMap(brand, s.styled_id),
+      collectionsForStyled(brand, s.styled_id),
+      bundlesForStyled(brand, s.styled_id),
+    ]);
+    if (!variants.length) {
+      rows.push({
+        styled_name: s.name,
+        base: s.base_name,
+        status: s.status,
+        slug: s.slug,
+        short_description: s.short_description,
+        long_description: s.long_description,
+        collections,
+        bundles,
+      });
+      continue;
+    }
+    for (const v of variants) {
+      rows.push({
+        styled_name: s.name,
+        base: v.base_product_name || s.base_name,
+        colour: v.colour_name,
+        hex: v.colour_hex,
+        lace: v.lace_label || v.lace_code || "",
+        size: v.size_code,
+        price: v.effective_price_ngn,
+        price_usd: v.price_override_usd,
+        compare_at: v.compare_at_price_ngn,
+        compare_at_usd: v.compare_at_price_usd,
+        is_default_colour: yn(v.colour_is_default),
+        collections,
+        bundles,
+        status: s.status,
+        short_description: s.short_description,
+        long_description: s.long_description,
+        slug: s.slug,
+        images: (imagesByColour.get(v.colour_id) || []).join(", "),
+      });
+    }
+  }
   return buildWorkbook({
     sheets: [{ name: STYLED_SHEET, columns: templateCols(STYLED_COLUMNS), rows }],
   });
@@ -203,9 +287,9 @@ async function findStyledBySlug(brand, slug) {
 
 async function importStyled({ brand, user, request_id, buffer }) {
   const sheets = await parseWorkbook(buffer);
-  const styledRows = sheets[STYLED_SHEET] ?? [];
-  const colourRows = sheets[COLOUR_SHEET] ?? [];
+  const rows = sheets[STYLED_SHEET] ?? Object.values(sheets)[0] ?? [];
 
+  // Resolve names → ids once.
   const baseRes = await query(
     `SELECT product_id, name FROM ${t(brand, "products")} WHERE is_deleted = false`,
   );
@@ -218,160 +302,304 @@ async function importStyled({ brand, user, request_id, buffer }) {
     `SELECT bundle_id, display_name FROM ${t(brand, "bundle_offers")} WHERE is_active = true`,
   );
   const bundleByName = nameIndex(bundleRes.rows, "display_name");
+  const sizeTiers = await variantsRepo.listSizeTiers({ brand });
+  const sizeByCode = new Map();
+  for (const stz of sizeTiers) {
+    sizeByCode.set(lc(stz.size_code), stz.size_code);
+    if (stz.label) sizeByCode.set(lc(stz.label), stz.size_code);
+  }
+  const laceRows = await variantsRepo.listLaceSizes({ brand });
+  const laceCodes = new Set(laceRows.map((l) => l.lace_code));
 
   const results = [];
-  const styledByName = new Map(); // name(lc) → { styled_id, base_product_id, hasLace }
   let created = 0;
   let updated = 0;
+  let skippedMissingBase = 0;
 
-  // ── Pass 1: styled products ──
-  for (let i = 0; i < styledRows.length; i++) {
-    const raw = styledRows[i];
+  // Every base referenced by name that doesn't exist yet. Keyed by the base
+  // name; collects the styled products + sizes that need it, so the import can
+  // hand Operations one grouped "create these bases, then re-import" list
+  // instead of failing the whole file (owner directive: let the rest succeed).
+  const missingBases = new Map();
+  const noteMissingBase = (name, styledName, sizeRaw) => {
+    const key = lc(name);
+    if (!missingBases.has(key))
+      missingBases.set(key, {
+        base: String(name).trim(),
+        rows: 0,
+        styled_products: new Set(),
+        sizes: new Set(),
+      });
+    const m = missingBases.get(key);
+    m.rows += 1;
+    if (styledName) m.styled_products.add(styledName);
+    const size = str(sizeRaw);
+    if (size) m.sizes.add(size);
+  };
+
+  // Group rows by Styled Name (first-seen order preserved).
+  const groups = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    const raw = rows[i];
     const line = i + 2;
-    const name = str(raw["Name*"]);
-    const baseName = str(raw["Base product*"]);
-    if (!name || !baseName) {
-      results.push({ sheet: STYLED_SHEET, row: line, status: "skipped", reason: "name + base required" });
+    const styledName = str(raw["Styled Name*"]);
+    if (!styledName) {
+      results.push({ sheet: STYLED_SHEET, row: line, status: "skipped", reason: "Styled Name required" });
       continue;
     }
-    const base = baseByName.get(lc(baseName));
-    if (!base) {
-      results.push({ sheet: STYLED_SHEET, row: line, status: "error", reason: `base "${baseName}" not found` });
+    const key = lc(styledName);
+    if (!groups.has(key)) groups.set(key, { name: styledName, items: [] });
+    groups.get(key).items.push({ raw, line });
+  }
+
+  for (const group of groups.values()) {
+    const first = group.items[0].raw;
+    const firstLine = group.items[0].line;
+    // The styled product's seed base = the first row that names an EXISTING
+    // base. A group isn't lost just because its first row's base is missing —
+    // we scan all its rows for one that resolves. (Per-row missing bases are
+    // noted + skipped in the variant loop below, so we don't double-count here.)
+    let repBase = null;
+    for (const it of group.items) {
+      const bn = str(it.raw["Base Product*"]);
+      if (!bn) continue;
+      const resolved = baseByName.get(lc(bn));
+      if (resolved) {
+        repBase = resolved;
+        break;
+      }
+    }
+    if (!repBase) {
+      // No row in the whole group cites a base that exists — can't create a
+      // styled product without a base, so block it and report every base it
+      // wanted (don't hard-fail the file; other groups still import).
+      for (const it of group.items) {
+        const bn = str(it.raw["Base Product*"]);
+        if (bn) noteMissingBase(bn, group.name, it.raw["Size*"]);
+      }
+      const repBaseName = str(first["Base Product*"]);
+      skippedMissingBase += group.items.length;
+      results.push({
+        sheet: STYLED_SHEET,
+        row: firstLine,
+        status: "error",
+        reason: `base "${repBaseName || ""}" not found for "${group.name}" — create the base product, then re-import`,
+      });
       continue;
     }
-    const laceCodes = csv(raw["Lace codes (comma)"]);
+    const slug = str(first["Slug"]) || slugify(group.name);
+    const laceLabels = [...new Set(group.items.map((it) => str(it.raw["Lace"])).filter(Boolean))];
+    const laceCodeList = laceLabels.map(laceCodeOf).filter(Boolean);
+    const prices = group.items.map((it) => num(it.raw["Retail Price (NGN)*"])).filter((x) => x !== null && x !== undefined);
+    const anchor = prices.length ? Math.min(...prices) : null;
+    const usdPrices = group.items.map((it) => num(it.raw["Retail Price (USD)"])).filter((x) => x !== null && x !== undefined);
+    const usdAnchor = usdPrices.length ? Math.min(...usdPrices) : null;
+
     const input = {
-      base_product_id: base.product_id,
-      name,
-      slug: str(raw["Slug"]) || slugify(name),
-      short_description: str(raw["Short description"]) ?? null,
-      long_description: str(raw["Long description"]) ?? null,
-      retail_price_ngn: num(raw["Retail price (NGN)"]) ?? null,
-      compare_at_price_ngn: num(raw["Compare-at price"]) ?? null,
-      lace_size_codes: laceCodes ?? null,
-      meta_title: str(raw["Meta title"]) ?? null,
-      meta_description: str(raw["Meta description"]) ?? null,
+      base_product_id: repBase.product_id,
+      name: group.name,
+      slug,
+      short_description: str(first["Short Description"]) ?? null,
+      long_description: str(first["Long Description"]) ?? null,
+      retail_price_ngn: anchor,
+      retail_price_usd: usdAnchor,
+      lace_size_codes: laceCodeList.length ? laceCodeList : null,
     };
+
+    let styled;
     try {
-      const existing = await findStyledBySlug(brand, input.slug);
-      let styled;
+      const existing = await findStyledBySlug(brand, slug);
       if (existing) {
-        styled = await styledRepo.update({
-          brand,
-          id: existing.styled_id,
-          patch: input,
-        });
+        styled = await styledRepo.update({ brand, id: existing.styled_id, patch: input });
         updated++;
-        results.push({ sheet: STYLED_SHEET, row: line, status: "updated", name });
+        results.push({ sheet: STYLED_SHEET, row: firstLine, status: "updated", name: group.name });
       } else {
         styled = await styledService.create({ brand, user, request_id, input });
         created++;
-        results.push({ sheet: STYLED_SHEET, row: line, status: "created", name });
-      }
-      styledByName.set(lc(name), {
-        styled_id: styled.styled_id,
-        base_product_id: base.product_id,
-        hasLace: !!(laceCodes && laceCodes.length),
-      });
-
-      // Join collections (membership is keyed on the base product).
-      for (const cName of csv(raw["Collections (comma)"]) ?? []) {
-        const col = collectionByName.get(lc(cName));
-        if (!col) {
-          results.push({ sheet: STYLED_SHEET, row: line, status: "warn", reason: `collection "${cName}" not found` });
-          continue;
-        }
-        await catalogueService
-          .addCollectionMember({
-            brand,
-            user,
-            request_id,
-            id: col.collection_id,
-            input: { product_id: base.product_id },
-          })
-          .catch(() => {});
-      }
-      // Join bundles (the styled's base becomes a bundle component).
-      for (const bName of csv(raw["Bundles (comma)"]) ?? []) {
-        const bdl = bundleByName.get(lc(bName));
-        if (!bdl) {
-          results.push({ sheet: STYLED_SHEET, row: line, status: "warn", reason: `bundle "${bName}" not found` });
-          continue;
-        }
-        await bundleService
-          .addComponent({
-            brand,
-            id: bdl.bundle_id,
-            component: { product_id: base.product_id, quantity: 1, role: "core" },
-          })
-          .catch(() => {});
+        results.push({ sheet: STYLED_SHEET, row: firstLine, status: "created", name: group.name });
       }
     } catch (err) {
-      results.push({ sheet: STYLED_SHEET, row: line, status: "error", reason: err.userMessage || err.message });
-    }
-  }
-
-  // ── Pass 2: colours (+ image URLs) ──
-  for (let i = 0; i < colourRows.length; i++) {
-    const raw = colourRows[i];
-    const line = i + 2;
-    const styledName = str(raw["Styled name*"]);
-    const colourName = str(raw["Colour name*"]);
-    if (!styledName || !colourName) continue;
-    const target = styledByName.get(lc(styledName));
-    if (!target) {
-      results.push({ sheet: COLOUR_SHEET, row: line, status: "warn", reason: `styled "${styledName}" not in import` });
+      results.push({ sheet: STYLED_SHEET, row: firstLine, status: "error", reason: err.userMessage || err.message });
       continue;
     }
-    try {
-      const colour = await variantsService.createColour({
-        brand,
-        user,
-        request_id,
-        styled_id: target.styled_id,
-        input: {
-          name: colourName,
-          hex: str(raw["Hex"]) ?? null,
-          premium_ngn: num(raw["Premium (NGN)"]) ?? 0,
-          external_video_url: str(raw["Video URL"]) ?? null,
-          is_default: bool(raw["Default?"]) ?? false,
-        },
-      });
-      for (const url of csv(raw["Image URLs (comma)"]) ?? []) {
-        await catalogueRepo
-          .addImage({
-            brand,
-            image: {
-              product_id: target.base_product_id,
-              styled_id: target.styled_id,
-              styled_colour_id: colour.colour_id,
-              file_path: url,
-              cdn_url: url,
-              is_primary: false,
-              uploaded_by: user.user_id,
-            },
-          })
+
+    // Ensure a lace vocabulary entry for every code this product uses.
+    for (const label of laceLabels) {
+      const code = laceCodeOf(label);
+      if (code && !laceCodes.has(code)) {
+        await variantsRepo
+          .createLaceSize({ brand, input: { lace_code: code, label, display_order: laceCodes.size } })
+          .then(() => laceCodes.add(code))
           .catch(() => {});
       }
-    } catch (err) {
-      results.push({ sheet: COLOUR_SHEET, row: line, status: "error", reason: err.userMessage || err.message });
+    }
+
+    // Colours: find-or-create one per distinct colour name in the group.
+    const colourIdByName = new Map();
+    const existingColours = await variantsRepo.listColours({ brand, styled_id: styled.styled_id });
+    for (const c of existingColours) colourIdByName.set(lc(c.name), c.colour_id);
+    for (const it of group.items) {
+      const cname = str(it.raw["Colour*"]);
+      if (!cname || colourIdByName.has(lc(cname))) continue;
+      try {
+        const colour = await variantsService.createColour({
+          brand, user, request_id, styled_id: styled.styled_id,
+          input: {
+            name: cname,
+            hex: str(it.raw["Hex"]) ?? null,
+            premium_ngn: 0, // per-variant price carries the truth; colour stays flat
+            is_default: bool(it.raw["Default Colour?"]) ?? false,
+          },
+        });
+        colourIdByName.set(lc(cname), colour.colour_id);
+        for (const url of csv(it.raw["Image URLs (comma)"]) ?? []) {
+          await catalogueRepo
+            .addImage({
+              brand,
+              image: {
+                product_id: repBase.product_id,
+                styled_id: styled.styled_id,
+                styled_colour_id: colour.colour_id,
+                file_path: url, cdn_url: url, is_primary: false, uploaded_by: user.user_id,
+              },
+            })
+            .catch(() => {});
+        }
+      } catch (err) {
+        results.push({ sheet: STYLED_SHEET, row: it.line, status: "warn", reason: `colour "${cname}": ${err.userMessage || err.message}` });
+      }
+    }
+
+    // Existing variants → map by (colour,size,lace) so re-import updates price.
+    const existingVars = await variantsRepo.listVariants({ brand, styled_id: styled.styled_id });
+    const vkey = (cid, size, lace) => `${cid}:${size}:${lace ?? ""}`;
+    const varByKey = new Map(existingVars.map((v) => [vkey(v.colour_id, v.size_code, v.lace_code), v]));
+
+    let vCreated = 0;
+    for (const it of group.items) {
+      const cname = str(it.raw["Colour*"]);
+      const colour_id = cname && colourIdByName.get(lc(cname));
+      const size_code = sizeByCode.get(lc(str(it.raw["Size*"]) || ""));
+      const laceLabel = str(it.raw["Lace"]);
+      const lace_code = laceLabel ? laceCodeOf(laceLabel) : null;
+      const price = num(it.raw["Retail Price (NGN)*"]) ?? null;
+      const price_usd = num(it.raw["Retail Price (USD)"]) ?? null;
+      const compare_at = num(it.raw["Compare-at Price (NGN)"]) ?? null;
+      const compare_at_usd = num(it.raw["Compare-at Price (USD)"]) ?? null;
+      const rowBaseName = str(it.raw["Base Product*"]);
+      // A row that names a base which doesn't exist is skipped + reported (never
+      // silently re-homed onto the seed base). A row that leaves base blank
+      // inherits the styled product's seed base.
+      let rowBase = repBase;
+      if (rowBaseName) {
+        const resolved = baseByName.get(lc(rowBaseName));
+        if (!resolved) {
+          noteMissingBase(rowBaseName, group.name, it.raw["Size*"]);
+          skippedMissingBase += 1;
+          results.push({
+            sheet: STYLED_SHEET,
+            row: it.line,
+            status: "skipped",
+            reason: `base "${rowBaseName}" not found — create it, then re-import this row`,
+          });
+          continue;
+        }
+        rowBase = resolved;
+      }
+      if (!colour_id) {
+        results.push({ sheet: STYLED_SHEET, row: it.line, status: "warn", reason: `colour "${cname || ""}" unresolved` });
+        continue;
+      }
+      if (!size_code) {
+        results.push({ sheet: STYLED_SHEET, row: it.line, status: "warn", reason: `size "${str(it.raw["Size*"]) || ""}" not a known tier` });
+        continue;
+      }
+      const key = vkey(colour_id, size_code, lace_code);
+      try {
+        if (varByKey.has(key)) {
+          await variantsService.updateVariant({
+            brand, user, request_id, styled_id: styled.styled_id,
+            styled_variant_id: varByKey.get(key).styled_variant_id,
+            patch: {
+              price_override_ngn: price,
+              price_override_usd: price_usd,
+              compare_at_price_ngn: compare_at,
+              compare_at_price_usd: compare_at_usd,
+              base_product_id: rowBase.product_id,
+            },
+          });
+        } else {
+          const v = await variantsService.createVariant({
+            brand, user, request_id, styled_id: styled.styled_id,
+            input: {
+              colour_id, size_code, lace_code, base_product_id: rowBase.product_id,
+              price_override_ngn: price,
+              price_override_usd: price_usd,
+              compare_at_price_ngn: compare_at,
+              compare_at_price_usd: compare_at_usd,
+            },
+          });
+          varByKey.set(key, v);
+          vCreated++;
+        }
+      } catch (err) {
+        results.push({ sheet: STYLED_SHEET, row: it.line, status: "error", reason: err.userMessage || err.message });
+      }
+    }
+    if (vCreated) {
+      results.push({ sheet: STYLED_SHEET, row: firstLine, status: "info", reason: `${vCreated} variants for "${group.name}"` });
+    }
+
+    // Collections + bundles both curate the STYLED product (never the base).
+    // Union the membership values across the group's rows.
+    const cols = new Set();
+    const bdls = new Set();
+    for (const it of group.items) {
+      (csv(it.raw["Collections (comma)"]) ?? []).forEach((x) => cols.add(x));
+      (csv(it.raw["Bundles (comma)"]) ?? []).forEach((x) => bdls.add(x));
+    }
+    for (const cName of cols) {
+      const col = collectionByName.get(lc(cName));
+      if (!col) {
+        results.push({ sheet: STYLED_SHEET, row: firstLine, status: "warn", reason: `collection "${cName}" not found` });
+        continue;
+      }
+      await catalogueService
+        .addCollectionMember({ brand, user, request_id, id: col.collection_id, input: { styled_id: styled.styled_id } })
+        .catch(() => {});
+    }
+    for (const bName of bdls) {
+      const bdl = bundleByName.get(lc(bName));
+      if (!bdl) {
+        results.push({ sheet: STYLED_SHEET, row: firstLine, status: "warn", reason: `bundle "${bName}" not found` });
+        continue;
+      }
+      await bundleService
+        .addComponent({ brand, id: bdl.bundle_id, component: { styled_id: styled.styled_id, quantity: 1, role: "core" } })
+        .catch(() => {});
     }
   }
 
-  // ── Pass 3: auto-generate the variant matrix for each new styled ──
-  for (const target of styledByName.values()) {
-    await variantsService
-      .bulkCreateVariants({
-        brand,
-        user,
-        request_id,
-        styled_id: target.styled_id,
-        input: { all_sizes: true, all_lace: target.hasLace },
-      })
-      .catch(() => {});
-  }
+  // Grouped "missing base" report: one entry per referenced base that doesn't
+  // exist, with the styled products + sizes that need it. Operations creates
+  // these bases, then re-imports — the rows that succeeded stay put.
+  const missing_bases = [...missingBases.values()]
+    .map((m) => ({
+      base: m.base,
+      rows: m.rows,
+      styled_products: [...m.styled_products].sort(),
+      sizes: [...m.sizes].sort(),
+    }))
+    .sort((a, b) => a.base.localeCompare(b.base));
 
-  return { created, updated, styled_total: styledRows.length, colour_total: colourRows.length, results };
+  return {
+    created,
+    updated,
+    total: rows.length,
+    skipped_missing_base: skippedMissingBase,
+    missing_bases,
+    results,
+  };
 }
 
 // ════════════════════════════════════════════════════════════
@@ -543,4 +771,9 @@ module.exports = {
   bundlesTemplate,
   exportBundles,
   importBundles,
+  // Exported for unit tests (column fidelity + lace-code normalisation).
+  STYLED_SHEET,
+  STYLED_COLUMNS,
+  templateCols,
+  laceCodeOf,
 };

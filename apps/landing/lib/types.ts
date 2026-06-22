@@ -41,6 +41,7 @@ export interface LandingBlock {
 
 export interface LandingProduct {
   product_id?: string;
+  styled_id?: string;
   category_id?: string | null;
   name?: string;
   campaign_price_ngn?: number | null;
@@ -48,6 +49,24 @@ export interface LandingProduct {
   is_featured?: boolean;
   stock_remaining?: number | null;
   image_url?: string | null;
+}
+
+export interface PositionLadderItem {
+  position: number;
+  discount_ngn: number;
+  label?: string;
+}
+
+export interface StackingBonusConfig {
+  min_distinct_bundles: number;
+  discount_ngn: number;
+  label?: string;
+}
+
+export interface BulkTierConfig {
+  min_qty: number;
+  discount_per_item_ngn: number;
+  label?: string;
 }
 
 export interface LandingBundle {
@@ -138,4 +157,14 @@ export interface LandingPayload {
   last_call_surge_minutes?: number;
   /** VIP early-access window (before public Live). */
   vip_early_access_minutes?: number;
+  /** Delivery timeline — weeks for in-stock products. */
+  delivery_weeks?: number | null;
+  /** Extra weeks added for preorder items. */
+  preorder_extra_weeks?: number;
+  /** Per-position discount ladder for individual wig purchases. */
+  position_ladder?: PositionLadderItem[] | null;
+  /** Auto-apply bonus for combining bundles. */
+  stacking_bonus?: StackingBonusConfig | null;
+  /** Reseller/bulk tiers visible on landing page. */
+  bulk_tiers?: BulkTierConfig[] | null;
 }

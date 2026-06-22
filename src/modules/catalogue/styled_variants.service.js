@@ -46,11 +46,28 @@ const A = (
 const num = (v) =>
   v === null || v === undefined || v === "" ? null : Number(v);
 
-/** Effective retail of a colour×size, or null when the anchor isn't set yet. */
-function computeEffective({ anchor, colour_premium, size_premium, override }) {
+/**
+ * Effective retail of a colour×size×lace variant, or null when the anchor
+ * isn't set yet. Mirrors the SQL in styled_variants.repo.listVariants exactly:
+ *   override ?? anchor + colour_premium + size_premium + lace_premium
+ * An explicit override (the per-variant price set on import) always wins, so
+ * imported prices are exact and never recomputed from the ladders.
+ */
+function computeEffective({
+  anchor,
+  colour_premium,
+  size_premium,
+  lace_premium,
+  override,
+}) {
   if (override !== null && override !== undefined) return num(override);
   if (anchor === null || anchor === undefined) return null;
-  return num(anchor) + Number(colour_premium || 0) + Number(size_premium || 0);
+  return (
+    num(anchor) +
+    Number(colour_premium || 0) +
+    Number(size_premium || 0) +
+    Number(lace_premium || 0)
+  );
 }
 
 /** Deterministic, collision-safe short code for a colour's SKUs. */
@@ -132,7 +149,8 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
     if (
       input.size_guide_title !== undefined ||
       input.head_size_guide_md !== undefined ||
-      input.categories_enabled !== undefined
+      input.categories_enabled !== undefined ||
+      input.allow_base_in_collections_bundles !== undefined
     ) {
       config = await repo.upsertConfig({
         client,
@@ -141,6 +159,8 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
           size_guide_title: input.size_guide_title,
           head_size_guide_md: input.head_size_guide_md,
           categories_enabled: input.categories_enabled,
+          allow_base_in_collections_bundles:
+            input.allow_base_in_collections_bundles,
         },
         user_id: user.user_id,
       });
@@ -238,19 +258,100 @@ async function updateColour({
   });
 }
 
+/** Delete a colour → Trash (15-day purge). Its variants go down with it in the
+ *  same transaction, sharing one deleted_at so a later restore brings back
+ *  exactly this set. */
 async function deleteColour({ brand, user, request_id, styled_id, colour_id }) {
-  const ok = await repo.deleteColour({ brand, styled_id, colour_id });
-  if (!ok) throw new NotFoundError("Colour");
-  await A(
-    brand,
-    user.user_id,
-    "catalogue.styled_colour.delete",
-    "styled_colour",
-    colour_id,
-    null,
-    request_id,
-  );
-  events.emit("styled.updated", { brand, id: styled_id });
+  return transaction(async (client) => {
+    const colour = await repo.softDeleteColour({
+      client,
+      brand,
+      styled_id,
+      colour_id,
+      user_id: user.user_id,
+    });
+    if (!colour) throw new NotFoundError("Colour");
+    await repo.softDeleteVariantsForColour({
+      client,
+      brand,
+      styled_id,
+      colour_id,
+      user_id: user.user_id,
+    });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.styled_colour.delete",
+      "styled_colour",
+      colour_id,
+      { trashed: true, purge_at: colour.deleted_at },
+      request_id,
+    );
+    events.emit("styled.updated", { brand, id: styled_id });
+    return { trashed: true };
+  });
+}
+
+/** Restore a trashed colour (and the variants trashed with it). If a live colour
+ *  now holds its name, the restore re-homes it under a "… (restored)" name. */
+async function restoreColour({ brand, user, request_id, styled_id, colour_id }) {
+  return transaction(async (client) => {
+    const trashed = await repo.getTrashedColour({
+      client,
+      brand,
+      styled_id,
+      colour_id,
+    });
+    if (!trashed) throw new NotFoundError("Colour");
+    let name = null;
+    if (
+      await repo.colourNameTaken({
+        client,
+        brand,
+        styled_id,
+        name: trashed.name,
+        except_id: colour_id,
+      })
+    ) {
+      name = `${trashed.name} (restored)`;
+    }
+    const colour = await repo.restoreColour({
+      client,
+      brand,
+      styled_id,
+      colour_id,
+      name,
+    });
+    await repo.restoreVariantsDeletedAt({
+      client,
+      brand,
+      styled_id,
+      deleted_at: trashed.deleted_at,
+      colour_id,
+    });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.styled_colour.restore",
+      "styled_colour",
+      colour_id,
+      { name: colour.name },
+      request_id,
+    );
+    events.emit("styled.updated", { brand, id: styled_id });
+    return colour;
+  });
+}
+
+/** The per-product Trash bin: colours + variants soft-deleted, each with the
+ *  date it is purged for good (deleted_at + 15 days). */
+async function listTrash({ brand, styled_id }) {
+  await loadStyled({ brand, styled_id });
+  const [colours, variants] = await Promise.all([
+    repo.listTrashedColours({ brand, styled_id }),
+    repo.listTrashedVariants({ brand, styled_id }),
+  ]);
+  return { colours, variants };
 }
 
 // ── Per-colour images (gallery per colour / variant) ─────
@@ -498,6 +599,10 @@ async function bulkCreateVariants({
               colour_id: colour.colour_id,
               size_code,
               lace_code,
+              // Every variant carries its own base. The matrix generator seeds
+              // it from the styled product's base; the variant editor / import
+              // can repoint any single combo to a different base SKU.
+              base_product_id: styled.base_product_id,
               sku,
               is_default,
               display_order: order++,
@@ -519,6 +624,62 @@ async function bulkCreateVariants({
     );
     events.emit("styled.updated", { brand, id: styled_id });
     return { created, created_count: created.length, skipped };
+  });
+}
+
+/**
+ * Create ONE colour×size×lace variant with its own base product + price.
+ * Used by the import engine (one row = one variant). The price is stored as
+ * price_override_ngn so the imported figure is exact. The (colour,size,lace)
+ * combo is unique per styled product; a duplicate throws (the importer catches
+ * it and updates the existing row instead).
+ */
+async function createVariant({ brand, user, request_id, styled_id, input }) {
+  return transaction(async (client) => {
+    const styled = await loadStyled({ client, brand, styled_id });
+    const colour = await repo.getColour({
+      client,
+      brand,
+      styled_id,
+      colour_id: input.colour_id,
+    });
+    if (!colour) throw new NotFoundError("Colour");
+    const existing = await repo.existingPairs({ client, brand, styled_id });
+    const short = colourShort(colour);
+    const laceSuffix = input.lace_code ? `-${input.lace_code}` : "";
+    const variant = await repo.createVariant({
+      client,
+      brand,
+      styled_id,
+      input: {
+        colour_id: input.colour_id,
+        size_code: input.size_code,
+        lace_code: input.lace_code ?? null,
+        // Every variant has its own base — fall back to the styled product's
+        // base when the caller doesn't pin a specific one.
+        base_product_id: input.base_product_id ?? styled.base_product_id,
+        sku:
+          input.sku ||
+          `${styled.styled_code}-${short}-${input.size_code}${laceSuffix}`,
+        price_override_ngn: input.price_override_ngn ?? null,
+        price_override_usd: input.price_override_usd ?? null,
+        compare_at_price_ngn: input.compare_at_price_ngn ?? null,
+        compare_at_price_usd: input.compare_at_price_usd ?? null,
+        is_default: input.is_default ?? existing.length === 0,
+        display_order: input.display_order ?? existing.length,
+      },
+    });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.styled_variant.create",
+      "styled_variant",
+      variant.styled_variant_id,
+      { styled_id, sku: variant.sku },
+      request_id,
+    );
+    events.emit("styled.updated", { brand, id: styled_id });
+    return variant;
   });
 }
 
@@ -560,6 +721,7 @@ async function updateVariant({
   });
 }
 
+/** Delete a single variant → Trash (15-day purge). */
 async function deleteVariant({
   brand,
   user,
@@ -567,18 +729,82 @@ async function deleteVariant({
   styled_id,
   styled_variant_id,
 }) {
-  const ok = await repo.deleteVariant({ brand, styled_id, styled_variant_id });
-  if (!ok) throw new NotFoundError("Variant");
+  const variant = await repo.softDeleteVariant({
+    brand,
+    styled_id,
+    styled_variant_id,
+    user_id: user.user_id,
+  });
+  if (!variant) throw new NotFoundError("Variant");
   await A(
     brand,
     user.user_id,
     "catalogue.styled_variant.delete",
     "styled_variant",
     styled_variant_id,
-    null,
+    { trashed: true, purge_at: variant.deleted_at },
     request_id,
   );
   events.emit("styled.updated", { brand, id: styled_id });
+  return { trashed: true };
+}
+
+/** Restore a single trashed variant. Refuses if a live variant has since taken
+ *  its (colour,size,lace) combo or SKU (the partial-unique guards). */
+async function restoreVariant({
+  brand,
+  user,
+  request_id,
+  styled_id,
+  styled_variant_id,
+}) {
+  return transaction(async (client) => {
+    const trashed = await repo.getTrashedVariant({
+      client,
+      brand,
+      styled_id,
+      styled_variant_id,
+    });
+    if (!trashed) throw new NotFoundError("Variant");
+    const clash = await repo.variantComboTaken({
+      client,
+      brand,
+      styled_id,
+      colour_id: trashed.colour_id,
+      size_code: trashed.size_code,
+      lace_code: trashed.lace_code,
+      sku: trashed.sku,
+      except_id: styled_variant_id,
+    });
+    if (clash) {
+      throw new AppError(
+        "VARIANT_COMBO_TAKEN",
+        "A live variant already uses this colour/size/lace or SKU",
+        409,
+        {
+          user_message:
+            "Can’t restore — a live variant already covers this colour, size & lace. Delete that one first, then restore.",
+        },
+      );
+    }
+    const variant = await repo.restoreVariant({
+      client,
+      brand,
+      styled_id,
+      styled_variant_id,
+    });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.styled_variant.restore",
+      "styled_variant",
+      styled_variant_id,
+      { sku: variant.sku },
+      request_id,
+    );
+    events.emit("styled.updated", { brand, id: styled_id });
+    return variant;
+  });
 }
 
 module.exports = {
@@ -590,11 +816,15 @@ module.exports = {
   createColour,
   updateColour,
   deleteColour,
+  restoreColour,
+  listTrash,
   listColourImages,
   addColourImage,
   removeColourImage,
   listVariants,
   bulkCreateVariants,
+  createVariant,
   updateVariant,
   deleteVariant,
+  restoreVariant,
 };

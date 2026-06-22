@@ -2,8 +2,7 @@
 import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { MapPin, Loader2 } from "lucide-react";
-
-const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
+import { getMapsApiKey } from "@/lib/runtime-config";
 
 /** Parsed address components from a Google Places result. */
 export interface PlaceAddress {
@@ -60,9 +59,11 @@ function parseComponents(place: google.maps.places.PlaceResult): PlaceAddress {
 let loaderPromise: Promise<google.maps.PlacesLibrary> | null = null;
 
 async function loadGoogleMaps() {
-  if (!MAPS_KEY) return null;
+  // Key resolved at runtime (server config) so it can be set without a rebuild.
+  const key = await getMapsApiKey();
+  if (!key) return null;
   if (loaderPromise) return loaderPromise;
-  setOptions({ key: MAPS_KEY, v: "weekly" });
+  setOptions({ key, v: "weekly" });
   loaderPromise = importLibrary("places");
   return loaderPromise;
 }
@@ -95,23 +96,44 @@ export function AddressAutocomplete({
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const acRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
+  // null = still checking; false = no key (degrade); true = key present.
+  const [configured, setConfigured] = useState<boolean | null>(null);
 
-  // Load Google Maps once on mount
+  // Resolve the key + load Google Maps once on mount
   useEffect(() => {
-    setLoading(true);
-    loadGoogleMaps()
-      .then(() => setReady(true))
-      .catch(() => {
-        /* key not set or network error — degrade to plain input */
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    (async () => {
+      const key = await getMapsApiKey();
+      if (cancelled) return;
+      setConfigured(Boolean(key));
+      if (!key) {
+        setLoading(false);
+        return;
+      }
+      try {
+        // Only mark ready when the library actually loaded. Without a key
+        // loadGoogleMaps() resolves to null — marking ready then would send
+        // the effect below into the (undefined) global `google` and throw
+        // "google is not defined", crashing the whole public form.
+        const lib = await loadGoogleMaps();
+        if (!cancelled && lib) setReady(true);
+      } catch {
+        /* network error — degrade to plain input */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Wire autocomplete once the API is ready and the input is mounted
   useEffect(() => {
     if (!ready || !inputRef.current) return;
+    if (typeof google === "undefined" || !google.maps?.places) return;
 
     acRef.current = new google.maps.places.Autocomplete(inputRef.current, {
       fields: ["address_components", "geometry", "formatted_address", "url"],
@@ -158,9 +180,9 @@ export function AddressAutocomplete({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={
-          !MAPS_KEY
-            ? "Maps API key not set — type manually"
-            : loading
+          configured === false
+            ? "Type your full address"
+            : loading || configured === null
               ? "Loading Maps…"
               : placeholder
         }
@@ -171,10 +193,10 @@ export function AddressAutocomplete({
       {loading && (
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint animate-spin pointer-events-none" />
       )}
-      {!MAPS_KEY && (
-        <p className="text-[10px] text-warn/80 mt-1">
-          Set <span className="font-mono">VITE_GOOGLE_MAPS_KEY</span> to enable
-          autocomplete.
+      {configured === false && (
+        <p className="text-[10px] text-text-faint mt-1">
+          Map autocomplete isn&rsquo;t available right now — typing your address
+          works fine, our rider will still find you.
         </p>
       )}
     </div>
@@ -191,7 +213,18 @@ export function StaticMapImage({
   lng: number;
   label?: string;
 }) {
-  if (!MAPS_KEY) return null;
+  const [key, setKey] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getMapsApiKey().then((k) => {
+      if (!cancelled) setKey(k);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!key) return null;
 
   const src = [
     "https://maps.googleapis.com/maps/api/staticmap",
@@ -200,7 +233,7 @@ export function StaticMapImage({
     "&size=320x160",
     "&scale=2",
     `&markers=color:red%7Clabel:${label ? encodeURIComponent(label[0]) : "P"}%7C${lat},${lng}`,
-    `&key=${MAPS_KEY}`,
+    `&key=${key}`,
     "&style=feature:poi|visibility:simplified",
   ].join("");
 

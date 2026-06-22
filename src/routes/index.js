@@ -40,6 +40,7 @@ const purchasingRouter = require("../modules/purchasing/purchasing.routes");
 const stockRouter = require("../modules/stock/stock.routes");
 const logisticsRouter = require("../modules/logistics/logistics.routes");
 const hrPayrollRouter = require("../shared/hr_payroll/hr.routes");
+const hrOpsRouter = require("../shared/hr_payroll/hr_ops.routes");
 const attendanceRouter = require("../shared/attendance/attendance.routes");
 const contactsRouter = require("../shared/contacts/contacts.routes");
 const documentsRouter = require("../shared/documents/documents.routes");
@@ -59,6 +60,7 @@ const {
   geoRouter,
 } = require("../modules/platform_settings/geo.public.routes");
 const manifestPublicRouter = require("../modules/platform_settings/manifest.public.routes");
+const configPublicRouter = require("../modules/platform_settings/config.public.routes");
 const salesCampaignsRouter = require("../modules/sales_campaigns/campaigns.routes");
 const landingStudioRouter = require("../modules/landing_studio/landing.routes");
 const retentionRouter = require("../modules/retention/retention.routes");
@@ -198,6 +200,9 @@ function mountRoutes(app) {
   // Unauthenticated branding feed — the login page calls this before
   // a token exists so the shell can theme itself.
   publicRouter.use("/branding", brandingPublicRouter);
+  // Runtime client config (Google Maps key for the public address forms).
+  // Lets the key be set on the server without rebuilding the admin bundle.
+  publicRouter.use("/config", configPublicRouter);
   // Per-IP login greeting ("Welcome from Africa"). Not cached.
   publicRouter.use("/geo-welcome", geoPublicRouter);
   // Storefront SSR currency detection — GET /api/public/geo/currency
@@ -243,6 +248,7 @@ function mountRoutes(app) {
   api.use("/purchasing", purchasingRouter);
   api.use("/stock", stockRouter);
   api.use("/logistics", logisticsRouter);
+  api.use("/hr", hrOpsRouter);
   api.use("/hr", hrPayrollRouter);
   api.use("/staff-invitations", staffInvitationsAdminRouter);
   api.use("/walk-in", walkinAdminRouter);

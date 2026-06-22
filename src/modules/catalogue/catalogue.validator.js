@@ -141,10 +141,15 @@ const variantCreate = z
     variant_density: z.string().max(20).optional(),
     variant_cap_size: z.string().max(40).optional(),
     price_storefront_ngn: money.optional(),
+    price_storefront_usd: money.optional(),
     price_pos_ngn: money.optional(),
+    price_pos_usd: money.optional(),
     price_wholesale_ngn: money.optional(),
+    price_wholesale_usd: money.optional(),
     price_partner_ngn: money.optional(),
+    price_partner_usd: money.optional(),
     compare_at_price_ngn: money.optional(),
+    compare_at_price_usd: money.optional(),
     // cost_price_ngn / min_price_ngn are DEPRECATED here (P0-1): true cost
     // is write-only via the encrypted cost vault, never as plaintext.
     min_margin_pct: z.coerce.number().min(0).max(100).optional(),
@@ -200,7 +205,8 @@ const collectionRule = z
 
 const collectionMember = z
   .object({
-    product_id: z.string().uuid(),
+    // Collections curate STYLED products only — never base products.
+    styled_id: z.string().uuid(),
     display_order: z.coerce.number().int().min(0).optional(),
   })
   .strict();

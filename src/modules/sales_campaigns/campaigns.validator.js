@@ -93,6 +93,24 @@ const v2CampaignFields = {
   exit_intent_discount_ngn: moneyNgn.nullable().optional(),
   abandonment_recovery_enabled: z.boolean().optional(),
   allow_multi_currency_display: z.boolean().optional(),
+  // ── Sales Campaigns v3 (migration 000048) — deals engine ──
+  delivery_weeks: z.coerce.number().int().min(1).max(52).nullable().optional(),
+  preorder_extra_weeks: z.coerce.number().int().min(0).max(52).optional(),
+  position_ladder: z.array(z.object({
+    position: z.coerce.number().int().min(1).max(20),
+    discount_ngn: z.coerce.number().nonnegative(),
+    label: z.string().max(120).optional(),
+  })).max(20).nullable().optional(),
+  stacking_bonus: z.object({
+    min_distinct_bundles: z.coerce.number().int().min(2).max(10),
+    discount_ngn: z.coerce.number().nonnegative(),
+    label: z.string().max(200).optional(),
+  }).nullable().optional(),
+  bulk_tiers: z.array(z.object({
+    min_qty: z.coerce.number().int().min(2),
+    discount_per_item_ngn: z.coerce.number().nonnegative(),
+    label: z.string().max(200).optional(),
+  })).max(10).nullable().optional(),
 };
 
 const createSchema = z
@@ -177,18 +195,21 @@ const addProductSchema = z
   .object({
     product_id: z.string().uuid().optional(),
     category_id: z.string().uuid().optional(),
+    styled_id: z.string().uuid().optional(),
     include_exclude: z.enum(["include", "exclude"]),
     campaign_price_ngn: moneyNgn.optional(),
+    image_url: z.string().max(2048).optional(),
+    regular_price_ngn: moneyNgn.optional(),
     display_order: z.coerce.number().int().min(0).optional(),
     is_featured: z.boolean().optional(),
   })
   .strict()
   .superRefine((val, ctx) => {
-    if (!!val.product_id === !!val.category_id) {
+    if (!val.styled_id && !val.product_id && !val.category_id) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["product_id"],
-        message: "exactly one of product_id or category_id is required",
+        message: "styled_id, product_id, or category_id is required",
       });
     }
   });
@@ -271,17 +292,18 @@ const bundleItemSchema = z
   .object({
     product_id: z.string().uuid().optional(),
     variant_id: z.string().uuid().optional(),
+    styled_id: z.string().uuid().optional(),
     quantity: z.coerce.number().int().min(1).optional(),
     per_item_discount_ngn: moneyNgn.nullable().optional(),
     display_position: z.coerce.number().int().min(0).optional(),
   })
   .strict()
   .superRefine((val, ctx) => {
-    if (!val.product_id && !val.variant_id) {
+    if (!val.styled_id && !val.product_id && !val.variant_id) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["product_id"],
-        message: "product_id or variant_id is required",
+        message: "styled_id, product_id, or variant_id is required",
       });
     }
   });
@@ -431,6 +453,85 @@ const vipGiftStatusSchema = z
   })
   .strict();
 
+const checkoutSchema = z
+  .object({
+    slug: z.string().min(1).max(200),
+    contact: z
+      .object({
+        first_name: z.string().min(1).max(120),
+        last_name: z.string().min(1).max(120),
+        email: z.string().email(),
+        phone: z.string().min(7).max(25),
+        instagram_handle: z.string().max(60).optional(),
+        notes: z.string().max(2000).optional(),
+        gift: z
+          .object({
+            recipient_name: z.string().min(1).max(200),
+            recipient_phone: z.string().max(25).optional(),
+            message: z.string().max(500).optional(),
+            ship_to_recipient: z.boolean().optional(),
+            recipient_address: z
+              .object({
+                line1: z.string().min(1).max(400),
+                line2: z.string().max(400).optional(),
+                city: z.string().min(1).max(120),
+                state: z.string().max(120).optional(),
+                country: z.string().max(80).optional(),
+              })
+              .optional(),
+          })
+          .refine(
+            (g) => !g.ship_to_recipient || g.recipient_address,
+            { message: "recipient_address is required when ship_to_recipient is true" },
+          )
+          .optional(),
+        address: z.object({
+          line1: z.string().min(1).max(400),
+          line2: z.string().max(400).optional(),
+          city: z.string().min(1).max(120),
+          state: z.string().max(120).optional(),
+          country: z.string().max(80).optional(),
+        }),
+        consent: z.object({
+          whatsapp_opt_in: z.boolean(),
+          marketing_opt_in: z.boolean(),
+          terms_accepted: z.literal(true),
+        }),
+      })
+      .strict(),
+    cart: z
+      .array(
+        z
+          .object({
+            bundle_id: z.string().uuid().optional(),
+            product_id: z.string().uuid().optional(),
+            quantity: z.coerce.number().int().min(1).max(50),
+            unit_price_ngn: z.coerce.number().nonnegative(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(30),
+    utm: z.record(z.string()).optional(),
+    payment_gateway: z.enum(["paystack", "nomba"]),
+    client_idempotency_key: z.string().min(1).max(120),
+    coupon_code: z.string().max(60).optional(),
+  })
+  .strict();
+
+// ── Batch / clone / duplicate (migration 000048) ─────────
+const batchAddProductsSchema = z.object({
+  items: z.array(addProductSchema).min(1).max(200),
+}).strict();
+
+const cloneBundlesSchema = z.object({
+  campaign_slug: z.string().max(120).optional(),
+}).strict();
+
+const duplicateBundleSchema = z.object({
+  campaign_id: z.string().uuid().optional(),
+}).strict();
+
 function mw(schema) {
   return function validate(req, _res, next) {
     req.body = schema.parse(req.body ?? {});
@@ -463,6 +564,11 @@ module.exports = {
   validatePraxisAccept: mw(praxisAcceptSchema),
   validateVipGrant: mw(vipGrantSchema),
   validateVipGiftStatus: mw(vipGiftStatusSchema),
+  validateCheckout: mw(checkoutSchema),
+  // v3 (migration 000048)
+  validateBatchAddProducts: mw(batchAddProductsSchema),
+  validateCloneBundles: mw(cloneBundlesSchema),
+  validateDuplicateBundle: mw(duplicateBundleSchema),
   // schemas
   createSchema,
   updateSchema,

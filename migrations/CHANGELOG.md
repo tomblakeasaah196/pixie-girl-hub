@@ -11,6 +11,50 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-22 — HR attendance: geofenced clock-in (000234, 000235)
+
+**Source:** chat brainstorm on geolocated attendance.
+
+- `000234_shared_hr_attendance_geo` — adds `is_offsite` + `formatted_address`
+  to `staff_clock_events`; offsite columns (`is_offsite`, `offsite_distance_m`,
+  `clock_in_address/lat/lng`) to `attendance_days`; and a geofence policy block
+  to `hr_settings` (`geofence_enabled`, `geofence_required_on_site`,
+  `geofence_accuracy_max_m`, `offsite_auto_query`, `offsite_marks_absent`).
+  Clock-in is recorded-and-flagged (not rejected) when off-site; off-site on an
+  on-site working day auto-raises an `offsite_clockin` query → respond, else
+  (upheld/lapsed) the day is marked absent. Coordinates from the browser
+  Geolocation API are the truth; the address is client reverse-geocoded.
+- `000235_shared_help_attendance` — Help Center articles (staff + HR/CEO)
+  covering clock-in, off-site flags, lateness/earnings and office setup.
+
+---
+
+## 2026-06-22 — HR system Phase 1 (000233_shared_hr_phase1)
+
+**Source:** `docs/PixieGirl_Hub_Meeting_Notes_Transcript.docx` §3 (HR design)
++ HR build decisions (chat answers #1–#15).
+
+Adds the operational HR tables the meeting required that the existing
+Pass-1/Pass-2 HR schema (template 000027) did not cover:
+
+- `shared.hr_settings` — per-brand lateness deduction tiers (default
+  1h=10%/2h=20%/3h=30%), working days, real-time earnings toggle, CEO
+  payout PIN (argon2 hash) + provider (Nomba), onboarding checklist.
+- `shared.attendance_days` — reconciled daily attendance ledger with the
+  lateness minutes + deduction each late day produced.
+- `shared.hr_queries` — formal staff queries; every lateness auto-raises
+  one (waive → restore pay, uphold → deduct from net, reminder if ignored).
+- `shared.staff_earnings_daily` — daily snapshot backing the live
+  earnings tracker.
+- `shared.performance_targets` — monthly per-staff target + live countdown.
+- `staff_profiles.additional_businesses` — cross-brand staff (primary
+  `business` still owns payroll/books).
+
+All objects are additive + idempotent. Lateness/earnings math is a pure,
+unit-tested engine (`src/shared/hr_payroll/lateness.calc.js`).
+
+---
+
 ## 2026-06-19 — Pricing advisor: cost-grounded, governed, seeded
 
 **Source:** Owner directive — "make the pricing module very easy to use"; it is

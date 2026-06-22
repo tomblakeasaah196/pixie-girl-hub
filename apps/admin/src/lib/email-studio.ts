@@ -19,6 +19,8 @@ export type EmailBlockType =
   | "heading"
   | "text"
   | "button"
+  | "price"
+  | "deadline"
   | "image"
   | "divider"
   | "spacer"
@@ -50,12 +52,13 @@ export interface EmailDesign {
 }
 
 // Maroon Noir-ish defaults (literal hex is fine here — this is email HTML, not
-// the app UI, and must be inline/portable).
+// the app UI, and must be inline/portable). Aligned with the server skin
+// (src/services/email-theme.js): warm ivory page, white letter, maroon accent.
 export const DEFAULT_THEME: EmailTheme = {
-  background: "#F4E9D9",
+  background: "#F4EFE9",
   content: "#FFFFFF",
   accent: "#690909",
-  text: "#1A1011",
+  text: "#1A1212",
 };
 
 export const BLOCK_LABELS: Record<EmailBlockType, string> = {
@@ -64,6 +67,8 @@ export const BLOCK_LABELS: Record<EmailBlockType, string> = {
   heading: "Heading",
   text: "Text",
   button: "Button",
+  price: "Price (before → after)",
+  deadline: "Countdown banner",
   image: "Image",
   divider: "Divider",
   spacer: "Spacer",
@@ -88,7 +93,11 @@ export function newBlock(type: EmailBlockType): EmailBlock {
     case "text":
       return { ...base, text: "Hi {{customer_name}},\n\nWrite your message here." };
     case "button":
-      return { ...base, label: "Shop now", href: "https://", align: "center" };
+      return { ...base, label: "Shop now", href: "{{website_url}}", align: "center" };
+    case "price":
+      return { ...base, text: "₦120,000", label: "₦84,000", alt: "Sale price", align: "center" };
+    case "deadline":
+      return { ...base, text: "{{deadline_phrase}}", label: "Sale ends {{sale_end_display}}" };
     case "image":
       return { ...base, imageUrl: "", alt: "", href: "" };
     case "divider":
@@ -96,18 +105,23 @@ export function newBlock(type: EmailBlockType): EmailBlock {
     case "spacer":
       return { ...base, height: 24 };
     case "footer":
-      return { ...base, text: "You're receiving this because you subscribed to our updates." };
+      return {
+        ...base,
+        text: "You're receiving this because you're part of the {{brand_name}} community.",
+      };
     default:
       return base;
   }
 }
 
 export function defaultDesign(brandName?: string): EmailDesign {
+  // Header auto-brands from Settings via tokens; a typed brand name is used as
+  // the visible fallback when no logo is set.
   return {
     version: 1,
     theme: { ...DEFAULT_THEME },
     blocks: [
-      { ...newBlock("header"), text: brandName || "Your Brand" },
+      { ...newBlock("header"), text: brandName || "{{brand_name}}", imageUrl: "{{logo_url}}" },
       newBlock("heading"),
       newBlock("text"),
       newBlock("button"),
@@ -134,8 +148,8 @@ function safeHref(href: string | undefined): string {
   return /^https?:\/\/.+/i.test(h) ? esc(h) : "#";
 }
 
-const FONT = "Georgia, 'Times New Roman', serif";
-const FONT_SANS = "Arial, Helvetica, sans-serif";
+const FONT = "'Playfair Display', Georgia, 'Times New Roman', serif";
+const FONT_SANS = "'Montserrat', Arial, Helvetica, sans-serif";
 
 function renderBlock(b: EmailBlock, t: EmailTheme): string {
   const align = b.align || "left";
@@ -167,6 +181,23 @@ function renderBlock(b: EmailBlock, t: EmailTheme): string {
           </td>
         </tr></table>
       </td></tr>`;
+    case "price":
+      return `<tr><td align="${b.align || "center"}" style="padding:18px 32px 0">
+        <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="${b.align || "center"}"><tr>
+          <td style="font-family:${FONT_SANS};font-size:18px;color:#A89F96;text-decoration:line-through;padding-right:14px">${esc(b.text)}</td>
+          <td style="font-family:${FONT};font-size:30px;font-weight:bold;color:${t.accent}">${esc(b.label)}</td>
+        </tr></table>
+        ${b.alt ? `<div style="font-family:${FONT_SANS};font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#7A7068;margin-top:8px">${esc(b.alt)}</div>` : ""}
+      </td></tr>`;
+    case "deadline":
+      return `<tr><td style="padding:22px 32px 4px">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0"><tr>
+          <td align="center" bgcolor="#1A1212" style="border-radius:6px;padding:18px 20px">
+            <div style="font-family:${FONT_SANS};font-size:13px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF">⏳ ${esc(b.text)}</div>
+            ${b.label ? `<div style="font-family:${FONT_SANS};font-size:12px;letter-spacing:1px;color:#D9CFC6;margin-top:6px">${esc(b.label)}</div>` : ""}
+          </td>
+        </tr></table>
+      </td></tr>`;
     case "divider":
       return `<tr><td style="padding:20px 32px"><table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td style="border-top:1px solid #E5E0D5;font-size:0;line-height:0">&nbsp;</td></tr></table></td></tr>`;
     case "spacer":
@@ -188,7 +219,9 @@ export function compileEmailHtml(design: EmailDesign): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light only">
 <title></title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap');</style>
 </head>
 <body style="margin:0;padding:0;background-color:${t.background}">
   <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="${t.background}">
@@ -202,16 +235,44 @@ ${rows}
 </html>`;
 }
 
+// A small, tasteful inline-SVG wordmark so previews show a real logo without a
+// network round-trip (the live send uses the brand's actual logo from Settings).
+const SAMPLE_LOGO =
+  "data:image/svg+xml;base64," +
+  btoa(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='280' height='44'><text x='0' y='32' font-family='Georgia, serif' font-size='28' letter-spacing='5' fill='#1A1212'>YOUR BRAND</text></svg>`,
+  );
+
 const SAMPLE: Record<string, string> = {
   customer_name: "Adaeze Obi",
+  first_name: "Adaeze",
   email: "adaeze@example.com",
+  unsubscribe_url: "#",
+  // Brand identity (live send pulls these from Settings)
+  brand_name: "Your Brand",
+  brand_legal_name: "Your Brand Ltd",
+  logo_url: SAMPLE_LOGO,
+  brand_color: DEFAULT_THEME.accent,
+  website_url: "#",
+  support_email: "care@yourbrand.com",
+  brand_address: "Lagos, Nigeria",
+  year: String(new Date().getFullYear()),
+  // Sale / campaign sample values
+  discount: "30",
+  sale_url: "#",
+  cta_url: "#",
+  sale_end_display: "23 June",
+  deadline_phrase: "Only 2 days left",
+  days_left: "2",
 };
 
-/** Replace merge tokens with sample values for an editor preview. */
+/** Replace merge tokens with sample values for an editor preview, so what the
+ *  author sees matches the branded, personalised email recipients receive.
+ *  Unknown tokens collapse to '' (never leak a raw {{x}} into the preview). */
 export function fillSample(html: string): string {
-  return html
-    .replace(/\{\{\s*customer_name\s*\}\}/g, SAMPLE.customer_name)
-    .replace(/\{\{\s*email\s*\}\}/g, SAMPLE.email);
+  return html.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, k: string) =>
+    k in SAMPLE ? SAMPLE[k] : "",
+  );
 }
 
 export function previewEmailHtml(design: EmailDesign): string {

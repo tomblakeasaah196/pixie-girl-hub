@@ -40,6 +40,7 @@ router.delete("/segments/:id", can("delete"), c.deleteSegment);
 router.get("/", can("view"), c.listCampaigns);
 router.post("/", can("create"), v.validateCampaignCreate, c.createCampaign);
 router.get("/:id", can("view"), c.getCampaign);
+router.patch("/:id", can("edit"), v.validateCampaignUpdate, c.updateCampaign);
 router.get("/:id/stats", can("view"), c.getStats);
 router.get("/:id/ab-results", can("view"), c.getAbTestResults);
 router.post(

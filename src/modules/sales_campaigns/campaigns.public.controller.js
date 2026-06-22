@@ -57,4 +57,26 @@ async function signup(req, res) {
   res.status(result.already_signed_up ? 200 : 201).json({ data: result });
 }
 
-module.exports = { index, landing, stock, signup };
+async function checkout(req, res) {
+  const result = await publicService.checkout({
+    slug: req.params.slug,
+    brand: req.brand,
+    brandHint: brandHint(req),
+    input: req.body,
+    ip: req.ip,
+    user_agent: req.headers["user-agent"],
+  });
+  res.status(201).json({ data: result });
+}
+
+async function orderStatus(req, res) {
+  const data = await publicService.getOrderStatus({
+    slug: req.params.slug,
+    brand: req.brand,
+    brandHint: brandHint(req),
+    orderId: req.params.orderId,
+  });
+  res.json({ data });
+}
+
+module.exports = { index, landing, stock, signup, checkout, orderStatus };

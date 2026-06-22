@@ -25,6 +25,7 @@ const { transaction } = require("../../config/database");
 const { AppError, NotFoundError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const brandUrls = require("../../utils/brand-urls");
+const { sendWelcomeEmail } = require("../../services/welcome-email");
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -32,6 +33,18 @@ function newToken() {
   // 32 bytes → 43 base64url chars. Probability of collision is
   // astronomically low; we still enforce a UNIQUE index in DB.
   return crypto.randomBytes(32).toString("base64url");
+}
+
+/**
+ * A birthday's month + day → a DATE anchored to a leap year (1904) so 29 Feb
+ * stays valid; only the month/day matter for reminders. The form collects the
+ * day they celebrate, not the year. Returns null unless BOTH parts are given.
+ */
+function dobFromParts(month, day) {
+  if (!month || !day) return null;
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `1904-${mm}-${dd}`;
 }
 
 // Per-brand domain via business_config.storefront_domain — see
@@ -117,7 +130,18 @@ async function submitPublic({ token, ip, payload }) {
   if (link.expires_at && new Date(link.expires_at) < new Date())
     throw new AppError("ONBOARDING_EXPIRED", "This form has expired.", 410);
 
-  return transaction(async (client) => {
+  // Captured inside the transaction, sent after it commits: the curated
+  // welcome only goes to a freshly-created lead with an email on file (we
+  // don't re-welcome a returning customer who just updated their details).
+  let welcome = null;
+
+  const result = await transaction(async (client) => {
+    // Birthday: the form sends month + day (no year); fall back to an explicit
+    // date_of_birth if one was supplied. Either way it reaches the contact now
+    // (previously dob_day/dob_month were validated then silently dropped).
+    const date_of_birth =
+      payload.date_of_birth || dobFromParts(payload.dob_month, payload.dob_day);
+
     // Resolve contact by phone → wa → email → IG. Fall through to
     // creating a fresh lead-priority contact if no match.
     let contact = null;
@@ -158,10 +182,14 @@ async function submitPublic({ token, ip, payload }) {
           primary_phone: payload.primary_phone,
           whatsapp_number: payload.whatsapp_number,
           email: payload.email,
+          date_of_birth,
           source: "online_form",
           visible_to: [link.business],
         },
       });
+      if (payload.email) {
+        welcome = { to: payload.email, firstName: payload.first_name };
+      }
     } else {
       await repo.updateContactFromPayload({
         client,
@@ -173,7 +201,7 @@ async function submitPublic({ token, ip, payload }) {
           email: payload.email,
           primary_phone: payload.primary_phone,
           whatsapp_number: payload.whatsapp_number,
-          date_of_birth: payload.date_of_birth || null,
+          date_of_birth: date_of_birth || null,
         },
       });
     }
@@ -293,6 +321,17 @@ async function submitPublic({ token, ip, payload }) {
       contact_id: contact.contact_id,
     };
   });
+
+  // Best-effort welcome (never throws; registration already committed).
+  if (welcome) {
+    await sendWelcomeEmail({
+      brand: link.business,
+      to: welcome.to,
+      firstName: welcome.firstName,
+    });
+  }
+
+  return result;
 }
 
 // ── Admin: list ───────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Tags, Layers3, Save } from "lucide-react";
+import { Plus, Tags, Layers3, Save, ShieldCheck } from "lucide-react";
 import { Button, Card } from "@/components/ui/primitives";
 import { Toggle, NumberField, ErrorState } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
@@ -26,6 +26,8 @@ export function CatalogueSettingsTab() {
   if (cfg.isError) return <ErrorState onRetry={() => cfg.refetch()} />;
 
   const categoriesOn = cfg.data?.config?.categories_enabled ?? false;
+  const allowBase =
+    cfg.data?.config?.allow_base_in_collections_bundles ?? false;
 
   return (
     <div className="space-y-5">
@@ -58,13 +60,40 @@ export function CatalogueSettingsTab() {
         loading={cfg.isLoading}
         canEdit={canEdit}
       />
+
+      {/* Allow base products in collections/bundles */}
+      <Card className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="grid place-items-center w-10 h-10 rounded-[11px] bg-accent/10 text-accent-glow shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[15px] font-semibold">
+              Base products in collections &amp; bundles
+            </h3>
+            <p className="text-[12.5px] text-text-muted mt-0.5">
+              {allowBase
+                ? "ON — base (stock-room) products can be added to collections and bundles alongside styled products."
+                : "OFF — only styled products may be added to collections and bundles. Turn this on if you need to include raw base products."}
+            </p>
+          </div>
+          <Toggle
+            checked={allowBase}
+            disabled={!canEdit || save.isPending || cfg.isLoading}
+            onChange={(v) =>
+              save.mutate({ allow_base_in_collections_bundles: v })
+            }
+            label={allowBase ? "On" : "Off"}
+          />
+        </div>
+      </Card>
     </div>
   );
 }
 
 type LaceRow = Pick<
   LaceSize,
-  "lace_code" | "label" | "premium_ngn" | "description" | "is_active"
+  "lace_code" | "label" | "premium_ngn" | "premium_usd" | "description" | "is_active"
 > & { display_order?: number };
 
 function LaceLadderCard({
@@ -86,6 +115,7 @@ function LaceLadderCard({
         lace_code: l.lace_code,
         label: l.label,
         premium_ngn: l.premium_ngn,
+        premium_usd: l.premium_usd,
         description: l.description,
         is_active: l.is_active,
         display_order: l.display_order,
@@ -103,6 +133,7 @@ function LaceLadderCard({
         lace_code: "",
         label: "",
         premium_ngn: 0,
+        premium_usd: null,
         description: null,
         is_active: true,
         display_order: prev.length + 1,
@@ -124,7 +155,8 @@ function LaceLadderCard({
       </div>
       <p className="text-[12.5px] text-text-muted mb-4">
         The lace constructions a styled product can sell. The premium is added
-        to the styled anchor price for that construction.
+        to the styled anchor price for that construction. The USD premium is
+        independent — set it for USD-priced products; leave it blank to skip.
       </p>
 
       {loading ? (
@@ -141,7 +173,7 @@ function LaceLadderCard({
           {rows.map((r, i) => (
             <div
               key={i}
-              className="grid grid-cols-[88px_1fr_140px_auto] gap-2.5 items-end"
+              className="grid grid-cols-[88px_1fr_120px_120px_auto] gap-2.5 items-end"
             >
               <Field label="Code">
                 <input
@@ -161,11 +193,23 @@ function LaceLadderCard({
                   className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
                 />
               </Field>
-              <Field label="Premium">
+              <Field label="Premium (₦)">
                 <NumberField
                   value={String(r.premium_ngn ?? 0)}
                   onChange={(v) => patch(i, { premium_ngn: Number(v) || 0 })}
                   suffix="₦"
+                />
+              </Field>
+              <Field label="Premium ($)">
+                <NumberField
+                  value={r.premium_usd != null ? String(r.premium_usd) : ""}
+                  onChange={(v) =>
+                    patch(i, {
+                      premium_usd: v.trim() === "" ? null : Number(v) || 0,
+                    })
+                  }
+                  suffix="$"
+                  placeholder="—"
                 />
               </Field>
               <div className="pb-1.5">

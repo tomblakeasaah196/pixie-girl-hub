@@ -27,6 +27,7 @@ import {
   StylistSpotlight,
   ShippingReturns,
 } from "./blocks/Narrative";
+import { ResellerBulkSection } from "./blocks/ResellerBulkSection";
 import { NewsletterCapture, VipSignup } from "./blocks/Signup";
 import { UgcCarousel } from "./blocks/UgcCarousel";
 import { CartButton } from "./cart/CartButton";
@@ -39,7 +40,16 @@ import { SaleFooter } from "./blocks/SaleFooter";
 
 const NULL_RENDERERS: Record<string, () => null> = {};
 
-export function LandingShell({ payload }: { payload: LandingPayload }) {
+export function LandingShell({
+  payload,
+  omitHero = false,
+}: {
+  payload: LandingPayload;
+  /** When true the built-in <Hero> is skipped so a host (the live-state page)
+   *  can mount its own Atelier hero above this commerce body. All blocks and
+   *  the live overlays render exactly as before. */
+  omitHero?: boolean;
+}) {
   const { state, derived, msToEnd } = useMemo(
     () => deriveState(payload),
     [payload],
@@ -72,8 +82,11 @@ export function LandingShell({ payload }: { payload: LandingPayload }) {
         isEnded && "ended-fade",
       )}
     >
-      {/* Hero is always first — its variant depends on the derived state. */}
-      <Hero payload={payload} derived={derived} msToEnd={msToEnd} />
+      {/* Hero is always first — its variant depends on the derived state.
+          The live-state page omits it and mounts its own Atelier hero. */}
+      {!omitHero && (
+        <Hero payload={payload} derived={derived} msToEnd={msToEnd} />
+      )}
 
       {/* Before-state cinematic reveal (animated curtain on first load). */}
       <AnimatePresence>
@@ -173,6 +186,8 @@ function BlockRouter({
       return <StylistSpotlight payload={payload} />;
     case "shipping_returns":
       return <ShippingReturns payload={payload} />;
+    case "reseller_bulk":
+      return <ResellerBulkSection payload={payload} />;
     case "newsletter_capture":
       return state === "before" ? (
         <NewsletterCapture payload={payload} />

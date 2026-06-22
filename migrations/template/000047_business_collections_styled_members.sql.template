@@ -1,0 +1,46 @@
+-- ============================================================
+-- TEMPLATE 000047 — Collections hold STYLED products (not base)
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000046) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose: the runner uses
+-- the first CREATE TABLE as a skip-sentinel, so this file is re-run every
+-- repair — safe because every statement is idempotent / guarded.
+--
+-- WHY (owner directive, June 2026):
+--   A collection is a STOREFRONT curation of finished, sellable listings —
+--   i.e. STYLED products. A base product is a stock-bearing back-room item and
+--   must NEVER appear in a collection. Membership therefore points at
+--   styled_products, not products. We keep the legacy product_id column
+--   (now nullable) so historical rows are preserved, and add styled_id as the
+--   new membership target.
+-- ============================================================
+
+-- ── 1. New membership target: the styled product ─────────
+ALTER TABLE {{BUSINESS}}.product_collection_members
+  ADD COLUMN IF NOT EXISTS styled_id UUID
+    REFERENCES {{BUSINESS}}.styled_products (styled_id) ON DELETE CASCADE;
+
+-- ── 2. Legacy base-product link becomes optional ─────────
+-- (was NOT NULL; styled members carry styled_id instead.)
+ALTER TABLE {{BUSINESS}}.product_collection_members
+  ALTER COLUMN product_id DROP NOT NULL;
+
+-- ── 3. One styled product appears at most once per collection ──
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_collection_styled
+  ON {{BUSINESS}}.product_collection_members (collection_id, styled_id)
+  WHERE styled_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_collection_members_styled
+  ON {{BUSINESS}}.product_collection_members (styled_id)
+  WHERE styled_id IS NOT NULL;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name, is_nullable FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}'
+--       AND table_name = 'product_collection_members'
+--       AND column_name IN ('styled_id','product_id');
+--   -- styled_id present; product_id is_nullable = YES
+-- ============================================================

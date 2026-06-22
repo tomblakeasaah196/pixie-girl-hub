@@ -21,6 +21,7 @@ const tier = z
     size_code: sizeCode,
     label: z.string().min(1).max(60).optional(),
     premium_ngn: money.optional(),
+    premium_usd: money.nullable().optional(),
     circumference_min_in: z.coerce.number().nonnegative().nullable().optional(),
     circumference_max_in: z.coerce.number().nonnegative().nullable().optional(),
     circumference_min_cm: z.coerce.number().nonnegative().nullable().optional(),
@@ -45,6 +46,7 @@ const laceTier = z
     lace_code: laceCode,
     label: z.string().min(1).max(60).optional(),
     premium_ngn: money.optional(),
+    premium_usd: money.nullable().optional(),
     description: z.string().max(500).nullable().optional(),
     display_order: z.coerce.number().int().optional(),
     is_active: z.boolean().optional(),
@@ -59,6 +61,9 @@ const sizeConfig = z
     head_size_guide_md: z.string().max(8000).nullable().optional(),
     // One-click Categories toggle (Products → Config).
     categories_enabled: z.boolean().optional(),
+    // One-click: allow base (stock-room) products in collections + bundles.
+    // Default off — only styled products may be added.
+    allow_base_in_collections_bundles: z.boolean().optional(),
   })
   .strict();
 
@@ -98,8 +103,13 @@ const variantBulkCreate = z
 
 const variantUpdate = z
   .object({
+    // Every variant must keep a base — it can be REPOINTED to another base, but
+    // never cleared (DB backstop: chk_styled_variant_has_base, 000049).
+    base_product_id: z.string().uuid().optional(),
     price_override_ngn: money.nullable().optional(),
+    price_override_usd: money.nullable().optional(),
     compare_at_price_ngn: money.nullable().optional(),
+    compare_at_price_usd: money.nullable().optional(),
     is_active: z.boolean().optional(),
     is_default: z.boolean().optional(),
     display_order: z.coerce.number().int().optional(),

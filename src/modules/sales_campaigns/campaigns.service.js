@@ -111,7 +111,7 @@ async function update({ brand, user, request_id, id, patch }) {
     if (!before) throw new NotFoundError("Campaign");
     assertStatus(
       before,
-      ["draft", "pending_approval", "scheduled", "paused"],
+      ["draft", "pending_approval", "scheduled", "live", "paused"],
       "edit",
     );
 
@@ -464,7 +464,7 @@ async function addProduct({ brand, user, request_id, id, input }) {
     if (!campaign) throw new NotFoundError("Campaign");
     assertStatus(
       campaign,
-      ["draft", "pending_approval", "scheduled", "paused"],
+      ["draft", "pending_approval", "scheduled", "live", "paused"],
       "edit products of",
     );
     const link = await repo.addProduct({
@@ -524,6 +524,39 @@ async function removeProduct({ brand, user, request_id, id, link_id }) {
   });
 }
 
+/**
+ * Batch-insert up to 200 product links in a single transaction.
+ * Rows that collide with a unique constraint are silently skipped.
+ */
+async function addProductsBatch({ brand, user, request_id, id, items }) {
+  return transaction(async (client) => {
+    const campaign = await repo.findById({ client, brand, id });
+    if (!campaign) throw new NotFoundError("Campaign");
+    assertStatus(
+      campaign,
+      ["draft", "pending_approval", "scheduled", "live", "paused"],
+      "edit products of",
+    );
+    const created = await repo.addProductsBatch({
+      client,
+      brand,
+      campaign_id: id,
+      items,
+    });
+    events.emit("updated", { brand, id });
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales_campaigns.products.batch_add",
+      target_type: REFERENCE_TABLE,
+      target_id: id,
+      after: { count: created.length },
+      request_id,
+    });
+    return created;
+  });
+}
+
 // ── Landing config / preview / share kit ─────────────────
 
 async function getLanding({ brand, id }) {
@@ -571,17 +604,26 @@ function buildLandingPayload(c, products, state) {
     countdown_message: c.countdown_message,
     signup_for_notifications: state === "before" && c.signup_for_notifications,
     blocks: c.landing_blocks || [],
+    // ── v3 deals engine fields ───────────────────────────────
+    delivery_weeks: c.delivery_weeks || null,
+    preorder_extra_weeks: c.preorder_extra_weeks ?? 4,
+    position_ladder: c.position_ladder || null,
+    stacking_bonus: c.stacking_bonus || null,
+    bulk_tiers: c.bulk_tiers || null,
     products:
       state === "live"
         ? products
             .filter((p) => p.include_exclude !== "exclude")
             .map((p) => ({
               product_id: p.product_id,
+              styled_id: p.styled_id,
               category_id: p.category_id,
-              name: p.product_name || p.category_name,
+              name: p.styled_name || p.product_name || p.category_name,
               campaign_price_ngn: p.campaign_price_ngn,
+              regular_price_ngn: p.regular_price_ngn,
               is_featured: p.is_featured,
               stock_remaining: p.current_stock_snapshot,
+              image_url: p.resolved_image_url || p.image_url,
             }))
         : [],
     ended:
@@ -727,6 +769,7 @@ module.exports = {
   duplicate,
   listProducts,
   addProduct,
+  addProductsBatch,
   updateProduct,
   removeProduct,
   getLanding,

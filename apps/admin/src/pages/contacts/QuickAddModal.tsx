@@ -182,7 +182,7 @@ export function QuickAddModal({
                 placeholder="8020868273"
                 value={rawPhone}
                 onChange={(e) =>
-                  setRawPhone(e.target.value.replace(/[^\d\s\-]/g, ""))
+                  setRawPhone(e.target.value.replace(/[^\d\s-]/g, ""))
                 }
               />
             </div>

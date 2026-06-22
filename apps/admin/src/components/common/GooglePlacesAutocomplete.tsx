@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MapPin, Loader2, AlertCircle } from "lucide-react";
-import {
-  isGoogleMapsConfigured,
-  loadGoogleMaps,
-} from "@/lib/google-maps-loader";
+import { loadGoogleMaps } from "@/lib/google-maps-loader";
 
 /**
  * Reusable Google Places autocomplete + map pin field.
@@ -69,15 +66,14 @@ export function GooglePlacesAutocomplete({
   >("loading");
 
   useEffect(() => {
-    if (!isGoogleMapsConfigured()) {
-      setStatus("unavailable");
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
+        // loadGoogleMaps() resolves the key at runtime (server config) and
+        // returns null when none is set — degrade to a typeable field then.
         const g = await loadGoogleMaps();
-        if (cancelled || !g) {
+        if (cancelled) return;
+        if (!g) {
           setStatus("unavailable");
           return;
         }
@@ -162,7 +158,24 @@ export function GooglePlacesAutocomplete({
             ref={inputRef}
             type="text"
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setValue(v);
+              // In degraded modes there's no Places listener, so the typed text
+              // would never reach the parent and the address (a required field)
+              // could never be filled. Surface it as line1; empty siblings are
+              // ignored by the parent's defensive merge.
+              if (status === "unavailable" || status === "error") {
+                onChange({
+                  line1: v,
+                  city: "",
+                  state: "",
+                  country: "",
+                  country_code: "",
+                  formatted_address: v,
+                });
+              }
+            }}
             placeholder={
               status === "unavailable"
                 ? "Type your full address"

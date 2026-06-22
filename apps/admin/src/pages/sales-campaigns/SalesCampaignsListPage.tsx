@@ -92,13 +92,6 @@ export function SalesCampaignsListPage() {
     page_size: 50,
   });
 
-  if (!can("sales_campaigns", "view")) {
-    return (
-      <DeniedState message="You don't have access to Sales Campaigns. Ask an admin in Org & Workflow." />
-    );
-  }
-  const canCreate = can("sales_campaigns", "create");
-
   const campaigns = (list.data?.data || []) as Campaign[];
   const rollups = useMemo(() => {
     let live = 0;
@@ -115,6 +108,15 @@ export function SalesCampaignsListPage() {
     }
     return { live, scheduled, revenue, orders, signups };
   }, [campaigns]);
+
+  // Permission gate AFTER all hooks — hooks must run in the same order every
+  // render (Rules of Hooks), so an early return can't sit above useMemo.
+  if (!can("sales_campaigns", "view")) {
+    return (
+      <DeniedState message="You don't have access to Sales Campaigns. Ask an admin in Org & Workflow." />
+    );
+  }
+  const canCreate = can("sales_campaigns", "create");
 
   return (
     <div className="space-y-5">

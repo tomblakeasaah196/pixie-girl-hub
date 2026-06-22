@@ -26,7 +26,9 @@ const styledCreate = z
     long_description: z.string().max(8000).nullable().optional(),
     // Styled retail price (the size-S anchor) — its own price, not base+add-on.
     retail_price_ngn: money.nullable().optional(),
+    retail_price_usd: money.nullable().optional(),
     compare_at_price_ngn: money.nullable().optional(),
+    compare_at_price_usd: money.nullable().optional(),
     // Legacy add-on price; retained for backward compatibility.
     style_addon_price_ngn: money.nullable().optional(),
     category_id: z.string().uuid().nullable().optional(),

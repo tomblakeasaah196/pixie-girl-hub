@@ -174,8 +174,9 @@ async function createCampaign({ client, brand, c }) {
     `INSERT INTO ${t(brand, "email_campaigns")}
        (campaign_number, campaign_name, campaign_type, segment_id,
         default_template_id, from_name, from_email, reply_to_email, status,
-        scheduled_for)
-     VALUES ($1,$2,COALESCE($3,'one_off'),$4,$5,$6,$7,$8,'draft',$9)
+        scheduled_for, merge_data)
+     VALUES ($1,$2,COALESCE($3,'one_off'),$4,$5,$6,$7,$8,'draft',$9,
+             COALESCE($10::jsonb,'{}'::jsonb))
      RETURNING *`,
     [
       c.campaign_number,
@@ -187,9 +188,41 @@ async function createCampaign({ client, brand, c }) {
       c.from_email || null,
       c.reply_to_email || null,
       c.scheduled_for || null,
+      c.merge_data ? JSON.stringify(c.merge_data) : null,
     ],
   );
   return rows[0];
+}
+async function updateCampaign({ client, brand, id, patch }) {
+  const cols = [
+    "campaign_name",
+    "campaign_type",
+    "segment_id",
+    "default_template_id",
+    "from_name",
+    "from_email",
+    "reply_to_email",
+    "scheduled_for",
+  ];
+  const set = [];
+  const params = [id];
+  let i = 2;
+  for (const c of cols) {
+    if (patch[c] === undefined) continue;
+    set.push(`${c} = $${i++}`);
+    params.push(patch[c]);
+  }
+  if (patch.merge_data !== undefined) {
+    set.push(`merge_data = $${i++}::jsonb`);
+    params.push(JSON.stringify(patch.merge_data || {}));
+  }
+  if (!set.length) return getCampaign({ client, brand, id });
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "email_campaigns")} SET ${set.join(", ")}, updated_at = now()
+      WHERE campaign_id = $1 RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
 }
 async function getCampaign({ client, brand, id }) {
   const { rows } = await ex(client)(
@@ -508,6 +541,7 @@ module.exports = {
   createTemplate,
   updateTemplate,
   createCampaign,
+  updateCampaign,
   getCampaign,
   listCampaigns,
   setCampaignStatus,

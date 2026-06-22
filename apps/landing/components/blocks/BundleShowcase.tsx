@@ -19,7 +19,7 @@ export function BundleShowcase({
   const bundles = payload.bundles || [];
   if (bundles.length === 0) return null;
   return (
-    <section id="bundles" className="section">
+    <section id="bundles" data-block="bundle_showcase" className="section">
       <div className="mx-auto max-w-[1180px]">
         <SectionHeader
           eyebrow="Curated bundles"
@@ -32,9 +32,10 @@ export function BundleShowcase({
             <BundleCard
               key={b.link_id}
               bundle={b}
-              payload={payload}
               state={state}
               index={i}
+              deliveryWeeks={payload.delivery_weeks}
+              preorderExtraWeeks={payload.preorder_extra_weeks}
             />
           ))}
         </div>
@@ -45,14 +46,16 @@ export function BundleShowcase({
 
 function BundleCard({
   bundle,
-  payload,
   state,
   index,
+  deliveryWeeks,
+  preorderExtraWeeks,
 }: {
   bundle: LandingBundle;
-  payload: LandingPayload;
   state: "before" | "live" | "ended";
   index: number;
+  deliveryWeeks?: number | null;
+  preorderExtraWeeks?: number;
 }) {
   const add = useCart((s) => s.add);
   const openCart = useCart((s) => s.openCart);
@@ -173,9 +176,20 @@ function BundleCard({
         {stockOut && bundle.preorder_enabled && state === "live" && (
           <div className="text-[12.5px] text-[rgb(var(--warn))] mt-2 inline-flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" /> Pre-order — ships in{" "}
-            {bundle.preorder_lead_weeks ?? 3} weeks
+            {bundle.preorder_lead_weeks ??
+              (deliveryWeeks || 0) + (preorderExtraWeeks ?? 4)}{" "}
+            weeks
           </div>
         )}
+        {!stockOut &&
+          deliveryWeeks != null &&
+          deliveryWeeks > 0 &&
+          state === "live" && (
+            <div className="text-[12px] text-[rgb(var(--text-faint))] mt-1.5 inline-flex items-center gap-1.5">
+              <Clock className="w-3 h-3" /> Delivery: {deliveryWeeks} week
+              {deliveryWeeks !== 1 ? "s" : ""}
+            </div>
+          )}
 
         <button
           type="button"

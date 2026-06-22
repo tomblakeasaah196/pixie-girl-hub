@@ -21,6 +21,8 @@
 const repo = require("./payroll.repo");
 const calc = require("./payroll.calc");
 const pdf = require("../../services/pdf.service");
+const hrOps = require("./hr_ops.service");
+const disbursement = require("../../services/disbursement.service");
 const events = require("./hr.events");
 const numbering = require("../../services/numbering.service");
 const { audit } = require("../../middleware/audit");
@@ -274,7 +276,35 @@ const approveRun = (a) =>
     },
   });
 
-async function markRunPaid({ brand, user, request_id, run_id }) {
+/**
+ * Pay a payroll run (meeting §3.4): CEO approve → enter PIN → the system pays
+ * each employee's registered bank account and settles their commissions &
+ * bonuses.
+ *
+ * - Payout PIN: when the brand requires it (hr_settings.payout_require_pin),
+ *   the caller must pass a valid PIN — verified against the hashed PIN set in
+ *   HR Settings (answer #8).
+ * - Disbursement: provider-agnostic (answer #7 = Nomba), with a manual
+ *   bank-schedule fallback so payroll never blocks on the integration. Each
+ *   slip's payment_status reflects its own result (paid / queued / failed);
+ *   only paid-or-queued slips settle their commissions & bonuses. Failed slips
+ *   stay payable and can be retried.
+ */
+async function payRun({ brand, user, request_id, run_id, pin }) {
+  // Resolve payout policy + verify PIN OUTSIDE the txn (argon2 is slow).
+  const settings = await hrOps.getSettings({ brand });
+  if (settings.payout_require_pin) {
+    const ok = pin && (await hrOps.verifyPayoutPin({ brand, pin }));
+    if (!ok) {
+      throw new ConflictError(
+        settings.payout_pin_set
+          ? "Invalid payout PIN"
+          : "No payout PIN is set. Set one in HR Settings before paying.",
+      );
+    }
+  }
+  const provider = disbursement.selectProvider(settings);
+
   return transaction(async (client) => {
     const run = await repo.findRun({ client, brand, run_id });
     if (!run) throw new NotFoundError("Payroll run");
@@ -288,29 +318,38 @@ async function markRunPaid({ brand, user, request_id, run_id }) {
       page: 1,
       page_size: 1000,
     });
+
+    let paid = 0;
+    let failed = 0;
+    let queued = 0;
     for (const slip of slips) {
+      const result = await disbursement.disburseSlip({ provider, slip });
       await repo.setPayslipPayment({
         client,
         brand,
         payslip_id: slip.payslip_id,
-        payment_status: "paid",
-        fields: { paid_at: now },
+        payment_status: result.status,
+        fields: {
+          payment_method: provider,
+          payment_reference: result.reference,
+          failure_reason: result.status === "failed" ? result.reason : null,
+          paid_at: result.status === "paid" ? now : null,
+        },
       });
+      if (result.status === "failed") {
+        failed++;
+        continue; // leave commissions/bonuses payable for a retry
+      }
+      if (result.status === "paid") paid++;
+      else queued++;
       await repo.markCommissionsPaidForUser({
-        client,
-        brand,
-        user_id: slip.user_id,
-        run_id,
-        paid_at: now,
+        client, brand, user_id: slip.user_id, run_id, paid_at: now,
       });
       await repo.markBonusesPaidForUser({
-        client,
-        brand,
-        user_id: slip.user_id,
-        run_id,
-        paid_at: now,
+        client, brand, user_id: slip.user_id, run_id, paid_at: now,
       });
     }
+
     const updated = await repo.updateRun({
       client,
       brand,
@@ -323,13 +362,16 @@ async function markRunPaid({ brand, user, request_id, run_id }) {
       action_key: "hr_payroll.pay_payroll_run",
       target_type: "payroll_runs",
       target_id: run_id,
-      after: { paid: slips.length },
+      after: { provider, paid, queued, failed, total: slips.length },
       request_id,
     });
-    events.emit("payroll_run_paid", { brand, run_id });
-    return updated;
+    events.emit("payroll_run_paid", { brand, run_id, paid, queued, failed });
+    return { ...updated, disbursement: { provider, paid, queued, failed } };
   });
 }
+
+// Back-compat alias (no PIN / no disbursement) retained for internal callers.
+const markRunPaid = (a) => payRun({ ...a, pin: undefined });
 const reverseRun = (a) => transitionRun({ ...a, to: "reversed" });
 
 // ── payslips (read) ────────────────────────────────────────
@@ -606,6 +648,7 @@ module.exports = {
   calculateRun,
   reviewRun,
   approveRun,
+  payRun,
   markRunPaid,
   reverseRun,
   listPayslips,

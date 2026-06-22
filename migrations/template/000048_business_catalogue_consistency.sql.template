@@ -1,0 +1,138 @@
+-- ============================================================
+-- TEMPLATE 000048 — Catalogue consistency: USD ladder premiums,
+-- styled-only collections/bundles, colour/variant soft-delete (Trash).
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000047) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose: the runner uses
+-- the first CREATE TABLE as a skip-sentinel, so this file is re-run every
+-- repair — safe because every statement is idempotent / guarded.
+--
+-- WHY (owner directives, June 2026):
+--   • Size + lace ladders need a USD premium beside the NGN one, so a styled
+--     product priced in USD layers the same size/lace step (set manually in
+--     the Catalogue config tab — never auto-converted).
+--   • Collections AND bundles curate STYLED products, never base (stock-room)
+--     products. A config flag lets an admin re-enable base membership in one
+--     click; by default it is OFF and the service rejects base targets.
+--   • Deleting a colour or a single variant must be reversible (Trash, 15-day
+--     auto-purge) — so soft-delete columns + partial-unique indexes (live rows
+--     only) mirror the styled_products trash model from 000041.
+--
+-- Altered:
+--   styled_size_tiers        — premium_usd
+--   styled_lace_sizes        — premium_usd
+--   catalogue_config         — allow_base_in_collections_bundles
+--   styled_product_colours   — is_deleted / deleted_at / deleted_by (Trash)
+--   styled_product_variants  — is_deleted / deleted_at / deleted_by (Trash)
+--   bundle_offer_products    — styled_id (styled membership target)
+--   product_collection_members — exactly-one-target guard (product XOR styled)
+-- ============================================================
+
+-- ── 1. USD premium on the size + lace ladders ────────────
+-- Absolute USD amount added to a USD-priced styled product for this tier,
+-- mirroring premium_ngn. NULL = no USD premium configured for this tier yet.
+ALTER TABLE {{BUSINESS}}.styled_size_tiers
+  ADD COLUMN IF NOT EXISTS premium_usd NUMERIC(14,2)
+    CHECK (premium_usd IS NULL OR premium_usd >= 0);
+ALTER TABLE {{BUSINESS}}.styled_lace_sizes
+  ADD COLUMN IF NOT EXISTS premium_usd NUMERIC(14,2)
+    CHECK (premium_usd IS NULL OR premium_usd >= 0);
+
+-- ── 2. Catalogue config: allow base products in collections/bundles ──
+-- Default OFF: only styled products may be added to collections + bundles.
+-- An admin can flip this in the Catalogue config tab to re-enable base
+-- membership (the service reads this flag before accepting a base target).
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS allow_base_in_collections_bundles BOOLEAN NOT NULL DEFAULT false;
+
+-- ── 3. Colour soft-delete (Trash + 15-day purge) ─────────
+ALTER TABLE {{BUSINESS}}.styled_product_colours
+  ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES shared.users (user_id) ON DELETE SET NULL;
+
+-- Name uniqueness + the single-default guard now span LIVE rows only, so a
+-- soft-deleted colour frees its name and never blocks the live default.
+ALTER TABLE {{BUSINESS}}.styled_product_colours
+  DROP CONSTRAINT IF EXISTS styled_product_colours_styled_id_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_colours_name_live
+  ON {{BUSINESS}}.styled_product_colours (styled_id, name)
+  WHERE is_deleted = false;
+DROP INDEX IF EXISTS {{BUSINESS}}.uq_{{BUSINESS}}_styled_colours_default;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_colours_default
+  ON {{BUSINESS}}.styled_product_colours (styled_id)
+  WHERE is_default = true AND is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_colours_trash
+  ON {{BUSINESS}}.styled_product_colours (deleted_at)
+  WHERE is_deleted = true;
+
+-- ── 4. Variant soft-delete (Trash + 15-day purge) ────────
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES shared.users (user_id) ON DELETE SET NULL;
+
+-- SKU + (colour,size,lace) combo + default guard span LIVE rows only.
+ALTER TABLE {{BUSINESS}}.styled_product_variants
+  DROP CONSTRAINT IF EXISTS styled_product_variants_sku_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_variant_sku_live
+  ON {{BUSINESS}}.styled_product_variants (sku)
+  WHERE is_deleted = false;
+DROP INDEX IF EXISTS {{BUSINESS}}.uq_{{BUSINESS}}_styled_variant_combo;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_variant_combo
+  ON {{BUSINESS}}.styled_product_variants
+     (styled_id, colour_id, size_code, COALESCE(lace_code, ''))
+  WHERE is_deleted = false;
+DROP INDEX IF EXISTS {{BUSINESS}}.uq_{{BUSINESS}}_styled_variants_default;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_variants_default
+  ON {{BUSINESS}}.styled_product_variants (styled_id)
+  WHERE is_default = true AND is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_variants_trash
+  ON {{BUSINESS}}.styled_product_variants (deleted_at)
+  WHERE is_deleted = true;
+
+-- ── 5. Bundles hold STYLED products (not base) ───────────
+-- Mirror of 000047 for collections: add styled_id as the membership target,
+-- index it, and relax the "must point at something" CHECK to accept it. The
+-- legacy product_id / variant_id columns stay for historical rows + the
+-- one-click re-enable path (allow_base_in_collections_bundles).
+ALTER TABLE {{BUSINESS}}.bundle_offer_products
+  ADD COLUMN IF NOT EXISTS styled_id UUID
+    REFERENCES {{BUSINESS}}.styled_products (styled_id) ON DELETE CASCADE;
+
+ALTER TABLE {{BUSINESS}}.bundle_offer_products
+  DROP CONSTRAINT IF EXISTS bundle_product_has_target;
+ALTER TABLE {{BUSINESS}}.bundle_offer_products
+  ADD CONSTRAINT bundle_product_has_target
+    CHECK (product_id IS NOT NULL OR variant_id IS NOT NULL OR styled_id IS NOT NULL)
+    NOT VALID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_bundle_styled
+  ON {{BUSINESS}}.bundle_offer_products (bundle_id, styled_id)
+  WHERE styled_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_bundle_products_styled
+  ON {{BUSINESS}}.bundle_offer_products (styled_id)
+  WHERE styled_id IS NOT NULL;
+
+-- ── 6. Collection members: exactly one target (product XOR styled) ──
+-- Going forward a member row points at EITHER a styled product (preferred) or
+-- a legacy base product — never both, never neither. NOT VALID so any historic
+-- row is left untouched; every new write is checked.
+ALTER TABLE {{BUSINESS}}.product_collection_members
+  DROP CONSTRAINT IF EXISTS collection_member_one_target;
+ALTER TABLE {{BUSINESS}}.product_collection_members
+  ADD CONSTRAINT collection_member_one_target
+    CHECK (num_nonnulls(product_id, styled_id) = 1)
+    NOT VALID;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}' AND table_name = 'styled_size_tiers'
+--       AND column_name = 'premium_usd';                       -- one row
+--   SELECT conname FROM pg_constraint
+--     WHERE conname IN ('bundle_product_has_target','collection_member_one_target');
+--   \d {{BUSINESS}}.styled_product_variants  -- is_deleted/deleted_at/deleted_by present
+-- ============================================================

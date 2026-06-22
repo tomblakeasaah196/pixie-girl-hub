@@ -105,12 +105,15 @@ const STYLED_COLUMNS = [
   { header: "Lace", key: "lace", width: 16, ref: "Lace codes" },
   { header: "Size*", key: "size", width: 8, ref: "Size codes" },
   { header: "Retail Price (NGN)*", key: "price", width: 16 },
+  { header: "Retail Price (USD)", key: "price_usd", width: 16 },
   { header: "Compare-at Price (NGN)", key: "compare_at", width: 18 },
+  { header: "Compare-at Price (USD)", key: "compare_at_usd", width: 18 },
   { header: "Default Colour?", key: "is_default_colour", width: 14, list: ["yes", "no"] },
   { header: "Collections (comma)", key: "collections", width: 24 },
   { header: "Bundles (comma)", key: "bundles", width: 24 },
   { header: "Status", key: "status", width: 10, list: ["draft", "live"] },
   { header: "Short Description", key: "short_description", width: 30 },
+  { header: "Long Description", key: "long_description", width: 40 },
   { header: "Slug", key: "slug", width: 20 },
   { header: "Image URLs (comma)", key: "images", width: 36 },
 ];
@@ -157,6 +160,8 @@ async function styledTemplate({ brand }) {
     collections: ref.collections[0] ?? "",
     status: "draft",
     short_description: "Soft natural-black pixie.",
+    long_description:
+      "A lightweight everyday pixie in a soft natural black, pre-plucked hairline and bleached knots for a scalp-real finish.",
   });
   return buildWorkbook({
     sheets: [
@@ -237,6 +242,7 @@ async function exportStyled({ brand }) {
         status: s.status,
         slug: s.slug,
         short_description: s.short_description,
+        long_description: s.long_description,
         collections,
         bundles,
       });
@@ -251,12 +257,15 @@ async function exportStyled({ brand }) {
         lace: v.lace_label || v.lace_code || "",
         size: v.size_code,
         price: v.effective_price_ngn,
+        price_usd: v.price_override_usd,
         compare_at: v.compare_at_price_ngn,
+        compare_at_usd: v.compare_at_price_usd,
         is_default_colour: yn(v.colour_is_default),
         collections,
         bundles,
         status: s.status,
         short_description: s.short_description,
+        long_description: s.long_description,
         slug: s.slug,
         images: (imagesByColour.get(v.colour_id) || []).join(", "),
       });
@@ -335,13 +344,17 @@ async function importStyled({ brand, user, request_id, buffer }) {
     const laceCodeList = laceLabels.map(laceCodeOf).filter(Boolean);
     const prices = group.items.map((it) => num(it.raw["Retail Price (NGN)*"])).filter((x) => x !== null && x !== undefined);
     const anchor = prices.length ? Math.min(...prices) : null;
+    const usdPrices = group.items.map((it) => num(it.raw["Retail Price (USD)"])).filter((x) => x !== null && x !== undefined);
+    const usdAnchor = usdPrices.length ? Math.min(...usdPrices) : null;
 
     const input = {
       base_product_id: repBase.product_id,
       name: group.name,
       slug,
       short_description: str(first["Short Description"]) ?? null,
+      long_description: str(first["Long Description"]) ?? null,
       retail_price_ngn: anchor,
+      retail_price_usd: usdAnchor,
       lace_size_codes: laceCodeList.length ? laceCodeList : null,
     };
 
@@ -422,7 +435,9 @@ async function importStyled({ brand, user, request_id, buffer }) {
       const laceLabel = str(it.raw["Lace"]);
       const lace_code = laceLabel ? laceCodeOf(laceLabel) : null;
       const price = num(it.raw["Retail Price (NGN)*"]) ?? null;
+      const price_usd = num(it.raw["Retail Price (USD)"]) ?? null;
       const compare_at = num(it.raw["Compare-at Price (NGN)"]) ?? null;
+      const compare_at_usd = num(it.raw["Compare-at Price (USD)"]) ?? null;
       const rowBaseName = str(it.raw["Base Product*"]);
       const rowBase = (rowBaseName && baseByName.get(lc(rowBaseName))) || repBase;
       if (!colour_id) {
@@ -439,12 +454,24 @@ async function importStyled({ brand, user, request_id, buffer }) {
           await variantsService.updateVariant({
             brand, user, request_id, styled_id: styled.styled_id,
             styled_variant_id: varByKey.get(key).styled_variant_id,
-            patch: { price_override_ngn: price, compare_at_price_ngn: compare_at, base_product_id: rowBase.product_id },
+            patch: {
+              price_override_ngn: price,
+              price_override_usd: price_usd,
+              compare_at_price_ngn: compare_at,
+              compare_at_price_usd: compare_at_usd,
+              base_product_id: rowBase.product_id,
+            },
           });
         } else {
           const v = await variantsService.createVariant({
             brand, user, request_id, styled_id: styled.styled_id,
-            input: { colour_id, size_code, lace_code, base_product_id: rowBase.product_id, price_override_ngn: price, compare_at_price_ngn: compare_at },
+            input: {
+              colour_id, size_code, lace_code, base_product_id: rowBase.product_id,
+              price_override_ngn: price,
+              price_override_usd: price_usd,
+              compare_at_price_ngn: compare_at,
+              compare_at_price_usd: compare_at_usd,
+            },
           });
           varByKey.set(key, v);
           vCreated++;

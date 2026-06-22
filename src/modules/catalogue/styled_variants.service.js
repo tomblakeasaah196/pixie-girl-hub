@@ -572,7 +572,9 @@ async function createVariant({ brand, user, request_id, styled_id, input }) {
           input.sku ||
           `${styled.styled_code}-${short}-${input.size_code}${laceSuffix}`,
         price_override_ngn: input.price_override_ngn ?? null,
+        price_override_usd: input.price_override_usd ?? null,
         compare_at_price_ngn: input.compare_at_price_ngn ?? null,
+        compare_at_price_usd: input.compare_at_price_usd ?? null,
         is_default: input.is_default ?? existing.length === 0,
         display_order: input.display_order ?? existing.length,
       },

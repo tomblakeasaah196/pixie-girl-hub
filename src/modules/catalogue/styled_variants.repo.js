@@ -38,6 +38,7 @@ function setClause(cols, src, start = 1) {
 const TIER_COLS = [
   "label",
   "premium_ngn",
+  "premium_usd",
   "circumference_min_in",
   "circumference_max_in",
   "circumference_min_cm",
@@ -67,14 +68,15 @@ async function getSizeTier({ client, brand, size_code }) {
 async function createSizeTier({ client, brand, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "styled_size_tiers")}
-       (size_code, label, premium_ngn, circumference_min_in, circumference_max_in,
+       (size_code, label, premium_ngn, premium_usd, circumference_min_in, circumference_max_in,
         circumference_min_cm, circumference_max_cm, guidance_text, display_order, is_active)
-     VALUES ($1,$2,COALESCE($3,0),$4,$5,$6,$7,$8,COALESCE($9,0),COALESCE($10,true))
+     VALUES ($1,$2,COALESCE($3,0),$4,$5,$6,$7,$8,$9,COALESCE($10,0),COALESCE($11,true))
      RETURNING *`,
     [
       input.size_code,
       input.label,
       input.premium_ngn,
+      input.premium_usd ?? null,
       input.circumference_min_in ?? null,
       input.circumference_max_in ?? null,
       input.circumference_min_cm ?? null,
@@ -103,6 +105,7 @@ async function updateSizeTier({ client, brand, size_code, patch }) {
 const LACE_COLS = [
   "label",
   "premium_ngn",
+  "premium_usd",
   "description",
   "display_order",
   "is_active",
@@ -127,13 +130,14 @@ async function getLaceSize({ client, brand, lace_code }) {
 async function createLaceSize({ client, brand, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "styled_lace_sizes")}
-       (lace_code, label, premium_ngn, description, display_order, is_active)
-     VALUES ($1,$2,COALESCE($3,0),$4,COALESCE($5,0),COALESCE($6,true))
+       (lace_code, label, premium_ngn, premium_usd, description, display_order, is_active)
+     VALUES ($1,$2,COALESCE($3,0),$4,$5,COALESCE($6,0),COALESCE($7,true))
      RETURNING *`,
     [
       input.lace_code,
       input.label,
       input.premium_ngn,
+      input.premium_usd ?? null,
       input.description ?? null,
       input.display_order,
       input.is_active,

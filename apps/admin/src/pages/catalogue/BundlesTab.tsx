@@ -470,9 +470,11 @@ function BundleEditorModal({
                   <span className="flex-1 min-w-0 truncate text-[13px]">
                     {c.styled_name ?? c.product_name ?? c.product_code ?? "Product"}
                     {c.styled_name && (
-                      <Pill tone="accent" dot={false} className="ml-1.5 text-[9px]">
-                        styled
-                      </Pill>
+                      <span className="ml-1.5 inline-flex align-middle">
+                        <Pill tone="accent" dot={false}>
+                          styled
+                        </Pill>
+                      </span>
                     )}
                     {c.quantity > 1 && (
                       <span className="text-text-faint"> × {c.quantity}</span>

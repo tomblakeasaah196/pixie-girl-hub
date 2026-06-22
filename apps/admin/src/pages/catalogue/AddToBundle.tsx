@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Gift, Plus, Check, Search } from "lucide-react";
+import { Gift, Check, Search } from "lucide-react";
 import { useBundles, useAddStyledToBundle } from "@/lib/catalogue";
 
 export function AddToBundle({ styledId }: { styledId: string }) {

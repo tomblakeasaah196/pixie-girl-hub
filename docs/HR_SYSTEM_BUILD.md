@@ -70,10 +70,33 @@ days; off-site is provisional + queried, absent only after upheld/lapse with HR
 override; generous radius + accuracy-flag (not auto-reject); point-in-time
 capture, disclosed; coords are truth, spoofing treated as deterrent + audit.
 
-## Phase 2 (next PR / PR 3) — money & performance ops
+## PR 3 — Payroll & disbursement (money flow) ✅
 
-- Payroll run UI + **Nomba disbursement** + CEO payout-PIN gate at Pay.
-- Commission/bonus automation; monthly-target → bonus payout on achievement.
+The meeting's core pay flow (§3.4): calculate → review → **CEO approve → enter
+PIN → pay each employee's bank**, on top of the existing payroll engine.
+
+**Backend**
+- `disbursement.service.js` — provider-agnostic payout: selects the brand
+  provider (Nomba, answer #7) and falls back to a **manual bank-schedule
+  (queued)** when unconfigured, so payroll never blocks. Per-slip result maps to
+  `payment_status` (paid / queued / failed); failed slips stay payable for retry.
+- `nomba.service.disburseSalary` — Nomba bank-transfer adapter (endpoint flagged
+  for go-live confirmation; reports `not_configured` → manual fallback).
+- `payroll.service.payRun` — **payout-PIN gated** (verifies the hashed PIN from
+  HR Settings, answer #8), disburses every payslip, settles commissions/bonuses
+  for paid/queued slips, audits the run. Wired to `POST /hr/payroll-runs/:id/pay`.
+- Unit tests: 8 for disbursement selection/result mapping.
+
+**Frontend (admin)**
+- `pages/hr/PayrollPage.tsx` — runs list, create run, run detail stepper
+  (Calculate → Send for approval → Approve → **Pay (enter PIN)**), payslip list
+  with per-slip payment status. Route `/payroll`; nav "Payroll".
+
+**Verified:** 285/285 backend tests; ESLint clean; admin `tsc` → 0 errors.
+
+## PR 4 (remaining) — performance payout, contracts, dashboards, automation
+
+- Monthly-target → bonus payout on achievement (event-subscriber, idempotent).
 - **Contract generation** (PDF from template) + **e-signature** on
   `staff_contracts` (esignature tables already exist).
 - Performance reviews UI (quarterly weighted KPIs); HR dashboards/analytics.

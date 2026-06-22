@@ -199,6 +199,7 @@ const DocumentsPage = lazyWithRetry(() =>
 );
 const MyHrPage = lazyWithRetry(() => import("@/pages/hr/MyHrPage"));
 const HrStaffPage = lazyWithRetry(() => import("@/pages/hr/HrStaffPage"));
+const PayrollPage = lazyWithRetry(() => import("@/pages/hr/PayrollPage"));
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
@@ -344,6 +345,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <HrStaffPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "payroll",
+              element: (
+                <Suspense fallback={null}>
+                  <PayrollPage />
                 </Suspense>
               ),
             },

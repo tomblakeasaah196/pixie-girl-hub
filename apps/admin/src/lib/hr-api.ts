@@ -323,6 +323,60 @@ export const createStaff = (body: Record<string, unknown>) =>
 export const updateStaff = (id: string, patch: Record<string, unknown>) =>
   api.patch<StaffRow>(`/hr/employees/${id}`, patch);
 
+// ── Payroll (Phase 2) ──────────────────────────────────────
+export interface PayrollRun {
+  run_id: string;
+  run_number: string;
+  pay_month: number;
+  pay_year: number;
+  pay_date: string;
+  period_start: string;
+  period_end: string;
+  status: "draft" | "calculated" | "reviewed" | "approved" | "paid" | "reversed";
+  total_staff: number;
+  total_gross_ngn: number;
+  total_net_ngn: number;
+  total_paye_ngn: number;
+  paid_at: string | null;
+}
+
+export interface Payslip {
+  payslip_id: string;
+  payslip_number: string;
+  user_id: string;
+  payroll_run_id: string;
+  job_title_snapshot: string | null;
+  gross_pay_ngn: number;
+  total_deductions_ngn: number;
+  net_pay_ngn: number;
+  payment_status: "pending" | "queued" | "paid" | "failed" | "reversed";
+  payment_reference: string | null;
+  failure_reason: string | null;
+}
+
+export const listPayrollRuns = () => api.get<PayrollRun[]>("/hr/payroll-runs");
+export const getPayrollRun = (id: string) => api.get<PayrollRun>(`/hr/payroll-runs/${id}`);
+export const createPayrollRun = (body: {
+  pay_month: number;
+  pay_year: number;
+  pay_date: string;
+  period_start: string;
+  period_end: string;
+}) => api.post<PayrollRun>("/hr/payroll-runs", body);
+export const calculatePayrollRun = (id: string) =>
+  api.post<PayrollRun>(`/hr/payroll-runs/${id}/calculate`);
+export const reviewPayrollRun = (id: string) =>
+  api.post<PayrollRun>(`/hr/payroll-runs/${id}/review`);
+export const approvePayrollRun = (id: string) =>
+  api.post<PayrollRun>(`/hr/payroll-runs/${id}/approve`);
+export const payPayrollRun = (id: string, pin?: string) =>
+  api.post<PayrollRun & { disbursement?: { provider: string; paid: number; queued: number; failed: number } }>(
+    `/hr/payroll-runs/${id}/pay`,
+    { pin },
+  );
+export const listPayslips = (runId: string) =>
+  api.get<Payslip[]>(`/hr/payslips?payroll_run_id=${encodeURIComponent(runId)}`);
+
 function qs(params: Record<string, string>): string {
   const entries = Object.entries(params).filter(([, v]) => v != null && v !== "");
   if (!entries.length) return "";

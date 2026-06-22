@@ -185,4 +185,41 @@ async function quote({ brand, lat, lng, country_code }) {
   return { zone_id: null, zone_name: null, fee_ngn: null, currency: "NGN" };
 }
 
-module.exports = { list, getById, create, update, remove, quote, zoneContains };
+/**
+ * Public-facing rate card: active zones grouped into whole-country flat fees
+ * and local (geofenced) zones. Powers the storefront "shipping rates" table.
+ * No coordinates leaked — just names, country codes and NGN fees.
+ */
+async function shippingRates({ brand }) {
+  const all = await repo.list({ brand });
+  const active = all.filter((z) => z.is_active);
+  const shape = (z) => ({
+    zone_id: z.zone_id,
+    name: z.name,
+    country_code: z.country_code || null,
+    fee_ngn: z.fee_ngn === null ? null : Number(z.fee_ngn),
+    priority: Number(z.priority) || 0,
+  });
+  return {
+    countries: active
+      .filter((z) => z.geometry_type === "country")
+      .map(shape)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    local: active
+      .filter((z) => z.geometry_type !== "country")
+      .map((z) => ({ ...shape(z), geometry_type: z.geometry_type }))
+      .sort((a, b) => b.priority - a.priority),
+    currency: "NGN",
+  };
+}
+
+module.exports = {
+  list,
+  getById,
+  create,
+  update,
+  remove,
+  quote,
+  shippingRates,
+  zoneContains,
+};

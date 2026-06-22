@@ -106,6 +106,14 @@ async function bootstrap() {
     if (req.path.startsWith("/api") || req.path.startsWith("/media")) {
       return next();
     }
+    // Never return the HTML shell for a static asset request. If a hashed
+    // file under /assets/ (or any file with an extension) wasn't found by
+    // express.static above, it's a missing/partial deploy — answer 404 so the
+    // browser gets a clean error instead of index.html served as text/html
+    // (which triggers "MIME type ('text/html') is not a supported stylesheet").
+    if (req.path.startsWith("/assets/") || /\.[a-z0-9]+$/i.test(req.path)) {
+      return next();
+    }
     // The SPA shell must always be revalidated so a new build is picked up
     // on the very next navigation — never served from a stale browser cache.
     res.sendFile(

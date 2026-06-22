@@ -109,66 +109,73 @@ export function ZoneMap({
     const { initialPoints: pts, initialCenter: ctr } = init.current;
     const listeners: google.maps.MapsEventListener[] = [];
 
-    if (type === "polygon") {
-      const poly = new g.maps.Polygon({
-        map,
-        paths: pts.map(([lng, lat]) => ({ lat, lng })),
-        editable: true,
-        strokeColor: "#690909",
-        strokeWeight: 2,
-        fillColor: "#A81D1D",
-        fillOpacity: 0.18,
-      });
-      polyRef.current = poly;
-      const emit = () => {
-        const arr: LngLat[] = [];
-        poly.getPath().forEach((p) => arr.push([p.lng(), p.lat()]));
-        cb.current.onPoints(arr);
-      };
-      const path = poly.getPath();
-      listeners.push(path.addListener("set_at", emit));
-      listeners.push(path.addListener("insert_at", emit));
-      listeners.push(path.addListener("remove_at", emit));
-      listeners.push(
-        map.addListener("click", (e: google.maps.MapMouseEvent) => {
-          if (!e.latLng) return;
-          poly.getPath().push(e.latLng);
-          emit();
-        }),
-      );
-    } else {
-      const c = ctr
-        ? { lat: ctr[1], lng: ctr[0] }
-        : (map.getCenter()?.toJSON() ?? LAGOS);
-      const marker = new g.maps.Marker({ map, position: c, draggable: true });
-      const circle = new g.maps.Circle({
-        map,
-        center: c,
-        radius: Math.max(0.1, radiusKm || 1) * 1000,
-        strokeColor: "#690909",
-        strokeWeight: 2,
-        fillColor: "#A81D1D",
-        fillOpacity: 0.15,
-      });
-      markerRef.current = marker;
-      circleRef.current = circle;
-      const sync = (pos: google.maps.LatLng) => {
-        circle.setCenter(pos);
-        cb.current.onCenter([pos.lng(), pos.lat()]);
-      };
-      listeners.push(
-        marker.addListener("dragend", () => {
-          const p = marker.getPosition();
-          if (p) sync(p);
-        }),
-      );
-      listeners.push(
-        map.addListener("click", (e: google.maps.MapMouseEvent) => {
-          if (!e.latLng) return;
-          marker.setPosition(e.latLng);
-          sync(e.latLng);
-        }),
-      );
+    try {
+      if (type === "polygon") {
+        const poly = new g.maps.Polygon({
+          map,
+          paths: pts.map(([lng, lat]) => ({ lat, lng })),
+          editable: true,
+          strokeColor: "#690909",
+          strokeWeight: 2,
+          fillColor: "#A81D1D",
+          fillOpacity: 0.18,
+        });
+        polyRef.current = poly;
+        const emit = () => {
+          const arr: LngLat[] = [];
+          poly.getPath().forEach((p) => arr.push([p.lng(), p.lat()]));
+          cb.current.onPoints(arr);
+        };
+        const path = poly.getPath();
+        listeners.push(path.addListener("set_at", emit));
+        listeners.push(path.addListener("insert_at", emit));
+        listeners.push(path.addListener("remove_at", emit));
+        listeners.push(
+          map.addListener("click", (e: google.maps.MapMouseEvent) => {
+            if (!e.latLng) return;
+            poly.getPath().push(e.latLng);
+            emit();
+          }),
+        );
+      } else {
+        const c = ctr
+          ? { lat: ctr[1], lng: ctr[0] }
+          : (map.getCenter()?.toJSON() ?? LAGOS);
+        const marker = new g.maps.Marker({ map, position: c, draggable: true });
+        const circle = new g.maps.Circle({
+          map,
+          center: c,
+          radius: Math.max(0.1, radiusKm || 1) * 1000,
+          strokeColor: "#690909",
+          strokeWeight: 2,
+          fillColor: "#A81D1D",
+          fillOpacity: 0.15,
+        });
+        markerRef.current = marker;
+        circleRef.current = circle;
+        const sync = (pos: google.maps.LatLng) => {
+          circle.setCenter(pos);
+          cb.current.onCenter([pos.lng(), pos.lat()]);
+        };
+        listeners.push(
+          marker.addListener("dragend", () => {
+            const p = marker.getPosition();
+            if (p) sync(p);
+          }),
+        );
+        listeners.push(
+          map.addListener("click", (e: google.maps.MapMouseEvent) => {
+            if (!e.latLng) return;
+            marker.setPosition(e.latLng);
+            sync(e.latLng);
+          }),
+        );
+      }
+    } catch {
+      // Maps failed to initialise (e.g. key/referrer rejected). Fall back to
+      // manual coordinate entry instead of crashing the page.
+      setError(true);
+      return;
     }
 
     return () => {
@@ -191,10 +198,16 @@ export function ZoneMap({
     const g = window.google;
     const map = mapRef.current;
     if (!ready || !g || !map || !searchRef.current) return;
-    const ac = new g.maps.places.Autocomplete(searchRef.current, {
-      fields: ["geometry", "name"],
-    });
-    ac.bindTo("bounds", map);
+    if (!g.maps.places?.Autocomplete) return; // Places library unavailable
+    let ac: google.maps.places.Autocomplete;
+    try {
+      ac = new g.maps.places.Autocomplete(searchRef.current, {
+        fields: ["geometry", "name"],
+      });
+      ac.bindTo("bounds", map);
+    } catch {
+      return; // search box stays inert; map/manual entry still work
+    }
     const l = ac.addListener("place_changed", () => {
       const place = ac.getPlace();
       const geo = place.geometry;

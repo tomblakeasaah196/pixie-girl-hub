@@ -74,4 +74,18 @@ function deliveryQuote({ brand, lat, lng, country }) {
   return zones.quote({ brand, lat, lng, country_code: country });
 }
 
-module.exports = { resolveCurrency, deliveryQuote, currencyForCountry };
+/**
+ * Read-only shipping rate card for the storefront. NGN fees per country (and
+ * the local geofenced zones). The site converts to the display currency using
+ * the rates from /currency.
+ */
+function shippingRates({ brand }) {
+  return zones.shippingRates({ brand });
+}
+
+module.exports = {
+  resolveCurrency,
+  deliveryQuote,
+  shippingRates,
+  currencyForCountry,
+};

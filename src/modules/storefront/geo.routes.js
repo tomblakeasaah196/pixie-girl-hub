@@ -3,6 +3,7 @@
  * Mounted at /api/public/storefront. The customer website calls these.
  *
  *   GET  /currency            → display/charge currency + FX rates
+ *   GET  /shipping-rates      → country flat fees + local zones (NGN)
  *   POST /delivery-quote      → geofenced delivery fee for {lat,lng}
  *
  * Brand comes from ?brand or the X-Brand-Context header (the storefront sets
@@ -31,6 +32,15 @@ router.get("/currency", async (req, res, next) => {
     const country =
       req.query.country || req.headers["cf-ipcountry"] || null;
     res.json({ data: await service.resolveCurrency({ country }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/shipping-rates", async (req, res, next) => {
+  try {
+    const brand = resolveBrand(req);
+    res.json({ data: await service.shippingRates({ brand }) });
   } catch (err) {
     next(err);
   }

@@ -110,7 +110,14 @@ function OfficeModal({
 }) {
   const qc = useQueryClient();
   const notify = useNotify();
-  const mapsOk = isGoogleMapsConfigured();
+  // isGoogleMapsConfigured() is async (resolves the key loader), so resolve it
+  // into state rather than branching on the Promise directly.
+  const [mapsOk, setMapsOk] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    isGoogleMapsConfigured().then((ok) => { if (alive) setMapsOk(ok); });
+    return () => { alive = false; };
+  }, []);
   const [form, setForm] = useState({
     name: "",
     latitude: LAGOS.lat,

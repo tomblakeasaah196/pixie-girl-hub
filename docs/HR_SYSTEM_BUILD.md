@@ -94,13 +94,58 @@ PIN → pay each employee's bank**, on top of the existing payroll engine.
 
 **Verified:** 285/285 backend tests; ESLint clean; admin `tsc` → 0 errors.
 
-## PR 4 (remaining) — performance payout, contracts, dashboards, automation
+## PR 4 — contract generation + target→bonus automation ✅
 
-- Monthly-target → bonus payout on achievement (event-subscriber, idempotent).
-- **Contract generation** (PDF from template) + **e-signature** on
-  `staff_contracts` (esignature tables already exist).
-- Performance reviews UI (quarterly weighted KPIs); HR dashboards/analytics.
-- Nightly reconcile + query-reminder cron; leave/query workflow escalation.
+- **Contract generation:** `contractHtml` PDF template + `contracts.service`
+  generates an employment-contract PDF, stores it via the documents service, and
+  records a `staff_contracts` row linked to the document. Routed at
+  `POST /hr/employees/:id/contract` (+ `GET …/contracts`). The stored document
+  flows through the existing e-signature module (send-for-signing) — no separate
+  e-sign build needed. Frontend: "Generate contract" modal in HR & Staff;
+  contracts already surface in My HR.
+- **Target → bonus:** `updateTargetProgress` emits a distinct `target_achieved`
+  transition event; `target.subscribers` awards a pending-approval bonus exactly
+  once (pct-of-salary or fixed ₦), defensively (failures logged, never block
+  progress). Still flows through HR approval + payroll.
+
+## PR 5 — automation + performance reviews UI ✅
+
+- **Nightly HR attendance sweep** (`schedulers/hr-attendance.js`, 23:30 Lagos,
+  fans out across brands): reconcile today + bump query reminders + apply lapsed
+  off-site penalties — the daily loop now runs without manual "Reconcile today".
+- **Query reminders** (`bumpDueReminders` + repo): open queries past their
+  deadline get reminded once/day ("reminds after 2 days") via a `query_reminder`
+  event the notification layer can surface.
+- **Performance page** (`/performance`): appraisal cycles (list + create),
+  weighted-KPI balance banner, reviews list with status advance/acknowledge —
+  surfaces the existing appraisal backend. Nav "Performance".
+
+## PR 6 (remaining) — deeper analytics, escalation, AI, operations
+
+- HR dashboards/analytics (trends, per-department rollups).
+- Leave/query **workflow escalation** (route through the §6.27 engine).
+- KPI **scoring entry** UI (enter per-staff scores → generate review).
 - Praxis-AI HR actions; **Operations module** wires stylist target progress +
   quality ratings into `updateTargetProgress` (seam documented in
   `hr_ops.service.js`).
+
+## PR 6 — consolidated: deploy fix + HR analytics ✅
+
+This branch consolidates the full HR stack (contracts, target→bonus, nightly
+automation, performance-reviews UI) plus:
+
+- **Deploy fix:** `OfficeGeofenceSettings` branched on `isGoogleMapsConfigured()`
+  synchronously, but on `main` that function is async (`Promise<boolean>`), so
+  `tsc -b` failed (TS2801) and the production deploy aborted. Now resolved into
+  state via `useEffect`. Verified with the deploy's exact `tsc -b && vite build`.
+- **HR analytics:** `GET /hr/analytics` returns month-to-date headcount,
+  punctuality %, present/late/absent/leave/off-site days, lateness deductions,
+  open queries, pending leave, target active/achieved and earned-MTD. Surfaced
+  as an **Analytics** tab on HR & Staff (KPI tiles + counts).
+
+## Remaining — escalation, AI, operations
+
+- Leave/query **workflow escalation** (§6.27 engine).
+- KPI **scoring-entry** UI (enter per-staff scores → generate review).
+- Praxis-AI HR actions; **Operations module** target-progress + quality wiring.
+- Nomba bank-code capture + payout-status webhook (pending endpoint confirmation).

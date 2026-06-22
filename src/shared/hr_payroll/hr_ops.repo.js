@@ -21,6 +21,46 @@ function exec(client) {
 // Staff visible to a brand: primary brand OR listed as an additional brand.
 const VISIBLE = `(sp.business = $1 OR $1 = ANY(sp.additional_businesses))`;
 
+// ── analytics (HR dashboard) ───────────────────────────────
+/** Month-to-date HR metrics for the dashboard, scoped to the brand. */
+async function analytics({ client, brand, year, month }) {
+  const { rows } = await exec(client)(
+    `WITH md AS (
+       SELECT * FROM shared.attendance_days
+        WHERE business = $1
+          AND date_part('year', work_date) = $2
+          AND date_part('month', work_date) = $3
+     )
+     SELECT
+       (SELECT count(*) FROM shared.staff_profiles sp
+         WHERE ${VISIBLE} AND sp.is_deleted = false
+           AND (sp.end_date IS NULL OR sp.end_date >= CURRENT_DATE))::int AS headcount,
+       (SELECT count(*) FROM md WHERE status IN ('present','late'))::int AS present_days,
+       (SELECT count(*) FROM md WHERE status = 'late')::int AS late_days,
+       (SELECT count(*) FROM md WHERE status = 'absent')::int AS absent_days,
+       (SELECT count(*) FROM md WHERE status = 'on_leave')::int AS leave_days,
+       (SELECT count(*) FROM md WHERE is_offsite = true)::int AS offsite_days,
+       (SELECT COALESCE(SUM(deduction_ngn),0) FROM md WHERE justified = false)::numeric AS lateness_deductions_ngn,
+       (SELECT count(*) FROM shared.hr_queries q
+         WHERE q.business = $1 AND q.status IN ('open','responded'))::int AS open_queries,
+       (SELECT count(*) FROM shared.leave_requests lr
+          JOIN shared.staff_profiles sp ON sp.profile_id = lr.profile_id
+         WHERE ${VISIBLE} AND lr.status = 'pending')::int AS pending_leave,
+       (SELECT count(*) FROM shared.performance_targets t
+         WHERE t.business = $1 AND t.period_year = $2 AND t.period_month = $3
+           AND t.status = 'active')::int AS active_targets,
+       (SELECT count(*) FROM shared.performance_targets t
+         WHERE t.business = $1 AND t.period_year = $2 AND t.period_month = $3
+           AND t.status = 'achieved')::int AS achieved_targets,
+       (SELECT COALESCE(SUM(earned_ngn),0) FROM shared.staff_earnings_daily e
+         WHERE e.business = $1
+           AND date_part('year', e.work_date) = $2
+           AND date_part('month', e.work_date) = $3)::numeric AS earned_mtd_ngn`,
+    [brand, year, month],
+  );
+  return rows[0];
+}
+
 // ── identity ───────────────────────────────────────────────
 /** Resolve the staff profile linked to a user, if visible to the brand. */
 async function profileForUser({ client, brand, userId }) {
@@ -631,6 +671,30 @@ async function lapsedOffsiteQueries({ client, brand }) {
   return rows;
 }
 
+/** Open queries due for a reminder today (deadline reached, not reminded today). */
+async function dueReminderQueries({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT * FROM shared.hr_queries
+      WHERE business = $1 AND status = 'open'
+        AND remind_after IS NOT NULL AND remind_after <= CURRENT_DATE
+        AND (last_reminded_at IS NULL OR last_reminded_at::date < CURRENT_DATE)
+      ORDER BY remind_after ASC
+      LIMIT 500`,
+    [brand],
+  );
+  return rows;
+}
+
+/** Stamp a reminder onto a query (count + timestamp). */
+async function bumpReminder({ client, id }) {
+  await exec(client)(
+    `UPDATE shared.hr_queries
+        SET reminder_count = reminder_count + 1, last_reminded_at = now()
+      WHERE query_id = $1`,
+    [id],
+  );
+}
+
 /** profile_id → leave_id for any approved leave covering the date. */
 async function approvedLeaveForDate({ client, profileIds, dateStr }) {
   if (!profileIds.length) return {};
@@ -701,6 +765,7 @@ async function contractsForProfile({ client, profileId }) {
 }
 
 module.exports = {
+  analytics,
   profileForUser,
   profileById,
   activeStaff,
@@ -734,6 +799,8 @@ module.exports = {
   todayClockEvents,
   markDayAbsent,
   lapsedOffsiteQueries,
+  dueReminderQueries,
+  bumpReminder,
   tasksForUser,
   contractsForProfile,
 };

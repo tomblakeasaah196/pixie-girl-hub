@@ -107,6 +107,14 @@ const reconcileSchema = z.object({
   date: dateStr.optional(),
 });
 
+const contractGenerateSchema = z.object({
+  contract_type: z.enum(["full_time", "part_time", "contract", "amendment", "termination"]).optional(),
+  effective_from: dateStr.optional(),
+  effective_to: dateStr.nullable().optional(),
+  gross_salary: z.number().nonnegative().optional(),
+  notes: z.string().max(5000).optional(),
+});
+
 const clockSchema = z.object({
   event_type: z.enum(["clock_in", "clock_out"]),
   latitude: z.number().min(-90).max(90).nullable().optional(),
@@ -135,4 +143,5 @@ module.exports = {
   payoutPin: make(payoutPinSchema),
   reconcile: make(reconcileSchema),
   clock: make(clockSchema),
+  contractGenerate: make(contractGenerateSchema),
 };

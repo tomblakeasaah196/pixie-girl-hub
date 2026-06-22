@@ -7,6 +7,7 @@
 "use strict";
 
 const service = require("./hr_ops.service");
+const contracts = require("./contracts.service");
 
 const ctx = (req) => ({
   brand: req.brand,
@@ -50,6 +51,15 @@ async function selfClock(req, res) {
 // ── Management (HR & Staff) ────────────────────────────────
 async function getOverview(req, res) {
   res.json({ data: await service.getOverview({ brand: req.brand }) });
+}
+async function getAnalytics(req, res) {
+  res.json({
+    data: await service.getAnalytics({
+      brand: req.brand,
+      year: req.query.year,
+      month: req.query.month,
+    }),
+  });
 }
 async function reconcile(req, res) {
   res.json({ data: await service.reconcileDay({ ...ctx(req), date: req.body.date }) });
@@ -111,6 +121,19 @@ async function removeTarget(req, res) {
   res.status(204).end();
 }
 
+async function listContracts(req, res) {
+  res.json(await contracts.listForProfile({ brand: req.brand, profileId: req.params.id }));
+}
+async function generateContract(req, res) {
+  res.status(201).json({
+    data: await contracts.generateContract({
+      ...ctx(req),
+      profileId: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+
 async function getSettings(req, res) {
   res.json({ data: await service.getSettings({ brand: req.brand }) });
 }
@@ -128,6 +151,7 @@ module.exports = {
   getMyToday,
   selfClock,
   getOverview,
+  getAnalytics,
   reconcile,
   applyLapsedOffsite,
   listLeave,
@@ -141,6 +165,8 @@ module.exports = {
   setTarget,
   updateTargetProgress,
   removeTarget,
+  listContracts,
+  generateContract,
   getSettings,
   updateSettings,
   setPayoutPin,

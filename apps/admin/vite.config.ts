@@ -40,6 +40,16 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
+      // The shared @landing-kit Atelier components import next/image and
+      // next/link for the live Next.js site. The admin (Vite) has no Next
+      // runtime, so map those specifiers to plain-DOM stand-ins for the
+      // preview. The live site is unaffected — it uses the real next/* .
+      "next/image": fileURLToPath(
+        new URL("./src/lib/next-shims/image.tsx", import.meta.url),
+      ),
+      "next/link": fileURLToPath(
+        new URL("./src/lib/next-shims/link.tsx", import.meta.url),
+      ),
       // Shared landing renderer + config, consumed as source. Listed before
       // "@" so the longer, more specific prefix wins.
       "@landing-kit": fileURLToPath(
@@ -58,6 +68,10 @@ export default defineConfig({
       "@react-three/drei",
       "framer-motion",
       "lucide-react",
+      // Added for the live-state Atelier commerce body (cart store + cn).
+      "zustand",
+      "clsx",
+      "tailwind-merge",
     ],
   },
   server: {

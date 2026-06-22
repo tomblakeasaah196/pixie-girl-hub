@@ -1,0 +1,233 @@
+// @ts-nocheck
+"use client";
+
+import { useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { motion, AnimatePresence } from "framer-motion";
+import { Gift, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
+import { useCart } from "../cart-store";
+import { money } from "../format";
+import type { LandingPayload } from "../types";
+
+export function CartDrawer({ payload }: { payload: LandingPayload }) {
+  const open = useCart((s) => s.open);
+  const close = useCart((s) => s.closeCart);
+  const items = useCart((s) => s.items);
+  const setQ = useCart((s) => s.setQuantity);
+  const remove = useCart((s) => s.remove);
+  const subtotal = useCart((s) => s.subtotalNgn());
+  const retail = useCart((s) => s.retailSubtotalNgn());
+  const savings = useCart((s) => s.savingsNgn());
+  const distinctBundles = useCart((s) => s.distinctBundleCount());
+
+  const stacking = payload.stacking_bonus;
+  const stackingUnlocked =
+    stacking &&
+    stacking.min_distinct_bundles > 0 &&
+    distinctBundles >= stacking.min_distinct_bundles;
+  const stackingDiscount = stackingUnlocked ? stacking.discount_ngn : 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, close]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[3px]"
+            onClick={close}
+          />
+          <motion.aside
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            role="dialog"
+            aria-modal="true"
+            className="fixed top-0 right-0 bottom-0 z-50 w-[min(440px,95vw)] dropglass border-l border-[rgb(var(--border-c)/0.12)] flex flex-col shadow-[-30px_0_80px_rgb(0_0_0/0.5)]"
+          >
+            <div className="flex items-center gap-3 px-5 py-4 border-b hairline">
+              <h2 className="font-display text-[20px]">Your cart</h2>
+              <button
+                type="button"
+                onClick={close}
+                className="ml-auto grid place-items-center w-9 h-9 rounded-xl text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))] hover:bg-[rgb(var(--text)/0.06)]"
+                aria-label="Close cart"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {items.length === 0 && (
+                <div className="text-center pt-10">
+                  <span className="inline-grid place-items-center w-16 h-16 rounded-2xl bg-[rgb(var(--accent)/0.1)] text-[rgb(var(--accent-glow))] mb-3">
+                    <ShoppingBag className="w-6 h-6" />
+                  </span>
+                  <h3 className="font-display text-[22px]">A quiet moment.</h3>
+                  <p className="text-[rgb(var(--text-muted))] text-[13px] mt-1">
+                    Drop a bundle in to begin.
+                  </p>
+                </div>
+              )}
+              {stackingUnlocked && (
+                <div className="rounded-[14px] p-3.5 bg-[rgb(var(--success)/0.1)] border border-[rgb(var(--success)/0.3)] flex items-center gap-3">
+                  <Gift className="w-5 h-5 text-[rgb(var(--success))] flex-shrink-0" />
+                  <div>
+                    <div className="text-[13px] font-semibold text-[rgb(var(--success))]">
+                      You unlocked {money(stacking.discount_ngn)} off!
+                    </div>
+                    <div className="text-[11px] text-[rgb(var(--text-muted))] mt-0.5">
+                      {stacking.label ||
+                        `Bonus for combining ${distinctBundles} bundles`}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!stackingUnlocked &&
+                stacking &&
+                stacking.min_distinct_bundles > 0 &&
+                distinctBundles > 0 &&
+                distinctBundles < stacking.min_distinct_bundles && (
+                  <div className="rounded-[14px] p-3 bg-[rgb(var(--accent)/0.06)] border border-[rgb(var(--accent)/0.2)] text-[12px] text-[rgb(var(--text-muted))]">
+                    Add{" "}
+                    <span className="font-semibold text-[rgb(var(--accent-glow))]">
+                      {stacking.min_distinct_bundles - distinctBundles} more
+                      bundle{stacking.min_distinct_bundles - distinctBundles !== 1 ? "s" : ""}
+                    </span>{" "}
+                    to unlock {money(stacking.discount_ngn)} off
+                  </div>
+                )}
+              {items.map((it) => (
+                <div
+                  key={it.id}
+                  className="glass rounded-[14px] p-3 flex gap-3 items-center"
+                >
+                  <div className="relative w-14 h-14 rounded-[10px] overflow-hidden bg-[rgb(var(--panel-2))] flex-shrink-0">
+                    {it.image_url ? (
+                      <Image
+                        src={it.image_url}
+                        alt={it.name}
+                        fill
+                        sizes="56px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="grid place-items-center w-full h-full text-[rgb(var(--text-faint))]">
+                        <ShoppingBag className="w-5 h-5" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-semibold truncate">
+                      {it.name}
+                    </div>
+                    {it.preorder && (
+                      <div className="text-[10px] text-[rgb(var(--warn))] mt-0.5">
+                        Pre-order · ships in {it.preorder_lead_weeks ?? 3} wks
+                      </div>
+                    )}
+                    <div className="font-display tabular-nums text-[14px] mt-1">
+                      {money(it.unit_price_ngn * it.quantity)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQ(it.id, it.quantity - 1)}
+                      className="grid place-items-center w-7 h-7 rounded-lg bg-[rgb(var(--text)/0.06)] hover:bg-[rgb(var(--text)/0.1)]"
+                      aria-label="Decrease"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="font-mono tabular-nums w-5 text-center text-[13px]">
+                      {it.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setQ(it.id, it.quantity + 1)}
+                      className="grid place-items-center w-7 h-7 rounded-lg bg-[rgb(var(--text)/0.06)] hover:bg-[rgb(var(--text)/0.1)]"
+                      aria-label="Increase"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remove(it.id)}
+                      className="ml-1 grid place-items-center w-7 h-7 rounded-lg text-[rgb(var(--text-faint))] hover:text-[rgb(var(--danger))]"
+                      aria-label="Remove"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-5 border-t hairline space-y-3">
+              <div className="flex justify-between text-[13px]">
+                <span className="text-[rgb(var(--text-muted))]">Subtotal</span>
+                <span className="font-mono tabular-nums">
+                  {money(subtotal)}
+                </span>
+              </div>
+              {stackingDiscount > 0 && (
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-[rgb(var(--success))]">
+                    Bundle bonus
+                  </span>
+                  <span className="font-mono tabular-nums text-[rgb(var(--success))]">
+                    −{money(stackingDiscount)}
+                  </span>
+                </div>
+              )}
+              {savings > 0 && (
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-[rgb(var(--success))]">You save</span>
+                  <span className="font-mono tabular-nums text-[rgb(var(--success))]">
+                    −{money(savings + stackingDiscount)}
+                  </span>
+                </div>
+              )}
+              {savings > 0 && (
+                <div className="flex justify-between text-[12px] text-[rgb(var(--text-faint))]">
+                  <span>vs retail</span>
+                  <span className="font-mono tabular-nums line-through">
+                    {money(retail)}
+                  </span>
+                </div>
+              )}
+              <Link
+                href={`/checkout/${payload.slug}`}
+                onClick={close}
+                aria-disabled={items.length === 0}
+                className={`w-full inline-flex items-center justify-center h-12 rounded-xl font-semibold cta-sheen ${
+                  items.length === 0
+                    ? "bg-[rgb(var(--text)/0.06)] text-[rgb(var(--text-faint))] pointer-events-none"
+                    : "bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))]"
+                }`}
+              >
+                Checkout ·{" "}
+                {money(Math.max(0, subtotal - stackingDiscount))}
+              </Link>
+              <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
+                DHL rates apply. Pay with Paystack · Opay · Nomba · Stripe.
+              </p>
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}

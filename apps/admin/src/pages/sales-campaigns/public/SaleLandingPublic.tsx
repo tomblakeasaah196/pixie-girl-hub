@@ -2,10 +2,10 @@
  * Public sales-campaign landing page — /sale/:slug (no auth).
  *
  * Served at the sales subdomain (Host → brand) or, when previewed from the
- * admin, with an explicit ?brand= hint. The "before/coming-soon" state renders
- * the shared @landing-kit Atelier composition — the exact same components the
- * live sales site uses — so the admin preview is true WYSIWYG. (Live/ended
- * still use LandingRender pending their Atelier slices.)
+ * admin, with an explicit ?brand= hint. Every state (before / live / ended)
+ * renders the shared @landing-kit Atelier composition — the exact same
+ * components the live sales site uses — so the admin preview is true WYSIWYG,
+ * drafts included. LandingRender remains only as an unresolved-brand fallback.
  */
 
 import { useCallback, useMemo } from "react";
@@ -18,6 +18,8 @@ import {
 } from "@/lib/campaigns";
 import {
   BeforeState,
+  LiveState,
+  EndedState,
   withDefaults,
   hexToTriplet,
   type LandingPayload,
@@ -103,6 +105,25 @@ export function SaleLandingPublic() {
     [slug],
   );
 
+  // Ended state: the campaign is closed, so its "hear first" form joins the
+  // brand newsletter (mirrors the live AfterShell).
+  const onNewsletterSignup: LandingSubmit = useCallback(
+    async ({ name, email, whatsapp, referral, channel }) => {
+      const res = await fetch(
+        `/api/public/landing/signup${brandKey ? `?brand=${encodeURIComponent(brandKey)}` : ""}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, whatsapp, referral, channel }),
+        },
+      );
+      if (!res.ok) throw new Error(`Signup failed: ${res.status}`);
+      const json = await res.json().catch(() => null);
+      return { code: json?.data?.code ?? "" };
+    },
+    [brandKey],
+  );
+
   const model: LandingModel | null = useMemo(() => {
     if (!q.data) return null;
     const d = q.data;
@@ -148,17 +169,37 @@ export function SaleLandingPublic() {
     );
   }
 
-  // Before/coming-soon: render the exact shared Atelier composition (3D
-  // hourglass hero + invitation body + reveal) the live site renders, so the
-  // admin preview is true WYSIWYG. Live/ended still use LandingRender.
-  if (model.state === "before" && brandConfig) {
+  // Render the exact shared Atelier composition the live site renders, per
+  // state, so the admin preview is true WYSIWYG (drafts included). LandingRender
+  // remains only as a fallback when the brand/theme can't be resolved.
+  if (brandConfig) {
+    const payload = q.data as unknown as LandingPayload;
+    if (model.state === "before") {
+      return (
+        <div style={tokenVars}>
+          <BeforeState
+            payload={payload}
+            brandConfig={brandConfig}
+            onSignup={onSignup}
+          />
+        </div>
+      );
+    }
+    if (model.state === "ended") {
+      return (
+        <div style={tokenVars}>
+          <EndedState
+            payload={payload}
+            brandConfig={brandConfig}
+            onSignup={onNewsletterSignup}
+          />
+        </div>
+      );
+    }
+    // live (and any in-between)
     return (
       <div style={tokenVars}>
-        <BeforeState
-          payload={q.data as unknown as LandingPayload}
-          brandConfig={brandConfig}
-          onSignup={onSignup}
-        />
+        <LiveState payload={payload} brandConfig={brandConfig} />
       </div>
     );
   }

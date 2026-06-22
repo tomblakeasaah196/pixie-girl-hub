@@ -430,6 +430,7 @@ CREATE TABLE {{BUSINESS}}.payslips (
   job_title_snapshot    TEXT,
   department_snapshot   TEXT,
   bank_account_snapshot TEXT,
+  bank_sort_code_snapshot TEXT,
   -- Earnings (NGN)
   base_salary_ngn       NUMERIC(14,2) NOT NULL DEFAULT 0,
   allowances_ngn        NUMERIC(14,2) NOT NULL DEFAULT 0,

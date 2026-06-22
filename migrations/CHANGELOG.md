@@ -11,6 +11,19 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-22 — HR final wiring (000236, 000237)
+
+- `000236_business_payslip_bank_sort_code` — adds `bank_sort_code_snapshot` to
+  every brand's `payslips` (+ template). Payroll calculate now snapshots the
+  staff bank account + sort/NIP code (decrypted) so disbursement can transfer.
+- `000237_shared_hr_leave_escalation` — adds `hr_settings.leave_escalation_days`
+  (leave ≥ N days requires CEO approval).
+
+Plus (no schema): salary payout webhook reconciliation, auto target-progress
+from Sales/Service-Jobs, KPI scoring-entry UI, and Praxis HR read actions.
+
+---
+
 ## 2026-06-22 — HR attendance: geofenced clock-in (000234, 000235)
 
 **Source:** chat brainstorm on geolocated attendance.

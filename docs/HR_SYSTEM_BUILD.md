@@ -143,9 +143,31 @@ automation, performance-reviews UI) plus:
   open queries, pending leave, target active/achieved and earned-MTD. Surfaced
   as an **Analytics** tab on HR & Staff (KPI tiles + counts).
 
-## Remaining — escalation, AI, operations
+## Final wiring — HR now end-to-end ✅
 
-- Leave/query **workflow escalation** (§6.27 engine).
-- KPI **scoring-entry** UI (enter per-staff scores → generate review).
-- Praxis-AI HR actions; **Operations module** target-progress + quality wiring.
-- Nomba bank-code capture + payout-status webhook (pending endpoint confirmation).
+The last batch, completing HR from onboarding to salary settlement:
+
+- **Salary settlement:** payslips now snapshot the staff **bank account + bank
+  (sort/NIP) code** (migration 000236 + template; decrypted from the profile at
+  calculate), so `disbursement.service` can actually transfer. A **Nomba payout
+  webhook** path reconciles async results (`payroll.reconcilePayout`, matched on
+  our `PAY-<payslip_id>` ref) — defensive, activates the moment the engineer
+  confirms the endpoint; sync results already settle at pay time.
+- **Auto target-progress (operations wiring):** `target.progress.subscribers`
+  bumps targets automatically — Sales (`order.paid` → `sales_count` +
+  `sales_revenue`) and Service Jobs (`completed` → `styles_completed` /
+  `services_completed`). Crossing a goal fires `target_achieved` → the bonus
+  subscriber. This is the stylist/sales auto-counting the meeting described; the
+  future Operations module can call `bumpTargetProgress` directly.
+- **KPI scoring-entry UI:** Performance page → "Score staff" enters per-KPI
+  scores and generates the weighted review in one step.
+- **Leave escalation:** leave ≥ `leave_escalation_days` (HR Settings, migration
+  000237) can only be **approved by the CEO**; shorter leave approves directly.
+- **Praxis-AI HR actions:** read-only HR queries registered in the Praxis query
+  catalogue (`hr_overview`, `hr_analytics`, `hr_attendance_today`),
+  permission-gated on `hr_payroll`.
+
+### Operator follow-up (not blocking)
+- Confirm the **Nomba payout endpoint/payload/response** (engineer note) — then
+  `nomba.disburseSalary` may need a small field-mapping tweak.
+- Set the **CEO payout PIN** and each office's **geofence** in HR Settings.

@@ -21,6 +21,7 @@ function exec(client) {
 async function listActiveStaffForPayroll({ client, brand, period_end }) {
   const { rows } = await exec(client)(
     `SELECT sp.profile_id, sp.job_title, sp.department, sp.base_salary,
+            sp.bank_account_number, sp.bank_sort_code, sp.bank_name,
             u.user_id
        FROM shared.staff_profiles sp
        JOIN shared.users u ON u.staff_profile_id = sp.profile_id
@@ -161,6 +162,8 @@ async function insertPayslip({ client, brand, _payslip_number, data }) {
     "staff_profile_id",
     "job_title_snapshot",
     "department_snapshot",
+    "bank_account_snapshot",
+    "bank_sort_code_snapshot",
     "base_salary_ngn",
     "allowances_ngn",
     "commission_ngn",

@@ -132,6 +132,7 @@ async function updateSettings({ client, brand, patch }) {
     "default_grace_minutes",
     "default_expected_start_time",
     "working_days",
+    "leave_escalation_days",
     "earnings_tracker_enabled",
     "geofence_enabled",
     "geofence_required_on_site",
@@ -616,6 +617,42 @@ async function deleteTarget({ client, brand, id }) {
   );
 }
 
+/** profile_id for a user, visible to the brand (auto target-progress wiring). */
+async function profileIdForUser({ client, brand, userId }) {
+  const { rows } = await exec(client)(
+    `SELECT sp.profile_id
+       FROM shared.users u
+       JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+      WHERE u.user_id = $2 AND ${VISIBLE} AND sp.is_deleted = false
+      LIMIT 1`,
+    [brand, userId],
+  );
+  return rows[0] ? rows[0].profile_id : null;
+}
+
+/**
+ * Increment the active monthly target for (profile, metric) by delta. Flips to
+ * 'achieved' on crossing the goal. RETURNING includes prev_value (current minus
+ * the just-applied delta) so the caller can detect the achieve transition.
+ */
+async function incrementActiveTarget({ client, brand, profileId, metric, delta, year, month }) {
+  const { rows } = await exec(client)(
+    `UPDATE shared.performance_targets
+        SET current_value = current_value + $4,
+            last_progress_at = now(),
+            status = CASE WHEN current_value + $4 >= target_value AND status = 'active'
+                          THEN 'achieved' ELSE status END,
+            achieved_at = CASE WHEN current_value + $4 >= target_value AND achieved_at IS NULL
+                               THEN now() ELSE achieved_at END
+      WHERE business = $1 AND profile_id = $2 AND metric = $3
+        AND period_year = $5 AND period_month = $6
+        AND status IN ('active','achieved')
+      RETURNING *, (current_value - $4) AS prev_value`,
+    [brand, profileId, metric, delta, year, month],
+  );
+  return rows[0] || null;
+}
+
 // ── reconcile inputs (clock-ins + approved leave for a date) ──
 /** First accepted clock-in per profile on a date, for all brand staff. */
 async function firstClockInsForDate({ client, profileIds, dateStr }) {
@@ -792,6 +829,8 @@ module.exports = {
   findTarget,
   createTarget,
   updateTargetProgress,
+  incrementActiveTarget,
+  profileIdForUser,
   deleteTarget,
   overviewCounts,
   firstClockInsForDate,

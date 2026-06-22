@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Gauge, Plus, ScrollText, CheckCircle2 } from "lucide-react";
+import { Gauge, Plus, ScrollText, CheckCircle2, ClipboardCheck } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
@@ -19,6 +19,10 @@ import {
   kpiWeightSummary,
   listPerfReviews,
   advancePerfReview,
+  listKpiDefinitions,
+  scoreStaff,
+  generatePerfReview,
+  listStaff,
   type PerfCycle,
 } from "@/lib/hr-api";
 import { TabBar, statusTone, useNotify, errMsg } from "./hr-shared";
@@ -76,7 +80,90 @@ function CreateCycleModal({ open, onClose }: { open: boolean; onClose: () => voi
   );
 }
 
-function CyclesTab({ onCreate }: { onCreate: () => void }) {
+function ScoreStaffModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const notify = useNotify();
+  const { data: cycles } = useQuery({ queryKey: ["perf", "cycles"], queryFn: listPerfCycles, enabled: open });
+  const { data: kpis } = useQuery({ queryKey: ["perf", "kpis"], queryFn: listKpiDefinitions, enabled: open });
+  const { data: staff } = useQuery({
+    queryKey: ["hr", "staff", "for-score"],
+    queryFn: () => listStaff({ page_size: "200" }),
+    enabled: open,
+  });
+  const [cycleId, setCycleId] = useState("");
+  const [userId, setUserId] = useState("");
+  const [scores, setScores] = useState<Record<string, number>>({});
+
+  const openCycles = (cycles || []).filter((c) => ["open", "scoring", "upcoming"].includes(c.status));
+  const staffWithUser = (staff?.data || []).filter((s) => (s as { user_id?: string }).user_id);
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      const payload = (kpis || []).map((k) => ({
+        kpi_id: k.kpi_id,
+        raw_score: scores[k.kpi_id] ?? k.min_score,
+      }));
+      await scoreStaff(cycleId, { user_id: userId, scores: payload });
+      return generatePerfReview(cycleId, userId);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["perf"] });
+      notify("Scored & review generated", "Find it under the Reviews tab.");
+      onClose();
+      setScores({});
+      setUserId("");
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title="Score a staff member"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary"
+            disabled={!cycleId || !userId || !(kpis || []).length || submit.isPending}
+            onClick={() => submit.mutate()}>
+            {submit.isPending ? "Saving…" : "Save scores & generate review"}
+          </Button>
+        </>
+      }>
+      <div className="space-y-3">
+        <select value={cycleId} onChange={(e) => setCycleId(e.target.value)}
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
+          <option value="">— select cycle —</option>
+          {openCycles.map((c) => (<option key={c.cycle_id} value={c.cycle_id}>{c.cycle_name}</option>))}
+        </select>
+        <select value={userId} onChange={(e) => setUserId(e.target.value)}
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
+          <option value="">— select staff —</option>
+          {staffWithUser.map((s) => (
+            <option key={s.profile_id} value={(s as { user_id?: string }).user_id}>{s.display_name}</option>
+          ))}
+        </select>
+        <div className="space-y-2">
+          {(kpis || []).map((k) => (
+            <div key={k.kpi_id} className="flex items-center justify-between gap-3">
+              <span className="text-sm text-text-primary">
+                {k.display_name} <span className="text-xs text-text-faint">({k.weight_pct}%)</span>
+              </span>
+              <input type="number" min={k.min_score} max={k.max_score} step="0.1"
+                value={scores[k.kpi_id] ?? ""}
+                placeholder={`${k.min_score}–${k.max_score}`}
+                onChange={(e) => setScores({ ...scores, [k.kpi_id]: Number(e.target.value) })}
+                className="w-24 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+            </div>
+          ))}
+          {!(kpis || []).length && (
+            <p className="text-xs text-text-faint">No KPI definitions configured yet.</p>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CyclesTab({ onCreate, onScore }: { onCreate: () => void; onScore: () => void }) {
   const { data, isLoading } = useQuery({ queryKey: ["perf", "cycles"], queryFn: listPerfCycles });
   const { data: kpi } = useQuery({ queryKey: ["perf", "kpi-weights"], queryFn: kpiWeightSummary });
   return (
@@ -90,7 +177,8 @@ function CyclesTab({ onCreate }: { onCreate: () => void }) {
           <Pill tone={kpi.balanced ? "success" : "warn"}>{kpi.total}% {kpi.balanced ? "balanced" : "off-balance"}</Pill>
         </Card>
       )}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button icon={<ClipboardCheck className="h-4 w-4" />} onClick={onScore}>Score staff</Button>
         <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={onCreate}>New cycle</Button>
       </div>
       {isLoading ? (
@@ -165,6 +253,7 @@ export default function PerformancePage() {
   const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState("cycles");
   const [createOpen, setCreateOpen] = useState(false);
+  const [scoreOpen, setScoreOpen] = useState(false);
 
   if (!can("hr_payroll", "view")) {
     return <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8"><DeniedState message="You don't have access to Performance." /></div>;
@@ -180,10 +269,13 @@ export default function PerformancePage() {
       <TabBar active={tab} onChange={setTab}
         tabs={[{ key: "cycles", label: "Cycles" }, { key: "reviews", label: "Reviews" }]} />
 
-      {tab === "cycles" && <CyclesTab onCreate={() => setCreateOpen(true)} />}
+      {tab === "cycles" && (
+        <CyclesTab onCreate={() => setCreateOpen(true)} onScore={() => setScoreOpen(true)} />
+      )}
       {tab === "reviews" && <ReviewsTab />}
 
       <CreateCycleModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <ScoreStaffModal open={scoreOpen} onClose={() => setScoreOpen(false)} />
     </div>
   );
 }

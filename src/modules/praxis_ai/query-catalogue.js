@@ -17,6 +17,8 @@
 
 const dashboardsRepo = require("../dashboards/dashboards.repo");
 const cashRequestRepo = require("../cash_request/cash-request.repo");
+const hrService = require("../../shared/hr_payroll/hr_ops.service");
+const hrRepo = require("../../shared/hr_payroll/hr_ops.repo");
 
 const str = (v) => (typeof v === "string" && v ? v : null);
 
@@ -91,6 +93,36 @@ const QUERIES = [
     parameters: { type: "object", properties: {} },
     run: ({ brand }) =>
       cashRequestRepo.kpis({ brand, scope: "all", user_id: null }),
+  },
+  {
+    key: "hr_overview",
+    title: "HR overview",
+    description:
+      "Staff headcount and today's HR snapshot: present, late, on leave, pending leave and open queries.",
+    module: "hr_payroll",
+    parameters: { type: "object", properties: {} },
+    run: ({ brand }) => hrService.getOverview({ brand }),
+  },
+  {
+    key: "hr_analytics",
+    title: "HR analytics (month-to-date)",
+    description:
+      "Month-to-date HR metrics: headcount, punctuality %, late/absent/leave/off-site days, lateness deductions, open queries, target progress and earnings.",
+    module: "hr_payroll",
+    parameters: { type: "object", properties: {} },
+    run: ({ brand }) => hrService.getAnalytics({ brand }),
+  },
+  {
+    key: "hr_attendance_today",
+    title: "Attendance today",
+    description:
+      "Today's reconciled attendance rows for the brand (who is present, late, absent, on leave or off-site).",
+    module: "hr_payroll",
+    parameters: { type: "object", properties: {} },
+    run: ({ brand }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      return hrRepo.listAttendanceDays({ brand, filters: { from: today, to: today } });
+    },
   },
 ];
 

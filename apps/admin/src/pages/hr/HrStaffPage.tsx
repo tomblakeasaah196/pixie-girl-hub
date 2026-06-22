@@ -23,6 +23,7 @@ import {
   Target,
   Settings as SettingsIcon,
   ShieldCheck,
+  MapPin,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
@@ -45,9 +46,11 @@ import {
   getSettings,
   updateSettings,
   setPayoutPin,
+  applyLapsedOffsite,
   listStaff,
   type HrSettings,
 } from "@/lib/hr-api";
+import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
 import {
   StatCard,
   SectionTitle,
@@ -368,6 +371,46 @@ function SettingsTab() {
       </Card>
 
       <Card className="p-5">
+        <SectionTitle icon={<MapPin className="h-4 w-4 text-accent-glow" />}>
+          Geofenced clock-in
+        </SectionTitle>
+        <p className="mb-3 text-xs text-text-muted">
+          On on-site days, clock-ins are checked against your office perimeters.
+          Off-site clock-ins are flagged and auto-queried.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={data.geofence_enabled}
+            onChange={(e) => save.mutate({ geofence_enabled: e.target.checked })} />
+          Enforce office geofence
+        </label>
+        <label className="mt-2 flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={data.geofence_required_on_site}
+            onChange={(e) => save.mutate({ geofence_required_on_site: e.target.checked })} />
+          Require location to clock in (on-site days)
+        </label>
+        <label className="mt-2 flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={data.offsite_auto_query}
+            onChange={(e) => save.mutate({ offsite_auto_query: e.target.checked })} />
+          Auto-raise a query for off-site clock-ins
+        </label>
+        <label className="mt-2 flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={data.offsite_marks_absent}
+            onChange={(e) => save.mutate({ offsite_marks_absent: e.target.checked })} />
+          Mark absent if an off-site query is upheld or lapses
+        </label>
+        <label className="mt-3 block text-xs font-medium text-text-muted">
+          Max GPS accuracy to trust: <span className="text-text-primary">{data.geofence_accuracy_max_m} m</span>
+          <input type="range" min={20} max={500} step={10} value={data.geofence_accuracy_max_m}
+            onChange={(e) => save.mutate({ geofence_accuracy_max_m: Number(e.target.value) })}
+            className="mt-1 w-full accent-[#690909]" />
+        </label>
+      </Card>
+
+      <div className="lg:col-span-2">
+        <OfficeGeofenceSettings />
+      </div>
+
+      <Card className="p-5">
         <SectionTitle icon={<ShieldCheck className="h-4 w-4 text-accent-glow" />}>
           Payout authorisation
         </SectionTitle>
@@ -415,26 +458,56 @@ function SettingsTab() {
 
 // ── Attendance tab ─────────────────────────────────────────
 function AttendanceTab() {
+  const qc = useQueryClient();
+  const notify = useNotify();
   const today = new Date().toISOString().slice(0, 10);
   const { data, isLoading } = useQuery({
     queryKey: ["hr", "attendance-days", today],
     queryFn: () => listAttendanceDays({ from: today, to: today }),
   });
+  const lapse = useMutation({
+    mutationFn: () => applyLapsedOffsite(),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["hr"] });
+      notify("Lapsed off-site penalties applied", `${r.marked_absent} day(s) marked absent`);
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
   if (isLoading) return <Skeleton className="h-40 rounded-[var(--radius)]" />;
   if (!data?.length)
     return <EmptyState icon={<CalendarCheck className="h-6 w-6" />} title="Nothing reconciled for today yet"
-      message="Run “Reconcile today” to compute attendance, lateness and deductions." />;
+      message="Run “Reconcile today” to compute attendance, lateness, off-site flags and deductions." />;
   return (
     <div className="space-y-2">
+      <div className="flex justify-end">
+        <Button size="sm" icon={<MapPin className="h-3.5 w-3.5" />} disabled={lapse.isPending}
+          onClick={() => lapse.mutate()}>
+          Apply lapsed off-site penalties
+        </Button>
+      </div>
       {data.map((d) => (
         <Card key={d.day_id} className="flex items-center justify-between gap-3 p-3">
-          <span className="text-sm text-text-primary">{d.staff_name || "Staff"}</span>
-          <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <span className="text-sm text-text-primary">{d.staff_name || "Staff"}</span>
+            {d.clock_in_address && (
+              <div className="flex items-center gap-1 text-xs text-text-muted">
+                <MapPin className="h-3 w-3" /> {d.clock_in_address}
+              </div>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {d.is_offsite && (
+              <span className="text-xs text-warn">
+                off-site{d.offsite_distance_m ? ` ${Math.round(Number(d.offsite_distance_m))}m` : ""}
+              </span>
+            )}
             {d.is_late && <span className="text-xs text-warn">{d.minutes_late}m late</span>}
             {d.deduction_ngn > 0 && !d.justified && (
               <span className="text-xs text-warn">−{money(Number(d.deduction_ngn))}</span>
             )}
-            <Pill tone={statusTone(d.status)}>{d.status.replace("_", " ")}</Pill>
+            <Pill tone={d.is_offsite ? "warn" : statusTone(d.status)}>
+              {d.status.replace("_", " ")}
+            </Pill>
           </div>
         </Card>
       ))}

@@ -19,7 +19,9 @@
 
 const argon2 = require("argon2");
 const repo = require("./hr_ops.repo");
+const attendanceRepo = require("../attendance/attendance.repo");
 const calc = require("./lateness.calc");
+const geo = require("../attendance/geo.calc");
 const events = require("./hr.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -198,22 +200,44 @@ async function resolveQuery({ brand, user, request_id, id, resolution, note }) {
     const updated = await repo.resolveQuery({
       client, brand, id, resolution, userId: user.user_id, note,
     });
-    if (resolution === "waived" && before.attendance_day_id) {
-      const day = await repo.justifyDay({ client, dayId: before.attendance_day_id });
-      // Re-snapshot that day's earnings with the deduction removed.
-      if (day) {
-        await repo.upsertEarningsDay({
-          client, brand,
-          input: {
-            profile_id: day.profile_id,
-            work_date: day.work_date,
-            base_salary_ngn: 0,
-            daily_rate_ngn: day.daily_rate_ngn,
-            earned_ngn: day.daily_rate_ngn,
-            deduction_ngn: 0,
-            worked: ["present", "late"].includes(day.status),
-          },
-        });
+    if (before.attendance_day_id) {
+      const isOffsite = before.query_type === "offsite_clockin";
+      if (resolution === "waived") {
+        // Restore the day: clear the lateness deduction / accept the off-site
+        // explanation. Presence stands and earns the full day.
+        const day = await repo.justifyDay({ client, dayId: before.attendance_day_id });
+        if (day) {
+          await repo.upsertEarningsDay({
+            client, brand,
+            input: {
+              profile_id: day.profile_id,
+              work_date: day.work_date,
+              base_salary_ngn: 0,
+              daily_rate_ngn: day.daily_rate_ngn,
+              earned_ngn: day.daily_rate_ngn,
+              deduction_ngn: 0,
+              worked: ["present", "late"].includes(day.status),
+            },
+          });
+        }
+      } else if (resolution === "upheld" && isOffsite) {
+        // Off-site clock-in upheld → discard presence for that day (absent),
+        // per the meeting rule (answer / brainstorm). Pay for the day is lost.
+        const day = await repo.markDayAbsent({ client, dayId: before.attendance_day_id });
+        if (day) {
+          await repo.upsertEarningsDay({
+            client, brand,
+            input: {
+              profile_id: day.profile_id,
+              work_date: day.work_date,
+              base_salary_ngn: 0,
+              daily_rate_ngn: day.daily_rate_ngn,
+              earned_ngn: 0,
+              deduction_ngn: day.daily_rate_ngn,
+              worked: false,
+            },
+          });
+        }
       }
     }
     await audit({
@@ -337,6 +361,7 @@ async function reconcileDay({ brand, user, date }) {
 
     let records = 0;
     let lateCount = 0;
+    let offsiteCount = 0;
     for (const s of staff) {
       const wd = calc.resolveWorkingDay({
         dateStr,
@@ -362,6 +387,15 @@ async function reconcileDay({ brand, user, date }) {
         tiers: settings.lateness_enabled ? settings.lateness_tiers : [],
       });
 
+      // Off-site only matters on an on-site working day with a real clock-in
+      // and geofencing enabled.
+      const offsite =
+        settings.geofence_enabled &&
+        wd.working &&
+        wd.mode === "on_site" &&
+        clock &&
+        clock.is_offsite === true;
+
       const day = await repo.upsertAttendanceDay({
         client, brand,
         input: {
@@ -378,6 +412,11 @@ async function reconcileDay({ brand, user, date }) {
           clock_event_id: clock ? clock.event_id : null,
           leave_id: leaveId || null,
           reconciled_by: user ? user.user_id : null,
+          is_offsite: Boolean(offsite),
+          offsite_distance_m: clock ? clock.distance_m : null,
+          clock_in_address: clock ? clock.formatted_address : null,
+          clock_in_lat: clock ? clock.latitude : null,
+          clock_in_lng: clock ? clock.longitude : null,
         },
       });
 
@@ -394,7 +433,31 @@ async function reconcileDay({ brand, user, date }) {
         },
       });
 
-      if (
+      // One auto-query per day. Off-site takes precedence (it can discard the
+      // whole day), otherwise lateness.
+      if (offsite && settings.offsite_auto_query && !day.justified) {
+        const dist =
+          clock.distance_m !== null && clock.distance_m !== undefined
+            ? `${Math.round(clock.distance_m)} m from office`
+            : "off-site";
+        const q = await repo.upsertAutoQuery({
+          client, brand,
+          input: {
+            profile_id: s.profile_id,
+            query_type: "offsite_clockin",
+            severity: "high",
+            subject: `Off-site clock-in on ${dateStr}`,
+            details:
+              `You clocked in ${dist} on ${dateStr}, an on-site working day` +
+              (clock.formatted_address ? ` (${clock.formatted_address})` : "") +
+              `. Please explain. If this isn't resolved, the day may be marked absent.`,
+            attendance_day_id: day.day_id,
+            remind_after: addDays(dateStr, settings.lateness_query_reminder_days),
+          },
+        });
+        await repo.linkDayQuery({ client, dayId: day.day_id, queryId: q.query_id });
+        offsiteCount++;
+      } else if (
         r.status === "late" &&
         settings.lateness_enabled &&
         settings.lateness_auto_query &&
@@ -404,6 +467,7 @@ async function reconcileDay({ brand, user, date }) {
           client, brand,
           input: {
             profile_id: s.profile_id,
+            query_type: "lateness",
             severity: r.deduction_pct >= 20 ? "high" : "normal",
             subject: `Lateness on ${dateStr} — ${r.minutes_late} min late`,
             details:
@@ -423,7 +487,193 @@ async function reconcileDay({ brand, user, date }) {
     }
 
     events.emit("attendance_reconciled", { brand, date: dateStr, records });
-    return { date: dateStr, records_created: records, late_count: lateCount };
+    return {
+      date: dateStr,
+      records_created: records,
+      late_count: lateCount,
+      offsite_count: offsiteCount,
+    };
+  });
+}
+
+/**
+ * Apply the penalty for off-site queries the employee never answered before
+ * the deadline: mark each linked day absent (discard presence + pay) and
+ * uphold the query. HR-triggered (or a future cron). Mirrors the meeting's
+ * "respond or be considered absent" rule, but only after the grace deadline.
+ */
+async function applyLapsedOffsite({ brand, user, request_id }) {
+  return transaction(async (client) => {
+    const lapsed = await repo.lapsedOffsiteQueries({ client, brand });
+    let absent = 0;
+    for (const q of lapsed) {
+      await repo.resolveQuery({
+        client, brand, id: q.query_id, resolution: "upheld",
+        userId: user ? user.user_id : null,
+        note: "Auto-upheld: off-site query not answered before deadline.",
+      });
+      if (q.attendance_day_id) {
+        const day = await repo.markDayAbsent({ client, dayId: q.attendance_day_id });
+        if (day) {
+          await repo.upsertEarningsDay({
+            client, brand,
+            input: {
+              profile_id: day.profile_id,
+              work_date: day.work_date,
+              base_salary_ngn: 0,
+              daily_rate_ngn: day.daily_rate_ngn,
+              earned_ngn: 0,
+              deduction_ngn: day.daily_rate_ngn,
+              worked: false,
+            },
+          });
+        }
+        absent++;
+      }
+    }
+    if (user) {
+      await audit({
+        business: brand,
+        user_id: user.user_id,
+        action_key: "hr_payroll.apply_lapsed_offsite",
+        target_type: "hr_queries",
+        target_id: brand,
+        after: { lapsed: lapsed.length, marked_absent: absent },
+        request_id,
+        is_sensitive: true,
+      });
+    }
+    return { lapsed: lapsed.length, marked_absent: absent };
+  });
+}
+
+// ── Self clock-in / today (My HR + top-bar widget) ─────────
+/**
+ * Resolve today's working mode for a staff profile from their schedule and
+ * the brand working-days fallback.
+ */
+function todayMode(profile, settings) {
+  return calc.resolveWorkingDay({
+    dateStr: todayStr(),
+    workSchedule: profile.work_schedule,
+    brandWorkingDays: settings.working_days,
+  });
+}
+
+/** Compact today status for the top-bar clock widget. */
+async function getMyToday({ brand, user }) {
+  const profile = await repo.profileForUser({ brand, userId: user.user_id });
+  if (!profile) throw new NotFoundError("Staff profile");
+  const settings = await repo.getSettings({ brand });
+  const clockEvents = await repo.todayClockEvents({ profileId: profile.profile_id });
+  const lastIn = clockEvents.find((e) => e.event_type === "clock_in" && e.accepted);
+  const lastOut = clockEvents.find((e) => e.event_type === "clock_out" && e.accepted);
+  const clockedIn = Boolean(lastIn) && (!lastOut || lastOut.occurred_at < lastIn.occurred_at);
+  const mode = todayMode(profile, settings);
+  return {
+    profile_id: profile.profile_id,
+    clocked_in: clockedIn,
+    clocked_out: Boolean(lastOut) && !clockedIn,
+    clocked_in_at: lastIn ? lastIn.occurred_at : null,
+    is_offsite: lastIn ? lastIn.is_offsite : false,
+    last_address: lastIn ? lastIn.formatted_address : null,
+    expected_mode: mode.mode,
+    expected_start_time: profile.work_expected_start_time || settings.default_expected_start_time,
+    geofence_required:
+      settings.geofence_enabled && settings.geofence_required_on_site && mode.mode === "on_site",
+  };
+}
+
+/**
+ * Self clock-in / clock-out from the top-bar widget. Records the coordinates
+ * + IP as evidence; flags (does not reject) an off-site point; blocks only
+ * when location is missing on an on-site day where it's required.
+ * `address` is the client-side reverse-geocoded display string.
+ */
+async function selfClock({ brand, user, input, requestMeta = {} }) {
+  return transaction(async (client) => {
+    const profile = await repo.profileForUser({ client, brand, userId: user.user_id });
+    if (!profile) throw new NotFoundError("Staff profile");
+    const settings = await repo.getSettings({ client, brand });
+    const mode = todayMode(profile, settings);
+
+    const hasPoint =
+      input.latitude !== null && input.latitude !== undefined &&
+      input.longitude !== null && input.longitude !== undefined;
+
+    if (
+      !hasPoint &&
+      settings.geofence_enabled &&
+      settings.geofence_required_on_site &&
+      mode.mode === "on_site"
+    ) {
+      throw new ValidationError(
+        "Location is required to clock in on an on-site day. Please enable location access.",
+      );
+    }
+
+    let decision = { is_offsite: false, matched_geofence_id: null, distance_m: null, reason: null };
+    if (hasPoint && settings.geofence_enabled && mode.mode === "on_site") {
+      const fences = await attendanceRepo.activeGeofences({ client, brand });
+      decision = geo.flagOffsite({
+        point: { latitude: input.latitude, longitude: input.longitude },
+        accuracy_m: input.accuracy_m,
+        geofences: fences,
+        maxAccuracyM: settings.geofence_accuracy_max_m,
+      });
+    }
+
+    const event = await attendanceRepo.insertClockEvent({
+      client,
+      data: {
+        profile_id: profile.profile_id,
+        event_type: input.event_type,
+        latitude: hasPoint ? input.latitude : null,
+        longitude: hasPoint ? input.longitude : null,
+        accuracy_m: input.accuracy_m ?? null,
+        device_fingerprint: input.device_fingerprint ?? null,
+        device_user_agent: requestMeta.user_agent ?? null,
+        ip_address: requestMeta.ip_address ?? null,
+        matched_geofence_id: decision.matched_geofence_id,
+        distance_m: decision.distance_m,
+        accepted: true, // recorded; off-site is flagged, not rejected
+        rejection_reason: decision.reason,
+        is_offsite: decision.is_offsite,
+        formatted_address: input.address || null,
+        occurred_at: null,
+      },
+    });
+
+    // Immediate lateness feedback on clock-in (server time is authoritative).
+    let lateMinutes = 0;
+    if (input.event_type === "clock_in") {
+      const expectedStart =
+        profile.work_expected_start_time || settings.default_expected_start_time;
+      const grace =
+        profile.work_grace_minutes !== null && profile.work_grace_minutes !== undefined
+          ? profile.work_grace_minutes
+          : settings.default_grace_minutes;
+      lateMinutes = calc.minutesLate({
+        expectedStart,
+        firstClockInAt: event.occurred_at,
+        graceMinutes: grace,
+        dateStr: todayStr(),
+      });
+    }
+
+    events.emit("clock_event", {
+      brand, event_id: event.event_id, is_offsite: decision.is_offsite,
+    });
+    return {
+      event_id: event.event_id,
+      event_type: event.event_type,
+      occurred_at: event.occurred_at,
+      is_offsite: decision.is_offsite,
+      distance_m: decision.distance_m,
+      address: event.formatted_address,
+      late_minutes: lateMinutes,
+      status: lateMinutes > 0 ? "late" : "present",
+    };
   });
 }
 
@@ -538,6 +788,9 @@ module.exports = {
   updateTargetProgress,
   removeTarget,
   reconcileDay,
+  applyLapsedOffsite,
+  getMyToday,
+  selfClock,
   getOverview,
   getMyHr,
 };

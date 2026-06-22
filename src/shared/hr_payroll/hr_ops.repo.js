@@ -93,6 +93,11 @@ async function updateSettings({ client, brand, patch }) {
     "default_expected_start_time",
     "working_days",
     "earnings_tracker_enabled",
+    "geofence_enabled",
+    "geofence_required_on_site",
+    "geofence_accuracy_max_m",
+    "offsite_auto_query",
+    "offsite_marks_absent",
     "payout_require_pin",
     "payout_provider",
     "onboarding_checklist",
@@ -267,21 +272,31 @@ async function createQuery({ client, brand, input }) {
   return rows[0];
 }
 
-/** Idempotent auto lateness query: one per attendance day (uq index). */
+/**
+ * Idempotent auto query (lateness OR offsite): one per attendance day
+ * (uq_hr_queries_auto_day). The reconciler upserts the relevant type;
+ * offsite takes precedence over lateness when both apply (it can discard the
+ * whole day, making the lateness deduction moot).
+ */
 async function upsertAutoQuery({ client, brand, input }) {
   const { rows } = await exec(client)(
     `INSERT INTO shared.hr_queries
        (business, profile_id, query_type, severity, subject, details, source,
         attendance_day_id, deduction_pct, deduction_ngn, remind_after)
-     VALUES ($1,$2,'lateness',$3,$4,$5,'auto',$6,$7,$8,$9)
+     VALUES ($1,$2,$3,$4,$5,$6,'auto',$7,$8,$9,$10)
      ON CONFLICT (attendance_day_id) WHERE (source = 'auto' AND attendance_day_id IS NOT NULL)
-     DO UPDATE SET deduction_pct = EXCLUDED.deduction_pct,
+     DO UPDATE SET query_type = EXCLUDED.query_type,
+                   severity = EXCLUDED.severity,
+                   deduction_pct = EXCLUDED.deduction_pct,
                    deduction_ngn = EXCLUDED.deduction_ngn,
-                   subject = EXCLUDED.subject
+                   subject = EXCLUDED.subject,
+                   details = EXCLUDED.details,
+                   remind_after = EXCLUDED.remind_after
      RETURNING *`,
     [
       brand,
       input.profile_id,
+      input.query_type || "lateness",
       input.severity || "normal",
       input.subject,
       input.details || null,
@@ -325,8 +340,9 @@ async function upsertAttendanceDay({ client, brand, input }) {
     `INSERT INTO shared.attendance_days
        (business, profile_id, work_date, status, expected_start_time,
         first_clock_in_at, minutes_late, is_late, daily_rate_ngn,
-        deduction_pct, deduction_ngn, clock_event_id, leave_id, reconciled_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        deduction_pct, deduction_ngn, clock_event_id, leave_id, reconciled_by,
+        is_offsite, offsite_distance_m, clock_in_address, clock_in_lat, clock_in_lng)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      ON CONFLICT (profile_id, work_date) DO UPDATE SET
         status = EXCLUDED.status,
         expected_start_time = EXCLUDED.expected_start_time,
@@ -339,7 +355,12 @@ async function upsertAttendanceDay({ client, brand, input }) {
         clock_event_id = EXCLUDED.clock_event_id,
         leave_id = EXCLUDED.leave_id,
         reconciled_at = now(),
-        reconciled_by = EXCLUDED.reconciled_by
+        reconciled_by = EXCLUDED.reconciled_by,
+        is_offsite = EXCLUDED.is_offsite,
+        offsite_distance_m = EXCLUDED.offsite_distance_m,
+        clock_in_address = EXCLUDED.clock_in_address,
+        clock_in_lat = EXCLUDED.clock_in_lat,
+        clock_in_lng = EXCLUDED.clock_in_lng
      RETURNING *`,
     [
       brand,
@@ -356,6 +377,11 @@ async function upsertAttendanceDay({ client, brand, input }) {
       input.clock_event_id || null,
       input.leave_id || null,
       input.reconciled_by || null,
+      input.is_offsite || false,
+      input.offsite_distance_m ?? null,
+      input.clock_in_address || null,
+      input.clock_in_lat ?? null,
+      input.clock_in_lng ?? null,
     ],
   );
   return rows[0];
@@ -555,7 +581,8 @@ async function deleteTarget({ client, brand, id }) {
 async function firstClockInsForDate({ client, profileIds, dateStr }) {
   if (!profileIds.length) return {};
   const { rows } = await exec(client)(
-    `SELECT DISTINCT ON (profile_id) profile_id, event_id, occurred_at
+    `SELECT DISTINCT ON (profile_id) profile_id, event_id, occurred_at,
+            is_offsite, distance_m, formatted_address, latitude, longitude
        FROM shared.staff_clock_events
       WHERE profile_id = ANY($1::uuid[])
         AND event_type = 'clock_in' AND accepted = true
@@ -566,6 +593,42 @@ async function firstClockInsForDate({ client, profileIds, dateStr }) {
   const map = {};
   for (const r of rows) map[r.profile_id] = r;
   return map;
+}
+
+/** Today's clock events for one profile, newest first (My HR clock widget). */
+async function todayClockEvents({ client, profileId }) {
+  const { rows } = await exec(client)(
+    `SELECT event_id, event_type, occurred_at, accepted, is_offsite,
+            distance_m, formatted_address, rejection_reason
+       FROM shared.staff_clock_events
+      WHERE profile_id = $1 AND occurred_at::date = CURRENT_DATE
+      ORDER BY occurred_at DESC`,
+    [profileId],
+  );
+  return rows;
+}
+
+/** Discard a day's presence: mark absent and zero its pay (offsite upheld). */
+async function markDayAbsent({ client, dayId }) {
+  const { rows } = await exec(client)(
+    `UPDATE shared.attendance_days
+        SET status = 'absent', deduction_ngn = 0, deduction_pct = 0
+      WHERE day_id = $1 RETURNING *`,
+    [dayId],
+  );
+  return rows[0] || null;
+}
+
+/** Open offsite queries whose response deadline has passed (lapse → absent). */
+async function lapsedOffsiteQueries({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT * FROM shared.hr_queries
+      WHERE business = $1 AND query_type = 'offsite_clockin'
+        AND status = 'open' AND remind_after IS NOT NULL
+        AND remind_after < CURRENT_DATE`,
+    [brand],
+  );
+  return rows;
 }
 
 /** profile_id → leave_id for any approved leave covering the date. */
@@ -668,6 +731,9 @@ module.exports = {
   overviewCounts,
   firstClockInsForDate,
   approvedLeaveForDate,
+  todayClockEvents,
+  markDayAbsent,
+  lapsedOffsiteQueries,
   tasksForUser,
   contractsForProfile,
 };

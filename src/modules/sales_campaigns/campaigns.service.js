@@ -111,7 +111,7 @@ async function update({ brand, user, request_id, id, patch }) {
     if (!before) throw new NotFoundError("Campaign");
     assertStatus(
       before,
-      ["draft", "pending_approval", "scheduled", "paused"],
+      ["draft", "pending_approval", "scheduled", "live", "paused"],
       "edit",
     );
 
@@ -464,7 +464,7 @@ async function addProduct({ brand, user, request_id, id, input }) {
     if (!campaign) throw new NotFoundError("Campaign");
     assertStatus(
       campaign,
-      ["draft", "pending_approval", "scheduled", "paused"],
+      ["draft", "pending_approval", "scheduled", "live", "paused"],
       "edit products of",
     );
     const link = await repo.addProduct({

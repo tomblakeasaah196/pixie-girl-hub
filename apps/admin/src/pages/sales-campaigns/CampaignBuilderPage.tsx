@@ -202,9 +202,10 @@ export function CampaignBuilderPage() {
   const campaign = campaignQ.data;
   const canEdit =
     can("sales_campaigns", "edit") &&
-    ["draft", "pending_approval", "scheduled", "paused"].includes(
+    ["draft", "pending_approval", "scheduled", "live", "paused"].includes(
       campaign.status,
     );
+  const isLiveEdit = canEdit && campaign.status === "live";
 
   return (
     <div className="space-y-4">
@@ -212,6 +213,14 @@ export function CampaignBuilderPage() {
         campaign={campaign}
         onPraxis={() => setPraxisOpen(true)}
       />
+      {isLiveEdit && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-[11px] bg-warn/10 border border-warn/30">
+          <div className="w-2 h-2 rounded-full bg-warn animate-pulse shrink-0" />
+          <span className="text-[12.5px] font-semibold text-warn">
+            This campaign is live. Changes are published immediately.
+          </span>
+        </div>
+      )}
       <Stepper active={step} onChange={setStep} />
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
         <div>

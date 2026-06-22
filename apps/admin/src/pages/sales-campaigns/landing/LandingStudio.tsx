@@ -32,6 +32,7 @@ import {
   uploadCampaignImage,
   useUpdateCampaign,
 } from "@/lib/campaigns";
+import { useLandingStudio, withDefaults } from "@/lib/landing-studio";
 import { LandingRender, type LandingModel } from "./LandingRender";
 
 const BLOCK_LIBRARY: Array<{
@@ -116,6 +117,10 @@ export function LandingStudio({
   canEdit: boolean;
 }) {
   const update = useUpdateCampaign(campaign.campaign_id);
+  const studioQ = useLandingStudio();
+  const brandConfig = studioQ.data?.published_config
+    ? withDefaults(studioQ.data.business_key, studioQ.data.published_config)
+    : null;
 
   const [heroTitle, setHeroTitle] = useState(campaign.landing_hero_title || "");
   const [heroSubtitle, setHeroSubtitle] = useState(
@@ -690,7 +695,7 @@ export function LandingStudio({
               </div>
             </div>
             <div className="flex-1 min-h-0">
-              <LandingRender model={model} />
+              <LandingRender model={model} brandConfig={brandConfig} />
             </div>
           </div>
         </div>

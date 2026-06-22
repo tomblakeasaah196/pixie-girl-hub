@@ -5,15 +5,17 @@
  *   1. the full-screen Studio preview (live, from in-progress edits)
  *   2. the public /sale/:slug page (from the public landing payload)
  *
- * It is intentionally self-contained and token-driven (Maroon Noir + the
- * per-brand tint) so it reads as a real luxury storefront, not an admin form.
- * Blocks render in the order the builder set; unknown/empty blocks degrade to
- * an elegant editorial section rather than a broken placeholder.
+ * When brandConfig is provided, the renderer paints in the brand's Atelier
+ * palette (light background, brand fonts/colors) so the preview matches the
+ * live page's BrandThemeProvider treatment. Without it, the original
+ * Maroon-Noir dark render is used as a fallback.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { LandingBlock, PublicState } from "@/lib/campaigns";
+import type { LandingConfig } from "@landing-kit";
+import { hexToTriplet, fontStack } from "@landing-kit";
 
 export interface LandingProduct {
   product_id?: string | null;
@@ -161,10 +163,12 @@ export function LandingRender({
   model,
   className,
   scrollable = true,
+  brandConfig,
 }: {
   model: LandingModel;
   className?: string;
   scrollable?: boolean;
+  brandConfig?: LandingConfig | null;
 }) {
   const cd = useCountdown(model.countdown_to);
   const enabled = useMemo(
@@ -176,14 +180,38 @@ export function LandingRender({
   );
   const featured = (model.products || []).filter((p) => p.name);
 
+  const atelierVars = useMemo(() => {
+    if (!brandConfig) return undefined;
+    const t = brandConfig.theme;
+    const typ = brandConfig.typography;
+    return {
+      "--bg": hexToTriplet(t.paper),
+      "--panel": hexToTriplet(t.primaryDeep),
+      "--panel-2": hexToTriplet(t.primary),
+      "--text-primary": hexToTriplet(t.ink),
+      "--text-muted": hexToTriplet(t.muted),
+      "--text-faint": hexToTriplet(t.muted),
+      "--line": `${hexToTriplet(t.primary)} / 0.12`,
+      "--accent": hexToTriplet(t.primary),
+      "--accent-deep": hexToTriplet(t.primaryDeep),
+      "--accent-glow": hexToTriplet(t.glow),
+      "--font-display": fontStack(typ?.display, "serif"),
+      "--font-body": fontStack(typ?.body, "sans"),
+      background: `rgb(${hexToTriplet(t.paper)})`,
+      color: `rgb(${hexToTriplet(t.ink)})`,
+      fontFamily: fontStack(typ?.body, "sans"),
+    } as React.CSSProperties;
+  }, [brandConfig]);
+
   return (
     <div
       className={cn(
-        "bg-bg text-text-primary antialiased",
+        !brandConfig && "bg-bg text-text-primary",
+        "antialiased",
         scrollable && "h-full overflow-y-auto",
         className,
       )}
-      style={{ scrollBehavior: "smooth" }}
+      style={{ scrollBehavior: "smooth", ...atelierVars }}
     >
       {/* Announcement bar */}
       <div className="bg-accent-deep text-[#F4E9D9] text-center text-[11.5px] tracking-[0.2em] uppercase py-2.5 font-semibold">

@@ -8,7 +8,7 @@
  */
 
 jest.mock("../../../src/shared/contacts/contacts.repo", () => ({
-  findByPhone: jest.fn(),
+  findByPhoneOrEmail: jest.fn(),
   addContactTypes: jest.fn(),
   exportRows: jest.fn(),
 }));
@@ -135,8 +135,25 @@ describe("rowToInputs (header → validated input)", () => {
     expect(address).toBeNull(); // no Address Line 1 → no address
   });
 
-  test("a row missing the required fields throws (reported per-row on import)", () => {
-    expect(() => io.rowToInputs({ Email: "x@y.com" }, "clients")).toThrow();
+  test("email alone is enough — a phone is no longer required", () => {
+    const { contact } = io.rowToInputs(
+      { "Display Name*": "Email Only", Email: "e@x.com" },
+      "clients",
+    );
+    expect(contact.email).toBe("e@x.com");
+    expect(contact.primary_phone).toBeUndefined();
+  });
+
+  test("a row with neither phone nor email throws (at-least-one rule)", () => {
+    expect(() =>
+      io.rowToInputs({ "Display Name*": "No Channel" }, "clients"),
+    ).toThrow();
+  });
+
+  test("a row missing the display name throws", () => {
+    expect(() =>
+      io.rowToInputs({ "Primary Phone*": "+2348012345678" }, "clients"),
+    ).toThrow();
   });
 
   test("unknown columns are ignored, never fatal", () => {
@@ -163,7 +180,7 @@ describe("importContacts", () => {
   });
 
   test("creates new contacts and reports a per-row summary", async () => {
-    repo.findByPhone.mockResolvedValue(null);
+    repo.findByPhoneOrEmail.mockResolvedValue(null);
     service.create.mockResolvedValue({
       contact_id: "c1",
       display_name: "Test User",
@@ -195,7 +212,7 @@ describe("importContacts", () => {
   });
 
   test("an existing phone is a duplicate — union the type, never recreate", async () => {
-    repo.findByPhone.mockResolvedValue({
+    repo.findByPhoneOrEmail.mockResolvedValue({
       contact_id: "e1",
       display_name: "Existing Person",
     });
@@ -221,7 +238,7 @@ describe("importContacts", () => {
   });
 
   test("an invalid row is reported as an error and does not stop the batch", async () => {
-    repo.findByPhone.mockResolvedValue(null);
+    repo.findByPhoneOrEmail.mockResolvedValue(null);
     service.create.mockResolvedValue({
       contact_id: "c2",
       display_name: "Good",

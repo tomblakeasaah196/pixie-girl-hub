@@ -6,20 +6,26 @@ const {
 } = require("../../../src/modules/landing_studio/landing.defaults");
 
 describe("landing.defaults — defaultConfig", () => {
-  it("returns the Faitlyn brand defaults with a 3D logo reveal", () => {
+  it("returns the Faitlyn brand defaults with a 3D reveal", () => {
     const d = defaultConfig("faitlynhair");
     expect(d.brandName).toBe("Faitlyn Hair");
+    // The variant/brandType selectors were removed (see landing-kit/config.ts);
+    // only the motion knobs remain on threeD.
     expect(d.reveal.threeD).toMatchObject({
       enabled: true,
-      variant: "logo-static",
-      brandType: "faitlynhair",
+      rotationSpeed: 1.2,
+      glowIntensity: 0.8,
     });
   });
 
-  it("falls back to Pixie Girl defaults (text reveal) for any other key", () => {
+  it("falls back to Pixie Girl defaults for any other key", () => {
     const d = defaultConfig("pixiegirl");
     expect(d.brandName).toBe("Pixie Girl Global");
-    expect(d.reveal.threeD.variant).toBe("text-dual");
+    expect(d.reveal.threeD).toMatchObject({
+      enabled: true,
+      rotationSpeed: 0.8,
+      glowIntensity: 1.0,
+    });
     // Unknown brand keys default to Pixie Girl rather than throwing.
     expect(defaultConfig("unknown").brandName).toBe("Pixie Girl Global");
   });
@@ -27,19 +33,28 @@ describe("landing.defaults — defaultConfig", () => {
 
 describe("landing.defaults — withDefaults", () => {
   it("returns the full brand default when the stored config is null", () => {
-    expect(withDefaults("faitlynhair", null)).toEqual(defaultConfig("faitlynhair"));
-    expect(withDefaults("pixiegirl", undefined)).toEqual(defaultConfig("pixiegirl"));
+    expect(withDefaults("faitlynhair", null)).toEqual(
+      defaultConfig("faitlynhair"),
+    );
+    expect(withDefaults("pixiegirl", undefined)).toEqual(
+      defaultConfig("pixiegirl"),
+    );
   });
 
   it("injects reveal.threeD when an older published snapshot omits it", () => {
     // This is the exact shape migration 000225 seeded — no threeD block.
     const seeded = {
-      reveal: { enabled: true, tagline: "Quietly extraordinary.", showScarcity: true },
+      reveal: {
+        enabled: true,
+        tagline: "Quietly extraordinary.",
+        showScarcity: true,
+      },
     };
     const merged = withDefaults("faitlynhair", seeded);
     expect(merged.reveal.threeD).toMatchObject({
       enabled: true,
-      variant: "logo-static",
+      rotationSpeed: 1.2,
+      glowIntensity: 0.8,
     });
     // ...without clobbering the fields the snapshot did set.
     expect(merged.reveal.tagline).toBe("Quietly extraordinary.");
@@ -53,10 +68,12 @@ describe("landing.defaults — withDefaults", () => {
   });
 
   it("merges a partial threeD over the brand default", () => {
-    const merged = withDefaults("faitlynhair", { reveal: { threeD: { rotationSpeed: 2.5 } } });
+    const merged = withDefaults("faitlynhair", {
+      reveal: { threeD: { rotationSpeed: 2.5 } },
+    });
     expect(merged.reveal.threeD.rotationSpeed).toBe(2.5); // provided wins
     expect(merged.reveal.threeD.enabled).toBe(true); // default kept
-    expect(merged.reveal.threeD.variant).toBe("logo-static"); // default kept
+    expect(merged.reveal.threeD.glowIntensity).toBe(0.8); // default kept
   });
 
   it("lets stored scalar values win over defaults", () => {
@@ -76,7 +93,9 @@ describe("landing.defaults — withDefaults", () => {
 
   it("injects the SEO block when a snapshot omits it, and merges partial SEO", () => {
     // A snapshot saved before SEO existed (migration 000225 shape).
-    const seeded = { reveal: { enabled: true, tagline: "x", showScarcity: true } };
+    const seeded = {
+      reveal: { enabled: true, tagline: "x", showScarcity: true },
+    };
     const merged = withDefaults("faitlynhair", seeded);
     expect(merged.seo).toMatchObject({
       metaTitle: expect.any(String),

@@ -804,8 +804,9 @@ async function createLeadContact({ client, c }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.contacts
        (contact_type, display_name, first_name, last_name,
-        primary_phone, whatsapp_number, email, source, priority_level, visible_to)
-     VALUES (ARRAY['customer'], $1, $2, $3, $4, $5, $6, $7, 'new', COALESCE($8, ARRAY[]::text[]))
+        primary_phone, whatsapp_number, email, date_of_birth, source,
+        priority_level, visible_to)
+     VALUES (ARRAY['customer'], $1, $2, $3, $4, $5, $6, $7, $8, 'new', COALESCE($9, ARRAY[]::text[]))
      RETURNING *`,
     [
       c.display_name || c.first_name || "New contact",
@@ -814,6 +815,7 @@ async function createLeadContact({ client, c }) {
       c.primary_phone || null,
       c.whatsapp_number || null,
       c.email || null,
+      c.date_of_birth || null,
       c.source || "instagram_dm",
       c.visible_to || null,
     ],

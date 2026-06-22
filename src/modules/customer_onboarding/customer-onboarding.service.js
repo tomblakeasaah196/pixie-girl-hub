@@ -34,6 +34,18 @@ function newToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
 
+/**
+ * A birthday's month + day → a DATE anchored to a leap year (1904) so 29 Feb
+ * stays valid; only the month/day matter for reminders. The form collects the
+ * day they celebrate, not the year. Returns null unless BOTH parts are given.
+ */
+function dobFromParts(month, day) {
+  if (!month || !day) return null;
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `1904-${mm}-${dd}`;
+}
+
 // Per-brand domain via business_config.storefront_domain — see
 // src/utils/brand-urls.js. Falls back to STOREFRONT_BASE_URL env var
 // when a brand hasn't configured its public domain yet.
@@ -118,6 +130,12 @@ async function submitPublic({ token, ip, payload }) {
     throw new AppError("ONBOARDING_EXPIRED", "This form has expired.", 410);
 
   return transaction(async (client) => {
+    // Birthday: the form sends month + day (no year); fall back to an explicit
+    // date_of_birth if one was supplied. Either way it reaches the contact now
+    // (previously dob_day/dob_month were validated then silently dropped).
+    const date_of_birth =
+      payload.date_of_birth || dobFromParts(payload.dob_month, payload.dob_day);
+
     // Resolve contact by phone → wa → email → IG. Fall through to
     // creating a fresh lead-priority contact if no match.
     let contact = null;
@@ -158,6 +176,7 @@ async function submitPublic({ token, ip, payload }) {
           primary_phone: payload.primary_phone,
           whatsapp_number: payload.whatsapp_number,
           email: payload.email,
+          date_of_birth,
           source: "online_form",
           visible_to: [link.business],
         },
@@ -173,7 +192,7 @@ async function submitPublic({ token, ip, payload }) {
           email: payload.email,
           primary_phone: payload.primary_phone,
           whatsapp_number: payload.whatsapp_number,
-          date_of_birth: payload.date_of_birth || null,
+          date_of_birth: date_of_birth || null,
         },
       });
     }

@@ -78,7 +78,7 @@ describe("smartcomm order-capture", () => {
         sales_channel: "instagram",
       },
     });
-    expect(r.url).toMatch(/^https:\/\/pixiegirl\.test\/order\?capture=/);
+    expect(r.url).toMatch(/^https:\/\/pixiegirl\.test\/order\/capture\//);
     expect(typeof r.expires_at).toBe("string");
 
     const decoded = jwt.verify(

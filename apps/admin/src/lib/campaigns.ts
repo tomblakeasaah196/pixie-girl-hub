@@ -15,6 +15,25 @@ export function useBrand() {
   return useBusinessStore((s) => s.activeKey);
 }
 
+/**
+ * GET a list endpoint and ALWAYS return a `{ data }` envelope.
+ *
+ * lib/api unwraps a bare `{ data }` body (one with no sibling `meta`) down to
+ * the inner value, so these non-paginated campaign sub-lists arrive as a plain
+ * array. The components read `query.data?.data`, which on a bare array is
+ * `undefined` — so the list rendered empty even though rows existed (e.g. the
+ * "No products added yet" after a successful add). Normalising here restores the
+ * `{ data }` shape the components expect, and passes through a `{ data, meta }`
+ * wrapper untouched when the endpoint is paginated.
+ */
+async function getListEnvelope<T>(
+  path: string,
+): Promise<{ data: T[]; meta?: unknown }> {
+  const res = await api.get<{ data: T[]; meta?: unknown } | T[]>(path);
+  if (Array.isArray(res)) return { data: res };
+  return res ?? { data: [] };
+}
+
 // ════════════════════════════════════════════════════════════
 // Types
 // ════════════════════════════════════════════════════════════
@@ -515,7 +534,7 @@ export function useCampaignBundles(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CampaignBundleLink[] }>(
+      getListEnvelope<CampaignBundleLink>(
         `/sales-campaigns/${campaignId}/bundles`,
       ),
   });
@@ -560,7 +579,7 @@ export function useCampaignProducts(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "products", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CampaignProduct[] }>(
+      getListEnvelope<CampaignProduct>(
         `/sales-campaigns/${campaignId}/products`,
       ),
   });
@@ -653,7 +672,7 @@ export function useCampaignTiers(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "tiers", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: QuantityTier[] }>(`/sales-campaigns/${campaignId}/tiers`),
+      getListEnvelope<QuantityTier>(`/sales-campaigns/${campaignId}/tiers`),
   });
 }
 
@@ -696,7 +715,7 @@ export function useCampaignUpsells(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "upsells", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CartUpsell[] }>(`/sales-campaigns/${campaignId}/upsells`),
+      getListEnvelope<CartUpsell>(`/sales-campaigns/${campaignId}/upsells`),
   });
 }
 
@@ -737,7 +756,7 @@ export function useAmbassadorContacts(q?: string) {
     enabled: Boolean(brand),
     queryKey: ["campaigns", "ambassadors", brand, q || ""],
     queryFn: () =>
-      api.get<{ data: AmbassadorContact[] }>(
+      getListEnvelope<AmbassadorContact>(
         `/sales-campaigns/ambassadors?${qs}`,
       ),
   });
@@ -766,7 +785,7 @@ export function useCampaignAmbassadors(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "campaign-ambassadors", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CampaignAmbassador[] }>(
+      getListEnvelope<CampaignAmbassador>(
         `/sales-campaigns/${campaignId}/ambassadors`,
       ),
   });
@@ -801,7 +820,7 @@ export function useVipGrants(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "vip", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: VipGrant[] }>(
+      getListEnvelope<VipGrant>(
         `/sales-campaigns/${campaignId}/vip-grants`,
       ),
   });

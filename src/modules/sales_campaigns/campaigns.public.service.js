@@ -13,9 +13,11 @@
 
 const repo = require("./campaigns.repo");
 const bundleRepo = require("./campaigns.bundles.repo");
+const bundleService = require("./campaigns.bundles.service");
 const main = require("./campaigns.service");
 const events = require("./campaigns.events");
 const salesService = require("../sales/sales.service");
+const salesRepo = require("../sales/sales.repo");
 const paymentLink = require("../sales/payment-link.service");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const { transaction, query } = require("../../config/database");
@@ -79,21 +81,85 @@ async function resolveCampaign({ slug, brand, brandHint }) {
   return c ? { campaign: c, brand: targetBrand } : null;
 }
 
+const NIGERIAN_CITIES = [
+  "Lagos", "Abuja", "Port Harcourt", "Ibadan", "Lekki",
+  "Ikeja", "Victoria Island", "Ikoyi", "Ajah", "Surulere",
+  "Yaba", "Enugu", "Kaduna", "Benin City", "Warri",
+];
+
+function generateSimulatedSocialProof(campaign, bundles) {
+  const bundleNames = bundles.map((b) => b.bundle_name).filter(Boolean);
+  if (!bundleNames.length) return { recent_orders: [], live_viewers: 0 };
+
+  const now = Date.now();
+  const recent_orders = [];
+  const count = 3 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < count; i++) {
+    recent_orders.push({
+      bundle_name: bundleNames[Math.floor(Math.random() * bundleNames.length)],
+      city: NIGERIAN_CITIES[Math.floor(Math.random() * NIGERIAN_CITIES.length)],
+      at: now - Math.floor(Math.random() * 30 * 60_000),
+    });
+  }
+  recent_orders.sort((a, b) => b.at - a.at);
+
+  const floor = campaign.viewer_count_floor || 15;
+  const live_viewers = floor + Math.floor(Math.random() * Math.ceil(floor * 0.6));
+
+  return { recent_orders, live_viewers };
+}
+
 async function getLanding({ slug, brand, brandHint }) {
   const found = await resolveCampaign({ slug, brand, brandHint });
   if (!found || !PUBLIC_STATUSES.has(found.campaign.status)) {
     throw new NotFoundError("Campaign");
   }
   const { campaign, brand: resolvedBrand } = found;
-  const products = await repo.listProducts({
-    brand: resolvedBrand,
-    campaign_id: campaign.campaign_id,
-  });
-  const payload = main.buildLandingPayload(
-    campaign,
-    products,
-    main.resolveState(campaign),
-  );
+  const state = main.resolveState(campaign);
+
+  const [products, bundles, tiers, upsells] = await Promise.all([
+    repo.listProducts({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    }),
+    bundleService.listCampaignBundles({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    }),
+    bundleService.listTiers({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    }),
+    bundleService.listUpsells({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    }),
+  ]);
+
+  const payload = main.buildLandingPayload(campaign, products, state);
+
+  if (state === "live" || state === "before") {
+    payload.bundles = bundles || [];
+    payload.tiers = tiers || [];
+    payload.upsells = upsells || [];
+  }
+
+  if (state === "live") {
+    const proof = generateSimulatedSocialProof(campaign, bundles || []);
+    payload.recent_orders = proof.recent_orders;
+    payload.live_viewers = proof.live_viewers;
+  }
+
+  payload.starts_at = campaign.starts_at;
+  payload.ends_at = campaign.ends_at;
+  payload.exit_intent_enabled = campaign.exit_intent_enabled || false;
+  payload.exit_intent_code = campaign.exit_intent_code || null;
+  payload.exit_intent_discount_ngn = campaign.exit_intent_discount_ngn || null;
+  payload.show_viewer_count_policy = campaign.show_viewer_count_policy || null;
+  payload.viewer_count_floor = campaign.viewer_count_floor || null;
+  payload.last_call_surge_minutes = campaign.last_call_surge_minutes || 0;
+  payload.vip_early_access_minutes = campaign.vip_early_access_minutes || 0;
+
   const brandInfo = await getBrandPublic(resolvedBrand);
   return withBrandInfo(payload, brandInfo);
 }
@@ -453,17 +519,36 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   const c = input.contact;
   if (c.notes || c.gift || c.consent) {
     const internal = {};
-    if (c.gift) internal.gift = c.gift;
+    if (c.gift) {
+      internal.gift = c.gift;
+      if (c.gift.ship_to_recipient && c.gift.recipient_address) {
+        internal.ship_to = "recipient";
+        internal.recipient_address = c.gift.recipient_address;
+      }
+    }
     if (c.consent) internal.consent = c.consent;
     internal.ip = ip;
     internal.user_agent = user_agent;
+
+    const customerParts = [];
+    if (c.notes) customerParts.push(c.notes);
+    if (c.gift) {
+      customerParts.push(`GIFT ORDER for ${c.gift.recipient_name}`);
+      if (c.gift.message) customerParts.push(`Gift message: ${c.gift.message}`);
+      if (c.gift.ship_to_recipient && c.gift.recipient_address) {
+        const ra = c.gift.recipient_address;
+        customerParts.push(
+          `Ship to recipient: ${ra.line1}${ra.line2 ? `, ${ra.line2}` : ""}, ${ra.city}${ra.state ? `, ${ra.state}` : ""}, ${ra.country || "Nigeria"}`,
+        );
+      }
+    }
     try {
       await query(
         `UPDATE ${resolvedBrand}.sales_orders
             SET customer_notes = $1, internal_notes = $2
           WHERE order_id = $3`,
         [
-          c.notes || null,
+          customerParts.length ? customerParts.join("\n") : null,
           Object.keys(internal).length ? JSON.stringify(internal) : null,
           order.order_id,
         ],
@@ -477,11 +562,25 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // Payment init hits external APIs — kept outside DB transactions so a
   // gateway timeout doesn't hold locks. If it fails the order still exists
   // in pending_payment state and the customer can retry via the pay link.
+  //
+  // The return_url_base points the gateway callback to the landing thank-you
+  // page so the customer is redirected back after payment.
+  const brandConfig = await getBrandPublic(resolvedBrand);
+  const saleDomain = brandConfig?.sales_subdomain || brandConfig?.storefront_domain;
+  const landingBase = saleDomain
+    ? `https://${saleDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+    : null;
+  const returnUrlBase = landingBase
+    ? `${landingBase}/checkout/${slug}/thank-you`
+    : undefined;
+
   try {
     const payResult = await paymentLink.createPaymentLink({
       brand: resolvedBrand,
       order_id: order.order_id,
-      currency: input.payment_gateway === "stripe" ? "USD" : "NGN",
+      currency: "NGN",
+      return_url_base: returnUrlBase,
+      preferred_provider: input.payment_gateway,
     });
     events.emit("checkout_completed", {
       brand: resolvedBrand,
@@ -504,4 +603,21 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   }
 }
 
-module.exports = { getIndex, getLanding, getStock, signup, checkout };
+async function getOrderStatus({ slug, brand, brandHint, orderId }) {
+  const found = await resolveCampaign({ slug, brand, brandHint });
+  if (!found) throw new NotFoundError("Campaign");
+  const { brand: resolvedBrand } = found;
+
+  const order = await salesRepo.findById({ brand: resolvedBrand, id: orderId });
+  if (!order) throw new NotFoundError("Order");
+
+  return {
+    order_id: order.order_id,
+    order_number: order.order_number,
+    status: order.status,
+    total_ngn: order.total_ngn,
+    currency: "NGN",
+  };
+}
+
+module.exports = { getIndex, getLanding, getStock, signup, checkout, getOrderStatus };

@@ -447,7 +447,21 @@ const checkoutSchema = z
             recipient_name: z.string().min(1).max(200),
             recipient_phone: z.string().max(25).optional(),
             message: z.string().max(500).optional(),
+            ship_to_recipient: z.boolean().optional(),
+            recipient_address: z
+              .object({
+                line1: z.string().min(1).max(400),
+                line2: z.string().max(400).optional(),
+                city: z.string().min(1).max(120),
+                state: z.string().max(120).optional(),
+                country: z.string().max(80).optional(),
+              })
+              .optional(),
           })
+          .refine(
+            (g) => !g.ship_to_recipient || g.recipient_address,
+            { message: "recipient_address is required when ship_to_recipient is true" },
+          )
           .optional(),
         address: z.object({
           line1: z.string().min(1).max(400),
@@ -477,7 +491,7 @@ const checkoutSchema = z
       .min(1)
       .max(30),
     utm: z.record(z.string()).optional(),
-    payment_gateway: z.enum(["paystack", "opay", "nomba", "stripe"]),
+    payment_gateway: z.enum(["paystack", "nomba"]),
     client_idempotency_key: z.string().min(1).max(120),
     coupon_code: z.string().max(60).optional(),
   })

@@ -63,14 +63,27 @@ export function CartUpsellModal({ payload }: { payload: LandingPayload }) {
   function accept() {
     if (current) {
       markShown(current.upsell_id);
-      // Acceptance UI: keep it simple — close upsell, keep drawer open.
       setCurrent(null);
       closeCart();
       setTimeout(() => {
-        // Re-open the drawer so the shopper can keep shopping.
-        // Re-uses our open() — using closeCart then re-opening is intentional
-        // to give the visual feedback of "we heard you".
-      }, 200);
+        const target =
+          document.querySelector('[data-block="bundle_showcase"]') ||
+          document.querySelector('[data-block="featured_products"]');
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+          target.classList.add("ring-2", "ring-[rgb(var(--accent-glow))]", "ring-offset-4", "rounded-2xl");
+          setTimeout(
+            () =>
+              target.classList.remove(
+                "ring-2",
+                "ring-[rgb(var(--accent-glow))]",
+                "ring-offset-4",
+                "rounded-2xl",
+              ),
+            2500,
+          );
+        }
+      }, 300);
     }
   }
 

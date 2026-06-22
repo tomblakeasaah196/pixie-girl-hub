@@ -7,17 +7,20 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   CreditCard,
   Gift,
   Lock,
+  MapPin,
   ShieldCheck,
+  Tag,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { postCheckout } from "@/lib/api-client";
 import type { LandingPayload } from "@/lib/types";
 
-type Gateway = "paystack" | "opay" | "nomba" | "stripe";
+type Gateway = "paystack" | "nomba";
 
 export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const router = useRouter();
@@ -41,6 +44,15 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [giftName, setGiftName] = useState("");
   const [giftPhone, setGiftPhone] = useState("");
   const [giftMessage, setGiftMessage] = useState("");
+  const [shipToRecipient, setShipToRecipient] = useState(false);
+  const [recipientLine1, setRecipientLine1] = useState("");
+  const [recipientLine2, setRecipientLine2] = useState("");
+  const [recipientCity, setRecipientCity] = useState("");
+  const [recipientState, setRecipientState] = useState("Lagos");
+  const [recipientCountry] = useState("Nigeria");
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoApplied, setPromoApplied] = useState(false);
   const [waOpt, setWaOpt] = useState(false);
   const [mktOpt, setMktOpt] = useState(false);
   const [terms, setTerms] = useState(false);
@@ -70,6 +82,25 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     }
     setBusy(true);
     try {
+      const giftPayload = isGift
+        ? {
+            recipient_name: giftName,
+            recipient_phone: giftPhone || undefined,
+            message: giftMessage || undefined,
+            ship_to_recipient: shipToRecipient || undefined,
+            recipient_address:
+              shipToRecipient
+                ? {
+                    line1: recipientLine1,
+                    line2: recipientLine2 || undefined,
+                    city: recipientCity,
+                    state: recipientState || undefined,
+                    country: recipientCountry,
+                  }
+                : undefined,
+          }
+        : undefined;
+
       const res = await postCheckout({
         slug: payload.slug,
         contact: {
@@ -79,13 +110,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           phone,
           instagram_handle: insta || undefined,
           notes: notes || undefined,
-          gift: isGift
-            ? {
-                recipient_name: giftName,
-                recipient_phone: giftPhone || undefined,
-                message: giftMessage || undefined,
-              }
-            : undefined,
+          gift: giftPayload,
           address: {
             line1: addressLine1,
             line2: addressLine2 || undefined,
@@ -108,14 +133,19 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         utm: readUtm(),
         payment_gateway: gateway,
         client_idempotency_key: idemKey,
+        coupon_code: promoApplied && promoCode ? promoCode : undefined,
       });
-      const payUrl =
-        (res as { data?: { payment_url?: string }; payment_url?: string })?.data
-          ?.payment_url ?? (res as { payment_url?: string }).payment_url;
+      const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
+      const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
+      const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
+
+      if (orderId) {
+        sessionStorage.setItem("pgh-last-order-id", orderId);
+      }
       if (payUrl) {
         window.location.href = payUrl;
       } else {
-        router.push(`/sale/${payload.slug}?status=processing`);
+        router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
       }
     } catch (e) {
       setErr((e as Error)?.message || "Checkout failed. Please try again.");
@@ -260,28 +290,68 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   <Field label="Gift message">
                     <Textarea value={giftMessage} onChange={setGiftMessage} />
                   </Field>
+                  <label className="flex items-center gap-2 text-[13px] mt-2">
+                    <input
+                      type="checkbox"
+                      checked={shipToRecipient}
+                      onChange={(e) => setShipToRecipient(e.target.checked)}
+                      className="accent-[rgb(var(--accent-deep))]"
+                    />
+                    <MapPin className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
+                    <span>Ship directly to the recipient</span>
+                  </label>
+                  {shipToRecipient && (
+                    <div className="mt-2 space-y-3 pl-1 border-l-2 border-[rgb(var(--accent)/0.15)]">
+                      <Field label="Recipient address line 1" required>
+                        <Input
+                          value={recipientLine1}
+                          onChange={setRecipientLine1}
+                          required
+                        />
+                      </Field>
+                      <Field label="Recipient address line 2">
+                        <Input
+                          value={recipientLine2}
+                          onChange={setRecipientLine2}
+                        />
+                      </Field>
+                      <Row>
+                        <Field label="City" required>
+                          <Input
+                            value={recipientCity}
+                            onChange={setRecipientCity}
+                            required
+                          />
+                        </Field>
+                        <Field label="State">
+                          <Input
+                            value={recipientState}
+                            onChange={setRecipientState}
+                          />
+                        </Field>
+                      </Row>
+                    </div>
+                  )}
                 </div>
               )}
             </Section>
 
             <Section title="Pay with">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {(["paystack", "opay", "nomba", "stripe"] as Gateway[]).map(
-                  (g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setGateway(g)}
-                      className={`p-3 rounded-xl border text-[13px] font-semibold capitalize ${
-                        gateway === g
-                          ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] text-[rgb(var(--accent-glow))]"
-                          : "border-[rgb(var(--border-c)/0.1)] text-[rgb(var(--text-muted))]"
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ),
-                )}
+              <div className="grid grid-cols-2 gap-2">
+                {(["paystack", "nomba"] as Gateway[]).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGateway(g)}
+                    className={`p-3 rounded-xl border text-[13px] font-semibold capitalize ${
+                      gateway === g
+                        ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] text-[rgb(var(--accent-glow))]"
+                        : "border-[rgb(var(--border-c)/0.1)] text-[rgb(var(--text-muted))]"
+                    }`}
+                  >
+                    {g === "paystack" ? "Paystack" : "Nomba"}
+                  </button>
+                ))}
               </div>
             </Section>
 
@@ -370,6 +440,50 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   </div>
                 )}
               </div>
+              {/* Promo code */}
+              <div className="border-t hairline pt-3">
+                {!promoOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setPromoOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-[12px] text-[rgb(var(--accent-glow))] font-semibold hover:underline"
+                  >
+                    <Tag className="w-3 h-3" /> Have a promo code?{" "}
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => {
+                        setPromoCode(e.target.value.toUpperCase());
+                        setPromoApplied(false);
+                      }}
+                      placeholder="Enter code"
+                      className="flex-1 h-9 px-3 rounded-lg bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.5)] text-[13px] font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (promoCode.trim()) setPromoApplied(true);
+                      }}
+                      disabled={!promoCode.trim()}
+                      className="h-9 px-3 rounded-lg bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] text-[12px] font-semibold disabled:opacity-40"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                )}
+                {promoApplied && (
+                  <div className="mt-1.5 flex items-center gap-1 text-[12px] text-[rgb(var(--success))]">
+                    <Check className="w-3 h-3" /> Code{" "}
+                    <span className="font-mono font-semibold">{promoCode}</span>{" "}
+                    will be applied
+                  </div>
+                )}
+              </div>
+
               <div className="border-t hairline pt-3 flex justify-between">
                 <span className="font-semibold">Total</span>
                 <span className="font-display text-[22px] tabular-nums">
@@ -392,7 +506,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               </motion.button>
               <div className="text-[11px] text-[rgb(var(--text-faint))] text-center inline-flex items-center justify-center gap-1 w-full">
                 <ShieldCheck className="w-3 h-3 text-[rgb(var(--success))]" />{" "}
-                Secure checkout · DHL rates apply
+                Secure checkout · Shipping calculated at fulfilment
               </div>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 <CreditCard className="inline w-3 h-3 mr-1" />

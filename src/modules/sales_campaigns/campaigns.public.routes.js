@@ -67,4 +67,7 @@ router.post(
   controller.checkout,
 );
 
+// Order status: thank-you page polls this to show confirmation.
+router.get("/:slug/order/:orderId", landingReadLimiter, controller.orderStatus);
+
 module.exports = router;

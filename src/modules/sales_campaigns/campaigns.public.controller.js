@@ -69,4 +69,14 @@ async function checkout(req, res) {
   res.status(201).json({ data: result });
 }
 
-module.exports = { index, landing, stock, signup, checkout };
+async function orderStatus(req, res) {
+  const data = await publicService.getOrderStatus({
+    slug: req.params.slug,
+    brand: req.brand,
+    brandHint: brandHint(req),
+    orderId: req.params.orderId,
+  });
+  res.json({ data });
+}
+
+module.exports = { index, landing, stock, signup, checkout, orderStatus };

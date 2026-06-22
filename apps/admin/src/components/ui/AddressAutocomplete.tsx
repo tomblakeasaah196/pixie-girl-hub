@@ -3,7 +3,10 @@ import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { MapPin, Loader2 } from "lucide-react";
 
-const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
+// Prefer the shared Places key (used by the Online-QR loader); fall back to the
+// older name so a single env var powers every address field in the app.
+const MAPS_KEY = (import.meta.env.VITE_GOOGLE_PLACES_API_KEY ??
+  import.meta.env.VITE_GOOGLE_MAPS_KEY) as string | undefined;
 
 /** Parsed address components from a Google Places result. */
 export interface PlaceAddress {
@@ -102,7 +105,13 @@ export function AddressAutocomplete({
   useEffect(() => {
     setLoading(true);
     loadGoogleMaps()
-      .then(() => setReady(true))
+      .then((lib) => {
+        // Only mark ready when the library actually loaded. Without a key
+        // loadGoogleMaps() resolves to null — marking ready then would send
+        // the effect below into the (undefined) global `google` and throw
+        // "google is not defined", crashing the whole public form.
+        if (lib) setReady(true);
+      })
       .catch(() => {
         /* key not set or network error — degrade to plain input */
       })
@@ -112,6 +121,7 @@ export function AddressAutocomplete({
   // Wire autocomplete once the API is ready and the input is mounted
   useEffect(() => {
     if (!ready || !inputRef.current) return;
+    if (typeof google === "undefined" || !google.maps?.places) return;
 
     acRef.current = new google.maps.places.Autocomplete(inputRef.current, {
       fields: ["address_components", "geometry", "formatted_address", "url"],
@@ -173,8 +183,8 @@ export function AddressAutocomplete({
       )}
       {!MAPS_KEY && (
         <p className="text-[10px] text-warn/80 mt-1">
-          Set <span className="font-mono">VITE_GOOGLE_MAPS_KEY</span> to enable
-          autocomplete.
+          Set <span className="font-mono">VITE_GOOGLE_PLACES_API_KEY</span> to
+          enable autocomplete — typing the address still works.
         </p>
       )}
     </div>

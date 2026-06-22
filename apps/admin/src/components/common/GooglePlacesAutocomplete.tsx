@@ -162,7 +162,24 @@ export function GooglePlacesAutocomplete({
             ref={inputRef}
             type="text"
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setValue(v);
+              // In degraded modes there's no Places listener, so the typed text
+              // would never reach the parent and the address (a required field)
+              // could never be filled. Surface it as line1; empty siblings are
+              // ignored by the parent's defensive merge.
+              if (status === "unavailable" || status === "error") {
+                onChange({
+                  line1: v,
+                  city: "",
+                  state: "",
+                  country: "",
+                  country_code: "",
+                  formatted_address: v,
+                });
+              }
+            }}
             placeholder={
               status === "unavailable"
                 ? "Type your full address"

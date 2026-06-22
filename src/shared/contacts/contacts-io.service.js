@@ -20,7 +20,7 @@
 
 const repo = require("./contacts.repo");
 const service = require("./contacts.service");
-const { contactCreate, addressCreate } = require("./contacts.validator");
+const { contactCreateChecked, addressCreate } = require("./contacts.validator");
 const { buildCsv, parseUpload } = require("../../services/spreadsheet.service");
 
 // ── small coercion helpers ───────────────────────────────
@@ -351,7 +351,7 @@ function rowToInputs(raw, kind) {
   }
   contact.contact_type = [KIND_TYPE[kind] ?? "customer"];
 
-  const parsedContact = contactCreate.parse(contact); // throws → reported per row
+  const parsedContact = contactCreateChecked.parse(contact); // throws → reported per row
   let parsedAddress = null;
   if (address.line1) {
     parsedAddress = addressCreate.parse({
@@ -412,9 +412,13 @@ async function importContacts({
 
     const { contact, address } = input;
     try {
-      // De-dupe on phone: a contact already on file is not recreated — instead
-      // we make sure they carry this kind's type (a client who also supplies).
-      const existing = await repo.findByPhone({ phone: contact.primary_phone });
+      // De-dupe on phone OR email: a contact already on file is not recreated —
+      // instead we make sure they carry this kind's type (a client who also
+      // supplies). Either channel can be the match key now that one suffices.
+      const existing = await repo.findByPhoneOrEmail({
+        phone: contact.primary_phone,
+        email: contact.email,
+      });
       if (existing) {
         await repo.addContactTypes({
           id: existing.contact_id,
@@ -425,7 +429,7 @@ async function importContacts({
           row: line,
           status: "duplicate",
           name: existing.display_name,
-          reason: `phone ${contact.primary_phone} already on file`,
+          reason: `already on file: ${contact.primary_phone || contact.email}`,
         });
         continue;
       }

@@ -23,7 +23,7 @@ const socialHandle = z.preprocess(
 const contactCreate = z
   .object({
     display_name: z.string().min(1).max(200),
-    primary_phone: z.string().min(5).max(30),
+    primary_phone: z.string().min(5).max(30).optional(),
     contact_type: z.array(z.string()).optional(),
     first_name: z.string().max(120).optional(),
     last_name: z.string().max(120).optional(),
@@ -45,6 +45,21 @@ const contactCreate = z
     notes: z.string().max(4000).optional(),
   })
   .strict();
+
+/** A contact needs at least one way to reach them — phone OR email. */
+const hasContactChannel = (d) =>
+  Boolean((d.primary_phone || "").trim() || (d.email || "").trim());
+const contactChannelRule = {
+  message: "Provide at least a phone number or an email address",
+  path: ["primary_phone"],
+};
+
+// Create enforces "at least one channel"; update (PATCH) stays lenient so a
+// caller can tweak a single field without re-supplying contact details.
+const contactCreateChecked = contactCreate.refine(
+  hasContactChannel,
+  contactChannelRule,
+);
 
 const segmentCreate = z
   .object({
@@ -94,7 +109,7 @@ const mw = (s) => (req, _res, next) => {
 };
 
 module.exports = {
-  validateCreate: mw(contactCreate),
+  validateCreate: mw(contactCreateChecked),
   validateUpdate: mw(contactCreate.partial()),
   validateSegmentCreate: mw(segmentCreate),
   validateSegmentUpdate: mw(segmentCreate.partial()),
@@ -102,6 +117,7 @@ module.exports = {
   validateAddressUpdate: mw(addressCreate.partial()),
   validateTagCreate: mw(tagCreate),
   contactCreate,
+  contactCreateChecked,
   segmentCreate,
   addressCreate,
 };

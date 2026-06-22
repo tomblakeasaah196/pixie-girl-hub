@@ -196,6 +196,23 @@ async function findByPhone({ client, phone }) {
   return rows[0] || null;
 }
 
+/**
+ * First non-deleted contact matching phone OR email — the de-dupe key now that
+ * a contact may carry only one of the two. Returns null when neither is given.
+ */
+async function findByPhoneOrEmail({ client, phone, email }) {
+  if (!phone && !email) return null;
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.contacts
+      WHERE is_deleted = false
+        AND ( ($1::text   IS NOT NULL AND primary_phone = $1)
+           OR ($2::citext IS NOT NULL AND email = $2) )
+      ORDER BY created_at LIMIT 1`,
+    [phone || null, email || null],
+  );
+  return rows[0] || null;
+}
+
 /** Union extra types into a contact's contact_type[] (idempotent, de-duped). */
 async function addContactTypes({ client, id, types }) {
   const { rowCount } = await ex(client)(
@@ -462,6 +479,7 @@ module.exports = {
   update,
   softDelete,
   findByPhone,
+  findByPhoneOrEmail,
   addContactTypes,
   exportRows,
   listSegments,

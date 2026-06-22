@@ -85,8 +85,18 @@ function Card({
   const add = useCart((s) => s.add);
   const openCart = useCart((s) => s.openCart);
   const [hover, setHover] = useState(false);
-  const price = Number(product.campaign_price_ngn || 0);
+  const campaignPrice = Number(product.campaign_price_ngn || 0);
   const retail = Number(product.regular_price_ngn || 0);
+  // Display price: the campaign override if set, otherwise the regular (retail)
+  // price. Previously only the override was shown, so any product without an
+  // override rendered with no price at all.
+  const price = campaignPrice > 0 ? campaignPrice : retail;
+  const hasDiscount = campaignPrice > 0 && retail > campaignPrice;
+  // USD figure that pairs with the displayed NGN price.
+  const priceUsd =
+    Number(product.campaign_price_usd || 0) > 0
+      ? Number(product.campaign_price_usd)
+      : Number(product.regular_price_usd || 0);
   const isPreorder =
     product.stock_remaining != null && product.stock_remaining <= 0;
   const weeks = isPreorder
@@ -124,14 +134,24 @@ function Card({
         <div className="text-[13px] font-semibold leading-tight truncate">
           {product.name}
         </div>
+        {product.short_description && (
+          <div className="mt-0.5 text-[11.5px] text-[rgb(var(--text-faint))] line-clamp-2">
+            {product.short_description}
+          </div>
+        )}
         {price > 0 && (
-          <div className="mt-2 flex items-end gap-2">
+          <div className="mt-2 flex items-end gap-2 flex-wrap">
             <div className="font-display text-[18px] tabular-nums">
               {money(price)}
             </div>
-            {retail > price && (
+            {hasDiscount && (
               <div className="text-[11px] text-[rgb(var(--text-faint))] line-through font-mono">
                 {money(retail)}
+              </div>
+            )}
+            {priceUsd > 0 && (
+              <div className="text-[11px] text-[rgb(var(--text-faint))] font-mono">
+                ≈ {money(priceUsd, "USD")}
               </div>
             )}
           </div>

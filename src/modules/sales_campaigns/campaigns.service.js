@@ -619,8 +619,19 @@ function buildLandingPayload(c, products, state) {
               styled_id: p.styled_id,
               category_id: p.category_id,
               name: p.styled_name || p.product_name || p.category_name,
+              // Long + short copy: prefer the snapshot taken on add, fall back to
+              // the live styled product so older links still render description.
+              short_description:
+                p.short_description ?? p.styled_short_description ?? null,
+              long_description:
+                p.long_description ?? p.styled_long_description ?? null,
               campaign_price_ngn: p.campaign_price_ngn,
-              regular_price_ngn: p.regular_price_ngn,
+              campaign_price_usd: p.campaign_price_usd,
+              // Both-currency reference prices (snapshot, else live styled retail).
+              regular_price_ngn:
+                p.regular_price_ngn ?? p.styled_retail_price_ngn ?? null,
+              regular_price_usd:
+                p.regular_price_usd ?? p.styled_retail_price_usd ?? null,
               is_featured: p.is_featured,
               stock_remaining: p.current_stock_snapshot,
               image_url: p.resolved_image_url || p.image_url,

@@ -25,7 +25,16 @@ ALTER TABLE {{BUSINESS}}.product_bundle_items
   ADD COLUMN IF NOT EXISTS styled_id UUID;
 
 -- ── Styled product reference on campaign products ───────────────────────
+-- styled_id + denormalised display fields snapshot the styled product at the
+-- moment it is added to a campaign: image, both-currency prices, and the long
+-- + short copy. Snapshotting (rather than always joining live) keeps a campaign
+-- page stable if the styled product is later re-priced/re-worded, and honours
+-- the money rule (never recompute campaign history with a live FX rate).
 ALTER TABLE {{BUSINESS}}.sales_campaign_products
-  ADD COLUMN IF NOT EXISTS styled_id          UUID,
-  ADD COLUMN IF NOT EXISTS image_url          TEXT,
-  ADD COLUMN IF NOT EXISTS regular_price_ngn  NUMERIC(14,4);
+  ADD COLUMN IF NOT EXISTS styled_id           UUID,
+  ADD COLUMN IF NOT EXISTS image_url           TEXT,
+  ADD COLUMN IF NOT EXISTS regular_price_ngn   NUMERIC(14,4),
+  ADD COLUMN IF NOT EXISTS regular_price_usd   NUMERIC(14,4),
+  ADD COLUMN IF NOT EXISTS campaign_price_usd  NUMERIC(14,4),
+  ADD COLUMN IF NOT EXISTS short_description   TEXT,
+  ADD COLUMN IF NOT EXISTS long_description    TEXT;

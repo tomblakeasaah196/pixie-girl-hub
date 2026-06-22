@@ -84,6 +84,29 @@ async function reorderBundleItems(req, res) {
   res.status(204).end();
 }
 
+// ── Clone / duplicate ────────────────────────────────────
+async function cloneBundles(req, res) {
+  const data = await bundles.cloneAllBundlesToCampaign({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    campaign_slug: req.body.campaign_slug || "campaign",
+  });
+  res.json({ data });
+}
+
+async function duplicateBundleHandler(req, res) {
+  const data = await bundles.duplicateBundle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    bundle_id: req.params.id,
+    campaign_id: req.body.campaign_id || null,
+  });
+  res.json({ data });
+}
+
 // ── Campaign attachments ─────────────────────────────────
 async function listCampaignBundles(req, res) {
   const data = await bundles.listCampaignBundles({
@@ -332,6 +355,8 @@ module.exports = {
   createBundle,
   updateBundle,
   archiveBundle,
+  cloneBundles,
+  duplicateBundleHandler,
   addBundleItem,
   removeBundleItem,
   reorderBundleItems,

@@ -281,10 +281,22 @@ async function incrementCounters({ client, brand, id, deltas }) {
 
 async function listProducts({ client, brand, campaign_id }) {
   const { rows } = await exec(client)(
-    `SELECT scp.*, p.name AS product_name, pc.name AS category_name
+    `SELECT scp.*,
+            p.name  AS product_name,
+            pc.name AS category_name,
+            sp.name AS styled_name,
+            sp.slug AS styled_slug,
+            COALESCE(scp.image_url, spi.image_url) AS resolved_image_url
        FROM ${t(brand, "sales_campaign_products")} scp
-       LEFT JOIN ${t(brand, "products")} p ON p.product_id = scp.product_id
+       LEFT JOIN ${t(brand, "products")} p          ON p.product_id   = scp.product_id
        LEFT JOIN ${t(brand, "product_categories")} pc ON pc.category_id = scp.category_id
+       LEFT JOIN ${t(brand, "styled_products")} sp  ON sp.styled_id   = scp.styled_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(cdn_url, file_path) AS image_url
+           FROM ${t(brand, "product_images")}
+          WHERE product_id = COALESCE(sp.base_product_id, scp.product_id)
+          ORDER BY display_order ASC NULLS LAST LIMIT 1
+       ) spi ON true
       WHERE scp.campaign_id = $1
       ORDER BY scp.display_order ASC, scp.is_featured DESC`,
     [campaign_id],
@@ -295,16 +307,19 @@ async function listProducts({ client, brand, campaign_id }) {
 async function addProduct({ client, brand, campaign_id, input }) {
   const { rows } = await exec(client)(
     `INSERT INTO ${t(brand, "sales_campaign_products")}
-       (campaign_id, product_id, category_id, include_exclude,
-        campaign_price_ngn, display_order, is_featured)
-     VALUES ($1, $2, $3, $4, $5, COALESCE($6,0), COALESCE($7,false))
+       (campaign_id, product_id, category_id, styled_id, include_exclude,
+        campaign_price_ngn, image_url, regular_price_ngn, display_order, is_featured)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9,0), COALESCE($10,false))
      RETURNING *`,
     [
       campaign_id,
       input.product_id || null,
       input.category_id || null,
+      input.styled_id || null,
       input.include_exclude,
       input.campaign_price_ngn ?? null,
+      input.image_url || null,
+      input.regular_price_ngn ?? null,
       input.display_order ?? null,
       input.is_featured ?? null,
     ],
@@ -327,6 +342,9 @@ async function updateProduct({ client, brand, campaign_id, link_id, patch }) {
     "display_order",
     "is_featured",
     "include_exclude",
+    "styled_id",
+    "image_url",
+    "regular_price_ngn",
   ];
   const sets = [];
   const params = [];
@@ -346,6 +364,39 @@ async function updateProduct({ client, brand, campaign_id, link_id, patch }) {
     params,
   );
   return rows[0] || null;
+}
+
+/**
+ * Insert multiple product links in a single transaction pass.
+ * Silently skips rows that violate a unique constraint (ON CONFLICT DO NOTHING).
+ */
+async function addProductsBatch({ client, brand, campaign_id, items }) {
+  if (!items.length) return [];
+  const results = [];
+  for (const input of items) {
+    const { rows } = await exec(client)(
+      `INSERT INTO ${t(brand, "sales_campaign_products")}
+         (campaign_id, product_id, category_id, styled_id, include_exclude,
+          campaign_price_ngn, image_url, regular_price_ngn, display_order, is_featured)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9,0), COALESCE($10,false))
+       ON CONFLICT DO NOTHING
+       RETURNING *`,
+      [
+        campaign_id,
+        input.product_id || null,
+        input.category_id || null,
+        input.styled_id || null,
+        input.include_exclude || "include",
+        input.campaign_price_ngn ?? null,
+        input.image_url || null,
+        input.regular_price_ngn ?? null,
+        input.display_order ?? null,
+        input.is_featured ?? null,
+      ],
+    );
+    if (rows[0]) results.push(rows[0]);
+  }
+  return results;
 }
 
 async function removeProduct({ client, brand, campaign_id, link_id }) {
@@ -481,6 +532,7 @@ module.exports = {
   // products
   listProducts,
   addProduct,
+  addProductsBatch,
   findProductLink,
   updateProduct,
   removeProduct,

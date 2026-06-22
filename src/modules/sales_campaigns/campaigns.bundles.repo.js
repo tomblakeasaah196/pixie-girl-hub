@@ -142,13 +142,17 @@ async function deleteBundle({ client, brand, id }) {
 async function listBundleItems({ client, brand, bundle_id }) {
   const { rows } = await ex(client)(
     `SELECT bi.*,
-            p.name                                       AS product_name,
-            pv.sku                                       AS variant_sku,
-            pv.price_storefront_ngn                      AS unit_price_ngn,
-            pi.image_url                                 AS hero_image_url
+            COALESCE(sp.name, p.name) AS display_name,
+            p.name                    AS product_name,
+            sp.name                   AS styled_name,
+            sp.slug                   AS styled_slug,
+            pv.sku                    AS variant_sku,
+            pv.price_storefront_ngn   AS unit_price_ngn,
+            pi.image_url              AS hero_image_url
        FROM ${t(brand, "product_bundle_items")} bi
        LEFT JOIN ${t(brand, "products")} p          ON p.product_id  = bi.product_id
        LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = bi.variant_id
+       LEFT JOIN ${t(brand, "styled_products")} sp  ON sp.styled_id  = bi.styled_id
        LEFT JOIN LATERAL (
          SELECT COALESCE(cdn_url, file_path) AS image_url
            FROM ${t(brand, "product_images")}
@@ -165,13 +169,14 @@ async function listBundleItems({ client, brand, bundle_id }) {
 async function addBundleItem({ client, brand, bundle_id, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "product_bundle_items")}
-       (bundle_id, product_id, variant_id, quantity, per_item_discount_ngn, display_position)
-     VALUES ($1,$2,$3, COALESCE($4,1), $5, COALESCE($6,0))
+       (bundle_id, product_id, variant_id, styled_id, quantity, per_item_discount_ngn, display_position)
+     VALUES ($1,$2,$3,$4, COALESCE($5,1), $6, COALESCE($7,0))
      RETURNING *`,
     [
       bundle_id,
       input.product_id || null,
       input.variant_id || null,
+      input.styled_id || null,
       input.quantity ?? null,
       input.per_item_discount_ngn ?? null,
       input.display_position ?? null,

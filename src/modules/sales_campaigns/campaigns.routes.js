@@ -55,6 +55,12 @@ router.delete(
   v2.archiveBundle,
 );
 router.post(
+  "/bundles/:id/duplicate",
+  requirePermission("sales_campaigns", "create"),
+  validator.validateDuplicateBundle,
+  v2.duplicateBundleHandler,
+);
+router.post(
   "/bundles/:id/items",
   requirePermission("sales_campaigns", "edit"),
   validator.validateBundleItem,
@@ -173,6 +179,12 @@ router.post(
   validator.validateAddProduct,
   controller.addProduct,
 );
+router.post(
+  "/:id/products/batch",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateBatchAddProducts,
+  controller.addProductsBatch,
+);
 router.patch(
   "/:id/products/:linkId",
   requirePermission("sales_campaigns", "edit"),
@@ -247,6 +259,12 @@ router.post(
   requirePermission("sales_campaigns", "edit"),
   validator.validateAttachBundle,
   v2.attachCampaignBundle,
+);
+router.post(
+  "/:id/bundles/clone",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateCloneBundles,
+  v2.cloneBundles,
 );
 router.delete(
   "/:id/bundles/:linkId",

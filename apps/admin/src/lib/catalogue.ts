@@ -585,6 +585,8 @@ export interface StyledFilters {
   status?: StyledStatus;
   base_product_id?: string;
   category_id?: string;
+  page?: number;
+  page_size?: number;
 }
 
 export function useStyledProducts(filters: StyledFilters = {}) {
@@ -599,7 +601,8 @@ export function useStyledProducts(filters: StyledFilters = {}) {
             status: filters.status,
             base_product_id: filters.base_product_id,
             category_id: filters.category_id,
-            page_size: "100",
+            page: filters.page ? String(filters.page) : undefined,
+            page_size: String(filters.page_size ?? 100),
           })}`,
         )
         .then(toList),

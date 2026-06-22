@@ -1,0 +1,31 @@
+-- Campaign v3 — deals engine: per-position ladder, stacking bonus, bulk/reseller,
+-- delivery timeline, styled-product linking for bundles + featured products.
+
+-- ── Delivery + deal config on sales_campaigns ───────────────────────────
+ALTER TABLE __SCHEMA__.sales_campaigns
+  ADD COLUMN IF NOT EXISTS delivery_weeks          SMALLINT,
+  ADD COLUMN IF NOT EXISTS preorder_extra_weeks     SMALLINT DEFAULT 4,
+  ADD COLUMN IF NOT EXISTS position_ladder          JSONB,
+  ADD COLUMN IF NOT EXISTS stacking_bonus           JSONB,
+  ADD COLUMN IF NOT EXISTS bulk_tiers               JSONB;
+
+COMMENT ON COLUMN __SCHEMA__.sales_campaigns.delivery_weeks
+  IS 'Default delivery timeline in weeks for all styled products in this campaign';
+COMMENT ON COLUMN __SCHEMA__.sales_campaigns.preorder_extra_weeks
+  IS 'Extra weeks added on top of delivery_weeks for preorder items';
+COMMENT ON COLUMN __SCHEMA__.sales_campaigns.position_ladder
+  IS 'Per-position discount ladder: [{position:1,discount_ngn:16000,label:"1st wig"}, ...]';
+COMMENT ON COLUMN __SCHEMA__.sales_campaigns.stacking_bonus
+  IS 'Auto-apply bonus for combining bundles: {min_distinct_bundles:2,discount_ngn:120000,label:"..."}';
+COMMENT ON COLUMN __SCHEMA__.sales_campaigns.bulk_tiers
+  IS 'Reseller/bulk tiers: [{min_qty:12,discount_per_item_ngn:67000,label:"Reseller"}, ...]';
+
+-- ── Styled product reference on bundle items ────────────────────────────
+ALTER TABLE __SCHEMA__.product_bundle_items
+  ADD COLUMN IF NOT EXISTS styled_id UUID;
+
+-- ── Styled product reference on campaign products ───────────────────────
+ALTER TABLE __SCHEMA__.sales_campaign_products
+  ADD COLUMN IF NOT EXISTS styled_id          UUID,
+  ADD COLUMN IF NOT EXISTS image_url          TEXT,
+  ADD COLUMN IF NOT EXISTS regular_price_ngn  NUMERIC(14,4);

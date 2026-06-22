@@ -18,6 +18,7 @@ const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
 const { VALID } = require("../../config/brands");
 const { AppError } = require("../../utils/errors");
+const { sendWelcomeEmail } = require("../../services/welcome-email");
 
 function assertBrand(brand) {
   if (!brand || !VALID.has(brand))
@@ -51,7 +52,12 @@ async function registerWalkIn({ brand, input }) {
       422,
     );
 
-  return transaction(async (client) => {
+  // Set inside the transaction, read after it commits — so the welcome email
+  // only goes out once the contact is durably saved (and never to a returning
+  // walk-in, who already had their welcome the first time round).
+  let welcome = null;
+
+  const result = await transaction(async (client) => {
     const existing = await repo.findContactByEmailOrPhone({
       client,
       email: input.email,
@@ -97,8 +103,19 @@ async function registerWalkIn({ brand, input }) {
         user_id: null,
       });
     }
+
+    if (input.email) {
+      welcome = { to: input.email, firstName: input.first_name };
+    }
     return { contact_id: contact.contact_id, returning: false };
   });
+
+  // Fire-and-forget the curated welcome (best-effort; never blocks the reply).
+  if (welcome) {
+    await sendWelcomeEmail({ brand, to: welcome.to, firstName: welcome.firstName });
+  }
+
+  return result;
 }
 
 /**
@@ -107,10 +124,14 @@ async function registerWalkIn({ brand, input }) {
  */
 async function generateQr({ brand, location }) {
   assertBrand(brand);
-  const base = config.APP_URL.replace(/\/$/, "");
-  const params = new URLSearchParams({ b: brand });
-  if (location) params.set("loc", location);
-  const url = `${base}/walk-in?${params.toString()}`;
+  const base = (config.ADMIN_BASE_URL || config.APP_URL).replace(/\/$/, "");
+  // Must match the admin SPA route `/walkin/:brand` (WalkInPublic.tsx reads the
+  // brand from the path, not a query string). An optional loc tags the QR's
+  // physical location for analytics.
+  const qs = location
+    ? `?${new URLSearchParams({ loc: location }).toString()}`
+    : "";
+  const url = `${base}/walkin/${encodeURIComponent(brand)}${qs}`;
   const qr_data_url = await QRCode.toDataURL(url, {
     errorCorrectionLevel: "M",
     margin: 1,

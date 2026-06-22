@@ -383,7 +383,10 @@ function Shell({
         ? "Pixie Girl"
         : "Order";
   return (
-    <div className="min-h-screen bg-bg text-text-primary px-4 py-6 sm:px-6 sm:py-10">
+    // Own scroll: the app pins `body { overflow:hidden }` for the authed shell,
+    // so this standalone public page must scroll itself or tall content is
+    // unreachable on a phone.
+    <div className="h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary px-4 py-6 sm:px-6 sm:py-10">
       <div className="max-w-[560px] mx-auto">
         <div className="flex items-center gap-2 mb-5">
           <div className="grid place-items-center w-10 h-10 rounded-xl bg-accent text-bg font-display text-[18px]">

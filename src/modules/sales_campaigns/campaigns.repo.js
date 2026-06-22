@@ -76,9 +76,25 @@ const CREATE_COLS = [
   "exit_intent_discount_ngn",
   "abandonment_recovery_enabled",
   "allow_multi_currency_display",
+  // ── Sales Campaigns v3 (migration 000048) — deals engine ──
+  // These were validated and read by the landing payload but never appeared in
+  // the writable allow-list, so saves silently dropped delivery timeline + the
+  // position/stacking/bulk deal configs (the same bug the v2 block above fixed).
+  "delivery_weeks",
+  "preorder_extra_weeks",
+  "position_ladder",
+  "stacking_bonus",
+  "bulk_tiers",
 ];
 const UPDATE_COLS = CREATE_COLS; // same set is editable (status excluded by design)
-const JSONB_COLS = new Set(["landing_blocks", "voice_profile_override"]);
+const JSONB_COLS = new Set([
+  "landing_blocks",
+  "voice_profile_override",
+  // v3 deal configs are JSONB columns — stringify + ::jsonb cast on write.
+  "position_ladder",
+  "stacking_bonus",
+  "bulk_tiers",
+]);
 
 function bindValue(col, val) {
   if (JSONB_COLS.has(col)) {

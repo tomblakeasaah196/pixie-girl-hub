@@ -18,11 +18,14 @@ export { AtelierStage } from "./AtelierStage";
 // AtelierStage (the faithful logo-plane scene) rather than these variants.
 export { ThreeDLogoReveal } from "./ThreeDLogoReveal";
 export { ThreeDTextReveal } from "./ThreeDTextReveal";
-// Atelier sale-state pieces — shared so the admin campaign preview renders the
-// exact same "before/coming-soon" page as the live sales site (no drift).
+// Atelier sale-state compositions — shared so the admin campaign preview
+// renders the exact same before / live / ended pages as the live sales site
+// (one definition, no drift).
 export { IntroOverlay } from "./IntroOverlay";
 export { BeforeHero } from "./BeforeHero";
 export { BeforeState } from "./BeforeState";
+export { LiveState } from "./LiveState";
+export { EndedState } from "./EndedState";
 // Payload contract (campaign landing shape) for typed consumers.
 export type {
   LandingState,

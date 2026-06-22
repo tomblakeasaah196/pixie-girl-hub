@@ -250,6 +250,14 @@ export const MODULES: AppModule[] = [
     icon: UserCog,
   },
   {
+    key: "payroll",
+    label: "Payroll",
+    description: "Runs, payslips & disbursement",
+    group: "people",
+    route: "/payroll",
+    icon: Wallet,
+  },
+  {
     key: "contacts",
     label: "Contacts",
     description: "Directory",

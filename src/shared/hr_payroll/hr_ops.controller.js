@@ -30,6 +30,22 @@ async function respondToQuery(req, res) {
     }),
   });
 }
+async function getMyToday(req, res) {
+  res.json({ data: await service.getMyToday({ brand: req.brand, user: req.user }) });
+}
+async function selfClock(req, res) {
+  res.status(201).json({
+    data: await service.selfClock({
+      brand: req.brand,
+      user: req.user,
+      input: req.body,
+      requestMeta: {
+        ip_address: req.ip,
+        user_agent: req.get ? req.get("user-agent") : undefined,
+      },
+    }),
+  });
+}
 
 // ── Management (HR & Staff) ────────────────────────────────
 async function getOverview(req, res) {
@@ -37,6 +53,9 @@ async function getOverview(req, res) {
 }
 async function reconcile(req, res) {
   res.json({ data: await service.reconcileDay({ ...ctx(req), date: req.body.date }) });
+}
+async function applyLapsedOffsite(req, res) {
+  res.json({ data: await service.applyLapsedOffsite({ ...ctx(req) }) });
 }
 
 async function listLeave(req, res) {
@@ -106,8 +125,11 @@ module.exports = {
   getMyHr,
   requestLeave,
   respondToQuery,
+  getMyToday,
+  selfClock,
   getOverview,
   reconcile,
+  applyLapsedOffsite,
   listLeave,
   approveLeave,
   rejectLeave,

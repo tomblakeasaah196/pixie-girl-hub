@@ -84,6 +84,11 @@ const settingsUpdateSchema = z
     default_expected_start_time: timeStr.nullable().optional(),
     working_days: z.array(z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"])).max(7).optional(),
     earnings_tracker_enabled: z.boolean().optional(),
+    geofence_enabled: z.boolean().optional(),
+    geofence_required_on_site: z.boolean().optional(),
+    geofence_accuracy_max_m: z.number().int().min(10).max(2000).optional(),
+    offsite_auto_query: z.boolean().optional(),
+    offsite_marks_absent: z.boolean().optional(),
     payout_require_pin: z.boolean().optional(),
     payout_provider: z.enum(["nomba", "flutterwave", "manual"]).optional(),
     onboarding_checklist: z
@@ -100,6 +105,15 @@ const payoutPinSchema = z.object({
 
 const reconcileSchema = z.object({
   date: dateStr.optional(),
+});
+
+const clockSchema = z.object({
+  event_type: z.enum(["clock_in", "clock_out"]),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  accuracy_m: z.number().nonnegative().nullable().optional(),
+  address: z.string().max(500).optional(),
+  device_fingerprint: z.string().max(200).optional(),
 });
 
 function make(schema) {
@@ -120,4 +134,5 @@ module.exports = {
   settingsUpdate: make(settingsUpdateSchema),
   payoutPin: make(payoutPinSchema),
   reconcile: make(reconcileSchema),
+  clock: make(clockSchema),
 };

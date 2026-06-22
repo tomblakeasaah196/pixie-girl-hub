@@ -89,6 +89,9 @@ export interface AttendanceDay {
   deduction_pct: number;
   deduction_ngn: number;
   justified: boolean;
+  is_offsite: boolean;
+  offsite_distance_m: number | null;
+  clock_in_address: string | null;
 }
 
 export interface MyHr {
@@ -150,6 +153,11 @@ export interface HrSettings {
   default_expected_start_time: string | null;
   working_days: string[];
   earnings_tracker_enabled: boolean;
+  geofence_enabled: boolean;
+  geofence_required_on_site: boolean;
+  geofence_accuracy_max_m: number;
+  offsite_auto_query: boolean;
+  offsite_marks_absent: boolean;
   payout_require_pin: boolean;
   payout_provider: "nomba" | "flutterwave" | "manual";
   payout_pin_set: boolean;
@@ -158,6 +166,41 @@ export interface HrSettings {
 
 interface ListEnvelope<T> {
   data: T[];
+}
+
+export interface MyToday {
+  profile_id: string;
+  clocked_in: boolean;
+  clocked_out: boolean;
+  clocked_in_at: string | null;
+  is_offsite: boolean;
+  last_address: string | null;
+  expected_mode: "on_site" | "remote" | "off" | null;
+  expected_start_time: string | null;
+  geofence_required: boolean;
+}
+
+export interface ClockResult {
+  event_id: string;
+  event_type: "clock_in" | "clock_out";
+  occurred_at: string;
+  is_offsite: boolean;
+  distance_m: number | null;
+  address: string | null;
+  late_minutes: number;
+  status: "late" | "present";
+}
+
+export interface Geofence {
+  geofence_id: string;
+  business: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_m: number;
+  address: string | null;
+  unit_id: string | null;
+  is_active: boolean;
 }
 
 // ── Self-service ───────────────────────────────────────────
@@ -173,6 +216,16 @@ export const requestLeave = (body: {
 
 export const respondToQuery = (id: string, response: string) =>
   api.post<HrQuery>(`/hr/me/queries/${id}/respond`, { response });
+
+export const getMyToday = () => api.get<MyToday>("/hr/me/today");
+
+export const clock = (body: {
+  event_type: "clock_in" | "clock_out";
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracy_m?: number | null;
+  address?: string;
+}) => api.post<ClockResult>("/hr/me/clock", body);
 
 // ── Management ─────────────────────────────────────────────
 export const getOverview = () => api.get<HrOverview>("/hr/overview");
@@ -230,6 +283,23 @@ export const updateTargetProgress = (id: string, current_value: number) =>
   api.patch<PerformanceTarget>(`/hr/targets/${id}/progress`, { current_value });
 export const deleteTarget = (id: string) => api.delete<void>(`/hr/targets/${id}`);
 
+export const applyLapsedOffsite = () =>
+  api.post<{ lapsed: number; marked_absent: number }>("/hr/attendance/apply-lapsed-offsite");
+
+// ── Office geofences (attendance perimeters) ───────────────
+export const listGeofences = () => api.get<Geofence[]>("/attendance/geofences");
+export const createGeofence = (body: {
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_m: number;
+  address?: string;
+}) => api.post<Geofence>("/attendance/geofences", body);
+export const updateGeofence = (id: string, patch: Partial<Geofence>) =>
+  api.patch<Geofence>(`/attendance/geofences/${id}`, patch);
+export const deleteGeofence = (id: string) =>
+  api.delete<void>(`/attendance/geofences/${id}`);
+
 export const getSettings = () => api.get<HrSettings>("/hr/settings");
 export const updateSettings = (patch: Partial<HrSettings>) =>
   api.put<HrSettings>("/hr/settings", patch);
@@ -252,6 +322,60 @@ export const createStaff = (body: Record<string, unknown>) =>
   api.post<StaffRow>("/hr/employees", body);
 export const updateStaff = (id: string, patch: Record<string, unknown>) =>
   api.patch<StaffRow>(`/hr/employees/${id}`, patch);
+
+// ── Payroll (Phase 2) ──────────────────────────────────────
+export interface PayrollRun {
+  run_id: string;
+  run_number: string;
+  pay_month: number;
+  pay_year: number;
+  pay_date: string;
+  period_start: string;
+  period_end: string;
+  status: "draft" | "calculated" | "reviewed" | "approved" | "paid" | "reversed";
+  total_staff: number;
+  total_gross_ngn: number;
+  total_net_ngn: number;
+  total_paye_ngn: number;
+  paid_at: string | null;
+}
+
+export interface Payslip {
+  payslip_id: string;
+  payslip_number: string;
+  user_id: string;
+  payroll_run_id: string;
+  job_title_snapshot: string | null;
+  gross_pay_ngn: number;
+  total_deductions_ngn: number;
+  net_pay_ngn: number;
+  payment_status: "pending" | "queued" | "paid" | "failed" | "reversed";
+  payment_reference: string | null;
+  failure_reason: string | null;
+}
+
+export const listPayrollRuns = () => api.get<PayrollRun[]>("/hr/payroll-runs");
+export const getPayrollRun = (id: string) => api.get<PayrollRun>(`/hr/payroll-runs/${id}`);
+export const createPayrollRun = (body: {
+  pay_month: number;
+  pay_year: number;
+  pay_date: string;
+  period_start: string;
+  period_end: string;
+}) => api.post<PayrollRun>("/hr/payroll-runs", body);
+export const calculatePayrollRun = (id: string) =>
+  api.post<PayrollRun>(`/hr/payroll-runs/${id}/calculate`);
+export const reviewPayrollRun = (id: string) =>
+  api.post<PayrollRun>(`/hr/payroll-runs/${id}/review`);
+export const approvePayrollRun = (id: string) =>
+  api.post<PayrollRun>(`/hr/payroll-runs/${id}/approve`);
+export const payPayrollRun = (id: string, pin?: string) =>
+  api.post<PayrollRun & { disbursement?: { provider: string; paid: number; queued: number; failed: number } }>(
+    `/hr/payroll-runs/${id}/pay`,
+    { pin },
+  );
+export const listPayslips = (runId: string) =>
+  api.get<Payslip[]>(`/hr/payslips?payroll_run_id=${encodeURIComponent(runId)}`);
 
 function qs(params: Record<string, string>): string {
   const entries = Object.entries(params).filter(([, v]) => v != null && v !== "");

@@ -46,10 +46,57 @@ onto the Maroon Noir admin kit. Built in two PRs.
 - Routes `/my-hr` + `/hr`; nav entries "My HR" + "HR & Staff".
 - Onboarding reuses the existing unified wizard (`/contacts/staff/new`).
 
-## Phase 2 (next PR) — money & performance ops
+## Attendance PR (PR 2) — geofenced clock-in ✅
 
-- Payroll run UI + **Nomba disbursement** + CEO payout-PIN gate at Pay.
-- Commission/bonus automation; monthly-target → bonus payout on achievement.
+Separate focused PR between Phase 1 and the money/perf build.
+
+**Backend**
+- Migration `000234` (clock-event address + offsite, attendance-day offsite
+  cols, hr_settings geofence policy) and `000235` (Help Center content).
+- `flagOffsite` pure decision (record-and-flag, not reject) + 5 tests.
+- Self clock-in: `GET /hr/me/today`, `POST /hr/me/clock` (captures coords + IP,
+  flags off-site, blocks only when location missing on an on-site day).
+- Reconcile raises an `offsite_clockin` query (precedence over lateness);
+  resolve `upheld`/lapse → day absent (`POST /hr/attendance/apply-lapsed-offsite`).
+
+**Frontend (admin)**
+- Real top-bar `ClockWidget` (browser Geolocation + client reverse-geocode).
+- `OfficeGeofenceSettings` — Google-Maps office/perimeter editor (radius circle,
+  draggable pin, manual fallback) in the HR Settings tab + geofence policy toggles.
+- Attendance tab shows clock-in address, off-site distance, and a lapsed-penalty action.
+
+**Design guardrails (from the brainstorm):** geofence enforced only on on-site
+days; off-site is provisional + queried, absent only after upheld/lapse with HR
+override; generous radius + accuracy-flag (not auto-reject); point-in-time
+capture, disclosed; coords are truth, spoofing treated as deterrent + audit.
+
+## PR 3 — Payroll & disbursement (money flow) ✅
+
+The meeting's core pay flow (§3.4): calculate → review → **CEO approve → enter
+PIN → pay each employee's bank**, on top of the existing payroll engine.
+
+**Backend**
+- `disbursement.service.js` — provider-agnostic payout: selects the brand
+  provider (Nomba, answer #7) and falls back to a **manual bank-schedule
+  (queued)** when unconfigured, so payroll never blocks. Per-slip result maps to
+  `payment_status` (paid / queued / failed); failed slips stay payable for retry.
+- `nomba.service.disburseSalary` — Nomba bank-transfer adapter (endpoint flagged
+  for go-live confirmation; reports `not_configured` → manual fallback).
+- `payroll.service.payRun` — **payout-PIN gated** (verifies the hashed PIN from
+  HR Settings, answer #8), disburses every payslip, settles commissions/bonuses
+  for paid/queued slips, audits the run. Wired to `POST /hr/payroll-runs/:id/pay`.
+- Unit tests: 8 for disbursement selection/result mapping.
+
+**Frontend (admin)**
+- `pages/hr/PayrollPage.tsx` — runs list, create run, run detail stepper
+  (Calculate → Send for approval → Approve → **Pay (enter PIN)**), payslip list
+  with per-slip payment status. Route `/payroll`; nav "Payroll".
+
+**Verified:** 285/285 backend tests; ESLint clean; admin `tsc` → 0 errors.
+
+## PR 4 (remaining) — performance payout, contracts, dashboards, automation
+
+- Monthly-target → bonus payout on achievement (event-subscriber, idempotent).
 - **Contract generation** (PDF from template) + **e-signature** on
   `staff_contracts` (esignature tables already exist).
 - Performance reviews UI (quarterly weighted KPIs); HR dashboards/analytics.

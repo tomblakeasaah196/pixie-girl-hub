@@ -3,12 +3,14 @@ import { fetchCampaign, fetchPublishedLanding } from "@/lib/api";
 import { getBrand } from "@/lib/brand";
 import { withDefaults, type LandingConfig } from "@landing-kit";
 import { BrandThemeProvider } from "@/components/BrandThemeProvider";
-import { CheckoutClient } from "@/components/checkout/CheckoutClient";
+import { ThankYouClient } from "./ThankYouClient";
 
-export default async function CheckoutPage({
+export default async function ThankYouPage({
   params,
+  searchParams,
 }: {
   params: { slug: string };
+  searchParams: { order_id?: string; ref?: string };
 }) {
   const brand = getBrand();
   const [payload, raw] = await Promise.all([
@@ -20,7 +22,12 @@ export default async function CheckoutPage({
   const brandConfig = withDefaults(brand, raw as Partial<LandingConfig> | null);
   return (
     <BrandThemeProvider brandConfig={brandConfig}>
-      <CheckoutClient payload={payload} />
+      <ThankYouClient
+        payload={payload}
+        orderId={searchParams.order_id ?? null}
+        reference={searchParams.ref ?? null}
+        brandName={brandConfig.brandName}
+      />
     </BrandThemeProvider>
   );
 }

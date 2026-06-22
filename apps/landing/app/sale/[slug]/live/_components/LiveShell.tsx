@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { LandingConfig } from "@landing-kit";
 import type { LandingPayload } from "@/lib/types";
 import { IntroOverlay } from "@/components/IntroOverlay";
+import { BrandThemeProvider } from "@/components/BrandThemeProvider";
 import { LandingShell } from "@/components/LandingShell";
 import { LiveHero } from "./LiveHero";
 
@@ -16,14 +17,15 @@ import { LiveHero } from "./LiveHero";
  *               hour / Sold-out pills, present-tense headline, two CTAs and
  *               an ambient "elapsed" hairline.
  *   ───────────────────────────────────────────────────────
+ *   BrandThemeProvider — remaps the globals.css Maroon-Noir tokens to the
+ *               brand's published Landing Studio palette (light Atelier),
+ *               so the commerce body is visually coherent with the apex page
+ *               and the before/ended states.
+ *   ───────────────────────────────────────────────────────
  *   LandingShell omitHero — the proven commerce body (bundles, tier ladder,
  *               featured products, lookbook, stock counter) and the live
  *               overlays (sticky cart, cart drawer, upsell modal, exit-intent,
- *               viewer + just-bought tickers), unchanged.
- *
- * brandConfig supplies the Atelier theme tokens the hero paints with; the
- * commerce body keeps using its own per-brand tokens. The brand's published
- * Studio config is never mutated.
+ *               viewer + just-bought tickers).
  */
 export function LiveShell({
   payload,
@@ -48,7 +50,9 @@ export function LiveShell({
         sessionKey={`pgh-intro-seen:${payload.slug}`}
       />
       <LiveHero payload={payload} brandConfig={brandConfig} />
-      <LandingShell payload={payload} omitHero />
+      <BrandThemeProvider brandConfig={brandConfig}>
+        <LandingShell payload={payload} omitHero />
+      </BrandThemeProvider>
     </>
   );
 }

@@ -19,7 +19,7 @@ export function BundleShowcase({
   const bundles = payload.bundles || [];
   if (bundles.length === 0) return null;
   return (
-    <section id="bundles" className="section">
+    <section id="bundles" data-block="bundle_showcase" className="section">
       <div className="mx-auto max-w-[1180px]">
         <SectionHeader
           eyebrow="Curated bundles"

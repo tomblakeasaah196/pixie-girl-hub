@@ -19,7 +19,7 @@ export function FeaturedProducts({
   const products = (payload.products || []).filter(Boolean);
   if (!products.length) return null;
   return (
-    <section className="section">
+    <section data-block="featured_products" className="section">
       <div className="mx-auto max-w-[1180px]">
         <SectionHeader
           eyebrow="Styled products"

@@ -58,4 +58,16 @@ router.post(
   controller.signup,
 );
 
+// Checkout: the live sale "Pay now" flow. Uses the signup limiter (20 per
+// 15 min per IP) — a real buyer will never hit this; a scraper/bot will.
+router.post(
+  "/:slug/checkout",
+  signupLimiter,
+  validator.validateCheckout,
+  controller.checkout,
+);
+
+// Order status: thank-you page polls this to show confirmation.
+router.get("/:slug/order/:orderId", landingReadLimiter, controller.orderStatus);
+
 module.exports = router;

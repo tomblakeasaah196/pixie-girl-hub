@@ -56,6 +56,14 @@ export async function postCheckout(args: {
       recipient_name: string;
       recipient_phone?: string;
       message?: string;
+      ship_to_recipient?: boolean;
+      recipient_address?: {
+        line1: string;
+        line2?: string;
+        city: string;
+        state?: string;
+        country?: string;
+      };
     };
     address: {
       line1: string;
@@ -63,8 +71,6 @@ export async function postCheckout(args: {
       city: string;
       state: string;
       country?: string;
-      lat?: number;
-      lng?: number;
     };
     consent: {
       whatsapp_opt_in: boolean;
@@ -79,8 +85,9 @@ export async function postCheckout(args: {
     unit_price_ngn: number;
   }>;
   utm?: Record<string, string>;
-  payment_gateway: "paystack" | "opay" | "nomba" | "stripe";
+  payment_gateway: "paystack" | "nomba";
   client_idempotency_key: string;
+  coupon_code?: string;
 }) {
   const res = await fetch(
     `/api/public/sale/${encodeURIComponent(args.slug)}/checkout`,
@@ -98,4 +105,27 @@ export async function postCheckout(args: {
     throw new Error(err || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+export async function fetchOrderStatus(
+  slug: string,
+  orderId: string,
+): Promise<{
+  order_id: string;
+  order_number: string;
+  status: string;
+  total_ngn: string;
+  currency: string;
+} | null> {
+  try {
+    const res = await fetch(
+      `/api/public/sale/${encodeURIComponent(slug)}/order/${encodeURIComponent(orderId)}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
 }

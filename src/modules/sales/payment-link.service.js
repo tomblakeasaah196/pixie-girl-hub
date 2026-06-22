@@ -57,10 +57,13 @@ async function initOnGateway({
   amount_ngn,
   currency,
   email,
+  return_url_base,
 }) {
   const reference = makeReference(provider, order.order_number);
   const metadata = { brand, order_id: order.order_id, amount_ngn };
-  const callback_url = `${config.APP_URL.replace(/\/$/, "")}/pay/callback?ref=${reference}`;
+  const callback_url = return_url_base
+    ? `${return_url_base.replace(/\/$/, "")}?ref=${encodeURIComponent(reference)}&order_id=${encodeURIComponent(order.order_id)}`
+    : `${config.APP_URL.replace(/\/$/, "")}/pay/callback?ref=${reference}`;
 
   if (provider === "paystack") {
     const data = await paystack.initializeTransaction({
@@ -132,6 +135,8 @@ async function createPaymentLink({
   order_id,
   amount_ngn,
   currency = "NGN",
+  return_url_base,
+  preferred_provider,
 }) {
   const order = await salesRepo.findById({ brand, id: order_id });
   if (!order) throw new NotFoundError("Order");
@@ -162,6 +167,14 @@ async function createPaymentLink({
       503,
     );
 
+  if (preferred_provider) {
+    chain.sort((a, b) => {
+      if (a.provider === preferred_provider) return -1;
+      if (b.provider === preferred_provider) return 1;
+      return 0;
+    });
+  }
+
   const attempts = [];
   for (const link of chain) {
     try {
@@ -173,6 +186,7 @@ async function createPaymentLink({
         amount_ngn: amountStr,
         currency,
         email,
+        return_url_base,
       });
       return { ...res, amount_ngn: amountStr, attempts };
     } catch (err) {

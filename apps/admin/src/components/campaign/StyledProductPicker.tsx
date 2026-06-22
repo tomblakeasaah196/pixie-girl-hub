@@ -15,7 +15,7 @@ const PAGE_SIZE = 100;
 
 interface PickerProps {
   excludeIds?: Set<string>;
-  onAdd: (items: StyledProduct[]) => void;
+  onAdd: (items: StyledProduct[]) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -26,6 +26,8 @@ export function StyledProductPicker({
 }: PickerProps) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Map<string, StyledProduct>>(
     new Map(),
   );
@@ -70,9 +72,22 @@ export function StyledProductPicker({
 
   const clearAll = () => setSelected(new Map());
 
-  const confirm = () => {
-    onAdd(Array.from(selected.values()));
-    onClose();
+  const confirm = async () => {
+    setAddError(null);
+    setAdding(true);
+    try {
+      // Await so a failed save keeps the picker open with a visible error
+      // instead of silently closing (the bug that hid the batch 400).
+      await onAdd(Array.from(selected.values()));
+      onClose();
+    } catch (e: unknown) {
+      setAddError(
+        (e as Error)?.message ||
+          "Couldn't add those products. Please try again.",
+      );
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (
@@ -228,22 +243,28 @@ export function StyledProductPicker({
 
       {/* Footer */}
       <div className="p-4 border-t border-line flex items-center justify-between">
-        <span className="text-[12px] text-text-muted">
-          {selected.size > 0
-            ? `${selected.size} selected`
-            : "Pick products to add"}
+        <span className="text-[12px]">
+          {addError ? (
+            <span className="text-danger">{addError}</span>
+          ) : (
+            <span className="text-text-muted">
+              {selected.size > 0
+                ? `${selected.size} selected`
+                : "Pick products to add"}
+            </span>
+          )}
         </span>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={adding}>
             Cancel
           </Button>
           <Button
             variant="primary"
             size="sm"
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || adding}
             onClick={confirm}
           >
-            Add {selected.size > 0 ? `(${selected.size})` : ""}
+            {adding ? "Adding…" : `Add ${selected.size > 0 ? `(${selected.size})` : ""}`}
           </Button>
         </div>
       </div>

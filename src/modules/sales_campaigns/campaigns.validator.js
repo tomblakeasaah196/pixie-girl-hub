@@ -197,9 +197,9 @@ const addProductSchema = z
     category_id: z.string().uuid().optional(),
     styled_id: z.string().uuid().optional(),
     include_exclude: z.enum(["include", "exclude"]),
-    campaign_price_ngn: moneyNgn.optional(),
-    image_url: z.string().max(2048).optional(),
-    regular_price_ngn: moneyNgn.optional(),
+    campaign_price_ngn: moneyNgn.nullable().optional(),
+    image_url: z.string().max(2048).nullable().optional(),
+    regular_price_ngn: moneyNgn.nullable().optional(),
     display_order: z.coerce.number().int().min(0).optional(),
     is_featured: z.boolean().optional(),
   })

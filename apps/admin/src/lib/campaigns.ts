@@ -8,11 +8,31 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { LandingConfig } from "@landing-kit";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
 
 export function useBrand() {
   return useBusinessStore((s) => s.activeKey);
+}
+
+/**
+ * GET a list endpoint and ALWAYS return a `{ data }` envelope.
+ *
+ * lib/api unwraps a bare `{ data }` body (one with no sibling `meta`) down to
+ * the inner value, so these non-paginated campaign sub-lists arrive as a plain
+ * array. The components read `query.data?.data`, which on a bare array is
+ * `undefined` — so the list rendered empty even though rows existed (e.g. the
+ * "No products added yet" after a successful add). Normalising here restores the
+ * `{ data }` shape the components expect, and passes through a `{ data, meta }`
+ * wrapper untouched when the endpoint is paginated.
+ */
+async function getListEnvelope<T>(
+  path: string,
+): Promise<{ data: T[]; meta?: unknown }> {
+  const res = await api.get<{ data: T[]; meta?: unknown } | T[]>(path);
+  if (Array.isArray(res)) return { data: res };
+  return res ?? { data: [] };
 }
 
 // ════════════════════════════════════════════════════════════
@@ -124,8 +144,12 @@ export interface CampaignProduct {
   styled_id: string | null;
   include_exclude: "include" | "exclude";
   campaign_price_ngn: number | null;
+  campaign_price_usd: number | null;
   regular_price_ngn: number | null;
+  regular_price_usd: number | null;
   image_url: string | null;
+  short_description: string | null;
+  long_description: string | null;
   display_order: number;
   is_featured: boolean;
   preorder_enabled: boolean;
@@ -133,6 +157,11 @@ export interface CampaignProduct {
   styled_slug?: string | null;
   product_name?: string | null;
   resolved_image_url?: string | null;
+  // Live styled fallbacks (rows added before the snapshot existed).
+  styled_short_description?: string | null;
+  styled_long_description?: string | null;
+  styled_retail_price_ngn?: number | null;
+  styled_retail_price_usd?: number | null;
 }
 
 export interface LandingBlock {
@@ -506,7 +535,7 @@ export function useCampaignBundles(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CampaignBundleLink[] }>(
+      getListEnvelope<CampaignBundleLink>(
         `/sales-campaigns/${campaignId}/bundles`,
       ),
   });
@@ -551,7 +580,7 @@ export function useCampaignProducts(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "products", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CampaignProduct[] }>(
+      getListEnvelope<CampaignProduct>(
         `/sales-campaigns/${campaignId}/products`,
       ),
   });
@@ -563,10 +592,14 @@ export function useAddProductsBatch(campaignId: string | undefined) {
   return useMutation({
     mutationFn: (
       items: Array<{
-        styled_id: string;
-        product_id?: string;
+        styled_id?: string | null;
+        product_id?: string | null;
         image_url?: string | null;
         regular_price_ngn?: number | null;
+        regular_price_usd?: number | null;
+        campaign_price_usd?: number | null;
+        short_description?: string | null;
+        long_description?: string | null;
         include_exclude?: string;
         is_featured?: boolean;
       }>,
@@ -600,7 +633,9 @@ export function useCloneBundlesToCampaign(campaignId: string | undefined) {
   const brand = useBrand();
   return useMutation({
     mutationFn: (body: { campaign_slug?: string }) =>
-      api.post<{ data: unknown[] }>(
+      // Resolves to the cloned-bundle array (the API's { data } is unwrapped by
+      // lib/api). May be empty when the catalogue has no active bundles.
+      api.post<unknown[]>(
         `/sales-campaigns/${campaignId}/bundles/clone`,
         body,
       ),
@@ -638,7 +673,7 @@ export function useCampaignTiers(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "tiers", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: QuantityTier[] }>(`/sales-campaigns/${campaignId}/tiers`),
+      getListEnvelope<QuantityTier>(`/sales-campaigns/${campaignId}/tiers`),
   });
 }
 
@@ -681,7 +716,7 @@ export function useCampaignUpsells(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "upsells", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CartUpsell[] }>(`/sales-campaigns/${campaignId}/upsells`),
+      getListEnvelope<CartUpsell>(`/sales-campaigns/${campaignId}/upsells`),
   });
 }
 
@@ -722,7 +757,7 @@ export function useAmbassadorContacts(q?: string) {
     enabled: Boolean(brand),
     queryKey: ["campaigns", "ambassadors", brand, q || ""],
     queryFn: () =>
-      api.get<{ data: AmbassadorContact[] }>(
+      getListEnvelope<AmbassadorContact>(
         `/sales-campaigns/ambassadors?${qs}`,
       ),
   });
@@ -751,7 +786,7 @@ export function useCampaignAmbassadors(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "campaign-ambassadors", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: CampaignAmbassador[] }>(
+      getListEnvelope<CampaignAmbassador>(
         `/sales-campaigns/${campaignId}/ambassadors`,
       ),
   });
@@ -786,7 +821,7 @@ export function useVipGrants(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "vip", brand, campaignId],
     queryFn: () =>
-      api.get<{ data: VipGrant[] }>(
+      getListEnvelope<VipGrant>(
         `/sales-campaigns/${campaignId}/vip-grants`,
       ),
   });
@@ -1018,6 +1053,14 @@ export interface PublicLanding {
     meta_description: string | null;
     og_image_url: string | null;
   };
+  /** Brand public identity attached by the API (withBrandInfo). Present once
+   *  the campaign resolves to a brand; drives the public page's theme. */
+  brand?: {
+    business_key: string;
+    display_name: string | null;
+    storefront_domain: string | null;
+    sales_subdomain: string | null;
+  } | null;
 }
 
 /** Public landing payload. `brand` is required when not served from the sales
@@ -1028,6 +1071,51 @@ export function usePublicLanding(slug: string | undefined, brand?: string) {
     enabled: Boolean(slug),
     queryKey: ["public-landing", slug, brand || ""],
     queryFn: () => api.get<PublicLanding>(`/sale/${slug}${qs}`, "public"),
+    retry: false,
+  });
+}
+
+/**
+ * Absolute URL to a campaign's public sale page.
+ *
+ * Prefers the brand's configured sales subdomain (Settings → Business Setup →
+ * Public Identity), then the storefront domain, so links like "View live page"
+ * open the live sale site rather than the admin hub. Falls back to a
+ * host-relative path (with a ?brand= hint so the API can resolve the brand)
+ * only when neither domain is configured — e.g. local dev.
+ */
+export function publicSaleUrl(
+  slug: string,
+  opts?: {
+    salesSubdomain?: string | null;
+    storefrontDomain?: string | null;
+    brand?: string;
+  },
+): string {
+  const host = (opts?.salesSubdomain || opts?.storefrontDomain || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (host) {
+    const base = /^https?:\/\//i.test(host) ? host : `https://${host}`;
+    return `${base}/sale/${slug}`;
+  }
+  return `/sale/${slug}${opts?.brand ? `?brand=${encodeURIComponent(opts.brand)}` : ""}`;
+}
+
+/**
+ * Published brand-level Landing Studio config (no auth) — the source of the
+ * public sale page's theme (palette, fonts). 404s (never published) surface as
+ * an error so callers can fall back to the brand defaults via `withDefaults`.
+ */
+export function usePublicLandingConfig(brand?: string) {
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["public-landing-config", brand || ""],
+    queryFn: () =>
+      api.get<LandingConfig & { business_key: string }>(
+        `/landing?brand=${encodeURIComponent(brand as string)}`,
+        "public",
+      ),
     retry: false,
   });
 }

@@ -619,8 +619,19 @@ function buildLandingPayload(c, products, state) {
               styled_id: p.styled_id,
               category_id: p.category_id,
               name: p.styled_name || p.product_name || p.category_name,
+              // Long + short copy: prefer the snapshot taken on add, fall back to
+              // the live styled product so older links still render description.
+              short_description:
+                p.short_description ?? p.styled_short_description ?? null,
+              long_description:
+                p.long_description ?? p.styled_long_description ?? null,
               campaign_price_ngn: p.campaign_price_ngn,
-              regular_price_ngn: p.regular_price_ngn,
+              campaign_price_usd: p.campaign_price_usd,
+              // Both-currency reference prices (snapshot, else live styled retail).
+              regular_price_ngn:
+                p.regular_price_ngn ?? p.styled_retail_price_ngn ?? null,
+              regular_price_usd:
+                p.regular_price_usd ?? p.styled_retail_price_usd ?? null,
               is_featured: p.is_featured,
               stock_remaining: p.current_stock_snapshot,
               image_url: p.resolved_image_url || p.image_url,
@@ -638,9 +649,31 @@ function buildLandingPayload(c, products, state) {
   };
 }
 
+/**
+ * Public base URL for a brand's sales landing pages.
+ *
+ * Sales campaigns are served from the brand's dedicated sales subdomain
+ * (business_config.sales_subdomain, e.g. sales.pixiegirlglobal.com), which
+ * the CEO sets in Settings → Business Setup. We prefer it over the general
+ * storefront_domain so share links, go-live blasts and the payment-gateway
+ * return URL all point at the live sale site — never the admin hub. Falls
+ * back to storefront_domain, then APP_URL (dev / unconfigured).
+ *
+ * Accepts a value with or without scheme; trims trailing slashes and
+ * prepends https:// when no scheme is present.
+ */
+function publicSaleBaseUrl(brand_config) {
+  const raw =
+    (brand_config &&
+      (brand_config.sales_subdomain || brand_config.storefront_domain)) ||
+    null;
+  const trimmed = raw ? String(raw).trim().replace(/\/+$/, "") : "";
+  if (!trimmed) return config.APP_URL || "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 function shareKit({ brand_config, campaign }) {
-  const domain = brand_config && brand_config.storefront_domain;
-  const base = domain ? `https://${domain}` : config.APP_URL;
+  const base = publicSaleBaseUrl(brand_config);
   const url = `${base}/sale/${campaign.slug}`;
   const utm = (source, medium) =>
     `${url}?utm_source=${source}&utm_medium=${medium}&utm_campaign=${encodeURIComponent(campaign.slug)}`;
@@ -756,6 +789,8 @@ async function uploadImage({ brand, id, file }) {
 module.exports = {
   resolveState,
   buildLandingPayload,
+  publicSaleBaseUrl,
+  buildShareKit: shareKit,
   list,
   getById,
   create,

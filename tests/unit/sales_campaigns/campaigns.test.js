@@ -15,6 +15,8 @@ const {
   createSchema,
   updateSchema,
   signupSchema,
+  addProductSchema,
+  bundleItemSchema,
 } = require("../../../src/modules/sales_campaigns/campaigns.validator");
 
 function liveCampaign(over = {}) {
@@ -51,6 +53,48 @@ describe("resolveState", () => {
     expect(
       service.resolveState({ status: "ended", starts_at: past, ends_at: past }),
     ).toBe("ended");
+  });
+});
+
+describe("publicSaleBaseUrl (share/blast/return-url base)", () => {
+  test("prefers the sales subdomain over the storefront domain", () => {
+    expect(
+      service.publicSaleBaseUrl({
+        sales_subdomain: "sales.thefaitlynbrand.com",
+        storefront_domain: "thefaitlynbrand.com",
+      }),
+    ).toBe("https://sales.thefaitlynbrand.com");
+  });
+  test("falls back to the storefront domain when no subdomain is set", () => {
+    expect(
+      service.publicSaleBaseUrl({ storefront_domain: "pixiegirlglobal.com" }),
+    ).toBe("https://pixiegirlglobal.com");
+  });
+  test("normalises an existing scheme and trailing slash", () => {
+    expect(
+      service.publicSaleBaseUrl({
+        sales_subdomain: "https://sales.pixiegirlglobal.com/",
+      }),
+    ).toBe("https://sales.pixiegirlglobal.com");
+  });
+});
+
+describe("buildShareKit", () => {
+  test("links point at the brand's sales subdomain, not the hub", () => {
+    const kit = service.buildShareKit({
+      brand_config: {
+        sales_subdomain: "sales.thefaitlynbrand.com",
+        storefront_domain: "thefaitlynbrand.com",
+      },
+      campaign: liveCampaign({ slug: "summer-sale" }),
+    });
+    expect(kit.base_url).toBe(
+      "https://sales.thefaitlynbrand.com/sale/summer-sale",
+    );
+    expect(kit.links.whatsapp).toContain(
+      "https://sales.thefaitlynbrand.com/sale/summer-sale?",
+    );
+    expect(kit.base_url).not.toContain("hub.");
   });
 });
 
@@ -101,6 +145,64 @@ describe("signupSchema", () => {
   });
 });
 
+describe("addProductSchema (campaign builder 'Add products')", () => {
+  const styledId = "22222222-2222-2222-2222-222222222222";
+  const productId = "33333333-3333-3333-3333-333333333333";
+
+  test("accepts a styled product with a null image + null prices", () => {
+    // This is exactly what the picker sends for an image-less product. Before
+    // the fix, image_url was .optional() (not .nullable()) so null 400'd the
+    // whole batch — the silent 'nothing adds' bug.
+    expect(() =>
+      addProductSchema.parse({
+        styled_id: styledId,
+        product_id: productId,
+        include_exclude: "include",
+        image_url: null,
+        regular_price_ngn: null,
+        regular_price_usd: null,
+        is_featured: false,
+      }),
+    ).not.toThrow();
+  });
+
+  test("accepts both-currency prices + long/short descriptions", () => {
+    expect(() =>
+      addProductSchema.parse({
+        styled_id: styledId,
+        product_id: productId,
+        include_exclude: "include",
+        image_url: "https://cdn.example.com/wig.jpg",
+        regular_price_ngn: 425000,
+        regular_price_usd: 280,
+        short_description: "HD lace pixie wig",
+        long_description: "A longer editorial description ".repeat(10),
+      }),
+    ).not.toThrow();
+  });
+
+  test("requires at least one of styled_id / product_id / category_id", () => {
+    expect(() =>
+      addProductSchema.parse({ include_exclude: "include" }),
+    ).toThrow();
+  });
+});
+
+describe("bundleItemSchema (campaign builder bundle picker)", () => {
+  test("accepts styled_id + base product_id", () => {
+    expect(() =>
+      bundleItemSchema.parse({
+        styled_id: "44444444-4444-4444-4444-444444444444",
+        product_id: "55555555-5555-5555-5555-555555555555",
+        quantity: 1,
+      }),
+    ).not.toThrow();
+  });
+  test("requires styled_id / product_id / variant_id", () => {
+    expect(() => bundleItemSchema.parse({ quantity: 1 })).toThrow();
+  });
+});
+
 describe("URL safety on landing fields", () => {
   test("rejects javascript: in ended_redirect_to", () => {
     expect(() =>
@@ -121,6 +223,24 @@ describe("URL safety on landing fields", () => {
         ended_redirect_to: "https://pixiegirl.com/new-drop",
       }),
     ).not.toThrow();
+  });
+  test("accepts an uploaded same-origin /media path (no CDN configured)", () => {
+    // The blocker behind "Invalid input" on every landing save: uploads come
+    // back as "/media/..." which the old safeUrl (.url()) rejected.
+    expect(() =>
+      updateSchema.parse({
+        landing_hero_image_url:
+          "/media/campaigns/faitlynhair/00d73466/hero.jpg",
+        og_image_url: "/media/campaigns/faitlynhair/00d73466/og.jpg",
+      }),
+    ).not.toThrow();
+  });
+  test("rejects protocol-relative //host (cross-origin)", () => {
+    expect(() =>
+      updateSchema.parse({
+        landing_hero_image_url: "//evil.example.com/x.jpg",
+      }),
+    ).toThrow();
   });
 });
 

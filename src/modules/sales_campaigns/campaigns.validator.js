@@ -18,14 +18,16 @@ const slug = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be kebab-case (a-z, 0-9, -)");
 const moneyNgn = z.coerce.number().nonnegative();
 
-// http/https-only URL — used wherever a value is rendered as an <a href>,
-// a redirect target, or a CSS url(). Blocks javascript:, data:, file:, etc.
+// An http(s) URL OR a root-relative same-origin path. Uploaded media comes back
+// as "/media/..." when no CDN_BASE_URL is configured, so image/redirect fields
+// must accept that — requiring a full URL here is what 400'd ("Invalid input")
+// every landing save that had an uploaded hero/OG image. Still blocks
+// javascript:, data:, file:, and protocol-relative "//host" (cross-origin).
 const safeUrl = z
   .string()
   .max(2048)
-  .url()
-  .refine((u) => /^https?:\/\//i.test(u), {
-    message: "URL must use http or https",
+  .refine((u) => /^https?:\/\//i.test(u) || /^\/(?!\/)/.test(u), {
+    message: "must be an https URL or a same-origin /path",
   });
 
 const discountTypes = [
@@ -96,21 +98,36 @@ const v2CampaignFields = {
   // ── Sales Campaigns v3 (migration 000048) — deals engine ──
   delivery_weeks: z.coerce.number().int().min(1).max(52).nullable().optional(),
   preorder_extra_weeks: z.coerce.number().int().min(0).max(52).optional(),
-  position_ladder: z.array(z.object({
-    position: z.coerce.number().int().min(1).max(20),
-    discount_ngn: z.coerce.number().nonnegative(),
-    label: z.string().max(120).optional(),
-  })).max(20).nullable().optional(),
-  stacking_bonus: z.object({
-    min_distinct_bundles: z.coerce.number().int().min(2).max(10),
-    discount_ngn: z.coerce.number().nonnegative(),
-    label: z.string().max(200).optional(),
-  }).nullable().optional(),
-  bulk_tiers: z.array(z.object({
-    min_qty: z.coerce.number().int().min(2),
-    discount_per_item_ngn: z.coerce.number().nonnegative(),
-    label: z.string().max(200).optional(),
-  })).max(10).nullable().optional(),
+  position_ladder: z
+    .array(
+      z.object({
+        position: z.coerce.number().int().min(1).max(20),
+        discount_ngn: z.coerce.number().nonnegative(),
+        label: z.string().max(120).optional(),
+      }),
+    )
+    .max(20)
+    .nullable()
+    .optional(),
+  stacking_bonus: z
+    .object({
+      min_distinct_bundles: z.coerce.number().int().min(2).max(10),
+      discount_ngn: z.coerce.number().nonnegative(),
+      label: z.string().max(200).optional(),
+    })
+    .nullable()
+    .optional(),
+  bulk_tiers: z
+    .array(
+      z.object({
+        min_qty: z.coerce.number().int().min(2),
+        discount_per_item_ngn: z.coerce.number().nonnegative(),
+        label: z.string().max(200).optional(),
+      }),
+    )
+    .max(10)
+    .nullable()
+    .optional(),
 };
 
 const createSchema = z
@@ -193,13 +210,21 @@ const updateSchema = z
 
 const addProductSchema = z
   .object({
-    product_id: z.string().uuid().optional(),
-    category_id: z.string().uuid().optional(),
-    styled_id: z.string().uuid().optional(),
+    product_id: z.string().uuid().nullable().optional(),
+    category_id: z.string().uuid().nullable().optional(),
+    styled_id: z.string().uuid().nullable().optional(),
     include_exclude: z.enum(["include", "exclude"]),
-    campaign_price_ngn: moneyNgn.optional(),
-    image_url: z.string().max(2048).optional(),
-    regular_price_ngn: moneyNgn.optional(),
+    // Money + display fields are denormalised onto the link (snapshot on add).
+    // They MUST accept null: the picker sends `null` for an absent image/price
+    // — making these `.optional()` only (so null is rejected) is exactly what
+    // silently 400'd every "Add products" from the campaign builder.
+    campaign_price_ngn: moneyNgn.nullable().optional(),
+    campaign_price_usd: moneyNgn.nullable().optional(),
+    image_url: z.string().max(2048).nullable().optional(),
+    regular_price_ngn: moneyNgn.nullable().optional(),
+    regular_price_usd: moneyNgn.nullable().optional(),
+    short_description: z.string().max(4000).nullable().optional(),
+    long_description: z.string().max(40000).nullable().optional(),
     display_order: z.coerce.number().int().min(0).optional(),
     is_featured: z.boolean().optional(),
   })
@@ -217,6 +242,12 @@ const addProductSchema = z
 const updateProductSchema = z
   .object({
     campaign_price_ngn: moneyNgn.nullable().optional(),
+    campaign_price_usd: moneyNgn.nullable().optional(),
+    regular_price_ngn: moneyNgn.nullable().optional(),
+    regular_price_usd: moneyNgn.nullable().optional(),
+    image_url: z.string().max(2048).nullable().optional(),
+    short_description: z.string().max(4000).nullable().optional(),
+    long_description: z.string().max(40000).nullable().optional(),
     display_order: z.coerce.number().int().min(0).optional(),
     is_featured: z.boolean().optional(),
     include_exclude: z.enum(["include", "exclude"]).optional(),
@@ -290,9 +321,9 @@ const bundleUpdateSchema = bundleCreateSchema.partial().strict();
 
 const bundleItemSchema = z
   .object({
-    product_id: z.string().uuid().optional(),
-    variant_id: z.string().uuid().optional(),
-    styled_id: z.string().uuid().optional(),
+    product_id: z.string().uuid().nullable().optional(),
+    variant_id: z.string().uuid().nullable().optional(),
+    styled_id: z.string().uuid().nullable().optional(),
     quantity: z.coerce.number().int().min(1).optional(),
     per_item_discount_ngn: moneyNgn.nullable().optional(),
     display_position: z.coerce.number().int().min(0).optional(),
@@ -480,10 +511,10 @@ const checkoutSchema = z
               })
               .optional(),
           })
-          .refine(
-            (g) => !g.ship_to_recipient || g.recipient_address,
-            { message: "recipient_address is required when ship_to_recipient is true" },
-          )
+          .refine((g) => !g.ship_to_recipient || g.recipient_address, {
+            message:
+              "recipient_address is required when ship_to_recipient is true",
+          })
           .optional(),
         address: z.object({
           line1: z.string().min(1).max(400),
@@ -520,17 +551,23 @@ const checkoutSchema = z
   .strict();
 
 // ── Batch / clone / duplicate (migration 000048) ─────────
-const batchAddProductsSchema = z.object({
-  items: z.array(addProductSchema).min(1).max(200),
-}).strict();
+const batchAddProductsSchema = z
+  .object({
+    items: z.array(addProductSchema).min(1).max(200),
+  })
+  .strict();
 
-const cloneBundlesSchema = z.object({
-  campaign_slug: z.string().max(120).optional(),
-}).strict();
+const cloneBundlesSchema = z
+  .object({
+    campaign_slug: z.string().max(120).optional(),
+  })
+  .strict();
 
-const duplicateBundleSchema = z.object({
-  campaign_id: z.string().uuid().optional(),
-}).strict();
+const duplicateBundleSchema = z
+  .object({
+    campaign_id: z.string().uuid().optional(),
+  })
+  .strict();
 
 function mw(schema) {
   return function validate(req, _res, next) {

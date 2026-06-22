@@ -66,11 +66,15 @@ jobs:
 
             cd /var/www/pixie-girl-hub
 
-            echo "--- Resetting any local VPS edits so pull is clean"
-            git checkout -- .
-
-            echo "--- Pulling latest code"
-            git pull origin main
+            echo "--- Syncing the VPS working tree to origin/main"
+            # The VPS is a deploy target, not a dev checkout — never preserve
+            # local commits or edits. A plain `git pull` aborts when main has been
+            # force-pushed or squash/rebase-merged ("divergent branches need a
+            # strategy"), which fails the whole deploy under `set -e`. Fetch and
+            # hard-reset so the tree matches origin/main exactly, every time,
+            # regardless of the VPS's prior state.
+            git fetch origin main
+            git reset --hard origin/main
 
             # ── Backend ────────────────────────────────────────────
             echo "--- Installing backend dependencies"

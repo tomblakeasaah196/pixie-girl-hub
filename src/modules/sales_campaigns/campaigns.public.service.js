@@ -566,10 +566,9 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // The return_url_base points the gateway callback to the landing thank-you
   // page so the customer is redirected back after payment.
   const brandConfig = await getBrandPublic(resolvedBrand);
-  const saleDomain = brandConfig?.sales_subdomain || brandConfig?.storefront_domain;
-  const landingBase = saleDomain
-    ? `https://${saleDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
-    : null;
+  // Same resolution as share links / go-live blasts: prefer the sales
+  // subdomain so the gateway returns the buyer to the live sale site.
+  const landingBase = main.publicSaleBaseUrl(brandConfig);
   const returnUrlBase = landingBase
     ? `${landingBase}/checkout/${slug}/thank-you`
     : undefined;

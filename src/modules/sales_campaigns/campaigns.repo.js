@@ -76,9 +76,25 @@ const CREATE_COLS = [
   "exit_intent_discount_ngn",
   "abandonment_recovery_enabled",
   "allow_multi_currency_display",
+  // ── Sales Campaigns v3 (migration 000048) — deals engine ──
+  // These were validated and read by the landing payload but never appeared in
+  // the writable allow-list, so saves silently dropped delivery timeline + the
+  // position/stacking/bulk deal configs (the same bug the v2 block above fixed).
+  "delivery_weeks",
+  "preorder_extra_weeks",
+  "position_ladder",
+  "stacking_bonus",
+  "bulk_tiers",
 ];
 const UPDATE_COLS = CREATE_COLS; // same set is editable (status excluded by design)
-const JSONB_COLS = new Set(["landing_blocks", "voice_profile_override"]);
+const JSONB_COLS = new Set([
+  "landing_blocks",
+  "voice_profile_override",
+  // v3 deal configs are JSONB columns — stringify + ::jsonb cast on write.
+  "position_ladder",
+  "stacking_bonus",
+  "bulk_tiers",
+]);
 
 function bindValue(col, val) {
   if (JSONB_COLS.has(col)) {
@@ -280,12 +296,20 @@ async function incrementCounters({ client, brand, id, deltas }) {
 // ── Campaign products (include / exclude) ────────────────
 
 async function listProducts({ client, brand, campaign_id }) {
+  // scp.* carries the snapshot columns (image_url, regular_price_ngn/usd,
+  // campaign_price_usd, short/long_description). The styled aliases below are
+  // live fallbacks for rows added before the snapshot existed — resolved with
+  // COALESCE by the caller (buildLandingPayload), never colliding with scp.*.
   const { rows } = await exec(client)(
     `SELECT scp.*,
             p.name  AS product_name,
             pc.name AS category_name,
             sp.name AS styled_name,
             sp.slug AS styled_slug,
+            sp.short_description AS styled_short_description,
+            sp.long_description  AS styled_long_description,
+            sp.retail_price_ngn  AS styled_retail_price_ngn,
+            sp.retail_price_usd  AS styled_retail_price_usd,
             COALESCE(scp.image_url, spi.image_url) AS resolved_image_url
        FROM ${t(brand, "sales_campaign_products")} scp
        LEFT JOIN ${t(brand, "products")} p          ON p.product_id   = scp.product_id
@@ -308,8 +332,11 @@ async function addProduct({ client, brand, campaign_id, input }) {
   const { rows } = await exec(client)(
     `INSERT INTO ${t(brand, "sales_campaign_products")}
        (campaign_id, product_id, category_id, styled_id, include_exclude,
-        campaign_price_ngn, image_url, regular_price_ngn, display_order, is_featured)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9,0), COALESCE($10,false))
+        campaign_price_ngn, campaign_price_usd, image_url,
+        regular_price_ngn, regular_price_usd, short_description, long_description,
+        display_order, is_featured)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+             COALESCE($13,0), COALESCE($14,false))
      RETURNING *`,
     [
       campaign_id,
@@ -318,8 +345,12 @@ async function addProduct({ client, brand, campaign_id, input }) {
       input.styled_id || null,
       input.include_exclude,
       input.campaign_price_ngn ?? null,
+      input.campaign_price_usd ?? null,
       input.image_url || null,
       input.regular_price_ngn ?? null,
+      input.regular_price_usd ?? null,
+      input.short_description ?? null,
+      input.long_description ?? null,
       input.display_order ?? null,
       input.is_featured ?? null,
     ],
@@ -339,12 +370,16 @@ async function findProductLink({ client, brand, campaign_id, link_id }) {
 async function updateProduct({ client, brand, campaign_id, link_id, patch }) {
   const allowed = [
     "campaign_price_ngn",
+    "campaign_price_usd",
     "display_order",
     "is_featured",
     "include_exclude",
     "styled_id",
     "image_url",
     "regular_price_ngn",
+    "regular_price_usd",
+    "short_description",
+    "long_description",
   ];
   const sets = [];
   const params = [];
@@ -377,8 +412,11 @@ async function addProductsBatch({ client, brand, campaign_id, items }) {
     const { rows } = await exec(client)(
       `INSERT INTO ${t(brand, "sales_campaign_products")}
          (campaign_id, product_id, category_id, styled_id, include_exclude,
-          campaign_price_ngn, image_url, regular_price_ngn, display_order, is_featured)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9,0), COALESCE($10,false))
+          campaign_price_ngn, campaign_price_usd, image_url,
+          regular_price_ngn, regular_price_usd, short_description, long_description,
+          display_order, is_featured)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+               COALESCE($13,0), COALESCE($14,false))
        ON CONFLICT DO NOTHING
        RETURNING *`,
       [
@@ -388,8 +426,12 @@ async function addProductsBatch({ client, brand, campaign_id, items }) {
         input.styled_id || null,
         input.include_exclude || "include",
         input.campaign_price_ngn ?? null,
+        input.campaign_price_usd ?? null,
         input.image_url || null,
         input.regular_price_ngn ?? null,
+        input.regular_price_usd ?? null,
+        input.short_description ?? null,
+        input.long_description ?? null,
         input.display_order ?? null,
         input.is_featured ?? null,
       ],

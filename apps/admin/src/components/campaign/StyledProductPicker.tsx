@@ -15,7 +15,9 @@ const PAGE_SIZE = 100;
 
 interface PickerProps {
   excludeIds?: Set<string>;
-  onAdd: (items: StyledProduct[]) => void;
+  /** May be async — the picker awaits it, surfaces any error, and only closes
+   *  on success (so a failed add no longer vanishes silently). */
+  onAdd: (items: StyledProduct[]) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -29,6 +31,8 @@ export function StyledProductPicker({
   const [selected, setSelected] = useState<Map<string, StyledProduct>>(
     new Map(),
   );
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const query = useStyledProducts({
     q: q.trim() || undefined,
@@ -70,9 +74,23 @@ export function StyledProductPicker({
 
   const clearAll = () => setSelected(new Map());
 
-  const confirm = () => {
-    onAdd(Array.from(selected.values()));
-    onClose();
+  const confirm = async () => {
+    if (selected.size === 0 || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      // Await so a backend rejection (validation / save error) is caught here
+      // and shown, instead of being a fire-and-forget that closes on failure.
+      await onAdd(Array.from(selected.values()));
+      onClose();
+    } catch (e: unknown) {
+      setError(
+        (e as Error)?.message ||
+          "Couldn't add the selected products. Nothing was saved — please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -174,6 +192,11 @@ export function StyledProductPicker({
                 {p.effective_price_ngn != null && (
                   <MoneyText
                     ngn={p.effective_price_ngn}
+                    usd={
+                      p.retail_price_usd != null
+                        ? Number(p.retail_price_usd)
+                        : undefined
+                    }
                     className="text-[12px] text-text-muted shrink-0"
                   />
                 )}
@@ -226,6 +249,16 @@ export function StyledProductPicker({
         </div>
       )}
 
+      {/* Error — a failed add is surfaced here and the picker stays open. */}
+      {error && (
+        <div
+          role="alert"
+          className="mx-4 mb-2 rounded-[11px] border border-danger/40 bg-danger/[0.08] px-3 py-2 text-[12.5px] text-danger"
+        >
+          {error}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="p-4 border-t border-line flex items-center justify-between">
         <span className="text-[12px] text-text-muted">
@@ -234,16 +267,23 @@ export function StyledProductPicker({
             : "Pick products to add"}
         </span>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            disabled={submitting}
+          >
             Cancel
           </Button>
           <Button
             variant="primary"
             size="sm"
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || submitting}
             onClick={confirm}
           >
-            Add {selected.size > 0 ? `(${selected.size})` : ""}
+            {submitting
+              ? "Adding…"
+              : `Add ${selected.size > 0 ? `(${selected.size})` : ""}`}
           </Button>
         </div>
       </div>

@@ -44,8 +44,12 @@ export interface LandingProduct {
   styled_id?: string;
   category_id?: string | null;
   name?: string;
+  short_description?: string | null;
+  long_description?: string | null;
   campaign_price_ngn?: number | null;
+  campaign_price_usd?: number | null;
   regular_price_ngn?: number | null;
+  regular_price_usd?: number | null;
   is_featured?: boolean;
   stock_remaining?: number | null;
   image_url?: string | null;

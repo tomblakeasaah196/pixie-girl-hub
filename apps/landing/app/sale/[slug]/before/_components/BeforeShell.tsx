@@ -1,41 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import {
-  LandingPreview,
-  AtelierRevealPreview,
+  BeforeState,
   type LandingConfig,
   type LandingSubmit,
 } from "@landing-kit";
 import type { LandingPayload } from "@/lib/types";
-import { IntroOverlay } from "@/components/IntroOverlay";
-import { BeforeHero } from "./BeforeHero";
 
 /**
- * The before-state page composition:
+ * Before-state page for the public sales site.
  *
- *   IntroOverlay (cinematic curtain, session-once)
- *   ───────────────────────────────────────────────
- *   BeforeHero (dark ink section)
- *     · brand monogram backdrop
- *     · tier-driven eyebrow
- *     · serif headline + accent
- *     · Atelier Hourglass (3D countdown)
- *     · save-the-date / Google Calendar / Join the list
- *     · scroll indicator
- *   ───────────────────────────────────────────────
- *   LandingPreview (apex body — Invitation, Gallery, Pillars, Footer)
- *     · omitHero={true} so its own hero is skipped
- *     · onSubmit POSTs to the campaign-scoped signup endpoint so the cohort
- *       can be reached later about THIS drop specifically
- *   ───────────────────────────────────────────────
- *   AtelierRevealPreview (the apex's logo plane scene, once on load)
- *
- * The apex's PublicLanding renders LandingPreview + AtelierRevealPreview in
- * the same composition; we add IntroOverlay + BeforeHero on top and force
- * the body to omit its hero. The Studio is single-sourced.
+ * The Atelier composition (intro curtain, 3D hourglass hero, invitation body,
+ * cinematic reveal) is shared with the admin campaign preview via
+ * @landing-kit's <BeforeState>, so the live page and the studio preview can't
+ * drift. This wrapper supplies only the live signup handler — a POST to the
+ * campaign-scoped signup endpoint so the cohort can be reached later about
+ * THIS drop specifically.
  */
-
 function synthesizeCode(brandName: string, name: string): string {
   const prefix =
     brandName.replace(/[^A-Za-z]/g, "").slice(0, 5).toUpperCase() || "HOUSE";
@@ -52,8 +34,6 @@ export function BeforeShell({
   payload: LandingPayload;
   brandConfig: LandingConfig;
 }) {
-  const [revealDone, setRevealDone] = useState(false);
-
   const onSubmit: LandingSubmit = useCallback(
     async ({ name, email, whatsapp, channel }) => {
       const notify_via =
@@ -81,36 +61,11 @@ export function BeforeShell({
     [payload.slug, brandConfig.brandName],
   );
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.documentElement.setAttribute(
-      "data-business",
-      payload.brand?.business_key || "pixiegirl",
-    );
-  }, [payload.brand?.business_key]);
-
   return (
-    <>
-      <IntroOverlay
-        brand={payload.brand?.business_key}
-        campaignName={payload.name}
-        sessionKey={`pgh-intro-seen:${payload.slug}`}
-      />
-      <div className="fixed inset-0 overflow-y-auto bg-black">
-        <BeforeHero payload={payload} brandConfig={brandConfig} />
-        <LandingPreview
-          config={brandConfig}
-          onSubmit={onSubmit}
-          omitHero
-        />
-        {brandConfig.reveal.enabled && !revealDone && (
-          <AtelierRevealPreview
-            config={brandConfig}
-            replayKey="once"
-            onComplete={() => setRevealDone(true)}
-          />
-        )}
-      </div>
-    </>
+    <BeforeState
+      payload={payload}
+      brandConfig={brandConfig}
+      onSignup={onSubmit}
+    />
   );
 }

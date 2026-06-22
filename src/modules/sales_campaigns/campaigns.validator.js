@@ -431,6 +431,58 @@ const vipGiftStatusSchema = z
   })
   .strict();
 
+const checkoutSchema = z
+  .object({
+    slug: z.string().min(1).max(200),
+    contact: z
+      .object({
+        first_name: z.string().min(1).max(120),
+        last_name: z.string().min(1).max(120),
+        email: z.string().email(),
+        phone: z.string().min(7).max(25),
+        instagram_handle: z.string().max(60).optional(),
+        notes: z.string().max(2000).optional(),
+        gift: z
+          .object({
+            recipient_name: z.string().min(1).max(200),
+            recipient_phone: z.string().max(25).optional(),
+            message: z.string().max(500).optional(),
+          })
+          .optional(),
+        address: z.object({
+          line1: z.string().min(1).max(400),
+          line2: z.string().max(400).optional(),
+          city: z.string().min(1).max(120),
+          state: z.string().max(120).optional(),
+          country: z.string().max(80).optional(),
+        }),
+        consent: z.object({
+          whatsapp_opt_in: z.boolean(),
+          marketing_opt_in: z.boolean(),
+          terms_accepted: z.literal(true),
+        }),
+      })
+      .strict(),
+    cart: z
+      .array(
+        z
+          .object({
+            bundle_id: z.string().uuid().optional(),
+            product_id: z.string().uuid().optional(),
+            quantity: z.coerce.number().int().min(1).max(50),
+            unit_price_ngn: z.coerce.number().nonnegative(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(30),
+    utm: z.record(z.string()).optional(),
+    payment_gateway: z.enum(["paystack", "opay", "nomba", "stripe"]),
+    client_idempotency_key: z.string().min(1).max(120),
+    coupon_code: z.string().max(60).optional(),
+  })
+  .strict();
+
 function mw(schema) {
   return function validate(req, _res, next) {
     req.body = schema.parse(req.body ?? {});
@@ -463,6 +515,7 @@ module.exports = {
   validatePraxisAccept: mw(praxisAcceptSchema),
   validateVipGrant: mw(vipGrantSchema),
   validateVipGiftStatus: mw(vipGiftStatusSchema),
+  validateCheckout: mw(checkoutSchema),
   // schemas
   createSchema,
   updateSchema,

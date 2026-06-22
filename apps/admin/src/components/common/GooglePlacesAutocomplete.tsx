@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MapPin, Loader2, AlertCircle } from "lucide-react";
-import {
-  isGoogleMapsConfigured,
-  loadGoogleMaps,
-} from "@/lib/google-maps-loader";
+import { loadGoogleMaps } from "@/lib/google-maps-loader";
 
 /**
  * Reusable Google Places autocomplete + map pin field.
@@ -69,15 +66,14 @@ export function GooglePlacesAutocomplete({
   >("loading");
 
   useEffect(() => {
-    if (!isGoogleMapsConfigured()) {
-      setStatus("unavailable");
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
+        // loadGoogleMaps() resolves the key at runtime (server config) and
+        // returns null when none is set — degrade to a typeable field then.
         const g = await loadGoogleMaps();
-        if (cancelled || !g) {
+        if (cancelled) return;
+        if (!g) {
           setStatus("unavailable");
           return;
         }

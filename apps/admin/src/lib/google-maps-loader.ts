@@ -5,14 +5,14 @@
  * need the Places + Maps libraries on two pages so a small script-tag
  * loader is enough.
  *
- * The key reads from `VITE_GOOGLE_PLACES_API_KEY`. When unset the
- * loader returns null and the callers fall back to the manual address
+ * The key is resolved at RUNTIME via getMapsApiKey() (a build-time VITE var
+ * if present, else GET /api/public/config), so it can be set on the live
+ * server without rebuilding the admin bundle. When no key is configured the
+ * loader resolves to null and the callers fall back to the manual address
  * form, so the build still works in dev without the key.
  */
 
-const API_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY as
-  | string
-  | undefined;
+import { getMapsApiKey } from "./runtime-config";
 
 let promise: Promise<typeof window.google | null> | null = null;
 
@@ -22,31 +22,39 @@ declare global {
   }
 }
 
-export function isGoogleMapsConfigured(): boolean {
-  return !!API_KEY;
+/** Whether a Maps key is configured (resolved at runtime). */
+export async function isGoogleMapsConfigured(): Promise<boolean> {
+  return Boolean(await getMapsApiKey());
 }
 
 export function loadGoogleMaps(): Promise<typeof window.google | null> {
-  if (!API_KEY) return Promise.resolve(null);
   if (promise) return promise;
-  promise = new Promise((resolve, reject) => {
-    if (window.google && window.google.maps) {
-      resolve(window.google);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-      API_KEY,
-    )}&libraries=places,marker&v=weekly&loading=async`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      if (window.google && window.google.maps) resolve(window.google);
-      else reject(new Error("Google Maps loaded but no API on window"));
-    };
-    script.onerror = () =>
-      reject(new Error("Google Maps script failed to load"));
-    document.head.appendChild(script);
+  const p = (async (): Promise<typeof window.google | null> => {
+    const key = await getMapsApiKey();
+    if (!key) return null;
+    if (window.google && window.google.maps) return window.google;
+    return new Promise<typeof window.google | null>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+        key,
+      )}&libraries=places,marker&v=weekly&loading=async`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        if (window.google && window.google.maps) resolve(window.google);
+        else reject(new Error("Google Maps loaded but no API on window"));
+      };
+      script.onerror = () =>
+        reject(new Error("Google Maps script failed to load"));
+      document.head.appendChild(script);
+    });
+  })();
+  promise = p;
+  // Don't cache a "no key" / failed attempt forever — a later mount can retry.
+  p.then((g) => {
+    if (!g) promise = null;
+  }).catch(() => {
+    promise = null;
   });
-  return promise;
+  return p;
 }

@@ -60,6 +60,7 @@ const {
   geoRouter,
 } = require("../modules/platform_settings/geo.public.routes");
 const manifestPublicRouter = require("../modules/platform_settings/manifest.public.routes");
+const configPublicRouter = require("../modules/platform_settings/config.public.routes");
 const salesCampaignsRouter = require("../modules/sales_campaigns/campaigns.routes");
 const landingStudioRouter = require("../modules/landing_studio/landing.routes");
 const retentionRouter = require("../modules/retention/retention.routes");
@@ -195,6 +196,9 @@ function mountRoutes(app) {
   // Unauthenticated branding feed — the login page calls this before
   // a token exists so the shell can theme itself.
   publicRouter.use("/branding", brandingPublicRouter);
+  // Runtime client config (Google Maps key for the public address forms).
+  // Lets the key be set on the server without rebuilding the admin bundle.
+  publicRouter.use("/config", configPublicRouter);
   // Per-IP login greeting ("Welcome from Africa"). Not cached.
   publicRouter.use("/geo-welcome", geoPublicRouter);
   // Storefront SSR currency detection — GET /api/public/geo/currency

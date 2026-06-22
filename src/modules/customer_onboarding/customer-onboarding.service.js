@@ -25,6 +25,7 @@ const { transaction } = require("../../config/database");
 const { AppError, NotFoundError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const brandUrls = require("../../utils/brand-urls");
+const { sendWelcomeEmail } = require("../../services/welcome-email");
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -129,7 +130,12 @@ async function submitPublic({ token, ip, payload }) {
   if (link.expires_at && new Date(link.expires_at) < new Date())
     throw new AppError("ONBOARDING_EXPIRED", "This form has expired.", 410);
 
-  return transaction(async (client) => {
+  // Captured inside the transaction, sent after it commits: the curated
+  // welcome only goes to a freshly-created lead with an email on file (we
+  // don't re-welcome a returning customer who just updated their details).
+  let welcome = null;
+
+  const result = await transaction(async (client) => {
     // Birthday: the form sends month + day (no year); fall back to an explicit
     // date_of_birth if one was supplied. Either way it reaches the contact now
     // (previously dob_day/dob_month were validated then silently dropped).
@@ -181,6 +187,9 @@ async function submitPublic({ token, ip, payload }) {
           visible_to: [link.business],
         },
       });
+      if (payload.email) {
+        welcome = { to: payload.email, firstName: payload.first_name };
+      }
     } else {
       await repo.updateContactFromPayload({
         client,
@@ -312,6 +321,17 @@ async function submitPublic({ token, ip, payload }) {
       contact_id: contact.contact_id,
     };
   });
+
+  // Best-effort welcome (never throws; registration already committed).
+  if (welcome) {
+    await sendWelcomeEmail({
+      brand: link.business,
+      to: welcome.to,
+      firstName: welcome.firstName,
+    });
+  }
+
+  return result;
 }
 
 // ── Admin: list ───────────────────────────────────────────

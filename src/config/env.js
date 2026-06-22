@@ -146,6 +146,14 @@ const schema = z.object({
   STOREFRONT_BASE_URL: z.string().url().optional(),
   ADMIN_BASE_URL: z.string().url().optional(),
 
+  // Google Maps / Places — browser-side key powering address autocomplete on
+  // the public Walk-in + Online-QR forms. Surfaced to the client at RUNTIME
+  // via GET /api/public/config, so setting it on the live server takes effect
+  // without rebuilding the admin bundle (a Vite VITE_* var would not). The key
+  // is meant to be public; lock it down with HTTP-referrer restrictions in the
+  // Google Cloud console.
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
+
   // Social posting (V2.2 §6.14). Per-platform publish creds; blank → that
   // platform's publish/metrics calls are skipped with a clear error.
   META_GRAPH_VERSION: z.string().default("v21.0"),

@@ -11,6 +11,19 @@ interface Props {
 }
 
 /**
+ * Make a backend-issued onboarding link absolute. When no storefront/admin
+ * domain is configured the backend returns a bare path (e.g.
+ * `/welcome/faitlynhair/<token>`), which is useless in a QR — a scanning phone
+ * has no host to resolve it against. The `/welcome` route is served by THIS
+ * admin SPA, so the current origin is a correct, always-available host. An
+ * already-absolute URL (storefront domain configured) passes through unchanged.
+ */
+function toAbsoluteUrl(url: string): string {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return `${window.location.origin}/${url.replace(/^\/+/, "")}`;
+}
+
+/**
  * Online QR — a shareable customer-onboarding link (the rich form: IG/WhatsApp
  * handle + delivery address via Google Places + DOB + preferred channel).
  *
@@ -34,7 +47,7 @@ export function OnlineQR({ onClose }: Props) {
         business: business.key,
         source: "online",
       });
-      setUrl(res.url);
+      setUrl(toAbsoluteUrl(res.url));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not generate a link");
     } finally {

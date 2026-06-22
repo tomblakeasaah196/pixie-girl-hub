@@ -71,6 +71,7 @@ function StyledTrash({ open }: { open: boolean }) {
           key={s.styled_id}
           title={s.name}
           subtitle={`${s.styled_code} · on ${s.base_name}`}
+          purgeAt={s.purge_at ?? null}
           busy={restore.isPending && restore.variables === s.styled_id}
           onRestore={() => restore.mutate(s.styled_id)}
         />
@@ -92,6 +93,7 @@ function BaseTrash({ open }: { open: boolean }) {
           key={p.product_id}
           title={p.name}
           subtitle={p.product_code}
+          purgeAt={(p as any).purge_at ?? null}
           busy={restore.isPending && restore.variables === p.product_id}
           onRestore={() => restore.mutate(p.product_id)}
         />
@@ -100,14 +102,25 @@ function BaseTrash({ open }: { open: boolean }) {
   );
 }
 
+function formatPurge(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function Row({
   title,
   subtitle,
+  purgeAt,
   onRestore,
   busy,
 }: {
   title: string;
   subtitle: string;
+  purgeAt?: string | null;
   onRestore: () => void;
   busy?: boolean;
 }) {
@@ -118,6 +131,11 @@ function Row({
         <div className="text-[11px] text-text-faint font-mono truncate">
           {subtitle}
         </div>
+        {purgeAt && (
+          <div className="text-[10.5px] text-danger mt-0.5">
+            Permanently deleted on {formatPurge(purgeAt)}
+          </div>
+        )}
       </div>
       <Button
         size="sm"

@@ -7,6 +7,8 @@ import {
   Palette,
   Video,
   Star,
+  Undo2,
+  Archive,
 } from "lucide-react";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
@@ -31,6 +33,9 @@ import {
   useUpdateStyledVariant,
   useDeleteStyledVariant,
   useSizeConfig,
+  useStyledProductTrash,
+  useRestoreColour,
+  useRestoreStyledVariant,
   type StyledColour,
   type StyledVariant,
 } from "@/lib/catalogue";
@@ -84,6 +89,7 @@ export function StyledVariantsManager({
             : styled.data?.base_lace_size_codes) ?? []
         }
       />
+      {canEdit && <ProductTrashCard styledId={styledId} />}
     </div>
   );
 }
@@ -228,6 +234,8 @@ function ColourRow({
   const [confirmDel, setConfirmDel] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [igUrl, setIgUrl] = useState(colour.external_video_url ?? "");
+  const [editName, setEditName] = useState(colour.name);
+  const [editHex, setEditHex] = useState(colour.hex ?? "#1B1B1B");
 
   const imgs = images.data ?? [];
 
@@ -390,9 +398,46 @@ function ColourRow({
         </div>
       )}
 
-      {/* Expanded editor: default + active toggles */}
+      {/* Expanded editor: name, hex, default + active toggles */}
       {expanded && canEdit && (
-        <div className="mt-3 pt-3 border-t hairline">
+        <div className="mt-3 pt-3 border-t hairline space-y-3">
+          <div className="flex flex-wrap items-end gap-2.5">
+            <label className="flex items-center gap-2">
+              <input
+                type="color"
+                value={editHex}
+                onChange={(e) => setEditHex(e.target.value)}
+                className="w-9 h-9 rounded-[9px] border border-line bg-transparent cursor-pointer"
+                aria-label="Colour swatch"
+              />
+            </label>
+            <div className="flex-1 min-w-[140px]">
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Colour name"
+                className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+              />
+            </div>
+            {(editName !== colour.name ||
+              editHex !== (colour.hex ?? "#1B1B1B")) && (
+              <Button
+                size="sm"
+                disabled={!editName.trim() || update.isPending}
+                onClick={() =>
+                  update.mutate({
+                    colourId: colour.colour_id,
+                    patch: {
+                      name: editName.trim(),
+                      hex: editHex || null,
+                    },
+                  })
+                }
+              >
+                Rename
+              </Button>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-4">
             <Toggle
               checked={colour.is_default}
@@ -426,9 +471,9 @@ function ColourRow({
             onSuccess: () => setConfirmDel(false),
           })
         }
-        title={`Delete "${colour.name}"?`}
-        message="This removes the colour, its pictures, and any size variants generated for it."
-        confirmLabel="Delete colour"
+        title={`Trash "${colour.name}"?`}
+        message="This moves the colour and its variants to the trash. You can restore them within 15 days — after that they are permanently purged. Pictures are kept until purge."
+        confirmLabel="Move to trash"
         busy={del.isPending}
       />
     </div>
@@ -597,6 +642,7 @@ function VariantsCard({
                 <th className="py-2 font-semibold">Size</th>
                 <th className="py-2 font-semibold">Lace</th>
                 <th className="py-2 font-semibold">SKU</th>
+                <th className="py-2 font-semibold">Base</th>
                 <th className="py-2 font-semibold text-right">Retail</th>
                 <th className="py-2 font-semibold text-right">Override ₦</th>
                 <th className="py-2 font-semibold text-right">Override $</th>
@@ -670,6 +716,9 @@ function VariantRow({
         {v.lace_label ?? v.lace_code ?? "—"}
       </td>
       <td className="py-2 font-mono text-[10.5px] text-text-faint">{v.sku}</td>
+      <td className="py-2 text-[11px] text-text-muted max-w-[120px] truncate">
+        {v.base_product_name ?? "—"}
+      </td>
       <td className="py-2 text-right">
         {v.effective_price_ngn != null ? (
           <MoneyText
@@ -742,12 +791,116 @@ function VariantRow({
           <button
             onClick={() => del.mutate(v.styled_variant_id)}
             className="text-text-faint hover:text-danger p-1 rounded-[8px] hover:bg-danger/10"
-            aria-label="Delete variant"
+            aria-label="Trash variant"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         )}
       </td>
     </tr>
+  );
+}
+
+/* ── Per-product trash (trashed colours + variants) ────── */
+function formatPurge(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function ProductTrashCard({ styledId }: { styledId: string }) {
+  const trash = useStyledProductTrash(styledId);
+  const restoreColour = useRestoreColour(styledId);
+  const restoreVariant = useRestoreStyledVariant(styledId);
+  const colours = trash.data?.colours ?? [];
+  const variants = trash.data?.variants ?? [];
+  if (!colours.length && !variants.length) return null;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <Archive className="w-4 h-4 text-text-faint" />
+        <h3 className="font-display text-[15px]">Trash</h3>
+        <span className="text-[11.5px] text-text-faint">
+          restored within 15 days or permanently purged
+        </span>
+      </div>
+
+      {colours.length > 0 && (
+        <div className="mb-3">
+          <div className="micro mb-1.5">Colours</div>
+          <div className="space-y-1.5">
+            {colours.map((c) => (
+              <div
+                key={c.colour_id}
+                className="flex items-center gap-2.5 rounded-[10px] border border-line p-2.5"
+              >
+                <span
+                  className="w-5 h-5 rounded-full border border-line shrink-0"
+                  style={{ background: c.hex ?? "transparent" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12.5px] font-semibold truncate">
+                    {c.name}
+                  </div>
+                  {c.purge_at && (
+                    <div className="text-[10.5px] text-danger">
+                      Purged {formatPurge(c.purge_at)}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  icon={<Undo2 className="w-3.5 h-3.5" />}
+                  disabled={restoreColour.isPending}
+                  onClick={() => restoreColour.mutate(c.colour_id)}
+                >
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {variants.length > 0 && (
+        <div>
+          <div className="micro mb-1.5">Variants</div>
+          <div className="space-y-1.5">
+            {variants.map((v) => (
+              <div
+                key={v.styled_variant_id}
+                className="flex items-center gap-2.5 rounded-[10px] border border-line p-2.5"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12.5px] font-semibold truncate">
+                    {v.colour_name} · {v.size_code}
+                    {v.lace_code ? ` · ${v.lace_code}` : ""}
+                  </div>
+                  <div className="text-[10.5px] text-text-faint font-mono">
+                    {v.sku}
+                  </div>
+                  {v.purge_at && (
+                    <div className="text-[10.5px] text-danger">
+                      Purged {formatPurge(v.purge_at)}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  icon={<Undo2 className="w-3.5 h-3.5" />}
+                  disabled={restoreVariant.isPending}
+                  onClick={() => restoreVariant.mutate(v.styled_variant_id)}
+                >
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

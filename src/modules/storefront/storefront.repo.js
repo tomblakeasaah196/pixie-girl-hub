@@ -231,15 +231,17 @@ async function createContact({ client, brand, contact }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.contacts
        (contact_type, display_name, first_name, last_name, primary_phone,
-        email, visible_to)
-     VALUES (ARRAY['customer'], $1, $2, $3, $4, $5, ARRAY[$6])
+        whatsapp_number, email, date_of_birth, visible_to)
+     VALUES (ARRAY['customer'], $1, $2, $3, $4, $5, $6, $7, ARRAY[$8])
      RETURNING *`,
     [
       contact.display_name,
       contact.first_name || null,
       contact.last_name || null,
-      contact.primary_phone,
+      contact.primary_phone || null,
+      contact.whatsapp_number || null,
       contact.email || null,
+      contact.date_of_birth || null,
       brand,
     ],
   );

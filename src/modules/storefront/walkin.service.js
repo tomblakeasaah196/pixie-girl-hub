@@ -13,6 +13,7 @@
 const QRCode = require("qrcode");
 const { URLSearchParams } = require("url");
 const repo = require("./storefront.repo");
+const contactsRepo = require("../../shared/contacts/contacts.repo");
 const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
 const { VALID } = require("../../config/brands");
@@ -21,6 +22,19 @@ const { AppError } = require("../../utils/errors");
 function assertBrand(brand) {
   if (!brand || !VALID.has(brand))
     throw new AppError("INVALID_BRAND", "Unknown or missing brand", 422);
+}
+
+/**
+ * Build a DATE from a birthday's month + day. Walk-ins give us the day they
+ * celebrate, not the year, so we anchor to a leap year (1904) — that keeps
+ * 29 Feb valid and the year is irrelevant to birthday reminders (which match
+ * on month/day). Returns null unless BOTH parts are present.
+ */
+function dobFromParts(month, day) {
+  if (!month || !day) return null;
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `1904-${mm}-${dd}`;
 }
 
 /**
@@ -61,9 +75,28 @@ async function registerWalkIn({ brand, input }) {
         first_name: input.first_name,
         last_name: input.last_name,
         primary_phone: input.primary_phone,
+        whatsapp_number: input.whatsapp_number,
         email: input.email,
+        date_of_birth: dobFromParts(input.dob_month, input.dob_day),
       },
     });
+
+    // Capture the walk-in's address (with Google-Places lat/lng when supplied)
+    // as their default delivery address — important for dispatch + service.
+    if (input.address && input.address.line1) {
+      await contactsRepo.addAddress({
+        client,
+        contact_id: contact.contact_id,
+        input: {
+          ...input.address,
+          address_type: "delivery",
+          is_default: true,
+          recipient_name: display_name,
+          recipient_phone: input.primary_phone || input.whatsapp_number,
+        },
+        user_id: null,
+      });
+    }
     return { contact_id: contact.contact_id, returning: false };
   });
 }

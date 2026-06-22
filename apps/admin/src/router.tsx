@@ -94,6 +94,11 @@ const CustomerOnboardingPublic = lazyWithRetry(() =>
     default: m.CustomerOnboardingPublic,
   })),
 );
+const WalkInPublic = lazyWithRetry(() =>
+  import("@/pages/walkin/WalkInPublic").then((m) => ({
+    default: m.WalkInPublic,
+  })),
+);
 const OrderCapturePublic = lazyWithRetry(() =>
   import("@/pages/order-capture/OrderCapturePublic").then((m) => ({
     default: m.OrderCapturePublic,
@@ -245,6 +250,16 @@ export const router = createBrowserRouter(
   [
     { path: "/login", element: <LoginPage /> },
     { path: "/reset-password", element: <ResetPasswordPage /> },
+    // Public Walk-in registration (the counter QR opens this; no auth). The
+    // brand rides in the path; the form POSTs to /api/public/walk-in.
+    {
+      path: "/walkin/:brand",
+      element: (
+        <Suspense fallback={null}>
+          <WalkInPublic />
+        </Suspense>
+      ),
+    },
     // Public Online QR welcome form (token-protected, no auth required).
     {
       path: "/welcome/:business/:token",

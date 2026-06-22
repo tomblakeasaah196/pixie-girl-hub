@@ -11,6 +11,24 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-22 — HR attendance: geofenced clock-in (000234, 000235)
+
+**Source:** chat brainstorm on geolocated attendance.
+
+- `000234_shared_hr_attendance_geo` — adds `is_offsite` + `formatted_address`
+  to `staff_clock_events`; offsite columns (`is_offsite`, `offsite_distance_m`,
+  `clock_in_address/lat/lng`) to `attendance_days`; and a geofence policy block
+  to `hr_settings` (`geofence_enabled`, `geofence_required_on_site`,
+  `geofence_accuracy_max_m`, `offsite_auto_query`, `offsite_marks_absent`).
+  Clock-in is recorded-and-flagged (not rejected) when off-site; off-site on an
+  on-site working day auto-raises an `offsite_clockin` query → respond, else
+  (upheld/lapsed) the day is marked absent. Coordinates from the browser
+  Geolocation API are the truth; the address is client reverse-geocoded.
+- `000235_shared_help_attendance` — Help Center articles (staff + HR/CEO)
+  covering clock-in, off-site flags, lateness/earnings and office setup.
+
+---
+
 ## 2026-06-22 — HR system Phase 1 (000233_shared_hr_phase1)
 
 **Source:** `docs/PixieGirl_Hub_Meeting_Notes_Transcript.docx` §3 (HR design)

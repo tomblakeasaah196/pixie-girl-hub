@@ -20,12 +20,15 @@ const P = (action) => requirePermission("hr_payroll", action);
 
 // ── Self-service (My HR) — auth only ───────────────────────
 router.get("/me", c.getMyHr);
+router.get("/me/today", c.getMyToday);
+router.post("/me/clock", v.clock, c.selfClock);
 router.post("/me/leave", v.leaveRequest, c.requestLeave);
 router.post("/me/queries/:id/respond", v.queryRespond, c.respondToQuery);
 
 // ── Overview + reconcile ───────────────────────────────────
 router.get("/overview", P("view"), c.getOverview);
 router.post("/attendance/reconcile", P("edit"), v.reconcile, c.reconcile);
+router.post("/attendance/apply-lapsed-offsite", P("edit"), c.applyLapsedOffsite);
 router.get("/attendance-days", P("view"), c.listAttendanceDays);
 
 // ── Leave inbox ────────────────────────────────────────────

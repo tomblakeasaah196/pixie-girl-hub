@@ -46,7 +46,31 @@ onto the Maroon Noir admin kit. Built in two PRs.
 - Routes `/my-hr` + `/hr`; nav entries "My HR" + "HR & Staff".
 - Onboarding reuses the existing unified wizard (`/contacts/staff/new`).
 
-## Phase 2 (next PR) — money & performance ops
+## Attendance PR (PR 2) — geofenced clock-in ✅
+
+Separate focused PR between Phase 1 and the money/perf build.
+
+**Backend**
+- Migration `000234` (clock-event address + offsite, attendance-day offsite
+  cols, hr_settings geofence policy) and `000235` (Help Center content).
+- `flagOffsite` pure decision (record-and-flag, not reject) + 5 tests.
+- Self clock-in: `GET /hr/me/today`, `POST /hr/me/clock` (captures coords + IP,
+  flags off-site, blocks only when location missing on an on-site day).
+- Reconcile raises an `offsite_clockin` query (precedence over lateness);
+  resolve `upheld`/lapse → day absent (`POST /hr/attendance/apply-lapsed-offsite`).
+
+**Frontend (admin)**
+- Real top-bar `ClockWidget` (browser Geolocation + client reverse-geocode).
+- `OfficeGeofenceSettings` — Google-Maps office/perimeter editor (radius circle,
+  draggable pin, manual fallback) in the HR Settings tab + geofence policy toggles.
+- Attendance tab shows clock-in address, off-site distance, and a lapsed-penalty action.
+
+**Design guardrails (from the brainstorm):** geofence enforced only on on-site
+days; off-site is provisional + queried, absent only after upheld/lapse with HR
+override; generous radius + accuracy-flag (not auto-reject); point-in-time
+capture, disclosed; coords are truth, spoofing treated as deterrent + audit.
+
+## Phase 2 (next PR / PR 3) — money & performance ops
 
 - Payroll run UI + **Nomba disbursement** + CEO payout-PIN gate at Pay.
 - Commission/bonus automation; monthly-target → bonus payout on achievement.

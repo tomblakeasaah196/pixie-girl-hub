@@ -569,9 +569,12 @@ function BlockSection({
               const openable = Boolean(styledId);
               const stock = prod.stock_remaining ?? null;
               const soldOut = stock !== null && stock <= 0;
-              const canBuy = Boolean(
-                onAddToCart && prod.product_id && !soldOut,
-              );
+              // Sold-out items become preorders — "Buy now" changes label to
+              // "Preorder" but the button stays active so the checkout flow
+              // proceeds normally. The backend's checkout service already
+              // handles preorder_enabled products with extended lead times.
+              const canBuy = Boolean(onAddToCart && prod.product_id);
+              const isPreorder = soldOut && canBuy;
               return (
                 <article
                   key={n}
@@ -598,11 +601,16 @@ function BlockSection({
                       backgroundPosition: "center",
                     }}
                   >
-                    {soldOut && (
+                    {soldOut && !canBuy && (
                       <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
                         <span className="text-[11px] tracking-[0.25em] uppercase font-semibold text-white/80">
                           Sold out
                         </span>
+                      </div>
+                    )}
+                    {isPreorder && (
+                      <div className="absolute top-2 left-2 bg-accent/80 backdrop-blur-sm rounded-full px-2.5 py-1 text-[10.5px] font-semibold text-white">
+                        Pre-order
                       </div>
                     )}
                     {!soldOut && stock !== null && stock <= 5 && (
@@ -641,7 +649,7 @@ function BlockSection({
                     </div>
                   )}
 
-                  {/* Buy Now button — only when checkout is wired up */}
+                  {/* Buy / Preorder button — only when checkout is wired up */}
                   {canBuy && (
                     <button
                       className="mt-2.5 w-full h-9 rounded-full bg-accent text-[#F4E9D9] text-[12.5px] font-semibold tracking-wide hover:brightness-110 transition"
@@ -650,7 +658,7 @@ function BlockSection({
                         onAddToCart!(prod, 1);
                       }}
                     >
-                      Buy now
+                      {isPreorder ? "Preorder" : "Buy now"}
                     </button>
                   )}
                 </article>

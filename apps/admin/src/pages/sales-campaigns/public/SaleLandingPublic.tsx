@@ -16,12 +16,12 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Loader2, ShoppingBag, X } from "lucide-react";
 import {
   type LandingBlock,
-  type LandingProduct,
   usePublicLanding,
   usePublicLandingConfig,
   usePublicCheckout,
   type PublicCheckoutResult,
 } from "@/lib/campaigns";
+import type { LandingProduct } from "../landing/LandingRender";
 import { withDefaults } from "@landing-kit";
 import {
   LandingRender,

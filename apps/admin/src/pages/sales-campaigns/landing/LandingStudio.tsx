@@ -794,6 +794,15 @@ function BlockEditor({
     case "brand_story":
       return (
         <div className="space-y-2.5 pt-3">
+          <Field label="Section title">
+            <input
+              value={typeof props.title === "string" ? props.title : ""}
+              onChange={(e) => setProp("title", e.target.value)}
+              disabled={!canEdit}
+              placeholder="A house that gets it."
+              className={inputCls}
+            />
+          </Field>
           <Field label="Body text">
             <textarea
               value={body}
@@ -804,7 +813,7 @@ function BlockEditor({
               placeholder="Every drop begins with a single idea…"
             />
           </Field>
-          <Field label="Section image URL" hint="Shown beside the text">
+          <Field label="Section image URL" hint="Shown beside the text (admin preview only)">
             <input
               value={
                 typeof props.image_url === "string" ? props.image_url : ""
@@ -823,22 +832,20 @@ function BlockEditor({
         <div className="space-y-2.5 pt-3">
           <Field label="Quote text">
             <textarea
-              value={body}
-              onChange={(e) => setProp("body", e.target.value)}
+              value={typeof props.quote === "string" ? props.quote : ""}
+              onChange={(e) => setProp("quote", e.target.value)}
               disabled={!canEdit}
               rows={3}
               className={textareaCls}
-              placeholder="We don't do ordinary. We do the piece she remembers."
+              placeholder="I built this because nothing on shelves felt like me."
             />
           </Field>
           <Field label="Attribution">
             <input
-              value={
-                typeof props.attribution === "string" ? props.attribution : ""
-              }
-              onChange={(e) => setProp("attribution", e.target.value)}
+              value={typeof props.author === "string" ? props.author : ""}
+              onChange={(e) => setProp("author", e.target.value)}
               disabled={!canEdit}
-              placeholder="The Founder"
+              placeholder="Faith — founder"
               className={inputCls}
             />
           </Field>
@@ -848,21 +855,21 @@ function BlockEditor({
     case "why_buy": {
       const defaults = [
         {
-          title: "Ethically sourced",
-          description: "Full-density, raw hair — traceable to the bundle.",
+          title: "Real human hair, every strand",
+          body: "Sourced and inspected by us — never substituted.",
         },
         {
-          title: "Made to last",
-          description: "Wears, washes and styles like your own.",
+          title: "Stylist-tested fit",
+          body: "Cap construction tested on hundreds of head shapes.",
         },
         {
-          title: "Loved by thousands",
-          description: "A community of women who don't settle.",
+          title: "Wear-it-forever care",
+          body: "Detailed care guide in every box; replace nothing.",
         },
       ];
       const items = (
         Array.isArray(props.items) ? props.items : defaults
-      ) as Array<{ title: string; description: string }>;
+      ) as Array<{ title: string; body: string }>;
       return (
         <div className="space-y-2.5 pt-3">
           {items.map((item, i) => (
@@ -885,12 +892,12 @@ function BlockEditor({
                   className={inputCls}
                 />
               </Field>
-              <Field label="Description">
+              <Field label="Body">
                 <textarea
-                  value={item.description}
+                  value={item.body}
                   onChange={(e) => {
                     const next = [...items];
-                    next[i] = { ...next[i], description: e.target.value };
+                    next[i] = { ...next[i], body: e.target.value };
                     setProp("items", next);
                   }}
                   disabled={!canEdit}
@@ -905,28 +912,16 @@ function BlockEditor({
     }
 
     case "testimonials": {
-      const defaults = [
-        {
-          quote:
-            "Easily the best I've ordered. The quality speaks before I do.",
-          customer: "Verified customer",
-        },
-        {
-          quote:
-            "Easily the best I've ordered. The quality speaks before I do.",
-          customer: "Verified customer",
-        },
-        {
-          quote:
-            "Easily the best I've ordered. The quality speaks before I do.",
-          customer: "Verified customer",
-        },
-      ];
       const items = (
-        Array.isArray(props.items) ? props.items : defaults
-      ) as Array<{ quote: string; customer: string }>;
+        Array.isArray(props.items) ? props.items : []
+      ) as Array<{ quote: string; name?: string; handle?: string }>;
       return (
         <div className="space-y-2.5 pt-3">
+          {items.length === 0 && (
+            <p className="text-[11.5px] text-text-faint">
+              No testimonials yet. Add one below.
+            </p>
+          )}
           {items.map((item, i) => (
             <div
               key={i}
@@ -948,40 +943,56 @@ function BlockEditor({
                   className={textareaCls}
                 />
               </Field>
-              <Field label="Customer">
+              <Field label="Name">
                 <input
-                  value={item.customer}
+                  value={item.name || ""}
                   onChange={(e) => {
                     const next = [...items];
-                    next[i] = { ...next[i], customer: e.target.value };
+                    next[i] = { ...next[i], name: e.target.value };
                     setProp("items", next);
                   }}
                   disabled={!canEdit}
-                  placeholder="Verified customer"
+                  placeholder="Adaeze O."
                   className={inputCls}
                 />
               </Field>
-            </div>
-          ))}
-          {canEdit && (
-            <div className="flex gap-3">
-              <button
-                onClick={() =>
-                  setProp("items", [...items, { quote: "", customer: "" }])
-                }
-                className="text-[12px] text-accent-glow inline-flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" /> Add
-              </button>
-              {items.length > 1 && (
+              <Field label="Handle (optional)" hint="Without the @">
+                <input
+                  value={item.handle || ""}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[i] = { ...next[i], handle: e.target.value };
+                    setProp("items", next);
+                  }}
+                  disabled={!canEdit}
+                  placeholder="adaeze_hair"
+                  className={inputCls}
+                />
+              </Field>
+              {canEdit && (
                 <button
-                  onClick={() => setProp("items", items.slice(0, -1))}
-                  className="text-[12px] text-text-faint hover:text-danger inline-flex items-center gap-1"
+                  onClick={() =>
+                    setProp(
+                      "items",
+                      items.filter((_, j) => j !== i),
+                    )
+                  }
+                  className="text-[11px] text-text-faint hover:text-danger inline-flex items-center gap-1"
                 >
-                  <Trash2 className="w-3 h-3" /> Remove last
+                  <Trash2 className="w-3 h-3" /> Remove
                 </button>
               )}
             </div>
+          ))}
+          {canEdit && (
+            <button
+              onClick={() =>
+                setProp("items", [...items, { quote: "", name: "", handle: "" }])
+              }
+              className="text-[12px] text-accent-glow inline-flex items-center gap-1"
+            >
+              <Plus className="w-3 h-3" /> Add testimonial
+            </button>
           )}
         </div>
       );
@@ -1064,21 +1075,51 @@ function BlockEditor({
       );
     }
 
-    case "shipping_returns":
+    case "shipping_returns": {
+      const defaultCards = [
+        { title: "DHL worldwide", subtitle: "Tracked, insured." },
+        { title: "Hand-inspected", subtitle: "Every unit, every time." },
+        { title: "48-hour grace", subtitle: "Reach us in two days; we'll work it out." },
+      ];
+      const cards = (
+        Array.isArray(props.cards) ? props.cards : defaultCards
+      ) as Array<{ title: string; subtitle: string }>;
       return (
-        <div className="pt-3">
-          <Field label="Policy text">
-            <textarea
-              value={body}
-              onChange={(e) => setProp("body", e.target.value)}
-              disabled={!canEdit}
-              rows={4}
-              className={textareaCls}
-              placeholder="Nationwide delivery via DHL Express. Lagos 1–2 days, nationwide 2–4 days. Returns accepted within 7 days on unworn items."
-            />
-          </Field>
+        <div className="space-y-2.5 pt-3">
+          {cards.map((card, i) => (
+            <div
+              key={i}
+              className="grid grid-cols-2 gap-2 p-3 rounded-[10px] bg-text-primary/[0.04] border border-line"
+            >
+              <Field label="Title">
+                <input
+                  value={card.title}
+                  onChange={(e) => {
+                    const next = [...cards];
+                    next[i] = { ...next[i], title: e.target.value };
+                    setProp("cards", next);
+                  }}
+                  disabled={!canEdit}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Subtitle">
+                <input
+                  value={card.subtitle}
+                  onChange={(e) => {
+                    const next = [...cards];
+                    next[i] = { ...next[i], subtitle: e.target.value };
+                    setProp("cards", next);
+                  }}
+                  disabled={!canEdit}
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+          ))}
         </div>
       );
+    }
 
     case "newsletter_capture":
     case "vip_signup":
@@ -1086,11 +1127,11 @@ function BlockEditor({
         <div className="space-y-2.5 pt-3">
           <Field label="Heading">
             <input
-              value={typeof props.heading === "string" ? props.heading : ""}
-              onChange={(e) => setProp("heading", e.target.value)}
+              value={typeof props.title === "string" ? props.title : ""}
+              onChange={(e) => setProp("title", e.target.value)}
               disabled={!canEdit}
               placeholder={
-                key === "vip_signup" ? "Join the inner circle" : "Be first, always"
+                key === "vip_signup" ? "Doors open earlier — for you." : "Be first in line."
               }
               className={inputCls}
             />
@@ -1104,7 +1145,11 @@ function BlockEditor({
               disabled={!canEdit}
               rows={2}
               className={textareaCls}
-              placeholder="First access to every drop, private prices and the occasional gift. No noise."
+              placeholder={
+                key === "vip_signup"
+                  ? "Sign up to get in before everyone else."
+                  : "One email when the doors open. Quiet inbox otherwise."
+              }
             />
           </Field>
           <Field label="Button label">
@@ -1116,7 +1161,7 @@ function BlockEditor({
               }
               onChange={(e) => setProp("button_label", e.target.value)}
               disabled={!canEdit}
-              placeholder="Join the list"
+              placeholder={key === "vip_signup" ? "Reserve my access" : "Notify me"}
               className={inputCls}
             />
           </Field>

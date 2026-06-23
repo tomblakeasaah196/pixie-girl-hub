@@ -2,5 +2,5 @@
 -- Stores campaign-specific landing config that doesn't warrant its own column:
 -- live_now_pill, browse_cta_text, hero_overlay_opacity, watermark_opacity,
 -- countdown_closes_label, favicon_url, browser_tab_name.
-ALTER TABLE __SCHEMA__.sales_campaigns
+ALTER TABLE {{BUSINESS}}.sales_campaigns
   ADD COLUMN IF NOT EXISTS landing_extras JSONB NOT NULL DEFAULT '{}';

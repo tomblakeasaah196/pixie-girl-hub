@@ -437,12 +437,18 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         contact_id: ct.contact_id,
         input: {
           address_type: "delivery",
-          address_type: "delivery",
           is_default: true,
           line1: addr.line1,
           line2: addr.line2 || null,
           city: addr.city,
-          state: addr.state || null,
+          // shared.contact_addresses.state is NOT NULL DEFAULT 'Lagos'. The
+          // landing form leaves State optional, so a buyer who skips it sent
+          // `state: null` here — and contactsRepo.insert() only omits
+          // `undefined`, not `null`, so the explicit NULL tripped a 23502
+          // not-null violation. 23502 isn't special-cased in the error handler,
+          // so it surfaced as the generic INTERNAL_ERROR on checkout. Omit the
+          // key entirely when blank so the column default applies.
+          ...(addr.state ? { state: addr.state } : {}),
           country: addr.country || "Nigeria",
         },
         user_id: null,

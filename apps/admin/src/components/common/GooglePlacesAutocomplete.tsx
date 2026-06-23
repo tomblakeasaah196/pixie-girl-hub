@@ -50,11 +50,16 @@ export function GooglePlacesAutocomplete({
   className,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  // Host for Google's PlaceAutocompleteElement (Places API New). Always in the
+  // DOM (hidden until ready) so the effect has somewhere to mount the widget.
+  const pacHostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(
     null,
   );
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const [value, setValue] = useState(initial?.formatted_address ?? "");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
     initial?.latitude && initial?.longitude
@@ -67,40 +72,58 @@ export function GooglePlacesAutocomplete({
 
   useEffect(() => {
     let cancelled = false;
+    let el: google.maps.places.PlaceAutocompleteElement | null = null;
+    let onSelect: ((e: Event) => void) | null = null;
     (async () => {
       try {
         // loadGoogleMaps() resolves the key at runtime (server config) and
         // returns null when none is set — degrade to a typeable field then.
         const g = await loadGoogleMaps();
         if (cancelled) return;
-        if (!g) {
+        if (!g || !g.maps.places?.PlaceAutocompleteElement) {
           setStatus("unavailable");
           return;
         }
-        if (!inputRef.current) return;
-        const ac = new g.maps.places.Autocomplete(inputRef.current, {
-          fields: [
-            "address_components",
-            "formatted_address",
-            "geometry",
-            "name",
-            "place_id",
-            "url",
-          ],
-          types: ["address"],
-          componentRestrictions:
-            countryRestriction === "ng" ? { country: "ng" } : undefined,
-          bounds: countryRestriction === "ng" ? NG_BOUNDS : undefined,
+        const host = pacHostRef.current;
+        if (!host) return;
+
+        // Places API (New) autocomplete — replaces the deprecated, legacy
+        // google.maps.places.Autocomplete (which needed the legacy Places API
+        // enabled). This runs on "Places API (New)".
+        el = new g.maps.places.PlaceAutocompleteElement({
+          includedRegionCodes:
+            countryRestriction === "ng" ? ["ng"] : undefined,
+          locationBias: countryRestriction === "ng" ? NG_BOUNDS : undefined,
         });
-        ac.addListener("place_changed", () => {
-          const place = ac.getPlace();
-          if (!place || !place.geometry || !place.geometry.location) return;
-          const fields = parsePlace(place);
-          setValue(fields.formatted_address);
-          setCoords({ lat: fields.latitude!, lng: fields.longitude! });
-          drawPin(g, fields.latitude!, fields.longitude!);
-          onChange(fields);
-        });
+        el.style.width = "100%";
+        el.placeholder = "Start typing your address…";
+        if (value) el.value = value;
+        host.replaceChildren(el);
+
+        onSelect = (async (event: Event) => {
+          const ev = event as google.maps.places.PlacePredictionSelectEvent;
+          try {
+            const place = ev.placePrediction.toPlace();
+            await place.fetchFields({
+              fields: [
+                "addressComponents",
+                "formattedAddress",
+                "location",
+                "displayName",
+                "googleMapsURI",
+              ],
+            });
+            const fields = parseNewPlace(place);
+            if (fields.latitude == null || fields.longitude == null) return;
+            setValue(fields.formatted_address);
+            setCoords({ lat: fields.latitude, lng: fields.longitude });
+            drawPin(g, fields.latitude, fields.longitude);
+            onChangeRef.current(fields);
+          } catch {
+            // ignore a single bad selection; the field stays usable
+          }
+        }) as (e: Event) => void;
+        el.addEventListener("gmp-select", onSelect);
         setStatus("ready");
       } catch {
         setStatus("error");
@@ -108,8 +131,12 @@ export function GooglePlacesAutocomplete({
     })();
     return () => {
       cancelled = true;
+      if (el && onSelect) el.removeEventListener("gmp-select", onSelect);
+      el?.remove();
     };
-  }, [countryRestriction, onChange]);
+    // value is seeded once; re-running on every keystroke would remount the widget
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryRestriction]);
 
   // Once we have coords (initial or selected) render a small map.
   useEffect(() => {
@@ -153,39 +180,50 @@ export function GooglePlacesAutocomplete({
           {required && <span className="text-danger ml-1">*</span>}
         </span>
         <div className="relative">
-          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={value}
-            onChange={(e) => {
-              const v = e.target.value;
-              setValue(v);
-              // In degraded modes there's no Places listener, so the typed text
-              // would never reach the parent and the address (a required field)
-              // could never be filled. Surface it as line1; empty siblings are
-              // ignored by the parent's defensive merge.
-              if (status === "unavailable" || status === "error") {
-                onChange({
-                  line1: v,
-                  city: "",
-                  state: "",
-                  country: "",
-                  country_code: "",
-                  formatted_address: v,
-                });
-              }
-            }}
-            placeholder={
-              status === "unavailable"
-                ? "Type your full address"
-                : "Start typing your address…"
-            }
-            required={required}
-            className="w-full pl-9 pr-9 py-2 rounded-xl bg-panel-2 border hairline text-[13.5px] focus:outline-none focus:border-accent/40"
+          {/* Places API (New) widget mounts here once ready. Always present
+              (hidden until ready) so the effect has a mount point. */}
+          <div
+            ref={pacHostRef}
+            className="gpac-host rounded-xl overflow-hidden"
+            style={{ display: status === "ready" ? "block" : "none" }}
           />
-          {status === "loading" && (
-            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-text-faint" />
+          {status !== "ready" && (
+            <>
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={value}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setValue(v);
+                  // In degraded modes there's no Places listener, so the typed
+                  // text would never reach the parent and the address (a
+                  // required field) could never be filled. Surface it as line1;
+                  // empty siblings are ignored by the parent's defensive merge.
+                  if (status === "unavailable" || status === "error") {
+                    onChange({
+                      line1: v,
+                      city: "",
+                      state: "",
+                      country: "",
+                      country_code: "",
+                      formatted_address: v,
+                    });
+                  }
+                }}
+                placeholder={
+                  status === "unavailable"
+                    ? "Type your full address"
+                    : "Start typing your address…"
+                }
+                required={required}
+                className="w-full pl-9 pr-9 py-2 rounded-xl bg-panel-2 border hairline text-[13.5px] focus:outline-none focus:border-accent/40"
+              />
+              {status === "loading" && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-text-faint" />
+              )}
+            </>
           )}
         </div>
       </label>
@@ -217,37 +255,38 @@ export function GooglePlacesAutocomplete({
 
 // ── Helpers ───────────────────────────────────────────────
 
-function comp(
-  components: google.maps.GeocoderAddressComponent[],
+/** Read a component from a Places API (New) Place by type. */
+function compNew(
+  components: google.maps.places.AddressComponent[],
   type: string,
   short = false,
 ): string | undefined {
   const m = components.find((c) => c.types.includes(type));
   if (!m) return undefined;
-  return short ? m.short_name : m.long_name;
+  return (short ? m.shortText : m.longText) ?? undefined;
 }
 
-function parsePlace(place: google.maps.places.PlaceResult): PlaceFields {
-  const comps = place.address_components ?? [];
-  const streetNumber = comp(comps, "street_number");
-  const route = comp(comps, "route");
+function parseNewPlace(place: google.maps.places.Place): PlaceFields {
+  const comps = place.addressComponents ?? [];
+  const streetNumber = compNew(comps, "street_number");
+  const route = compNew(comps, "route");
   const line1 =
     [streetNumber, route].filter(Boolean).join(" ") ||
-    (place.name ?? place.formatted_address ?? "");
+    (place.displayName ?? place.formattedAddress ?? "");
   const area =
-    comp(comps, "sublocality_level_1") ||
-    comp(comps, "sublocality") ||
-    comp(comps, "neighborhood") ||
+    compNew(comps, "sublocality_level_1") ||
+    compNew(comps, "sublocality") ||
+    compNew(comps, "neighborhood") ||
     undefined;
   const city =
-    comp(comps, "locality") ||
-    comp(comps, "administrative_area_level_2") ||
+    compNew(comps, "locality") ||
+    compNew(comps, "administrative_area_level_2") ||
     "Lagos";
-  const state = comp(comps, "administrative_area_level_1") || "Lagos";
-  const country = comp(comps, "country") || "Nigeria";
-  const country_code = comp(comps, "country", true) || "NG";
-  const postal_code = comp(comps, "postal_code");
-  const loc = place.geometry?.location;
+  const state = compNew(comps, "administrative_area_level_1") || "Lagos";
+  const country = compNew(comps, "country") || "Nigeria";
+  const country_code = compNew(comps, "country", true) || "NG";
+  const postal_code = compNew(comps, "postal_code");
+  const loc = place.location;
   return {
     line1,
     area,
@@ -258,7 +297,7 @@ function parsePlace(place: google.maps.places.PlaceResult): PlaceFields {
     postal_code,
     latitude: loc?.lat(),
     longitude: loc?.lng(),
-    google_maps_url: place.url,
-    formatted_address: place.formatted_address ?? "",
+    google_maps_url: place.googleMapsURI ?? undefined,
+    formatted_address: place.formattedAddress ?? "",
   };
 }

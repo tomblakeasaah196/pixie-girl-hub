@@ -38,7 +38,7 @@ export function ZoneMap({
   onCenter: (c: LngLat) => void;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const searchHostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const polyRef = useRef<google.maps.Polygon | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
@@ -197,45 +197,62 @@ export function ZoneMap({
   useEffect(() => {
     const g = window.google;
     const map = mapRef.current;
-    if (!ready || !g || !map || !searchRef.current) return;
-    if (!g.maps.places?.Autocomplete) return; // Places library unavailable
-    let ac: google.maps.places.Autocomplete;
+    const host = searchHostRef.current;
+    if (!ready || !g || !map || !host) return;
+    // Places API (New) autocomplete element — replaces the legacy
+    // google.maps.places.Autocomplete (which needed the legacy Places API).
+    if (!g.maps.places?.PlaceAutocompleteElement) return;
+    let el: google.maps.places.PlaceAutocompleteElement | null = null;
+    let onSelect: ((e: Event) => void) | null = null;
     try {
-      ac = new g.maps.places.Autocomplete(searchRef.current, {
-        fields: ["geometry", "name"],
+      el = new g.maps.places.PlaceAutocompleteElement({
+        locationBias: map.getBounds() ?? undefined,
       });
-      ac.bindTo("bounds", map);
+      el.placeholder = "Search an area or place (e.g. Lekki Phase 1)…";
+      el.style.width = "100%";
+      host.replaceChildren(el);
     } catch {
       return; // search box stays inert; map/manual entry still work
     }
-    const l = ac.addListener("place_changed", () => {
-      const place = ac.getPlace();
-      const geo = place.geometry;
-      if (!geo) return;
-      if (geo.viewport) map.fitBounds(geo.viewport);
-      else if (geo.location) {
-        map.setCenter(geo.location);
-        map.setZoom(13);
+    onSelect = (async (event: Event) => {
+      const ev = event as google.maps.places.PlacePredictionSelectEvent;
+      try {
+        const place = ev.placePrediction.toPlace();
+        await place.fetchFields({
+          fields: ["location", "viewport", "displayName"],
+        });
+        const loc = place.location;
+        const vp = place.viewport;
+        if (vp) map.fitBounds(vp);
+        else if (loc) {
+          map.setCenter(loc);
+          map.setZoom(13);
+        }
+        if (typeRef.current === "radius" && loc) {
+          markerRef.current?.setPosition(loc);
+          circleRef.current?.setCenter(loc);
+          cb.current.onCenter([loc.lng(), loc.lat()]);
+        } else if (typeRef.current === "polygon" && vp) {
+          const ne = vp.getNorthEast();
+          const sw = vp.getSouthWest();
+          const rect: LngLat[] = [
+            [sw.lng(), sw.lat()],
+            [ne.lng(), sw.lat()],
+            [ne.lng(), ne.lat()],
+            [sw.lng(), ne.lat()],
+          ];
+          polyRef.current?.setPath(rect.map(([lng, lat]) => ({ lat, lng })));
+          cb.current.onPoints(rect);
+        }
+      } catch {
+        // ignore a single bad selection; map/manual entry still work
       }
-      const loc = geo.location;
-      if (typeRef.current === "radius" && loc) {
-        markerRef.current?.setPosition(loc);
-        circleRef.current?.setCenter(loc);
-        cb.current.onCenter([loc.lng(), loc.lat()]);
-      } else if (typeRef.current === "polygon" && geo.viewport) {
-        const ne = geo.viewport.getNorthEast();
-        const sw = geo.viewport.getSouthWest();
-        const rect: LngLat[] = [
-          [sw.lng(), sw.lat()],
-          [ne.lng(), sw.lat()],
-          [ne.lng(), ne.lat()],
-          [sw.lng(), ne.lat()],
-        ];
-        polyRef.current?.setPath(rect.map(([lng, lat]) => ({ lat, lng })));
-        cb.current.onPoints(rect);
-      }
-    });
-    return () => g.maps.event.removeListener(l);
+    }) as (e: Event) => void;
+    el.addEventListener("gmp-select", onSelect);
+    return () => {
+      if (el && onSelect) el.removeEventListener("gmp-select", onSelect);
+      el?.remove();
+    };
   }, [ready]);
 
   if (error) {
@@ -249,10 +266,11 @@ export function ZoneMap({
 
   return (
     <div className="relative rounded-[11px] overflow-hidden border border-line">
-      <input
-        ref={searchRef}
-        placeholder="Search an area or place (e.g. Lekki Phase 1)…"
-        className="absolute z-20 top-2 left-2 right-2 h-[38px] px-3 rounded-[10px] bg-panel/90 backdrop-blur border border-line text-[13px] outline-none focus:border-accent/50 shadow-glass"
+      {/* Places API (New) autocomplete mounts here (a <gmp-place-autocomplete>
+          web component). */}
+      <div
+        ref={searchHostRef}
+        className="absolute z-20 top-2 left-2 right-2 rounded-[10px] bg-panel/90 backdrop-blur border border-line shadow-glass overflow-hidden"
       />
       <div ref={elRef} className="w-full h-[300px] bg-panel-2" />
       {!ready && (

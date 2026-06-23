@@ -20,12 +20,12 @@ export interface PlaceAddress {
   formatted_address: string;
 }
 
-function parseComponents(place: google.maps.places.PlaceResult): PlaceAddress {
-  const comps = place.address_components ?? [];
+function parseNewPlace(place: google.maps.places.Place): PlaceAddress {
+  const comps = place.addressComponents ?? [];
   const get = (...types: string[]) =>
-    comps.find((c) => types.some((t) => c.types.includes(t)))?.long_name ?? "";
+    comps.find((c) => types.some((t) => c.types.includes(t)))?.longText ?? "";
   const getShort = (...types: string[]) =>
-    comps.find((c) => types.some((t) => c.types.includes(t)))?.short_name ?? "";
+    comps.find((c) => types.some((t) => c.types.includes(t)))?.shortText ?? "";
 
   const streetNumber = get("street_number");
   const route = get("route");
@@ -36,12 +36,13 @@ function parseComponents(place: google.maps.places.PlaceResult): PlaceAddress {
   const countryLong = get("country");
   const countryShort = getShort("country");
   const postalCode = get("postal_code");
+  const formatted = place.formattedAddress ?? "";
 
   const line1Parts = [streetNumber, route].filter(Boolean);
   const line1 = line1Parts.length ? line1Parts.join(" ") : premise;
 
   return {
-    line1: line1 || get("formatted_address").split(",")[0] || "",
+    line1: line1 || formatted.split(",")[0] || "",
     line2: premise && line1 !== premise ? premise : "",
     area: sublocality,
     city: locality,
@@ -49,10 +50,10 @@ function parseComponents(place: google.maps.places.PlaceResult): PlaceAddress {
     country: countryLong,
     country_code: countryShort,
     postal_code: postalCode,
-    latitude: place.geometry?.location?.lat() ?? null,
-    longitude: place.geometry?.location?.lng() ?? null,
-    google_maps_url: place.url ?? "",
-    formatted_address: place.formatted_address ?? "",
+    latitude: place.location?.lat() ?? null,
+    longitude: place.location?.lng() ?? null,
+    google_maps_url: place.googleMapsURI ?? "",
+    formatted_address: formatted,
   };
 }
 
@@ -95,7 +96,12 @@ export function AddressAutocomplete({
   ...rest
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const acRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const elRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const onPlaceSelectedRef = useRef(onPlaceSelected);
+  onPlaceSelectedRef.current = onPlaceSelected;
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
   // null = still checking; false = no key (degrade); true = key present.
@@ -130,36 +136,73 @@ export function AddressAutocomplete({
     };
   }, []);
 
-  // Wire autocomplete once the API is ready and the input is mounted
+  // Mount the Places API (New) autocomplete element once the API is ready.
+  // Replaces the deprecated google.maps.places.Autocomplete (legacy Places API).
   useEffect(() => {
-    if (!ready || !inputRef.current) return;
-    if (typeof google === "undefined" || !google.maps?.places) return;
+    if (!ready) return;
+    const host = hostRef.current;
+    if (!host) return;
+    if (
+      typeof google === "undefined" ||
+      !google.maps?.places?.PlaceAutocompleteElement
+    )
+      return;
 
-    acRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-      fields: ["address_components", "geometry", "formatted_address", "url"],
-      componentRestrictions: { country: countryCode.toLowerCase() },
-    });
+    let el: google.maps.places.PlaceAutocompleteElement;
+    try {
+      el = new google.maps.places.PlaceAutocompleteElement({
+        includedRegionCodes: [countryCode.toLowerCase()],
+      });
+      el.placeholder = placeholder;
+      el.style.width = "100%";
+      if (value) el.value = value;
+      host.replaceChildren(el);
+    } catch {
+      return; // element unavailable — fallback input stays
+    }
+    elRef.current = el;
 
-    const listener = acRef.current.addListener("place_changed", () => {
-      const place = acRef.current!.getPlace();
-      if (!place?.address_components) return;
-      const parsed = parseComponents(place);
-      onChange(parsed.line1);
-      onPlaceSelected(parsed);
-    });
+    // Typing (no selection yet) still updates the parent's raw value so a
+    // hand-typed address can be submitted. `input` is a composed event and
+    // bubbles out of the element's shadow DOM.
+    const onInput = () => onChangeRef.current(el.value);
+    const onSelect = (async (event: Event) => {
+      const ev = event as google.maps.places.PlacePredictionSelectEvent;
+      try {
+        const place = ev.placePrediction.toPlace();
+        await place.fetchFields({
+          fields: [
+            "addressComponents",
+            "formattedAddress",
+            "location",
+            "googleMapsURI",
+            "displayName",
+          ],
+        });
+        const parsed = parseNewPlace(place);
+        onChangeRef.current(parsed.line1);
+        onPlaceSelectedRef.current(parsed);
+      } catch {
+        // ignore a single bad selection
+      }
+    }) as (e: Event) => void;
 
+    el.addEventListener("input", onInput);
+    el.addEventListener("gmp-select", onSelect);
     return () => {
-      google.maps.event.removeListener(listener);
+      el.removeEventListener("input", onInput);
+      el.removeEventListener("gmp-select", onSelect);
+      el.remove();
+      elRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  // Update country restriction whenever countryCode prop changes
+  // Update region bias whenever the countryCode prop changes
   useEffect(() => {
-    if (!acRef.current) return;
-    acRef.current.setComponentRestrictions({
-      country: countryCode.toLowerCase(),
-    });
+    if (elRef.current) {
+      elRef.current.includedRegionCodes = [countryCode.toLowerCase()];
+    }
   }, [countryCode]);
 
   const inputClasses = [
@@ -173,25 +216,36 @@ export function AddressAutocomplete({
 
   return (
     <div className="relative">
-      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={
-          configured === false
-            ? "Type your full address"
-            : loading || configured === null
-              ? "Loading Maps…"
-              : placeholder
-        }
-        className={inputClasses.replace("px-[13px]", "pl-9 pr-3")}
-        autoComplete="off"
-        {...rest}
+      {/* Places API (New) widget mounts here once ready. Always present
+          (hidden until ready) so the effect has a mount point. */}
+      <div
+        ref={hostRef}
+        className="gpac-host rounded-[11px] overflow-hidden"
+        style={{ display: ready ? "block" : "none" }}
       />
-      {loading && (
-        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint animate-spin pointer-events-none" />
+      {!ready && (
+        <>
+          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={
+              configured === false
+                ? "Type your full address"
+                : loading || configured === null
+                  ? "Loading Maps…"
+                  : placeholder
+            }
+            className={inputClasses.replace("px-[13px]", "pl-9 pr-3")}
+            autoComplete="off"
+            {...rest}
+          />
+          {loading && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint animate-spin pointer-events-none" />
+          )}
+        </>
       )}
       {configured === false && (
         <p className="text-[10px] text-text-faint mt-1">

@@ -97,10 +97,12 @@ export interface CheckoutForm {
   customer_email?: string;
   fulfilment_type: FulfilmentType;
   delivery_address?: {
+    country: string;
+    country_code?: string;
+    zone_code?: string;
     line1: string;
-    area?: string;
     city: string;
-    state: string;
+    state?: string;
     landmark?: string;
   };
   payment_method: PaymentMethod;

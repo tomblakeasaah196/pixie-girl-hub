@@ -154,6 +154,18 @@ export async function cancelOrder(
 // Uses a separate axios instance without auth headers
 import axios from "axios";
 const pub = axios.create({ baseURL: "/api/c" });
+const geo = axios.create({ baseURL: "/api/public/storefront" });
+
+export async function getPickupAddress(
+  brand: string,
+): Promise<{ address: string | null; phone: string | null }> {
+  try {
+    const { data } = await geo.get(`/pickup-address?brand=${brand}`);
+    return data?.data ?? { address: null, phone: null };
+  } catch {
+    return { address: null, phone: null };
+  }
+}
 
 export async function getStorefrontPage(
   business: string,

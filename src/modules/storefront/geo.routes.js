@@ -49,10 +49,19 @@ router.get("/shipping-rates", async (req, res, next) => {
 router.post("/delivery-quote", async (req, res, next) => {
   try {
     const brand = resolveBrand(req);
-    const { lat, lng, country } = req.body || {};
+    const { lat, lng, country, qty } = req.body || {};
     res.json({
-      data: await service.deliveryQuote({ brand, lat, lng, country }),
+      data: await service.deliveryQuote({ brand, lat, lng, country, qty }),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/pickup-address", async (req, res, next) => {
+  try {
+    const brand = resolveBrand(req);
+    res.json({ data: await service.pickupAddress({ brand }) });
   } catch (err) {
     next(err);
   }

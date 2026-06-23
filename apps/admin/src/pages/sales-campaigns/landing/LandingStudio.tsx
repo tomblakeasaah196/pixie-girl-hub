@@ -33,6 +33,8 @@ import {
   useUpdateCampaign,
 } from "@/lib/campaigns";
 import { useLandingStudio, withDefaults } from "@/lib/landing-studio";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { useUploadProgress } from "@/lib/use-upload";
 import { LandingRender, type LandingModel } from "./LandingRender";
 
 const BLOCK_LIBRARY: Array<{
@@ -146,6 +148,7 @@ export function LandingStudio({
   const [previewState, setPreviewState] = useState<PublicState>("live");
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
   const [uploading, setUploading] = useState<"hero" | "look" | null>(null);
+  const { progress, run } = useUploadProgress();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -200,7 +203,9 @@ export function LandingStudio({
     setUploading("hero");
     setError(null);
     try {
-      const url = await uploadCampaignImage(campaign.campaign_id, file);
+      const url = await run((onProgress) =>
+        uploadCampaignImage(campaign.campaign_id, file, onProgress),
+      );
       setHeroImage(url);
       setDirty(true);
     } catch (e) {
@@ -216,10 +221,18 @@ export function LandingStudio({
     setUploading("look");
     setError(null);
     try {
-      const urls: string[] = [];
-      for (const f of Array.from(files).slice(0, 8)) {
-        urls.push(await uploadCampaignImage(campaign.campaign_id, f));
-      }
+      const list = Array.from(files).slice(0, 8);
+      const urls = await run(async (onProgress) => {
+        const out: string[] = [];
+        for (let i = 0; i < list.length; i += 1) {
+          out.push(
+            await uploadCampaignImage(campaign.campaign_id, list[i], (p) =>
+              onProgress(Math.round(((i + p / 100) / list.length) * 100)),
+            ),
+          );
+        }
+        return out;
+      });
       setGallery([...gallery, ...urls].slice(0, 12));
     } catch (e) {
       setError(
@@ -474,13 +487,16 @@ export function LandingStudio({
                   <input
                     ref={heroFileRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.heic,.heif"
                     hidden
                     onChange={(e) =>
                       e.target.files?.[0] && onHeroFile(e.target.files[0])
                     }
                   />
                 </div>
+                {uploading === "hero" && (
+                  <UploadProgress value={progress} className="mt-2" />
+                )}
               </Field>
               <Field
                 label="Image URL (optional)"
@@ -550,7 +566,7 @@ export function LandingStudio({
                 <input
                   ref={lookFileRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,.heic,.heif"
                   multiple
                   hidden
                   onChange={(e) =>
@@ -558,6 +574,9 @@ export function LandingStudio({
                   }
                 />
               </div>
+              {uploading === "look" && (
+                <UploadProgress value={progress} />
+              )}
               <p className="text-[11.5px] text-text-faint">
                 Up to 12 images — shown in the Look Book block.
               </p>

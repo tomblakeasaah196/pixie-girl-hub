@@ -70,23 +70,31 @@ export function usePublishLanding() {
   });
 }
 
-export async function uploadLandingImage(file: File): Promise<string> {
+export async function uploadLandingImage(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<string> {
   const form = new FormData();
   form.append("file", file);
   const { url } = await api.postForm<{ url: string }>(
     "/landing-studio/upload-image",
     form,
+    { onProgress },
   );
   return url;
 }
 
 /** Upload any image and get back a composed 1200×630 Open Graph share banner. */
-export async function uploadLandingOgBanner(file: File): Promise<string> {
+export async function uploadLandingOgBanner(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<string> {
   const form = new FormData();
   form.append("file", file);
   const { url } = await api.postForm<{ url: string }>(
     "/landing-studio/upload-og",
     form,
+    { onProgress },
   );
   return url;
 }

@@ -16,7 +16,7 @@ jest.mock("../../../src/shared/documents/documents.service", () => ({
   store: jest.fn(),
 }));
 jest.mock("../../../src/services/media-compression.service", () => ({
-  compressImage: jest.fn(),
+  compressUpload: jest.fn(),
 }));
 jest.mock("../../../src/config/database", () => ({ transaction: jest.fn() }));
 jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));

@@ -52,6 +52,8 @@ import { useActiveBusiness } from "@/stores/business";
 import { smartcommApi, onboardingApi } from "@/lib/smartcomm-api";
 import { emitTyping } from "@/lib/socket";
 import { cn } from "@/lib/cn";
+import { useUploadProgress } from "@/lib/use-upload";
+import { UploadProgress } from "@/components/ui/UploadProgress";
 import type { Channel, Message, QuickReply } from "@/lib/smartcomm-types";
 import { MessageBubble } from "./MessageBubble";
 import { WhatsAppWindowBadge } from "./WhatsAppWindowBadge";
@@ -92,6 +94,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [busy, setBusy] = useState<"sending" | "uploading" | "drafting" | null>(
     null,
   );
+  const { progress: uploadProgress, run: runUpload } = useUploadProgress();
   const [error, setError] = useState<string | null>(null);
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -298,15 +301,18 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     setBusy("uploading");
     setError(null);
     try {
-      for (const file of Array.from(files)) {
+      const list = Array.from(files);
+      for (let i = 0; i < list.length; i += 1) {
+        const file = list[i];
         const form = new FormData();
         form.append("file", file);
         form.append("business", businessKey ?? "shared");
         form.append("document_type", "message_attachment");
         form.append("title", file.name);
-        const { document_id } = await postFormJson<{ document_id: string }>(
-          "/documents",
-          form,
+        const { document_id } = await runUpload((onProgress) =>
+          postFormJson<{ document_id: string }>("/documents", form, (p) =>
+            onProgress(Math.round(((i + p / 100) / list.length) * 100)),
+          ),
         );
         const type = file.type.startsWith("image/")
           ? "image"
@@ -738,7 +744,11 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
               onCancel={() => setRecording(false)}
             />
           ) : (
-            <div className="flex items-end gap-2">
+            <div className="space-y-2">
+              {uploadProgress !== null && (
+                <UploadProgress value={uploadProgress} label="Attaching…" />
+              )}
+              <div className="flex items-end gap-2">
               <div className="relative flex-1 rounded-2xl border hairline bg-panel-2">
                 <textarea
                   ref={textareaRef}
@@ -861,6 +871,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                   <Send className="w-4 h-4" />
                 )}
               </button>
+              </div>
             </div>
           )}
         </div>
@@ -1023,7 +1034,11 @@ function ThreadMenu({
 
 // ── Form upload helper (the messaging composer needs raw FormData) ──
 
-async function postFormJson<T>(path: string, form: FormData): Promise<T> {
+async function postFormJson<T>(
+  path: string,
+  form: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
   const { api } = await import("@/lib/api");
-  return api.postForm<T>(path, form);
+  return api.postForm<T>(path, form, { onProgress });
 }

@@ -69,7 +69,12 @@ function StyledCreate() {
         slug: slugify(name),
         retail_price_ngn: retail ? Number(retail) : undefined,
       },
-      { onSuccess: (s) => nav(`/catalogue/styled/${s.styled_id}`) },
+      {
+        onSuccess: (s) => {
+          sessionStorage.setItem("pgh_catalogue_return_styled", s.styled_id);
+          nav(`/catalogue/styled/${s.styled_id}`);
+        },
+      },
     );
   };
 
@@ -107,7 +112,11 @@ function StyledCreate() {
           </p>
         )}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => nav("/catalogue")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => nav("/catalogue?tab=styled")}
+          >
             Cancel
           </Button>
           <Button
@@ -163,7 +172,7 @@ function StyledDetail({ id }: { id: string }) {
       s={styled.data}
       canPublish={can("catalogue", "publish")}
       canEdit={can("catalogue", "edit")}
-      onBack={() => nav("/catalogue")}
+      onBack={() => nav("/catalogue?tab=styled")}
     />
   );
 }
@@ -468,7 +477,7 @@ function BackBar({ label }: { label: string }) {
         variant="ghost"
         size="sm"
         icon={<ArrowLeft className="w-4 h-4" />}
-        onClick={() => nav("/catalogue")}
+        onClick={() => nav("/catalogue?tab=styled")}
       >
         Catalogue
       </Button>

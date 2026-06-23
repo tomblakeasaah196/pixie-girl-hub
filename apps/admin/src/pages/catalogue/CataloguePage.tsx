@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
@@ -22,7 +22,14 @@ import { CatalogueSettingsTab } from "./CatalogueSettingsTab";
 export function CataloguePage() {
   useBreadcrumbs([{ label: "Catalogue" }]);
   const { can } = useAuthStore();
-  const [tab, setTab] = useState("styled");
+  // Tab lives in the URL (not component state) so it survives the
+  // unmount/remount that happens when navigating back from a product's
+  // edit page — otherwise "back" always lands on the default tab.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") || "styled";
+  const setTab = (key: string) => {
+    setSearchParams(key === "styled" ? {} : { tab: key }, { replace: true });
+  };
   // Categories are hidden unless re-enabled from Config (owner directive).
   const categoriesOn = useCategoriesEnabled();
 

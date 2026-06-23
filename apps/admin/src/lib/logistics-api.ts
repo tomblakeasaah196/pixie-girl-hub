@@ -378,6 +378,18 @@ export interface ZoneGeometry {
 
 export type ZoneGeometryType = "polygon" | "radius" | "country";
 
+export interface RateTier {
+  label: string;
+  min_qty: number;
+  max_qty: number | null;
+  fee_ngn: number;
+}
+
+export interface RateCard {
+  tiers: RateTier[];
+  add_on_per_2_ngn?: number;
+}
+
 export interface DeliveryZone {
   zone_id: string;
   name: string;
@@ -388,6 +400,8 @@ export interface DeliveryZone {
   country_code?: string | null;
   priority: number;
   is_active: boolean;
+  rate_card?: RateCard | null;
+  courier_key?: string | null;
 }
 
 export interface ZoneInput {
@@ -399,6 +413,8 @@ export interface ZoneInput {
   country_code?: string;
   priority?: number;
   is_active?: boolean;
+  rate_card?: RateCard;
+  courier_key?: string;
 }
 
 export function useZones() {
@@ -446,8 +462,18 @@ export function useDeleteZone() {
 export interface ZoneQuote {
   zone_id: string | null;
   zone_name: string | null;
+  country_code: string | null;
+  courier_key: string | null;
   fee_ngn: number | null;
+  rate_card: RateCard | null;
   currency: string;
+}
+
+export interface ImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
 }
 
 export function useZoneQuote() {
@@ -461,4 +487,37 @@ export function useZoneQuote() {
       return api.get<ZoneQuote>(`/logistics/zones/quote?${qs}`);
     },
   });
+}
+
+export function useRateCardQuote() {
+  return useMutation({
+    mutationFn: (args: { country_code: string; qty: number }) => {
+      const qs = new URLSearchParams({
+        country: args.country_code,
+        qty: String(args.qty),
+      });
+      return api.get<ZoneQuote>(`/logistics/zones/quote?${qs}`);
+    },
+  });
+}
+
+export function useImportRates() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return api.postForm<ImportResult>("/logistics/zones/rates-import", form);
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["logistics", "zones", brand] }),
+  });
+}
+
+export async function downloadRatesTemplate(): Promise<void> {
+  return api.download(
+    "/logistics/zones/rates-template",
+    "delivery-zones-template.xlsx",
+  );
 }

@@ -104,8 +104,20 @@ export async function postCheckout(args: {
     },
   );
   if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(err || `HTTP ${res.status}`);
+    const body = await res.text().catch(() => "");
+    let parsed: { error?: { code?: string; message?: string; user_message?: string; retryable?: boolean; reference?: string; order_id?: string; support?: { whatsapp?: string; email?: string; message?: string } } } = {};
+    try { parsed = JSON.parse(body); } catch { /* raw text fallback */ }
+    const e = parsed?.error;
+    // Attach structured fields so the checkout UI can render a proper error card.
+    const msg = e?.user_message || e?.message || body || `HTTP ${res.status}`;
+    const err = Object.assign(new Error(msg), {
+      code: e?.code,
+      retryable: e?.retryable ?? true,
+      reference: e?.reference,
+      order_id: e?.order_id,
+      support: e?.support ?? null,
+    });
+    throw err;
   }
   return res.json();
 }

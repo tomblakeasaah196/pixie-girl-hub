@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  AlertCircle,
   ArrowLeft,
   Check,
   ChevronDown,
@@ -12,6 +13,8 @@ import {
   Gift,
   Lock,
   MapPin,
+  MessageCircle,
+  RefreshCw,
   ShieldCheck,
   Tag,
 } from "lucide-react";
@@ -59,7 +62,13 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [honey, setHoney] = useState(""); // honeypot
   const [gateway, setGateway] = useState<Gateway>("paystack");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<{
+    message: string;
+    retryable: boolean;
+    reference?: string;
+    order_id?: string;
+    support?: { whatsapp?: string; email?: string; message?: string } | null;
+  } | null>(null);
   const errRef = useRef<HTMLDivElement | null>(null);
 
   // Never let a failure be silent — pull the error into view next to the
@@ -82,11 +91,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     setErr(null);
     if (honey) return; // bot
     if (!terms) {
-      setErr("Please accept the terms to continue.");
+      setErr({ message: "Please accept the terms to continue.", retryable: false });
       return;
     }
-    if (!first || !last || !email || !phone || !addressLine1 || !city) {
-      setErr("All required fields must be filled.");
+    if (!first || !email || !phone || !addressLine1 || !city) {
+      setErr({ message: "Please fill in all required fields.", retryable: false });
       return;
     }
     setBusy(true);
@@ -158,7 +167,19 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
       }
     } catch (e) {
-      setErr((e as Error)?.message || "Checkout failed. Please try again.");
+      const ex = e as Error & {
+        retryable?: boolean;
+        reference?: string;
+        order_id?: string;
+        support?: { whatsapp?: string; email?: string; message?: string } | null;
+      };
+      setErr({
+        message: ex?.message || "Checkout failed. Please try again.",
+        retryable: ex?.retryable !== false,
+        reference: ex?.reference,
+        order_id: ex?.order_id,
+        support: ex?.support ?? null,
+      });
     } finally {
       setBusy(false);
     }
@@ -197,6 +218,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         </h1>
 
         <form
+          id="checkout-form"
           onSubmit={submit}
           className="mt-8 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6"
         >
@@ -395,8 +417,14 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               </label>
             </Section>
 
-            {err && (
-              <div className="text-[13px] text-[rgb(var(--danger))]">{err}</div>
+            {err && !err.retryable && (
+              <div
+                role="alert"
+                aria-live="polite"
+                className="rounded-xl border border-[rgb(var(--danger)/0.35)] bg-[rgb(var(--danger)/0.08)] px-4 py-3 text-[13px] text-[rgb(var(--danger))]"
+              >
+                {err.message}
+              </div>
             )}
           </div>
 
@@ -513,9 +541,48 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   ref={errRef}
                   role="alert"
                   aria-live="assertive"
-                  className="rounded-xl border border-[rgb(var(--danger)/0.4)] bg-[rgb(var(--danger)/0.08)] px-3 py-2 text-[12.5px] text-[rgb(var(--danger))]"
+                  className="rounded-xl border border-[rgb(var(--danger)/0.4)] bg-[rgb(var(--danger)/0.08)] px-4 py-3 space-y-2.5"
                 >
-                  {err}
+                  {/* Icon + message */}
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[rgb(var(--danger))]" />
+                    <p className="text-[13px] leading-snug text-[rgb(var(--danger))]">
+                      {err.message}
+                    </p>
+                  </div>
+
+                  {/* Order reference (so support can find the order) */}
+                  {(err.order_id || err.reference) && (
+                    <p className="text-[11px] text-[rgb(var(--text-faint))] font-mono pl-[26px]">
+                      Ref: {err.order_id || err.reference}
+                    </p>
+                  )}
+
+                  {/* WhatsApp / email support */}
+                  {err.support?.whatsapp && (
+                    <a
+                      href={`https://wa.me/${err.support.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hi, I need help with my order. Ref: ${err.order_id || err.reference || ""}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-[12.5px] font-semibold text-[rgb(var(--success))] hover:underline pl-[26px]"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                      Chat with us on WhatsApp
+                    </a>
+                  )}
+
+                  {/* Retry button (only when the action is safe to retry) */}
+                  {err.retryable && (
+                    <button
+                      type="submit"
+                      form="checkout-form"
+                      disabled={busy}
+                      className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))] pl-[26px] disabled:opacity-50"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Try again
+                    </button>
+                  )}
                 </div>
               )}
               <motion.button

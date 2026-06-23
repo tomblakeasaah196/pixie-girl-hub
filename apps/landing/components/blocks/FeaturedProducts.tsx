@@ -243,7 +243,14 @@ function Card({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              const itemId = product.styled_id || product.product_id;
+              // Styled products must be configured (size/lace) before adding —
+              // the base product_id prices at ₦0. Open the detail modal, which
+              // adds the chosen styled_variant_id to the cart.
+              if (product.styled_id) {
+                open();
+                return;
+              }
+              const itemId = product.product_id;
               if (!itemId) return;
               add({
                 id: itemId,

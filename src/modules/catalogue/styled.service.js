@@ -198,6 +198,34 @@ async function create({ brand, user, request_id, input, ai }) {
 async function update({ brand, user, request_id, id, patch }) {
   const before = await repo.getById({ brand, id });
   if (!before) throw new NotFoundError("Styled product");
+
+  // Re-pointing the base product is sensitive: the styled product's variants,
+  // its base_variant_id, and stock pulls are all tied to the base. Validate the
+  // new base, and only allow the change while the styled product is a draft
+  // (mirrors publish()'s gating) so a live product's links can't be orphaned.
+  if (
+    patch.base_product_id !== undefined &&
+    patch.base_product_id !== before.base_product_id
+  ) {
+    if (before.status !== "draft") {
+      throw new AppError(
+        "BASE_LOCKED",
+        "The base product can only be changed while the styled product is a draft. Unpublish it to a draft first.",
+        409,
+      );
+    }
+    const base = await repo.baseProduct({
+      brand,
+      base_product_id: patch.base_product_id,
+    });
+    if (!base || base.is_deleted) {
+      throw new AppError("INVALID_BASE", "Base product not found", 422);
+    }
+    // The existing base_variant_id points at the OLD base — clear it unless the
+    // caller supplies a new one, so it can't dangle against the new base.
+    if (patch.base_variant_id === undefined) patch.base_variant_id = null;
+  }
+
   const updated = await repo.update({ brand, id, patch });
   await A(
     brand,

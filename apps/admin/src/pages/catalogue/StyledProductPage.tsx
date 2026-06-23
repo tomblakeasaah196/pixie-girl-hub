@@ -209,6 +209,7 @@ function StyledEditor({
     s.compare_at_price_usd != null ? String(s.compare_at_price_usd) : "",
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingBase, setEditingBase] = useState(false);
 
   useEffect(() => {
     setName(s.name);
@@ -425,14 +426,57 @@ function StyledEditor({
             </p>
           </Card>
           <Card className="p-4">
-            <div className="micro mb-1.5">Base product</div>
-            <div className="text-[13px]">{s.base_name}</div>
-            <div className="font-mono text-[10.5px] text-accent-glow">
-              {s.base_product_code}
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="micro">Base product</div>
+              {canEdit && s.status === "draft" && !editingBase && (
+                <button
+                  type="button"
+                  onClick={() => setEditingBase(true)}
+                  className="text-[12px] font-semibold text-accent-glow hover:underline"
+                >
+                  change
+                </button>
+              )}
             </div>
-            <p className="text-[11px] text-text-faint mt-1.5">
-              wholesale base · stock source
-            </p>
+            {editingBase ? (
+              <div>
+                <BaseProductPicker
+                  value={s.base_product_id}
+                  disabled={update.isPending}
+                  onChange={(id) => {
+                    if (!id || id === s.base_product_id) {
+                      setEditingBase(false);
+                      return;
+                    }
+                    // Re-point the styled product at a new base. The server
+                    // validates the base and clears the now-stale base_variant_id.
+                    update.mutate(
+                      { base_product_id: id },
+                      { onSuccess: () => setEditingBase(false) },
+                    );
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setEditingBase(false)}
+                  className="mt-1.5 text-[11px] text-text-faint hover:text-text-primary"
+                >
+                  cancel
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="text-[13px]">{s.base_name}</div>
+                <div className="font-mono text-[10.5px] text-accent-glow">
+                  {s.base_product_code}
+                </div>
+                <p className="text-[11px] text-text-faint mt-1.5">
+                  {s.status === "draft"
+                    ? "wholesale base · stock source"
+                    : "wholesale base · stock source — unpublish to a draft to change"}
+                </p>
+              </>
+            )}
           </Card>
           {canEdit && (
             <Card className="p-4">

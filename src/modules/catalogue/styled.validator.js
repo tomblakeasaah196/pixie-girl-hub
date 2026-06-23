@@ -43,7 +43,10 @@ const styledCreate = z
   })
   .strict();
 
-const styledUpdate = styledCreate.partial().omit({ base_product_id: true });
+// base_product_id is updatable (the admin can re-point a styled product at a
+// different base). The service validates the new base exists / isn't deleted
+// and gates when the change is unsafe (see styled.service.update).
+const styledUpdate = styledCreate.partial();
 
 const unpublish = z.object({ archive: z.boolean().optional() }).strict();
 

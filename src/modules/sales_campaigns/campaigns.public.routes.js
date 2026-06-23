@@ -47,6 +47,32 @@ const signupLimiter = rateLimit({
   },
 });
 
+// Checkout is a genuine buyer action. The signup cap (20 / 15 min) is far too
+// tight here — a buyer who retries, or several buyers behind one carrier-grade
+// NAT (very common on Nigerian mobile networks), trip a 429 that surfaces as a
+// confusing "silent" checkout failure. Give the pay flow its own roomier window
+// AND key it on the client idempotency key when present, so (a) a buyer
+// retrying the SAME checkout reuses one bucket instead of burning the budget,
+// and (b) distinct buyers behind one IP no longer collide.
+const checkoutLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const k = req.body && req.body.client_idempotency_key;
+    return typeof k === "string" && k ? `idem:${k}` : req.ip || "unknown";
+  },
+  message: {
+    error: {
+      code: "TOO_MANY_REQUESTS",
+      message:
+        "Too many checkout attempts — please wait a moment and tap pay again.",
+      retryable: true,
+    },
+  },
+});
+
 // Storefront index (no slug) — must precede the /:slug route.
 router.get("/", landingReadLimiter, controller.index);
 router.get("/:slug", landingReadLimiter, controller.landing);
@@ -58,11 +84,11 @@ router.post(
   controller.signup,
 );
 
-// Checkout: the live sale "Pay now" flow. Uses the signup limiter (20 per
-// 15 min per IP) — a real buyer will never hit this; a scraper/bot will.
+// Checkout: the live sale "Pay now" flow. Uses its own roomier limiter so a
+// retrying buyer is never mistaken for a bot and 429'd mid-purchase.
 router.post(
   "/:slug/checkout",
-  signupLimiter,
+  checkoutLimiter,
   validator.validateCheckout,
   controller.checkout,
 );

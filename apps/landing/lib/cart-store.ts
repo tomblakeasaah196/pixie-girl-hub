@@ -15,6 +15,9 @@ export interface CartItem {
   quantity: number;
   preorder?: boolean;
   preorder_lead_weeks?: number;
+  /** In-stock delivery lead time (weeks) set in the campaign builder. Shown
+   *  in the cart + checkout so an in-stock buyer sees when it ships. */
+  delivery_weeks?: number;
 }
 
 interface CartState {

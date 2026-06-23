@@ -100,12 +100,88 @@ function ins(cols, src, extra = {}) {
   return { f, ph, p };
 }
 
-async function nextNumber({ client, brand, type }) {
-  const { rows } = await ex(client)(
-    `SELECT ${t(brand, "fn_next_document_number")}($1) AS n`,
-    [type],
+// Document-type → number suffix, mirroring the bootstrap seed (template 000035)
+// so an auto-provisioned sequence matches the house style (e.g. PXG-SO-0001).
+const DOC_SUFFIX = {
+  sales_order: "SO",
+  sales_order_payment: "PAY",
+  quotation: "QUO",
+  credit_note: "CN",
+  receipt: "RCT",
+  invoice: "INV",
+  stock_movement: "MOV",
+  stock_transfer: "TRF",
+  stock_adjustment: "ADJ",
+  cancellation_request: "CR",
+};
+
+function isMissingSequence(err) {
+  return Boolean(
+    err &&
+      (err.code === "P0001" || !err.code) &&
+      /document_numbering/i.test(err.message || ""),
   );
-  return rows[0].n;
+}
+
+// Seed a missing document_numbering row so checkout self-heals instead of
+// 500-ing when a brand wasn't fully provisioned. Prefix root is borrowed from
+// any existing sequence for the brand (house style), else derived from the key.
+async function provisionSequence(run, brand, type) {
+  const { rows } = await run(
+    `SELECT split_part(prefix,'-',1) AS root
+       FROM shared.document_numbering
+      WHERE business = $1 AND prefix LIKE '%-%'
+      ORDER BY seq_id LIMIT 1`,
+    [brand],
+  );
+  const root =
+    (rows[0] && rows[0].root) ||
+    brand.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() ||
+    "DOC";
+  const suffix =
+    DOC_SUFFIX[type] ||
+    String(type).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) ||
+    "DOC";
+  await run(
+    `INSERT INTO shared.document_numbering (business, document_type, prefix, padding, next_number)
+     VALUES ($1, $2, $3, 4, 1)
+     ON CONFLICT DO NOTHING`,
+    [brand, type, `${root}-${suffix}`],
+  );
+}
+
+async function nextNumber({ client, brand, type }) {
+  const call = `SELECT ${t(brand, "fn_next_document_number")}($1) AS n`;
+  // Inside a transaction we must guard the call with a SAVEPOINT: if the
+  // sequence row is missing the function RAISEs, which aborts the whole
+  // transaction. The savepoint lets us recover, provision the row, and retry.
+  if (client) {
+    await client.query("SAVEPOINT pgh_docnum");
+    try {
+      const { rows } = await client.query(call, [type]);
+      await client.query("RELEASE SAVEPOINT pgh_docnum");
+      return rows[0].n;
+    } catch (err) {
+      await client.query("ROLLBACK TO SAVEPOINT pgh_docnum");
+      if (!isMissingSequence(err)) {
+        await client.query("RELEASE SAVEPOINT pgh_docnum").catch(() => {});
+        throw err;
+      }
+      await provisionSequence(client.query.bind(client), brand, type);
+      const { rows } = await client.query(call, [type]);
+      await client.query("RELEASE SAVEPOINT pgh_docnum").catch(() => {});
+      return rows[0].n;
+    }
+  }
+  try {
+    const { rows } = await query(call, [type]);
+    return rows[0].n;
+  } catch (err) {
+    if (!isMissingSequence(err)) throw err;
+    await provisionSequence(query, brand, type);
+    const { rows } = await query(call, [type]);
+    return rows[0].n;
+  }
 }
 
 // Variant pricing/snapshot context for a line

@@ -171,4 +171,12 @@ export interface LandingPayload {
   stacking_bonus?: StackingBonusConfig | null;
   /** Reseller/bulk tiers visible on landing page. */
   bulk_tiers?: BulkTierConfig[] | null;
+  /** Static "1 USD = N NGN" rate the customer-facing currency toggle uses.
+   *  Customer display only — order settlement uses the LIVE FX rate at
+   *  payment. NULL = NGN-only, the toggle is hidden. */
+  ngn_per_usd_rate?: number | null;
+  /** Top-level discount + per-position ladder echo — surfaced so featured
+   *  product cards can render a "save ₦X / wig" estimate. */
+  discount_type?: string | null;
+  discount_value?: number | null;
 }

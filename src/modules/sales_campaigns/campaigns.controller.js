@@ -259,6 +259,14 @@ async function report(req, res) {
   res.json({ data });
 }
 
+async function readiness(req, res) {
+  const data = await service.getReadiness({
+    brand: req.brand,
+    id: req.params.id,
+  });
+  res.json({ data });
+}
+
 module.exports = {
   list,
   getById,
@@ -287,4 +295,5 @@ module.exports = {
   metrics,
   dailyMetrics,
   report,
+  readiness,
 };

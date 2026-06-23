@@ -25,8 +25,54 @@ const styledVariantsRepo = require("../catalogue/styled_variants.repo");
 const { transaction, query } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
+const { getSupportContact, supportSentence } = require("../../config/support");
 
 const { BRANDS } = require("../../config/brands");
+
+// Strip human formatting from a phone so "+234 (0)801 234 5678" and
+// "08012345678" don't create duplicate contacts or fail length checks.
+function normalizePhone(raw) {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  const plus = trimmed.startsWith("+") ? "+" : "";
+  return plus + trimmed.replace(/[^0-9]/g, "");
+}
+
+// Build a buyer-facing support block + a one-line sentence for messages.
+function buildSupport(brand, brandConfig) {
+  const c = getSupportContact(brand, brandConfig);
+  return {
+    contact: c,
+    meta:
+      c.whatsapp || c.email
+        ? { whatsapp: c.whatsapp, email: c.email, message: supportSentence(c) }
+        : null,
+    sentence: supportSentence(c),
+  };
+}
+
+// Pre-order delivery estimate for the checkout response so the UI can show
+// "ships in N weeks" the moment the buyer pays.
+function preorderResponse(order, campaign) {
+  const pre = order && order._preorder;
+  if (!pre || !pre.is_preorder) return null;
+  const base = Number(campaign.delivery_weeks) || 0;
+  const extra =
+    campaign.preorder_extra_weeks === null ||
+    campaign.preorder_extra_weeks === undefined
+      ? 4
+      : Number(campaign.preorder_extra_weeks);
+  const weeks = base + extra;
+  return {
+    is_preorder: true,
+    item_count: pre.line_count,
+    items: pre.names,
+    delivery_weeks: weeks,
+    message: weeks
+      ? `Pre-order confirmed — your item${pre.line_count > 1 ? "s" : ""} ship${pre.line_count > 1 ? "" : "s"} in about ${weeks} weeks.`
+      : "Pre-order confirmed — we'll be in touch with your delivery date.",
+  };
+}
 
 // Statuses that are publicly visible (the landing page exists for these).
 const PUBLIC_STATUSES = new Set(["scheduled", "live", "paused", "ended"]);
@@ -392,10 +438,17 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
 
   // ── 1. Find or create CRM contact + address ────────────
   // Runs in its own transaction so it doesn't nest inside salesService's.
-  const contact = await transaction(async (client) => {
+  const { contact, deliveryAddress } = await transaction(async (client) => {
     const c = input.contact;
-    const email = c.email.toLowerCase().trim();
-    const phone = c.phone.trim();
+    const email = (c.email || "").toLowerCase().trim() || null;
+    const phone = normalizePhone(c.phone);
+    // Single-name buyers are allowed (last name optional) — build a sensible
+    // display name from whatever we have so the NOT NULL display_name holds.
+    const displayName =
+      [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+      email ||
+      phone ||
+      "Customer";
 
     let ct = await contactsRepo.findByPhoneOrEmail({ client, phone, email });
     if (!ct) {
@@ -403,9 +456,9 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         client,
         input: {
           contact_type: ["customer"],
-          display_name: `${c.first_name} ${c.last_name}`,
+          display_name: displayName,
           first_name: c.first_name,
-          last_name: c.last_name,
+          last_name: c.last_name || null,
           email,
           primary_phone: phone,
           source: "campaign_checkout",
@@ -422,33 +475,60 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       });
     }
 
+    // Ship-to-typed + save (owner decision): always honour the address the
+    // buyer typed for THIS order and persist it as their default for next time
+    // — never silently ship to a stale saved address. We clear the existing
+    // default first so the (contact_id,'delivery',is_default) unique index
+    // can't 409 a concurrent checkout. The whole save is wrapped in a SAVEPOINT
+    // so an address hiccup can never poison this transaction (which would have
+    // surfaced as INTERNAL_ERROR) — we fall back to any existing address.
+    //
+    // NB: address_type must be 'delivery' (CHECK allows delivery|billing|office
+    // |home|other — 'shipping' 23514'd). State is omitted when blank so the
+    // NOT NULL DEFAULT 'Lagos' applies (an explicit NULL 23502'd).
     const addr = c.address;
-    const addresses = await contactsRepo.listAddresses({
-      client,
-      contact_id: ct.contact_id,
-    });
-    // NB: shared.contact_addresses.address_type CHECK allows only
-    // 'delivery' | 'billing' | 'office' | 'home' | 'other'. Using 'shipping'
-    // tripped a 23514 (→ INVALID_VALUE) on every checkout. 'delivery' is the
-    // canonical customer-shipping type (and the column default).
-    if (!addresses.some((a) => a.address_type === "delivery" && a.is_default)) {
-      await contactsRepo.addAddress({
+    let savedAddress = null;
+    await client.query("SAVEPOINT pgh_addr");
+    try {
+      await contactsRepo.clearDefaultAddresses({
+        client,
+        contact_id: ct.contact_id,
+        address_type: "delivery",
+      });
+      savedAddress = await contactsRepo.addAddress({
         client,
         contact_id: ct.contact_id,
         input: {
-          address_type: "delivery",
           address_type: "delivery",
           is_default: true,
           line1: addr.line1,
           line2: addr.line2 || null,
           city: addr.city,
-          state: addr.state || null,
+          ...(addr.state ? { state: addr.state } : {}),
           country: addr.country || "Nigeria",
+          recipient_name: displayName,
+          ...(phone ? { recipient_phone: phone } : {}),
         },
         user_id: null,
       });
+      await client.query("RELEASE SAVEPOINT pgh_addr");
+    } catch (err) {
+      await client.query("ROLLBACK TO SAVEPOINT pgh_addr");
+      await client.query("RELEASE SAVEPOINT pgh_addr").catch(() => {});
+      logger.warn(
+        { err: err.message, contact_id: ct.contact_id },
+        "checkout address save fell back to existing",
+      );
+      const existing = await contactsRepo.listAddresses({
+        client,
+        contact_id: ct.contact_id,
+      });
+      savedAddress =
+        existing.find((a) => a.address_type === "delivery" && a.is_default) ||
+        existing[0] ||
+        null;
     }
-    return ct;
+    return { contact: ct, deliveryAddress: savedAddress };
   });
 
   // ── 2. Map cart items → order lines (variant-level) ────
@@ -496,6 +576,15 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         variant_id: rows[0].variant_id,
         quantity: cartItem.quantity,
       });
+    } else {
+      // Neither a bundle nor a product id — surface it instead of silently
+      // dropping the line (which previously let a cart check out as an empty
+      // order, looking like a "silent failure" to the buyer).
+      throw new AppError(
+        "CART_ITEM_UNRESOLVED",
+        "One of your items is no longer available. Please remove it and try again.",
+        409,
+      );
     }
   }
 
@@ -528,11 +617,15 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     },
   });
 
-  // ── 4. Record checkout metadata (best-effort) ──────────
+  // ── 4. Record checkout metadata + freeze the delivery address ──
   // sales_orders carries customer_notes (human, fulfilment-facing) and
-  // internal_notes (structured: gift instructions, consent, request origin).
+  // internal_notes (structured: gift instructions, consent, request origin,
+  // pre-order). We also snapshot the delivery address onto the order so
+  // fulfilment ships exactly where the buyer typed — independent of any later
+  // change to their saved address. Best-effort: a separate query (not inside a
+  // transaction) so a hiccup here can never undo the order or poison anything.
   const c = input.contact;
-  if (c.notes || c.gift || c.consent) {
+  {
     const internal = {};
     if (c.gift) {
       internal.gift = c.gift;
@@ -542,11 +635,20 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       }
     }
     if (c.consent) internal.consent = c.consent;
+    if (order._preorder && order._preorder.is_preorder) {
+      internal.preorder = {
+        line_count: order._preorder.line_count,
+        items: order._preorder.names,
+      };
+    }
     internal.ip = ip;
     internal.user_agent = user_agent;
 
     const customerParts = [];
     if (c.notes) customerParts.push(c.notes);
+    if (order._preorder && order._preorder.is_preorder) {
+      customerParts.push("Contains pre-order item(s).");
+    }
     if (c.gift) {
       customerParts.push(`GIFT ORDER for ${c.gift.recipient_name}`);
       if (c.gift.message) customerParts.push(`Gift message: ${c.gift.message}`);
@@ -557,14 +659,35 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         );
       }
     }
+
+    const addressSnapshot = deliveryAddress
+      ? {
+          line1: deliveryAddress.line1,
+          line2: deliveryAddress.line2,
+          area: deliveryAddress.area,
+          city: deliveryAddress.city,
+          state: deliveryAddress.state,
+          country: deliveryAddress.country,
+          country_code: deliveryAddress.country_code,
+          postal_code: deliveryAddress.postal_code,
+          recipient_name: deliveryAddress.recipient_name,
+          recipient_phone: deliveryAddress.recipient_phone,
+        }
+      : null;
+
     try {
       await query(
         `UPDATE ${resolvedBrand}.sales_orders
-            SET customer_notes = $1, internal_notes = $2
-          WHERE order_id = $3`,
+            SET customer_notes = $1,
+                internal_notes = $2,
+                delivery_address_id = COALESCE($3, delivery_address_id),
+                delivery_address_snapshot = COALESCE($4::jsonb, delivery_address_snapshot)
+          WHERE order_id = $5`,
         [
           customerParts.length ? customerParts.join("\n") : null,
           Object.keys(internal).length ? JSON.stringify(internal) : null,
+          deliveryAddress ? deliveryAddress.address_id : null,
+          addressSnapshot ? JSON.stringify(addressSnapshot) : null,
           order.order_id,
         ],
       );
@@ -576,11 +699,10 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // ── 5. Initiate payment ────────────────────────────────
   // Payment init hits external APIs — kept outside DB transactions so a
   // gateway timeout doesn't hold locks. If it fails the order still exists
-  // in pending_payment state and the customer can retry via the pay link.
-  //
-  // The return_url_base points the gateway callback to the landing thank-you
-  // page so the customer is redirected back after payment.
+  // in pending_payment state and the customer can retry (re-POSTing with the
+  // same idempotency key returns this order and re-attempts payment).
   const brandConfig = await getBrandPublic(resolvedBrand);
+  const support = buildSupport(resolvedBrand, brandConfig);
   // Same resolution as share links / go-live blasts: prefer the sales
   // subdomain so the gateway returns the buyer to the live sale site.
   const landingBase = main.publicSaleBaseUrl(brandConfig);
@@ -588,14 +710,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     ? `${landingBase}/checkout/${slug}/thank-you`
     : undefined;
 
+  // Buyer's chosen display currency drives gateway routing (USD → Nomba only,
+  // NGN → Nomba then Paystack). Declared out here so the catch can branch on it.
+  const checkoutCurrency = String(input.display_currency || "NGN").toUpperCase();
+
   try {
-    // Pass the buyer's chosen display currency through so getActiveChain
-    // routes the right rail (USD → Nomba only, NGN → Nomba then Paystack).
-    // Order remains in NGN base; the gateway charges in the chosen currency
-    // and the webhook stamps display_currency + fx_rate_used at settlement.
-    const checkoutCurrency = String(
-      input.display_currency || "NGN",
-    ).toUpperCase();
     const payResult = await paymentLink.createPaymentLink({
       brand: resolvedBrand,
       order_id: order.order_id,
@@ -612,17 +731,53 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       order_id: order.order_id,
       gateway: payResult.provider,
     });
-    return { order_id: order.order_id, payment_url: payResult.checkout_url };
+    const preorder = preorderResponse(order, campaign);
+    return {
+      order_id: order.order_id,
+      payment_url: payResult.checkout_url,
+      ...(preorder ? { preorder } : {}),
+      ...(order._notices && order._notices.length
+        ? { notices: order._notices }
+        : {}),
+    };
   } catch (err) {
     logger.error(
-      { err, order_id: order.order_id },
+      { err: err.message, order_id: order.order_id, currency: checkoutCurrency },
       "payment gateway init failed after order creation",
     );
+    // USD has no NGN fallback rail (owner: dollar is the universal currency for
+    // international buyers, we don't convert them to Naira). Hand the buyer
+    // straight to support with their order reference instead of a dead 500.
+    if (checkoutCurrency === "USD") {
+      throw new AppError(
+        "USD_PAYMENT_UNAVAILABLE",
+        "USD payment could not be initiated",
+        502,
+        {
+          user_message: `We couldn't start your USD payment right now. ${support.sentence} Your order is saved (reference ${order.order_id}).`,
+          metadata: {
+            order_id: order.order_id,
+            retryable: false,
+            support: support.meta,
+          },
+        },
+      );
+    }
+    // NGN: the order is saved — invite a retry (idempotency-key-safe) and give
+    // them support as a backstop.
     throw new AppError(
       "PAYMENT_INIT_FAILED",
-      "Order created but payment could not be initiated. Please try again.",
+      "Order created but payment could not be initiated",
       502,
-      { metadata: { order_id: order.order_id } },
+      {
+        user_message:
+          "Your order is saved but we couldn't start the payment. Please tap pay again to retry — you won't be charged twice.",
+        metadata: {
+          order_id: order.order_id,
+          retryable: true,
+          support: support.meta,
+        },
+      },
     );
   }
 }

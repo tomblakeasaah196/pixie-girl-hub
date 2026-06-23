@@ -13,6 +13,7 @@
 const crypto = require("crypto");
 const repo = require("./campaigns.repo");
 const events = require("./campaigns.events");
+const readiness = require("./campaigns.readiness.service");
 const wf = require("../../workflows/engine");
 const storage = require("../../services/storage.service");
 const { audit } = require("../../middleware/audit");
@@ -349,6 +350,13 @@ async function transition({ brand, user, request_id, id, action }) {
         409,
       );
     }
+    // Go-live readiness gate (launch/resume only). Auto-repairs document
+    // sequences and blocks only on issues that would 500 buyer checkouts.
+    // Runs solely on the transition, so an already-live campaign is never
+    // re-checked — enabling this can't pull a running sale offline.
+    if (rule.to === "live") {
+      await readiness.assertReadyForLaunch({ brand, campaign, client });
+    }
     const updated = await repo.setStatus({
       client,
       brand,
@@ -620,6 +628,9 @@ function buildLandingPayload(c, products, state) {
         ? Number(c.discount_value)
         : null,
     // ── v3 deals engine fields ───────────────────────────────
+    // Pre-orders are always accepted — a sold-out item never blocks checkout,
+    // it ships on the pre-order timeline (delivery_weeks + preorder_extra_weeks).
+    preorder_enabled: true,
     delivery_weeks: c.delivery_weeks || null,
     preorder_extra_weeks: c.preorder_extra_weeks ?? 4,
     position_ladder: c.position_ladder || null,
@@ -649,6 +660,13 @@ function buildLandingPayload(c, products, state) {
                 p.regular_price_usd ?? p.styled_retail_price_usd ?? null,
               is_featured: p.is_featured,
               stock_remaining: p.current_stock_snapshot,
+              // Pre-order signal for the card/cart/checkout UI: when the live
+              // stock snapshot is sold out we still sell (we accept pre-orders)
+              // — the UI shows "Pre-order · ships in delivery_weeks + extra".
+              preorder:
+                p.current_stock_snapshot !== null &&
+                p.current_stock_snapshot !== undefined &&
+                Number(p.current_stock_snapshot) <= 0,
               image_url: p.resolved_image_url || p.image_url,
             }))
         : [],
@@ -772,6 +790,27 @@ async function ensureExists({ brand, id }) {
   return c;
 }
 
+/**
+ * Read-only checkout-readiness report for the campaign screen (no repair, no
+ * state change) so an operator can see — and fix — what would break checkout
+ * before going live.
+ */
+async function getReadiness({ brand, id }) {
+  const c = await repo.findById({ brand, id });
+  if (!c) throw new NotFoundError("Campaign");
+  const result = await readiness.check({
+    brand,
+    campaign: c,
+    autofix: false,
+  });
+  return {
+    campaign_id: c.campaign_id,
+    status: c.status,
+    public_state: resolveState(c),
+    ...result,
+  };
+}
+
 // ── Landing image upload ─────────────────────────────────
 // Stores a hero / look-book image for a campaign and returns its public URL.
 // Brand-scoped (the campaign must exist in the caller's brand) so a campaign
@@ -830,4 +869,5 @@ module.exports = {
   getMetrics,
   listDailyMetrics,
   getReport,
+  getReadiness,
 };

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -8,6 +8,8 @@ import {
   Ruler,
   Trash2,
   Image as ImageIcon,
+  LayoutGrid,
+  List as ListIcon,
 } from "lucide-react";
 import {
   Button,
@@ -18,6 +20,7 @@ import {
 } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
+import { cn } from "@/lib/cn";
 import {
   useStyledProducts,
   useStockRealtime,
@@ -49,6 +52,9 @@ const STATUS_TABS: { key: string; label: string }[] = [
   { key: "archived", label: "Archived" },
 ];
 
+const VIEW_KEY = "pgh_catalogue_styled_view";
+const RETURN_KEY = "pgh_catalogue_return_styled";
+
 export function StyledTab() {
   const nav = useNavigate();
   const { can } = useAuthStore();
@@ -57,6 +63,23 @@ export function StyledTab() {
   const [aiOpen, setAiOpen] = useState(false);
   const [sizeOpen, setSizeOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [view, setView] = useState<"thumbnail" | "list">(
+    () =>
+      (localStorage.getItem(VIEW_KEY) as "thumbnail" | "list") || "thumbnail",
+  );
+  const setViewPersist = (v: "thumbnail" | "list") => {
+    setView(v);
+    localStorage.setItem(VIEW_KEY, v);
+  };
+
+  // Remembers which card to scroll back to + highlight when we return from
+  // a styled product's edit page, so "back" doesn't dump you at the top.
+  const cardRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const openProduct = (id: string) => {
+    sessionStorage.setItem(RETURN_KEY, id);
+    nav(`/catalogue/styled/${id}`);
+  };
 
   // Keep availability fresh while this tab is mounted.
   useStockRealtime();
@@ -76,6 +99,20 @@ export function StyledTab() {
   const canCreate = can("catalogue", "create");
   const pending = drafts.data ?? [];
   const aiPending = pending.filter((s) => s.ai_drafted);
+
+  useEffect(() => {
+    const data = styled.data;
+    if (!data) return;
+    const returnId = sessionStorage.getItem(RETURN_KEY);
+    if (!returnId || !data.some((s) => s.styled_id === returnId)) return;
+    sessionStorage.removeItem(RETURN_KEY);
+    const el = cardRefs.current[returnId];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "center" });
+    setHighlightId(returnId);
+    const t = setTimeout(() => setHighlightId(null), 1800);
+    return () => clearTimeout(t);
+  }, [styled.data]);
 
   return (
     <div className="space-y-5">
@@ -111,6 +148,34 @@ export function StyledTab() {
           placeholder="Search styled products…"
         />
         <div className="ml-auto flex gap-2 flex-wrap items-center">
+          <div className="flex items-center rounded-[10px] border border-line overflow-hidden">
+            <button
+              onClick={() => setViewPersist("thumbnail")}
+              className={cn(
+                "grid place-items-center w-[34px] h-[34px] transition-colors",
+                view === "thumbnail"
+                  ? "bg-accent-deep text-[#F4E9D9]"
+                  : "text-text-muted hover:text-text-primary",
+              )}
+              aria-label="Thumbnail view"
+              title="Thumbnail view"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewPersist("list")}
+              className={cn(
+                "grid place-items-center w-[34px] h-[34px] transition-colors",
+                view === "list"
+                  ? "bg-accent-deep text-[#F4E9D9]"
+                  : "text-text-muted hover:text-text-primary",
+              )}
+              aria-label="List view"
+              title="List view"
+            >
+              <ListIcon className="w-4 h-4" />
+            </button>
+          </div>
           {canCreate && (
             <ImportExportControls
               label="Styled products"
@@ -186,13 +251,27 @@ export function StyledTab() {
             }
           />
         </Card>
+      ) : view === "list" ? (
+        <div className="space-y-2">
+          {(styled.data ?? []).map((s) => (
+            <StyledListRow
+              key={s.styled_id}
+              s={s}
+              onOpen={() => openProduct(s.styled_id)}
+              highlighted={highlightId === s.styled_id}
+              cardRef={(el) => (cardRefs.current[s.styled_id] = el)}
+            />
+          ))}
+        </div>
       ) : (
         <CardGrid>
           {(styled.data ?? []).map((s) => (
             <StyledCard
               key={s.styled_id}
               s={s}
-              onOpen={() => nav(`/catalogue/styled/${s.styled_id}`)}
+              onOpen={() => openProduct(s.styled_id)}
+              highlighted={highlightId === s.styled_id}
+              cardRef={(el) => (cardRefs.current[s.styled_id] = el)}
             />
           ))}
         </CardGrid>
@@ -203,7 +282,7 @@ export function StyledTab() {
         onClose={() => setAiOpen(false)}
         onDrafted={(d) => {
           setAiOpen(false);
-          nav(`/catalogue/styled/${d.styled_id}`);
+          openProduct(d.styled_id);
         }}
       />
       <SizeGuideModal open={sizeOpen} onClose={() => setSizeOpen(false)} />
@@ -212,11 +291,26 @@ export function StyledTab() {
   );
 }
 
-function StyledCard({ s, onOpen }: { s: StyledProduct; onOpen: () => void }) {
+function StyledCard({
+  s,
+  onOpen,
+  highlighted,
+  cardRef,
+}: {
+  s: StyledProduct;
+  onOpen: () => void;
+  highlighted?: boolean;
+  cardRef?: (el: HTMLButtonElement | null) => void;
+}) {
   return (
     <button
+      ref={cardRef}
       onClick={onOpen}
-      className="text-left glass rounded-[var(--radius)] shadow-glass p-4 transition-all hover:border-accent/40 hover:-translate-y-0.5 focus:outline-none focus:border-accent/50"
+      className={cn(
+        "text-left glass rounded-[var(--radius)] shadow-glass p-4 transition-all hover:border-accent/40 hover:-translate-y-0.5 focus:outline-none focus:border-accent/50",
+        highlighted &&
+          "ring-2 ring-accent ring-offset-2 ring-offset-bg shadow-[0_0_0_4px_rgb(var(--accent)/0.18)]",
+      )}
     >
       <div className="aspect-[4/3] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04]">
         {s.primary_image_url ? (
@@ -260,6 +354,69 @@ function StyledCard({ s, onOpen }: { s: StyledProduct; onOpen: () => void }) {
           </Pill>
         </div>
       )}
+    </button>
+  );
+}
+
+function StyledListRow({
+  s,
+  onOpen,
+  highlighted,
+  cardRef,
+}: {
+  s: StyledProduct;
+  onOpen: () => void;
+  highlighted?: boolean;
+  cardRef?: (el: HTMLButtonElement | null) => void;
+}) {
+  return (
+    <button
+      ref={cardRef}
+      onClick={onOpen}
+      className={cn(
+        "w-full text-left glass rounded-[var(--radius)] shadow-glass p-3 flex items-center gap-4 transition-all hover:border-accent/40 focus:outline-none focus:border-accent/50",
+        highlighted &&
+          "ring-2 ring-accent ring-offset-2 ring-offset-bg shadow-[0_0_0_4px_rgb(var(--accent)/0.18)]",
+      )}
+    >
+      <div className="w-16 h-16 shrink-0 overflow-hidden rounded-[10px] bg-text-primary/[0.04]">
+        {s.primary_image_url ? (
+          <img
+            src={s.primary_image_url}
+            alt={s.name}
+            loading="lazy"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full grid place-items-center text-text-faint">
+            <ImageIcon className="w-5 h-5" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="font-mono text-[10.5px] text-accent-glow">
+            {s.styled_code}
+          </span>
+          <StyledStatusBadge status={s.status} />
+          {s.ai_drafted && (
+            <Pill tone="accent" dot={false}>
+              <Sparkles className="w-3 h-3" /> AI draft
+            </Pill>
+          )}
+        </div>
+        {/* Full name, unlike the card grid — this is the point of list view. */}
+        <div className="font-display text-[15px] leading-snug">{s.name}</div>
+        <div className="text-[11.5px] text-text-faint truncate">
+          on {s.base_name} · {s.base_product_code}
+        </div>
+      </div>
+      <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <AvailabilityPill availability={s.availability} />
+        {s.effective_price_ngn != null && (
+          <MoneyText ngn={s.effective_price_ngn} className="text-[14px]" />
+        )}
+      </div>
     </button>
   );
 }

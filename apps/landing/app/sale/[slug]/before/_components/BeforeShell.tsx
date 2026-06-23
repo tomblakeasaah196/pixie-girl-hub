@@ -8,14 +8,11 @@ import {
   type LandingSubmit,
 } from "@landing-kit";
 import type { LandingPayload } from "@/lib/types";
-import { IntroOverlay } from "@/components/IntroOverlay";
 import { BeforeHero } from "./BeforeHero";
 
 /**
  * The before-state page composition:
  *
- *   IntroOverlay (cinematic curtain, session-once)
- *   ───────────────────────────────────────────────
  *   BeforeHero (dark ink section)
  *     · brand monogram backdrop
  *     · tier-driven eyebrow
@@ -31,9 +28,8 @@ import { BeforeHero } from "./BeforeHero";
  *   ───────────────────────────────────────────────
  *   AtelierRevealPreview (the apex's logo plane scene, once on load)
  *
- * The apex's PublicLanding renders LandingPreview + AtelierRevealPreview in
- * the same composition; we add IntroOverlay + BeforeHero on top and force
- * the body to omit its hero. The Studio is single-sourced.
+ * The IntroOverlay "ribboned door" intro was removed June 2026 (owner
+ * directive — visitors land straight on the page).
  */
 
 function synthesizeCode(brandName: string, name: string): string {
@@ -91,11 +87,6 @@ export function BeforeShell({
 
   return (
     <>
-      <IntroOverlay
-        brand={payload.brand?.business_key}
-        campaignName={payload.name}
-        sessionKey={`pgh-intro-seen:${payload.slug}`}
-      />
       <div className="fixed inset-0 overflow-y-auto bg-black">
         <BeforeHero payload={payload} brandConfig={brandConfig} />
         <LandingPreview

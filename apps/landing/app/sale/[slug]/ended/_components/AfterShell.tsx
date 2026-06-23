@@ -8,15 +8,17 @@ import {
   type LandingSubmit,
 } from "@landing-kit";
 import type { LandingPayload } from "@/lib/types";
-import { IntroOverlay } from "@/components/IntroOverlay";
 import { AfterHero } from "./AfterHero";
 
 /**
- * The after-state page composition mirrors the before page's three-layer
- * stack — IntroOverlay + AfterHero + LandingPreview body + AtelierRevealPreview
- * — but the LandingConfig piped into the body is "shadowed" with after-state
- * copy (full-house Inner Circle, "Hear first" form CTA) and the form submits
- * to the brand newsletter endpoint because THIS campaign is closed.
+ * The after-state page composition: AfterHero + LandingPreview body +
+ * AtelierRevealPreview. The LandingConfig piped into the body is "shadowed"
+ * with after-state copy (full-house Inner Circle, "Hear first" form CTA)
+ * and the form submits to the brand newsletter endpoint because THIS
+ * campaign is closed.
+ *
+ * The IntroOverlay "ribboned door" intro was removed June 2026 (owner
+ * directive — visitors land straight on the page).
  *
  * The shadow happens locally — the brand's published Studio config is never
  * mutated, so the apex page renders identically. A future Campaign Builder
@@ -85,11 +87,6 @@ export function AfterShell({
 
   return (
     <>
-      <IntroOverlay
-        brand={payload.brand?.business_key}
-        campaignName={payload.name}
-        sessionKey={`pgh-intro-seen:${payload.slug}`}
-      />
       <style>{`
         /* After page: slow the gallery marquee 25% so the body reads as
            memory rather than active anticipation. Scoped to this page only. */

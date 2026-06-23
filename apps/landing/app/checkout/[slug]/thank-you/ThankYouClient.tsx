@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { CheckCircle, Clock, Package, ArrowRight } from "lucide-react";
@@ -31,6 +31,8 @@ export function ThankYouClient({
   const clearCart = useCart((s) => s.clear);
   const [order, setOrder] = useState<OrderInfo | null>(null);
   const [polling, setPolling] = useState(true);
+  // The cart is cleared exactly once — and only after payment is CONFIRMED.
+  const clearedRef = useRef(false);
 
   const resolvedId =
     orderId ||
@@ -43,22 +45,25 @@ export function ThankYouClient({
     const data = await fetchOrderStatus(payload.slug, resolvedId);
     if (data) {
       setOrder(data);
-      if (
+      const paid =
         data.status === "paid" ||
         data.status === "processing" ||
-        data.status === "confirmed"
-      ) {
+        data.status === "confirmed";
+      if (paid) {
         setPolling(false);
+        // Clear the cart ONLY once the gateway has confirmed the payment. A
+        // failed or cancelled payment must leave the buyer's items in the cart
+        // so they can pay again — never empty a cart for an unpaid order.
+        if (!clearedRef.current) {
+          clearedRef.current = true;
+          clearCart();
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem("pgh-last-order-id");
+          }
+        }
       }
     }
-  }, [resolvedId, payload.slug]);
-
-  useEffect(() => {
-    clearCart();
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("pgh-last-order-id");
-    }
-  }, [clearCart]);
+  }, [resolvedId, payload.slug, clearCart]);
 
   useEffect(() => {
     poll();
@@ -78,6 +83,10 @@ export function ThankYouClient({
     order?.status === "paid" ||
     order?.status === "processing" ||
     order?.status === "confirmed";
+
+  // Payment not confirmed and polling has stopped (failed / cancelled / timed
+  // out). The cart is still intact, so offer a one-tap path back to pay again.
+  const notConfirmed = !isPaid && !polling;
 
   return (
     <main className="min-h-screen grid place-items-center px-6 py-16">
@@ -167,12 +176,28 @@ export function ThankYouClient({
         )}
 
         <div className="pt-2 space-y-3">
-          <Link
-            href={`/sale/${payload.slug}`}
-            className="inline-flex items-center justify-center gap-2 w-full h-12 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen"
-          >
-            Continue shopping <ArrowRight className="w-4 h-4" />
-          </Link>
+          {notConfirmed && (
+            <p className="text-[13px] text-[rgb(var(--warn))]">
+              We couldn&apos;t confirm your payment. If you completed it,
+              a confirmation email is on its way — otherwise your cart is
+              saved, so you can try again.
+            </p>
+          )}
+          {notConfirmed ? (
+            <Link
+              href={`/checkout/${payload.slug}`}
+              className="inline-flex items-center justify-center gap-2 w-full h-12 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen"
+            >
+              Return to checkout <ArrowRight className="w-4 h-4" />
+            </Link>
+          ) : (
+            <Link
+              href={`/sale/${payload.slug}`}
+              className="inline-flex items-center justify-center gap-2 w-full h-12 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen"
+            >
+              Continue shopping <ArrowRight className="w-4 h-4" />
+            </Link>
+          )}
           <p className="text-[11px] text-[rgb(var(--text-faint))]">
             Thank you for shopping with {brandName}
           </p>

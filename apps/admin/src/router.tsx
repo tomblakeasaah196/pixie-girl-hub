@@ -184,16 +184,6 @@ const LandingPreviewPage = lazyWithRetry(() =>
     default: m.LandingPreviewPage,
   })),
 );
-const SaleLandingPublic = lazyWithRetry(() =>
-  import("@/pages/sales-campaigns/public/SaleLandingPublic").then((m) => ({
-    default: m.SaleLandingPublic,
-  })),
-);
-const SalesIndexPublic = lazyWithRetry(() =>
-  import("@/pages/sales-campaigns/public/SalesIndexPublic").then((m) => ({
-    default: m.SalesIndexPublic,
-  })),
-);
 const ModelsAndVendorsPage = lazyWithRetry(() =>
   import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({
     default: m.ModelsAndVendorsPage,
@@ -284,24 +274,6 @@ export const router = createBrowserRouter(
       element: (
         <Suspense fallback={null}>
           <OrderCapturePublic />
-        </Suspense>
-      ),
-    },
-    // Public sales-campaign landing page (sales subdomain → Host resolves brand;
-    // admin preview passes ?brand=). Same renderer the Studio previews.
-    {
-      path: "/sale",
-      element: (
-        <Suspense fallback={null}>
-          <SalesIndexPublic />
-        </Suspense>
-      ),
-    },
-    {
-      path: "/sale/:slug",
-      element: (
-        <Suspense fallback={null}>
-          <SaleLandingPublic />
         </Suspense>
       ),
     },

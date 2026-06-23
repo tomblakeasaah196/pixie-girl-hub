@@ -7,11 +7,22 @@ import type { LandingPayload } from "@/lib/types";
 import { SectionHeader } from "./BundleShowcase";
 
 export function LookbookCarousel({ payload }: { payload: LandingPayload }) {
-  // Pull catalogue product images that came down with the payload.
-  const tiles = (payload.products || [])
+  // Read section header copy from block props (set via Landing Studio).
+  const block = (payload.blocks || []).find((b) => b.key === "lookbook_carousel");
+  const bp = (block?.props as Record<string, unknown>) || {};
+  const sectionEyebrow = (bp.eyebrow as string) || "Lookbook";
+  const sectionTitle = (bp.title as string) || "The way they wear it.";
+
+  // Block-level curated images take priority; fall back to product catalogue images.
+  const blockImages = Array.isArray(bp.images)
+    ? (bp.images as string[]).filter(Boolean).map((src) => ({ src, alt: "" }))
+    : [];
+  const catalogueTiles = (payload.products || [])
     .filter((p) => p.image_url)
     .slice(0, 12)
     .map((p) => ({ src: p.image_url!, alt: p.name || "" }));
+  const tiles = blockImages.length >= 3 ? blockImages : catalogueTiles;
+
   const trackRef = useRef<HTMLDivElement>(null);
 
   if (tiles.length < 3) return null;
@@ -24,7 +35,7 @@ export function LookbookCarousel({ payload }: { payload: LandingPayload }) {
   return (
     <section className="section">
       <div className="mx-auto max-w-[1180px]">
-        <SectionHeader eyebrow="Lookbook" title="The way they wear it." />
+        <SectionHeader eyebrow={sectionEyebrow} title={sectionTitle} />
         <div className="mt-10 relative">
           <button
             type="button"

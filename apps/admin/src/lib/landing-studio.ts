@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
 import type { LandingConfig } from "@landing-kit";
+import type { LandingBlock } from "@/lib/campaigns";
 
 // ── Shared config contract (re-exported from @landing-kit) ──────────
 export type {
@@ -89,4 +90,69 @@ export async function uploadLandingOgBanner(file: File): Promise<string> {
     form,
   );
   return url;
+}
+
+// ════════════════════════════════════════════════════════════
+// Campaign landing layer
+// ════════════════════════════════════════════════════════════
+
+/** Extra fields stored in the landing_extras JSONB column. */
+export interface LandingExtras {
+  live_now_pill?: string;
+  browse_cta_text?: string;
+  hero_overlay_opacity?: number;
+  watermark_opacity?: number;
+  countdown_closes_label?: string;
+  favicon_url?: string | null;
+  browser_tab_name?: string;
+}
+
+/** Full campaign landing payload returned by GET /:id/landing. */
+export interface CampaignLanding {
+  id: string;
+  name: string;
+  slug: string;
+  starts_at: string;
+  ends_at: string;
+  landing_hero_title: string | null;
+  landing_hero_subtitle: string | null;
+  landing_hero_image_url: string | null;
+  landing_cta_text: string | null;
+  landing_blocks: LandingBlock[];
+  countdown_message: string | null;
+  ended_message: string | null;
+  ended_redirect_to: string | null;
+  meta_title: string | null;
+  meta_description: string | null;
+  og_image_url: string | null;
+  landing_extras: LandingExtras;
+}
+
+export function useCampaignLanding(id: string | null) {
+  const brand = useActiveBrand();
+  return useQuery<CampaignLanding>({
+    queryKey: ["campaign-landing", brand, id],
+    queryFn: () =>
+      api.get<{ data: CampaignLanding }>(`/sales-campaigns/${id}/landing`).then(
+        (r) => r.data,
+      ),
+    enabled: !!id,
+  });
+}
+
+export function useSaveCampaignLanding() {
+  const qc = useQueryClient();
+  const brand = useActiveBrand();
+  return useMutation<
+    unknown,
+    Error,
+    { id: string; patch: Partial<CampaignLanding> }
+  >({
+    mutationFn: ({ id, patch }) =>
+      api.patch(`/sales-campaigns/${id}/landing`, patch),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ["campaign-landing", brand, id] });
+      qc.invalidateQueries({ queryKey: ["campaigns", brand] });
+    },
+  });
 }

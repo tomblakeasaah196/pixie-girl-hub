@@ -262,6 +262,18 @@ const updateProductSchema = z
   })
   .strict();
 
+const landingExtrasSchema = z
+  .object({
+    live_now_pill: z.string().max(60).optional(),
+    browse_cta_text: z.string().max(80).optional(),
+    hero_overlay_opacity: z.number().min(0).max(1).optional(),
+    watermark_opacity: z.number().min(0).max(1).optional(),
+    countdown_closes_label: z.string().max(120).optional(),
+    favicon_url: safeUrl.nullable().optional(),
+    browser_tab_name: z.string().max(80).optional(),
+  })
+  .passthrough(); // allow unknown keys to avoid breaking future additions
+
 const landingSchema = z
   .object({
     landing_hero_title: z.string().max(300).nullable().optional(),
@@ -275,6 +287,7 @@ const landingSchema = z
     meta_title: z.string().max(200).nullable().optional(),
     meta_description: z.string().max(500).nullable().optional(),
     og_image_url: safeUrl.nullable().optional(),
+    landing_extras: landingExtrasSchema.optional(),
   })
   .strict();
 

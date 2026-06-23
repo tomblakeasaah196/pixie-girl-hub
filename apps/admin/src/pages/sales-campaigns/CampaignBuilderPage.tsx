@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
@@ -84,7 +84,6 @@ import {
 import { useBusinessConfig } from "@/lib/settings";
 import { type StyledProduct } from "@/lib/catalogue";
 import { StyledProductPicker } from "@/components/campaign/StyledProductPicker";
-import { LandingStudio } from "./landing/LandingStudio";
 
 const TONE_FOR: Record<CampaignStatus, Tone> = {
   draft: "neutral",
@@ -2595,9 +2594,9 @@ function LandingStep({
   canEdit: boolean;
   onNext?: () => void;
 }) {
+  const navigate = useNavigate();
   const brand = useBrand();
   const cfg = useBusinessConfig();
-  const [studioOpen, setStudioOpen] = useState(false);
   const blocks = campaign.landing_blocks || [];
   const enabledCount = blocks.filter((b) => b.enabled !== false).length;
 
@@ -2640,7 +2639,7 @@ function LandingStep({
           <Button
             variant="primary"
             icon={<Pencil className="w-4 h-4" />}
-            onClick={() => setStudioOpen(true)}
+            onClick={() => navigate(`/landing-studio?campaign=${campaign.campaign_id}`)}
           >
             {canEdit ? "Open the Studio" : "Open preview"}
           </Button>
@@ -2688,12 +2687,6 @@ function LandingStep({
         </div>
       </div>
 
-      <LandingStudio
-        open={studioOpen}
-        onClose={() => setStudioOpen(false)}
-        campaign={campaign}
-        canEdit={canEdit}
-      />
     </Card>
   );
 }

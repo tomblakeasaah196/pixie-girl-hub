@@ -74,13 +74,23 @@ export function FeaturedProducts({
   const liveStock = useLiveStock(payload.slug, state === "live");
 
   if (!products.length) return null;
+
+  // Read section header copy from block props (set via Landing Studio).
+  const block = (payload.blocks || []).find((b) => b.key === "featured_products");
+  const bp = (block?.props as Record<string, unknown>) || {};
+  const sectionEyebrow = (bp.eyebrow as string) || "Styled products";
+  const sectionTitle = (bp.title as string) || "Pick one and play.";
+  const sectionSubtitle =
+    (bp.intro as string) ||
+    "For the woman who wants one perfect piece, not the whole set.";
+
   return (
     <section data-block="featured_products" className="section">
       <div className="mx-auto max-w-[1180px]">
         <SectionHeader
-          eyebrow="Styled products"
-          title="Pick one and play."
-          subtitle="For the woman who wants one perfect piece, not the whole set."
+          eyebrow={sectionEyebrow}
+          title={sectionTitle}
+          subtitle={sectionSubtitle}
         />
         {payload.position_ladder && payload.position_ladder.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-2 justify-center">

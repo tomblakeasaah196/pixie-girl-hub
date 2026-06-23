@@ -13,6 +13,7 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ChevronDown,
   Eye,
   ImagePlus,
   Loader2,
@@ -92,6 +93,18 @@ const BLOCK_LIBRARY: Array<{
   },
 ];
 const LIBRARY_LABEL = Object.fromEntries(BLOCK_LIBRARY.map((b) => [b.key, b]));
+const EDITABLE_BLOCKS = new Set([
+  "brand_story",
+  "founder_quote",
+  "why_buy",
+  "testimonials",
+  "faq",
+  "shipping_returns",
+  "newsletter_capture",
+  "vip_signup",
+  "bundle_showcase",
+  "quantity_tier_visualiser",
+]);
 const LOOKBOOK_KEY = "lookbook_carousel";
 
 function defaultBlocks(): LandingBlock[] {
@@ -143,6 +156,7 @@ export function LandingStudio({
     campaign.landing_blocks?.length ? campaign.landing_blocks : defaultBlocks(),
   );
 
+  const [expandedBlock, setExpandedBlock] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<PublicState>("live");
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
   const [uploading, setUploading] = useState<"hero" | "look" | null>(null);
@@ -244,6 +258,10 @@ export function LandingStudio({
     if (j < 0 || j >= next.length) return;
     [next[idx], next[j]] = [next[j], next[idx]];
     markDirty(next);
+  }
+
+  function updateBlock(idx: number, updated: LandingBlock) {
+    markDirty(blocks.map((b, i) => (i === idx ? updated : b)));
   }
 
   async function save() {
@@ -569,43 +587,79 @@ export function LandingStudio({
               <div className="space-y-1.5">
                 {blocks.map((b, i) => {
                   const info = LIBRARY_LABEL[b.key || b.type || ""];
+                  const blockKey = (b.key || b.type || "") + i;
+                  const isExpanded = expandedBlock === blockKey;
+                  const hasEditor = EDITABLE_BLOCKS.has(b.key || b.type || "");
                   return (
                     <div
-                      key={(b.key || b.type || "") + i}
-                      className="flex items-center gap-2 p-2.5 rounded-[10px] bg-text-primary/[0.04] border border-line"
+                      key={blockKey}
+                      className="rounded-[10px] border border-line overflow-hidden"
                     >
-                      <div className="flex flex-col">
-                        <button
-                          disabled={!canEdit || i === 0}
-                          onClick={() => moveBlock(i, -1)}
-                          className="text-text-faint hover:text-text-primary disabled:opacity-30"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          disabled={!canEdit || i === blocks.length - 1}
-                          onClick={() => moveBlock(i, 1)}
-                          className="text-text-faint hover:text-text-primary disabled:opacity-30"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-semibold truncate">
-                          {info?.label || b.key}
+                      <div className="flex items-center gap-2 p-2.5 bg-text-primary/[0.04]">
+                        <div className="flex flex-col">
+                          <button
+                            disabled={!canEdit || i === 0}
+                            onClick={() => moveBlock(i, -1)}
+                            className="text-text-faint hover:text-text-primary disabled:opacity-30"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            disabled={!canEdit || i === blocks.length - 1}
+                            onClick={() => moveBlock(i, 1)}
+                            className="text-text-faint hover:text-text-primary disabled:opacity-30"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <div className="text-[10.5px] text-text-faint truncate">
-                          {info?.description}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13px] font-semibold truncate">
+                            {info?.label || b.key}
+                          </div>
+                          <div className="text-[10.5px] text-text-faint truncate">
+                            {info?.description}
+                          </div>
                         </div>
+                        {hasEditor && (
+                          <button
+                            onClick={() =>
+                              setExpandedBlock(isExpanded ? null : blockKey)
+                            }
+                            className={cn(
+                              "p-1 rounded-[6px] transition-colors inline-flex items-center gap-0.5 text-[11px] font-semibold",
+                              isExpanded
+                                ? "bg-accent/20 text-accent-glow"
+                                : "text-text-faint hover:text-accent-glow",
+                            )}
+                            aria-label="Edit section content"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <ChevronDown
+                              className={cn(
+                                "w-3 h-3 transition-transform",
+                                isExpanded && "rotate-180",
+                              )}
+                            />
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button
+                            onClick={() => toggleBlock(b.key || "")}
+                            className="text-text-faint hover:text-danger p-1"
+                            aria-label="Remove section"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
-                      {canEdit && (
-                        <button
-                          onClick={() => toggleBlock(b.key || "")}
-                          className="text-text-faint hover:text-danger p-1"
-                          aria-label="Remove section"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      {isExpanded && hasEditor && (
+                        <div className="px-3 pb-3 border-t border-line/60 bg-text-primary/[0.02]">
+                          <BlockEditor
+                            block={b}
+                            onChange={(updated) => updateBlock(i, updated)}
+                            canEdit={canEdit}
+                          />
+                        </div>
                       )}
                     </div>
                   );
@@ -711,3 +765,558 @@ export function LandingStudio({
 
 const inputCls =
   "w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50";
+
+const textareaCls =
+  "w-full px-[13px] py-[10px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50 resize-none leading-relaxed";
+
+function BlockEditor({
+  block,
+  onChange,
+  canEdit,
+}: {
+  block: LandingBlock;
+  onChange: (b: LandingBlock) => void;
+  canEdit: boolean;
+}) {
+  const key = block.key || block.type || "";
+  const props = (block.props || {}) as Record<string, unknown>;
+
+  function setProps(next: Record<string, unknown>) {
+    onChange({ ...block, props: next });
+  }
+  function setProp(k: string, v: unknown) {
+    setProps({ ...props, [k]: v });
+  }
+
+  const body = typeof props.body === "string" ? props.body : "";
+
+  switch (key) {
+    case "brand_story":
+      return (
+        <div className="space-y-2.5 pt-3">
+          <Field label="Body text">
+            <textarea
+              value={body}
+              onChange={(e) => setProp("body", e.target.value)}
+              disabled={!canEdit}
+              rows={4}
+              className={textareaCls}
+              placeholder="Every drop begins with a single idea…"
+            />
+          </Field>
+          <Field label="Section image URL" hint="Shown beside the text">
+            <input
+              value={
+                typeof props.image_url === "string" ? props.image_url : ""
+              }
+              onChange={(e) => setProp("image_url", e.target.value)}
+              disabled={!canEdit}
+              placeholder="https://…"
+              className={cn(inputCls, "font-mono text-[12px]")}
+            />
+          </Field>
+        </div>
+      );
+
+    case "founder_quote":
+      return (
+        <div className="space-y-2.5 pt-3">
+          <Field label="Quote text">
+            <textarea
+              value={body}
+              onChange={(e) => setProp("body", e.target.value)}
+              disabled={!canEdit}
+              rows={3}
+              className={textareaCls}
+              placeholder="We don't do ordinary. We do the piece she remembers."
+            />
+          </Field>
+          <Field label="Attribution">
+            <input
+              value={
+                typeof props.attribution === "string" ? props.attribution : ""
+              }
+              onChange={(e) => setProp("attribution", e.target.value)}
+              disabled={!canEdit}
+              placeholder="The Founder"
+              className={inputCls}
+            />
+          </Field>
+        </div>
+      );
+
+    case "why_buy": {
+      const defaults = [
+        {
+          title: "Ethically sourced",
+          description: "Full-density, raw hair — traceable to the bundle.",
+        },
+        {
+          title: "Made to last",
+          description: "Wears, washes and styles like your own.",
+        },
+        {
+          title: "Loved by thousands",
+          description: "A community of women who don't settle.",
+        },
+      ];
+      const items = (
+        Array.isArray(props.items) ? props.items : defaults
+      ) as Array<{ title: string; description: string }>;
+      return (
+        <div className="space-y-2.5 pt-3">
+          {items.map((item, i) => (
+            <div
+              key={i}
+              className="space-y-1.5 p-3 rounded-[10px] bg-text-primary/[0.04] border border-line"
+            >
+              <div className="text-[10.5px] font-semibold text-text-faint mb-1">
+                Value prop {i + 1}
+              </div>
+              <Field label="Title">
+                <input
+                  value={item.title}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[i] = { ...next[i], title: e.target.value };
+                    setProp("items", next);
+                  }}
+                  disabled={!canEdit}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Description">
+                <textarea
+                  value={item.description}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[i] = { ...next[i], description: e.target.value };
+                    setProp("items", next);
+                  }}
+                  disabled={!canEdit}
+                  rows={2}
+                  className={textareaCls}
+                />
+              </Field>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    case "testimonials": {
+      const defaults = [
+        {
+          quote:
+            "Easily the best I've ordered. The quality speaks before I do.",
+          customer: "Verified customer",
+        },
+        {
+          quote:
+            "Easily the best I've ordered. The quality speaks before I do.",
+          customer: "Verified customer",
+        },
+        {
+          quote:
+            "Easily the best I've ordered. The quality speaks before I do.",
+          customer: "Verified customer",
+        },
+      ];
+      const items = (
+        Array.isArray(props.items) ? props.items : defaults
+      ) as Array<{ quote: string; customer: string }>;
+      return (
+        <div className="space-y-2.5 pt-3">
+          {items.map((item, i) => (
+            <div
+              key={i}
+              className="space-y-1.5 p-3 rounded-[10px] bg-text-primary/[0.04] border border-line"
+            >
+              <div className="text-[10.5px] font-semibold text-text-faint mb-1">
+                Testimonial {i + 1}
+              </div>
+              <Field label="Quote">
+                <textarea
+                  value={item.quote}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[i] = { ...next[i], quote: e.target.value };
+                    setProp("items", next);
+                  }}
+                  disabled={!canEdit}
+                  rows={2}
+                  className={textareaCls}
+                />
+              </Field>
+              <Field label="Customer">
+                <input
+                  value={item.customer}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[i] = { ...next[i], customer: e.target.value };
+                    setProp("items", next);
+                  }}
+                  disabled={!canEdit}
+                  placeholder="Verified customer"
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+          ))}
+          {canEdit && (
+            <div className="flex gap-3">
+              <button
+                onClick={() =>
+                  setProp("items", [...items, { quote: "", customer: "" }])
+                }
+                className="text-[12px] text-accent-glow inline-flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" /> Add
+              </button>
+              {items.length > 1 && (
+                <button
+                  onClick={() => setProp("items", items.slice(0, -1))}
+                  className="text-[12px] text-text-faint hover:text-danger inline-flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" /> Remove last
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    case "faq": {
+      const defaults = [
+        {
+          q: "How long does delivery take?",
+          a: "Lagos: 1–2 days. Nationwide: 2–4 days via DHL.",
+        },
+        {
+          q: "Can I return an item?",
+          a: "Unworn pieces can be returned within 7 days of delivery.",
+        },
+        {
+          q: "Are prices in this drop final?",
+          a: "Yes — these are limited-time prices, only while the drop is live.",
+        },
+      ];
+      const items = (
+        Array.isArray(props.items) ? props.items : defaults
+      ) as Array<{ q: string; a: string }>;
+      return (
+        <div className="space-y-2.5 pt-3">
+          {items.map((item, i) => (
+            <div
+              key={i}
+              className="space-y-1.5 p-3 rounded-[10px] bg-text-primary/[0.04] border border-line"
+            >
+              <div className="text-[10.5px] font-semibold text-text-faint mb-1">
+                Q&A {i + 1}
+              </div>
+              <Field label="Question">
+                <input
+                  value={item.q}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[i] = { ...next[i], q: e.target.value };
+                    setProp("items", next);
+                  }}
+                  disabled={!canEdit}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Answer">
+                <textarea
+                  value={item.a}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[i] = { ...next[i], a: e.target.value };
+                    setProp("items", next);
+                  }}
+                  disabled={!canEdit}
+                  rows={2}
+                  className={textareaCls}
+                />
+              </Field>
+            </div>
+          ))}
+          {canEdit && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setProp("items", [...items, { q: "", a: "" }])}
+                className="text-[12px] text-accent-glow inline-flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" /> Add question
+              </button>
+              {items.length > 1 && (
+                <button
+                  onClick={() => setProp("items", items.slice(0, -1))}
+                  className="text-[12px] text-text-faint hover:text-danger inline-flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" /> Remove last
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    case "shipping_returns":
+      return (
+        <div className="pt-3">
+          <Field label="Policy text">
+            <textarea
+              value={body}
+              onChange={(e) => setProp("body", e.target.value)}
+              disabled={!canEdit}
+              rows={4}
+              className={textareaCls}
+              placeholder="Nationwide delivery via DHL Express. Lagos 1–2 days, nationwide 2–4 days. Returns accepted within 7 days on unworn items."
+            />
+          </Field>
+        </div>
+      );
+
+    case "newsletter_capture":
+    case "vip_signup":
+      return (
+        <div className="space-y-2.5 pt-3">
+          <Field label="Heading">
+            <input
+              value={typeof props.heading === "string" ? props.heading : ""}
+              onChange={(e) => setProp("heading", e.target.value)}
+              disabled={!canEdit}
+              placeholder={
+                key === "vip_signup" ? "Join the inner circle" : "Be first, always"
+              }
+              className={inputCls}
+            />
+          </Field>
+          <Field label="Description">
+            <textarea
+              value={
+                typeof props.description === "string" ? props.description : ""
+              }
+              onChange={(e) => setProp("description", e.target.value)}
+              disabled={!canEdit}
+              rows={2}
+              className={textareaCls}
+              placeholder="First access to every drop, private prices and the occasional gift. No noise."
+            />
+          </Field>
+          <Field label="Button label">
+            <input
+              value={
+                typeof props.button_label === "string"
+                  ? props.button_label
+                  : ""
+              }
+              onChange={(e) => setProp("button_label", e.target.value)}
+              disabled={!canEdit}
+              placeholder="Join the list"
+              className={inputCls}
+            />
+          </Field>
+        </div>
+      );
+
+    case "bundle_showcase": {
+      const defaults = [
+        {
+          name: "The Signature Set 1",
+          description:
+            "A fixed, curated composition — styled to wear together.",
+          price_ngn: "180000",
+          regular_price_ngn: "240000",
+          image_url: "",
+        },
+        {
+          name: "The Signature Set 2",
+          description:
+            "A fixed, curated composition — styled to wear together.",
+          price_ngn: "160000",
+          regular_price_ngn: "220000",
+          image_url: "",
+        },
+        {
+          name: "The Signature Set 3",
+          description:
+            "A fixed, curated composition — styled to wear together.",
+          price_ngn: "140000",
+          regular_price_ngn: "200000",
+          image_url: "",
+        },
+      ];
+      const bundles = (
+        Array.isArray(props.bundles) ? props.bundles : defaults
+      ) as Array<{
+        name: string;
+        description: string;
+        price_ngn: string;
+        regular_price_ngn: string;
+        image_url: string;
+      }>;
+      return (
+        <div className="space-y-2.5 pt-3">
+          {bundles.map((bundle, i) => (
+            <div
+              key={i}
+              className="space-y-1.5 p-3 rounded-[10px] bg-text-primary/[0.04] border border-line"
+            >
+              <div className="text-[10.5px] font-semibold text-text-faint mb-1">
+                Bundle {i + 1}
+              </div>
+              <Field label="Name">
+                <input
+                  value={bundle.name}
+                  onChange={(e) => {
+                    const next = [...bundles];
+                    next[i] = { ...next[i], name: e.target.value };
+                    setProp("bundles", next);
+                  }}
+                  disabled={!canEdit}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Description">
+                <textarea
+                  value={bundle.description}
+                  onChange={(e) => {
+                    const next = [...bundles];
+                    next[i] = { ...next[i], description: e.target.value };
+                    setProp("bundles", next);
+                  }}
+                  disabled={!canEdit}
+                  rows={2}
+                  className={textareaCls}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Price (NGN)">
+                  <input
+                    value={bundle.price_ngn}
+                    onChange={(e) => {
+                      const next = [...bundles];
+                      next[i] = { ...next[i], price_ngn: e.target.value };
+                      setProp("bundles", next);
+                    }}
+                    disabled={!canEdit}
+                    type="number"
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Regular (NGN)">
+                  <input
+                    value={bundle.regular_price_ngn}
+                    onChange={(e) => {
+                      const next = [...bundles];
+                      next[i] = {
+                        ...next[i],
+                        regular_price_ngn: e.target.value,
+                      };
+                      setProp("bundles", next);
+                    }}
+                    disabled={!canEdit}
+                    type="number"
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <Field label="Image URL">
+                <input
+                  value={bundle.image_url}
+                  onChange={(e) => {
+                    const next = [...bundles];
+                    next[i] = { ...next[i], image_url: e.target.value };
+                    setProp("bundles", next);
+                  }}
+                  disabled={!canEdit}
+                  placeholder="https://…"
+                  className={cn(inputCls, "font-mono text-[12px]")}
+                />
+              </Field>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    case "quantity_tier_visualiser": {
+      const defaults = [
+        { qty: 2, save_ngn: "15000" },
+        { qty: 3, save_ngn: "30000" },
+        { qty: 4, save_ngn: "55000" },
+      ];
+      const tiers = (
+        Array.isArray(props.tiers) ? props.tiers : defaults
+      ) as Array<{ qty: number; save_ngn: string }>;
+      return (
+        <div className="space-y-2.5 pt-3">
+          {tiers.map((tier, i) => (
+            <div
+              key={i}
+              className="flex gap-2 items-end p-3 rounded-[10px] bg-text-primary/[0.04] border border-line"
+            >
+              <Field label="Min qty" className="flex-1">
+                <input
+                  value={tier.qty}
+                  onChange={(e) => {
+                    const next = [...tiers];
+                    next[i] = { ...next[i], qty: Number(e.target.value) };
+                    setProp("tiers", next);
+                  }}
+                  disabled={!canEdit}
+                  type="number"
+                  min={1}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Save (NGN)" className="flex-1">
+                <input
+                  value={tier.save_ngn}
+                  onChange={(e) => {
+                    const next = [...tiers];
+                    next[i] = { ...next[i], save_ngn: e.target.value };
+                    setProp("tiers", next);
+                  }}
+                  disabled={!canEdit}
+                  type="number"
+                  className={inputCls}
+                />
+              </Field>
+              {canEdit && tiers.length > 1 && (
+                <button
+                  onClick={() =>
+                    setProp(
+                      "tiers",
+                      tiers.filter((_, j) => j !== i),
+                    )
+                  }
+                  className="h-[42px] px-2 text-text-faint hover:text-danger"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+          {canEdit && (
+            <button
+              onClick={() =>
+                setProp("tiers", [...tiers, { qty: tiers.length + 2, save_ngn: "0" }])
+              }
+              className="text-[12px] text-accent-glow inline-flex items-center gap-1"
+            >
+              <Plus className="w-3 h-3" /> Add tier
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    default:
+      return null;
+  }
+}

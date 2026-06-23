@@ -1,0 +1,18 @@
+-- Migration 000055: FK constraint on sales_campaign_products.styled_id
+--
+-- styled_id was added in 000048 as a bare UUID with no referential constraint.
+-- A stale or misrouted UUID silently causes the campaign stock LATERAL join
+-- to return live_base_stock = 0, making the product appear out of stock on the
+-- landing page even when inventory is present. The FK (ON DELETE SET NULL)
+-- makes the DB reject invalid styled_id values at write time rather than
+-- silently computing zero stock at read time.
+
+ALTER TABLE {{BUSINESS}}.sales_campaign_products
+  ADD CONSTRAINT fk_{{BUSINESS}}_scp_styled_id
+  FOREIGN KEY (styled_id)
+  REFERENCES {{BUSINESS}}.styled_products (styled_id)
+  ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_campaign_products_styled
+  ON {{BUSINESS}}.sales_campaign_products (styled_id)
+  WHERE styled_id IS NOT NULL;

@@ -401,6 +401,10 @@ function CreateCampaignModal({
   // fill it in later under Brief → Top-level discount.
   const [discountType, setDiscountType] = useState("");
   const [discountValue, setDiscountValue] = useState("");
+  // Static "1 USD = N NGN" rate used by the landing page's currency
+  // toggle. Optional — when blank, the public page stays NGN-only.
+  // Order settlement always uses the LIVE FX rate, never this.
+  const [ngnPerUsd, setNgnPerUsd] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   // Auto-generate from the name (full normalisation — the user isn't typing
@@ -443,6 +447,7 @@ function CreateCampaignModal({
           ? (discountType as Campaign["discount_type"])
           : null,
         discount_value: discountValue ? Number(discountValue) : null,
+        ngn_per_usd_rate: ngnPerUsd ? Number(ngnPerUsd) : null,
       });
       onCreated(created.campaign_id);
     } catch (e: unknown) {
@@ -532,6 +537,30 @@ function CreateCampaignModal({
             />
           </Field>
         </div>
+        {/* Static FX rate the landing page uses to flip prices to USD.
+            Customer-facing display only; order settlement uses the LIVE FX. */}
+        <Field
+          label="Dollar exchange rate"
+          hint="Optional · drives the landing-page currency toggle only · order settlement uses live FX"
+        >
+          <div className="flex items-stretch gap-2">
+            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
+              1 USD =
+            </span>
+            <input
+              value={ngnPerUsd}
+              onChange={(e) =>
+                setNgnPerUsd(e.target.value.replace(/[^0-9.]/g, ""))
+              }
+              inputMode="decimal"
+              placeholder="1310"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums"
+            />
+            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
+              NGN
+            </span>
+          </div>
+        </Field>
         {error && <p className="text-[12px] text-danger">{error}</p>}
         <p className="text-[12px] text-text-faint flex items-center gap-2">
           <CalendarRange className="w-3.5 h-3.5" />

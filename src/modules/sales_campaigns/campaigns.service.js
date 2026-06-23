@@ -604,6 +604,14 @@ function buildLandingPayload(c, products, state) {
     countdown_message: c.countdown_message,
     signup_for_notifications: state === "before" && c.signup_for_notifications,
     blocks: c.landing_blocks || [],
+    // Customer-facing FX SSOT: the static "1 USD = N NGN" rate the campaign
+    // owner sets in the builder. The landing currency toggle uses this so the
+    // visitor sees a stable price for the whole drop. Order settlement uses
+    // the LIVE rate captured into sales_orders.fx_rate_used at payment.
+    ngn_per_usd_rate:
+      c.ngn_per_usd_rate !== null && c.ngn_per_usd_rate !== undefined
+        ? Number(c.ngn_per_usd_rate)
+        : null,
     // ── v3 deals engine fields ───────────────────────────────
     delivery_weeks: c.delivery_weeks || null,
     preorder_extra_weeks: c.preorder_extra_weeks ?? 4,

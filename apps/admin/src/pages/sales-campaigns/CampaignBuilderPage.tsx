@@ -541,6 +541,13 @@ function BriefStep({
   const [preorderExtraWeeks, setPreorderExtraWeeks] = useState<string>(
     String(campaign.preorder_extra_weeks ?? 4),
   );
+  // Static "1 USD = N NGN" rate used by the landing-page currency toggle.
+  // Customer-facing display only — order settlement uses the LIVE FX rate.
+  const [ngnPerUsd, setNgnPerUsd] = useState<string>(
+    campaign.ngn_per_usd_rate != null
+      ? String(campaign.ngn_per_usd_rate)
+      : "",
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -580,7 +587,11 @@ function BriefStep({
       (campaign.delivery_weeks != null
         ? String(campaign.delivery_weeks)
         : "") ||
-    preorderExtraWeeks !== String(campaign.preorder_extra_weeks ?? 4);
+    preorderExtraWeeks !== String(campaign.preorder_extra_weeks ?? 4) ||
+    ngnPerUsd !==
+      (campaign.ngn_per_usd_rate != null
+        ? String(campaign.ngn_per_usd_rate)
+        : "");
 
   async function save(advance = false) {
     setSaving(true);
@@ -614,6 +625,7 @@ function BriefStep({
         abandonment_recovery_enabled: abandonment,
         delivery_weeks: deliveryWeeks ? Number(deliveryWeeks) : null,
         preorder_extra_weeks: Number(preorderExtraWeeks) || 4,
+        ngn_per_usd_rate: ngnPerUsd ? Number(ngnPerUsd) : null,
       } as Partial<Campaign>);
       if (cleanSlug) setSlug(cleanSlug);
       setSavedAt(Date.now());
@@ -686,6 +698,32 @@ function BriefStep({
             />
           </Field>
         </div>
+        {/* Static FX rate for the landing-page currency toggle. SSOT for
+            customer-facing display only — order settlement uses the LIVE FX
+            rate captured into sales_orders.fx_rate_used at payment. */}
+        <Field
+          label="Dollar exchange rate"
+          hint="Landing-page display only · order settlement uses live FX · leave blank to hide the $ toggle"
+        >
+          <div className="flex items-stretch gap-2 max-w-md">
+            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
+              1 USD =
+            </span>
+            <input
+              value={ngnPerUsd}
+              onChange={(e) =>
+                setNgnPerUsd(e.target.value.replace(/[^0-9.]/g, ""))
+              }
+              disabled={!canEdit}
+              inputMode="decimal"
+              placeholder="1310"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-50"
+            />
+            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
+              NGN
+            </span>
+          </div>
+        </Field>
       </FormSection>
 
       <FormSection title="Top-level discount">

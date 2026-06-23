@@ -16,6 +16,13 @@ import { cn } from "@/lib/cn";
 import type { LandingBlock, PublicState } from "@/lib/campaigns";
 import type { LandingConfig } from "@landing-kit";
 import { hexToTriplet, fontStack } from "@landing-kit";
+import {
+  formatPrice,
+  isUsdEnabled,
+  useCurrencyStore,
+  useGeoCurrencyInit,
+} from "@/lib/currency";
+import { CurrencyFloater } from "@/components/campaign/CurrencyFloater";
 
 export interface LandingProduct {
   product_id?: string | null;
@@ -49,32 +56,30 @@ export interface LandingModel {
   countdown_to?: string | null;
   countdown_message?: string | null;
   signup_for_notifications?: boolean;
+  /** Static NGN-per-USD rate for the customer-facing currency toggle. NULL =
+   *  NGN-only, toggle hidden. Customer display only — order settlement uses
+   *  the LIVE FX rate captured at payment. */
+  ngn_per_usd_rate?: number | null;
   blocks: LandingBlock[];
   products?: LandingProduct[];
   ended?: { message?: string | null; redirect_to?: string | null } | null;
   gallery?: string[];
 }
 
-const NGN = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  maximumFractionDigits: 0,
-});
-function ngn(v: number | string | null | undefined): string {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? NGN.format(n) : "₦—";
-}
-
-const USD = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-/** Format a USD price, or null when there is no figure to show. */
-function usd(v: number | string | null | undefined): string | null {
-  if (v == null || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) && n > 0 ? USD.format(n) : null;
+/** Hook returning a `priceLabel(ngnValue)` formatter bound to the visitor's
+ *  active currency (toggle store) and the campaign's static FX rate. USD
+ *  prices are ceiling-rounded to whole dollars per owner directive (10.29 → 11).
+ *  When the campaign has no rate set the toggle is hidden and labels stay NGN. */
+function usePriceLabel(fxRate: number | null) {
+  const currency = useCurrencyStore((s) => s.currency);
+  return useMemo(() => {
+    return (v: number | string | null | undefined): string => {
+      const n = typeof v === "number" ? v : Number(v);
+      if (!Number.isFinite(n) || n <= 0) return "—";
+      const formatted = formatPrice(n, currency, fxRate);
+      return formatted ?? "—";
+    };
+  }, [currency, fxRate]);
 }
 
 /** A deterministic tasteful gradient when an image is missing — never a grey box. */
@@ -200,6 +205,13 @@ export function LandingRender({
     [model.blocks],
   );
   const featured = (model.products || []).filter((p) => p.name);
+
+  // Customer-facing currency toggle. Geo init runs once: NG → NGN, anywhere
+  // else (with the campaign's FX rate set) → USD. The visitor can override
+  // with the floating ₦/$ pill, which then persists in localStorage.
+  const fxRate = model.ngn_per_usd_rate ?? null;
+  useGeoCurrencyInit(isUsdEnabled(fxRate));
+  const priceLabel = usePriceLabel(fxRate);
 
   const atelierVars = useMemo(() => {
     if (!brandConfig) return undefined;
@@ -346,6 +358,7 @@ export function LandingRender({
               block={b}
               model={model}
               featured={featured}
+              priceLabel={priceLabel}
             />
           ))}
           {enabled.length === 0 && <DefaultBody model={model} />}
@@ -365,6 +378,11 @@ export function LandingRender({
           <div className="text-[11px] text-text-faint">/sale/{model.slug}</div>
         </div>
       </footer>
+
+      {/* Brand-tinted floating currency toggle — hidden when the campaign
+          has no static FX rate set. Swaps every amount on the page; falls
+          back to NGN automatically when the rate is removed. */}
+      <CurrencyFloater fxRate={fxRate} />
     </div>
   );
 }
@@ -374,10 +392,12 @@ function BlockSection({
   block,
   model,
   featured,
+  priceLabel,
 }: {
   block: LandingBlock;
   model: LandingModel;
   featured: LandingProduct[];
+  priceLabel: (v: number | string | null | undefined) => string;
 }) {
   const key = block.key || block.type || "";
   const meta = BLOCK_TITLE[key];
@@ -411,10 +431,10 @@ function BlockSection({
                   </p>
                   <div className="mt-4 flex items-baseline gap-2">
                     <span className="font-mono text-[20px] text-accent-glow">
-                      {ngn(180000 - n * 20000)}
+                      {priceLabel(180000 - n * 20000)}
                     </span>
                     <span className="text-text-faint text-[13px] line-through">
-                      {ngn(240000 - n * 20000)}
+                      {priceLabel(240000 - n * 20000)}
                     </span>
                   </div>
                 </div>
@@ -444,7 +464,7 @@ function BlockSection({
                   bundles in one order
                 </div>
                 <div className="mt-4 font-mono text-accent-glow text-[18px]">
-                  save {ngn(t.s)}
+                  save {priceLabel(t.s)}
                 </div>
               </div>
             ))}
@@ -464,11 +484,11 @@ function BlockSection({
               const img = prod.image_url || prod.hero_image_url;
               // Real price: the campaign override if set, else the snapshotted
               // regular price. No more fabricated "95000 + n*10000" placeholder.
+              // Price is always NGN base — the toggle/floater converts on
+              // display via the campaign's static FX rate (USD ceiling-rounded
+              // to whole dollars per owner directive).
               const priceNgn =
                 prod.campaign_price_ngn ?? prod.regular_price_ngn ?? null;
-              const priceUsd = usd(
-                prod.campaign_price_usd ?? prod.regular_price_usd,
-              );
               const hasPrice =
                 priceNgn != null && Number.isFinite(Number(priceNgn));
               return (
@@ -494,10 +514,7 @@ function BlockSection({
                   )}
                   {hasPrice && (
                     <div className="font-mono text-accent-glow text-[13px] mt-1">
-                      {ngn(priceNgn)}
-                      {priceUsd && (
-                        <span className="opacity-60"> · {priceUsd}</span>
-                      )}
+                      {priceLabel(priceNgn)}
                     </div>
                   )}
                 </article>

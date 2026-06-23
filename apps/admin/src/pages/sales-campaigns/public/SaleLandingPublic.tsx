@@ -59,6 +59,7 @@ export function SaleLandingPublic() {
       countdown_to: d.countdown_to,
       countdown_message: d.countdown_message,
       signup_for_notifications: d.signup_for_notifications,
+      ngn_per_usd_rate: d.ngn_per_usd_rate ?? null,
       blocks: d.blocks,
       products: (d.products || []) as LandingProduct[],
       ended: d.ended,

@@ -106,6 +106,10 @@ export interface Campaign {
   exit_intent_discount_ngn: number | null;
   abandonment_recovery_enabled: boolean;
   allow_multi_currency_display: boolean;
+  /** Static NGN-per-USD rate the landing page uses for its currency toggle.
+   *  NULL = no USD display, toggle is hidden. Customer-facing only — order
+   *  settlement uses the LIVE FX rate captured at payment. */
+  ngn_per_usd_rate: number | null;
   delivery_weeks: number | null;
   preorder_extra_weeks: number;
   position_ladder: PositionLadderItem[] | null;
@@ -1110,6 +1114,9 @@ export interface PublicLanding {
   countdown_to: string | null;
   countdown_message: string | null;
   signup_for_notifications: boolean;
+  /** Static NGN-per-USD rate the customer-facing currency toggle uses.
+   *  NULL = NGN only on this campaign (toggle hidden). */
+  ngn_per_usd_rate: number | null;
   blocks: LandingBlock[];
   products: Array<Record<string, unknown>>;
   ended: { message: string | null; redirect_to: string | null } | null;

@@ -128,6 +128,9 @@ const v2CampaignFields = {
     .max(10)
     .nullable()
     .optional(),
+  // ── Static FX rate for the landing currency toggle (migration 000051) ──
+  // Customer-facing display only. Order settlement uses the live rate.
+  ngn_per_usd_rate: z.coerce.number().positive().nullable().optional(),
 };
 
 const createSchema = z

@@ -65,7 +65,12 @@ function BaseCreate() {
         lace_type: lace || undefined,
         hair_length_inches: length ? Number(length) : undefined,
       } as Partial<BaseProduct>,
-      { onSuccess: (p) => nav(`/catalogue/base/${p.product_id}`) },
+      {
+        onSuccess: (p) => {
+          sessionStorage.setItem("pgh_catalogue_return_base", p.product_id);
+          nav(`/catalogue/base/${p.product_id}`);
+        },
+      },
     );
   };
 
@@ -125,7 +130,11 @@ function BaseCreate() {
           </p>
         )}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => nav("/catalogue")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => nav("/catalogue?tab=base")}
+          >
             Cancel
           </Button>
           <Button
@@ -176,7 +185,7 @@ function BaseDetail({ id }: { id: string }) {
       p={product.data}
       canEdit={can("catalogue", "edit")}
       canCreate={can("catalogue", "create")}
-      onBack={() => nav("/catalogue")}
+      onBack={() => nav("/catalogue?tab=base")}
     />
   );
 }
@@ -456,7 +465,9 @@ function BaseEditor({
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         onConfirm={() =>
-          remove.mutate(p.product_id, { onSuccess: () => nav("/catalogue") })
+          remove.mutate(p.product_id, {
+            onSuccess: () => nav("/catalogue?tab=base"),
+          })
         }
         title="Delete base product?"
         message="This moves the base product to Trash and frees its name. Styled listings that draw from it keep their own data; stock records are detached."
@@ -695,7 +706,7 @@ function BackBar({ label }: { label: string }) {
         variant="ghost"
         size="sm"
         icon={<ArrowLeft className="w-4 h-4" />}
-        onClick={() => nav("/catalogue")}
+        onClick={() => nav("/catalogue?tab=base")}
       >
         Catalogue
       </Button>

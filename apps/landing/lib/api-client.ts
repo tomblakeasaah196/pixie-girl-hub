@@ -86,6 +86,9 @@ export async function postCheckout(args: {
   }>;
   utm?: Record<string, string>;
   payment_gateway: "paystack" | "nomba";
+  /** Buyer-chosen display currency from the landing currency toggle. Drives
+   *  gateway rail selection on the Hub (USD → Nomba). Order stays NGN-based. */
+  display_currency?: "NGN" | "USD";
   client_idempotency_key: string;
   coupon_code?: string;
 }) {

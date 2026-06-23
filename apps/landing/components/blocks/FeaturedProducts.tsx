@@ -185,7 +185,7 @@ function Card({
         ) : null}
         {isPreorder && (
           <div className="absolute top-2 left-2 rounded-md bg-[rgb(var(--accent-deep))] px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase text-[rgb(var(--text))]">
-            Preorder
+            Out of stock · Preorder
           </div>
         )}
       </button>
@@ -222,11 +222,19 @@ function Card({
           </div>
         )}
         {weeks != null && weeks > 0 && (
-          <div className="mt-1.5 flex items-center gap-1 text-[11px] text-[rgb(var(--text-faint))]">
+          <div
+            className={`mt-1.5 flex items-center gap-1 text-[11px] ${
+              isPreorder
+                ? "text-[rgb(var(--warn))]"
+                : "text-[rgb(var(--text-faint))]"
+            }`}
+          >
             <Clock className="w-3 h-3" />
             <span>
-              {isPreorder ? "Preorder" : "Delivery"}: {weeks} week
-              {weeks !== 1 ? "s" : ""}
+              {isPreorder
+                ? `Out of stock — pre-order ships in ${weeks}`
+                : `Delivery: ${weeks}`}{" "}
+              week{weeks !== 1 ? "s" : ""}
             </span>
           </div>
         )}
@@ -248,6 +256,7 @@ function Card({
                 quantity: 1,
                 preorder: isPreorder,
                 preorder_lead_weeks: isPreorder ? weeks ?? undefined : undefined,
+                delivery_weeks: !isPreorder ? weeks ?? undefined : undefined,
               });
               openCart();
             }}

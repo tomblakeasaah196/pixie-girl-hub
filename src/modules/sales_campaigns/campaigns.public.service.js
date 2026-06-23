@@ -496,6 +496,15 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         variant_id: rows[0].variant_id,
         quantity: cartItem.quantity,
       });
+    } else {
+      // Neither a bundle nor a product id — surface it instead of silently
+      // dropping the line (which previously let a cart check out as an empty
+      // order, looking like a "silent failure" to the buyer).
+      throw new AppError(
+        "CART_ITEM_UNRESOLVED",
+        "One of your items is no longer available. Please remove it and try again.",
+        409,
+      );
     }
   }
 

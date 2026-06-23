@@ -132,10 +132,19 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                     <div className="text-[13px] font-semibold truncate">
                       {it.name}
                     </div>
-                    {it.preorder && (
+                    {it.preorder ? (
                       <div className="text-[10px] text-[rgb(var(--warn))] mt-0.5">
-                        Pre-order · ships in {it.preorder_lead_weeks ?? 3} wks
+                        Out of stock · pre-order ships in{" "}
+                        {it.preorder_lead_weeks ?? 3} wks
                       </div>
+                    ) : (
+                      it.delivery_weeks != null &&
+                      it.delivery_weeks > 0 && (
+                        <div className="text-[10px] text-[rgb(var(--text-faint))] mt-0.5">
+                          Delivery in {it.delivery_weeks} wk
+                          {it.delivery_weeks !== 1 ? "s" : ""}
+                        </div>
+                      )
                     )}
                     <div className="font-display tabular-nums text-[14px] mt-1">
                       {money(it.unit_price_ngn * it.quantity)}

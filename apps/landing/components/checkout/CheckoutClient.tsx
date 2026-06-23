@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -60,6 +60,15 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [gateway, setGateway] = useState<Gateway>("paystack");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const errRef = useRef<HTMLDivElement | null>(null);
+
+  // Never let a failure be silent — pull the error into view next to the
+  // Pay button the moment it is set.
+  useEffect(() => {
+    if (err && errRef.current) {
+      errRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [err]);
 
   const idemKey = useMemo(
     () =>
@@ -132,6 +141,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         })),
         utm: readUtm(),
         payment_gateway: gateway,
+        display_currency: readDisplayCurrency(),
         client_idempotency_key: idemKey,
         coupon_code: promoApplied && promoCode ? promoCode : undefined,
       });
@@ -401,11 +411,19 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="truncate font-semibold">{i.name}</div>
-                      {i.preorder && (
+                      {i.preorder ? (
                         <div className="text-[11px] text-[rgb(var(--warn))]">
-                          Pre-order · ships in {i.preorder_lead_weeks ?? 3}{" "}
-                          weeks
+                          Out of stock · pre-order ships in{" "}
+                          {i.preorder_lead_weeks ?? 3} weeks
                         </div>
+                      ) : (
+                        i.delivery_weeks != null &&
+                        i.delivery_weeks > 0 && (
+                          <div className="text-[11px] text-[rgb(var(--text-faint))]">
+                            Delivery in {i.delivery_weeks} week
+                            {i.delivery_weeks !== 1 ? "s" : ""}
+                          </div>
+                        )
                       )}
                     </div>
                     <div className="tabular-nums font-mono">
@@ -490,6 +508,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   {money(subtotal)}
                 </span>
               </div>
+              {err && (
+                <div
+                  ref={errRef}
+                  role="alert"
+                  aria-live="assertive"
+                  className="rounded-xl border border-[rgb(var(--danger)/0.4)] bg-[rgb(var(--danger)/0.08)] px-3 py-2 text-[12.5px] text-[rgb(var(--danger))]"
+                >
+                  {err}
+                </div>
+              )}
               <motion.button
                 type="submit"
                 whileTap={{ scale: 0.99 }}
@@ -638,6 +666,20 @@ function Toggle({
       </span>
     </label>
   );
+}
+
+/** The buyer's currency choice from the live-page ₦⇄$ toggle (persisted by
+ *  CurrencyFloater). Drives gateway-rail selection on the Hub; the order is
+ *  still placed in NGN. Defaults to NGN when never toggled. */
+function readDisplayCurrency(): "NGN" | "USD" {
+  if (typeof window === "undefined") return "NGN";
+  try {
+    return window.localStorage.getItem("pgh.salesCurrency") === "USD"
+      ? "USD"
+      : "NGN";
+  } catch {
+    return "NGN";
+  }
 }
 
 function readUtm(): Record<string, string> {

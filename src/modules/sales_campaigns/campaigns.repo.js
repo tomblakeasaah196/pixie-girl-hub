@@ -85,6 +85,11 @@ const CREATE_COLS = [
   "position_ladder",
   "stacking_bonus",
   "bulk_tiers",
+  // ── Static FX rate for the landing currency toggle (migration 000051) ──
+  // "1 USD = N NGN" the landing page uses when the visitor flips the toggle.
+  // NOT used to settle orders — those use the LIVE rate captured into
+  // sales_orders.fx_rate_used at payment time.
+  "ngn_per_usd_rate",
 ];
 const UPDATE_COLS = CREATE_COLS; // same set is editable (status excluded by design)
 const JSONB_COLS = new Set([

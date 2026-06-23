@@ -1,0 +1,23 @@
+-- ============================================================
+-- TEMPLATE 000051 — Sales Campaigns: per-campaign static FX rate.
+-- ngn_per_usd_rate is the customer-facing display rate for the landing page
+-- (e.g. "1 USD = 1310 NGN") so prices flip stably while a drop is live.
+-- It is NEVER used to settle orders — payment/checkout uses the LIVE FX
+-- rate captured into sales_orders.fx_rate_used at the moment of payment so
+-- the books reflect what actually settled.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here so the file is safely
+-- re-runnable on every repair.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.sales_campaigns
+  ADD COLUMN IF NOT EXISTS ngn_per_usd_rate NUMERIC(14,4)
+    CHECK (ngn_per_usd_rate IS NULL OR ngn_per_usd_rate > 0);
+
+COMMENT ON COLUMN {{BUSINESS}}.sales_campaigns.ngn_per_usd_rate IS
+  'Static NGN per 1 USD rate the landing page uses to display prices when '
+  'a visitor toggles the currency to USD. Editable in the campaign builder. '
+  'Not used for order settlement — that uses the live FX rate captured at '
+  'the moment of payment into sales_orders.fx_rate_used.';

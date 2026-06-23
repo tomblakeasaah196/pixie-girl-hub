@@ -84,7 +84,7 @@ async function reorderBundleItems(req, res) {
   res.status(204).end();
 }
 
-// ── Clone / duplicate ────────────────────────────────────
+// ── Clone / duplicate / import ───────────────────────────
 async function cloneBundles(req, res) {
   const data = await bundles.cloneAllBundlesToCampaign({
     brand: req.brand,
@@ -94,6 +94,25 @@ async function cloneBundles(req, res) {
     campaign_slug: req.body.campaign_slug || "campaign",
   });
   res.json({ data });
+}
+
+async function listCatalogueBundleSources(req, res) {
+  const result = await bundles.listCatalogueBundleSources({
+    brand: req.brand,
+  });
+  res.json(result);
+}
+
+async function importCatalogueBundle(req, res) {
+  const data = await bundles.importCatalogueBundle({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    campaign_id: req.params.id,
+    campaign_slug: req.body.campaign_slug || "campaign",
+    source_bundle_offer_id: req.body.source_bundle_offer_id,
+  });
+  res.status(201).json({ data });
 }
 
 async function duplicateBundleHandler(req, res) {
@@ -356,6 +375,8 @@ module.exports = {
   updateBundle,
   archiveBundle,
   cloneBundles,
+  listCatalogueBundleSources,
+  importCatalogueBundle,
   duplicateBundleHandler,
   addBundleItem,
   removeBundleItem,

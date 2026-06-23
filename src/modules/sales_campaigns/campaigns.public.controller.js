@@ -79,4 +79,25 @@ async function orderStatus(req, res) {
   res.json({ data });
 }
 
-module.exports = { index, landing, stock, signup, checkout, orderStatus };
+/** Public product detail for the landing-page product modal — gallery,
+ *  long description, variants (size × lace with price premiums), and the
+ *  brand's head-size guide + video so the buyer never leaves the page. */
+async function productDetail(req, res) {
+  const data = await publicService.getProductDetail({
+    slug: req.params.slug,
+    brand: req.brand,
+    brandHint: brandHint(req),
+    styled_id: req.params.styledId,
+  });
+  res.json({ data });
+}
+
+module.exports = {
+  index,
+  landing,
+  stock,
+  signup,
+  checkout,
+  orderStatus,
+  productDetail,
+};

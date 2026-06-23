@@ -149,19 +149,27 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
     if (
       input.size_guide_title !== undefined ||
       input.head_size_guide_md !== undefined ||
+      input.head_size_video_url !== undefined ||
       input.categories_enabled !== undefined ||
       input.allow_base_in_collections_bundles !== undefined
     ) {
+      // Only forward keys the caller explicitly set so the repo's
+      // "deliberate NULL clears the field" guard for head_size_video_url
+      // doesn't fire on an untouched save.
+      const patch = {
+        size_guide_title: input.size_guide_title,
+        head_size_guide_md: input.head_size_guide_md,
+        categories_enabled: input.categories_enabled,
+        allow_base_in_collections_bundles:
+          input.allow_base_in_collections_bundles,
+      };
+      if (input.head_size_video_url !== undefined) {
+        patch.head_size_video_url = input.head_size_video_url;
+      }
       config = await repo.upsertConfig({
         client,
         brand,
-        patch: {
-          size_guide_title: input.size_guide_title,
-          head_size_guide_md: input.head_size_guide_md,
-          categories_enabled: input.categories_enabled,
-          allow_base_in_collections_bundles:
-            input.allow_base_in_collections_bundles,
-        },
+        patch,
         user_id: user.user_id,
       });
     }

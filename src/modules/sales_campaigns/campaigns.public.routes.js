@@ -70,4 +70,13 @@ router.post(
 // Order status: thank-you page polls this to show confirmation.
 router.get("/:slug/order/:orderId", landingReadLimiter, controller.orderStatus);
 
+// Product detail for the landing-page product modal — gallery, long
+// description, variants (size × lace with effective price), and the brand's
+// head-size guide + video.
+router.get(
+  "/:slug/product/:styledId",
+  landingReadLimiter,
+  controller.productDetail,
+);
+
 module.exports = router;

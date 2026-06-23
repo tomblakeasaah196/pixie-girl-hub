@@ -20,6 +20,8 @@ const salesService = require("../sales/sales.service");
 const salesRepo = require("../sales/sales.repo");
 const paymentLink = require("../sales/payment-link.service");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
+const styledRepo = require("../catalogue/styled.repo");
+const styledVariantsRepo = require("../catalogue/styled_variants.repo");
 const { transaction, query } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
@@ -417,12 +419,16 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       client,
       contact_id: ct.contact_id,
     });
-    if (!addresses.some((a) => a.address_type === "shipping" && a.is_default)) {
+    // shared.contact_addresses.address_type CHECK is
+    // ('delivery','billing','office','home','other') — "shipping" isn't in the
+    // domain and trips a 23514 (INVALID_VALUE) on every public checkout that
+    // creates a new contact. Use the canonical 'delivery'.
+    if (!addresses.some((a) => a.address_type === "delivery" && a.is_default)) {
       await contactsRepo.addAddress({
         client,
         contact_id: ct.contact_id,
         input: {
-          address_type: "shipping",
+          address_type: "delivery",
           is_default: true,
           line1: addr.line1,
           line2: addr.line2 || null,
@@ -574,12 +580,22 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     : undefined;
 
   try {
+    // Pass the buyer's chosen display currency through so getActiveChain
+    // routes the right rail (USD → Nomba only, NGN → Nomba then Paystack).
+    // Order remains in NGN base; the gateway charges in the chosen currency
+    // and the webhook stamps display_currency + fx_rate_used at settlement.
+    const checkoutCurrency = String(
+      input.display_currency || "NGN",
+    ).toUpperCase();
     const payResult = await paymentLink.createPaymentLink({
       brand: resolvedBrand,
       order_id: order.order_id,
-      currency: "NGN",
+      currency: checkoutCurrency,
       return_url_base: returnUrlBase,
-      preferred_provider: input.payment_gateway,
+      // USD only ships on the Nomba rail — ignore any buyer-preferred
+      // provider override when currency forces the chain.
+      preferred_provider:
+        checkoutCurrency === "USD" ? "nomba" : input.payment_gateway,
     });
     events.emit("checkout_completed", {
       brand: resolvedBrand,
@@ -619,4 +635,159 @@ async function getOrderStatus({ slug, brand, brandHint, orderId }) {
   };
 }
 
-module.exports = { getIndex, getLanding, getStock, signup, checkout, getOrderStatus };
+/**
+ * Public product detail for the landing-page product modal.
+ *
+ * Returns the gallery, long description, variants (size × lace with each
+ * option's effective price = anchor + colour/size/lace premiums), and the
+ * brand's head-size guide + optional video. The styled product must be
+ * either attached to the campaign as a `sales_campaign_products` link OR
+ * present inside one of the campaign's attached bundles — otherwise we
+ * refuse the lookup so the public endpoint can't be used to enumerate the
+ * whole catalogue.
+ */
+async function getProductDetail({ slug, brand, brandHint, styled_id }) {
+  const found = await resolveCampaign({ slug, brand, brandHint });
+  if (!found) throw new NotFoundError("Campaign");
+  const { campaign, brand: resolvedBrand } = found;
+  if (!PUBLIC_STATUSES.has(campaign.status)) {
+    throw new NotFoundError("Campaign");
+  }
+
+  // Authorisation: the styled product must be referenced by this campaign,
+  // either directly via sales_campaign_products or transitively via a
+  // bundle on the campaign.
+  const { rows: linkRows } = await query(
+    `SELECT 1
+       FROM ${resolvedBrand}.sales_campaign_products
+      WHERE campaign_id = $1 AND styled_id = $2
+        AND include_exclude = 'include'
+      LIMIT 1`,
+    [campaign.campaign_id, styled_id],
+  );
+  if (!linkRows.length) {
+    const { rows: bundleRows } = await query(
+      `SELECT 1
+         FROM ${resolvedBrand}.sales_campaign_bundles scb
+         JOIN ${resolvedBrand}.product_bundle_items bi
+           ON bi.bundle_id = scb.bundle_id
+        WHERE scb.campaign_id = $1 AND bi.styled_id = $2
+        LIMIT 1`,
+      [campaign.campaign_id, styled_id],
+    );
+    if (!bundleRows.length) throw new NotFoundError("Product");
+  }
+
+  const styled = await styledRepo.getById({
+    brand: resolvedBrand,
+    id: styled_id,
+  });
+  if (!styled || styled.is_deleted || styled.status !== "live") {
+    throw new NotFoundError("Product");
+  }
+
+  // Gallery: prefer images attached to the styled row directly; fall back to
+  // the base product's gallery. Both join points are indexed.
+  const { rows: galleryRows } = await query(
+    `SELECT COALESCE(cdn_url, file_path) AS url, alt_text, is_primary, display_order
+       FROM ${resolvedBrand}.product_images
+      WHERE styled_id = $1
+      ORDER BY is_primary DESC, display_order ASC NULLS LAST
+      LIMIT 24`,
+    [styled_id],
+  );
+  let gallery = galleryRows;
+  if (gallery.length === 0 && styled.base_product_id) {
+    const { rows: baseRows } = await query(
+      `SELECT COALESCE(cdn_url, file_path) AS url, alt_text, is_primary, display_order
+         FROM ${resolvedBrand}.product_images
+        WHERE product_id = $1 AND styled_id IS NULL AND variant_id IS NULL
+        ORDER BY is_primary DESC, display_order ASC NULLS LAST
+        LIMIT 24`,
+      [styled.base_product_id],
+    );
+    gallery = baseRows;
+  }
+
+  const variants = await styledVariantsRepo.listVariants({
+    brand: resolvedBrand,
+    styled_id,
+  });
+
+  const { rows: tierRows } = await query(
+    `SELECT size_code, label, premium_ngn, circumference_min_in,
+            circumference_max_in, guidance_text, display_order
+       FROM ${resolvedBrand}.styled_size_tiers
+      WHERE is_active = true
+      ORDER BY display_order`,
+  );
+  const { rows: laceRows } = await query(
+    `SELECT lace_code, label, premium_ngn, display_order
+       FROM ${resolvedBrand}.styled_lace_sizes
+      WHERE is_active = true
+      ORDER BY display_order`,
+  );
+
+  const cfg = await styledVariantsRepo.getConfig({ brand: resolvedBrand });
+
+  return {
+    styled_id,
+    name: styled.name,
+    slug: styled.slug,
+    short_description: styled.short_description,
+    long_description: styled.long_description,
+    retail_price_ngn: styled.retail_price_ngn,
+    anchor_price_ngn: styled.retail_price_ngn,
+    gallery,
+    variants: variants.map((v) => ({
+      variant_id: v.variant_id,
+      colour_name: v.colour_name,
+      colour_hex: v.colour_hex,
+      colour_premium_ngn: Number(v.colour_premium_ngn || 0),
+      size_code: v.size_code,
+      size_label: v.size_label,
+      size_premium_ngn: Number(v.size_premium_ngn || 0),
+      lace_code: v.lace_code,
+      lace_label: v.lace_label,
+      lace_premium_ngn: Number(v.lace_premium_ngn || 0),
+      effective_price_ngn: Number(v.effective_price_ngn || 0),
+      is_default: Boolean(v.colour_is_default),
+    })),
+    size_tiers: tierRows.map((r) => ({
+      size_code: r.size_code,
+      label: r.label,
+      premium_ngn: Number(r.premium_ngn || 0),
+      circumference_in:
+        r.circumference_min_in !== null &&
+        r.circumference_min_in !== undefined &&
+        r.circumference_max_in !== null &&
+        r.circumference_max_in !== undefined
+          ? `${r.circumference_min_in}–${r.circumference_max_in}"`
+          : null,
+      guidance_text: r.guidance_text,
+    })),
+    lace_sizes: laceRows.map((r) => ({
+      lace_code: r.lace_code,
+      label: r.label,
+      premium_ngn: Number(r.premium_ngn || 0),
+    })),
+    size_guide: cfg
+      ? {
+          title:
+            cfg.size_guide_title || "How to find your head size",
+          guide_md: cfg.head_size_guide_md || null,
+          video_url: cfg.head_size_video_url || null,
+        }
+      : null,
+  };
+}
+
+module.exports = {
+  getIndex,
+  getLanding,
+  getStock,
+  signup,
+  checkout,
+  getOrderStatus,
+  getProductDetail,
+};

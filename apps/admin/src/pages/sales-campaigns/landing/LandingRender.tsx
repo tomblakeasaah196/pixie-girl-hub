@@ -13,9 +13,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
-import type { LandingBlock, PublicState } from "@/lib/campaigns";
+import type {
+  DiscountType,
+  LandingBlock,
+  PositionLadderItem,
+  PublicState,
+} from "@/lib/campaigns";
 import type { LandingConfig } from "@landing-kit";
 import { hexToTriplet, fontStack } from "@landing-kit";
+import {
+  formatPrice,
+  isUsdEnabled,
+  useCurrencyStore,
+  useGeoCurrencyInit,
+} from "@/lib/currency";
+import { CurrencyFloater } from "@/components/campaign/CurrencyFloater";
+import { ProductDetailModal } from "@/components/campaign/ProductDetailModal";
 
 export interface LandingProduct {
   product_id?: string | null;
@@ -49,32 +62,35 @@ export interface LandingModel {
   countdown_to?: string | null;
   countdown_message?: string | null;
   signup_for_notifications?: boolean;
+  /** Static NGN-per-USD rate for the customer-facing currency toggle. NULL =
+   *  NGN-only, toggle hidden. Customer display only — order settlement uses
+   *  the LIVE FX rate captured at payment. */
+  ngn_per_usd_rate?: number | null;
+  /** Top-level discount + per-position ladder — used to render the
+   *  "save ₦X per wig" badge on each product card. */
+  discount_type?: DiscountType | null;
+  discount_value?: number | null;
+  position_ladder?: PositionLadderItem[] | null;
   blocks: LandingBlock[];
   products?: LandingProduct[];
   ended?: { message?: string | null; redirect_to?: string | null } | null;
   gallery?: string[];
 }
 
-const NGN = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  maximumFractionDigits: 0,
-});
-function ngn(v: number | string | null | undefined): string {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? NGN.format(n) : "₦—";
-}
-
-const USD = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-/** Format a USD price, or null when there is no figure to show. */
-function usd(v: number | string | null | undefined): string | null {
-  if (v == null || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) && n > 0 ? USD.format(n) : null;
+/** Hook returning a `priceLabel(ngnValue)` formatter bound to the visitor's
+ *  active currency (toggle store) and the campaign's static FX rate. USD
+ *  prices are ceiling-rounded to whole dollars per owner directive (10.29 → 11).
+ *  When the campaign has no rate set the toggle is hidden and labels stay NGN. */
+function usePriceLabel(fxRate: number | null) {
+  const currency = useCurrencyStore((s) => s.currency);
+  return useMemo(() => {
+    return (v: number | string | null | undefined): string => {
+      const n = typeof v === "number" ? v : Number(v);
+      if (!Number.isFinite(n) || n <= 0) return "—";
+      const formatted = formatPrice(n, currency, fxRate);
+      return formatted ?? "—";
+    };
+  }, [currency, fxRate]);
 }
 
 /** A deterministic tasteful gradient when an image is missing — never a grey box. */
@@ -200,6 +216,39 @@ export function LandingRender({
     [model.blocks],
   );
   const featured = (model.products || []).filter((p) => p.name);
+
+  // Customer-facing currency toggle. Geo init runs once: NG → NGN, anywhere
+  // else (with the campaign's FX rate set) → USD. The visitor can override
+  // with the floating ₦/$ pill, which then persists in localStorage.
+  const fxRate = model.ngn_per_usd_rate ?? null;
+  useGeoCurrencyInit(isUsdEnabled(fxRate));
+  const priceLabel = usePriceLabel(fxRate);
+
+  // Featured-product modal: clicking any product card opens the gallery /
+  // long-description / variant picker / size-guide modal. Tracked here at
+  // the top so the modal lives outside the scrolling block content.
+  const [openProduct, setOpenProduct] = useState<string | null>(null);
+
+  // Estimated "save per wig" amount used by the product cards. Order of
+  // preference (matches the campaign engine's intent): the first rung of
+  // the position ladder (1st-wig discount), then the top-level discount on
+  // the campaign (percentage off the unit price, or flat ₦ off).
+  function estimateSavePerWig(unitNgn: number): number {
+    if (!Number.isFinite(unitNgn) || unitNgn <= 0) return 0;
+    const ladder = model.position_ladder || [];
+    if (ladder.length) {
+      // The ladder is keyed by 1-based position; first row = single wig.
+      const first = [...ladder].sort((a, b) => a.position - b.position)[0];
+      if (first?.discount_ngn) return Number(first.discount_ngn) || 0;
+    }
+    if (model.discount_type === "percentage" && model.discount_value) {
+      return Math.round(unitNgn * Number(model.discount_value));
+    }
+    if (model.discount_type === "fixed_amount" && model.discount_value) {
+      return Math.round(Number(model.discount_value));
+    }
+    return 0;
+  }
 
   const atelierVars = useMemo(() => {
     if (!brandConfig) return undefined;
@@ -346,6 +395,9 @@ export function LandingRender({
               block={b}
               model={model}
               featured={featured}
+              priceLabel={priceLabel}
+              estimateSavePerWig={estimateSavePerWig}
+              onOpenProduct={setOpenProduct}
             />
           ))}
           {enabled.length === 0 && <DefaultBody model={model} />}
@@ -365,6 +417,19 @@ export function LandingRender({
           <div className="text-[11px] text-text-faint">/sale/{model.slug}</div>
         </div>
       </footer>
+
+      {/* Brand-tinted floating currency toggle — hidden when the campaign
+          has no static FX rate set. Swaps every amount on the page; falls
+          back to NGN automatically when the rate is removed. */}
+      <CurrencyFloater fxRate={fxRate} />
+
+      {/* Stylish product modal opened by any featured-product click. */}
+      <ProductDetailModal
+        slug={model.slug}
+        styledId={openProduct}
+        fxRate={fxRate}
+        onClose={() => setOpenProduct(null)}
+      />
     </div>
   );
 }
@@ -374,10 +439,16 @@ function BlockSection({
   block,
   model,
   featured,
+  priceLabel,
+  estimateSavePerWig,
+  onOpenProduct,
 }: {
   block: LandingBlock;
   model: LandingModel;
   featured: LandingProduct[];
+  priceLabel: (v: number | string | null | undefined) => string;
+  estimateSavePerWig: (unitNgn: number) => number;
+  onOpenProduct: (styledId: string) => void;
 }) {
   const key = block.key || block.type || "";
   const meta = BLOCK_TITLE[key];
@@ -411,10 +482,10 @@ function BlockSection({
                   </p>
                   <div className="mt-4 flex items-baseline gap-2">
                     <span className="font-mono text-[20px] text-accent-glow">
-                      {ngn(180000 - n * 20000)}
+                      {priceLabel(180000 - n * 20000)}
                     </span>
                     <span className="text-text-faint text-[13px] line-through">
-                      {ngn(240000 - n * 20000)}
+                      {priceLabel(240000 - n * 20000)}
                     </span>
                   </div>
                 </div>
@@ -444,7 +515,7 @@ function BlockSection({
                   bundles in one order
                 </div>
                 <div className="mt-4 font-mono text-accent-glow text-[18px]">
-                  save {ngn(t.s)}
+                  save {priceLabel(t.s)}
                 </div>
               </div>
             ))}
@@ -464,17 +535,34 @@ function BlockSection({
               const img = prod.image_url || prod.hero_image_url;
               // Real price: the campaign override if set, else the snapshotted
               // regular price. No more fabricated "95000 + n*10000" placeholder.
+              // Price is always NGN base — the toggle/floater converts on
+              // display via the campaign's static FX rate (USD ceiling-rounded
+              // to whole dollars per owner directive).
               const priceNgn =
                 prod.campaign_price_ngn ?? prod.regular_price_ngn ?? null;
-              const priceUsd = usd(
-                prod.campaign_price_usd ?? prod.regular_price_usd,
-              );
               const hasPrice =
                 priceNgn != null && Number.isFinite(Number(priceNgn));
+              const save = hasPrice
+                ? estimateSavePerWig(Number(priceNgn))
+                : 0;
+              const styledId = (prod.styled_id || "") as string;
+              const openable = Boolean(styledId);
               return (
-                <article key={n} className="group">
+                <article
+                  key={n}
+                  className={`group ${openable ? "cursor-pointer" : ""}`}
+                  onClick={() => openable && onOpenProduct(styledId)}
+                  role={openable ? "button" : undefined}
+                  tabIndex={openable ? 0 : undefined}
+                  onKeyDown={(e) => {
+                    if (openable && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onOpenProduct(styledId);
+                    }
+                  }}
+                >
                   <div
-                    className="aspect-[3/4] rounded-[16px] overflow-hidden mb-3"
+                    className="aspect-[3/4] rounded-[16px] overflow-hidden mb-3 transition-transform group-hover:scale-[1.015]"
                     style={{
                       backgroundImage: img ? `url("${img}")` : undefined,
                       background: img
@@ -493,10 +581,15 @@ function BlockSection({
                     </div>
                   )}
                   {hasPrice && (
-                    <div className="font-mono text-accent-glow text-[13px] mt-1">
-                      {ngn(priceNgn)}
-                      {priceUsd && (
-                        <span className="opacity-60"> · {priceUsd}</span>
+                    <div className="flex items-baseline justify-between gap-2 mt-1">
+                      <span className="font-mono text-accent-glow text-[13px]">
+                        {priceLabel(priceNgn)}
+                      </span>
+                      {save > 0 && (
+                        <span className="font-mono text-[11px] text-[rgb(var(--success,52_211_153))] whitespace-nowrap">
+                          save {priceLabel(save)}
+                          <span className="opacity-60"> / wig</span>
+                        </span>
                       )}
                     </div>
                   )}

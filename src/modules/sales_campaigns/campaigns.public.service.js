@@ -417,12 +417,16 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       client,
       contact_id: ct.contact_id,
     });
-    if (!addresses.some((a) => a.address_type === "shipping" && a.is_default)) {
+    // NB: shared.contact_addresses.address_type CHECK allows only
+    // 'delivery' | 'billing' | 'office' | 'home' | 'other'. Using 'shipping'
+    // tripped a 23514 (→ INVALID_VALUE) on every checkout. 'delivery' is the
+    // canonical customer-shipping type (and the column default).
+    if (!addresses.some((a) => a.address_type === "delivery" && a.is_default)) {
       await contactsRepo.addAddress({
         client,
         contact_id: ct.contact_id,
         input: {
-          address_type: "shipping",
+          address_type: "delivery",
           is_default: true,
           line1: addr.line1,
           line2: addr.line2 || null,

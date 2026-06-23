@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { Clock, ShoppingBag } from "lucide-react";
@@ -9,6 +9,54 @@ import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { SectionHeader } from "./BundleShowcase";
 import { ProductDetailModal } from "../product/ProductDetailModal";
+
+/**
+ * Live stock map, keyed by styled_id and product_id → current available qty.
+ * The card's stock_remaining is baked into the (cacheable) page payload, so a
+ * CDN-cached page would otherwise show stale "out of stock". Polling the live
+ * /stock endpoint keeps the Add / Pre-order state current within seconds of an
+ * inventory change, independent of page caching. Live state only.
+ */
+function useLiveStock(slug: string, enabled: boolean) {
+  const [map, setMap] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!enabled || !slug) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `/api/public/sale/${encodeURIComponent(slug)}/stock`,
+          { headers: { Accept: "application/json" }, cache: "no-store" },
+        );
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          data?: {
+            product_id?: string | null;
+            styled_id?: string | null;
+            stock_remaining?: number | null;
+          }[];
+        };
+        if (cancelled || !json?.data) return;
+        const next: Record<string, number> = {};
+        for (const r of json.data) {
+          if (r.stock_remaining == null) continue;
+          if (r.styled_id) next[r.styled_id] = r.stock_remaining;
+          if (r.product_id) next[r.product_id] = r.stock_remaining;
+        }
+        setMap(next);
+      } catch {
+        // keep the last known map on a transient failure
+      }
+    };
+    load();
+    const t = setInterval(load, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [slug, enabled]);
+  return map;
+}
 
 export function FeaturedProducts({
   payload,
@@ -22,6 +70,8 @@ export function FeaturedProducts({
   // the modal fetches. Lifting this here means a card click never re-mounts
   // a modal per product (which was wasting transitions).
   const [openId, setOpenId] = useState<string | null>(null);
+  // Live stock overrides the page-baked stock_remaining (beats CDN caching).
+  const liveStock = useLiveStock(payload.slug, state === "live");
 
   if (!products.length) return null;
   return (
@@ -59,6 +109,7 @@ export function FeaturedProducts({
               product={p}
               index={i}
               live={state === "live"}
+              liveStock={liveStock}
               deliveryWeeks={payload.delivery_weeks}
               preorderExtraWeeks={payload.preorder_extra_weeks}
               positionLadder={payload.position_ladder ?? null}
@@ -118,6 +169,7 @@ function Card({
   discountType,
   discountValue,
   onOpen,
+  liveStock,
 }: {
   product: LandingProduct;
   index: number;
@@ -128,6 +180,7 @@ function Card({
   discountType: string | null;
   discountValue: number | null;
   onOpen: (styledId: string) => void;
+  liveStock?: Record<string, number>;
 }) {
   const add = useCart((s) => s.add);
   const openCart = useCart((s) => s.openCart);
@@ -136,8 +189,12 @@ function Card({
   const retail = Number(product.regular_price_ngn || 0);
   const price = campaignPrice > 0 ? campaignPrice : retail;
   const hasDiscount = campaignPrice > 0 && retail > campaignPrice;
-  const isPreorder =
-    product.stock_remaining != null && product.stock_remaining <= 0;
+  // Live stock (polled) overrides the page-baked stock_remaining when present.
+  const liveQty =
+    liveStock?.[product.styled_id ?? ""] ??
+    liveStock?.[product.product_id ?? ""];
+  const effectiveStock = liveQty ?? product.stock_remaining;
+  const isPreorder = effectiveStock != null && effectiveStock <= 0;
   const weeks = isPreorder
     ? (deliveryWeeks || 0) + (preorderExtraWeeks ?? 4)
     : deliveryWeeks;

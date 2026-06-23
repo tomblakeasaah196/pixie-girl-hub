@@ -993,7 +993,10 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
     anchor_price_ngn: styled.retail_price_ngn,
     gallery,
     variants: variants.map((v) => ({
-      variant_id: v.variant_id,
+      // The styled variant's id IS its primary key (styled_product_variants
+      // has no `variant_id` column). The checkout's styled branch expects this
+      // value as `styled_variant_id`; the modal forwards it from here.
+      variant_id: v.styled_variant_id,
       colour_name: v.colour_name,
       colour_hex: v.colour_hex,
       colour_premium_ngn: Number(v.colour_premium_ngn || 0),

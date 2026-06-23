@@ -197,23 +197,19 @@ export function ProductDetailModal({
   }, [product, size, lace]);
 
   function handleAdd() {
-    if (!product) return;
-    // Prefer the resolved variant's price; fall back to the computed price.
-    const price = selectedVariant
-      ? Number(selectedVariant.effective_price_ngn)
-      : effectivePrice;
+    // Never add an unresolvable line: without a styled_variant_id the checkout
+    // can't price it (it would 409 CART_ITEM_UNRESOLVED). Require a variant.
+    if (!product || !selectedVariant?.variant_id) return;
+    const price =
+      Number(selectedVariant.effective_price_ngn) || effectivePrice || 0;
     if (!price) return;
     add({
       // Unique per styled variant so different size/colour are separate lines.
-      id: selectedVariant
-        ? `styled:${selectedVariant.variant_id}`
-        : product.styled_id,
+      id: `styled:${selectedVariant.variant_id}`,
       type: "styled",
-      styled_variant_id: selectedVariant?.variant_id,
+      styled_variant_id: selectedVariant.variant_id,
       product_id: undefined,
-      name: selectedVariant
-        ? `${product.name} — ${selectedVariant.size_label}`
-        : product.name,
+      name: `${product.name} — ${selectedVariant.size_label}`,
       image_url: product.gallery[0]?.url,
       unit_price_ngn: price,
       retail_price_ngn: Number(product.retail_price_ngn || 0) || undefined,

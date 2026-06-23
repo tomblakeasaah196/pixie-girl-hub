@@ -14,14 +14,28 @@ import {
   Lock,
   MapPin,
   MessageCircle,
+  Phone,
   RefreshCw,
   ShieldCheck,
+  Store,
   Tag,
+  Truck,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { postCheckout } from "@/lib/api-client";
+import {
+  fetchGeoOptions,
+  fetchPickupAddress,
+  fetchDeliveryQuote,
+  GEO_FALLBACK,
+  type GeoOption,
+  type GeoOptions,
+  type PickupAddress,
+} from "@/lib/geo";
 import type { LandingPayload } from "@/lib/types";
+
+type Fulfilment = "delivery" | "pickup";
 
 type Gateway = "paystack" | "nomba";
 
@@ -32,16 +46,37 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const retail = useCart((s) => s.retailSubtotalNgn());
   const savings = useCart((s) => s.savingsNgn());
 
+  const brandKey = payload.brand?.business_key;
+
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("+234 ");
   const [insta, setInsta] = useState("");
+
+  // Fulfilment: ship to address, or collect in store.
+  const [fulfilment, setFulfilment] = useState<Fulfilment>("delivery");
+
   const [addressLine1, setAddressLine1] = useState("");
   const [addressLine2, setAddressLine2] = useState("");
+  // City is free text for non-Lagos; the Lagos LGA picker fills it.
   const [city, setCity] = useState("");
-  const [state, setState] = useState("Lagos");
-  const [country] = useState("Nigeria");
+  // State is the NG-states picker for Nigeria, free text elsewhere.
+  const [state, setState] = useState("");
+  // Country defaults to Nigeria (most buyers); fully searchable.
+  const [country, setCountry] = useState("Nigeria");
+  const [countryCode, setCountryCode] = useState("NG");
+  // The delivery-zone code that prices the order: NG state ("NG-AB") or Lagos
+  // LGA ("NG-LA-AGEGE"); for international it's the ISO-2 country code.
+  const [zoneCode, setZoneCode] = useState("");
+
+  // Geo picker data + the live delivery quote.
+  const [geo, setGeo] = useState<GeoOptions | null>(null);
+  const [pickupAddr, setPickupAddr] = useState<PickupAddress | null>(null);
+  const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
+  const [deliveryZoneName, setDeliveryZoneName] = useState<string | null>(null);
+  const [quoting, setQuoting] = useState(false);
+
   const [notes, setNotes] = useState("");
   const [isGift, setIsGift] = useState(false);
   const [giftName, setGiftName] = useState("");
@@ -86,6 +121,69 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   );
   const empty = items.length === 0;
 
+  // ── Geo-conditional autofill state ───────────────────────
+  const countries = geo?.countries ?? GEO_FALLBACK.countries;
+  const ngStates = geo?.nigeria_states ?? GEO_FALLBACK.nigeria_states;
+  const lagosLgas = geo?.lagos_lgas ?? GEO_FALLBACK.lagos_lgas;
+  const isNigeria = country === "Nigeria" || countryCode === "NG";
+  const isLagos = isNigeria && state === "Lagos";
+  // Total wigs in the basket drive the delivery tier (1–2 / 3–4 / 5–6 / +2).
+  const wigQty = items.reduce((s, i) => s + i.quantity, 0);
+  // The zone the fee resolves against: NG → state/LGA code; else ISO-2 country.
+  const effectiveZone = isNigeria ? zoneCode : countryCode;
+
+  // Load picker options + the in-store pickup address once per brand.
+  useEffect(() => {
+    let alive = true;
+    fetchGeoOptions(brandKey).then((g) => alive && setGeo(g));
+    fetchPickupAddress(brandKey).then((p) => alive && setPickupAddr(p));
+    return () => {
+      alive = false;
+    };
+  }, [brandKey]);
+
+  // Re-quote the delivery fee whenever the zone or basket size changes.
+  useEffect(() => {
+    if (fulfilment !== "delivery" || !effectiveZone) {
+      setDeliveryFee(null);
+      setDeliveryZoneName(null);
+      setQuoting(false);
+      return;
+    }
+    let cancelled = false;
+    setQuoting(true);
+    fetchDeliveryQuote({ brand: brandKey, zoneCode: effectiveZone, qty: wigQty })
+      .then((q) => {
+        if (cancelled) return;
+        setDeliveryFee(q?.fee_ngn ?? null);
+        setDeliveryZoneName(q?.zone_name ?? null);
+      })
+      .finally(() => {
+        if (!cancelled) setQuoting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fulfilment, effectiveZone, wigQty, brandKey]);
+
+  // Delivery due now (pickup is free; an uncovered zone falls back to 0 and the
+  // copy reads "calculated at fulfilment").
+  const deliveryDue =
+    fulfilment === "delivery" && deliveryFee != null ? deliveryFee : 0;
+  const total = subtotal + deliveryDue;
+
+  // Right-hand summary label for the delivery line.
+  const deliveryLabel =
+    fulfilment === "pickup"
+      ? "Free"
+      : quoting
+        ? "Calculating…"
+        : deliveryFee != null
+          ? money(deliveryFee)
+          : effectiveZone
+            ? "At fulfilment"
+            : "—";
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -94,9 +192,26 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       setErr({ message: "Please accept the terms to continue.", retryable: false });
       return;
     }
-    if (!first || !email || !phone || !addressLine1 || !city) {
+    if (!first || !email || !phone) {
       setErr({ message: "Please fill in all required fields.", retryable: false });
       return;
+    }
+    if (fulfilment === "delivery") {
+      if (!addressLine1 || !city) {
+        setErr({
+          message: "Please enter your delivery address.",
+          retryable: false,
+        });
+        return;
+      }
+      if (isNigeria && !state) {
+        setErr({ message: "Please select your state.", retryable: false });
+        return;
+      }
+      if (isLagos && !zoneCode) {
+        setErr({ message: "Please select your city / LGA.", retryable: false });
+        return;
+      }
     }
     setBusy(true);
     try {
@@ -129,19 +244,25 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           instagram_handle: insta || undefined,
           notes: notes || undefined,
           gift: giftPayload,
-          address: {
-            line1: addressLine1,
-            line2: addressLine2 || undefined,
-            city,
-            state,
-            country,
-          },
+          address:
+            fulfilment === "delivery"
+              ? {
+                  line1: addressLine1,
+                  line2: addressLine2 || undefined,
+                  city,
+                  state: state || undefined,
+                  country,
+                  country_code: countryCode || undefined,
+                  zone_code: effectiveZone || undefined,
+                }
+              : undefined,
           consent: {
             whatsapp_opt_in: waOpt,
             marketing_opt_in: mktOpt,
             terms_accepted: true,
           },
         },
+        fulfilment_type: fulfilment,
         cart: items.map((i) => ({
           bundle_id: i.bundle_id,
           product_id: i.product_id,
@@ -271,32 +392,183 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               </Field>
             </Section>
 
-            <Section title="Delivery">
-              <Field label="Address line 1" required>
-                <Input
-                  value={addressLine1}
-                  onChange={setAddressLine1}
-                  required
-                />
-              </Field>
-              <Field label="Address line 2">
-                <Input value={addressLine2} onChange={setAddressLine2} />
-              </Field>
-              <Row>
-                <Field label="City" required>
-                  <Input value={city} onChange={setCity} required />
-                </Field>
-                <Field label="State">
-                  <Input value={state} onChange={setState} />
-                </Field>
-              </Row>
-              <Field label="Order notes (optional)">
-                <Textarea
-                  value={notes}
-                  onChange={setNotes}
-                  placeholder="Leave with the security guard, for my sister's birthday, etc."
-                />
-              </Field>
+            <Section title="Fulfilment">
+              {/* Deliver-to-me vs collect-in-store */}
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { v: "delivery", label: "Deliver to me", desc: "Ship to your address", icon: Truck },
+                    { v: "pickup", label: "Pick up", desc: "Collect from our store", icon: Store },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setFulfilment(opt.v)}
+                    className={`p-3 rounded-xl border text-left transition-colors ${
+                      fulfilment === opt.v
+                        ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)]"
+                        : "border-[rgb(var(--border-c)/0.12)]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 text-[13px] font-semibold">
+                      <opt.icon className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
+                      {opt.label}
+                    </span>
+                    <span className="block text-[11px] text-[rgb(var(--text-faint))] mt-0.5">
+                      {opt.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {fulfilment === "delivery" ? (
+                <div className="space-y-3 pt-1">
+                  {/* Country — searchable, choose from the dropdown */}
+                  <Field label="Country" required>
+                    <ComboBox
+                      options={countries}
+                      value={country}
+                      onChange={(name) => {
+                        setCountry(name);
+                        setCountryCode("");
+                        setState("");
+                        setCity("");
+                        setZoneCode("");
+                      }}
+                      onSelect={(item) => {
+                        setCountry(item.name);
+                        setCountryCode(item.code);
+                        setState("");
+                        setCity("");
+                        // Non-NG: the country IS the delivery zone (DHL). NG:
+                        // wait for the state pick to resolve the zone.
+                        setZoneCode(item.code === "NG" ? "" : item.code);
+                      }}
+                      placeholder="Start typing your country…"
+                    />
+                  </Field>
+
+                  {/* State — Nigeria gets an autofill picker; every other
+                      country free-types its region. */}
+                  {isNigeria ? (
+                    <Field label="State" required>
+                      <ComboBox
+                        options={ngStates}
+                        value={state}
+                        onChange={(name) => {
+                          setState(name);
+                          setZoneCode("");
+                          setCity("");
+                        }}
+                        onSelect={(item) => {
+                          setState(item.name);
+                          setCity("");
+                          // Lagos is served via its LGAs — wait for the LGA.
+                          setZoneCode(item.name === "Lagos" ? "" : item.code);
+                        }}
+                        placeholder="Select your state…"
+                      />
+                    </Field>
+                  ) : (
+                    country && (
+                      <Field label="State / Province">
+                        <Input
+                          value={state}
+                          onChange={setState}
+                          placeholder="State or province"
+                        />
+                      </Field>
+                    )
+                  )}
+
+                  {/* City — Lagos gets the LGA picker; everywhere else
+                      free-types the city. */}
+                  {isLagos ? (
+                    <Field label="City / LGA" required>
+                      <ComboBox
+                        options={lagosLgas}
+                        value={city}
+                        onChange={(name) => {
+                          setCity(name);
+                          setZoneCode("");
+                        }}
+                        onSelect={(item) => {
+                          setCity(item.name);
+                          setZoneCode(item.code);
+                        }}
+                        placeholder="Select your LGA…"
+                      />
+                    </Field>
+                  ) : (
+                    <Field label="City" required>
+                      <Input
+                        value={city}
+                        onChange={setCity}
+                        required
+                        placeholder="City / town"
+                      />
+                    </Field>
+                  )}
+
+                  <Field label="Address line 1" required>
+                    <Input
+                      value={addressLine1}
+                      onChange={setAddressLine1}
+                      required
+                      placeholder="House number and street"
+                    />
+                  </Field>
+                  <Field label="Address line 2">
+                    <Input
+                      value={addressLine2}
+                      onChange={setAddressLine2}
+                      placeholder="Apartment, landmark (optional)"
+                    />
+                  </Field>
+
+                  <Field label="Order notes (optional)">
+                    <Textarea
+                      value={notes}
+                      onChange={setNotes}
+                      placeholder="Leave with the security guard, for my sister's birthday, etc."
+                    />
+                  </Field>
+                </div>
+              ) : (
+                <div className="space-y-3 pt-1">
+                  <div className="rounded-xl border border-[rgb(var(--border-c)/0.12)] bg-[rgb(var(--text)/0.03)] px-4 py-3">
+                    <p className="micro mb-1.5 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
+                      Pickup location
+                    </p>
+                    {pickupAddr?.address ? (
+                      <>
+                        <p className="text-[14px] leading-snug whitespace-pre-line">
+                          {pickupAddr.address}
+                        </p>
+                        {pickupAddr.phone && (
+                          <p className="text-[12px] text-[rgb(var(--text-muted))] mt-1 inline-flex items-center gap-1">
+                            <Phone className="w-3 h-3" /> {pickupAddr.phone}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-[13px] text-[rgb(var(--text-faint))] italic">
+                        We&apos;ll share the pickup address and collection time
+                        right after you order.
+                      </p>
+                    )}
+                  </div>
+                  <Field label="Order notes (optional)">
+                    <Textarea
+                      value={notes}
+                      onChange={setNotes}
+                      placeholder="Anything we should know…"
+                    />
+                  </Field>
+                </div>
+              )}
             </Section>
 
             <Section title="Gift order?">
@@ -486,6 +758,17 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     </span>
                   </div>
                 )}
+                <div className="flex justify-between">
+                  <span className="text-[rgb(var(--text-muted))] inline-flex items-center gap-1">
+                    {fulfilment === "pickup" ? (
+                      <Store className="w-3 h-3" />
+                    ) : (
+                      <Truck className="w-3 h-3" />
+                    )}
+                    Delivery
+                  </span>
+                  <span className="tabular-nums font-mono">{deliveryLabel}</span>
+                </div>
               </div>
               {/* Promo code */}
               <div className="border-t hairline pt-3">
@@ -531,10 +814,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                 )}
               </div>
 
-              <div className="border-t hairline pt-3 flex justify-between">
+              <div className="border-t hairline pt-3 flex justify-between items-baseline">
                 <span className="font-semibold">Total</span>
                 <span className="font-display text-[22px] tabular-nums">
-                  {money(subtotal)}
+                  {money(total)}
                 </span>
               </div>
               {err && (
@@ -596,13 +879,17 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   "Securing your order…"
                 ) : (
                   <>
-                    <Lock className="w-4 h-4" /> Pay {money(subtotal)}
+                    <Lock className="w-4 h-4" /> Pay {money(total)}
                   </>
                 )}
               </motion.button>
               <div className="text-[11px] text-[rgb(var(--text-faint))] text-center inline-flex items-center justify-center gap-1 w-full">
                 <ShieldCheck className="w-3 h-3 text-[rgb(var(--success))]" />{" "}
-                Secure checkout · Shipping calculated at fulfilment
+                {fulfilment === "pickup"
+                  ? "Secure checkout · Collect in store"
+                  : deliveryFee != null
+                    ? "Secure checkout · Delivery included"
+                    : "Secure checkout · Shipping calculated at fulfilment"}
               </div>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 <CreditCard className="inline w-3 h-3 mr-1" />
@@ -733,6 +1020,96 @@ function Toggle({
         )}
       </span>
     </label>
+  );
+}
+
+/** Searchable autocomplete. Filters from the first character typed; the zone
+ *  code is only committed via a dropdown pick (onSelect), so a typed-but-
+ *  unselected value never resolves a delivery zone — "only from dropdown". */
+function ComboBox({
+  options,
+  value,
+  onChange,
+  onSelect,
+  placeholder,
+}: {
+  options: GeoOption[];
+  value: string;
+  onChange: (name: string) => void;
+  onSelect: (item: GeoOption) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Stay in sync when the value is reset programmatically (country change).
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const filtered =
+    q.length === 0
+      ? options.slice(0, 8)
+      : options.filter((o) => o.name.toLowerCase().includes(q)).slice(0, 30);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        type="text"
+        value={query}
+        autoComplete="off"
+        placeholder={placeholder}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+        }}
+        className="w-full h-11 px-3.5 rounded-xl bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.5)] text-[14px]"
+      />
+      {open && (
+        <ul className="absolute z-50 w-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-[rgb(var(--border-c)/0.15)] bg-[rgb(var(--bg))] shadow-2xl">
+          {filtered.length > 0 ? (
+            filtered.map((item) => (
+              <li
+                key={item.code}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setQuery(item.name);
+                  onSelect(item);
+                  setOpen(false);
+                }}
+                className="px-3.5 py-2.5 text-[14px] hover:bg-[rgb(var(--text)/0.06)] cursor-pointer"
+              >
+                {item.name}
+              </li>
+            ))
+          ) : (
+            <li className="px-3.5 py-2.5 text-[13px] text-[rgb(var(--text-faint))]">
+              No matches — check the spelling.
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
   );
 }
 

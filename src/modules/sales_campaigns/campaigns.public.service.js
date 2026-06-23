@@ -18,6 +18,7 @@ const main = require("./campaigns.service");
 const events = require("./campaigns.events");
 const salesService = require("../sales/sales.service");
 const salesRepo = require("../sales/sales.repo");
+const zonesService = require("../logistics/zones.service");
 const paymentLink = require("../sales/payment-link.service");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const styledRepo = require("../catalogue/styled.repo");
@@ -439,6 +440,23 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     );
   }
 
+  // Pickup (collect-in-store) carries no delivery address and no delivery fee.
+  const isPickup = input.fulfilment_type === "pickup";
+
+  // Delivery requires a usable address — guard here (the schema makes address
+  // optional so pickup can omit it) so a delivery checkout can never slip
+  // through addressless and look like a silent failure at fulfilment.
+  if (!isPickup) {
+    const a = input.contact.address;
+    if (!a || !a.line1 || !a.city) {
+      throw new AppError(
+        "ADDRESS_REQUIRED",
+        "Please enter your delivery address (or choose store pickup).",
+        422,
+      );
+    }
+  }
+
   // ── 1. Find or create CRM contact + address ────────────
   // Runs in its own transaction so it doesn't nest inside salesService's.
   const { contact, deliveryAddress } = await transaction(async (client) => {
@@ -489,6 +507,9 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     // NB: address_type must be 'delivery' (CHECK allows delivery|billing|office
     // |home|other — 'shipping' 23514'd). State is omitted when blank so the
     // NOT NULL DEFAULT 'Lagos' applies (an explicit NULL 23502'd).
+    // Pickup orders have no delivery address to persist.
+    if (isPickup) return { contact: ct, deliveryAddress: null };
+
     const addr = c.address;
     let savedAddress = null;
     await client.query("SAVEPOINT pgh_addr");
@@ -509,6 +530,12 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
           city: addr.city,
           ...(addr.state ? { state: addr.state } : {}),
           country: addr.country || "Nigeria",
+          // ISO-2 country code (e.g. "GB"); for NG we keep the human country
+          // and route the delivery fee by zone_code (state/LGA) below.
+          ...(addr.country_code && /^[A-Za-z]{2}$/.test(addr.country_code)
+            ? { country_code: addr.country_code.toUpperCase() }
+            : {}),
+          ...(addr.landmark ? { landmark: addr.landmark } : {}),
           recipient_name: displayName,
           ...(phone ? { recipient_phone: phone } : {}),
         },
@@ -681,6 +708,31 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     throw new AppError("EMPTY_ORDER", "No valid items in the cart", 400);
   }
 
+  // ── 2b. Resolve the delivery fee server-side ───────────
+  // The wig-quantity tier × the buyer's delivery zone drives the fee. We NEVER
+  // trust a client-sent amount — we re-quote against the seeded zone using the
+  // zone_code (NG state/LGA) or ISO-2 country code the autofill captured.
+  // Pickup is always free. An unresolved zone falls back to 0 ("calculated at
+  // fulfilment") rather than blocking the sale.
+  let shippingFeeNgn = 0;
+  let deliveryQuote = null;
+  if (!isPickup) {
+    const addr = input.contact.address || {};
+    const zoneCode = addr.zone_code || addr.country_code || null;
+    const wigQty = orderLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
+    if (zoneCode) {
+      deliveryQuote = await zonesService
+        .quote({ brand: resolvedBrand, country_code: zoneCode, qty: wigQty })
+        .catch((err) => {
+          logger.warn({ err: err.message, zoneCode }, "delivery quote failed");
+          return null;
+        });
+      if (deliveryQuote && deliveryQuote.fee_ngn !== null) {
+        shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
+      }
+    }
+  }
+
   // ── 3. Create the Sales Order ──────────────────────────
   // salesService.createOrder runs its own transaction (discount engine,
   // margin-floor, stock reservation, idempotency, audit — all atomic).
@@ -698,6 +750,9 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       sales_campaign_id: campaign.campaign_id,
       campaign_slug: campaign.slug,
       lines: orderLines,
+      // Server-resolved delivery fee (0 for pickup / unresolved zone). The
+      // discount engine still honours a free_shipping coupon on top of this.
+      shipping_fee_ngn: shippingFeeNgn,
       coupon_code: input.coupon_code || null,
       client_idempotency_key: input.client_idempotency_key,
       utm_source: input.utm?.utm_source || null,
@@ -724,6 +779,17 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       }
     }
     if (c.consent) internal.consent = c.consent;
+    // Fulfilment intent + the resolved delivery zone/fee, so the back office
+    // knows whether to ship or hold for pickup and which courier/tier applied.
+    internal.fulfilment_type = isPickup ? "pickup" : "delivery";
+    if (!isPickup && deliveryQuote && deliveryQuote.zone_id) {
+      internal.delivery = {
+        zone_name: deliveryQuote.zone_name,
+        courier_key: deliveryQuote.courier_key,
+        country_code: deliveryQuote.country_code,
+        fee_ngn: shippingFeeNgn,
+      };
+    }
     if (order._preorder && order._preorder.is_preorder) {
       internal.preorder = {
         line_count: order._preorder.line_count,
@@ -735,6 +801,13 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
 
     const customerParts = [];
     if (c.notes) customerParts.push(c.notes);
+    if (isPickup) {
+      customerParts.push("PICKUP / collect in store — no delivery.");
+    } else if (internal.delivery) {
+      customerParts.push(
+        `Delivery zone: ${internal.delivery.zone_name} (${internal.delivery.courier_key}).`,
+      );
+    }
     if (order._preorder && order._preorder.is_preorder) {
       customerParts.push("Contains pre-order item(s).");
     }

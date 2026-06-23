@@ -552,13 +552,23 @@ const checkoutSchema = z.object({
         message: "recipient_address is required when ship_to_recipient is true",
       })
       .optional(),
-    address: z.object({
-      line1: z.string().trim().min(1).max(400),
-      line2: z.string().max(400).optional(),
-      city: z.string().trim().min(1).max(120),
-      state: z.string().max(120).optional(),
-      country: z.string().max(80).optional(),
-    }),
+    // Optional: a "pickup" (collect-in-store) checkout carries no delivery
+    // address. For delivery the service enforces line1 + city.
+    address: z
+      .object({
+        line1: z.string().trim().min(1).max(400),
+        line2: z.string().max(400).optional(),
+        city: z.string().trim().min(1).max(120),
+        state: z.string().max(120).optional(),
+        country: z.string().max(80).optional(),
+        // ISO-2 country (e.g. "GB") OR the delivery-zone code for NG
+        // (state "NG-AB", Lagos LGA "NG-LA-AGEGE"). The server re-prices the
+        // delivery fee against this zone — never trusts a client-sent amount.
+        country_code: z.string().max(16).optional(),
+        zone_code: z.string().max(24).optional(),
+        landmark: z.string().max(200).optional(),
+      })
+      .optional(),
     consent: z.object({
       whatsapp_opt_in: z.boolean().optional().default(false),
       marketing_opt_in: z.boolean().optional().default(false),
@@ -582,6 +592,9 @@ const checkoutSchema = z.object({
     )
     .min(1)
     .max(30),
+  // "delivery" (ship to the address) or "pickup" (collect in store — no
+  // delivery address, zero delivery fee). Defaults to delivery.
+  fulfilment_type: z.enum(["delivery", "pickup"]).optional().default("delivery"),
   utm: z.record(z.string()).optional(),
   // Optional — currency picks the rail; an explicit hint is honoured for NGN.
   payment_gateway: z.enum(["paystack", "nomba"]).optional(),

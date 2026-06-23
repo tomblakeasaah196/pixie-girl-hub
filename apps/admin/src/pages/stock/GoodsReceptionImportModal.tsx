@@ -13,7 +13,7 @@ import {
 import { cn } from "@/lib/cn";
 import { Button, IconButton, Pill } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
-import { useBaseProducts, type BaseProduct } from "@/lib/catalogue";
+import { useAllBaseProducts, type BaseProduct } from "@/lib/catalogue";
 import { FieldLabel, TextInput } from "./parts";
 import { useStockMutations } from "./hooks";
 import type { StockLocation } from "./types";
@@ -155,7 +155,11 @@ export function GoodsReceptionImportModal({
   locations: StockLocation[];
   defaultReceiver: string;
 }) {
-  const bases = useBaseProducts({ page_size: 1000 });
+  // Walk EVERY page — the server caps page_size at 100, so a single large
+  // request would only ever see the first 100 base products (the bug this
+  // fixes: rows past #100 were "not recognized" and silently dropped). Only
+  // fetch while the modal is open.
+  const bases = useAllBaseProducts(open);
   const baseList = useMemo(() => bases.data ?? [], [bases.data]);
   const { createGoodsReceipt } = useStockMutations();
 

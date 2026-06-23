@@ -39,6 +39,8 @@ import {
   type StyledColour,
   type StyledVariant,
 } from "@/lib/catalogue";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { useUploadProgress } from "@/lib/use-upload";
 
 /**
  * Colour + size management for a styled product (catalogue PR).
@@ -239,6 +241,7 @@ function ColourRow({
 }) {
   const images = useColourImages(styledId, colour.colour_id);
   const addImage = useAddColourImage(styledId, colour.colour_id);
+  const { progress, run } = useUploadProgress();
   const removeImage = useRemoveColourImage(styledId, colour.colour_id);
   const update = useUpdateColour(styledId);
   const del = useDeleteColour(styledId);
@@ -262,7 +265,18 @@ function ColourRow({
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    files.forEach((f) => addImage.mutate(f));
+    if (files.length) {
+      // Upload sequentially, reporting one combined 0–100 across the batch.
+      run(async (onProgress) => {
+        for (let i = 0; i < files.length; i += 1) {
+          await addImage.mutateAsync({
+            file: files[i],
+            onProgress: (p) =>
+              onProgress(Math.round(((i + p / 100) / files.length) * 100)),
+          });
+        }
+      }).catch(() => {});
+    }
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -381,12 +395,13 @@ function ColourRow({
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           multiple
           hidden
           onChange={onPick}
         />
       </div>
+      <UploadProgress value={progress} className="mt-2" />
       {canEdit && (
         <p className="text-[11px] text-text-faint mt-1.5">
           {imgs.length >= MAX_COLOUR_IMAGES

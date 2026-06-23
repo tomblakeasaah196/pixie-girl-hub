@@ -36,6 +36,8 @@ import {
 } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { useUploadProgress } from "@/lib/use-upload";
 import {
   useDocuments,
   useUploadDocument,
@@ -270,6 +272,7 @@ const UUID_RE =
 
 function UploadModal({ onClose }: { onClose: () => void }) {
   const upload = useUploadDocument();
+  const { progress, run } = useUploadProgress();
   const fileInput = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -292,17 +295,19 @@ function UploadModal({ onClose }: { onClose: () => void }) {
     if (!file) return;
     // Only link a record when both a type and a valid UUID are supplied.
     const linked = recordType && UUID_RE.test(recordId.trim());
-    upload.mutate(
-      {
+    run((onProgress) =>
+      upload.mutateAsync({
         file,
         document_type: docType || undefined,
         title: title || undefined,
         reference_type: linked ? recordType : undefined,
         reference_id: linked ? recordId.trim() : undefined,
         tags: tags || undefined,
-      },
-      { onSuccess: onClose },
-    );
+        onProgress,
+      }),
+    )
+      .then(onClose)
+      .catch(() => {});
   }
 
   return (
@@ -375,6 +380,8 @@ function UploadModal({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
+
+        <UploadProgress value={progress} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Labelled label="Document type">

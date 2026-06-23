@@ -98,6 +98,7 @@ export function useUploadDocument() {
       reference_id?: string;
       /** Comma-separated tag list; the backend also adds a category tag. */
       tags?: string;
+      onProgress?: (percent: number) => void;
     }) => {
       const form = new FormData();
       form.append("file", args.file);
@@ -106,7 +107,9 @@ export function useUploadDocument() {
       if (args.reference_type) form.append("reference_type", args.reference_type);
       if (args.reference_id) form.append("reference_id", args.reference_id);
       if (args.tags && args.tags.trim()) form.append("tags", args.tags.trim());
-      return api.postForm<DocumentRow>("/documents", form);
+      return api.postForm<DocumentRow>("/documents", form, {
+        onProgress: args.onProgress,
+      });
     },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["documents", "list", brand] }),

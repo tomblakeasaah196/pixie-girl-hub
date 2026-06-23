@@ -17,7 +17,7 @@ const styledRepo = require("./styled.repo");
 const catalogueRepo = require("./catalogue.repo");
 const events = require("./catalogue.events");
 const documents = require("../../shared/documents/documents.service");
-const { compressImage } = require("../../services/media-compression.service");
+const { compressUpload } = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -302,7 +302,13 @@ async function deleteColour({ brand, user, request_id, styled_id, colour_id }) {
 
 /** Restore a trashed colour (and the variants trashed with it). If a live colour
  *  now holds its name, the restore re-homes it under a "… (restored)" name. */
-async function restoreColour({ brand, user, request_id, styled_id, colour_id }) {
+async function restoreColour({
+  brand,
+  user,
+  request_id,
+  styled_id,
+  colour_id,
+}) {
   return transaction(async (client) => {
     const trashed = await repo.getTrashedColour({
       client,
@@ -393,8 +399,9 @@ async function addColourImage({
       },
     );
   }
-  // Compress to high-quality, smaller bytes before storage.
-  const shrunk = await compressImage(file.buffer, file.mimetype);
+  // Compress to high-quality, smaller bytes (and convert HEIC → JPEG)
+  // before storage.
+  const shrunk = await compressUpload(file);
   return transaction(async (client) => {
     const styled = await loadStyled({ client, brand, styled_id });
     const colour = await repo.getColour({
@@ -425,7 +432,7 @@ async function addColourImage({
       brand,
       user_id: user.user_id,
       buffer: shrunk.buffer,
-      filename: file.originalname,
+      filename: shrunk.filename,
       mime_type: shrunk.mime_type,
       document_type: "product_image",
       title: meta.alt_text || colour.name || file.originalname,

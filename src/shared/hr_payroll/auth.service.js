@@ -493,11 +493,26 @@ async function updateMe({ user_id, display_name, phone }) {
 }
 
 const storage = require("../../services/storage.service");
+const { compressUpload } = require("../../services/media-compression.service");
 
 async function uploadAvatar({ user_id, buffer, mimetype }) {
-  const ext = mimetype === "image/png" ? "png" : "jpg";
+  // Optimise the avatar (and convert HEIC → JPEG) before storage.
+  const shrunk = await compressUpload({
+    buffer,
+    mimetype,
+    originalname: "avatar",
+  });
+  const ext =
+    shrunk.mime_type === "image/png"
+      ? "png"
+      : shrunk.mime_type === "image/webp"
+        ? "webp"
+        : "jpg";
   const key = `avatars/${user_id}.${ext}`;
-  const stored = await storage.put(buffer, { key, contentType: mimetype });
+  const stored = await storage.put(shrunk.buffer, {
+    key,
+    contentType: shrunk.mime_type,
+  });
   await staffRepo.updateUserProfile(user_id, { avatar_url: stored.public_url });
   return { avatar_url: stored.public_url };
 }

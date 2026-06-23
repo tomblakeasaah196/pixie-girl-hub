@@ -17,6 +17,7 @@ import { PinManager } from "@/components/auth/PinManager";
 import { ChangePasswordModal } from "@/components/auth/ChangePasswordModal";
 import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
 import { PhotoCropModal } from "@/components/profile/PhotoCropModal";
+import { toViewableImage } from "@/lib/heic";
 
 const ITEMS = [
   { key: "photo", label: "Change photo", icon: Camera },
@@ -174,14 +175,12 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.heic,.heif"
         className="hidden"
-        onChange={(e) => {
+        onChange={async (e) => {
           const f = e.target.files?.[0];
-          if (f) {
-            setCropFile(f);
-            e.target.value = "";
-          }
+          e.target.value = "";
+          if (f) setCropFile(await toViewableImage(f));
         }}
       />
 

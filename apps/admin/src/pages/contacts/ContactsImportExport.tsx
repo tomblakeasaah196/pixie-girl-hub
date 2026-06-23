@@ -13,6 +13,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { useUploadProgress } from "@/lib/use-upload";
 import {
   contactsTemplatePath,
   contactsExportPath,
@@ -60,6 +62,7 @@ export function ContactsImportExport({
   const [result, setResult] = useState<ContactImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const { progress, run } = useUploadProgress();
 
   const downloadTemplate = async (kind: ContactImportKind) => {
     setBusy("template");
@@ -85,7 +88,9 @@ export function ContactsImportExport({
     setBusy("import");
     setError(null);
     try {
-      const res = await importContacts(pendingKind.current, file);
+      const res = await run((onProgress) =>
+        importContacts(pendingKind.current, file, onProgress),
+      );
       setResult(res);
       onImported?.();
     } catch (err) {
@@ -148,6 +153,9 @@ export function ContactsImportExport({
         />
       </div>
 
+      {busy === "import" && (
+        <UploadProgress value={progress} label="Importing…" className="mt-2" />
+      )}
       {error && <p className="text-[11.5px] text-danger mt-1">{error}</p>}
 
       {isCeo && exportOpen && (

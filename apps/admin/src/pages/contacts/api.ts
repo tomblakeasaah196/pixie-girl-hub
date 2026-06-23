@@ -113,11 +113,15 @@ export const contactsExportPath = (params: {
 }) => `${C}/export${qs(params)}`;
 
 /** Upload a filled CSV/Excel for bulk import. Returns a per-row summary. */
-export const importContacts = (kind: ContactImportKind, file: File) => {
+export const importContacts = (
+  kind: ContactImportKind,
+  file: File,
+  onProgress?: (percent: number) => void,
+) => {
   const form = new FormData();
   form.append("kind", kind);
   form.append("file", file);
-  return api.postForm<ContactImportResult>(`${C}/import`, form);
+  return api.postForm<ContactImportResult>(`${C}/import`, form, { onProgress });
 };
 
 // ── Addresses ────────────────────────────────────────────────────────────

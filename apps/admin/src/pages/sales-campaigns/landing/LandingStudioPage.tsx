@@ -45,6 +45,8 @@ import {
   type ChannelOption,
   type CampaignLanding,
 } from "@/lib/landing-studio";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { useUploadProgress } from "@/lib/use-upload";
 import {
   CURATED_FONTS,
   googleFamilyFromUrl,
@@ -705,11 +707,12 @@ function BrandEditor({
 function GalleryEditor({ config, update }: { config: LandingConfig; update: (m: (d: LandingConfig) => void) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const { progress, run } = useUploadProgress();
   async function add(file?: File) {
     if (!file) return;
     setBusy(true);
     try {
-      const url = await uploadLandingImage(file);
+      const url = await run((onProgress) => uploadLandingImage(file, onProgress));
       update((d) => { d.gallery.push({ url }); });
     } finally {
       setBusy(false);
@@ -731,7 +734,8 @@ function GalleryEditor({ config, update }: { config: LandingConfig; update: (m: 
           {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageUp className="w-5 h-5" />}
         </button>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => add(e.target.files?.[0])} />
+      <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => add(e.target.files?.[0])} />
+      <UploadProgress value={progress} />
     </div>
   );
 }
@@ -1499,12 +1503,13 @@ function Img({ label, value, onChange }: { label: string; value: string | null; 
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { progress, run } = useUploadProgress();
   async function pick(file?: File) {
     if (!file) return;
     setBusy(true);
     setErr(null);
     try {
-      onChange(await uploadLandingImage(file));
+      onChange(await run((onProgress) => uploadLandingImage(file, onProgress)));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -1528,10 +1533,11 @@ function Img({ label, value, onChange }: { label: string; value: string | null; 
             {value && <button type="button" onClick={() => onChange(null)} className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-[9px] border hairline text-[12px] font-semibold text-text-faint hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>}
           </div>
           <input type="url" value={value ?? ""} placeholder="…or paste a URL" onChange={(e) => onChange(e.target.value || null)} className="input-sm w-full" />
+          <UploadProgress value={progress} />
           {err && <p className="text-[11px] text-danger">{err}</p>}
         </div>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+      <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
     </div>
   );
 }
@@ -1540,12 +1546,15 @@ function OgImageField({ value, onChange }: { value: string | null; onChange: (v:
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { progress, run } = useUploadProgress();
   async function pick(file?: File) {
     if (!file) return;
     setBusy(true);
     setErr(null);
     try {
-      onChange(await uploadLandingOgBanner(file));
+      onChange(
+        await run((onProgress) => uploadLandingOgBanner(file, onProgress)),
+      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't build the share image");
     } finally {
@@ -1575,8 +1584,9 @@ function OgImageField({ value, onChange }: { value: string | null; onChange: (v:
         )}
       </div>
       <p className="text-[11px] text-text-faint mt-1">Upload a portrait, square or landscape — we crop it to a 1200×630 share banner.</p>
+      <UploadProgress value={progress} className="mt-1" />
       {err && <p className="text-[11px] text-danger mt-1">{err}</p>}
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+      <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
     </div>
   );
 }

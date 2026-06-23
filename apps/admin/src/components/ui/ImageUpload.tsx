@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { ImageUp, Link2, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useUploadProgress } from "@/lib/use-upload";
+import { UploadProgress } from "@/components/ui/UploadProgress";
 import {
   uploadBrandingImage,
   uploadBrandingLogo,
@@ -39,6 +41,7 @@ export function ImageUpload({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const { progress, run } = useUploadProgress();
 
   const pick = async (file: File | undefined) => {
     if (!file) return;
@@ -47,12 +50,16 @@ export function ImageUpload({
     setNote(null);
     try {
       if (generateIcons) {
-        const result = await uploadBrandingLogo(file);
+        const result = await run((onProgress) =>
+          uploadBrandingLogo(file, onProgress),
+        );
         onChange(result.url);
         onIcons?.(result);
         if (result.transparency.warning) setNote(result.transparency.warning);
       } else {
-        onChange(await uploadBrandingImage(file));
+        onChange(
+          await run((onProgress) => uploadBrandingImage(file, onProgress)),
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -119,6 +126,7 @@ export function ImageUpload({
               className="w-full bg-text-primary/[0.04] hairline border rounded-[9px] pl-8 pr-2 py-1.5 text-[12px] focus:outline-none focus:border-accent/50"
             />
           </div>
+          <UploadProgress value={progress} />
           {(error || note || hint) && (
             <p
               className={cn(
@@ -133,7 +141,7 @@ export function ImageUpload({
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
           className="hidden"
           onChange={(e) => pick(e.target.files?.[0])}
         />

@@ -13,6 +13,10 @@ const sharp = require("sharp");
 const repo = require("./landing.repo");
 const { withDefaults } = require("./landing.defaults");
 const storage = require("../../services/storage.service");
+const {
+  compressUpload,
+  normalizeImageInput,
+} = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { AppError, NotFoundError } = require("../../utils/errors");
 
@@ -138,20 +142,23 @@ async function uploadImage({ brand, file }) {
   if (!file || !file.buffer || !file.buffer.length) {
     throw new AppError("NO_FILE", "No image was uploaded", 400);
   }
-  if (!/^image\//.test(file.mimetype || "")) {
+  // Compress + convert HEIC → JPEG before the image-type guard, so a phone
+  // photo is accepted and lands as an optimised, viewable image.
+  const shrunk = await compressUpload(file);
+  if (!/^image\//.test(shrunk.mime_type || "")) {
     throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
   }
   const ext =
-    String(file.originalname || "")
+    String(shrunk.filename || "")
       .split(".")
       .pop()
       ?.toLowerCase()
       .replace(/[^a-z0-9]/g, "")
       .slice(0, 5) || "jpg";
   const key = `landing/${brand}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
-  const stored = await storage.put(file.buffer, {
+  const stored = await storage.put(shrunk.buffer, {
     key,
-    contentType: file.mimetype,
+    contentType: shrunk.mime_type,
   });
   return { url: stored.public_url };
 }
@@ -169,6 +176,8 @@ async function uploadOgBanner({ brand, file }) {
   if (!file || !file.buffer || !file.buffer.length) {
     throw new AppError("NO_FILE", "No image was uploaded", 400);
   }
+  // HEIC → JPEG up front so sharp can compose the banner from a phone photo.
+  file = await normalizeImageInput(file);
   if (!/^image\//.test(file.mimetype || "")) {
     throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
   }
@@ -184,7 +193,10 @@ async function uploadOgBanner({ brand, file }) {
   try {
     banner = await sharp(file.buffer)
       .rotate() // honour EXIF orientation before cropping
-      .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position: sharp.strategy.attention })
+      .resize(OG_WIDTH, OG_HEIGHT, {
+        fit: "cover",
+        position: sharp.strategy.attention,
+      })
       .composite([{ input: scrim, top: 0, left: 0 }])
       .jpeg({ quality: 82, progressive: true })
       .toBuffer();
@@ -203,8 +215,14 @@ async function uploadOgBanner({ brand, file }) {
 async function signup({ brand, email, whatsapp, name }) {
   if (!brand) throw new AppError("NO_BRAND", "Brand context required", 400);
 
-  const prefix = brand.replace(/[^A-Za-z]/g, "").slice(0, 5).toUpperCase() || "HOUSE";
-  const handle = (name?.trim()?.split(/\s+/)[0] || "FRIEND").toUpperCase().slice(0, 6);
+  const prefix =
+    brand
+      .replace(/[^A-Za-z]/g, "")
+      .slice(0, 5)
+      .toUpperCase() || "HOUSE";
+  const handle = (name?.trim()?.split(/\s+/)[0] || "FRIEND")
+    .toUpperCase()
+    .slice(0, 6);
   const code = `${prefix}-${handle}-${Math.floor(100 + Math.random() * 900)}`;
 
   // Audit log the signup (no email/SMS delivery — just tracking)
@@ -212,4 +230,12 @@ async function signup({ brand, email, whatsapp, name }) {
   return { code };
 }
 
-module.exports = { getStudio, getPublished, saveDraft, publish, uploadImage, uploadOgBanner, signup };
+module.exports = {
+  getStudio,
+  getPublished,
+  saveDraft,
+  publish,
+  uploadImage,
+  uploadOgBanner,
+  signup,
+};

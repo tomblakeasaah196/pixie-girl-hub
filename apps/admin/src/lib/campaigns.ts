@@ -1071,12 +1071,14 @@ export function useCampaignSignups(campaignId: string | undefined, page = 1) {
 export async function uploadCampaignImage(
   campaignId: string,
   file: File,
+  onProgress?: (percent: number) => void,
 ): Promise<string> {
   const form = new FormData();
   form.append("file", file);
   const { url } = await api.postForm<{ url: string }>(
     `/sales-campaigns/${campaignId}/upload-image`,
     form,
+    { onProgress },
   );
   return url;
 }

@@ -7,14 +7,23 @@ import type { LandingPayload } from "@/lib/types";
 import { postSignup } from "@/lib/api-client";
 import { SectionHeader } from "./BundleShowcase";
 
+function blockProps(
+  payload: LandingPayload,
+  key: string,
+): Record<string, unknown> {
+  const b = (payload.blocks || []).find((x) => x.key === key);
+  return (b?.props as Record<string, unknown>) || {};
+}
+
 export function NewsletterCapture({ payload }: { payload: LandingPayload }) {
+  const props = blockProps(payload, "newsletter_capture");
   return (
     <Form
       payload={payload}
       eyebrow="Get on the list"
-      title="Be first in line."
-      subtitle="One email when the doors open. Quiet inbox otherwise."
-      ctaLabel="Notify me"
+      title={(props.title as string) || "Be first in line."}
+      subtitle={(props.description as string) || "One email when the doors open. Quiet inbox otherwise."}
+      ctaLabel={(props.button_label as string) || "Notify me"}
       anchor="signup"
       source="landing_newsletter"
     />
@@ -29,13 +38,14 @@ export function VipSignup({ payload }: { payload: LandingPayload }) {
     return null;
   const mins = payload.vip_early_access_minutes;
   const hrs = Math.round((mins / 60) * 10) / 10;
+  const props = blockProps(payload, "vip_signup");
   return (
     <Form
       payload={payload}
       eyebrow="VIP early access"
-      title="Doors open earlier — for you."
-      subtitle={`Sign up to get in ${hrs}h before everyone else. We send the private link the moment the window opens.`}
-      ctaLabel="Reserve my access"
+      title={(props.title as string) || "Doors open earlier — for you."}
+      subtitle={(props.description as string) || `Sign up to get in ${hrs}h before everyone else. We send the private link the moment the window opens.`}
+      ctaLabel={(props.button_label as string) || "Reserve my access"}
       anchor="vip-signup"
       source="landing_vip"
       icon={<Crown className="w-4 h-4" />}

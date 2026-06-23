@@ -705,6 +705,7 @@ function BlockSection({
 
     case "brand_story": {
       const storyImageUrl = typeof block.props?.image_url === "string" ? block.props.image_url : null;
+      const storyTitle = typeof block.props?.title === "string" ? block.props.title : "A house that gets it.";
       return (
         <Section>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
@@ -721,7 +722,7 @@ function BlockSection({
                 {meta?.eyebrow}
               </div>
               <h2 className="font-display text-[30px] md:text-[40px] leading-[1.05]">
-                {meta?.title}
+                {storyTitle}
               </h2>
               <p className="text-text-muted mt-5 leading-relaxed">
                 {blockBody(block) ||
@@ -734,17 +735,17 @@ function BlockSection({
     }
 
     case "founder_quote": {
-      const attribution = typeof block.props?.attribution === "string" ? block.props.attribution : "The Founder";
+      const attribution = typeof block.props?.author === "string" ? block.props.author : (typeof block.props?.attribution === "string" ? block.props.attribution : "The Founder");
+      const quoteText = typeof block.props?.quote === "string" ? block.props.quote : blockBody(block);
       return (
         <Section className="text-center">
           <blockquote className="font-display italic text-[26px] md:text-[40px] leading-[1.25] max-w-[860px] mx-auto">
-            "
-            {blockBody(block) ||
-              "We don't do ordinary. We do the piece she remembers."}
-            "
+            &ldquo;
+            {quoteText || "We don't do ordinary. We do the piece she remembers."}
+            &rdquo;
           </blockquote>
           <div className="mt-6 text-[12px] tracking-[0.25em] uppercase text-text-muted">
-            — {attribution}
+            &mdash; {attribution}
           </div>
         </Section>
       );
@@ -752,11 +753,11 @@ function BlockSection({
 
     case "why_buy": {
       const defaultItems = [
-        { title: "Ethically sourced", description: "Full-density, raw hair — traceable to the bundle." },
-        { title: "Made to last", description: "Wears, washes and styles like your own." },
-        { title: "Loved by thousands", description: "A community of women who don't settle." },
+        { title: "Real human hair, every strand", body: "Sourced and inspected by us — never substituted." },
+        { title: "Stylist-tested fit", body: "Cap construction tested on hundreds of head shapes." },
+        { title: "Wear-it-forever care", body: "Detailed care guide in every box; replace nothing." },
       ];
-      const items = (Array.isArray(block.props?.items) ? block.props!.items : defaultItems) as Array<{ title: string; description: string }>;
+      const items = (Array.isArray(block.props?.items) ? block.props!.items : defaultItems) as Array<{ title: string; body: string }>;
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -764,7 +765,7 @@ function BlockSection({
               <div key={i} className="rounded-[18px] border border-line/70 p-6">
                 <div className="font-display text-[20px]">{item.title}</div>
                 <p className="text-text-muted text-[13.5px] mt-2 leading-relaxed">
-                  {item.description}
+                  {item.body}
                 </p>
               </div>
             ))}
@@ -774,12 +775,8 @@ function BlockSection({
     }
 
     case "testimonials": {
-      const defaultTestimonials = [
-        { quote: "Easily the best I ordered. The quality speaks before I do.", customer: "Verified customer" },
-        { quote: "Easily the best I ordered. The quality speaks before I do.", customer: "Verified customer" },
-        { quote: "Easily the best I ordered. The quality speaks before I do.", customer: "Verified customer" },
-      ];
-      const testimonials = (Array.isArray(block.props?.items) ? block.props!.items : defaultTestimonials) as Array<{ quote: string; customer: string }>;
+      const testimonials = (Array.isArray(block.props?.items) ? block.props!.items : []) as Array<{ quote: string; name?: string; handle?: string }>;
+      if (!testimonials.length) return null;
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -793,7 +790,7 @@ function BlockSection({
                   &ldquo;{item.quote}&rdquo;
                 </blockquote>
                 <figcaption className="mt-4 text-[12px] text-text-muted">
-                  &mdash; {item.customer}
+                  &mdash; {item.name || "Verified customer"}{item.handle ? ` · @${item.handle}` : ""}
                 </figcaption>
               </figure>
             ))}
@@ -832,7 +829,7 @@ function BlockSection({
 
     case "newsletter_capture":
     case "vip_signup": {
-      const captureHeading = typeof block.props?.heading === "string" ? block.props.heading : meta?.title;
+      const captureHeading = typeof block.props?.title === "string" ? block.props.title : meta?.title;
       const captureDescription = typeof block.props?.description === "string" ? block.props.description : "First access to every drop, private prices and the occasional gift. No noise.";
       const captureButton = typeof block.props?.button_label === "string" ? block.props.button_label : "Join the list";
       return (
@@ -864,15 +861,26 @@ function BlockSection({
       );
     }
 
-    case "shipping_returns":
+    case "shipping_returns": {
+      const defaultCards = [
+        { title: "DHL worldwide", subtitle: "Tracked, insured." },
+        { title: "Hand-inspected", subtitle: "Every unit, every time." },
+        { title: "48-hour grace", subtitle: "Reach us in two days; we'll work it out." },
+      ];
+      const srCards = (Array.isArray(block.props?.cards) ? block.props!.cards : defaultCards) as Array<{ title: string; subtitle: string }>;
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
-          <p className="text-text-muted text-center max-w-[640px] mx-auto leading-relaxed">
-            {blockBody(block) ||
-              "Nationwide delivery via DHL Express. Lagos 1–2 days, nationwide 2–4 days. Returns accepted within 7 days on unworn items."}
-          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-[860px] mx-auto">
+            {srCards.map((card, i) => (
+              <div key={i} className="rounded-[16px] border border-line/70 bg-panel/40 p-5">
+                <div className="font-semibold text-[14px]">{card.title}</div>
+                <div className="text-text-muted text-[12.5px] mt-1">{card.subtitle}</div>
+              </div>
+            ))}
+          </div>
         </Section>
       );
+    }
 
     case "wig_care":
     case "stylist_spotlight":

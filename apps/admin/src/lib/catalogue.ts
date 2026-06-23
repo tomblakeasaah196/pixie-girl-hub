@@ -425,9 +425,6 @@ export interface BaseFilters {
   q?: string;
   category_id?: string;
   visible?: boolean;
-  /** Page size cap (default 100). Bumped by the Goods Reception importer, which
-   *  needs the full base-product set to build the reference sheet + match rows. */
-  page_size?: number;
 }
 
 function qs(params: Record<string, string | undefined>): string {
@@ -473,10 +470,47 @@ export function useBaseProducts(filters: BaseFilters = {}) {
               filters.visible === undefined
                 ? undefined
                 : String(filters.visible),
-            page_size: String(filters.page_size ?? 100),
+            page_size: "100",
           })}`,
         )
         .then(toList),
+  });
+}
+
+/**
+ * Fetch EVERY base product by walking the paginated endpoint. The server caps
+ * page_size at 100 (utils/pagination.parsePagination), so a single big request
+ * silently truncates — callers that need the *complete* set (the Goods
+ * Reception importer: reference sheet + row matching) must page through. Stops
+ * on `meta.has_more === false`, with a short-page fallback when meta is absent
+ * and a hard safety cap so a bad response can't loop forever.
+ */
+export function useAllBaseProducts(enabled = true) {
+  const brand = useBrand();
+  return useQuery<BaseProduct[]>({
+    queryKey: ["catalogue", "base-all", brand],
+    enabled,
+    queryFn: async () => {
+      const PAGE_SIZE = 100;
+      const MAX_PAGES = 200; // safety: up to 20k products
+      const all: BaseProduct[] = [];
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const res = await api.get<Paginated<BaseProduct> | BaseProduct[]>(
+          `/catalogue/products${qs({
+            page: String(page),
+            page_size: String(PAGE_SIZE),
+          })}`,
+        );
+        const batch = toList(res);
+        all.push(...batch);
+        const more =
+          !Array.isArray(res) && res.meta
+            ? res.meta.has_more
+            : batch.length === PAGE_SIZE;
+        if (!more || batch.length === 0) break;
+      }
+      return all;
+    },
   });
 }
 

@@ -222,12 +222,27 @@ async function mirrorAndAttach({
       },
     });
     for (const comp of components) {
+      // Belt-and-braces fallback for installs that haven't applied 000053
+      // yet: if the source component is styled-only (the common case post-
+      // 000048), derive the base product_id from the styled row so the
+      // INSERT satisfies the OLD product_bundle_items CHECK as well. On a
+      // fully migrated install the styled_id alone is now valid; either
+      // way the row is accepted.
+      let resolvedProductId = comp.product_id || null;
+      if (!resolvedProductId && !comp.variant_id && comp.styled_id) {
+        const { rows: spRows } = await client.query(
+          `SELECT base_product_id FROM ${brand}.styled_products
+            WHERE styled_id = $1 AND is_deleted = false`,
+          [comp.styled_id],
+        );
+        resolvedProductId = spRows[0]?.base_product_id || null;
+      }
       await repo.addBundleItem({
         client,
         brand,
         bundle_id: target.bundle_id,
         input: {
-          product_id: comp.product_id,
+          product_id: resolvedProductId,
           variant_id: comp.variant_id,
           styled_id: comp.styled_id,
           quantity: comp.quantity,

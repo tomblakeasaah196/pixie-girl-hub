@@ -3,17 +3,16 @@
 import { useEffect } from "react";
 import type { LandingConfig } from "@landing-kit";
 import type { LandingPayload } from "@/lib/types";
-import { IntroOverlay } from "@/components/IntroOverlay";
 import { BrandThemeProvider } from "@/components/BrandThemeProvider";
 import { LandingShell } from "@/components/LandingShell";
 import { LiveHero } from "./LiveHero";
 import { CurrencyFloater } from "./CurrencyFloater";
 
 /**
- * Live-state composition:
+ * Live-state composition (June 2026 — owner directive removed the
+ * IntroOverlay "ribboned door" intro across every state; visitors land
+ * straight on the commerce body):
  *
- *   IntroOverlay (cinematic curtain, session-once per slug)
- *   ───────────────────────────────────────────────────────
  *   LiveHero  — Atelier dark hero with the RED end-countdown, LIVE / Final
  *               hour / Sold-out pills, present-tense headline, two CTAs and
  *               an ambient "elapsed" hairline.
@@ -45,16 +44,11 @@ export function LiveShell({
 
   return (
     <>
-      <IntroOverlay
-        brand={payload.brand?.business_key}
-        campaignName={payload.name}
-        sessionKey={`pgh-intro-seen:${payload.slug}`}
-      />
       <LiveHero payload={payload} brandConfig={brandConfig} />
       <BrandThemeProvider brandConfig={brandConfig}>
         <LandingShell payload={payload} omitHero />
       </BrandThemeProvider>
-      <CurrencyFloater />
+      <CurrencyFloater payload={payload} />
     </>
   );
 }

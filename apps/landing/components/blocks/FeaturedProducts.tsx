@@ -8,6 +8,7 @@ import type { LandingPayload, LandingProduct } from "@/lib/types";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { SectionHeader } from "./BundleShowcase";
+import { ProductDetailModal } from "../product/ProductDetailModal";
 
 export function FeaturedProducts({
   payload,
@@ -17,6 +18,11 @@ export function FeaturedProducts({
   state: "before" | "live" | "ended";
 }) {
   const products = (payload.products || []).filter(Boolean);
+  // Single modal instance for every card — the active styled_id drives what
+  // the modal fetches. Lifting this here means a card click never re-mounts
+  // a modal per product (which was wasting transitions).
+  const [openId, setOpenId] = useState<string | null>(null);
+
   if (!products.length) return null;
   return (
     <section data-block="featured_products" className="section">
@@ -55,10 +61,20 @@ export function FeaturedProducts({
               live={state === "live"}
               deliveryWeeks={payload.delivery_weeks}
               preorderExtraWeeks={payload.preorder_extra_weeks}
+              positionLadder={payload.position_ladder ?? null}
+              discountType={payload.discount_type ?? null}
+              discountValue={payload.discount_value ?? null}
+              onOpen={(id) => setOpenId(id)}
             />
           ))}
         </div>
       </div>
+      <ProductDetailModal
+        slug={payload.slug}
+        styledId={openId}
+        open={openId != null}
+        onClose={() => setOpenId(null)}
+      />
     </section>
   );
 }
@@ -69,39 +85,73 @@ function ordinal(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+/** "Save ₦X per wig assuming 1 wig in cart" — uses the campaign's position
+ *  ladder first rung (1st-wig discount), else the top-level discount on the
+ *  campaign. Returns 0 when nothing applies so the badge stays hidden. */
+function estimateSavePerWig(
+  unitNgn: number,
+  ladder: { position: number; discount_ngn: number }[] | null,
+  discountType: string | null,
+  discountValue: number | null,
+): number {
+  if (!Number.isFinite(unitNgn) || unitNgn <= 0) return 0;
+  if (ladder && ladder.length) {
+    const first = [...ladder].sort((a, b) => a.position - b.position)[0];
+    if (first?.discount_ngn) return Number(first.discount_ngn) || 0;
+  }
+  if (discountType === "percentage" && discountValue) {
+    return Math.round(unitNgn * Number(discountValue));
+  }
+  if (discountType === "fixed_amount" && discountValue) {
+    return Math.round(Number(discountValue));
+  }
+  return 0;
+}
+
 function Card({
   product,
   index,
   live,
   deliveryWeeks,
   preorderExtraWeeks,
+  positionLadder,
+  discountType,
+  discountValue,
+  onOpen,
 }: {
   product: LandingProduct;
   index: number;
   live: boolean;
   deliveryWeeks?: number | null;
   preorderExtraWeeks?: number;
+  positionLadder: { position: number; discount_ngn: number }[] | null;
+  discountType: string | null;
+  discountValue: number | null;
+  onOpen: (styledId: string) => void;
 }) {
   const add = useCart((s) => s.add);
   const openCart = useCart((s) => s.openCart);
   const [hover, setHover] = useState(false);
   const campaignPrice = Number(product.campaign_price_ngn || 0);
   const retail = Number(product.regular_price_ngn || 0);
-  // Display price: the campaign override if set, otherwise the regular (retail)
-  // price. Previously only the override was shown, so any product without an
-  // override rendered with no price at all.
   const price = campaignPrice > 0 ? campaignPrice : retail;
   const hasDiscount = campaignPrice > 0 && retail > campaignPrice;
-  // USD figure that pairs with the displayed NGN price.
-  const priceUsd =
-    Number(product.campaign_price_usd || 0) > 0
-      ? Number(product.campaign_price_usd)
-      : Number(product.regular_price_usd || 0);
   const isPreorder =
     product.stock_remaining != null && product.stock_remaining <= 0;
   const weeks = isPreorder
     ? (deliveryWeeks || 0) + (preorderExtraWeeks ?? 4)
     : deliveryWeeks;
+  const save = estimateSavePerWig(
+    price,
+    positionLadder,
+    discountType,
+    discountValue,
+  );
+  const openable = Boolean(product.styled_id);
+
+  function open() {
+    if (openable && product.styled_id) onOpen(product.styled_id);
+  }
 
   return (
     <motion.article
@@ -113,7 +163,16 @@ function Card({
       onMouseLeave={() => setHover(false)}
       className="glass rounded-[var(--radius)] overflow-hidden flex flex-col"
     >
-      <div className="relative aspect-[4/5] bg-[rgb(var(--panel-2))]">
+      {/* Clickable cover: tapping the image OR the title opens the product
+          detail modal (gallery + long copy + size/lace variant picker +
+          head-size guide). Keyboard-accessible via the explicit button. */}
+      <button
+        type="button"
+        onClick={open}
+        disabled={!openable}
+        className="relative aspect-[4/5] bg-[rgb(var(--panel-2))] block text-left disabled:cursor-default"
+        aria-label={`Open ${product.name || "product"} details`}
+      >
         {product.image_url ? (
           <Image
             src={product.image_url}
@@ -129,11 +188,16 @@ function Card({
             Preorder
           </div>
         )}
-      </div>
+      </button>
       <div className="p-3.5 flex-1 flex flex-col">
-        <div className="text-[13px] font-semibold leading-tight truncate">
+        <button
+          type="button"
+          onClick={open}
+          disabled={!openable}
+          className="text-[13px] font-semibold leading-tight truncate text-left hover:underline disabled:no-underline disabled:cursor-default"
+        >
           {product.name}
-        </div>
+        </button>
         {product.short_description && (
           <div className="mt-0.5 text-[11.5px] text-[rgb(var(--text-faint))] line-clamp-2">
             {product.short_description}
@@ -149,11 +213,12 @@ function Card({
                 {money(retail)}
               </div>
             )}
-            {priceUsd > 0 && (
-              <div className="text-[11px] text-[rgb(var(--text-faint))] font-mono">
-                ≈ {money(priceUsd, "USD")}
-              </div>
-            )}
+          </div>
+        )}
+        {save > 0 && (
+          <div className="mt-1 text-[11px] font-mono text-[rgb(var(--success))]">
+            save {money(save)}{" "}
+            <span className="opacity-60">/ wig</span>
           </div>
         )}
         {weeks != null && weeks > 0 && (
@@ -168,7 +233,8 @@ function Card({
         {live && (
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               const itemId = product.styled_id || product.product_id;
               if (!itemId) return;
               add({

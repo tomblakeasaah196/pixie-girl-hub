@@ -34,12 +34,17 @@ function makeReference(provider, orderNumber) {
   );
 }
 
-async function contactEmail(brand, contact_id) {
+async function contactEmail(contact_id) {
   if (!contact_id) return null;
   try {
+    // shared.contacts is GLOBAL — it has no `business` column (it scopes via
+    // visible_to[]). The old `AND business = $2` filter referenced a column
+    // that doesn't exist, so every lookup threw 42703 and fell into the catch
+    // → a null email at the gateway (Paystack rejects a null email outright).
+    // contact_id is the PK, so selecting on it alone is exact.
     const { rows } = await query(
-      `SELECT email FROM shared.contacts WHERE contact_id = $1 AND business = $2`,
-      [contact_id, brand],
+      `SELECT email FROM shared.contacts WHERE contact_id = $1`,
+      [contact_id],
     );
     return rows[0] ? rows[0].email : null;
   } catch {
@@ -158,7 +163,7 @@ async function createPaymentLink({
     throw new AppError("NOTHING_DUE", "Order has no outstanding balance", 409);
   const amountStr = toCurrencyString(amt);
 
-  const email = await contactEmail(brand, order.contact_id);
+  const email = await contactEmail(order.contact_id);
   const chain = await gateways.getActiveChain({ brand, currency });
   if (!chain.length)
     throw new AppError(

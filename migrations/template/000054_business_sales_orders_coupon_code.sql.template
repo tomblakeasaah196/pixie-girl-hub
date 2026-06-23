@@ -1,0 +1,15 @@
+-- ============================================================
+-- TEMPLATE 000047 — sales_orders: add the missing coupon_code column
+-- Pixie Girl Hub · JBS Praxis
+--
+-- sales.repo.createOrder always writes sales_orders.coupon_code (the service
+-- passes null, not undefined, so it's part of every INSERT). The column was
+-- defined on `quotations` but never on `sales_orders`, so EVERY checkout
+-- failed with 42703 (column "coupon_code" of relation "sales_orders" does not
+-- exist). This adds it for existing installs (idempotent). The coupon's
+-- redemption + discount amount continue to live in sales_order_discounts;
+-- this is just the denormalised code applied at checkout.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS coupon_code TEXT;

@@ -227,6 +227,9 @@ CREATE TABLE {{BUSINESS}}.sales_orders (
   public_tracking_token TEXT,                                    -- denormalised for fast access
   -- ── IDEMPOTENCY (H-9): a double-submitted public checkout dedupes on this
   client_idempotency_key TEXT,
+  -- Coupon code applied at checkout (denormalised; the redemption + amount
+  -- live in sales_order_discounts). sales.repo.createOrder writes this.
+  coupon_code           TEXT,
   -- ── LOYALTY / RETENTION
   loyalty_points_earned INTEGER     NOT NULL DEFAULT 0,
   loyalty_points_redeemed INTEGER   NOT NULL DEFAULT 0,

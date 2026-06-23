@@ -395,8 +395,16 @@ function CreateCampaignModal({
   const [slugTouched, setSlugTouched] = useState(false);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
-  const [discountType, setDiscountType] = useState("percentage");
-  const [discountValue, setDiscountValue] = useState("0.20");
+  // Discount is fully optional — the user can ship a campaign without a
+  // top-level discount and let bundles / per-position ladders carry pricing.
+  // "" = no discount set; the API stores NULL and the builder lets the user
+  // fill it in later under Brief → Top-level discount.
+  const [discountType, setDiscountType] = useState("");
+  const [discountValue, setDiscountValue] = useState("");
+  // Static "1 USD = N NGN" rate used by the landing page's currency
+  // toggle. Optional — when blank, the public page stays NGN-only.
+  // Order settlement always uses the LIVE FX rate, never this.
+  const [ngnPerUsd, setNgnPerUsd] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   // Auto-generate from the name (full normalisation — the user isn't typing
@@ -432,8 +440,14 @@ function CreateCampaignModal({
         slug: finalizeSlug(slug) || slugifyName(name),
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
-        discount_type: discountType as Campaign["discount_type"],
-        discount_value: Number(discountValue),
+        // Both discount fields are optional. Send null when blank so the
+        // backend stores NULL rather than failing the schema; bundles or
+        // ladders can carry the pricing instead.
+        discount_type: discountType
+          ? (discountType as Campaign["discount_type"])
+          : null,
+        discount_value: discountValue ? Number(discountValue) : null,
+        ngn_per_usd_rate: ngnPerUsd ? Number(ngnPerUsd) : null,
       });
       onCreated(created.campaign_id);
     } catch (e: unknown) {
@@ -489,11 +503,12 @@ function CreateCampaignModal({
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Discount type">
+          <Field label="Discount type" hint="Optional — leave blank for none">
             <Select<string>
               value={discountType}
               onChange={setDiscountType}
               options={[
+                { value: "", label: "None (set later)" },
                 { value: "percentage", label: "Percentage off" },
                 { value: "fixed_amount", label: "Fixed ₦ off" },
                 { value: "bundle", label: "Bundle" },
@@ -505,16 +520,47 @@ function CreateCampaignModal({
             label={
               discountType === "percentage" ? "Discount (0–1)" : "Discount ₦"
             }
-            hint={discountType === "percentage" ? "e.g. 0.20 = 20%" : "in NGN"}
+            hint={
+              !discountType
+                ? "Optional — fill in later"
+                : discountType === "percentage"
+                  ? "e.g. 0.20 = 20%"
+                  : "in NGN"
+            }
           >
             <input
               value={discountValue}
               onChange={(e) => setDiscountValue(e.target.value)}
-              required
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums"
+              disabled={!discountType}
+              placeholder={discountType ? "" : "—"}
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-40"
             />
           </Field>
         </div>
+        {/* Static FX rate the landing page uses to flip prices to USD.
+            Customer-facing display only; order settlement uses the LIVE FX. */}
+        <Field
+          label="Dollar exchange rate"
+          hint="Optional · drives the landing-page currency toggle only · order settlement uses live FX"
+        >
+          <div className="flex items-stretch gap-2">
+            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
+              1 USD =
+            </span>
+            <input
+              value={ngnPerUsd}
+              onChange={(e) =>
+                setNgnPerUsd(e.target.value.replace(/[^0-9.]/g, ""))
+              }
+              inputMode="decimal"
+              placeholder="1310"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums"
+            />
+            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
+              NGN
+            </span>
+          </div>
+        </Field>
         {error && <p className="text-[12px] text-danger">{error}</p>}
         <p className="text-[12px] text-text-faint flex items-center gap-2">
           <CalendarRange className="w-3.5 h-3.5" />

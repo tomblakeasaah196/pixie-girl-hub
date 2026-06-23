@@ -289,6 +289,10 @@ export function LandingStudio({
           ? campaign.ends_at
           : null,
     countdown_message: countdownMsg,
+    ngn_per_usd_rate: campaign.ngn_per_usd_rate ?? null,
+    discount_type: campaign.discount_type ?? null,
+    discount_value: campaign.discount_value ?? null,
+    position_ladder: campaign.position_ladder ?? null,
     blocks,
     products: [],
     ended:

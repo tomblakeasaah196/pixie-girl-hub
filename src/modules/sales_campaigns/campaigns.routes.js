@@ -28,6 +28,11 @@ const imageUpload = multer({
 
 // ── v2: Bundles (catalogue-level) ──────────────────────────
 router.get(
+  "/catalogue-bundles",
+  requirePermission("sales_campaigns", "view"),
+  v2.listCatalogueBundleSources,
+);
+router.get(
   "/bundles",
   requirePermission("sales_campaigns", "view"),
   v2.listBundles,
@@ -265,6 +270,12 @@ router.post(
   requirePermission("sales_campaigns", "edit"),
   validator.validateCloneBundles,
   v2.cloneBundles,
+);
+router.post(
+  "/:id/bundles/import",
+  requirePermission("sales_campaigns", "edit"),
+  validator.validateImportCatalogueBundle,
+  v2.importCatalogueBundle,
 );
 router.delete(
   "/:id/bundles/:linkId",

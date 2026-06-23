@@ -65,8 +65,8 @@ export interface Campaign {
   starts_at: string;
   ends_at: string;
   status: CampaignStatus;
-  discount_type: DiscountType;
-  discount_value: number;
+  discount_type: DiscountType | null;
+  discount_value: number | null;
   min_order_value_ngn: number | null;
   customer_segment_id: string | null;
   first_time_buyers_only: boolean;
@@ -106,6 +106,10 @@ export interface Campaign {
   exit_intent_discount_ngn: number | null;
   abandonment_recovery_enabled: boolean;
   allow_multi_currency_display: boolean;
+  /** Static NGN-per-USD rate the landing page uses for its currency toggle.
+   *  NULL = no USD display, toggle is hidden. Customer-facing only — order
+   *  settlement uses the LIVE FX rate captured at payment. */
+  ngn_per_usd_rate: number | null;
   delivery_weeks: number | null;
   preorder_extra_weeks: number;
   position_ladder: PositionLadderItem[] | null;
@@ -215,6 +219,26 @@ export interface BundleItem {
   styled_name?: string | null;
   styled_slug?: string | null;
   display_name?: string;
+}
+
+/**
+ * One row in the Catalogue → Bundles tab — the importable source list for the
+ * campaign builder. Comes from retention.bundle_offers; the import endpoint
+ * mirrors the chosen row into the campaign's own product_bundles + items.
+ */
+export interface CatalogueBundleSource {
+  bundle_offer_id: string;
+  bundle_code: string;
+  display_name: string;
+  description: string | null;
+  hero_image_url: string | null;
+  pricing_model: string;
+  bundle_price_ngn: number | null;
+  bundle_price_usd: number | null;
+  discount_value: number | null;
+  component_count: number;
+  components_total_ngn: number;
+  is_active: boolean;
 }
 
 export interface CampaignBundleLink {
@@ -397,8 +421,8 @@ export function useCreateCampaign() {
         name: string;
         starts_at: string;
         ends_at: string;
-        discount_type: DiscountType;
-        discount_value: number;
+        discount_type?: DiscountType | null;
+        discount_value?: number | null;
       },
     ) => api.post<Campaign>("/sales-campaigns", body),
     onSuccess: () =>
@@ -625,6 +649,51 @@ export function useRemoveCampaignProduct(campaignId: string | undefined) {
       qc.invalidateQueries({
         queryKey: ["campaigns", "products", brand, campaignId],
       }),
+  });
+}
+
+/**
+ * List the brand's catalogue bundles (retention bundle_offers) available to
+ * import into the active campaign. Same source the user manages under
+ * Catalogue → Bundles, so what they pick here matches what they see there.
+ */
+export function useCatalogueBundleSources() {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["campaigns", "catalogue-bundles", brand],
+    queryFn: () =>
+      getListEnvelope<CatalogueBundleSource>(
+        "/sales-campaigns/catalogue-bundles",
+      ),
+  });
+}
+
+/**
+ * Import a single catalogue bundle into a campaign — mirrors retention's
+ * bundle_offer into product_bundles and attaches the link in one transaction.
+ */
+export function useImportCatalogueBundle(
+  campaignId: string | undefined,
+  campaignSlug: string | undefined,
+) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (source_bundle_offer_id: string) =>
+      api.post<{
+        bundle: Bundle;
+        link: CampaignBundleLink;
+      }>(`/sales-campaigns/${campaignId}/bundles/import`, {
+        source_bundle_offer_id,
+        campaign_slug: campaignSlug,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
+      });
+      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
+    },
   });
 }
 
@@ -1045,6 +1114,14 @@ export interface PublicLanding {
   countdown_to: string | null;
   countdown_message: string | null;
   signup_for_notifications: boolean;
+  /** Static NGN-per-USD rate the customer-facing currency toggle uses.
+   *  NULL = NGN only on this campaign (toggle hidden). */
+  ngn_per_usd_rate: number | null;
+  /** Top-level discount and per-position ladder — surfaced so the landing
+   *  page can render a "save ₦X per wig" estimate on each product card. */
+  discount_type?: DiscountType | null;
+  discount_value?: number | null;
+  position_ladder?: PositionLadderItem[] | null;
   blocks: LandingBlock[];
   products: Array<Record<string, unknown>>;
   ended: { message: string | null; redirect_to: string | null } | null;
@@ -1071,6 +1148,73 @@ export function usePublicLanding(slug: string | undefined, brand?: string) {
     enabled: Boolean(slug),
     queryKey: ["public-landing", slug, brand || ""],
     queryFn: () => api.get<PublicLanding>(`/sale/${slug}${qs}`, "public"),
+    retry: false,
+  });
+}
+
+/** Detail payload for the landing-page product modal — gallery, long
+ *  description, variants, and the brand's head-size guide + video. */
+export interface PublicProductDetail {
+  styled_id: string;
+  name: string;
+  slug: string;
+  short_description: string | null;
+  long_description: string | null;
+  retail_price_ngn: number | null;
+  anchor_price_ngn: number | null;
+  gallery: Array<{
+    url: string;
+    alt_text: string | null;
+    is_primary: boolean;
+    display_order: number | null;
+  }>;
+  variants: Array<{
+    variant_id: string;
+    colour_name: string;
+    colour_hex: string | null;
+    colour_premium_ngn: number;
+    size_code: string;
+    size_label: string;
+    size_premium_ngn: number;
+    lace_code: string | null;
+    lace_label: string | null;
+    lace_premium_ngn: number;
+    effective_price_ngn: number;
+    is_default: boolean;
+  }>;
+  size_tiers: Array<{
+    size_code: string;
+    label: string;
+    premium_ngn: number;
+    circumference_in: string | null;
+    guidance_text: string | null;
+  }>;
+  lace_sizes: Array<{
+    lace_code: string;
+    label: string;
+    premium_ngn: number;
+  }>;
+  size_guide: {
+    title: string;
+    guide_md: string | null;
+    video_url: string | null;
+  } | null;
+}
+
+export function useProductDetail(
+  slug: string | undefined,
+  styledId: string | null,
+  brand?: string,
+) {
+  const qs = brand ? `?brand=${encodeURIComponent(brand)}` : "";
+  return useQuery({
+    enabled: Boolean(slug && styledId),
+    queryKey: ["public-product", slug, styledId, brand || ""],
+    queryFn: () =>
+      api.get<PublicProductDetail>(
+        `/sale/${slug}/product/${styledId}${qs}`,
+        "public",
+      ),
     retry: false,
   });
 }

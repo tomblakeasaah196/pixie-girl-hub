@@ -167,15 +167,24 @@ async function getConfig({ client, brand }) {
 }
 
 async function upsertConfig({ client, brand, patch, user_id }) {
+  // head_size_video_url uses an explicit "is this key present in the patch"
+  // flag so a deliberate NULL (the user clearing the URL) is honoured rather
+  // than coalesced back to the existing value. The other text fields share
+  // the same COALESCE pattern for backwards compatibility.
+  const videoProvided = Object.prototype.hasOwnProperty.call(
+    patch,
+    "head_size_video_url",
+  );
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "catalogue_config")}
-       (singleton, size_guide_title, head_size_guide_md, categories_enabled,
-        allow_base_in_collections_bundles, updated_by)
-     VALUES (true, COALESCE($1,'How to find your head size'), $2, COALESCE($3,false),
-             COALESCE($5,false), $4)
+       (singleton, size_guide_title, head_size_guide_md, head_size_video_url,
+        categories_enabled, allow_base_in_collections_bundles, updated_by)
+     VALUES (true, COALESCE($1,'How to find your head size'), $2, $6,
+             COALESCE($3,false), COALESCE($5,false), $4)
      ON CONFLICT (singleton) DO UPDATE SET
        size_guide_title = COALESCE(EXCLUDED.size_guide_title, ${t(brand, "catalogue_config")}.size_guide_title),
        head_size_guide_md = COALESCE(EXCLUDED.head_size_guide_md, ${t(brand, "catalogue_config")}.head_size_guide_md),
+       head_size_video_url = CASE WHEN $7::boolean THEN $6 ELSE ${t(brand, "catalogue_config")}.head_size_video_url END,
        categories_enabled = COALESCE($3, ${t(brand, "catalogue_config")}.categories_enabled),
        allow_base_in_collections_bundles = COALESCE($5, ${t(brand, "catalogue_config")}.allow_base_in_collections_bundles),
        updated_by = EXCLUDED.updated_by,
@@ -187,6 +196,8 @@ async function upsertConfig({ client, brand, patch, user_id }) {
       patch.categories_enabled ?? null,
       user_id || null,
       patch.allow_base_in_collections_bundles ?? null,
+      patch.head_size_video_url ?? null,
+      videoProvided,
     ],
   );
   return rows[0];

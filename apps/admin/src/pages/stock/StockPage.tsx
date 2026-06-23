@@ -13,7 +13,7 @@ import LocationsTab from "./LocationsTab";
 
 const TABS = [
   { key: "overview", label: "Overview" },
-  { key: "receive", label: "Receive" },
+  { key: "receive", label: "Goods Reception" },
   { key: "movements", label: "Movements" },
   { key: "transfers", label: "Transfers" },
   { key: "adjustments", label: "Adjustments" },

@@ -5,7 +5,7 @@ import {
   Check,
   ChevronRight,
   Clock,
-  Copy,
+  Download,
   Eye,
   Image as ImageIcon,
   Layers,
@@ -16,6 +16,7 @@ import {
   Settings,
   ShoppingBag,
   Sparkles,
+  Tag,
   Trash2,
   Users,
   Wand2,
@@ -48,19 +49,16 @@ import {
   type Campaign,
   type CampaignBundleLink,
   type CampaignProduct,
+  type CatalogueBundleSource,
   type PositionLadderItem,
   type StackingBonus,
   type BulkTier,
   type QuantityTier,
   type CartUpsell,
-  type Bundle,
   type BundleItem,
   type CampaignStatus,
-  useAddBundleItem,
   useAddProductsBatch,
-  useAttachCampaignBundle,
   useBrand,
-  useBundleList,
   useBundle,
   useCampaign,
   useCampaignAmbassadors,
@@ -69,16 +67,14 @@ import {
   useCampaignTransition,
   useCampaignTiers,
   useCampaignUpsells,
-  useCloneBundlesToCampaign,
-  useCreateBundle,
+  useCatalogueBundleSources,
   useDeleteTier,
   useDeleteUpsell,
   useDetachCampaignBundle,
-  useDuplicateBundle,
+  useImportCatalogueBundle,
   usePraxisDraftCopy,
   usePraxisSuggestLayout,
   usePraxisAccept,
-  useRemoveBundleItem,
   useRemoveCampaignProduct,
   useUpdateCampaign,
   useUpsertTier,
@@ -515,6 +511,15 @@ function BriefStep({
       ? String(campaign.vip_lifetime_threshold_ngn)
       : "",
   );
+  // Top-level discount is fully optional and editable any time after create.
+  // "" means "no discount on this campaign" — the API stores NULL and bundle
+  // pricing / per-position ladders carry the offer instead.
+  const [discountType, setDiscountType] = useState<string>(
+    campaign.discount_type || "",
+  );
+  const [discountValue, setDiscountValue] = useState<string>(
+    campaign.discount_value != null ? String(campaign.discount_value) : "",
+  );
   const [exitEnabled, setExitEnabled] = useState(campaign.exit_intent_enabled);
   const [exitCode, setExitCode] = useState<string>(
     campaign.exit_intent_code || "",
@@ -536,6 +541,13 @@ function BriefStep({
   const [preorderExtraWeeks, setPreorderExtraWeeks] = useState<string>(
     String(campaign.preorder_extra_weeks ?? 4),
   );
+  // Static "1 USD = N NGN" rate used by the landing-page currency toggle.
+  // Customer-facing display only — order settlement uses the LIVE FX rate.
+  const [ngnPerUsd, setNgnPerUsd] = useState<string>(
+    campaign.ngn_per_usd_rate != null
+      ? String(campaign.ngn_per_usd_rate)
+      : "",
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -546,6 +558,11 @@ function BriefStep({
     description !== (campaign.description || "") ||
     startsAt !== toLocalInput(campaign.starts_at) ||
     endsAt !== toLocalInput(campaign.ends_at) ||
+    discountType !== (campaign.discount_type || "") ||
+    discountValue !==
+      (campaign.discount_value != null
+        ? String(campaign.discount_value)
+        : "") ||
     viewerPolicy !== (campaign.show_viewer_count_policy || "") ||
     viewerFloor !==
       (campaign.viewer_count_floor != null
@@ -570,7 +587,11 @@ function BriefStep({
       (campaign.delivery_weeks != null
         ? String(campaign.delivery_weeks)
         : "") ||
-    preorderExtraWeeks !== String(campaign.preorder_extra_weeks ?? 4);
+    preorderExtraWeeks !== String(campaign.preorder_extra_weeks ?? 4) ||
+    ngnPerUsd !==
+      (campaign.ngn_per_usd_rate != null
+        ? String(campaign.ngn_per_usd_rate)
+        : "");
 
   async function save(advance = false) {
     setSaving(true);
@@ -585,6 +606,10 @@ function BriefStep({
         description: description || null,
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
+        discount_type: discountType
+          ? (discountType as Campaign["discount_type"])
+          : null,
+        discount_value: discountValue ? Number(discountValue) : null,
         show_viewer_count_policy: (viewerPolicy ||
           null) as Campaign["show_viewer_count_policy"],
         viewer_count_floor: viewerFloor ? Number(viewerFloor) : null,
@@ -600,6 +625,7 @@ function BriefStep({
         abandonment_recovery_enabled: abandonment,
         delivery_weeks: deliveryWeeks ? Number(deliveryWeeks) : null,
         preorder_extra_weeks: Number(preorderExtraWeeks) || 4,
+        ngn_per_usd_rate: ngnPerUsd ? Number(ngnPerUsd) : null,
       } as Partial<Campaign>);
       if (cleanSlug) setSlug(cleanSlug);
       setSavedAt(Date.now());
@@ -669,6 +695,85 @@ function BriefStep({
               onChange={(e) => setEndsAt(e.target.value)}
               disabled={!canEdit}
               className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+            />
+          </Field>
+        </div>
+        {/* Static FX rate for the landing-page currency toggle. SSOT for
+            customer-facing display only — order settlement uses the LIVE FX
+            rate captured into sales_orders.fx_rate_used at payment. */}
+        <Field
+          label="Dollar exchange rate"
+          hint="Landing-page display only · order settlement uses live FX · leave blank to hide the $ toggle"
+        >
+          <div className="flex items-stretch gap-2 max-w-md">
+            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
+              1 USD =
+            </span>
+            <input
+              value={ngnPerUsd}
+              onChange={(e) =>
+                setNgnPerUsd(e.target.value.replace(/[^0-9.]/g, ""))
+              }
+              disabled={!canEdit}
+              inputMode="decimal"
+              placeholder="1310"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-50"
+            />
+            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
+              NGN
+            </span>
+          </div>
+        </Field>
+      </FormSection>
+
+      <FormSection title="Top-level discount">
+        <p className="text-[12px] text-text-faint -mt-2 mb-2">
+          Fully optional. Leave blank when bundles or per-position ladders
+          carry the offer.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Discount type" hint="Optional — leave blank for none">
+            <Select<string>
+              value={discountType}
+              onChange={(v) => {
+                setDiscountType(v);
+                if (!v) setDiscountValue("");
+              }}
+              disabled={!canEdit}
+              options={[
+                { value: "", label: "None" },
+                { value: "percentage", label: "Percentage off" },
+                { value: "fixed_amount", label: "Fixed ₦ off" },
+                { value: "bundle", label: "Bundle" },
+                { value: "buy_x_get_y", label: "Buy X get Y" },
+                { value: "free_shipping", label: "Free shipping" },
+              ]}
+            />
+          </Field>
+          <Field
+            label={
+              discountType === "percentage"
+                ? "Discount (0–1)"
+                : discountType === "fixed_amount"
+                  ? "Discount ₦"
+                  : "Discount value"
+            }
+            hint={
+              !discountType
+                ? "Set a discount type first"
+                : discountType === "percentage"
+                  ? "e.g. 0.20 = 20%"
+                  : discountType === "fixed_amount"
+                    ? "in NGN"
+                    : "Optional"
+            }
+          >
+            <input
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              disabled={!canEdit || !discountType}
+              placeholder={discountType ? "" : "—"}
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] font-mono tabular-nums disabled:opacity-40"
             />
           </Field>
         </div>
@@ -1101,92 +1206,38 @@ function BundlesStep({
   campaign: Campaign;
   canEdit: boolean;
 }) {
+  // Bundles in the builder are IMPORT-ONLY. Creation lives in
+  // Catalogue → Bundles; this step picks from those rows and mirrors them
+  // into the campaign with all inherited pricing + components + images.
   const linksQ = useCampaignBundles(campaign.campaign_id);
-  const bundlesQ = useBundleList();
-  const attach = useAttachCampaignBundle(campaign.campaign_id);
+  const sourcesQ = useCatalogueBundleSources();
   const detach = useDetachCampaignBundle(campaign.campaign_id);
-  const cloneBundles = useCloneBundlesToCampaign(campaign.campaign_id);
-  const createBundle = useCreateBundle();
-  const duplicate = useDuplicateBundle();
+  const importBundle = useImportCatalogueBundle(
+    campaign.campaign_id,
+    campaign.slug,
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
   const [bundleDetailId, setBundleDetailId] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
-  const [newSlug, setNewSlug] = useState("");
-  // Surface failures from the non-picker actions (clone / attach / create /
-  // duplicate) instead of letting a rejected mutation vanish — these used to
-  // look like dead buttons when the request errored.
+  // Surface failures from import / detach instead of letting a rejected
+  // mutation vanish — these used to look like dead buttons on error.
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const links = (linksQ.data?.data || []) as CampaignBundleLink[];
-  const available = (bundlesQ.data?.data || []) as Bundle[];
+  const sources = (sourcesQ.data?.data || []) as CatalogueBundleSource[];
 
   function describeError(e: unknown, fallback: string) {
-    setNotice(null);
     setError((e as Error)?.message || fallback);
   }
 
-  async function handleAttach(bundleId: string) {
+  async function handleImport(offerId: string) {
     setError(null);
-    setNotice(null);
     try {
-      await attach.mutateAsync({ bundle_id: bundleId });
-      setPickerOpen(false);
+      await importBundle.mutateAsync(offerId);
     } catch (e) {
-      describeError(e, "Couldn't attach that bundle. Please try again.");
-    }
-  }
-
-  async function handleClone() {
-    setError(null);
-    setNotice(null);
-    try {
-      const res = await cloneBundles.mutateAsync({
-        campaign_slug: campaign.slug,
-      });
-      const count = Array.isArray(res) ? res.length : 0;
-      if (count === 0) {
-        setNotice(
-          "No active bundles in your catalogue to clone yet. Create one here, or build bundles in Catalogue first.",
-        );
-      }
-    } catch (e) {
-      describeError(e, "Couldn't clone bundles from the catalogue.");
-    }
-  }
-
-  async function handleCreate() {
-    if (!newName || !newSlug) return;
-    setError(null);
-    setNotice(null);
-    try {
-      const b = await createBundle.mutateAsync({
-        name: newName,
-        slug: newSlug.replace(/[^a-z0-9-]/g, "-").replace(/-{2,}/g, "-"),
-        status: "active",
-      });
-      await attach.mutateAsync({ bundle_id: b.bundle_id });
-      setCreateOpen(false);
-      setNewName("");
-      setNewSlug("");
-      setBundleDetailId(b.bundle_id);
-    } catch (e) {
-      describeError(e, "Couldn't create the bundle. Please try again.");
-    }
-  }
-
-  async function handleDuplicate(bundleId: string) {
-    setError(null);
-    setNotice(null);
-    try {
-      const b = await duplicate.mutateAsync({
-        bundleId,
-        campaign_id: campaign.campaign_id,
-      });
-      setBundleDetailId(b.bundle_id);
-    } catch (e) {
-      describeError(e, "Couldn't duplicate the bundle. Please try again.");
+      describeError(
+        e,
+        "Couldn't import that bundle. Please try again.",
+      );
     }
   }
 
@@ -1198,34 +1249,19 @@ function BundlesStep({
             Campaign bundles
           </h2>
           <p className="text-text-muted text-[13px] mt-1">
-            Create bundles for this campaign, clone from your catalogue, or
-            duplicate & swap products. Each bundle is a curated set of styled
-            wigs.
+            Import bundles from your catalogue. Pricing, components and
+            images come straight from Catalogue → Bundles — edit the source
+            there and re-import to refresh.
           </p>
         </div>
         {canEdit && (
           <div className="flex gap-2">
             <Button
-              variant="secondary"
-              icon={<Copy className="w-4 h-4" />}
-              onClick={handleClone}
-              disabled={cloneBundles.isPending}
-            >
-              {cloneBundles.isPending ? "Cloning…" : "Clone from catalogue"}
-            </Button>
-            <Button
-              variant="secondary"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => setCreateOpen(true)}
-            >
-              New bundle
-            </Button>
-            <Button
               variant="primary"
-              icon={<PackagePlus className="w-4 h-4" />}
+              icon={<Download className="w-4 h-4" />}
               onClick={() => setPickerOpen(true)}
             >
-              Attach existing
+              Import from catalogue
             </Button>
           </div>
         )}
@@ -1239,11 +1275,6 @@ function BundlesStep({
           {error}
         </div>
       )}
-      {notice && (
-        <div className="rounded-[11px] border border-warn/30 bg-warn/[0.08] px-3 py-2 text-[12.5px] text-warn">
-          {notice}
-        </div>
-      )}
 
       {linksQ.isLoading && <Skeleton style={{ height: 80 }} />}
       {linksQ.isError && <ErrorState onRetry={() => linksQ.refetch()} />}
@@ -1251,28 +1282,16 @@ function BundlesStep({
         <EmptyState
           icon={<PackagePlus className="w-7 h-7" />}
           title="No bundles in this campaign"
-          message="Create new bundles, clone all from the catalogue, or attach existing ones."
+          message="Import bundles from your catalogue. Build new ones under Catalogue → Bundles, then bring them in here."
           action={
             canEdit ? (
-              <div className="flex gap-2 justify-center flex-wrap">
-                <Button
-                  variant="primary"
-                  onClick={handleClone}
-                  disabled={cloneBundles.isPending}
-                  icon={<Copy className="w-4 h-4" />}
-                >
-                  {cloneBundles.isPending
-                    ? "Cloning…"
-                    : "Clone from catalogue"}
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => setCreateOpen(true)}
-                  icon={<Plus className="w-4 h-4" />}
-                >
-                  Create new
-                </Button>
-              </div>
+              <Button
+                variant="primary"
+                onClick={() => setPickerOpen(true)}
+                icon={<Download className="w-4 h-4" />}
+              >
+                Import from catalogue
+              </Button>
             ) : undefined
           }
         />
@@ -1336,17 +1355,10 @@ function BundlesStep({
             {canEdit && (
               <div className="flex flex-col gap-1">
                 <button
-                  onClick={() => handleDuplicate(l.bundle_id)}
-                  aria-label="Duplicate bundle"
-                  className="text-text-faint hover:text-accent-glow p-1"
-                  title="Duplicate & swap"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-                <button
                   onClick={() => detach.mutate(l.link_id)}
                   aria-label="Remove bundle"
                   className="text-text-faint hover:text-danger p-1"
+                  title="Remove from this campaign (catalogue copy is untouched)"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -1356,202 +1368,401 @@ function BundlesStep({
         ))}
       </div>
 
-      {/* Attach existing bundle */}
+      {/* Import from catalogue: pick a bundle_offer to mirror into the campaign */}
       <Modal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        title="Attach a bundle"
+        title="Import bundle from catalogue"
+        size="lg"
       >
-        <div className="space-y-2 max-h-[55vh] overflow-y-auto">
-          {available.length === 0 ? (
-            <div className="text-center py-6 text-text-muted">
-              No bundles in the catalogue yet. Create one above.
-            </div>
-          ) : (
-            available.map((b) => {
-              const isAttached = links.some(
-                (l) => l.bundle_id === b.bundle_id,
-              );
-              return (
-                <button
-                  key={b.bundle_id}
-                  onClick={() => !isAttached && handleAttach(b.bundle_id)}
-                  disabled={isAttached}
-                  className={cn(
-                    "w-full text-left flex items-center gap-3 p-3 rounded-[12px] border",
-                    isAttached
-                      ? "border-success/40 bg-success/[0.08] cursor-default"
-                      : "border-line hover:border-accent/45 hover:bg-accent/[0.05]",
-                  )}
-                >
-                  <div className="w-12 h-12 rounded-[10px] bg-text-primary/[0.05] grid place-items-center">
-                    <ImageIcon className="w-5 h-5 text-text-faint" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-display font-medium text-[14px] truncate">
-                      {b.name}
-                    </div>
-                    <div className="micro truncate">/{b.slug}</div>
-                  </div>
-                  {isAttached ? (
-                    <Check className="w-4 h-4 text-success" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-text-faint" />
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
+        <CatalogueBundlePicker
+          sources={sources}
+          isLoading={sourcesQ.isLoading}
+          isError={sourcesQ.isError}
+          onRetry={() => sourcesQ.refetch()}
+          links={links}
+          onImport={async (id) => {
+            await handleImport(id);
+          }}
+          importingId={
+            importBundle.isPending && importBundle.variables
+              ? importBundle.variables
+              : null
+          }
+        />
       </Modal>
 
-      {/* Create new bundle */}
-      <Modal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="Create a new bundle"
-      >
-        <div className="space-y-4">
-          <Field label="Bundle name">
-            <input
-              value={newName}
-              onChange={(e) => {
-                setNewName(e.target.value);
-                setNewSlug(
-                  e.target.value
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, "-")
-                    .replace(/-{2,}/g, "-")
-                    .replace(/^-|-$/g, ""),
-                );
-              }}
-              placeholder="e.g. 5 Frontal Set"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
-            />
-          </Field>
-          <Field label="Slug" hint="Auto-generated from name">
-            <input
-              value={newSlug}
-              onChange={(e) => setNewSlug(e.target.value)}
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] font-mono"
-            />
-          </Field>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleCreate}
-              disabled={
-                !newName || !newSlug || createBundle.isPending
-              }
-            >
-              {createBundle.isPending ? "Creating…" : "Create & attach"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Bundle detail drawer with product picker */}
-      <BundleDetailDrawer
+      {/* Stylish animated modal — bundle hero + full product list + prices */}
+      <BundleDetailModal
+        bundleLink={
+          links.find((l) => l.bundle_id === bundleDetailId) || null
+        }
         bundleId={bundleDetailId}
         onClose={() => setBundleDetailId(null)}
-        canEdit={canEdit}
       />
     </Card>
   );
 }
 
-function BundleDetailDrawer({
+/**
+ * Picker that lists the catalogue bundles available to import. Same source as
+ * Catalogue → Bundles (retention.bundle_offers). Already-imported bundles are
+ * shown with a tick and disabled so the user can't double-attach.
+ */
+function CatalogueBundlePicker({
+  sources,
+  isLoading,
+  isError,
+  onRetry,
+  links,
+  onImport,
+  importingId,
+}: {
+  sources: CatalogueBundleSource[];
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+  links: CampaignBundleLink[];
+  onImport: (id: string) => Promise<void>;
+  importingId: string | null;
+}) {
+  if (isLoading) {
+    return <Skeleton style={{ height: 240 }} />;
+  }
+  if (isError) {
+    return <ErrorState onRetry={onRetry} />;
+  }
+  if (sources.length === 0) {
+    return (
+      <EmptyState
+        icon={<PackagePlus className="w-7 h-7" />}
+        title="No bundles in your catalogue yet"
+        message="Build bundles under Catalogue → Bundles, then import them here. Bundle pricing, images and components all come from there."
+      />
+    );
+  }
+  // Already-imported lookup uses the source bundle_code as a fingerprint —
+  // the import service derives the mirror slug from `${campaign-slug}-${code}`
+  // so a previously imported source ends with that suffix in the link list.
+  const importedCodes = new Set(
+    links
+      .map((l) => l.bundle_slug.split("-").slice(-1)[0] || "")
+      .filter(Boolean),
+  );
+  return (
+    <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+      {sources.map((s) => {
+        const isImported =
+          importedCodes.has(
+            (s.bundle_code || "").toLowerCase().replace(/[^a-z0-9]/g, ""),
+          ) ||
+          links.some(
+            (l) =>
+              l.bundle_name === s.display_name ||
+              l.bundle_slug.endsWith(
+                (s.bundle_code || "").toLowerCase().replace(/[^a-z0-9]/g, "-"),
+              ),
+          );
+        const isBusy = importingId === s.bundle_offer_id;
+        return (
+          <button
+            key={s.bundle_offer_id}
+            onClick={() => !isImported && !isBusy && onImport(s.bundle_offer_id)}
+            disabled={isImported || isBusy}
+            className={cn(
+              "w-full text-left flex items-center gap-3 p-3 rounded-[12px] border transition-colors",
+              isImported
+                ? "border-success/40 bg-success/[0.08] cursor-default"
+                : "border-line hover:border-accent/45 hover:bg-accent/[0.05]",
+            )}
+          >
+            <div
+              className="w-14 h-14 rounded-[10px] bg-text-primary/[0.05] grid place-items-center flex-shrink-0 overflow-hidden"
+              style={
+                s.hero_image_url
+                  ? {
+                      backgroundImage: `url(${s.hero_image_url})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }
+                  : undefined
+              }
+            >
+              {!s.hero_image_url && (
+                <ImageIcon className="w-5 h-5 text-text-faint" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-display font-medium text-[14px] truncate">
+                {s.display_name}
+              </div>
+              <div className="text-[11.5px] text-text-faint truncate">
+                {s.bundle_code} · {s.component_count} product
+                {s.component_count !== 1 ? "s" : ""}
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-1.5 text-[11px]">
+                <Pill tone="neutral" dot={false}>
+                  {prettyPricingModel(s.pricing_model)}
+                </Pill>
+                {s.pricing_model === "fixed_bundle_price" &&
+                  s.bundle_price_ngn != null && (
+                    <MoneyText
+                      ngn={Number(s.bundle_price_ngn)}
+                      className="text-[11px]"
+                    />
+                  )}
+                {(s.pricing_model === "amount_off" ||
+                  s.pricing_model === "pct_off") &&
+                  s.discount_value != null && (
+                    <Pill tone="success" dot={false}>
+                      {s.pricing_model === "pct_off"
+                        ? `${Number(s.discount_value)}% off`
+                        : `−${money(Number(s.discount_value))} off`}
+                    </Pill>
+                  )}
+              </div>
+            </div>
+            {isBusy ? (
+              <span className="text-[11px] text-text-faint">Importing…</span>
+            ) : isImported ? (
+              <Check className="w-4 h-4 text-success" />
+            ) : (
+              <Download className="w-4 h-4 text-text-faint" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function prettyPricingModel(m: string): string {
+  if (m === "fixed_bundle_price") return "Fixed ₦ price";
+  if (m === "pct_off") return "% off the bundle";
+  if (m === "amount_off") return "Fixed ₦ off the bundle";
+  if (m === "buy_x_get_y") return "Buy X get Y";
+  if (m === "tiered") return "Tiered";
+  return m || "Bundle";
+}
+
+function pricingModelHelp(m: string): string {
+  if (m === "fixed_bundle_price")
+    return "One flat price for the whole bundle, whatever it contains.";
+  if (m === "pct_off")
+    return "Take this percentage off the total of everything in the bundle.";
+  if (m === "amount_off")
+    return "Take this fixed ₦ amount off the whole bundle. It stays the same no matter how many products you add.";
+  if (m === "buy_x_get_y")
+    return "Buy a quantity, get another at a discount.";
+  if (m === "tiered") return "Different discount at different quantities.";
+  return "";
+}
+
+/**
+ * Stylish animated modal showing the full bundle — hero, display name,
+ * pricing model + discount, every product with its image / name / price,
+ * and the real-vs-discounted price summary the buyer would see.
+ * The bundle is read-only here: edits happen in Catalogue → Bundles.
+ */
+function BundleDetailModal({
+  bundleLink,
   bundleId,
   onClose,
-  canEdit,
 }: {
+  bundleLink: CampaignBundleLink | null;
   bundleId: string | null;
   onClose: () => void;
-  canEdit: boolean;
 }) {
   const bundleQ = useBundle(bundleId || undefined);
-  const addItem = useAddBundleItem(bundleId || undefined);
-  const removeItem = useRemoveBundleItem(bundleId || undefined);
-  const [pickerOpen, setPickerOpen] = useState(false);
-
   const bundle = bundleQ.data;
   const items = (bundle?.items || []) as BundleItem[];
-  const excludeIds = new Set(
-    items.filter((i) => i.styled_id).map((i) => i.styled_id!),
-  );
 
-  async function handleAddProducts(styledProducts: StyledProduct[]) {
-    // product_id (the base) is sent alongside styled_id because a bundle item
-    // requires a product_id or variant_id at the DB level; styled_id is the
-    // storefront reference. Errors propagate to the picker, which surfaces them.
-    for (const sp of styledProducts) {
-      await addItem.mutateAsync({
-        styled_id: sp.styled_id,
-        product_id: sp.base_product_id || undefined,
-        quantity: 1,
-      } as Partial<BundleItem>);
-    }
+  // Real price = sum of component unit_price × qty (what the buyer would pay
+  // for these products bought separately). Discounted price prefers the
+  // explicit campaign_bundle_price; otherwise applies the per-item discount.
+  const realTotal = items.reduce(
+    (s, i) => s + Number(i.unit_price_ngn || 0) * (Number(i.quantity) || 1),
+    0,
+  );
+  let discountedTotal: number | null = null;
+  if (
+    bundleLink?.campaign_bundle_price_ngn != null &&
+    Number(bundleLink.campaign_bundle_price_ngn) > 0
+  ) {
+    discountedTotal = Number(bundleLink.campaign_bundle_price_ngn);
+  } else if (
+    bundleLink?.per_item_discount_ngn != null &&
+    Number(bundleLink.per_item_discount_ngn) > 0
+  ) {
+    const itemCount = items.reduce(
+      (s, i) => s + (Number(i.quantity) || 1),
+      0,
+    );
+    discountedTotal = Math.max(
+      0,
+      realTotal - Number(bundleLink.per_item_discount_ngn) * itemCount,
+    );
+  } else if (
+    bundle?.default_per_item_discount_ngn != null &&
+    Number(bundle.default_per_item_discount_ngn) > 0
+  ) {
+    const itemCount = items.reduce(
+      (s, i) => s + (Number(i.quantity) || 1),
+      0,
+    );
+    discountedTotal = Math.max(
+      0,
+      realTotal -
+        Number(bundle.default_per_item_discount_ngn) * itemCount,
+    );
   }
 
+  const hasDiscount =
+    discountedTotal != null && discountedTotal < realTotal && realTotal > 0;
+
   return (
-    <Drawer
+    <Modal
       open={Boolean(bundleId)}
       onClose={onClose}
-      wide
-      title={bundle?.name || "Loading…"}
-      subtitle={bundle ? `/${bundle.slug}` : undefined}
+      size="xl"
+      title={bundle?.name || bundleLink?.bundle_name || "Loading…"}
     >
-      <div className="space-y-4">
-        {bundleQ.isLoading && <Skeleton style={{ height: 120 }} />}
-        {bundle && (
-          <>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[13px] text-text-muted">
-                {items.length} product{items.length !== 1 ? "s" : ""} in this
-                bundle
-              </span>
-              {canEdit && (
-                <Button
-                  variant="primary"
-                  icon={<Plus className="w-4 h-4" />}
-                  onClick={() => setPickerOpen(true)}
-                  size="sm"
-                >
-                  Add products
-                </Button>
+      {bundleQ.isLoading && <Skeleton style={{ height: 320 }} />}
+      {!bundleQ.isLoading && bundle && (
+        <div className="space-y-5">
+          {/* Hero */}
+          <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-5">
+            <div
+              className="relative w-full aspect-[4/5] md:aspect-square rounded-[16px] overflow-hidden bg-text-primary/[0.05] grid place-items-center text-text-faint border border-line"
+              style={
+                bundle.hero_image_url
+                  ? {
+                      backgroundImage: `url(${bundle.hero_image_url})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }
+                  : undefined
+              }
+            >
+              {!bundle.hero_image_url && <ImageIcon className="w-10 h-10" />}
+              {hasDiscount && (
+                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-accent/90 text-white text-[11px] font-semibold tracking-wide shadow-lg">
+                  Bundle deal
+                </div>
               )}
+            </div>
+            <div className="space-y-3">
+              <div>
+                <div className="micro mb-1">Display name</div>
+                <div className="font-display text-[22px] leading-tight">
+                  {bundle.name}
+                </div>
+                {bundle.description && (
+                  <p className="text-[13px] text-text-muted mt-1.5">
+                    {bundle.description}
+                  </p>
+                )}
+              </div>
+
+              {/* Pricing model — match Catalogue → Bundles wording */}
+              <div>
+                <div className="micro mb-1">Pricing model</div>
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-display text-[15px]">
+                    {prettyPricingModel(
+                      bundleLink?.campaign_bundle_price_ngn != null
+                        ? "fixed_bundle_price"
+                        : bundleLink?.per_item_discount_ngn != null
+                          ? "amount_off"
+                          : (bundle as { pricing_model?: string })
+                              .pricing_model || "amount_off",
+                    )}
+                  </span>
+                </div>
+                <p className="text-[12px] text-text-faint mt-1 leading-relaxed">
+                  {pricingModelHelp(
+                    bundleLink?.campaign_bundle_price_ngn != null
+                      ? "fixed_bundle_price"
+                      : bundleLink?.per_item_discount_ngn != null
+                        ? "amount_off"
+                        : (bundle as { pricing_model?: string })
+                            .pricing_model || "amount_off",
+                  )}
+                </p>
+              </div>
+
+              {/* Real vs discounted price summary */}
+              <div className="rounded-[14px] border border-line bg-text-primary/[0.03] p-4">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-[12px] text-text-muted">
+                    Components total
+                  </span>
+                  <span
+                    className={cn(
+                      "font-mono tabular-nums text-[15px]",
+                      hasDiscount && "text-danger line-through",
+                    )}
+                    style={hasDiscount ? { color: "#ef4444" } : undefined}
+                  >
+                    {money(realTotal)}
+                  </span>
+                </div>
+                {hasDiscount && discountedTotal != null && (
+                  <div className="flex items-baseline justify-between gap-3 mt-2 pt-2 border-t hairline">
+                    <span className="text-[12px] text-text-muted">
+                      Campaign bundle price
+                    </span>
+                    <span className="font-mono tabular-nums text-[22px] font-extrabold text-accent-glow">
+                      {money(discountedTotal)}
+                    </span>
+                  </div>
+                )}
+                {hasDiscount && discountedTotal != null && (
+                  <div className="flex items-baseline justify-end mt-1">
+                    <Pill tone="success" dot={false}>
+                      You save {money(realTotal - discountedTotal)}
+                    </Pill>
+                  </div>
+                )}
+                {bundleLink?.per_item_discount_ngn != null &&
+                  Number(bundleLink.per_item_discount_ngn) > 0 && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-text-faint mt-2">
+                      <Tag className="w-3 h-3" />
+                      Per-item discount:{" "}
+                      {money(Number(bundleLink.per_item_discount_ngn))} / each
+                    </div>
+                  )}
+              </div>
+            </div>
+          </div>
+
+          {/* Products in this bundle */}
+          <div>
+            <div className="flex items-baseline justify-between mb-3">
+              <h3 className="font-display text-[18px]">
+                Products in this bundle
+              </h3>
+              <span className="text-[12px] text-text-faint">
+                {items.length} item{items.length !== 1 ? "s" : ""} ·{" "}
+                {money(realTotal)} total
+              </span>
             </div>
 
             {items.length === 0 && (
-              <EmptyState
-                icon={<PackagePlus className="w-6 h-6" />}
-                title="Empty bundle"
-                message="Add styled products to this bundle."
-                action={
-                  canEdit ? (
-                    <Button
-                      variant="primary"
-                      onClick={() => setPickerOpen(true)}
-                      icon={<Plus className="w-4 h-4" />}
-                    >
-                      Add products
-                    </Button>
-                  ) : undefined
-                }
-              />
+              <div className="text-center py-8 text-text-muted text-[13px]">
+                This bundle has no products yet. Add them under
+                Catalogue → Bundles and re-import.
+              </div>
             )}
 
-            <div className="space-y-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {items.map((item) => (
                 <div
                   key={item.bundle_item_id}
-                  className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
+                  className="flex gap-3 p-3 rounded-[14px] border border-line bg-text-primary/[0.03] hover:border-accent/30 transition-colors"
                 >
                   <div
-                    className="w-10 h-10 rounded-[8px] bg-text-primary/[0.06] grid place-items-center flex-shrink-0 overflow-hidden"
+                    className="w-20 h-24 rounded-[10px] bg-text-primary/[0.06] grid place-items-center flex-shrink-0 overflow-hidden"
                     style={
                       item.hero_image_url
                         ? {
@@ -1563,59 +1774,54 @@ function BundleDetailDrawer({
                     }
                   >
                     {!item.hero_image_url && (
-                      <ImageIcon className="w-4 h-4 text-text-faint" />
+                      <ImageIcon className="w-5 h-5 text-text-faint" />
                     )}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium truncate">
-                      {item.display_name ||
-                        item.styled_name ||
-                        item.product_name ||
-                        "Product"}
+                  <div className="min-w-0 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="text-[13.5px] font-medium leading-snug truncate">
+                        {item.display_name ||
+                          item.styled_name ||
+                          item.product_name ||
+                          "Product"}
+                      </div>
+                      <div className="text-[11px] text-text-faint mt-0.5">
+                        {item.styled_id ? "styled" : "base"}
+                        {item.quantity > 1 && ` · qty ${item.quantity}`}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-text-faint">
-                      Qty: {item.quantity}
+                    <div className="flex items-baseline justify-between mt-1.5">
+                      {item.unit_price_ngn != null ? (
+                        <MoneyText
+                          ngn={Number(item.unit_price_ngn)}
+                          className="text-[14px] font-mono tabular-nums font-semibold"
+                        />
+                      ) : (
+                        <span className="text-[11px] text-text-faint">
+                          Not priced
+                        </span>
+                      )}
                       {item.per_item_discount_ngn != null &&
-                        Number(item.per_item_discount_ngn) > 0 &&
-                        ` · −${money(Number(item.per_item_discount_ngn))}/ea`}
+                        Number(item.per_item_discount_ngn) > 0 && (
+                          <span className="text-[11px] text-success">
+                            −{money(Number(item.per_item_discount_ngn))} ea
+                          </span>
+                        )}
                     </div>
                   </div>
-                  {item.unit_price_ngn != null && (
-                    <MoneyText
-                      ngn={Number(item.unit_price_ngn)}
-                      className="text-[12px] text-text-muted shrink-0"
-                    />
-                  )}
-                  {canEdit && (
-                    <button
-                      onClick={() =>
-                        removeItem.mutate(item.bundle_item_id)
-                      }
-                      className="text-text-faint hover:text-danger p-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
               ))}
             </div>
+          </div>
 
-            <Modal
-              open={pickerOpen}
-              onClose={() => setPickerOpen(false)}
-              title={`Add products to "${bundle.name}"`}
-              size="lg"
-            >
-              <StyledProductPicker
-                excludeIds={excludeIds}
-                onAdd={handleAddProducts}
-                onClose={() => setPickerOpen(false)}
-              />
-            </Modal>
-          </>
-        )}
-      </div>
-    </Drawer>
+          <p className="text-[11.5px] text-text-faint border-t hairline pt-3">
+            Bundles are managed under Catalogue → Bundles. Edit the source
+            there to change the name, components, pricing or images, then
+            re-import to refresh this campaign.
+          </p>
+        </div>
+      )}
+    </Modal>
   );
 }
 

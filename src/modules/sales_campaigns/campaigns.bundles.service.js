@@ -168,14 +168,99 @@ async function reorderBundleItems({
 }
 
 /**
- * Clone the brand's Catalogue bundles into a campaign and attach each.
+ * Mirror ONE Catalogue bundle (retention bundle_offers row) into the campaign's
+ * own product_bundles table and attach it. Idempotent — re-importing the same
+ * offer into the same campaign upserts the link rather than duplicating items.
  *
- * "Catalogue bundles" = the Retention engine's bundle_offers (Catalogue →
- * Bundles tab), which is where the user actually builds bundles — NOT the
- * separate campaign product_bundles table. Each active offer is copied into a
- * campaign bundle (product_bundles + items) and attached, preserving a fixed
- * bundle price as the campaign price. Idempotent: an offer already cloned (same
- * derived slug) is re-used, and the attach upserts, so re-running is safe.
+ * Pricing model + bundle price + per-item discount are inherited from the
+ * source offer so the campaign view matches what the user sees in Catalogue.
+ */
+async function mirrorAndAttach({
+  client,
+  brand,
+  user,
+  campaign_id,
+  campaign_slug,
+  offer,
+}) {
+  const components = await retentionBundleRepo.listComponents({
+    client,
+    brand,
+    bundle_id: offer.bundle_id,
+  });
+  const newSlug = `${campaign_slug}-${slugifyBundle(
+    offer.bundle_code || offer.display_name,
+  )}`.slice(0, 120);
+
+  let target = await repo.findBundleBySlug({
+    client,
+    brand,
+    slug: newSlug,
+  });
+  if (!target) {
+    // Carry the offer's amount_off / discount_value through as the per-item
+    // default so the campaign-bundle row inherits the discount the user set
+    // in Catalogue. Fixed-bundle-price offers use campaign_bundle_price_ngn
+    // instead (handled on the attach below).
+    const defaultPerItemDiscount =
+      offer.pricing_model === "amount_off"
+        ? Number(offer.discount_value || 0) || 0
+        : 0;
+    target = await repo.createBundle({
+      client,
+      brand,
+      user_id: user.user_id,
+      input: {
+        slug: newSlug,
+        name: offer.display_name,
+        description: offer.description,
+        hero_image_url: offer.hero_image_url,
+        is_fixed_composition: true,
+        default_per_item_discount_ngn: defaultPerItemDiscount,
+        status: "active",
+        display_order: offer.display_order,
+      },
+    });
+    for (const comp of components) {
+      await repo.addBundleItem({
+        client,
+        brand,
+        bundle_id: target.bundle_id,
+        input: {
+          product_id: comp.product_id,
+          variant_id: comp.variant_id,
+          styled_id: comp.styled_id,
+          quantity: comp.quantity,
+          per_item_discount_ngn: null,
+          display_position: comp.display_order,
+        },
+      });
+    }
+  }
+  const link = await repo.attachCampaignBundle({
+    client,
+    brand,
+    campaign_id,
+    input: {
+      bundle_id: target.bundle_id,
+      campaign_bundle_price_ngn:
+        offer.pricing_model === "fixed_bundle_price"
+          ? (offer.bundle_price_ngn ?? null)
+          : null,
+      per_item_discount_ngn:
+        offer.pricing_model === "amount_off"
+          ? (Number(offer.discount_value || 0) || null)
+          : null,
+      is_featured: false,
+    },
+  });
+  return { bundle: target, link };
+}
+
+/**
+ * Clone the brand's Catalogue bundles into a campaign and attach each.
+ * Used by the "Import all" path; per-bundle import goes through
+ * importCatalogueBundle below.
  */
 async function cloneAllBundlesToCampaign({
   brand,
@@ -185,79 +270,23 @@ async function cloneAllBundlesToCampaign({
   campaign_slug,
 }) {
   return transaction(async (client) => {
-    // Source = the Catalogue/Retention bundles the user manages.
     const offers = await retentionBundleRepo.list({
       brand,
       only_active: true,
     });
     const results = [];
     for (const offer of offers) {
-      const components = await retentionBundleRepo.listComponents({
+      const { bundle } = await mirrorAndAttach({
         client,
         brand,
-        bundle_id: offer.bundle_id,
-      });
-      // bundle_code is UNIQUE, so this slug is stable + collision-free per offer.
-      const newSlug = `${campaign_slug}-${slugifyBundle(
-        offer.bundle_code || offer.display_name,
-      )}`.slice(0, 120);
-
-      let target = await repo.findBundleBySlug({
-        client,
-        brand,
-        slug: newSlug,
-      });
-      if (!target) {
-        target = await repo.createBundle({
-          client,
-          brand,
-          user_id: user.user_id,
-          input: {
-            slug: newSlug,
-            name: offer.display_name,
-            description: offer.description,
-            hero_image_url: offer.hero_image_url,
-            is_fixed_composition: true,
-            status: "active",
-            display_order: offer.display_order,
-          },
-        });
-        for (const comp of components) {
-          // bundle_offer_products enforces product_id OR variant_id, so the
-          // campaign item's CHECK is always satisfied; styled_id rides along as
-          // the storefront reference.
-          await repo.addBundleItem({
-            client,
-            brand,
-            bundle_id: target.bundle_id,
-            input: {
-              product_id: comp.product_id,
-              variant_id: comp.variant_id,
-              styled_id: comp.styled_id,
-              quantity: comp.quantity,
-              per_item_discount_ngn: null,
-              display_position: comp.display_order,
-            },
-          });
-        }
-      }
-      // Preserve a fixed bundle price as the campaign price; other pricing
-      // models (pct/amount off, BXGY, tiered) leave it to per-item computation.
-      await repo.attachCampaignBundle({
-        client,
-        brand,
+        user,
         campaign_id,
-        input: {
-          bundle_id: target.bundle_id,
-          campaign_bundle_price_ngn:
-            offer.pricing_model === "fixed_bundle_price"
-              ? (offer.bundle_price_ngn ?? null)
-              : null,
-          is_featured: false,
-        },
+        campaign_slug,
+        offer,
       });
-      results.push(target);
+      results.push(bundle);
     }
+    events.emit("updated", { brand, id: campaign_id });
     await audit({
       business: brand,
       user_id: user.user_id,
@@ -268,6 +297,92 @@ async function cloneAllBundlesToCampaign({
       request_id,
     });
     return results;
+  });
+}
+
+/**
+ * List the Catalogue bundles available to import into a campaign. These are
+ * the active retention bundle_offers rows — the same ones the user manages
+ * under Catalogue → Bundles. Component count is attached for the picker
+ * (so the user can see "5 products" at a glance) and the per-bundle pricing
+ * summary is surfaced so the campaign view matches the source of truth.
+ */
+async function listCatalogueBundleSources({ brand }) {
+  const offers = await retentionBundleRepo.list({ brand, only_active: true });
+  const data = [];
+  for (const o of offers) {
+    const comps = await retentionBundleRepo.listComponents({
+      brand,
+      bundle_id: o.bundle_id,
+    });
+    data.push({
+      bundle_offer_id: o.bundle_id,
+      bundle_code: o.bundle_code,
+      display_name: o.display_name,
+      description: o.description,
+      hero_image_url: o.hero_image_url,
+      pricing_model: o.pricing_model,
+      bundle_price_ngn: o.bundle_price_ngn,
+      bundle_price_usd: o.bundle_price_usd,
+      discount_value: o.discount_value,
+      component_count: comps.length,
+      components_total_ngn: comps.reduce(
+        (sum, c) =>
+          sum + Number(c.unit_price_ngn || 0) * (Number(c.quantity) || 1),
+        0,
+      ),
+      is_active: o.is_active,
+    });
+  }
+  return { data };
+}
+
+/**
+ * Import ONE Catalogue bundle into a campaign and attach it. The mirror in
+ * product_bundles is created lazily (re-using an existing slug-matched copy if
+ * the same offer has been imported into a previous campaign), so the campaign
+ * carries a stable snapshot even if the source offer is later edited.
+ */
+async function importCatalogueBundle({
+  brand,
+  user,
+  request_id,
+  campaign_id,
+  campaign_slug,
+  source_bundle_offer_id,
+}) {
+  return transaction(async (client) => {
+    const offers = await retentionBundleRepo.list({
+      brand,
+      only_active: true,
+    });
+    const offer = offers.find(
+      (o) => o.bundle_id === source_bundle_offer_id,
+    );
+    if (!offer) throw new NotFoundError("Catalogue bundle");
+    const { bundle, link } = await mirrorAndAttach({
+      client,
+      brand,
+      user,
+      campaign_id,
+      campaign_slug,
+      offer,
+    });
+    events.emit("updated", { brand, id: campaign_id });
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales_campaigns.bundle.import",
+      target_type: "sales_campaign_bundles",
+      target_id: link.link_id,
+      after: {
+        source_bundle_offer_id,
+        bundle_id: bundle.bundle_id,
+        link_id: link.link_id,
+      },
+      request_id,
+    });
+    return { bundle, link };
   });
 }
 
@@ -601,6 +716,8 @@ module.exports = {
   updateBundle,
   archiveBundle,
   cloneAllBundlesToCampaign,
+  importCatalogueBundle,
+  listCatalogueBundleSources,
   duplicateBundle,
   addBundleItem,
   removeBundleItem,

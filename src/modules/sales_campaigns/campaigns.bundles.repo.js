@@ -140,6 +140,10 @@ async function deleteBundle({ client, brand, id }) {
 
 // ── bundle_items ─────────────────────────────────────────
 async function listBundleItems({ client, brand, bundle_id }) {
+  // Image lookup follows the storefront fallback chain: styled gallery first
+  // (the styled product is what the buyer is shopping for), then the pinned
+  // variant, then the base product's main image. Each LATERAL keeps the join
+  // single-row so the bundle item never duplicates.
   const { rows } = await ex(client)(
     `SELECT bi.*,
             COALESCE(sp.name, p.name) AS display_name,
@@ -147,8 +151,20 @@ async function listBundleItems({ client, brand, bundle_id }) {
             sp.name                   AS styled_name,
             sp.slug                   AS styled_slug,
             pv.sku                    AS variant_sku,
-            pv.price_storefront_ngn   AS unit_price_ngn,
-            pi.image_url              AS hero_image_url
+            COALESCE(
+              sp.retail_price_ngn,
+              pv.price_storefront_ngn,
+              (SELECT dv.price_storefront_ngn
+                 FROM ${t(brand, "product_variants")} dv
+                WHERE dv.product_id = bi.product_id
+                ORDER BY dv.is_default DESC, dv.display_order
+                LIMIT 1)
+            )                         AS unit_price_ngn,
+            COALESCE(
+              pi_styled.image_url,
+              pi_variant.image_url,
+              pi_product.image_url
+            )                         AS hero_image_url
        FROM ${t(brand, "product_bundle_items")} bi
        LEFT JOIN ${t(brand, "products")} p          ON p.product_id  = bi.product_id
        LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = bi.variant_id
@@ -156,9 +172,22 @@ async function listBundleItems({ client, brand, bundle_id }) {
        LEFT JOIN LATERAL (
          SELECT COALESCE(cdn_url, file_path) AS image_url
            FROM ${t(brand, "product_images")}
-          WHERE product_id = bi.product_id
-          ORDER BY display_order ASC NULLS LAST LIMIT 1
-       ) pi ON true
+          WHERE styled_id = bi.styled_id AND bi.styled_id IS NOT NULL
+          ORDER BY is_primary DESC, display_order ASC NULLS LAST LIMIT 1
+       ) pi_styled ON true
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(cdn_url, file_path) AS image_url
+           FROM ${t(brand, "product_images")}
+          WHERE variant_id = bi.variant_id AND bi.variant_id IS NOT NULL
+          ORDER BY is_primary DESC, display_order ASC NULLS LAST LIMIT 1
+       ) pi_variant ON true
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(cdn_url, file_path) AS image_url
+           FROM ${t(brand, "product_images")}
+          WHERE product_id = bi.product_id AND bi.product_id IS NOT NULL
+            AND styled_id IS NULL AND variant_id IS NULL
+          ORDER BY is_primary DESC, display_order ASC NULLS LAST LIMIT 1
+       ) pi_product ON true
       WHERE bi.bundle_id = $1
       ORDER BY bi.display_position ASC`,
     [bundle_id],

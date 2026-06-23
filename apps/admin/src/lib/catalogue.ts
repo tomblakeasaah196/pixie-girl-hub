@@ -247,6 +247,9 @@ export interface LaceSize {
 export interface CatalogueConfig {
   size_guide_title: string;
   head_size_guide_md: string | null;
+  /** Optional YouTube / UGC video URL shown on the storefront product modal
+   *  alongside the markdown guide. Editable from Catalogue → Size guide. */
+  head_size_video_url: string | null;
   // One-click Categories toggle — off by default, restored from Config.
   categories_enabled: boolean;
   // One-click: allow base (stock-room) products in collections + bundles.
@@ -474,6 +477,43 @@ export function useBaseProducts(filters: BaseFilters = {}) {
           })}`,
         )
         .then(toList),
+  });
+}
+
+/**
+ * Fetch EVERY base product by walking the paginated endpoint. The server caps
+ * page_size at 100 (utils/pagination.parsePagination), so a single big request
+ * silently truncates — callers that need the *complete* set (the Goods
+ * Reception importer: reference sheet + row matching) must page through. Stops
+ * on `meta.has_more === false`, with a short-page fallback when meta is absent
+ * and a hard safety cap so a bad response can't loop forever.
+ */
+export function useAllBaseProducts(enabled = true) {
+  const brand = useBrand();
+  return useQuery<BaseProduct[]>({
+    queryKey: ["catalogue", "base-all", brand],
+    enabled,
+    queryFn: async () => {
+      const PAGE_SIZE = 100;
+      const MAX_PAGES = 200; // safety: up to 20k products
+      const all: BaseProduct[] = [];
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const res = await api.get<Paginated<BaseProduct> | BaseProduct[]>(
+          `/catalogue/products${qs({
+            page: String(page),
+            page_size: String(PAGE_SIZE),
+          })}`,
+        );
+        const batch = toList(res);
+        all.push(...batch);
+        const more =
+          !Array.isArray(res) && res.meta
+            ? res.meta.has_more
+            : batch.length === PAGE_SIZE;
+        if (!more || batch.length === 0) break;
+      }
+      return all;
+    },
   });
 }
 
@@ -1209,6 +1249,7 @@ export interface SaveSizeConfigInput {
   lace_sizes?: Partial<LaceSize>[];
   size_guide_title?: string | null;
   head_size_guide_md?: string | null;
+  head_size_video_url?: string | null;
   categories_enabled?: boolean;
   allow_base_in_collections_bundles?: boolean;
 }

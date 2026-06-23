@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Ruler } from "lucide-react";
+import { Play, Ruler } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { NumberField } from "@/components/ui/controls";
@@ -8,6 +8,18 @@ import {
   useSaveSizeConfig,
   type SizeTier,
 } from "@/lib/catalogue";
+
+/** Pull a YouTube video ID from any of the common share formats so the
+ *  modal can show a tiny live preview thumbnail before save. Returns null
+ *  when the URL isn't YouTube (UGC vimeo / mp4 will still play in-product). */
+function youtubeId(url: string): string | null {
+  if (!url) return null;
+  const m =
+    url.match(
+      /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/,
+    ) || url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
+  return m ? m[1] : null;
+}
 
 /**
  * "Size & Guide" config (catalogue PR). One modal that holds the brand-wide
@@ -35,6 +47,9 @@ export function SizeGuideModal({
   const [rows, setRows] = useState<Row[]>([]);
   const [title, setTitle] = useState("");
   const [guide, setGuide] = useState("");
+  // Optional YouTube / UGC video URL — surfaces on the storefront product
+  // modal alongside the markdown guide. Empty = no video shown.
+  const [videoUrl, setVideoUrl] = useState("");
 
   useEffect(() => {
     if (!open || !cfg.data) return;
@@ -52,6 +67,7 @@ export function SizeGuideModal({
     );
     setTitle(cfg.data.config?.size_guide_title ?? "How to find your head size");
     setGuide(cfg.data.config?.head_size_guide_md ?? "");
+    setVideoUrl(cfg.data.config?.head_size_video_url ?? "");
   }, [open, cfg.data]);
 
   const patch = (code: string, key: keyof Row, val: string) =>
@@ -87,6 +103,7 @@ export function SizeGuideModal({
         tiers,
         size_guide_title: title.trim() || null,
         head_size_guide_md: guide.trim() || null,
+        head_size_video_url: videoUrl.trim() || null,
       },
       { onSuccess: onClose },
     );
@@ -202,6 +219,38 @@ export function SizeGuideModal({
               rows={9}
               className="w-full px-[13px] py-2.5 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[12.5px] leading-relaxed outline-none focus:border-accent/50 resize-y font-mono"
             />
+
+            {/* Video URL (YouTube or any UGC mp4 link). Embedded in the
+                storefront product modal alongside the markdown guide so the
+                buyer can watch a demo instead of reading. */}
+            <label className="micro block mt-4 mb-1 flex items-center gap-2">
+              <Play className="w-3.5 h-3.5 text-accent-glow" />
+              Head-size video (optional)
+            </label>
+            <input
+              type="url"
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=…"
+              className="w-full h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 font-mono"
+            />
+            <p className="text-[11px] text-text-faint mt-1.5">
+              YouTube share URL, Shorts, or any direct video link. Shown on
+              the storefront product modal next to the guide. Leave blank to
+              hide.
+            </p>
+            {videoUrl.trim() && youtubeId(videoUrl.trim()) && (
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-text-muted">
+                <img
+                  src={`https://i.ytimg.com/vi/${youtubeId(videoUrl.trim())}/mqdefault.jpg`}
+                  alt=""
+                  className="w-20 h-12 rounded-[6px] object-cover border border-line"
+                />
+                <span className="text-text-faint">
+                  Preview · live thumbnail from YouTube
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

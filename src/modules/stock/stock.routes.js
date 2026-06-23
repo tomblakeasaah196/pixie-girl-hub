@@ -80,6 +80,14 @@ router.post("/alerts/:alertId/acknowledge", can("edit"), c.ackAlert);
 router.post("/alerts/:alertId/dismiss", can("edit"), c.dismissAlert);
 router.post("/alerts/:alertId/resolve", can("edit"), c.resolveAlert);
 
+// Goods Reception (simplified inbound — base products + qty; stock up at once)
+router.post(
+  "/goods-receipts",
+  can("create"),
+  v.validateGoodsReceiptCreate,
+  c.createGoodsReceipt,
+);
+
 // Inbound shipments (factory imports; receive → receive movements)
 router.get("/shipments", can("view"), c.listShipments);
 router.post(

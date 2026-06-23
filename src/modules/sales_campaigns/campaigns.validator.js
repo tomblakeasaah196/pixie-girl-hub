@@ -128,6 +128,9 @@ const v2CampaignFields = {
     .max(10)
     .nullable()
     .optional(),
+  // ── Static FX rate for the landing currency toggle (migration 000051) ──
+  // Customer-facing display only. Order settlement uses the live rate.
+  ngn_per_usd_rate: z.coerce.number().positive().nullable().optional(),
 };
 
 const createSchema = z
@@ -137,8 +140,8 @@ const createSchema = z
     description: z.string().max(2000).optional(),
     starts_at: isoDateTime,
     ends_at: isoDateTime,
-    discount_type: z.enum(discountTypes),
-    discount_value: z.coerce.number().positive(),
+    discount_type: z.enum(discountTypes).nullable().optional(),
+    discount_value: z.coerce.number().positive().nullable().optional(),
     min_order_value_ngn: moneyNgn.optional(),
     customer_segment_id: z.string().uuid().optional(),
     first_time_buyers_only: z.boolean().optional().default(false),
@@ -167,7 +170,12 @@ const createSchema = z
         message: "ends_at must be after starts_at",
       });
     }
-    if (val.discount_type === "percentage" && val.discount_value > 1) {
+    if (
+      val.discount_type === "percentage" &&
+      val.discount_value !== null &&
+      val.discount_value !== undefined &&
+      val.discount_value > 1
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["discount_value"],
@@ -185,8 +193,8 @@ const updateSchema = z
     description: z.string().max(2000).nullable().optional(),
     starts_at: isoDateTime.optional(),
     ends_at: isoDateTime.optional(),
-    discount_type: z.enum(discountTypes).optional(),
-    discount_value: z.coerce.number().positive().optional(),
+    discount_type: z.enum(discountTypes).nullable().optional(),
+    discount_value: z.coerce.number().positive().nullable().optional(),
     min_order_value_ngn: moneyNgn.nullable().optional(),
     customer_segment_id: z.string().uuid().nullable().optional(),
     first_time_buyers_only: z.boolean().optional(),
@@ -545,6 +553,14 @@ const checkoutSchema = z
       .max(30),
     utm: z.record(z.string()).optional(),
     payment_gateway: z.enum(["paystack", "nomba"]),
+    // Buyer-chosen display currency from the landing-page toggle. Drives
+    // gateway routing: USD → Nomba only (the USD rail), NGN → Nomba primary
+    // then Paystack. The order is still stored in NGN base; this only picks
+    // the rail and stamps display_currency / fx_rate_used at payment.
+    display_currency: z
+      .enum(["NGN", "USD"])
+      .optional()
+      .default("NGN"),
     client_idempotency_key: z.string().min(1).max(120),
     coupon_code: z.string().max(60).optional(),
   })
@@ -559,6 +575,13 @@ const batchAddProductsSchema = z
 
 const cloneBundlesSchema = z
   .object({
+    campaign_slug: z.string().max(120).optional(),
+  })
+  .strict();
+
+const importCatalogueBundleSchema = z
+  .object({
+    source_bundle_offer_id: z.string().uuid(),
     campaign_slug: z.string().max(120).optional(),
   })
   .strict();
@@ -605,6 +628,7 @@ module.exports = {
   // v3 (migration 000048)
   validateBatchAddProducts: mw(batchAddProductsSchema),
   validateCloneBundles: mw(cloneBundlesSchema),
+  validateImportCatalogueBundle: mw(importCatalogueBundleSchema),
   validateDuplicateBundle: mw(duplicateBundleSchema),
   // schemas
   createSchema,

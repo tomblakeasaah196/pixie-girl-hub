@@ -59,6 +59,15 @@ const sizeConfig = z
     lace_sizes: z.array(laceTier).max(20).optional(),
     size_guide_title: z.string().max(160).nullable().optional(),
     head_size_guide_md: z.string().max(8000).nullable().optional(),
+    // Optional YouTube / UGC video URL shown alongside the head-size guide
+    // on the storefront product modal (migration 000052). Loose URL check —
+    // any http(s) link is accepted so brand owners can paste from anywhere.
+    head_size_video_url: z
+      .string()
+      .max(800)
+      .url({ message: "Must be a valid URL" })
+      .nullable()
+      .optional(),
     // One-click Categories toggle (Products → Config).
     categories_enabled: z.boolean().optional(),
     // One-click: allow base (stock-room) products in collections + bundles.

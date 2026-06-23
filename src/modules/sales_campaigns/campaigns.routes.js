@@ -253,6 +253,13 @@ router.get(
   controller.report,
 );
 
+// Checkout-readiness report — what would break a buyer checkout before go-live.
+router.get(
+  "/:id/readiness",
+  requirePermission("sales_campaigns", "view"),
+  controller.readiness,
+);
+
 // ── v2: Campaign-scoped bundles, tiers, upsells, ambassadors ──
 router.get(
   "/:id/bundles",

@@ -101,9 +101,16 @@ export function GooglePlacesAutocomplete({
         host.replaceChildren(el);
 
         onSelect = (async (event: Event) => {
-          const ev = event as google.maps.places.PlacePredictionSelectEvent;
           try {
-            const place = ev.placePrediction.toPlace();
+            // Select event ships under two shapes across Maps versions:
+            //   gmp-select → event.placePrediction.toPlace(); gmp-placeselect → event.place
+            const anyEv = event as unknown as {
+              placePrediction?: google.maps.places.PlacePrediction;
+              place?: google.maps.places.Place;
+            };
+            const place =
+              anyEv.placePrediction?.toPlace() ?? anyEv.place ?? null;
+            if (!place) return;
             await place.fetchFields({
               fields: [
                 "addressComponents",
@@ -119,11 +126,12 @@ export function GooglePlacesAutocomplete({
             setCoords({ lat: fields.latitude, lng: fields.longitude });
             drawPin(g, fields.latitude, fields.longitude);
             onChangeRef.current(fields);
-          } catch {
-            // ignore a single bad selection; the field stays usable
+          } catch (err) {
+            console.warn("[GooglePlacesAutocomplete] selection failed", err);
           }
         }) as (e: Event) => void;
         el.addEventListener("gmp-select", onSelect);
+        el.addEventListener("gmp-placeselect", onSelect);
         setStatus("ready");
       } catch {
         setStatus("error");
@@ -131,7 +139,10 @@ export function GooglePlacesAutocomplete({
     })();
     return () => {
       cancelled = true;
-      if (el && onSelect) el.removeEventListener("gmp-select", onSelect);
+      if (el && onSelect) {
+        el.removeEventListener("gmp-select", onSelect);
+        el.removeEventListener("gmp-placeselect", onSelect);
+      }
       el?.remove();
     };
     // value is seeded once; re-running on every keystroke would remount the widget

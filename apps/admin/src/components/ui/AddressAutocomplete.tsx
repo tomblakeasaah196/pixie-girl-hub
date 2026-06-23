@@ -167,9 +167,15 @@ export function AddressAutocomplete({
     // bubbles out of the element's shadow DOM.
     const onInput = () => onChangeRef.current(el.value);
     const onSelect = (async (event: Event) => {
-      const ev = event as google.maps.places.PlacePredictionSelectEvent;
       try {
-        const place = ev.placePrediction.toPlace();
+        // Select event ships under two shapes across Maps versions:
+        //   gmp-select → event.placePrediction.toPlace(); gmp-placeselect → event.place
+        const anyEv = event as unknown as {
+          placePrediction?: google.maps.places.PlacePrediction;
+          place?: google.maps.places.Place;
+        };
+        const place = anyEv.placePrediction?.toPlace() ?? anyEv.place ?? null;
+        if (!place) return;
         await place.fetchFields({
           fields: [
             "addressComponents",
@@ -182,16 +188,18 @@ export function AddressAutocomplete({
         const parsed = parseNewPlace(place);
         onChangeRef.current(parsed.line1);
         onPlaceSelectedRef.current(parsed);
-      } catch {
-        // ignore a single bad selection
+      } catch (err) {
+        console.warn("[AddressAutocomplete] selection failed", err);
       }
     }) as (e: Event) => void;
 
     el.addEventListener("input", onInput);
     el.addEventListener("gmp-select", onSelect);
+    el.addEventListener("gmp-placeselect", onSelect);
     return () => {
       el.removeEventListener("input", onInput);
       el.removeEventListener("gmp-select", onSelect);
+      el.removeEventListener("gmp-placeselect", onSelect);
       el.remove();
       elRef.current = null;
     };

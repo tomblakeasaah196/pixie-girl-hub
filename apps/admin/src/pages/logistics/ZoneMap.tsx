@@ -215,12 +215,19 @@ export function ZoneMap({
       return; // search box stays inert; map/manual entry still work
     }
     onSelect = (async (event: Event) => {
-      const ev = event as google.maps.places.PlacePredictionSelectEvent;
       try {
-        const place = ev.placePrediction.toPlace();
-        await place.fetchFields({
-          fields: ["location", "viewport", "displayName"],
-        });
+        // The select event has shipped under two shapes across Maps versions:
+        //   • gmp-select       → event.placePrediction.toPlace()
+        //   • gmp-placeselect  → event.place
+        // Handle whichever the loaded runtime emits.
+        const anyEv = event as unknown as {
+          placePrediction?: google.maps.places.PlacePrediction;
+          place?: google.maps.places.Place;
+        };
+        const place =
+          anyEv.placePrediction?.toPlace() ?? anyEv.place ?? null;
+        if (!place) return;
+        await place.fetchFields({ fields: ["location", "viewport"] });
         const loc = place.location;
         const vp = place.viewport;
         if (vp) map.fitBounds(vp);
@@ -244,13 +251,17 @@ export function ZoneMap({
           polyRef.current?.setPath(rect.map(([lng, lat]) => ({ lat, lng })));
           cb.current.onPoints(rect);
         }
-      } catch {
-        // ignore a single bad selection; map/manual entry still work
+      } catch (err) {
+        console.warn("[ZoneMap] place selection failed", err);
       }
     }) as (e: Event) => void;
     el.addEventListener("gmp-select", onSelect);
+    el.addEventListener("gmp-placeselect", onSelect);
     return () => {
-      if (el && onSelect) el.removeEventListener("gmp-select", onSelect);
+      if (el && onSelect) {
+        el.removeEventListener("gmp-select", onSelect);
+        el.removeEventListener("gmp-placeselect", onSelect);
+      }
       el?.remove();
     };
   }, [ready]);

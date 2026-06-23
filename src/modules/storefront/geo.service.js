@@ -84,6 +84,14 @@ function shippingRates({ brand }) {
   return zones.shippingRates({ brand });
 }
 
+/**
+ * Geo picker options for the checkout autofill (countries, Nigerian states,
+ * Lagos LGAs) — codes match the delivery zones so the quote resolves exactly.
+ */
+function geoOptions({ brand }) {
+  return zones.geoOptions({ brand });
+}
+
 /** Business pickup address for the storefront "collect in store" option. */
 async function pickupAddress({ brand }) {
   const config = await bizRepo.findByKey(brand);
@@ -95,6 +103,7 @@ module.exports = {
   resolveCurrency,
   deliveryQuote,
   shippingRates,
+  geoOptions,
   pickupAddress,
   currencyForCountry,
 };

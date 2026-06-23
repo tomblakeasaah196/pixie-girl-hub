@@ -30,7 +30,8 @@ function computeFeeForQty(zone, qty) {
   if (!tiers.length) return Number(zone.fee_ngn) || 0;
 
   for (const tier of tiers) {
-    if (n >= tier.min_qty && (tier.max_qty == null || n <= tier.max_qty)) {
+    const noUpper = tier.max_qty === null || tier.max_qty === undefined;
+    if (n >= tier.min_qty && (noUpper || n <= tier.max_qty)) {
       return Number(tier.fee_ngn);
     }
   }
@@ -203,7 +204,8 @@ async function quote({ brand, lat, lng, country_code, qty }) {
   const zones = await repo.listActive({ brand, country_code });
   for (const z of zones) {
     if (zoneContains(z, la, ln, country_code)) {
-      const fee = qty != null ? computeFeeForQty(z, qty) : Number(z.fee_ngn);
+      const hasQty = qty !== null && qty !== undefined;
+      const fee = hasQty ? computeFeeForQty(z, qty) : Number(z.fee_ngn);
       return {
         zone_id: z.zone_id,
         zone_name: z.name,
@@ -257,6 +259,42 @@ async function shippingRates({ brand }) {
   };
 }
 
+/**
+ * Geo picker options for the storefront/sale checkout — derived from the
+ * seeded zones so the codes ALWAYS match what quote() resolves against. Powers
+ * the geo-conditional autofill:
+ *   countries      — DHL-served countries + Nigeria (NG first). Selecting a
+ *                    non-NG country routes to DHL rates by the ISO-2 code.
+ *   nigeria_states — nationwide states + Lagos (Lagos is served via its LGAs,
+ *                    so it has no standalone zone — injected here so the buyer
+ *                    can pick it and reveal the LGA picker).
+ *   lagos_lgas     — the 20 Safe-Logistics Lagos LGAs.
+ * `code` is the zone's country_code, which the checkout sends back as
+ * zone_code so the server re-prices the delivery against the exact zone.
+ */
+async function geoOptions({ brand }) {
+  const all = await repo.list({ brand });
+  const active = all.filter((z) => z.is_active);
+  const pick = (key) =>
+    active
+      .filter((z) => z.courier_key === key)
+      .map((z) => ({ name: z.name, code: z.country_code || null }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+  const countries = [{ name: "Nigeria", code: "NG" }, ...pick("dhl_express")];
+
+  const states = pick("nationwide");
+  if (!states.some((s) => s.name === "Lagos"))
+    states.push({ name: "Lagos", code: "NG-LA" });
+  states.sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    countries,
+    nigeria_states: states,
+    lagos_lgas: pick("safe_lagos"),
+  };
+}
+
 module.exports = {
   list,
   getById,
@@ -265,6 +303,7 @@ module.exports = {
   remove,
   quote,
   shippingRates,
+  geoOptions,
   zoneContains,
   computeFeeForQty,
 };

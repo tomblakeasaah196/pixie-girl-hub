@@ -65,12 +65,18 @@ export async function postCheckout(args: {
         country?: string;
       };
     };
-    address: {
+    address?: {
       line1: string;
       line2?: string;
       city: string;
-      state: string;
+      state?: string;
       country?: string;
+      /** ISO-2 country (e.g. "GB") OR the NG delivery-zone code
+       *  (state "NG-AB", Lagos LGA "NG-LA-AGEGE"). Drives the server-side
+       *  delivery quote. */
+      country_code?: string;
+      zone_code?: string;
+      landmark?: string;
     };
     consent: {
       whatsapp_opt_in: boolean;
@@ -78,6 +84,9 @@ export async function postCheckout(args: {
       terms_accepted: boolean;
     };
   };
+  /** "delivery" ships to the address; "pickup" collects in store (no address,
+   *  no delivery fee). Defaults to delivery on the Hub. */
+  fulfilment_type?: "delivery" | "pickup";
   cart: Array<{
     bundle_id?: string;
     product_id?: string;

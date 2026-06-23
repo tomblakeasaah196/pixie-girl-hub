@@ -116,7 +116,7 @@ const LAGOS_LGAS = [
   ["Ikorodu", "NG-LA-IKORODU", "Extreme Outskirts", 12000, 14500, 17000, 2500],
   ["Kosofe", "NG-LA-KOSOFE", "Mid Mainland", 8000, 9500, 11000, 1500],
   ["Lagos Island", "NG-LA-ISLAND", "Island", 4500, 5500, 6500, 1000],
-  ["Lagos Mainland (Yaba)", "NG-LA-MAINLAND", "Close Mainland", 6500, 8000, 9500, 1500],
+  ["Lagos Mainland (Yaba, etc.)", "NG-LA-MAINLAND", "Close Mainland", 6500, 8000, 9500, 1500],
   ["Mushin", "NG-LA-MUSHIN", "Mid Mainland", 8000, 9500, 11000, 1500],
   ["Ojo", "NG-LA-OJO", "Deep Mainland", 10000, 12000, 14000, 2000],
   ["Oshodi-Isolo", "NG-LA-OSHODI", "Mid Mainland", 8000, 9500, 11000, 1500],

@@ -27,16 +27,24 @@ const svc = require("../src/modules/sales_campaigns/campaigns.public.service");
 
 const brand = process.argv[2];
 const slug = process.argv[3];
-const product_id = process.argv[4];
+const id = process.argv[4]; // product_id OR styled_variant_id (see kind)
 const qty = Number(process.argv[5] || "1");
 const gateway = process.argv[6] || "paystack";
+const kind = (process.argv[7] || "product").toLowerCase(); // "product" | "styled"
 
-if (!brand || !slug || !product_id) {
+if (!brand || !slug || !id) {
   console.error(
-    "Usage: node scripts/test-checkout.js <brand> <slug> <product_id> [qty] [gateway]",
+    "Usage: node scripts/test-checkout.js <brand> <slug> <id> [qty] [gateway] [product|styled]",
   );
   process.exit(2);
 }
+
+// A styled line carries styled_variant_id (priced from the styled tables);
+// a product line carries product_id (priced from product_variants).
+const cartItem =
+  kind === "styled"
+    ? { styled_variant_id: id, quantity: qty }
+    : { product_id: id, quantity: qty };
 
 const stamp = Date.now();
 const input = {
@@ -57,7 +65,7 @@ const input = {
       terms_accepted: true,
     },
   },
-  cart: [{ product_id, quantity: qty }],
+  cart: [cartItem],
   payment_gateway: gateway,
   client_idempotency_key: `diag-${slug}-${stamp}`,
   utm: {},
@@ -65,7 +73,7 @@ const input = {
 
 (async () => {
   console.warn(
-    `Reproducing checkout — brand=${brand} slug=${slug} product=${product_id} qty=${qty} gateway=${gateway}\n`,
+    `Reproducing checkout — brand=${brand} slug=${slug} ${kind}=${id} qty=${qty} gateway=${gateway}\n`,
   );
   try {
     await initDatabase(); // the standalone script must open the pool itself

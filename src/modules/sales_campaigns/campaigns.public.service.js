@@ -23,6 +23,7 @@ const contactsRepo = require("../../shared/contacts/contacts.repo");
 const styledRepo = require("../catalogue/styled.repo");
 const styledVariantsRepo = require("../catalogue/styled_variants.repo");
 const { transaction, query } = require("../../config/database");
+const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const { getSupportContact, supportSentence } = require("../../config/support");
@@ -557,6 +558,92 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
           quantity: (bi.quantity || 1) * cartItem.quantity,
         });
       }
+    } else if (cartItem.styled_variant_id) {
+      // Styled product line. Price comes from the STYLED tables (not the base
+      // product_variants, which are intentionally ₦0 for a styled product):
+      //   price = price_override_ngn, else
+      //           retail_price_ngn + colour premium + size premium + lace premium.
+      // The line attaches to the styled product's base variant for stock /
+      // fulfilment (styled_products.base_variant_id, else the base product's
+      // default variant), and carries styled snapshots for the label.
+      const { rows } = await query(
+        `SELECT sv.styled_variant_id, sv.sku AS styled_sku, sv.size_code,
+                sv.lace_code, sv.price_override_ngn,
+                sv.base_product_id AS sv_base_product_id,
+                sp.styled_id, sp.name AS styled_name, sp.retail_price_ngn,
+                sp.base_variant_id, sp.base_product_id AS sp_base_product_id,
+                c.name AS colour_name, c.premium_ngn AS colour_premium,
+                st.label AS size_label, st.premium_ngn AS size_premium,
+                ls.premium_ngn AS lace_premium
+           FROM ${resolvedBrand}.styled_product_variants sv
+           JOIN ${resolvedBrand}.styled_products sp ON sp.styled_id = sv.styled_id
+           JOIN ${resolvedBrand}.styled_product_colours c ON c.colour_id = sv.colour_id
+           JOIN ${resolvedBrand}.styled_size_tiers st ON st.size_code = sv.size_code
+           LEFT JOIN ${resolvedBrand}.styled_lace_sizes ls ON ls.lace_code = sv.lace_code
+          WHERE sv.styled_variant_id = $1
+            AND sv.is_active = true AND sv.is_deleted = false`,
+        [cartItem.styled_variant_id],
+      );
+      const sv = rows[0];
+      if (!sv) {
+        throw new AppError(
+          "STYLED_VARIANT_UNAVAILABLE",
+          "One of your items is no longer available. Please remove it and try again.",
+          409,
+        );
+      }
+
+      const unitPrice =
+        sv.price_override_ngn !== null && sv.price_override_ngn !== undefined
+          ? money(sv.price_override_ngn)
+          : money(sv.retail_price_ngn || 0)
+              .plus(money(sv.colour_premium || 0))
+              .plus(money(sv.size_premium || 0))
+              .plus(money(sv.lace_premium || 0));
+      if (!unitPrice.gt(0)) {
+        throw new AppError(
+          "STYLED_NOT_PRICED",
+          "This item isn’t available for purchase right now.",
+          409,
+        );
+      }
+
+      // Resolve a base variant for stock/fulfilment.
+      let baseVariantId = sv.base_variant_id;
+      if (!baseVariantId) {
+        const baseProductId = sv.sv_base_product_id || sv.sp_base_product_id;
+        if (baseProductId) {
+          const { rows: bv } = await query(
+            `SELECT variant_id FROM ${resolvedBrand}.product_variants
+               WHERE product_id = $1 AND is_active = true
+               ORDER BY is_default DESC, display_order ASC, created_at ASC
+               LIMIT 1`,
+            [baseProductId],
+          );
+          baseVariantId = bv[0] ? bv[0].variant_id : null;
+        }
+      }
+      if (!baseVariantId) {
+        throw new AppError(
+          "STYLED_NO_BASE_VARIANT",
+          "This item isn’t available for purchase right now.",
+          409,
+        );
+      }
+
+      const label = [sv.colour_name, sv.size_label, sv.lace_code]
+        .filter(Boolean)
+        .join(" · ");
+      orderLines.push({
+        variant_id: baseVariantId,
+        quantity: cartItem.quantity,
+        // Server-resolved styled price (client price is never trusted).
+        unit_price_ngn: toCurrencyString(unitPrice),
+        // Styled snapshots so the order line shows the styled item, not the base.
+        product_name_snapshot: sv.styled_name,
+        variant_label_snapshot: label || null,
+        sku_snapshot: sv.styled_sku,
+      });
     } else if (cartItem.product_id) {
       const { rows } = await query(
         `SELECT variant_id FROM ${resolvedBrand}.product_variants

@@ -430,9 +430,13 @@ async function createOrderTx({ brand, user, request_id, input }) {
       lineRows.push({
         product_id: b.ctx.product_id,
         variant_id: b.li.variant_id,
-        product_name_snapshot: b.ctx.product_name,
-        variant_label_snapshot: b.ctx.variant_name,
-        sku_snapshot: b.ctx.sku,
+        // Snapshot overrides let a caller (e.g. a styled-product checkout line)
+        // record the styled name/label/SKU instead of the base variant's.
+        product_name_snapshot:
+          b.li.product_name_snapshot ?? b.ctx.product_name,
+        variant_label_snapshot:
+          b.li.variant_label_snapshot ?? b.ctx.variant_name,
+        sku_snapshot: b.li.sku_snapshot ?? b.ctx.sku,
         quantity: qty,
         unit_price_ngn: toCurrencyString(b.unit),
         unit_cost_ngn: b.ctx.cost_price_ngn,

@@ -558,6 +558,10 @@ const checkoutSchema = z.object({
       z.object({
         bundle_id: z.string().uuid().optional(),
         product_id: z.string().uuid().optional(),
+        // A styled product/colour/size SKU. When present the server prices the
+        // line from the styled tables (styled_product_variants), not the base
+        // product_variants — see campaigns.public.service checkout().
+        styled_variant_id: z.string().uuid().optional(),
         quantity: z.coerce.number().int().min(1).max(50),
         // Optional — the server re-prices; never trusted from the client.
         unit_price_ngn: z.coerce.number().nonnegative().optional(),

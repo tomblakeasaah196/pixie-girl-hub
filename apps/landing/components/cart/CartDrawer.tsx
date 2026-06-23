@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Gift, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
@@ -10,6 +10,7 @@ import { money } from "@/lib/format";
 import type { LandingPayload } from "@/lib/types";
 
 export function CartDrawer({ payload }: { payload: LandingPayload }) {
+  const router = useRouter();
   const open = useCart((s) => s.open);
   const close = useCart((s) => s.closeCart);
   const items = useCart((s) => s.items);
@@ -132,10 +133,19 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                     <div className="text-[13px] font-semibold truncate">
                       {it.name}
                     </div>
-                    {it.preorder && (
+                    {it.preorder ? (
                       <div className="text-[10px] text-[rgb(var(--warn))] mt-0.5">
-                        Pre-order · ships in {it.preorder_lead_weeks ?? 3} wks
+                        Out of stock · pre-order ships in{" "}
+                        {it.preorder_lead_weeks ?? 3} wks
                       </div>
+                    ) : (
+                      it.delivery_weeks != null &&
+                      it.delivery_weeks > 0 && (
+                        <div className="text-[10px] text-[rgb(var(--text-faint))] mt-0.5">
+                          Delivery in {it.delivery_weeks} wk
+                          {it.delivery_weeks !== 1 ? "s" : ""}
+                        </div>
+                      )
                     )}
                     <div className="font-display tabular-nums text-[14px] mt-1">
                       {money(it.unit_price_ngn * it.quantity)}
@@ -207,19 +217,27 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                   </span>
                 </div>
               )}
-              <Link
-                href={`/checkout/${payload.slug}`}
-                onClick={close}
-                aria-disabled={items.length === 0}
-                className={`w-full inline-flex items-center justify-center h-12 rounded-xl font-semibold cta-sheen ${
+              <button
+                type="button"
+                disabled={items.length === 0}
+                onClick={() => {
+                  if (items.length === 0) return;
+                  // Navigate first, then close. The old <Link onClick={close}>
+                  // closed the drawer in the same click, and framer-motion's
+                  // exit-unmount intermittently swallowed the navigation — the
+                  // drawer just closed and nothing happened. Programmatic push
+                  // is deterministic; closing after can't cancel it.
+                  router.push(`/checkout/${payload.slug}`);
+                  close();
+                }}
+                className={`w-full inline-flex items-center justify-center h-12 rounded-xl font-semibold cta-sheen disabled:cursor-not-allowed ${
                   items.length === 0
-                    ? "bg-[rgb(var(--text)/0.06)] text-[rgb(var(--text-faint))] pointer-events-none"
+                    ? "bg-[rgb(var(--text)/0.06)] text-[rgb(var(--text-faint))]"
                     : "bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))]"
                 }`}
               >
-                Checkout ·{" "}
-                {money(Math.max(0, subtotal - stackingDiscount))}
-              </Link>
+                Checkout · {money(Math.max(0, subtotal - stackingDiscount))}
+              </button>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 DHL rates apply. Pay with Nomba · Paystack.
               </p>

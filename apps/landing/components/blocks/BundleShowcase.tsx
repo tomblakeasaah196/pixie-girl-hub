@@ -63,6 +63,13 @@ function BundleCard({
   const tease = state !== "live";
   const stockOut = (bundle.current_stock_snapshot ?? 1) <= 0;
   const showPrice = !tease;
+  // Pre-order lead time: the value the owner set on the bundle, else the
+  // campaign's in-stock delivery weeks plus the pre-order surcharge weeks.
+  const preorderLeadWeeks =
+    bundle.preorder_lead_weeks ?? (deliveryWeeks || 0) + (preorderExtraWeeks ?? 4);
+  // In-stock delivery weeks set in the builder (undefined hides the line).
+  const inStockDeliveryWeeks =
+    deliveryWeeks != null && deliveryWeeks > 0 ? deliveryWeeks : undefined;
   const finalPrice =
     stockOut && bundle.preorder_enabled
       ? (bundle.preorder_price_ngn ?? bundle.campaign_bundle_price_ngn ?? 0)
@@ -84,7 +91,9 @@ function BundleCard({
       retail_price_ngn: retailTotal || undefined,
       quantity: 1,
       preorder: stockOut && bundle.preorder_enabled === true,
-      preorder_lead_weeks: bundle.preorder_lead_weeks ?? undefined,
+      preorder_lead_weeks:
+        stockOut && bundle.preorder_enabled ? preorderLeadWeeks : undefined,
+      delivery_weeks: !stockOut ? inStockDeliveryWeeks : undefined,
     });
     openCart();
   }
@@ -127,7 +136,7 @@ function BundleCard({
           <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.18em] bg-[rgb(0_0_0/0.55)] text-[rgb(var(--text))] backdrop-blur">
             {stockOut
               ? bundle.preorder_enabled
-                ? "Preorder"
+                ? "Out of stock · Preorder"
                 : "Sold out"
               : `${bundle.current_stock_snapshot} left`}
           </span>
@@ -175,10 +184,8 @@ function BundleCard({
         )}
         {stockOut && bundle.preorder_enabled && state === "live" && (
           <div className="text-[12.5px] text-[rgb(var(--warn))] mt-2 inline-flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" /> Pre-order — ships in{" "}
-            {bundle.preorder_lead_weeks ??
-              (deliveryWeeks || 0) + (preorderExtraWeeks ?? 4)}{" "}
-            weeks
+            <Clock className="w-3.5 h-3.5" /> Out of stock — pre-order ships in{" "}
+            {preorderLeadWeeks} weeks
           </div>
         )}
         {!stockOut &&

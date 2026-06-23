@@ -659,14 +659,16 @@ function buildLandingPayload(c, products, state) {
               regular_price_usd:
                 p.regular_price_usd ?? p.styled_retail_price_usd ?? null,
               is_featured: p.is_featured,
-              stock_remaining: p.current_stock_snapshot,
-              // Pre-order signal for the card/cart/checkout UI: when the live
-              // stock snapshot is sold out we still sell (we accept pre-orders)
-              // — the UI shows "Pre-order · ships in delivery_weeks + extra".
+              // live_base_stock is computed from stock_levels across all
+              // storefront locations for the base product. All styled products
+              // sharing the same base product draw from this single pool, so
+              // their stock_remaining values move in lockstep and cannot
+              // collectively oversell the base.
+              stock_remaining: p.live_base_stock,
               preorder:
-                p.current_stock_snapshot !== null &&
-                p.current_stock_snapshot !== undefined &&
-                Number(p.current_stock_snapshot) <= 0,
+                p.live_base_stock !== null &&
+                p.live_base_stock !== undefined &&
+                Number(p.live_base_stock) <= 0,
               image_url: p.resolved_image_url || p.image_url,
             }))
         : [],

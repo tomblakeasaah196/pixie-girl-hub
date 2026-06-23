@@ -1319,3 +1319,56 @@ export function useLandingPreview(
       ),
   });
 }
+
+// ════════════════════════════════════════════════════════════
+// Public checkout (no auth) — POST /api/public/sale/:slug/checkout
+// ════════════════════════════════════════════════════════════
+
+export interface PublicCheckoutInput {
+  slug: string;
+  contact: {
+    first_name: string;
+    last_name?: string;
+    email: string;
+    phone: string;
+    address: {
+      line1: string;
+      line2?: string;
+      city: string;
+      state?: string;
+      country?: string;
+    };
+    consent: {
+      terms_accepted: true;
+      whatsapp_opt_in?: boolean;
+      marketing_opt_in?: boolean;
+    };
+  };
+  cart: Array<{
+    product_id?: string;
+    bundle_id?: string;
+    quantity: number;
+  }>;
+  client_idempotency_key: string;
+  payment_gateway?: "paystack" | "nomba";
+}
+
+export interface PublicCheckoutResult {
+  order_id: string;
+  payment_url: string | null;
+  preorder?: Record<string, unknown> | null;
+  notices?: string[];
+}
+
+export function usePublicCheckout(slug: string | undefined, brand?: string) {
+  return useMutation({
+    mutationFn: (input: Omit<PublicCheckoutInput, "slug">) => {
+      const qs = brand ? `?brand=${encodeURIComponent(brand)}` : "";
+      return api.post<PublicCheckoutResult>(
+        `/sale/${slug}/checkout${qs}`,
+        { ...input, slug },
+        "public",
+      );
+    },
+  });
+}

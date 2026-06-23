@@ -201,11 +201,13 @@ export function LandingRender({
   className,
   scrollable = true,
   brandConfig,
+  onAddToCart,
 }: {
   model: LandingModel;
   className?: string;
   scrollable?: boolean;
   brandConfig?: LandingConfig | null;
+  onAddToCart?: (product: LandingProduct, qty: number) => void;
 }) {
   const cd = useCountdown(model.countdown_to);
   const enabled = useMemo(
@@ -398,6 +400,7 @@ export function LandingRender({
               priceLabel={priceLabel}
               estimateSavePerWig={estimateSavePerWig}
               onOpenProduct={setOpenProduct}
+              onAddToCart={onAddToCart}
             />
           ))}
           {enabled.length === 0 && <DefaultBody model={model} />}
@@ -442,6 +445,7 @@ function BlockSection({
   priceLabel,
   estimateSavePerWig,
   onOpenProduct,
+  onAddToCart,
 }: {
   block: LandingBlock;
   model: LandingModel;
@@ -449,6 +453,7 @@ function BlockSection({
   priceLabel: (v: number | string | null | undefined) => string;
   estimateSavePerWig: (unitNgn: number) => number;
   onOpenProduct: (styledId: string) => void;
+  onAddToCart?: (product: LandingProduct, qty: number) => void;
 }) {
   const key = block.key || block.type || "";
   const meta = BLOCK_TITLE[key];
@@ -533,20 +538,43 @@ function BlockSection({
             ).map((p, n) => {
               const prod = (p || {}) as LandingProduct;
               const img = prod.image_url || prod.hero_image_url;
-              // Real price: the campaign override if set, else the snapshotted
-              // regular price. No more fabricated "95000 + n*10000" placeholder.
-              // Price is always NGN base — the toggle/floater converts on
-              // display via the campaign's static FX rate (USD ceiling-rounded
-              // to whole dollars per owner directive).
-              const priceNgn =
-                prod.campaign_price_ngn ?? prod.regular_price_ngn ?? null;
+              // Determine the effective (customer-facing) price.
+              // If the campaign sets an explicit per-product price override that
+              // IS the price. Otherwise compute effective = regular - discount
+              // so the card shows the real amount the customer will pay — not
+              // the pre-discount list price. The backend re-prices independently
+              // at checkout; this is display-only.
+              const regularNgn = prod.regular_price_ngn ?? null;
+              const campaignNgn = prod.campaign_price_ngn ?? null;
+              const baseNgn = regularNgn ?? campaignNgn ?? null;
               const hasPrice =
-                priceNgn != null && Number.isFinite(Number(priceNgn));
+                baseNgn != null && Number.isFinite(Number(baseNgn));
               const save = hasPrice
-                ? estimateSavePerWig(Number(priceNgn))
+                ? estimateSavePerWig(Number(regularNgn ?? campaignNgn))
                 : 0;
+              const effectiveNgn: number | null =
+                campaignNgn != null
+                  ? Number(campaignNgn)
+                  : hasPrice && save > 0
+                    ? Number(baseNgn) - save
+                    : hasPrice
+                      ? Number(baseNgn)
+                      : null;
+              const showStrike =
+                effectiveNgn != null &&
+                regularNgn != null &&
+                effectiveNgn < Number(regularNgn);
+
               const styledId = (prod.styled_id || "") as string;
               const openable = Boolean(styledId);
+              const stock = prod.stock_remaining ?? null;
+              const soldOut = stock !== null && stock <= 0;
+              // Sold-out items become preorders — "Buy now" changes label to
+              // "Preorder" but the button stays active so the checkout flow
+              // proceeds normally. The backend's checkout service already
+              // handles preorder_enabled products with extended lead times.
+              const canBuy = Boolean(onAddToCart && prod.product_id);
+              const isPreorder = soldOut && canBuy;
               return (
                 <article
                   key={n}
@@ -561,8 +589,9 @@ function BlockSection({
                     }
                   }}
                 >
+                  {/* Image with stock badges */}
                   <div
-                    className="aspect-[3/4] rounded-[16px] overflow-hidden mb-3 transition-transform group-hover:scale-[1.015]"
+                    className="relative aspect-[3/4] rounded-[16px] overflow-hidden mb-3 transition-transform group-hover:scale-[1.015]"
                     style={{
                       backgroundImage: img ? `url("${img}")` : undefined,
                       background: img
@@ -571,7 +600,26 @@ function BlockSection({
                       backgroundSize: "cover",
                       backgroundPosition: "center",
                     }}
-                  />
+                  >
+                    {soldOut && !canBuy && (
+                      <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                        <span className="text-[11px] tracking-[0.25em] uppercase font-semibold text-white/80">
+                          Sold out
+                        </span>
+                      </div>
+                    )}
+                    {isPreorder && (
+                      <div className="absolute top-2 left-2 bg-accent/80 backdrop-blur-sm rounded-full px-2.5 py-1 text-[10.5px] font-semibold text-white">
+                        Pre-order
+                      </div>
+                    )}
+                    {!soldOut && stock !== null && stock <= 5 && (
+                      <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm rounded-full px-2.5 py-1 text-[10.5px] font-semibold text-white">
+                        {stock} left
+                      </div>
+                    )}
+                  </div>
+
                   <div className="font-medium text-[13.5px] truncate">
                     {prod.name || "Styled piece"}
                   </div>
@@ -580,18 +628,38 @@ function BlockSection({
                       {prod.short_description}
                     </div>
                   )}
-                  {hasPrice && (
-                    <div className="flex items-baseline justify-between gap-2 mt-1">
+
+                  {/* Price row: effective price + strikethrough original */}
+                  {hasPrice && effectiveNgn != null && (
+                    <div className="flex items-baseline gap-2 mt-1">
                       <span className="font-mono text-accent-glow text-[13px]">
-                        {priceLabel(priceNgn)}
+                        {priceLabel(effectiveNgn)}
                       </span>
-                      {save > 0 && (
+                      {showStrike && (
+                        <span className="font-mono text-[11px] text-text-faint line-through">
+                          {priceLabel(regularNgn)}
+                        </span>
+                      )}
+                      {!showStrike && save > 0 && (
                         <span className="font-mono text-[11px] text-[rgb(var(--success,52_211_153))] whitespace-nowrap">
                           save {priceLabel(save)}
                           <span className="opacity-60"> / wig</span>
                         </span>
                       )}
                     </div>
+                  )}
+
+                  {/* Buy / Preorder button — only when checkout is wired up */}
+                  {canBuy && (
+                    <button
+                      className="mt-2.5 w-full h-9 rounded-full bg-accent text-[#F4E9D9] text-[12.5px] font-semibold tracking-wide hover:brightness-110 transition"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddToCart!(prod, 1);
+                      }}
+                    >
+                      {isPreorder ? "Preorder" : "Buy now"}
+                    </button>
                   )}
                 </article>
               );

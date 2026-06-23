@@ -305,6 +305,14 @@ async function listProducts({ client, brand, campaign_id }) {
   // campaign_price_usd, short/long_description). The styled aliases below are
   // live fallbacks for rows added before the snapshot existed — resolved with
   // COALESCE by the caller (buildLandingPayload), never colliding with scp.*.
+  //
+  // live_base_stock is computed live from stock_levels rather than from the
+  // per-row current_stock_snapshot. Multiple styled products sharing the same
+  // base product must read from the same pool — independent snapshots would
+  // allow each styled variant to show the full base stock independently,
+  // enabling overselling. The lateral join sums available qty across all
+  // storefront-available locations for the base product's variants, respecting
+  // any base_variant_id pin on the styled product.
   const { rows } = await exec(client)(
     `SELECT scp.*,
             p.name  AS product_name,
@@ -315,7 +323,8 @@ async function listProducts({ client, brand, campaign_id }) {
             sp.long_description  AS styled_long_description,
             sp.retail_price_ngn  AS styled_retail_price_ngn,
             sp.retail_price_usd  AS styled_retail_price_usd,
-            COALESCE(scp.image_url, spi.image_url) AS resolved_image_url
+            COALESCE(scp.image_url, spi.image_url) AS resolved_image_url,
+            bstk.live_base_stock
        FROM ${t(brand, "sales_campaign_products")} scp
        LEFT JOIN ${t(brand, "products")} p          ON p.product_id   = scp.product_id
        LEFT JOIN ${t(brand, "product_categories")} pc ON pc.category_id = scp.category_id
@@ -326,6 +335,16 @@ async function listProducts({ client, brand, campaign_id }) {
           WHERE product_id = COALESCE(sp.base_product_id, scp.product_id)
           ORDER BY display_order ASC NULLS LAST LIMIT 1
        ) spi ON true
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(sl.available), 0)::INTEGER AS live_base_stock
+           FROM ${t(brand, "product_variants")} pv
+           JOIN ${t(brand, "stock_levels")} sl      ON sl.variant_id   = pv.variant_id
+           JOIN ${t(brand, "stock_locations")} loc  ON loc.location_id = sl.location_id
+          WHERE pv.product_id = COALESCE(sp.base_product_id, scp.product_id)
+            AND (sp.base_variant_id IS NULL OR pv.variant_id = sp.base_variant_id)
+            AND loc.available_for_storefront = true
+            AND pv.is_active = true
+       ) bstk ON true
       WHERE scp.campaign_id = $1
       ORDER BY scp.display_order ASC, scp.is_featured DESC`,
     [campaign_id],

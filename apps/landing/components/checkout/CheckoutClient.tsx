@@ -145,6 +145,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         cart: items.map((i) => ({
           bundle_id: i.bundle_id,
           product_id: i.product_id,
+          styled_variant_id: i.styled_variant_id,
           quantity: i.quantity,
           unit_price_ngn: i.unit_price_ngn,
         })),

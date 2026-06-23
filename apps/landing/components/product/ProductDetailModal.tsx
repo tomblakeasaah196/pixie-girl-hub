@@ -178,15 +178,44 @@ export function ProductDetailModal({
     ? youtubeEmbed(product.size_guide.video_url)
     : null;
 
+  // The concrete styled variant for the chosen size/lace (default colour, as
+  // there's no colour picker yet). Carries the styled_variant_id the checkout
+  // needs to price from the styled tables.
+  const selectedVariant = useMemo(() => {
+    if (!product) return null;
+    const matches = product.variants.filter(
+      (v) =>
+        v.size_code === size && (v.lace_code ?? null) === (lace ?? null),
+    );
+    return (
+      matches.find((v) => v.is_default) ||
+      matches[0] ||
+      product.variants.find((v) => v.is_default) ||
+      product.variants[0] ||
+      null
+    );
+  }, [product, size, lace]);
+
   function handleAdd() {
-    if (!product || !effectivePrice) return;
+    if (!product) return;
+    // Prefer the resolved variant's price; fall back to the computed price.
+    const price = selectedVariant
+      ? Number(selectedVariant.effective_price_ngn)
+      : effectivePrice;
+    if (!price) return;
     add({
-      id: product.styled_id,
-      type: "product",
+      // Unique per styled variant so different size/colour are separate lines.
+      id: selectedVariant
+        ? `styled:${selectedVariant.variant_id}`
+        : product.styled_id,
+      type: "styled",
+      styled_variant_id: selectedVariant?.variant_id,
       product_id: undefined,
-      name: product.name,
+      name: selectedVariant
+        ? `${product.name} — ${selectedVariant.size_label}`
+        : product.name,
       image_url: product.gallery[0]?.url,
-      unit_price_ngn: effectivePrice,
+      unit_price_ngn: price,
       retail_price_ngn: Number(product.retail_price_ngn || 0) || undefined,
       quantity: 1,
     });

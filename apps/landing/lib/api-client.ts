@@ -81,6 +81,7 @@ export async function postCheckout(args: {
   cart: Array<{
     bundle_id?: string;
     product_id?: string;
+    styled_variant_id?: string;
     quantity: number;
     unit_price_ngn: number;
   }>;

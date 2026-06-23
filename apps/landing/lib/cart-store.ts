@@ -5,9 +5,12 @@ import { persist } from "zustand/middleware";
 
 export interface CartItem {
   id: string;
-  type: "bundle" | "product";
+  type: "bundle" | "product" | "styled";
   bundle_id?: string;
   product_id?: string;
+  /** Styled product/colour/size SKU. Set for styled items; the server prices
+   *  the line from the styled tables (styled_product_variants). */
+  styled_variant_id?: string;
   name: string;
   image_url?: string;
   unit_price_ngn: number;

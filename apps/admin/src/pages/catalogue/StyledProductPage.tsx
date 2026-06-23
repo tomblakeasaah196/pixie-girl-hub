@@ -26,6 +26,8 @@ import {
   useRemoveStyled,
   type StyledProduct,
 } from "@/lib/catalogue";
+import { useAddStyledToCampaign, type Campaign } from "@/lib/campaigns";
+import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
 import { AvailabilityPill, StyledStatusBadge } from "./parts";
 import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
@@ -192,8 +194,10 @@ function StyledEditor({
   const publish = usePublishStyled();
   const unpublish = useUnpublishStyled();
   const remove = useRemoveStyled();
+  const addToCampaign = useAddStyledToCampaign();
 
   const [name, setName] = useState(s.name);
+  const [campaignFeedback, setCampaignFeedback] = useState<string | null>(null);
   const [shortDesc, setShortDesc] = useState(s.short_description ?? "");
   const [longDesc, setLongDesc] = useState(s.long_description ?? "");
   const [retail, setRetail] = useState(
@@ -248,6 +252,24 @@ function StyledEditor({
       compare_at_price_usd: compareAtUsd ? Number(compareAtUsd) : null,
     });
 
+  const handleAddToCampaign = (campaign: Campaign) => {
+    addToCampaign.mutate(
+      { campaignId: campaign.campaign_id, styledId: s.styled_id },
+      {
+        onSuccess: () => {
+          setCampaignFeedback(`Added to "${campaign.name}"`);
+          setTimeout(() => setCampaignFeedback(null), 3000);
+        },
+        onError: (err) => {
+          setCampaignFeedback(
+            err instanceof Error ? err.message : "Could not add to campaign.",
+          );
+          setTimeout(() => setCampaignFeedback(null), 4000);
+        },
+      },
+    );
+  };
+
   return (
     <div className="max-w-[920px]">
       <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -268,7 +290,25 @@ function StyledEditor({
               : ""}
           </Pill>
         )}
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
+          {campaignFeedback && (
+            <span
+              className={
+                campaignFeedback.startsWith("Added")
+                  ? "text-[12px] text-success"
+                  : "text-[12px] text-danger"
+              }
+            >
+              {campaignFeedback}
+            </span>
+          )}
+          {canPublish && (
+            <CampaignPickerDropdown
+              label="Publish to campaign"
+              busy={addToCampaign.isPending}
+              onSelect={handleAddToCampaign}
+            />
+          )}
           {canPublish && s.status !== "live" && (
             <Button
               variant="primary"
@@ -277,7 +317,7 @@ function StyledEditor({
               disabled={publish.isPending}
               onClick={() => publish.mutate(s.styled_id)}
             >
-              Publish
+              Publish to storefront
             </Button>
           )}
           {canPublish && s.status === "live" && (

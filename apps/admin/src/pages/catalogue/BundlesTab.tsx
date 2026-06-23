@@ -7,6 +7,8 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import { useAddBundleToCampaign, type Campaign } from "@/lib/campaigns";
+import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
 import {
   Button,
   Card,
@@ -278,6 +280,7 @@ function BundleEditorModal({
   const bases = useBaseProducts();
   const styledProducts = useStyledProducts();
   const allowBase = useAllowBaseInCollectionsBundles();
+  const addToCampaign = useAddBundleToCampaign();
 
   const [name, setName] = useState("");
   const [model, setModel] = useState("fixed_bundle_price");
@@ -287,6 +290,30 @@ function BundleEditorModal({
   const [pick, setPick] = useState("");
   const [pickStyled, setPickStyled] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [campaignFeedback, setCampaignFeedback] = useState<string | null>(null);
+
+  const handleAddToCampaign = (campaign: Campaign) => {
+    if (!bundle) return;
+    addToCampaign.mutate(
+      {
+        campaignId: campaign.campaign_id,
+        campaignSlug: campaign.slug,
+        bundleOfferId: bundle.bundle_id,
+      },
+      {
+        onSuccess: () => {
+          setCampaignFeedback(`Added to "${campaign.name}"`);
+          setTimeout(() => setCampaignFeedback(null), 3000);
+        },
+        onError: (err) => {
+          setCampaignFeedback(
+            err instanceof Error ? err.message : "Could not add to campaign.",
+          );
+          setTimeout(() => setCampaignFeedback(null), 4000);
+        },
+      },
+    );
+  };
 
   useEffect(() => {
     if (bundle) {
@@ -380,6 +407,22 @@ function BundleEditorModal({
           >
             <Trash2 className="w-3.5 h-3.5" /> Delete bundle
           </button>
+          {campaignFeedback && (
+            <span
+              className={
+                campaignFeedback.startsWith("Added")
+                  ? "text-[12px] text-success"
+                  : "text-[12px] text-danger"
+              }
+            >
+              {campaignFeedback}
+            </span>
+          )}
+          <CampaignPickerDropdown
+            label="Add to campaign"
+            busy={addToCampaign.isPending}
+            onSelect={handleAddToCampaign}
+          />
           <Button variant="ghost" size="sm" onClick={onClose}>
             Close
           </Button>

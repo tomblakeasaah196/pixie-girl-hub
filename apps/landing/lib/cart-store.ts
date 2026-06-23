@@ -134,6 +134,11 @@ export const useCart = create<CartState>()(
     }),
     {
       name: "pgh-landing-cart",
+      // Bump when the persisted CartItem shape changes so old carts are
+      // discarded instead of replayed. v2: items now carry styled_variant_id;
+      // a v1 cart could still hold a base product_id for a styled product
+      // (which prices at ₦0 and fails payment), so drop pre-v2 carts.
+      version: 2,
       partialize: (s) => ({
         campaign_slug: s.campaign_slug,
         items: s.items,

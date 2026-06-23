@@ -408,6 +408,31 @@ async function confirmNombaCharge(log) {
     (evt.data && (evt.data.transaction || evt.data.order || evt.data)) || {};
   const reference = d.orderReference || d.merchantTxRef;
   if (!reference) throw new Error("nomba webhook missing order reference");
+
+  // ── Salary payout webhook (HR) ──────────────────────────
+  // Disbursement sends merchantTxRef = `PAY-<payslip_id>`, so a payout/transfer
+  // event references PAY-… regardless of the exact Nomba event name. Reconcile
+  // the payslip status and stop (it's not an order charge).
+  // NOTE: confirm the exact Nomba payout event-type with the engineer; this
+  // matches on our own reference, so it's robust to the event name either way.
+  const evtType = String(evt.event_type || evt.type || "").toLowerCase();
+  const isPayout =
+    /^pay-/i.test(String(reference)) ||
+    evtType.includes("payout") ||
+    evtType.includes("transfer");
+  if (isPayout) {
+    const payrollSvc = require("../../shared/hr_payroll/payroll.service");
+    const st = String(d.status || evtType || "").toLowerCase();
+    await payrollSvc.reconcilePayout({
+      reference: String(reference),
+      success: st.includes("success") || st.includes("complete"),
+      failed:
+        st.includes("fail") || st.includes("declin") || st.includes("revers"),
+      provider_ref: d.transactionId || d.id || null,
+    });
+    return;
+  }
+
   // Per-brand Nomba: discover the owning brand by re-verifying against each
   // configured account (only the owner returns the transaction).
   const gateways = require("./payment-gateways.service");

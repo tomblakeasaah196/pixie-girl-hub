@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./zones.service");
+const zonesImportExport = require("./zones.import-export");
 
 const base = (req) => ({
   brand: req.brand,
@@ -40,8 +41,34 @@ async function quote(req, res) {
       lat: req.query.lat,
       lng: req.query.lng,
       country_code: req.query.country,
+      qty: req.query.qty != null ? Number(req.query.qty) : undefined,
     }),
   });
 }
 
-module.exports = { list, create, update, remove, quote };
+async function exportTemplate(req, res) {
+  const buffer = await zonesImportExport.buildTemplate({ brand: req.brand });
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="delivery-zones-template.xlsx"',
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.send(buffer);
+}
+
+async function importRates(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  const result = await zonesImportExport.importFromBuffer({
+    brand: req.brand,
+    buffer: req.file.buffer,
+    user_id: req.user ? req.user.user_id : null,
+  });
+  res.json({ data: result });
+}
+
+module.exports = { list, create, update, remove, quote, exportTemplate, importRates };

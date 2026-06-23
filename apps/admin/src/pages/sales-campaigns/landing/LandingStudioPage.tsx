@@ -23,6 +23,7 @@ import {
   Minus,
   Play,
   Plus,
+  RefreshCw,
   Save,
   Trash2,
   Upload,
@@ -377,7 +378,19 @@ export function LandingStudioPage() {
                 <div className="h-px flex-1 bg-line/60" />
               </div>
 
-              {campaignQuery.isLoading || !campaign ? (
+              {campaignQuery.isError ? (
+                <div className="grid place-items-center gap-2 h-24 text-center px-3">
+                  <p className="text-[12px] text-text-faint">
+                    Couldn't load campaign content.
+                  </p>
+                  <button
+                    onClick={() => campaignQuery.refetch()}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-bg/80 border hairline text-[12px] font-semibold text-text-muted hover:text-text-primary"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Retry
+                  </button>
+                </div>
+              ) : !campaign ? (
                 <div className="grid place-items-center h-20 text-text-faint">
                   <Loader2 className="w-4 h-4 animate-spin" />
                 </div>

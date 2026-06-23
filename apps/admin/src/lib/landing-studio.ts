@@ -132,10 +132,11 @@ export function useCampaignLanding(id: string | null) {
   const brand = useActiveBrand();
   return useQuery<CampaignLanding>({
     queryKey: ["campaign-landing", brand, id],
-    queryFn: () =>
-      api.get<{ data: CampaignLanding }>(`/sales-campaigns/${id}/landing`).then(
-        (r) => r.data,
-      ),
+    // `api.get` already unwraps the backend's { data: ... } envelope, so the
+    // return value IS the CampaignLanding. Unwrapping `.data` again yields
+    // undefined, which React Query rejects → the query never resolves and the
+    // studio's campaign panels spin forever. Return the value directly.
+    queryFn: () => api.get<CampaignLanding>(`/sales-campaigns/${id}/landing`),
     enabled: !!id,
   });
 }

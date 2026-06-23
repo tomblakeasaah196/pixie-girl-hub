@@ -41,20 +41,34 @@ export function BrandStory({ payload }: { payload: LandingPayload }) {
 /* ── Founder Quote ──────────────────────────────────────────── */
 export function FounderQuote({ payload }: { payload: LandingPayload }) {
   const props = blockProps(payload, "founder_quote");
-  const quote =
-    (props.quote as string) ||
-    "I built this because nothing on shelves felt like me. Every bundle in this drop is one I'd wear myself.";
-  const author = (props.author as string) || "Faith — founder";
+
+  // Support multi-quote array (props.quotes[]) set by the Landing Studio,
+  // falling back to the legacy single-quote fields for older campaigns.
+  const quotes = Array.isArray(props.quotes)
+    ? (props.quotes as { quote: string; author: string }[])
+    : [
+        {
+          quote:
+            (props.quote as string) ||
+            "I built this because nothing on shelves felt like me. Every bundle in this drop is one I'd wear myself.",
+          author: (props.author as string) || "Faith — founder",
+        },
+      ];
+
   return (
-    <section className="section-tight">
-      <div className="mx-auto max-w-[760px] glass rounded-[var(--radius)] p-8 md:p-10 text-center relative">
-        <Quote className="absolute top-5 left-6 w-7 h-7 text-[rgb(var(--accent-glow)/0.6)]" />
-        <p className="font-display text-[clamp(22px,3vw,30px)] leading-[1.35]">
-          &ldquo;{quote}&rdquo;
-        </p>
-        <div className="micro mt-6">— {author}</div>
-      </div>
-    </section>
+    <>
+      {quotes.map((q, i) => (
+        <section key={i} className="section-tight">
+          <div className="mx-auto max-w-[760px] glass rounded-[var(--radius)] p-8 md:p-10 text-center relative">
+            <Quote className="absolute top-5 left-6 w-7 h-7 text-[rgb(var(--accent-glow)/0.6)]" />
+            <p className="font-display text-[clamp(22px,3vw,30px)] leading-[1.35]">
+              &ldquo;{q.quote}&rdquo;
+            </p>
+            <div className="micro mt-6">— {q.author}</div>
+          </div>
+        </section>
+      ))}
+    </>
   );
 }
 

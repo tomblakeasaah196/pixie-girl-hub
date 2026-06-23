@@ -90,6 +90,11 @@ const CREATE_COLS = [
   // NOT used to settle orders — those use the LIVE rate captured into
   // sales_orders.fx_rate_used at payment time.
   "ngn_per_usd_rate",
+  // ── Campaign landing extras (migration 000057) ──
+  // Freeform JSONB bag for campaign landing fields that don't warrant a
+  // dedicated column: live_now_pill, browse_cta_text, hero_overlay_opacity,
+  // watermark_opacity, countdown_closes_label, favicon_url, browser_tab_name.
+  "landing_extras",
 ];
 const UPDATE_COLS = CREATE_COLS; // same set is editable (status excluded by design)
 const JSONB_COLS = new Set([
@@ -99,6 +104,7 @@ const JSONB_COLS = new Set([
   "position_ladder",
   "stacking_bonus",
   "bulk_tiers",
+  "landing_extras",
 ]);
 
 function bindValue(col, val) {

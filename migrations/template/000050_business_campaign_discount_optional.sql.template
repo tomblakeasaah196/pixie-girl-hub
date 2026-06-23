@@ -1,0 +1,20 @@
+-- ============================================================
+-- TEMPLATE 000050 — Sales Campaigns: make discount_type & discount_value
+-- fully optional. A campaign can now ship without any top-level discount —
+-- bundles and per-position ladders carry their own pricing and a campaign
+-- may exist purely as a landing / preorder shell.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000049) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose so the file is
+-- safely re-runnable on every repair.
+-- ============================================================
+
+-- discount_type: drop NOT NULL (CHECK already allows the existing values, and
+-- a NULL row simply means "no top-level discount on this campaign").
+ALTER TABLE {{BUSINESS}}.sales_campaigns
+  ALTER COLUMN discount_type DROP NOT NULL;
+
+-- discount_value: drop NOT NULL.
+ALTER TABLE {{BUSINESS}}.sales_campaigns
+  ALTER COLUMN discount_value DROP NOT NULL;

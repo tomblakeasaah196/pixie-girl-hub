@@ -65,8 +65,8 @@ export interface Campaign {
   starts_at: string;
   ends_at: string;
   status: CampaignStatus;
-  discount_type: DiscountType;
-  discount_value: number;
+  discount_type: DiscountType | null;
+  discount_value: number | null;
   min_order_value_ngn: number | null;
   customer_segment_id: string | null;
   first_time_buyers_only: boolean;
@@ -215,6 +215,26 @@ export interface BundleItem {
   styled_name?: string | null;
   styled_slug?: string | null;
   display_name?: string;
+}
+
+/**
+ * One row in the Catalogue → Bundles tab — the importable source list for the
+ * campaign builder. Comes from retention.bundle_offers; the import endpoint
+ * mirrors the chosen row into the campaign's own product_bundles + items.
+ */
+export interface CatalogueBundleSource {
+  bundle_offer_id: string;
+  bundle_code: string;
+  display_name: string;
+  description: string | null;
+  hero_image_url: string | null;
+  pricing_model: string;
+  bundle_price_ngn: number | null;
+  bundle_price_usd: number | null;
+  discount_value: number | null;
+  component_count: number;
+  components_total_ngn: number;
+  is_active: boolean;
 }
 
 export interface CampaignBundleLink {
@@ -397,8 +417,8 @@ export function useCreateCampaign() {
         name: string;
         starts_at: string;
         ends_at: string;
-        discount_type: DiscountType;
-        discount_value: number;
+        discount_type?: DiscountType | null;
+        discount_value?: number | null;
       },
     ) => api.post<Campaign>("/sales-campaigns", body),
     onSuccess: () =>
@@ -625,6 +645,51 @@ export function useRemoveCampaignProduct(campaignId: string | undefined) {
       qc.invalidateQueries({
         queryKey: ["campaigns", "products", brand, campaignId],
       }),
+  });
+}
+
+/**
+ * List the brand's catalogue bundles (retention bundle_offers) available to
+ * import into the active campaign. Same source the user manages under
+ * Catalogue → Bundles, so what they pick here matches what they see there.
+ */
+export function useCatalogueBundleSources() {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["campaigns", "catalogue-bundles", brand],
+    queryFn: () =>
+      getListEnvelope<CatalogueBundleSource>(
+        "/sales-campaigns/catalogue-bundles",
+      ),
+  });
+}
+
+/**
+ * Import a single catalogue bundle into a campaign — mirrors retention's
+ * bundle_offer into product_bundles and attaches the link in one transaction.
+ */
+export function useImportCatalogueBundle(
+  campaignId: string | undefined,
+  campaignSlug: string | undefined,
+) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (source_bundle_offer_id: string) =>
+      api.post<{
+        bundle: Bundle;
+        link: CampaignBundleLink;
+      }>(`/sales-campaigns/${campaignId}/bundles/import`, {
+        source_bundle_offer_id,
+        campaign_slug: campaignSlug,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
+      });
+      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
+    },
   });
 }
 

@@ -395,8 +395,12 @@ function CreateCampaignModal({
   const [slugTouched, setSlugTouched] = useState(false);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
-  const [discountType, setDiscountType] = useState("percentage");
-  const [discountValue, setDiscountValue] = useState("0.20");
+  // Discount is fully optional — the user can ship a campaign without a
+  // top-level discount and let bundles / per-position ladders carry pricing.
+  // "" = no discount set; the API stores NULL and the builder lets the user
+  // fill it in later under Brief → Top-level discount.
+  const [discountType, setDiscountType] = useState("");
+  const [discountValue, setDiscountValue] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   // Auto-generate from the name (full normalisation — the user isn't typing
@@ -432,8 +436,13 @@ function CreateCampaignModal({
         slug: finalizeSlug(slug) || slugifyName(name),
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
-        discount_type: discountType as Campaign["discount_type"],
-        discount_value: Number(discountValue),
+        // Both discount fields are optional. Send null when blank so the
+        // backend stores NULL rather than failing the schema; bundles or
+        // ladders can carry the pricing instead.
+        discount_type: discountType
+          ? (discountType as Campaign["discount_type"])
+          : null,
+        discount_value: discountValue ? Number(discountValue) : null,
       });
       onCreated(created.campaign_id);
     } catch (e: unknown) {
@@ -489,11 +498,12 @@ function CreateCampaignModal({
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Discount type">
+          <Field label="Discount type" hint="Optional — leave blank for none">
             <Select<string>
               value={discountType}
               onChange={setDiscountType}
               options={[
+                { value: "", label: "None (set later)" },
                 { value: "percentage", label: "Percentage off" },
                 { value: "fixed_amount", label: "Fixed ₦ off" },
                 { value: "bundle", label: "Bundle" },
@@ -505,13 +515,20 @@ function CreateCampaignModal({
             label={
               discountType === "percentage" ? "Discount (0–1)" : "Discount ₦"
             }
-            hint={discountType === "percentage" ? "e.g. 0.20 = 20%" : "in NGN"}
+            hint={
+              !discountType
+                ? "Optional — fill in later"
+                : discountType === "percentage"
+                  ? "e.g. 0.20 = 20%"
+                  : "in NGN"
+            }
           >
             <input
               value={discountValue}
               onChange={(e) => setDiscountValue(e.target.value)}
-              required
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums"
+              disabled={!discountType}
+              placeholder={discountType ? "" : "—"}
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-40"
             />
           </Field>
         </div>

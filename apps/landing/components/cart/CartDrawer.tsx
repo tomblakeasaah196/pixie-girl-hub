@@ -221,7 +221,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                 {money(Math.max(0, subtotal - stackingDiscount))}
               </Link>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
-                DHL rates apply. Pay with Paystack · Opay · Nomba · Stripe.
+                DHL rates apply. Pay with Nomba · Paystack.
               </p>
             </div>
           </motion.aside>

@@ -212,6 +212,24 @@ body::before {
     0 8px 24px rgb(var(--panel) / 0.06);
 }
 
+/* WCAG fix (June 2026): `.dropglass` paints a near-opaque panel surface
+   (rgb(var(--panel) / 0.92) — primaryDeep, dark brown in the Atelier
+   palette). Without an override the default text token (`--text` = ink,
+   also dark brown) and the muted/faint family inherited from the same
+   palette produced unreadable dark-on-dark surfaces in the cart drawer
+   and the STAY10 exit-intent modal.
+   Redefining the text family inside the dropglass scope flips every
+   `rgb(var(--text…))` reference to the paper colour without us having
+   to chase every individual class. The body sits OUTSIDE
+   [data-atelier-commerce] so the page reads as before — only the dark
+   overlays change. */
+[data-atelier-commerce] .dropglass {
+  --text: var(--bg);
+  --text-muted: var(--bg);
+  --text-faint: var(--bg);
+  color: rgb(var(--bg));
+}
+
 /* Accent-background buttons need paper-coloured text in light mode. */
 [data-atelier-commerce] .cta-sheen {
   color: rgb(var(--bg));

@@ -1,33 +1,34 @@
 "use client";
 
 /**
- * CurrencyFloater — a floating NGN⇄USD toggle for the live sale page.
+ * CurrencyFloater — brand-tinted floating ₦⇄$ toggle for the live sale page.
  *
- * All prices on the page are rendered in NGN (via lib/format.money). Rather
- * than thread a currency context through ~29 call sites, this widget converts
- * the *rendered* prices in place:
+ * Rewritten June 2026 (owner directive):
+ *  • Picks up the campaign's STATIC `ngn_per_usd_rate` from the landing
+ *    payload, not a live FX feed. This matches the SSOT we agreed on:
+ *    landing display uses the static rate; order settlement still uses the
+ *    LIVE rate stamped into sales_orders.fx_rate_used at payment.
+ *  • Themed via the brand's CSS variables (Pixie Girl oxblood, Faitlyn
+ *    brown) the way the BrandThemeProvider sets them — no more black pill.
+ *  • Desktop hover expands the pill to reveal both glyphs as a swap
+ *    affordance; mobile single-taps. Hidden when the campaign has no
+ *    rate set.
+ *  • Initial currency: GeoIP via `/api/public/geo/currency` (NG → ₦,
+ *    everything else → $). The visitor's choice is then persisted in
+ *    localStorage and wins thereafter.
+ *  • USD prices are ceil-rounded to whole dollars (10.29 → $11) per
+ *    owner directive. NGN keeps its existing rendering.
  *
- *   • fetches the live USD→NGN rate from /api/public/storefront/currency
- *     (which also tells us the visitor's country, so we can default to USD for
- *     international shoppers);
- *   • when USD is on, it walks the DOM, finds "₦…" amounts and rewrites them to
- *     "$…", remembering the original so it can switch back instantly;
- *   • a MutationObserver keeps prices converted as React re-renders (countdown
- *     ticks, cart updates, products loading in).
- *
- * It only changes what's shown. Checkout still charges the real amount the Hub
- * backend computes. The widget marks itself data-no-convert so it never
- * rewrites its own rate label.
+ * Conversion approach (kept from the previous floater for compatibility
+ * with the existing block library): a MutationObserver rewrites "₦…"
+ * text nodes to "$…" in place. Anything that should not be rewritten
+ * (the floater itself, the FX rate label) carries `data-no-convert`.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { LandingPayload } from "@/lib/types";
 
-// Display-only fallback when the Hub has FX disabled (FX_PROVIDER=none → rate
-// comes back null). Clearly marked approximate in the UI. Override per deploy.
-const FALLBACK_USD_NGN = Number(
-  process.env.NEXT_PUBLIC_USD_NGN_FALLBACK || "1600",
-);
-
+const STORAGE_KEY = "pgh.salesCurrency";
 const AMOUNT_RE = /₦\s?([\d.,]+\s?[kKmM]?)/g;
 
 function ngnToNumber(raw: string): number | null {
@@ -48,14 +49,9 @@ function ngnToNumber(raw: string): number | null {
 }
 
 function formatUsd(n: number): string {
-  if (n >= 100) return "$" + Math.round(n).toLocaleString("en-US");
-  return (
-    "$" +
-    n.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  // Ceil to a whole dollar per owner directive: 10.29 USD → $11.
+  const whole = Math.ceil(n);
+  return "$" + whole.toLocaleString("en-US");
 }
 
 function convertString(value: string, rate: number): string | null {
@@ -69,7 +65,6 @@ function convertString(value: string, rate: number): string | null {
   return changed ? out : null;
 }
 
-/** Collect price-bearing text nodes under `root`, skipping our own UI. */
 function priceTextNodes(root: Node): Text[] {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -91,57 +86,74 @@ function priceTextNodes(root: Node): Text[] {
   return nodes;
 }
 
-export function CurrencyFloater() {
-  const [rate, setRate] = useState<number | null>(null);
-  const [approx, setApprox] = useState(false);
-  const [usd, setUsd] = useState(false);
-  const [ready, setReady] = useState(false);
+function readStoredChoice(): "NGN" | "USD" | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const v = window.localStorage.getItem(STORAGE_KEY);
+    return v === "USD" || v === "NGN" ? v : null;
+  } catch {
+    return null;
+  }
+}
 
-  // Original NGN text per node, so we can switch back to NGN instantly.
+export function CurrencyFloater({ payload }: { payload: LandingPayload }) {
+  const fxRate = payload.ngn_per_usd_rate ?? null;
+  const hasRate = typeof fxRate === "number" && fxRate > 0;
+
+  const [usd, setUsd] = useState(false);
+  // Resolved means: a real default has been applied (either a persisted
+  // choice or the geo lookup completed). Until then we don't render to
+  // avoid a flash of the wrong currency.
+  const [resolved, setResolved] = useState(false);
+
   const originals = useRef<Map<Text, string>>(new Map());
   const observer = useRef<MutationObserver | null>(null);
-  const rateRef = useRef<number>(FALLBACK_USD_NGN);
+  const rateRef = useRef<number>(fxRate || 1);
 
-  // Resolve the rate (and the visitor's country) once.
   useEffect(() => {
+    rateRef.current = fxRate || 1;
+  }, [fxRate]);
+
+  // Initial pick: persisted user choice wins, else GeoIP (NG → ₦, else → $).
+  useEffect(() => {
+    if (!hasRate) {
+      setResolved(true);
+      return;
+    }
+    const stored = readStoredChoice();
+    if (stored) {
+      setUsd(stored === "USD");
+      setResolved(true);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/public/storefront/currency", {
+        const res = await fetch("/api/public/geo/currency", {
           headers: { Accept: "application/json" },
+          credentials: "omit",
         });
-        const json = res.ok ? await res.json() : null;
-        const d = json?.data ?? null;
+        if (!res.ok) throw new Error(`geo ${res.status}`);
+        const json = (await res.json()) as {
+          data?: { country: string | null; currency: string | null };
+        };
         if (cancelled) return;
-        const live = Number(d?.usd_to_ngn);
-        if (Number.isFinite(live) && live > 0) {
-          rateRef.current = live;
-          setRate(live);
-          setApprox(false);
-        } else {
-          rateRef.current = FALLBACK_USD_NGN;
-          setRate(FALLBACK_USD_NGN);
-          setApprox(true);
-        }
-        // Default international visitors to USD; Nigeria (and unknown) stays NGN.
-        const cc = String(d?.country || "").toUpperCase();
-        if (cc && cc !== "NG" && cc !== "XX") setUsd(true);
+        const cc = String(json?.data?.country || "").toUpperCase();
+        if (cc && cc !== "NG") setUsd(true);
       } catch {
-        if (cancelled) return;
-        rateRef.current = FALLBACK_USD_NGN;
-        setRate(FALLBACK_USD_NGN);
-        setApprox(true);
+        // Stay on NGN if the lookup fails.
       } finally {
-        if (!cancelled) setReady(true);
+        if (!cancelled) setResolved(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hasRate]);
 
   const convertAll = useCallback(() => {
     const rate = rateRef.current;
+    if (!rate || rate <= 0) return;
     for (const node of priceTextNodes(document.body)) {
       const conv = convertString(node.nodeValue || "", rate);
       if (conv != null) {
@@ -157,15 +169,14 @@ export function CurrencyFloater() {
       try {
         node.nodeValue = ngn;
       } catch {
-        // node detached by React — nothing to restore
+        // node detached — nothing to restore
       }
     }
     originals.current.clear();
   }, []);
 
-  // Engage / disengage USD mode.
   useEffect(() => {
-    if (!ready) return;
+    if (!resolved || !hasRate) return;
     if (!usd) {
       observer.current?.disconnect();
       observer.current = null;
@@ -173,8 +184,6 @@ export function CurrencyFloater() {
       return;
     }
     convertAll();
-    // Keep prices converted as the page re-renders (debounced to one pass
-    // per frame; we disconnect while mutating so our own writes don't loop).
     let scheduled = false;
     const obs = new MutationObserver(() => {
       if (scheduled) return;
@@ -200,54 +209,69 @@ export function CurrencyFloater() {
       obs.disconnect();
       observer.current = null;
     };
-  }, [usd, ready, convertAll, restoreAll]);
+  }, [usd, resolved, hasRate, convertAll, restoreAll]);
 
-  if (!ready || rate == null) return null;
+  if (!resolved || !hasRate) return null;
+
+  const flip = () => {
+    const next = usd ? "NGN" : "USD";
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      /* private mode — ignore */
+    }
+    setUsd(!usd);
+  };
+
+  const activeGlyph = usd ? "$" : "₦";
+  const otherGlyph = usd ? "₦" : "$";
 
   return (
-    <div
+    <button
+      type="button"
       data-no-convert
-      className="fixed bottom-24 right-4 z-50 select-none"
-      style={{ pointerEvents: "auto" }}
+      onClick={flip}
+      aria-label={`Switch to ${usd ? "Naira" : "US dollars"}`}
+      title={`${activeGlyph} → ${otherGlyph}`}
+      className="group fixed bottom-24 right-4 z-50 select-none
+                 h-12 min-w-12 px-3 inline-flex items-center justify-center gap-1
+                 rounded-full overflow-hidden font-display text-[17px] font-semibold
+                 tabular-nums tracking-tight text-white
+                 transition-[width,transform,background-color,box-shadow]
+                 duration-300 ease-out
+                 hover:scale-[1.04] active:scale-95
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+      style={{
+        backgroundImage:
+          "linear-gradient(135deg, rgb(var(--accent)) 0%, rgb(var(--accent-deep)) 100%)",
+        boxShadow:
+          "0 10px 30px rgb(var(--accent-deep) / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.18)",
+      }}
     >
-      <button
-        type="button"
-        onClick={() => setUsd((v) => !v)}
-        aria-pressed={usd}
-        title={
-          usd
-            ? "Showing approximate USD prices — tap to switch back to Naira"
-            : "Show prices in USD"
-        }
-        className="group flex items-center gap-2 rounded-full border border-white/15 bg-black/70 px-3.5 py-2 text-[12px] font-medium text-white shadow-lg backdrop-blur-md transition hover:border-white/30 hover:bg-black/80"
+      <span
+        key={activeGlyph}
+        className="inline-block leading-none"
+        style={{ animation: "pgh-currency-pop 320ms ease-out" }}
       >
-        <span className="grid grid-cols-2 overflow-hidden rounded-full border border-white/20 text-[11px] leading-none">
-          <span
-            className={
-              "px-2 py-1 transition " +
-              (!usd ? "bg-white text-black" : "text-white/60")
-            }
-          >
-            ₦
-          </span>
-          <span
-            className={
-              "px-2 py-1 transition " +
-              (usd ? "bg-white text-black" : "text-white/60")
-            }
-          >
-            $
-          </span>
-        </span>
-        <span className="whitespace-nowrap">
-          {usd ? "USD prices" : "Show USD"}
-        </span>
-      </button>
-      {usd && (
-        <div className="mt-1 text-right text-[10px] text-white/55">
-          {approx ? "≈ " : ""}$1 = ₦{Math.round(rate).toLocaleString("en-NG")}
-        </div>
-      )}
-    </div>
+        {activeGlyph}
+      </span>
+      <span
+        aria-hidden
+        className="hidden md:inline-block leading-none opacity-0 max-w-0 -ml-1 text-white/70
+                   transition-[opacity,max-width,margin] duration-300 ease-out
+                   group-hover:opacity-100 group-hover:max-w-[1.5em] group-hover:ml-0
+                   group-focus-visible:opacity-100 group-focus-visible:max-w-[1.5em] group-focus-visible:ml-0"
+      >
+        <span className="px-1 text-white/50">/</span>
+        {otherGlyph}
+      </span>
+      <style>{`
+        @keyframes pgh-currency-pop {
+          0%   { transform: scale(0.55) rotate(-18deg); opacity: 0; }
+          60%  { transform: scale(1.08) rotate(2deg);   opacity: 1; }
+          100% { transform: scale(1)    rotate(0);      opacity: 1; }
+        }
+      `}</style>
+    </button>
   );
 }

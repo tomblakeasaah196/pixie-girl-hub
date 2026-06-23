@@ -595,6 +595,59 @@ export function useDetachCampaignBundle(campaignId: string | undefined) {
 }
 
 // ════════════════════════════════════════════════════════════
+// One-shot "publish X to a campaign" helpers (called from catalogue UI)
+// ════════════════════════════════════════════════════════════
+
+export function useAddStyledToCampaign() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      styledId,
+    }: {
+      campaignId: string;
+      styledId: string;
+    }) =>
+      api.post<{ data: CampaignProduct[] }>(
+        `/sales-campaigns/${campaignId}/products/batch`,
+        { items: [{ styled_id: styledId }] },
+      ),
+    onSuccess: (_data, { campaignId }) => {
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "products", brand, campaignId],
+      });
+    },
+  });
+}
+
+export function useAddBundleToCampaign() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      campaignSlug,
+      bundleOfferId,
+    }: {
+      campaignId: string;
+      campaignSlug: string;
+      bundleOfferId: string;
+    }) =>
+      api.post<{ bundle: Bundle; link: CampaignBundleLink }>(
+        `/sales-campaigns/${campaignId}/bundles/import`,
+        { source_bundle_offer_id: bundleOfferId, campaign_slug: campaignSlug },
+      ),
+    onSuccess: (_data, { campaignId }) => {
+      qc.invalidateQueries({
+        queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
+      });
+      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
+    },
+  });
+}
+
+// ════════════════════════════════════════════════════════════
 // Campaign products (styled-product links)
 // ════════════════════════════════════════════════════════════
 

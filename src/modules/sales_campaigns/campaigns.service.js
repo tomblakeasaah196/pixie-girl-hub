@@ -12,6 +12,7 @@
 
 const crypto = require("crypto");
 const repo = require("./campaigns.repo");
+const styledRepo = require("../catalogue/styled.repo");
 const events = require("./campaigns.events");
 const readiness = require("./campaigns.readiness.service");
 const wf = require("../../workflows/engine");
@@ -466,6 +467,20 @@ async function listProducts({ brand, id }) {
   return repo.listProducts({ brand, campaign_id: id });
 }
 
+/**
+ * When a styled product is being added, enforce that product_id is always
+ * the styled product's own base_product_id — never trust the caller to
+ * supply this correctly. A mismatch causes the campaign stock LATERAL join
+ * to sum from the wrong base product, making the product appear out of stock
+ * on the landing page even when inventory exists.
+ */
+async function resolveStyledInput(client, brand, input) {
+  if (!input.styled_id) return input;
+  const styled = await styledRepo.getById({ client, brand, id: input.styled_id });
+  if (!styled) throw new NotFoundError("Styled product");
+  return { ...input, product_id: styled.base_product_id };
+}
+
 async function addProduct({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
     const campaign = await repo.findById({ client, brand, id });
@@ -475,11 +490,12 @@ async function addProduct({ brand, user, request_id, id, input }) {
       ["draft", "pending_approval", "scheduled", "live", "paused"],
       "edit products of",
     );
+    const resolved = await resolveStyledInput(client, brand, input);
     const link = await repo.addProduct({
       client,
       brand,
       campaign_id: id,
-      input,
+      input: resolved,
     });
     events.emit("updated", { brand, id });
     await audit({
@@ -545,11 +561,14 @@ async function addProductsBatch({ brand, user, request_id, id, items }) {
       ["draft", "pending_approval", "scheduled", "live", "paused"],
       "edit products of",
     );
+    const resolved = await Promise.all(
+      items.map((item) => resolveStyledInput(client, brand, item)),
+    );
     const created = await repo.addProductsBatch({
       client,
       brand,
       campaign_id: id,
-      items,
+      items: resolved,
     });
     events.emit("updated", { brand, id });
     await audit({

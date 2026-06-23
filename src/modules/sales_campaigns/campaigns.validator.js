@@ -492,79 +492,90 @@ const vipGiftStatusSchema = z
   })
   .strict();
 
-const checkoutSchema = z
-  .object({
-    slug: z.string().min(1).max(200),
-    contact: z
+// Checkout input. Deliberately LENIENT so a buyer is never blocked by form
+// strictness (the API re-prices and re-validates everything that matters):
+//   • last_name is optional (single-name buyers are real)
+//   • email/phone are trimmed; phone accepts human formatting
+//   • consent opt-ins are optional and default to false — but "I accept the
+//     Terms" stays mandatory (legal requirement)
+//   • unit_price_ngn is optional (the server is the price source of truth)
+//   • payment_gateway is optional (currency picks the rail)
+//   • unknown extra fields are stripped, not rejected (no .strict()), so one
+//     stray field from the frontend can't 400 every checkout
+const checkoutEmail = z
+  .string()
+  .trim()
+  .email()
+  .max(160)
+  .transform((s) => s.toLowerCase());
+const checkoutPhone = z.string().trim().min(7).max(30);
+
+const checkoutSchema = z.object({
+  slug: z.string().min(1).max(200),
+  contact: z.object({
+    first_name: z.string().trim().min(1).max(120),
+    last_name: z.string().trim().max(120).optional(),
+    email: checkoutEmail,
+    phone: checkoutPhone,
+    instagram_handle: z.string().max(60).optional(),
+    notes: z.string().max(2000).optional(),
+    gift: z
       .object({
-        first_name: z.string().min(1).max(120),
-        last_name: z.string().min(1).max(120),
-        email: z.string().email(),
-        phone: z.string().min(7).max(25),
-        instagram_handle: z.string().max(60).optional(),
-        notes: z.string().max(2000).optional(),
-        gift: z
+        recipient_name: z.string().min(1).max(200),
+        recipient_phone: z.string().max(30).optional(),
+        message: z.string().max(500).optional(),
+        ship_to_recipient: z.boolean().optional(),
+        recipient_address: z
           .object({
-            recipient_name: z.string().min(1).max(200),
-            recipient_phone: z.string().max(25).optional(),
-            message: z.string().max(500).optional(),
-            ship_to_recipient: z.boolean().optional(),
-            recipient_address: z
-              .object({
-                line1: z.string().min(1).max(400),
-                line2: z.string().max(400).optional(),
-                city: z.string().min(1).max(120),
-                state: z.string().max(120).optional(),
-                country: z.string().max(80).optional(),
-              })
-              .optional(),
-          })
-          .refine((g) => !g.ship_to_recipient || g.recipient_address, {
-            message:
-              "recipient_address is required when ship_to_recipient is true",
+            line1: z.string().min(1).max(400),
+            line2: z.string().max(400).optional(),
+            city: z.string().min(1).max(120),
+            state: z.string().max(120).optional(),
+            country: z.string().max(80).optional(),
           })
           .optional(),
-        address: z.object({
-          line1: z.string().min(1).max(400),
-          line2: z.string().max(400).optional(),
-          city: z.string().min(1).max(120),
-          state: z.string().max(120).optional(),
-          country: z.string().max(80).optional(),
-        }),
-        consent: z.object({
-          whatsapp_opt_in: z.boolean(),
-          marketing_opt_in: z.boolean(),
-          terms_accepted: z.literal(true),
-        }),
       })
-      .strict(),
-    cart: z
-      .array(
-        z
-          .object({
-            bundle_id: z.string().uuid().optional(),
-            product_id: z.string().uuid().optional(),
-            quantity: z.coerce.number().int().min(1).max(50),
-            unit_price_ngn: z.coerce.number().nonnegative(),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(30),
-    utm: z.record(z.string()).optional(),
-    payment_gateway: z.enum(["paystack", "nomba"]),
-    // Buyer-chosen display currency from the landing-page toggle. Drives
-    // gateway routing: USD → Nomba only (the USD rail), NGN → Nomba primary
-    // then Paystack. The order is still stored in NGN base; this only picks
-    // the rail and stamps display_currency / fx_rate_used at payment.
-    display_currency: z
-      .enum(["NGN", "USD"])
-      .optional()
-      .default("NGN"),
-    client_idempotency_key: z.string().min(1).max(120),
-    coupon_code: z.string().max(60).optional(),
-  })
-  .strict();
+      .refine((g) => !g.ship_to_recipient || g.recipient_address, {
+        message: "recipient_address is required when ship_to_recipient is true",
+      })
+      .optional(),
+    address: z.object({
+      line1: z.string().trim().min(1).max(400),
+      line2: z.string().max(400).optional(),
+      city: z.string().trim().min(1).max(120),
+      state: z.string().max(120).optional(),
+      country: z.string().max(80).optional(),
+    }),
+    consent: z.object({
+      whatsapp_opt_in: z.boolean().optional().default(false),
+      marketing_opt_in: z.boolean().optional().default(false),
+      // Non-negotiable: the buyer must accept the Terms to check out.
+      terms_accepted: z.literal(true),
+    }),
+  }),
+  cart: z
+    .array(
+      z.object({
+        bundle_id: z.string().uuid().optional(),
+        product_id: z.string().uuid().optional(),
+        quantity: z.coerce.number().int().min(1).max(50),
+        // Optional — the server re-prices; never trusted from the client.
+        unit_price_ngn: z.coerce.number().nonnegative().optional(),
+      }),
+    )
+    .min(1)
+    .max(30),
+  utm: z.record(z.string()).optional(),
+  // Optional — currency picks the rail; an explicit hint is honoured for NGN.
+  payment_gateway: z.enum(["paystack", "nomba"]).optional(),
+  // Buyer-chosen display currency from the landing-page toggle. Drives
+  // gateway routing: USD → Nomba only (the USD rail), NGN → Nomba primary
+  // then Paystack. The order is still stored in NGN base; this only picks
+  // the rail and stamps display_currency / fx_rate_used at payment.
+  display_currency: z.enum(["NGN", "USD"]).optional().default("NGN"),
+  client_idempotency_key: z.string().min(1).max(120),
+  coupon_code: z.string().max(60).optional(),
+});
 
 // ── Batch / clone / duplicate (migration 000048) ─────────
 const batchAddProductsSchema = z
@@ -635,6 +646,7 @@ module.exports = {
   updateSchema,
   addProductSchema,
   signupSchema,
+  checkoutSchema,
   bundleCreateSchema,
   bundleItemSchema,
   attachBundleSchema,

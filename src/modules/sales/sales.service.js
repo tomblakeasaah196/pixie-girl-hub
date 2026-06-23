@@ -179,6 +179,10 @@ async function createOrderTx({ brand, user, request_id, input }) {
     let pointsLineTotal = money(0);
     let pointsUsed = 0;
     let couponMeta = null;
+    // Soft, buyer-facing notices (e.g. "we applied the bigger saving") and
+    // pre-order lines — threaded onto the returned order so the public checkout
+    // can show them without ever blocking the sale.
+    const notices = [];
     // Combined coupon+points discount added to each line's discount.
     const extraShareByIdx = built.map(() => money(0));
 
@@ -247,15 +251,37 @@ async function createOrderTx({ brand, user, request_id, input }) {
         cfg.loyalty_settings &&
         cfg.loyalty_settings.allow_stacking_on_sale
       );
-      if (campaign && !allowStack) {
-        throw new AppError(
-          "COUPON_NOT_STACKABLE",
-          "This coupon can't be combined with the active sale",
-          409,
-        );
-      }
       if (cr.discount_type === "free_shipping") {
+        // Free-shipping is orthogonal to item pricing — always honour it.
         couponShipping = shipping0;
+      } else if (campaign && !allowStack) {
+        // Non-stacking sale: never hard-block the buyer. Give them the BETTER
+        // of (sale price already applied) vs (coupon), and tell them softly.
+        const campaignDiscountTotal = built.reduce(
+          (s, b) => s.plus(b.perUnitDiscount.times(b.li.quantity)),
+          money(0),
+        );
+        let want = money(cr.discount_ngn);
+        if (want.gt(preNet)) want = preNet;
+        if (want.gt(campaignDiscountTotal)) {
+          // Coupon beats the sale — top up by the difference so the total
+          // discount equals the coupon value (floor-respecting via headroom).
+          const topUp = want.minus(campaignDiscountTotal);
+          couponLineTotal = applyOrderDiscount(topUp);
+          notices.push({
+            code: "COUPON_APPLIED_BEST",
+            message:
+              "We applied your coupon — it's a better deal than the sale price.",
+          });
+        } else {
+          // Sale is the better deal — drop the coupon (no redemption recorded).
+          couponMeta = null;
+          notices.push({
+            code: "SALE_PRICE_KEPT",
+            message:
+              "Your coupon wasn't applied because the sale price is already a bigger saving.",
+          });
+        }
       } else {
         let amt = money(cr.discount_ngn);
         if (amt.gt(preNet)) amt = preNet;
@@ -600,31 +626,61 @@ async function createOrderTx({ brand, user, request_id, input }) {
     }
 
     // 5b. Layaway reserves stock at placement (V2.2 §6.2): the unit is held
-    // but no work begins until paid in full. Best-effort — a reservation
-    // hiccup must not roll back the order (storefront already gates on stock).
+    // but no work begins until paid in full.
+    //
+    // CRITICAL (the #1 cause of INTERNAL_ERROR at checkout): the Stock SSOT
+    // enforces `reserved <= on_hand`, so reserving an out-of-stock, unstocked,
+    // or oversold item RAISEs a constraint error. A bare try/catch does NOT
+    // rescue this — once a statement errors mid-transaction Postgres aborts the
+    // whole transaction, and the next write (audit/outbox/findById) fails with
+    // 25P02, which surfaces to the buyer as a generic 500 and loses the order.
+    //
+    // Each reserve therefore runs inside its OWN SAVEPOINT. If it fails, we roll
+    // back just that savepoint (the transaction stays healthy) and record the
+    // line as a PRE-ORDER. We accept pre-orders, so checkout never fails on
+    // stock — the buyer is told the item ships on the pre-order timeline.
+    const preorderLines = [];
     if (paymentModel === "layaway") {
       const loc = await stockRepo.getDefaultLocation({ client, brand });
-      if (loc) {
-        for (const lr of lineRows) {
-          if (!lr.variant_id) continue;
-          try {
-            await stockService.reserveForOrder({
-              client,
-              brand,
+      for (const lr of lineRows) {
+        if (!lr.variant_id) continue;
+        if (!loc) {
+          preorderLines.push(lr);
+          continue;
+        }
+        await client.query("SAVEPOINT pgh_reserve");
+        try {
+          await stockService.reserveForOrder({
+            client,
+            brand,
+            variant_id: lr.variant_id,
+            location_id: loc.location_id,
+            quantity: lr.quantity,
+            reference_id: order.order_id,
+            user_id: user.user_id,
+          });
+          await client.query("RELEASE SAVEPOINT pgh_reserve");
+        } catch (err) {
+          await client.query("ROLLBACK TO SAVEPOINT pgh_reserve");
+          await client.query("RELEASE SAVEPOINT pgh_reserve").catch(() => {});
+          preorderLines.push(lr);
+          logger.info(
+            {
+              err: err.message,
+              order_id: order.order_id,
               variant_id: lr.variant_id,
-              location_id: loc.location_id,
-              quantity: lr.quantity,
-              reference_id: order.order_id,
-              user_id: user.user_id,
-            });
-          } catch (err) {
-            logger.warn(
-              { err, order_id: order.order_id, variant_id: lr.variant_id },
-              "layaway reservation skipped",
-            );
-          }
+            },
+            "stock short — line recorded as pre-order",
+          );
         }
       }
+    }
+    if (preorderLines.length) {
+      notices.push({
+        code: "PREORDER_ITEMS",
+        message:
+          "Some items in your order are pre-order and will ship on the pre-order timeline.",
+      });
     }
 
     await audit({
@@ -657,7 +713,32 @@ async function createOrderTx({ brand, user, request_id, input }) {
         dedup_key: `order.confirmed:${order.order_id}`,
       });
     }
-    return repo.findById({ client, brand, id: order.order_id });
+    const finalOrder = await repo.findById({
+      client,
+      brand,
+      id: order.order_id,
+    });
+    // Thread soft notices + pre-order detail back to the caller (public
+    // checkout) without persisting them on the row. Non-enumerable so they
+    // never leak into JSON serialisation of the order itself.
+    if (finalOrder && (notices.length || preorderLines.length)) {
+      Object.defineProperty(finalOrder, "_notices", {
+        value: notices,
+        enumerable: false,
+      });
+      Object.defineProperty(finalOrder, "_preorder", {
+        value: {
+          is_preorder: preorderLines.length > 0,
+          line_count: preorderLines.length,
+          variant_ids: preorderLines.map((l) => l.variant_id),
+          names: preorderLines
+            .map((l) => l.product_name_snapshot)
+            .filter(Boolean),
+        },
+        enumerable: false,
+      });
+    }
+    return finalOrder;
   });
 }
 

@@ -17,6 +17,7 @@ const {
   signupSchema,
   addProductSchema,
   bundleItemSchema,
+  checkoutSchema,
 } = require("../../../src/modules/sales_campaigns/campaigns.validator");
 
 function liveCampaign(over = {}) {
@@ -313,5 +314,70 @@ describe("discount engine", () => {
     });
     expect(res.eligible).toBe(false);
     expect(res.reason).toBe("no_eligible_items");
+  });
+
+  test("a discount_type with a NULL value does not throw (→ no discount)", async () => {
+    // Regression: discount_value became nullable (migration 000050). A
+    // percentage campaign with no value used to crash money(null) inside the
+    // engine and surface as INTERNAL_ERROR at checkout.
+    const res = await discount.resolveDiscount({
+      brand: "pixiegirl",
+      campaignRef: liveCampaign({ discount_type: "percentage", discount_value: null }),
+      cart: {
+        items: [{ product_id: "p1", unit_price_ngn: "100000.00", quantity: 1 }],
+      },
+    });
+    expect(res.eligible).toBe(true);
+    expect(res.total_discount_ngn).toBe("0.00");
+    expect(res.lines[0].discounted_unit_price_ngn).toBe("100000.00");
+  });
+});
+
+describe("checkoutSchema leniency (buyer never blocked by form strictness)", () => {
+  const base = () => ({
+    slug: "summer-drop",
+    contact: {
+      first_name: "Ada",
+      last_name: "Obi",
+      email: "ada@example.com",
+      phone: "08012345678",
+      address: { line1: "1 Marina", city: "Lagos" },
+      consent: { terms_accepted: true },
+    },
+    cart: [{ product_id: "33333333-3333-3333-3333-333333333333", quantity: 1 }],
+    client_idempotency_key: "key-123",
+  });
+
+  test("accepts a single-name buyer (no last_name) + no unit_price + no gateway", () => {
+    const input = base();
+    delete input.contact.last_name;
+    expect(() => checkoutSchema.parse(input)).not.toThrow();
+  });
+
+  test("defaults consent opt-ins to false but still requires Terms", () => {
+    const parsed = checkoutSchema.parse(base());
+    expect(parsed.contact.consent.whatsapp_opt_in).toBe(false);
+    expect(parsed.contact.consent.marketing_opt_in).toBe(false);
+    const noTerms = base();
+    noTerms.contact.consent = {};
+    expect(() => checkoutSchema.parse(noTerms)).toThrow();
+  });
+
+  test("strips unknown extra fields instead of rejecting", () => {
+    const input = base();
+    input.contact.surprise = "extra";
+    input.totally_unknown = 1;
+    const parsed = checkoutSchema.parse(input);
+    expect(parsed.contact.surprise).toBeUndefined();
+    expect(parsed.totally_unknown).toBeUndefined();
+  });
+
+  test("trims + lowercases email and trims phone", () => {
+    const input = base();
+    input.contact.email = "  ADA@Example.COM ";
+    input.contact.phone = " 0801 234 5678 ";
+    const parsed = checkoutSchema.parse(input);
+    expect(parsed.contact.email).toBe("ada@example.com");
+    expect(parsed.contact.phone).toBe("0801 234 5678");
   });
 });

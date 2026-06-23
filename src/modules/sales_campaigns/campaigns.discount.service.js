@@ -153,9 +153,19 @@ async function resolveDiscount({
     const unit = money(it.unit_price_ngn);
     let perUnitDiscount = money(0);
 
+    // discount_value is now optional (a campaign can be a pure landing/preorder
+    // shell — migration 000050). A percentage/fixed type with a NULL value used
+    // to throw inside money() and surface as INTERNAL_ERROR at checkout; treat a
+    // missing value as "no top-level discount" instead.
+    const hasDiscountValue =
+      campaign.discount_value !== null &&
+      campaign.discount_value !== undefined;
+
     if (priceOverride.has(it.product_id)) {
       const override = money(priceOverride.get(it.product_id));
       perUnitDiscount = unit.minus(override);
+    } else if (!hasDiscountValue) {
+      perUnitDiscount = money(0);
     } else {
       switch (campaign.discount_type) {
         case "percentage":

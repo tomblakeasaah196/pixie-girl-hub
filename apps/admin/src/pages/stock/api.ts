@@ -7,6 +7,7 @@ import type {
   StockTransfer,
   StockAlert,
   InboundShipment,
+  GoodsReceiptInput,
   Paginated,
   ValuationSummary,
   ValuationLine,
@@ -129,6 +130,9 @@ export const stockApi = {
 
   createShipment: (input: Record<string, unknown>) =>
     api.post<InboundShipment>("/stock/shipments", input),
+
+  createGoodsReceipt: (input: GoodsReceiptInput) =>
+    api.post<InboundShipment>("/stock/goods-receipts", input),
 
   updateShipmentStatus: (id: string, status: string) =>
     api.patch<InboundShipment>(`/stock/shipments/${id}/status`, { status }),

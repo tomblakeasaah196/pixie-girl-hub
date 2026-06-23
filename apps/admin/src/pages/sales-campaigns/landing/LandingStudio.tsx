@@ -1260,33 +1260,37 @@ function BlockEditor({
               key={i}
               className="flex gap-2 items-end p-3 rounded-[10px] bg-text-primary/[0.04] border border-line"
             >
-              <Field label="Min qty" className="flex-1">
-                <input
-                  value={tier.qty}
-                  onChange={(e) => {
-                    const next = [...tiers];
-                    next[i] = { ...next[i], qty: Number(e.target.value) };
-                    setProp("tiers", next);
-                  }}
-                  disabled={!canEdit}
-                  type="number"
-                  min={1}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="Save (NGN)" className="flex-1">
-                <input
-                  value={tier.save_ngn}
-                  onChange={(e) => {
-                    const next = [...tiers];
-                    next[i] = { ...next[i], save_ngn: e.target.value };
-                    setProp("tiers", next);
-                  }}
-                  disabled={!canEdit}
-                  type="number"
-                  className={inputCls}
-                />
-              </Field>
+              <div className="flex-1">
+                <Field label="Min qty">
+                  <input
+                    value={tier.qty}
+                    onChange={(e) => {
+                      const next = [...tiers];
+                      next[i] = { ...next[i], qty: Number(e.target.value) };
+                      setProp("tiers", next);
+                    }}
+                    disabled={!canEdit}
+                    type="number"
+                    min={1}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field label="Save (NGN)">
+                  <input
+                    value={tier.save_ngn}
+                    onChange={(e) => {
+                      const next = [...tiers];
+                      next[i] = { ...next[i], save_ngn: e.target.value };
+                      setProp("tiers", next);
+                    }}
+                    disabled={!canEdit}
+                    type="number"
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
               {canEdit && tiers.length > 1 && (
                 <button
                   onClick={() =>

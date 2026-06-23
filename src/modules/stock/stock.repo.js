@@ -535,7 +535,26 @@ async function setAlertStatus({ client, brand, id, status, user_id }) {
   return rows[0] || null;
 }
 
+// The product's default (then first) variant — the stock-bearing SKU a base
+// product receives into. Mirrors catalogue.repo.getDefaultVariant so Goods
+// Reception can take a base product_id and move stock without coupling to the
+// catalogue module.
+async function defaultVariantForProduct({ client, brand, product_id }) {
+  const { rows } = await ex(client)(
+    `SELECT variant_id, sku, variant_name FROM ${t(brand, "product_variants")}
+      WHERE product_id = $1
+      ORDER BY is_default DESC, display_order ASC, created_at ASC
+      LIMIT 1`,
+    [product_id],
+  );
+  return rows[0] || null;
+}
+
 // ── Inbound shipments (+ lines) ──────────────────────────
+// destination_location_id / received_at / received_by_name / notes / status /
+// created_by are all optional on insert — the detailed shipment flow omits the
+// first four (DB defaults apply); Goods Reception sets them to land stock at a
+// location, dated, attributed, with status pre-set to 'received'.
 const SHP_COLS = [
   "origin_country",
   "origin_port",
@@ -546,6 +565,12 @@ const SHP_COLS = [
   "total_freight_ngn",
   "total_customs_ngn",
   "total_other_ngn",
+  "destination_location_id",
+  "received_at",
+  "received_by_name",
+  "notes",
+  "status",
+  "created_by",
 ];
 async function createShipment({ client, brand, header }) {
   const num = await nextDocNumber({ client, brand, type: "inbound_shipment" });
@@ -584,7 +609,11 @@ async function listShipmentLines({ client, brand, shipment_id }) {
 }
 async function getShipment({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "inbound_shipments")} WHERE shipment_id = $1`,
+    `SELECT s.*, loc.display_name AS destination_location_name
+       FROM ${t(brand, "inbound_shipments")} s
+       LEFT JOIN ${t(brand, "stock_locations")} loc
+         ON loc.location_id = s.destination_location_id
+      WHERE s.shipment_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
@@ -613,7 +642,14 @@ async function listShipments({
     params,
   );
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "inbound_shipments")} ${w} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+    `SELECT s.*, loc.display_name AS destination_location_name,
+            (SELECT COUNT(*)::int FROM ${t(brand, "inbound_shipment_lines")} l
+              WHERE l.shipment_id = s.shipment_id) AS line_count
+       FROM ${t(brand, "inbound_shipments")} s
+       LEFT JOIN ${t(brand, "stock_locations")} loc
+         ON loc.location_id = s.destination_location_id
+       ${w}
+      ORDER BY s.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {
@@ -702,6 +738,7 @@ module.exports = {
   lockLevel,
   nextMovementNumber,
   nextDocNumber,
+  defaultVariantForProduct,
   listMovements,
   recordMovement,
   createAdjustment,

@@ -227,6 +227,15 @@ export function useStockMutations() {
       mutationFn: stockApi.createShipment,
       onSuccess: () => invalidate("shipments"),
     }),
+    createGoodsReceipt: useMutation({
+      mutationFn: stockApi.createGoodsReceipt,
+      onSuccess: () => {
+        invalidate("shipments");
+        invalidate("levels");
+        invalidate("movements");
+        invalidate("valuation");
+      },
+    }),
     updateShipmentStatus: useMutation({
       mutationFn: ({ id, status }: { id: string; status: string }) =>
         stockApi.updateShipmentStatus(id, status),

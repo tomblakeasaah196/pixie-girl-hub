@@ -152,6 +152,7 @@ const shipmentCreate = z
     shipping_method: z
       .enum(["air", "sea", "land", "courier", "hand_carry"])
       .optional(),
+    destination_location_id: z.string().uuid().optional(),
     total_factory_cost_ngn: z.coerce.number().nonnegative().optional(),
     total_freight_ngn: z.coerce.number().nonnegative().optional(),
     total_customs_ngn: z.coerce.number().nonnegative().optional(),
@@ -173,6 +174,31 @@ const shipmentCreate = z
           .strict(),
       )
       .optional(),
+  })
+  .strict();
+
+// Goods Reception — base products + quantity only. No cost (Cost Vault owns
+// it). received_at is a calendar date (defaults to today server-side when
+// omitted); received_by_name is the editable receiver shown on the register.
+const goodsReceiptCreate = z
+  .object({
+    destination_location_id: z.string().uuid(),
+    received_at: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "received_at must be YYYY-MM-DD")
+      .optional(),
+    received_by_name: z.string().max(160).optional(),
+    notes: z.string().max(2000).optional(),
+    lines: z
+      .array(
+        z
+          .object({
+            product_id: z.string().uuid(),
+            quantity: z.coerce.number().int().positive(),
+          })
+          .strict(),
+      )
+      .min(1),
   })
   .strict();
 
@@ -221,6 +247,7 @@ module.exports = {
   validateTransferCreate: mw(transferCreate),
   validateTransferReceive: mw(transferReceive),
   validateShipmentCreate: mw(shipmentCreate),
+  validateGoodsReceiptCreate: mw(goodsReceiptCreate),
   validateShipmentStatus: mw(shipmentStatus),
   validateShipmentReceive: mw(shipmentReceive),
   locationCreate,

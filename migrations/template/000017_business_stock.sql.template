@@ -359,6 +359,9 @@ CREATE TABLE {{BUSINESS}}.inbound_shipments (
   customs_cleared_at      DATE,
   received_at             DATE,
   destination_location_id UUID      REFERENCES {{BUSINESS}}.stock_locations (location_id) ON DELETE SET NULL,
+  -- Who physically received the goods (Goods Reception register). The user id
+  -- is created_by; this is the editable, human-readable receiver name.
+  received_by_name        TEXT,
   -- Audit
   notes                 TEXT,
   created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,

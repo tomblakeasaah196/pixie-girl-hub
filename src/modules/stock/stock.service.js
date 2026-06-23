@@ -760,6 +760,103 @@ async function createShipment({ brand, user, request_id, input }) {
     return repo.getShipment({ client, brand, id: sh.shipment_id });
   });
 }
+/**
+ * Goods Reception (simplified inbound) — V2.2 §6.9.
+ * One step: create the receiving record AND lift stock at once. Lines are
+ * BASE PRODUCTS (each resolved to its default stock-bearing variant) + a
+ * quantity — no cost is captured here (cost lives in the base-product Cost
+ * Vault). The receiver's id is `created_by` (the logged-in user); their name
+ * is stored editable for the register. Status is 'received' immediately so a
+ * positive 'receive' movement fires the SSOT trigger and on_hand goes up.
+ */
+async function createGoodsReceipt({ brand, user, request_id, input }) {
+  const lines = input.lines || [];
+  if (lines.length === 0)
+    throw new AppError("VALIDATION", "At least one line is required", 422);
+
+  return transaction(async (client) => {
+    // Resolve every base product → its default variant up front so a bad
+    // product aborts the whole receipt before any stock moves.
+    const resolved = [];
+    for (const ln of lines) {
+      const variant = await repo.defaultVariantForProduct({
+        client,
+        brand,
+        product_id: ln.product_id,
+      });
+      if (!variant)
+        throw new AppError(
+          "NO_STOCK_VARIANT",
+          `Base product ${ln.product_id} has no stock-bearing variant`,
+          422,
+          {
+            user_message:
+              "One of the products can't hold stock yet. Open it in the catalogue and try again.",
+            metadata: { product_id: ln.product_id },
+          },
+        );
+      resolved.push({ variant_id: variant.variant_id, quantity: ln.quantity });
+    }
+
+    const sh = await repo.createShipment({
+      client,
+      brand,
+      header: {
+        destination_location_id: input.destination_location_id,
+        received_at: input.received_at || new Date().toISOString().slice(0, 10),
+        received_by_name: input.received_by_name || null,
+        notes: input.notes || null,
+        status: "received",
+        created_by: user.user_id,
+      },
+    });
+
+    for (const r of resolved) {
+      const line = await repo.addShipmentLine({
+        client,
+        brand,
+        shipment_id: sh.shipment_id,
+        line: { variant_id: r.variant_id, qty_expected: r.quantity },
+      });
+      await repo.setShipmentLineReceived({
+        client,
+        brand,
+        line_id: line.line_id,
+        qty_received: r.quantity,
+      });
+      await repo.recordMovement({
+        client,
+        brand,
+        user_id: user.user_id,
+        input: {
+          variant_id: r.variant_id,
+          location_id: input.destination_location_id,
+          quantity: Math.abs(r.quantity),
+          movement_type: "receive",
+          reference_type: "inbound_shipment",
+          reference_id: sh.shipment_id,
+        },
+      });
+    }
+
+    await A(
+      brand,
+      user.user_id,
+      "stock.goods_receipt.create",
+      "inbound_shipment",
+      sh.shipment_id,
+      {
+        destination_location_id: input.destination_location_id,
+        received_by_name: input.received_by_name || null,
+        line_count: resolved.length,
+      },
+      request_id,
+    );
+    events.emit("shipment.received", { brand, id: sh.shipment_id });
+    return repo.getShipment({ client, brand, id: sh.shipment_id });
+  });
+}
+
 async function updateShipmentStatus({ brand, user, request_id, id, status }) {
   const sh = await repo.setShipmentStatus({ brand, id, status });
   if (!sh) throw new NotFoundError("Shipment");
@@ -873,6 +970,7 @@ module.exports = {
   listShipments,
   getShipment,
   createShipment,
+  createGoodsReceipt,
   updateShipmentStatus,
   receiveShipment,
 };

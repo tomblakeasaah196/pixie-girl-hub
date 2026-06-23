@@ -134,8 +134,29 @@ export interface InboundShipment {
   total_customs_ngn?: string | null;
   total_other_ngn?: string | null;
   destination_location_id?: string | null;
+  // Goods Reception register fields.
+  destination_location_name?: string | null;
+  received_at?: string | null;
+  received_by_name?: string | null;
+  created_by?: string | null;
+  line_count?: number;
   created_at: string;
   lines: ShipmentLine[];
+}
+
+/** A Goods Reception line — a BASE product + quantity. No cost (Cost Vault
+ *  owns it); the server resolves the base product to its default variant. */
+export interface GoodsReceiptLine {
+  product_id: string;
+  quantity: number;
+}
+
+export interface GoodsReceiptInput {
+  destination_location_id: string;
+  received_at?: string;
+  received_by_name?: string;
+  notes?: string;
+  lines: GoodsReceiptLine[];
 }
 
 export interface ShipmentLine {

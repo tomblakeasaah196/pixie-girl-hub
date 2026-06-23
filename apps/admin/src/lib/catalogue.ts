@@ -425,6 +425,9 @@ export interface BaseFilters {
   q?: string;
   category_id?: string;
   visible?: boolean;
+  /** Page size cap (default 100). Bumped by the Goods Reception importer, which
+   *  needs the full base-product set to build the reference sheet + match rows. */
+  page_size?: number;
 }
 
 function qs(params: Record<string, string | undefined>): string {
@@ -470,7 +473,7 @@ export function useBaseProducts(filters: BaseFilters = {}) {
               filters.visible === undefined
                 ? undefined
                 : String(filters.visible),
-            page_size: "100",
+            page_size: String(filters.page_size ?? 100),
           })}`,
         )
         .then(toList),

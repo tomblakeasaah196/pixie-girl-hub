@@ -219,6 +219,10 @@ const createShipment = async (req, res) =>
   res.status(201).json({
     data: await service.createShipment({ ...base(req), input: req.body }),
   });
+const createGoodsReceipt = async (req, res) =>
+  res.status(201).json({
+    data: await service.createGoodsReceipt({ ...base(req), input: req.body }),
+  });
 const updateShipmentStatus = async (req, res) =>
   res.json({
     data: await service.updateShipmentStatus({
@@ -264,6 +268,7 @@ module.exports = {
   listShipments,
   getShipment,
   createShipment,
+  createGoodsReceipt,
   updateShipmentStatus,
   receiveShipment,
 };

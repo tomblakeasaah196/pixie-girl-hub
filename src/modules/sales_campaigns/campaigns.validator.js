@@ -553,6 +553,14 @@ const checkoutSchema = z
       .max(30),
     utm: z.record(z.string()).optional(),
     payment_gateway: z.enum(["paystack", "nomba"]),
+    // Buyer-chosen display currency from the landing-page toggle. Drives
+    // gateway routing: USD → Nomba only (the USD rail), NGN → Nomba primary
+    // then Paystack. The order is still stored in NGN base; this only picks
+    // the rail and stamps display_currency / fx_rate_used at payment.
+    display_currency: z
+      .enum(["NGN", "USD"])
+      .optional()
+      .default("NGN"),
     client_idempotency_key: z.string().min(1).max(120),
     coupon_code: z.string().max(60).optional(),
   })

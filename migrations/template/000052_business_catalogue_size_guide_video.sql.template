@@ -1,0 +1,19 @@
+-- ============================================================
+-- TEMPLATE 000052 — Catalogue size guide: add optional video URL.
+-- Lets the brand embed a YouTube (or any UGC) video alongside the markdown
+-- "how to find your head size" guide. Surfaced on the public sale landing
+-- page's product modal and editable from Catalogue → Styled → Size guide.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here so the file is safely
+-- re-runnable on every repair.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS head_size_video_url TEXT;
+
+COMMENT ON COLUMN {{BUSINESS}}.catalogue_config.head_size_video_url IS
+  'Optional YouTube / UGC video URL shown alongside the head-size guide on '
+  'the storefront product modal. Editable from Catalogue → Styled → Size '
+  'guide. NULL = markdown-only.';

@@ -247,6 +247,9 @@ export interface LaceSize {
 export interface CatalogueConfig {
   size_guide_title: string;
   head_size_guide_md: string | null;
+  /** Optional YouTube / UGC video URL shown on the storefront product modal
+   *  alongside the markdown guide. Editable from Catalogue → Size guide. */
+  head_size_video_url: string | null;
   // One-click Categories toggle — off by default, restored from Config.
   categories_enabled: boolean;
   // One-click: allow base (stock-room) products in collections + bundles.
@@ -1209,6 +1212,7 @@ export interface SaveSizeConfigInput {
   lace_sizes?: Partial<LaceSize>[];
   size_guide_title?: string | null;
   head_size_guide_md?: string | null;
+  head_size_video_url?: string | null;
   categories_enabled?: boolean;
   allow_base_in_collections_bundles?: boolean;
 }

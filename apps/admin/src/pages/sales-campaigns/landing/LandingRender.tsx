@@ -13,7 +13,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
-import type { LandingBlock, PublicState } from "@/lib/campaigns";
+import type {
+  DiscountType,
+  LandingBlock,
+  PositionLadderItem,
+  PublicState,
+} from "@/lib/campaigns";
 import type { LandingConfig } from "@landing-kit";
 import { hexToTriplet, fontStack } from "@landing-kit";
 import {
@@ -23,6 +28,7 @@ import {
   useGeoCurrencyInit,
 } from "@/lib/currency";
 import { CurrencyFloater } from "@/components/campaign/CurrencyFloater";
+import { ProductDetailModal } from "@/components/campaign/ProductDetailModal";
 
 export interface LandingProduct {
   product_id?: string | null;
@@ -60,6 +66,11 @@ export interface LandingModel {
    *  NGN-only, toggle hidden. Customer display only — order settlement uses
    *  the LIVE FX rate captured at payment. */
   ngn_per_usd_rate?: number | null;
+  /** Top-level discount + per-position ladder — used to render the
+   *  "save ₦X per wig" badge on each product card. */
+  discount_type?: DiscountType | null;
+  discount_value?: number | null;
+  position_ladder?: PositionLadderItem[] | null;
   blocks: LandingBlock[];
   products?: LandingProduct[];
   ended?: { message?: string | null; redirect_to?: string | null } | null;
@@ -213,6 +224,32 @@ export function LandingRender({
   useGeoCurrencyInit(isUsdEnabled(fxRate));
   const priceLabel = usePriceLabel(fxRate);
 
+  // Featured-product modal: clicking any product card opens the gallery /
+  // long-description / variant picker / size-guide modal. Tracked here at
+  // the top so the modal lives outside the scrolling block content.
+  const [openProduct, setOpenProduct] = useState<string | null>(null);
+
+  // Estimated "save per wig" amount used by the product cards. Order of
+  // preference (matches the campaign engine's intent): the first rung of
+  // the position ladder (1st-wig discount), then the top-level discount on
+  // the campaign (percentage off the unit price, or flat ₦ off).
+  function estimateSavePerWig(unitNgn: number): number {
+    if (!Number.isFinite(unitNgn) || unitNgn <= 0) return 0;
+    const ladder = model.position_ladder || [];
+    if (ladder.length) {
+      // The ladder is keyed by 1-based position; first row = single wig.
+      const first = [...ladder].sort((a, b) => a.position - b.position)[0];
+      if (first?.discount_ngn) return Number(first.discount_ngn) || 0;
+    }
+    if (model.discount_type === "percentage" && model.discount_value) {
+      return Math.round(unitNgn * Number(model.discount_value));
+    }
+    if (model.discount_type === "fixed_amount" && model.discount_value) {
+      return Math.round(Number(model.discount_value));
+    }
+    return 0;
+  }
+
   const atelierVars = useMemo(() => {
     if (!brandConfig) return undefined;
     const t = brandConfig.theme;
@@ -359,6 +396,8 @@ export function LandingRender({
               model={model}
               featured={featured}
               priceLabel={priceLabel}
+              estimateSavePerWig={estimateSavePerWig}
+              onOpenProduct={setOpenProduct}
             />
           ))}
           {enabled.length === 0 && <DefaultBody model={model} />}
@@ -383,6 +422,14 @@ export function LandingRender({
           has no static FX rate set. Swaps every amount on the page; falls
           back to NGN automatically when the rate is removed. */}
       <CurrencyFloater fxRate={fxRate} />
+
+      {/* Stylish product modal opened by any featured-product click. */}
+      <ProductDetailModal
+        slug={model.slug}
+        styledId={openProduct}
+        fxRate={fxRate}
+        onClose={() => setOpenProduct(null)}
+      />
     </div>
   );
 }
@@ -393,11 +440,15 @@ function BlockSection({
   model,
   featured,
   priceLabel,
+  estimateSavePerWig,
+  onOpenProduct,
 }: {
   block: LandingBlock;
   model: LandingModel;
   featured: LandingProduct[];
   priceLabel: (v: number | string | null | undefined) => string;
+  estimateSavePerWig: (unitNgn: number) => number;
+  onOpenProduct: (styledId: string) => void;
 }) {
   const key = block.key || block.type || "";
   const meta = BLOCK_TITLE[key];
@@ -491,10 +542,27 @@ function BlockSection({
                 prod.campaign_price_ngn ?? prod.regular_price_ngn ?? null;
               const hasPrice =
                 priceNgn != null && Number.isFinite(Number(priceNgn));
+              const save = hasPrice
+                ? estimateSavePerWig(Number(priceNgn))
+                : 0;
+              const styledId = (prod.styled_id || "") as string;
+              const openable = Boolean(styledId);
               return (
-                <article key={n} className="group">
+                <article
+                  key={n}
+                  className={`group ${openable ? "cursor-pointer" : ""}`}
+                  onClick={() => openable && onOpenProduct(styledId)}
+                  role={openable ? "button" : undefined}
+                  tabIndex={openable ? 0 : undefined}
+                  onKeyDown={(e) => {
+                    if (openable && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onOpenProduct(styledId);
+                    }
+                  }}
+                >
                   <div
-                    className="aspect-[3/4] rounded-[16px] overflow-hidden mb-3"
+                    className="aspect-[3/4] rounded-[16px] overflow-hidden mb-3 transition-transform group-hover:scale-[1.015]"
                     style={{
                       backgroundImage: img ? `url("${img}")` : undefined,
                       background: img
@@ -513,8 +581,16 @@ function BlockSection({
                     </div>
                   )}
                   {hasPrice && (
-                    <div className="font-mono text-accent-glow text-[13px] mt-1">
-                      {priceLabel(priceNgn)}
+                    <div className="flex items-baseline justify-between gap-2 mt-1">
+                      <span className="font-mono text-accent-glow text-[13px]">
+                        {priceLabel(priceNgn)}
+                      </span>
+                      {save > 0 && (
+                        <span className="font-mono text-[11px] text-[rgb(var(--success,52_211_153))] whitespace-nowrap">
+                          save {priceLabel(save)}
+                          <span className="opacity-60"> / wig</span>
+                        </span>
+                      )}
                     </div>
                   )}
                 </article>

@@ -612,6 +612,13 @@ function buildLandingPayload(c, products, state) {
       c.ngn_per_usd_rate !== null && c.ngn_per_usd_rate !== undefined
         ? Number(c.ngn_per_usd_rate)
         : null,
+    // Top-level discount — surfaced so the landing card can render a
+    // "save ₦X per wig" estimate alongside the price.
+    discount_type: c.discount_type || null,
+    discount_value:
+      c.discount_value !== null && c.discount_value !== undefined
+        ? Number(c.discount_value)
+        : null,
     // ── v3 deals engine fields ───────────────────────────────
     delivery_weeks: c.delivery_weeks || null,
     preorder_extra_weeks: c.preorder_extra_weeks ?? 4,

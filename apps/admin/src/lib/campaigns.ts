@@ -1117,6 +1117,11 @@ export interface PublicLanding {
   /** Static NGN-per-USD rate the customer-facing currency toggle uses.
    *  NULL = NGN only on this campaign (toggle hidden). */
   ngn_per_usd_rate: number | null;
+  /** Top-level discount and per-position ladder — surfaced so the landing
+   *  page can render a "save ₦X per wig" estimate on each product card. */
+  discount_type?: DiscountType | null;
+  discount_value?: number | null;
+  position_ladder?: PositionLadderItem[] | null;
   blocks: LandingBlock[];
   products: Array<Record<string, unknown>>;
   ended: { message: string | null; redirect_to: string | null } | null;
@@ -1143,6 +1148,73 @@ export function usePublicLanding(slug: string | undefined, brand?: string) {
     enabled: Boolean(slug),
     queryKey: ["public-landing", slug, brand || ""],
     queryFn: () => api.get<PublicLanding>(`/sale/${slug}${qs}`, "public"),
+    retry: false,
+  });
+}
+
+/** Detail payload for the landing-page product modal — gallery, long
+ *  description, variants, and the brand's head-size guide + video. */
+export interface PublicProductDetail {
+  styled_id: string;
+  name: string;
+  slug: string;
+  short_description: string | null;
+  long_description: string | null;
+  retail_price_ngn: number | null;
+  anchor_price_ngn: number | null;
+  gallery: Array<{
+    url: string;
+    alt_text: string | null;
+    is_primary: boolean;
+    display_order: number | null;
+  }>;
+  variants: Array<{
+    variant_id: string;
+    colour_name: string;
+    colour_hex: string | null;
+    colour_premium_ngn: number;
+    size_code: string;
+    size_label: string;
+    size_premium_ngn: number;
+    lace_code: string | null;
+    lace_label: string | null;
+    lace_premium_ngn: number;
+    effective_price_ngn: number;
+    is_default: boolean;
+  }>;
+  size_tiers: Array<{
+    size_code: string;
+    label: string;
+    premium_ngn: number;
+    circumference_in: string | null;
+    guidance_text: string | null;
+  }>;
+  lace_sizes: Array<{
+    lace_code: string;
+    label: string;
+    premium_ngn: number;
+  }>;
+  size_guide: {
+    title: string;
+    guide_md: string | null;
+    video_url: string | null;
+  } | null;
+}
+
+export function useProductDetail(
+  slug: string | undefined,
+  styledId: string | null,
+  brand?: string,
+) {
+  const qs = brand ? `?brand=${encodeURIComponent(brand)}` : "";
+  return useQuery({
+    enabled: Boolean(slug && styledId),
+    queryKey: ["public-product", slug, styledId, brand || ""],
+    queryFn: () =>
+      api.get<PublicProductDetail>(
+        `/sale/${slug}/product/${styledId}${qs}`,
+        "public",
+      ),
     retry: false,
   });
 }

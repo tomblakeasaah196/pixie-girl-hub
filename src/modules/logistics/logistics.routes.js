@@ -10,11 +10,24 @@
 "use strict";
 
 const express = require("express");
+const multer = require("multer");
 const controller = require("./logistics.controller");
 const validator = require("./logistics.validator");
 const zonesController = require("./zones.controller");
 const zonesValidator = require("./zones.validator");
 const { requirePermission } = require("../../middleware/rbac");
+
+const xlsxUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok =
+      file.mimetype ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.originalname.endsWith(".xlsx");
+    cb(ok ? null : new Error("Only .xlsx files are accepted"), ok);
+  },
+});
 
 // Side-effect: register sales.order.paid → dispatch delivery (G-2).
 require("./logistics.subscribers");
@@ -23,9 +36,16 @@ const router = express.Router();
 const can = (action) => requirePermission("logistics", action);
 
 // ── Delivery zones (geofenced fees) ──────────────────────
-// Literal "/zones/quote" declared before "/zones/:id" so it isn't shadowed.
+// Literals declared before "/:id" so they aren't shadowed.
 router.get("/zones", can("view"), zonesController.list);
 router.get("/zones/quote", can("view"), zonesController.quote);
+router.get("/zones/rates-template", can("view"), zonesController.exportTemplate);
+router.post(
+  "/zones/rates-import",
+  can("edit"),
+  xlsxUpload.single("file"),
+  zonesController.importRates,
+);
 router.post("/zones", can("create"), zonesValidator.validateCreate, zonesController.create);
 router.patch("/zones/:id", can("edit"), zonesValidator.validateUpdate, zonesController.update);
 router.delete("/zones/:id", can("delete"), zonesController.remove);

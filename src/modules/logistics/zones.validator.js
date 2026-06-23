@@ -15,6 +15,20 @@ const geometry = z
   })
   .passthrough();
 
+const rateTier = z.object({
+  label: z.string().min(1),
+  min_qty: z.coerce.number().int().positive(),
+  max_qty: z.coerce.number().int().positive().nullable().optional(),
+  fee_ngn: z.coerce.number().nonnegative(),
+});
+
+const rateCard = z
+  .object({
+    tiers: z.array(rateTier).optional().default([]),
+    add_on_per_2_ngn: z.coerce.number().nonnegative().optional(),
+  })
+  .default({ tiers: [] });
+
 const zoneBase = z.object({
   name: z.string().min(1).max(160),
   description: z.string().max(1000).optional(),
@@ -22,9 +36,11 @@ const zoneBase = z.object({
   // Optional: 'country' zones carry no geometry (matched by country_code).
   geometry: geometry.optional(),
   fee_ngn: z.coerce.number().nonnegative(),
-  country_code: z.string().max(3).optional(),
+  country_code: z.string().max(20).optional(),
   priority: z.coerce.number().int().optional(),
   is_active: z.boolean().optional(),
+  rate_card: rateCard.optional(),
+  courier_key: z.string().max(60).optional(),
 });
 
 const zoneCreate = zoneBase.strict();

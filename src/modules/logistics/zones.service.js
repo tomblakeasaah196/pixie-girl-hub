@@ -12,6 +12,35 @@ const repo = require("./zones.repo");
 const { audit } = require("../../middleware/audit");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
+// ── Rate card helpers ──────────────────────────────────────
+
+/**
+ * Compute the delivery fee for a given wig quantity from a zone's rate_card.
+ * Falls back to fee_ngn (zone flat rate) when rate_card has no tiers.
+ *
+ * rate_card shape:
+ *   { tiers: [{ label, min_qty, max_qty, fee_ngn }], add_on_per_2_ngn }
+ * For qty > last tier's max_qty:
+ *   fee = last_tier.fee_ngn + ceil((qty - last_max) / 2) * add_on_per_2_ngn
+ */
+function computeFeeForQty(zone, qty) {
+  const n = Math.max(1, Math.floor(Number(qty) || 1));
+  const rc = zone.rate_card;
+  const tiers = rc && Array.isArray(rc.tiers) ? rc.tiers : [];
+  if (!tiers.length) return Number(zone.fee_ngn) || 0;
+
+  for (const tier of tiers) {
+    if (n >= tier.min_qty && (tier.max_qty == null || n <= tier.max_qty)) {
+      return Number(tier.fee_ngn);
+    }
+  }
+  // Beyond the last defined tier — apply progressive add-on.
+  const last = tiers[tiers.length - 1];
+  const addOn = Number(rc.add_on_per_2_ngn) || 0;
+  const extraGroups = Math.ceil((n - (last.max_qty || n)) / 2);
+  return Number(last.fee_ngn) + extraGroups * addOn;
+}
+
 // ── Geometry helpers ───────────────────────────────────────
 
 /** Ray-casting point-in-polygon. `points` are [lng,lat] pairs. */
@@ -154,18 +183,19 @@ async function remove({ brand, user, request_id, id }) {
 }
 
 /**
- * Resolve the delivery fee for a coordinate. Returns the matching zone's fee,
- * or null when no active zone covers the point. Used by the admin tester and
- * the storefront delivery quote.
+ * Resolve the delivery fee for a coordinate or country code.
+ * Pass `qty` (wig count) to get the tier-appropriate fee; omit for the base
+ * (1-2 wigs) rate. Returns the matching zone's fee + full rate card so the
+ * storefront can display all tiers and auto-select based on basket size.
  */
-async function quote({ brand, lat, lng, country_code }) {
+async function quote({ brand, lat, lng, country_code, qty }) {
   const la = Number(lat);
   const ln = Number(lng);
   const hasPoint = Number.isFinite(la) && Number.isFinite(ln);
   if (!hasPoint && !country_code)
     throw new AppError(
       "INVALID_QUOTE",
-      "Provide coordinates (lat/lng) or a country",
+      "Provide coordinates (lat/lng) or a country_code",
       422,
     );
   // Highest priority first; a local coordinate zone should out-rank the
@@ -173,16 +203,28 @@ async function quote({ brand, lat, lng, country_code }) {
   const zones = await repo.listActive({ brand, country_code });
   for (const z of zones) {
     if (zoneContains(z, la, ln, country_code)) {
+      const fee = qty != null ? computeFeeForQty(z, qty) : Number(z.fee_ngn);
       return {
         zone_id: z.zone_id,
         zone_name: z.name,
+        country_code: z.country_code || null,
         geometry_type: z.geometry_type,
-        fee_ngn: Number(z.fee_ngn),
+        courier_key: z.courier_key || null,
+        fee_ngn: fee,
+        rate_card: z.rate_card || { tiers: [] },
         currency: "NGN",
       };
     }
   }
-  return { zone_id: null, zone_name: null, fee_ngn: null, currency: "NGN" };
+  return {
+    zone_id: null,
+    zone_name: null,
+    country_code: null,
+    courier_key: null,
+    fee_ngn: null,
+    rate_card: null,
+    currency: "NGN",
+  };
 }
 
 /**
@@ -197,7 +239,9 @@ async function shippingRates({ brand }) {
     zone_id: z.zone_id,
     name: z.name,
     country_code: z.country_code || null,
+    courier_key: z.courier_key || null,
     fee_ngn: z.fee_ngn === null ? null : Number(z.fee_ngn),
+    rate_card: z.rate_card || { tiers: [] },
     priority: Number(z.priority) || 0,
   });
   return {
@@ -222,4 +266,5 @@ module.exports = {
   quote,
   shippingRates,
   zoneContains,
+  computeFeeForQty,
 };

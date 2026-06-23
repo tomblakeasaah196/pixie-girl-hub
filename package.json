@@ -32,6 +32,7 @@
     "db:seed": "node scripts/seed.js",
     "user:create-admin": "node scripts/create-admin.js",
     "seed:factory-manager": "node scripts/seed-factory-manager.js",
+    "seed:logistics": "node scripts/seed-logistics-rates.js",
     "check:factory-manager": "node scripts/check-factory-manager.js",
     "db:verify": "node scripts/verify-schema.js",
     "db:create-admin": "node scripts/create-admin.js",

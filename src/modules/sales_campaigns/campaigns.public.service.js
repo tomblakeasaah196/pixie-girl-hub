@@ -298,8 +298,10 @@ async function getStock({ slug, brand, brandHint }) {
   return products
     .filter((p) => p.include_exclude === "include" && p.product_id)
     .map((p) => ({
+      link_id: p.link_id,
       product_id: p.product_id,
-      stock_remaining: p.current_stock_snapshot,
+      styled_id: p.styled_id,
+      stock_remaining: p.live_base_stock,
     }));
 }
 

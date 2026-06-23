@@ -1,0 +1,39 @@
+-- ============================================================
+-- TEMPLATE 000053 — Sales Campaigns: allow styled-only bundle items.
+-- Mirrors migration 000048 which relaxed bundle_offer_products to accept a
+-- styled_id alone. product_bundle_items (the campaign-side bundle mirror)
+-- still required product_id OR variant_id, so importing any catalogue
+-- bundle whose components are styled-only tripped a 23514
+-- (INVALID_VALUE / "A value violates a domain constraint") in the
+-- builder's "Import from catalogue" step.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here so the file is safely
+-- re-runnable on every repair.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.product_bundle_items
+  DROP CONSTRAINT IF EXISTS product_bundle_items_check;
+
+-- Postgres auto-names anonymous CHECKs after the column with the largest
+-- range. On some installs the original CHECK landed as
+-- product_bundle_items_check1 (the table also had an earlier column-level
+-- check) — drop both forms to make the migration idempotent across both.
+ALTER TABLE {{BUSINESS}}.product_bundle_items
+  DROP CONSTRAINT IF EXISTS product_bundle_items_check1;
+
+-- Re-add with styled_id accepted as a valid target (storefront listing) in
+-- addition to product_id / variant_id.
+ALTER TABLE {{BUSINESS}}.product_bundle_items
+  ADD CONSTRAINT product_bundle_items_target_check
+    CHECK (
+      product_id IS NOT NULL OR
+      variant_id IS NOT NULL OR
+      styled_id  IS NOT NULL
+    );
+
+-- Index for the new lookup path (styled_id was added in migration 000040 with
+-- no dedicated index; the new "import from catalogue" code path queries it).
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_product_bundle_items_styled
+  ON {{BUSINESS}}.product_bundle_items (styled_id) WHERE styled_id IS NOT NULL;

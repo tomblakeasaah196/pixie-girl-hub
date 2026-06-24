@@ -6,7 +6,8 @@ import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Gift, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
-import { money } from "@/lib/format";
+import { displayMoney } from "@/lib/format";
+import { useDisplayCurrency } from "@/lib/currency";
 import { postQuote, type CartQuote } from "@/lib/api-client";
 import type { LandingPayload } from "@/lib/types";
 
@@ -20,6 +21,15 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
   const setQ = useCart((s) => s.setQuantity);
   const remove = useCart((s) => s.remove);
   const subtotal = useCart((s) => s.subtotalNgn());
+
+  // Display currency (₦/$) — converted in React with the campaign's static rate
+  // so the drawer is always internally consistent. `data-no-convert` (below)
+  // keeps the live page's DOM currency observer from double-converting these.
+  const fxRate = payload.ngn_per_usd_rate ?? null;
+  const hasRate = typeof fxRate === "number" && fxRate > 0;
+  const [currency] = useDisplayCurrency();
+  const displayCurrency = hasRate ? currency : "NGN";
+  const money = (ngn: number) => displayMoney(ngn, displayCurrency, fxRate);
 
   // Server-authoritative quote: the Hub applies EVERY deal rule (per-wig
   // position ladder, bundle stacking bonus, quantity-tier ladder, reseller/bulk
@@ -147,6 +157,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             role="dialog"
             aria-modal="true"
+            data-no-convert
             className="fixed top-0 right-0 bottom-0 z-50 w-[min(440px,95vw)] dropglass border-l border-[rgb(var(--border-c)/0.12)] flex flex-col shadow-[-30px_0_80px_rgb(0_0_0/0.5)]"
           >
             <div className="flex items-center gap-3 px-5 py-4 border-b hairline">

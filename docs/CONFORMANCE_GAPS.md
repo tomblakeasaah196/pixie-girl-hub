@@ -107,5 +107,53 @@ now does real FFmpeg work — probe + transcode (H.264/AAC, ≤720p, faststart)
 Remaining follow-ups are operational only: the social-platform UGC connector
 (Instagram/TikTok capture) and the doc-hygiene counts below.
 
+---
+
+## Part 4 — Known pricing inconsistencies (post-launch, deferred)
+
+### G-1 — Sales-campaign discounts intentionally ignore the §6.25 margin floor
+
+**Severity:** low (was: bundle-quote vs charge mismatch) · **Status:** RESOLVED
+BY DECISION 2026-06-24.
+
+**Original symptom.** The cart drawer / checkout-form total (the server
+`/quote`) and the amount `createOrder` charged could disagree, because the two
+paths applied the margin floor differently:
+
+- **Quote** (`campaigns.public.service.js` → `priceQuoteLine`): bundle lines
+  carried `floor_ngn: null` (campaign price baked in, unclamped), while styled /
+  product lines fed a real `floor_ngn` into `computeDeals`, which clamped.
+- **Charge** (`checkout` → `salesService.createOrder`): the campaign deal
+  discount was routed through `applyOrderDiscount`, which clamps every
+  order-level discount at each base variant's `min_price_ngn`.
+
+So a styled bundle (or any line) with a high base-variant floor could be charged
+**more** than the floor-free figure the buyer saw on the "Pay" button.
+
+**Decision (owner, 2026-06-24).** Do **not** consider the margin floor anywhere
+in the sales-campaign discount path. The buyer is always charged exactly the
+quoted figure; a campaign may sell below the variant `min_price_ngn`. The rest
+of the system is untouched — coupons, loyalty points, F-2 bundles and the
+per-unit sale-price clamp all remain floor-respecting.
+
+**What changed.**
+
+- `sales.service.js` (§3.8 campaign deal ladder): `campaign_deal_discount_ngn`
+  is now allocated against each line's **full remaining value** (down to ₦0),
+  not the floor-limited headroom used by coupons/points/bundles.
+- `campaigns.public.service.js` `priceQuoteLine`: styled / product lines now
+  return `floor_ngn: null` (bundle lines already did), so `computeDeals` no
+  longer clamps the quote. `resolveVariantFloor` was removed (no longer used).
+- `computeDeals` itself is unchanged — it still clamps when a caller passes a
+  `floor_ngn`; the campaign path simply stops passing one.
+
+**Follow-up (optional, low priority).** Add a regression test that drives
+`quoteCart` and `createOrder` on the same campaign cart (incl. a fixed-price
+bundle) and asserts the final totals are equal — no test currently pins that
+agreement (`campaigns.bundle-pricing.test.js` checks the pure math only;
+`checkout-styled-bundle.test.js` never compares order total to the quote).
+
+---
+
 See `migrations/CHANGELOG.md` for what shipped and `VERIFICATION_REPORT.md`
 for the per-module evidence behind this list.

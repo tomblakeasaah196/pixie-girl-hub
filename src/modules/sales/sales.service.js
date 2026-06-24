@@ -410,13 +410,48 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // flow in sales_campaigns), where the cart semantics they depend on — wig
     // units, distinct bundles, raw-vs-styled — are still known (they're lost
     // once the cart is flattened to variant lines here). The amount is a fixed ₦
-    // total, so we apply it order-level through the SAME headroom-respecting
-    // helper as coupons/points: the §6.25 margin floor is never breached, and a
-    // ladder that over-promises is clamped exactly like every other discount.
+    // total applied order-level.
+    //
+    // OWNER DECISION (see CONFORMANCE_GAPS G-1): campaign deal discounts do NOT
+    // consider the §6.25 margin floor. The cart/checkout quote the buyer sees is
+    // computed floor-free, so the charge must be too — otherwise the till could
+    // clamp a discount the buyer was shown and overcharge them. Unlike
+    // coupons/points/bundles above (which stay floor-respecting), this allocates
+    // against each line's full remaining value, down to ₦0 (never negative), so
+    // a campaign may sell below the variant min_price. Runs last; nothing after
+    // it consumes line headroom.
     let dealLineTotal = money(0);
     if (input.campaign_deal_discount_ngn) {
       const want = money(input.campaign_deal_discount_ngn);
-      if (want.gt(money(0))) dealLineTotal = applyOrderDiscount(want);
+      if (want.gt(money(0))) {
+        // Remaining net per line = full line value minus whatever the
+        // floor-respecting discounts (coupon / points / bundle) already removed.
+        // Campaign deals may consume all of it, ignoring the margin floor.
+        const netByIdx = built.map((b, idx) => {
+          const net = preNetByIdx[idx].minus(extraShareByIdx[idx]);
+          return net.lt(money(0)) ? money(0) : net;
+        });
+        const availNet = netByIdx.reduce((a, n) => a.plus(n), money(0));
+        const amt = want.gt(availNet) ? availNet : want;
+        if (amt.gt(money(0))) {
+          let allocated = money(0);
+          built.forEach((b, idx) => {
+            const last = idx === built.length - 1;
+            const share = last
+              ? amt.minus(allocated)
+              : availNet.gt(money(0))
+                ? money(
+                    toCurrencyString(
+                      amt.times(netByIdx[idx]).dividedBy(availNet),
+                    ),
+                  )
+                : money(0);
+            extraShareByIdx[idx] = extraShareByIdx[idx].plus(share);
+            allocated = allocated.plus(share);
+          });
+          dealLineTotal = amt;
+        }
+      }
     }
 
     // 4. Totals + VAT.

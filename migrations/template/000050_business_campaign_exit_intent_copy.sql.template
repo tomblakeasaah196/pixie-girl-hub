@@ -1,0 +1,8 @@
+-- Exit-intent modal copy fields — allow campaign owners to customize the
+-- popup title, body, and button label from the Campaign Builder instead of
+-- relying on hardcoded defaults.
+
+ALTER TABLE {{BUSINESS}}.sales_campaigns
+  ADD COLUMN IF NOT EXISTS exit_intent_title   TEXT,
+  ADD COLUMN IF NOT EXISTS exit_intent_body    TEXT,
+  ADD COLUMN IF NOT EXISTS exit_intent_button  TEXT;

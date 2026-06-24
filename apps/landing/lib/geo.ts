@@ -294,9 +294,14 @@ function brandQuery(brand?: string): string {
   return brand ? `?brand=${encodeURIComponent(brand)}` : "";
 }
 
-/** Fetch picker options from the Hub; fall back to the static lists on any
- *  error or empty response so the checkout always has autofill data. */
+/** Fetch picker options from the Hub. The bundled lists are the floor: until
+ *  the delivery zones are seeded the endpoint returns only Nigeria, so we keep
+ *  whichever list is more complete per field. The buyer therefore always sees
+ *  every country / NG state / Lagos LGA, and once zones are seeded the endpoint
+ *  (whose codes match the bundled list) takes over and reflects any imports. */
 export async function fetchGeoOptions(brand?: string): Promise<GeoOptions> {
+  const fuller = (remote: GeoOption[] | undefined, local: GeoOption[]) =>
+    Array.isArray(remote) && remote.length >= local.length ? remote : local;
   try {
     const res = await fetch(
       `/api/public/storefront/geo-options${brandQuery(brand)}`,
@@ -305,18 +310,11 @@ export async function fetchGeoOptions(brand?: string): Promise<GeoOptions> {
     if (!res.ok) return GEO_FALLBACK;
     const json = (await res.json()) as { data?: Partial<GeoOptions> };
     const d = json?.data;
-    if (!d || !Array.isArray(d.countries) || d.countries.length === 0)
-      return GEO_FALLBACK;
+    if (!d) return GEO_FALLBACK;
     return {
-      countries: d.countries.length ? d.countries : COUNTRIES_FALLBACK,
-      nigeria_states:
-        d.nigeria_states && d.nigeria_states.length
-          ? d.nigeria_states
-          : NIGERIA_STATES_FALLBACK,
-      lagos_lgas:
-        d.lagos_lgas && d.lagos_lgas.length
-          ? d.lagos_lgas
-          : LAGOS_LGAS_FALLBACK,
+      countries: fuller(d.countries, COUNTRIES_FALLBACK),
+      nigeria_states: fuller(d.nigeria_states, NIGERIA_STATES_FALLBACK),
+      lagos_lgas: fuller(d.lagos_lgas, LAGOS_LGAS_FALLBACK),
     };
   } catch {
     return GEO_FALLBACK;

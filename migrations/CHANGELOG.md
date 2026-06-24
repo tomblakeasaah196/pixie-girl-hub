@@ -11,6 +11,25 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-24 — Fix: styled_products missing compare_at_price_usd (template 000046)
+
+**Source:** bug report — every Styled Product save (PATCH
+`/catalogue/styled-products/:id`) 500'd, since `styled.repo.js`'s
+`STYLED_COLS` and the validator have always included `compare_at_price_usd`,
+but template 000046 only ever added `retail_price_usd` to
+`{{BUSINESS}}.styled_products` — the column never existed, so the UPDATE
+errored on every request.
+
+- `000046_business_catalogue_usd_pricing.sql.template` — adds the missing
+  `compare_at_price_usd NUMERIC(14,2)` column to `styled_products`
+  alongside `retail_price_usd`.
+- This template has no `CREATE TABLE` sentinel, so `npm run db:repair`
+  always re-runs it (idempotent `ADD COLUMN IF NOT EXISTS`) — run it
+  against pixiegirl/faitlynhair to apply the missing column to already-
+  bootstrapped schemas.
+
+---
+
 ## 2026-06-22 — HR final wiring (000236, 000237)
 
 - `000236_business_payslip_bank_sort_code` — adds `bank_sort_code_snapshot` to

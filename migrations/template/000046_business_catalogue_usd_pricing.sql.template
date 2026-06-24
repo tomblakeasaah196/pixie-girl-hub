@@ -17,7 +17,8 @@ ALTER TABLE {{BUSINESS}}.product_variants
 
 -- ── 2. Styled product prices (USD) ─────────────────────
 ALTER TABLE {{BUSINESS}}.styled_products
-  ADD COLUMN IF NOT EXISTS retail_price_usd NUMERIC(14,2);
+  ADD COLUMN IF NOT EXISTS retail_price_usd     NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS compare_at_price_usd  NUMERIC(14,2);
 
 -- ── 3. Styled variant price overrides (USD) ────────────
 ALTER TABLE {{BUSINESS}}.styled_product_variants
@@ -34,5 +35,5 @@ ALTER TABLE {{BUSINESS}}.bundle_offers
 --     WHERE table_schema = '{{BUSINESS}}'
 --       AND table_name IN ('product_variants', 'styled_products', 'styled_product_variants', 'bundle_offers')
 --       AND column_name LIKE '%_usd'
---     ORDER BY table_name, column_name;            -- should show 10 new columns
+--     ORDER BY table_name, column_name;            -- should show 11 new columns
 -- ============================================================

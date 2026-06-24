@@ -152,7 +152,7 @@ export function FeaturedProducts({
           </div>
           {searchTerm && filtered.length === 0 && (
             <p className="mt-4 text-center text-[12px] text-[rgb(var(--text-muted))]">
-              No products match "{searchTerm}"
+              No products match &ldquo;{searchTerm}&rdquo;
             </p>
           )}
         </div>

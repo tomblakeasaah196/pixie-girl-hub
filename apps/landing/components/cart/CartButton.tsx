@@ -18,7 +18,7 @@ export function CartButton() {
           onClick={open}
           className="w-full h-14 dropglass rounded-2xl px-5 flex items-center gap-3 shadow-[0_22px_50px_rgb(0_0_0/0.55)]"
         >
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--cart-bg,var(--accent-deep)))] text-[rgb(var(--text))]">
+          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--bg))] text-[rgb(var(--accent))]">
             <ShoppingBag className="w-4 h-4" />
           </span>
           <span className="flex-1 text-left">

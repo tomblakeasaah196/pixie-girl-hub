@@ -31,8 +31,6 @@ export interface LandingTheme {
   accent: string;
   muted: string;
   glow: string;
-  cartBg?: string;
-  checkoutBg?: string;
 }
 
 export interface RevealThreeD {

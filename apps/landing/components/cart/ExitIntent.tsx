@@ -96,7 +96,7 @@ export function ExitIntent({ payload }: { payload: LandingPayload }) {
                 navigator.clipboard.writeText(code).catch(() => {});
                 setOpen(false);
               }}
-              className="mt-6 inline-flex items-center justify-center h-11 px-5 rounded-xl bg-[rgb(var(--checkout-bg,var(--accent-deep)))] text-[rgb(var(--text))] font-semibold cta-sheen"
+              className="mt-6 inline-flex items-center justify-center h-11 px-5 rounded-xl bg-[rgb(var(--bg))] text-[rgb(var(--accent))] font-semibold cta-sheen"
             >
               {payload.exit_intent_button || "Copy code & keep shopping"}
             </button>

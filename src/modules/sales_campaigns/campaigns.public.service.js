@@ -1449,11 +1449,21 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
       WHERE is_active = true
       ORDER BY display_order`,
   );
+  // Only surface lace types that actually have a generated SKU for this
+  // styled product — the brand-wide styled_lace_sizes ladder includes every
+  // lace type the brand sells, not just the ones generated here, so it must
+  // be filtered down to what styled_product_variants actually has.
   const { rows: laceRows } = await query(
-    `SELECT lace_code, label, premium_ngn, display_order
-       FROM ${resolvedBrand}.styled_lace_sizes
-      WHERE is_active = true
-      ORDER BY display_order`,
+    `SELECT ls.lace_code, ls.label, ls.premium_ngn, ls.display_order
+       FROM ${resolvedBrand}.styled_lace_sizes ls
+      WHERE ls.is_active = true
+        AND ls.lace_code IN (
+          SELECT DISTINCT lace_code
+            FROM ${resolvedBrand}.styled_product_variants
+           WHERE styled_id = $1 AND lace_code IS NOT NULL AND is_deleted = false
+        )
+      ORDER BY ls.display_order`,
+    [styled_id],
   );
 
   const cfg = await styledVariantsRepo.getConfig({ brand: resolvedBrand });

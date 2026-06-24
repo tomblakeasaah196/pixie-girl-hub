@@ -93,6 +93,9 @@ const v2CampaignFields = {
   exit_intent_enabled: z.boolean().optional(),
   exit_intent_code: z.string().max(60).nullable().optional(),
   exit_intent_discount_ngn: moneyNgn.nullable().optional(),
+  exit_intent_title: z.string().max(200).nullable().optional(),
+  exit_intent_body: z.string().max(500).nullable().optional(),
+  exit_intent_button: z.string().max(100).nullable().optional(),
   abandonment_recovery_enabled: z.boolean().optional(),
   allow_multi_currency_display: z.boolean().optional(),
   // ── Sales Campaigns v3 (migration 000048) — deals engine ──

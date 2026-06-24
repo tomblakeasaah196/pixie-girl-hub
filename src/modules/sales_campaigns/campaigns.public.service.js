@@ -219,6 +219,9 @@ async function getLanding({ slug, brand, brandHint }) {
   payload.exit_intent_enabled = campaign.exit_intent_enabled || false;
   payload.exit_intent_code = campaign.exit_intent_code || null;
   payload.exit_intent_discount_ngn = campaign.exit_intent_discount_ngn || null;
+  payload.exit_intent_title = campaign.exit_intent_title || null;
+  payload.exit_intent_body = campaign.exit_intent_body || null;
+  payload.exit_intent_button = campaign.exit_intent_button || null;
   payload.show_viewer_count_policy = campaign.show_viewer_count_policy || null;
   payload.viewer_count_floor = campaign.viewer_count_floor || null;
   payload.last_call_surge_minutes = campaign.last_call_surge_minutes || 0;

@@ -529,6 +529,15 @@ function BriefStep({
       ? String(campaign.exit_intent_discount_ngn)
       : "",
   );
+  const [exitTitle, setExitTitle] = useState<string>(
+    campaign.exit_intent_title || "",
+  );
+  const [exitBody, setExitBody] = useState<string>(
+    campaign.exit_intent_body || "",
+  );
+  const [exitButton, setExitButton] = useState<string>(
+    campaign.exit_intent_button || "",
+  );
   const [multiCurrency, setMultiCurrency] = useState(
     campaign.allow_multi_currency_display,
   );
@@ -596,6 +605,9 @@ function BriefStep({
       (campaign.exit_intent_discount_ngn
         ? String(campaign.exit_intent_discount_ngn)
         : "") ||
+    exitTitle !== (campaign.exit_intent_title || "") ||
+    exitBody !== (campaign.exit_intent_body || "") ||
+    exitButton !== (campaign.exit_intent_button || "") ||
     multiCurrency !== campaign.allow_multi_currency_display ||
     allowedGateways.slice().sort().join(",") !==
       initialGateways.slice().sort().join(",") ||
@@ -638,6 +650,9 @@ function BriefStep({
         exit_intent_code: exitEnabled ? exitCode || null : null,
         exit_intent_discount_ngn:
           exitEnabled && exitDiscount ? Number(exitDiscount) : null,
+        exit_intent_title: exitEnabled ? exitTitle || null : null,
+        exit_intent_body: exitEnabled ? exitBody || null : null,
+        exit_intent_button: exitEnabled ? exitButton || null : null,
         allow_multi_currency_display: multiCurrency,
         allowed_payment_gateways: allowedGateways,
         abandonment_recovery_enabled: abandonment,
@@ -982,6 +997,43 @@ function BriefStep({
                   allowDecimal={false}
                   suffix="NGN"
                   disabled={!canEdit}
+                />
+              </Field>
+              <Field
+                label="Modal title"
+                hint="Headline shown on the exit popup"
+              >
+                <input
+                  value={exitTitle}
+                  onChange={(e) => setExitTitle(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="Wait — a small gift before you go."
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+                />
+              </Field>
+              <Field
+                label="Modal body"
+                hint="Paragraph text below the title"
+              >
+                <textarea
+                  value={exitBody}
+                  onChange={(e) => setExitBody(e.target.value)}
+                  disabled={!canEdit}
+                  rows={2}
+                  placeholder="Use this code at checkout for ₦10,000 off — only good this session."
+                  className="w-full px-[13px] py-[10px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+                />
+              </Field>
+              <Field
+                label="Button label"
+                hint="Text on the CTA button"
+              >
+                <input
+                  value={exitButton}
+                  onChange={(e) => setExitButton(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="Copy code & keep shopping"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
                 />
               </Field>
             </>

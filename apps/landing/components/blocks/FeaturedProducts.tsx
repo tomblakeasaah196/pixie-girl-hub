@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { Clock, ShoppingBag, Search, X } from "lucide-react";
+import { Clock, Quote, ShoppingBag, Search, X } from "lucide-react";
 import type { LandingPayload, LandingProduct } from "@/lib/types";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
@@ -88,6 +88,24 @@ export function FeaturedProducts({
     [products, searchTerm],
   );
 
+  // Pull founder quotes from the founder_quote block for interleaving.
+  const quotes = useMemo(() => {
+    const qb = (payload.blocks || []).find((b) => b.key === "founder_quote");
+    const qp = (qb?.props as Record<string, unknown>) || {};
+    if (Array.isArray(qp.quotes)) {
+      return qp.quotes as { quote: string; author: string }[];
+    }
+    if (typeof qp.quote === "string") {
+      return [
+        {
+          quote: qp.quote,
+          author: (qp.author as string) || "The Founder",
+        },
+      ];
+    }
+    return [];
+  }, [payload.blocks]);
+
   if (!products.length) return null;
 
   // Read section header copy from block props (set via Landing Studio).
@@ -98,6 +116,37 @@ export function FeaturedProducts({
   const sectionSubtitle =
     (bp.intro as string) ||
     "For the woman who wants one perfect piece, not the whole set.";
+
+  // Build interleaved rows: 8 products, then a quote, repeat.
+  // Skip interleaving when the visitor is actively searching.
+  const PRODUCTS_PER_CHUNK = 8;
+  const shouldInterleave = quotes.length > 0 && !searchTerm.trim();
+  const chunks: Array<
+    | { type: "products"; items: typeof filtered; startIndex: number }
+    | { type: "quote"; quote: string; author: string; index: number }
+  > = [];
+  if (shouldInterleave) {
+    let quoteIdx = 0;
+    for (let i = 0; i < filtered.length; i += PRODUCTS_PER_CHUNK) {
+      chunks.push({
+        type: "products",
+        items: filtered.slice(i, i + PRODUCTS_PER_CHUNK),
+        startIndex: i,
+      });
+      if (i + PRODUCTS_PER_CHUNK < filtered.length) {
+        const q = quotes[quoteIdx % quotes.length];
+        chunks.push({
+          type: "quote",
+          quote: q.quote,
+          author: q.author,
+          index: quoteIdx,
+        });
+        quoteIdx++;
+      }
+    }
+  } else {
+    chunks.push({ type: "products", items: filtered, startIndex: 0 });
+  }
 
   return (
     <section data-block="featured_products" className="section">
@@ -157,23 +206,50 @@ export function FeaturedProducts({
           )}
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filtered.map((p, i) => (
-            <Card
-              key={p.product_id || p.styled_id || i}
-              product={p}
-              index={i}
-              live={state === "live"}
-              liveStock={liveStock}
-              deliveryWeeks={payload.delivery_weeks}
-              preorderExtraWeeks={payload.preorder_extra_weeks}
-              positionLadder={payload.position_ladder ?? null}
-              discountType={payload.discount_type ?? null}
-              discountValue={payload.discount_value ?? null}
-              onOpen={(id) => setOpenId(id)}
-            />
-          ))}
-        </div>
+        {chunks.map((chunk, ci) => {
+          if (chunk.type === "quote") {
+            return (
+              <motion.div
+                key={`quote-${chunk.index}`}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.6 }}
+                className="my-10 mx-auto max-w-[760px] glass rounded-[var(--radius)] p-8 md:p-10 text-center relative"
+              >
+                <Quote className="absolute top-5 left-6 w-7 h-7 text-[rgb(var(--accent-glow)/0.6)]" />
+                <p className="font-display text-[clamp(20px,2.8vw,28px)] leading-[1.35]">
+                  &ldquo;{chunk.quote}&rdquo;
+                </p>
+                <div className="mt-5 text-[11px] tracking-[0.25em] uppercase text-[rgb(var(--text-muted))]">
+                  — {chunk.author}
+                </div>
+              </motion.div>
+            );
+          }
+          return (
+            <div
+              key={`grid-${ci}`}
+              className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+            >
+              {chunk.items.map((p, i) => (
+                <Card
+                  key={p.product_id || p.styled_id || chunk.startIndex + i}
+                  product={p}
+                  index={chunk.startIndex + i}
+                  live={state === "live"}
+                  liveStock={liveStock}
+                  deliveryWeeks={payload.delivery_weeks}
+                  preorderExtraWeeks={payload.preorder_extra_weeks}
+                  positionLadder={payload.position_ladder ?? null}
+                  discountType={payload.discount_type ?? null}
+                  discountValue={payload.discount_value ?? null}
+                  onOpen={(id) => setOpenId(id)}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
       <ProductDetailModal
         slug={payload.slug}
@@ -379,7 +455,7 @@ function Card({
               });
               openCart();
             }}
-            className="mt-3 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] text-[12px] font-semibold cta-sheen"
+            className="mt-3 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-[rgb(var(--checkout-bg,var(--accent-deep)))] text-[rgb(var(--text))] text-[12px] font-semibold cta-sheen"
           >
             <ShoppingBag className="w-3.5 h-3.5" />{" "}
             {isPreorder ? "Pre-order" : "Add"}

@@ -79,6 +79,8 @@ export function BrandThemeProvider({
       "--brand-accent": hexToTriplet(t.accent),
       "--brand-muted": hexToTriplet(t.muted),
       "--brand-glow": hexToTriplet(t.glow),
+      "--cart-bg": hexToTriplet(t.cartBg || t.primaryDeep),
+      "--checkout-bg": hexToTriplet(t.checkoutBg || t.primaryDeep),
       "--font-atelier-display": fontStack(typ?.display, "serif"),
       "--font-atelier-body": fontStack(typ?.body, "sans"),
     } as React.CSSProperties;

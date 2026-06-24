@@ -81,11 +81,11 @@ export function ExitIntent({ payload }: { payload: LandingPayload }) {
               <Gift className="w-6 h-6" />
             </span>
             <h3 className="font-display text-[26px] leading-tight">
-              Wait — a small gift before you go.
+              {payload.exit_intent_title || "Wait — a small gift before you go."}
             </h3>
             <p className="mt-2 text-[rgb(var(--text-muted))]">
-              Use this code at checkout for {money(amount)} off — only good this
-              session.
+              {payload.exit_intent_body ||
+                `Use this code at checkout for ${money(amount)} off — only good this session.`}
             </p>
             <div className="mt-5 inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] font-mono text-[rgb(var(--accent-glow))] font-bold tracking-[0.18em]">
               {code}
@@ -96,9 +96,9 @@ export function ExitIntent({ payload }: { payload: LandingPayload }) {
                 navigator.clipboard.writeText(code).catch(() => {});
                 setOpen(false);
               }}
-              className="mt-6 inline-flex items-center justify-center h-11 px-5 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen"
+              className="mt-6 inline-flex items-center justify-center h-11 px-5 rounded-xl bg-[rgb(var(--checkout-bg,var(--accent-deep)))] text-[rgb(var(--text))] font-semibold cta-sheen"
             >
-              Copy code &amp; keep shopping
+              {payload.exit_intent_button || "Copy code & keep shopping"}
             </button>
           </motion.div>
         </motion.div>

@@ -15,6 +15,7 @@
 "use strict";
 
 const salesRepo = require("./sales.repo");
+const campaignsRepo = require("../sales_campaigns/campaigns.repo");
 const gateways = require("../business_setup/payment-gateways.service");
 const paystack = require("../../services/paystack.service");
 const opay = require("../../services/opay.service");
@@ -54,6 +55,27 @@ async function contactEmail(contact_id) {
 
 const toKobo = (amountStr) => Number(money(amountStr).times(100).toFixed(0));
 
+/**
+ * The campaign's static NGN→foreign rate (ngn_per_usd_rate) for a foreign-
+ * currency checkout. This is the SAME rate the landing page used to display the
+ * buyer's price, so the gateway charges exactly what they saw. Returns null when
+ * the order isn't tied to a campaign or the campaign has no rate set — the
+ * caller then refuses to settle in a foreign currency rather than guess.
+ */
+async function campaignFxRate({ brand, order }) {
+  if (!order || !order.sales_campaign_id) return null;
+  try {
+    const campaign = await campaignsRepo.findById({
+      brand,
+      id: order.sales_campaign_id,
+    });
+    const rate = campaign && campaign.ngn_per_usd_rate;
+    return rate ? Number(rate) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function initOnGateway({
   provider,
   credentials,
@@ -61,6 +83,7 @@ async function initOnGateway({
   order,
   amount_ngn,
   currency,
+  charge_amount,
   email,
   return_url_base,
 }) {
@@ -84,9 +107,15 @@ async function initOnGateway({
     return { provider, reference, checkout_url: url };
   }
   if (provider === "nomba") {
-    // Nomba takes NGN major units (not kobo) and returns a checkout link.
+    // Nomba settles NGN and USD on the SAME account (owner confirmed) — we just
+    // hand it the amount + currency. `charge_amount` is in the settlement
+    // currency's major units (Naira total for NGN; whole dollars for USD,
+    // already converted from the campaign rate by createPaymentLink). NGN takes
+    // major units (not kobo).
     const data = await nomba.initializePayment({
       reference,
+      amount: charge_amount,
+      currency,
       amount_ngn,
       email,
       callback_url,
@@ -163,6 +192,24 @@ async function createPaymentLink({
     throw new AppError("NOTHING_DUE", "Order has no outstanding balance", 409);
   const amountStr = toCurrencyString(amt);
 
+  // Settlement currency + the amount actually charged at the gateway.
+  // NGN: charge the Naira figure as-is. USD: convert the NGN outstanding with
+  // the CAMPAIGN's static rate (ngn_per_usd_rate) and ceil to a whole dollar —
+  // the exact figure the landing page showed the buyer (owner: 10.29 → $11).
+  // We never hardcode a rate; whatever the campaign carries is what we charge.
+  const settleCurrency = String(currency || "NGN").toUpperCase();
+  let chargeAmount = amountStr;
+  if (settleCurrency !== "NGN") {
+    const rate = await campaignFxRate({ brand, order });
+    if (!rate || rate <= 0)
+      throw new AppError(
+        "NO_FX_RATE",
+        `No exchange rate is configured for ${settleCurrency} settlement on this order`,
+        422,
+      );
+    chargeAmount = amt.dividedBy(money(rate)).ceil().toString();
+  }
+
   const email = await contactEmail(order.contact_id);
   const chain = await gateways.getActiveChain({ brand, currency });
   if (!chain.length)
@@ -189,7 +236,8 @@ async function createPaymentLink({
         brand,
         order,
         amount_ngn: amountStr,
-        currency,
+        currency: settleCurrency,
+        charge_amount: chargeAmount,
         email,
         return_url_base,
       });

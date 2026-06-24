@@ -81,16 +81,33 @@ async function authed(method, url, body, creds) {
 }
 
 /**
- * Create an online checkout order. `amount_ngn` in NGN major units (Nomba uses
- * decimal NGN, not kobo). Returns Nomba's response (checkoutLink in data).
+ * Create an online checkout order.
+ *
+ * Nomba settles BOTH currencies on the SAME account/key (owner confirmed June
+ * 2026) — there is no USD sub-account and no separate credential. We simply
+ * parse the currency and the amount through:
+ *   - `currency`: "NGN" | "USD" (defaults to NGN). No longer hardcoded.
+ *   - `amount`:   the charge in that currency's MAJOR units (Nomba uses decimal
+ *                 major units, not kobo/cents). For NGN this is the Naira total;
+ *                 for USD it is the whole-dollar figure the campaign's rate
+ *                 produced — whatever the campaign sends, Nomba receives.
+ *
+ * `amount_ngn` is accepted as a back-compat alias when a caller only has the
+ * Naira figure and is settling in NGN. Returns Nomba's response (checkoutLink
+ * in data).
  */
 async function initializePayment({
   reference,
+  amount,
+  currency,
   amount_ngn,
   email,
   callback_url,
   creds,
 }) {
+  const chargeCurrency = String(currency || "NGN").toUpperCase();
+  const chargeAmount =
+    amount !== undefined && amount !== null ? amount : amount_ngn;
   return authed(
     "post",
     "/v1/checkout/order",
@@ -99,8 +116,8 @@ async function initializePayment({
         orderReference: reference,
         callbackUrl: callback_url,
         customerEmail: email,
-        amount: Number(amount_ngn),
-        currency: "NGN",
+        amount: Number(chargeAmount),
+        currency: chargeCurrency,
       },
     },
     creds,

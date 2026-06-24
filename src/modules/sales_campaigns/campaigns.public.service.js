@@ -723,16 +723,14 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
             .plus(money(sv.colour_premium || 0))
             .plus(money(sv.size_premium || 0))
             .plus(money(sv.lace_premium || 0));
-    const floor = await resolveVariantFloor({
-      brand,
-      baseVariantId: sv.base_variant_id,
-      baseProductId: sv.sv_base_product_id || sv.sp_base_product_id,
-    });
+    // Campaign deals are floor-free (owner decision, CONFORMANCE_GAPS G-1): the
+    // quote must not clamp at the variant min_price, so the figure the buyer sees
+    // matches the floor-free charge. floor_ngn is therefore always null here.
     return {
       kind: item.unstyled ? "raw" : "styled",
       unit_price_ngn: toCurrencyString(unitPrice),
       wig_units: 1,
-      floor_ngn: floor,
+      floor_ngn: null,
       name: sv.styled_name,
     };
   }
@@ -751,35 +749,12 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
       kind: item.unstyled ? "raw" : "styled",
       unit_price_ngn: toCurrencyString(money(rows[0].price_storefront_ngn || 0)),
       wig_units: 1,
-      floor_ngn: rows[0].min_price_ngn ?? null,
+      // Floor-free (owner decision, CONFORMANCE_GAPS G-1) — see styled branch.
+      floor_ngn: null,
       name: null,
     };
   }
   return null;
-}
-
-// Best-effort per-line margin floor for the quote (the variant min_price the
-// checkout clamp also uses). Returns null when none is configured.
-async function resolveVariantFloor({ brand, baseVariantId, baseProductId }) {
-  let variantId = baseVariantId;
-  if (!variantId && baseProductId) {
-    const { rows } = await query(
-      `SELECT variant_id FROM ${brand}.product_variants
-        WHERE product_id = $1 AND is_active = true
-        ORDER BY is_default DESC, display_order ASC, created_at ASC
-        LIMIT 1`,
-      [baseProductId],
-    );
-    variantId = rows[0] ? rows[0].variant_id : null;
-  }
-  if (!variantId) return null;
-  const { rows } = await query(
-    `SELECT min_price_ngn FROM ${brand}.product_variants WHERE variant_id = $1`,
-    [variantId],
-  );
-  return rows[0] && rows[0].min_price_ngn !== null
-    ? rows[0].min_price_ngn
-    : null;
 }
 
 async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {

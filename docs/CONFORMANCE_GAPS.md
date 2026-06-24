@@ -111,47 +111,47 @@ Remaining follow-ups are operational only: the social-platform UGC connector
 
 ## Part 4 — Known pricing inconsistencies (post-launch, deferred)
 
-### G-1 — Bundle campaign price is floor-clamped at checkout but NOT in the cart quote
+### G-1 — Sales-campaign discounts intentionally ignore the §6.25 margin floor
 
-**Severity:** medium · **Scope:** fixed-price bundles only · **Status:** open
-(deferred 2026-06-24 — does not affect the current live campaign, which uses
-styled items + the position-ladder "Multi-wig discount").
+**Severity:** low (was: bundle-quote vs charge mismatch) · **Status:** RESOLVED
+BY DECISION 2026-06-24.
 
-**Symptom.** For a bundle that has a fixed `campaign_bundle_price_ngn`, the
-cart drawer / checkout-form total (the server `/quote`) can show a *lower*
-total than the order actually charges. The buyer is then charged **more** than
-the figure on the "Pay" button.
+**Original symptom.** The cart drawer / checkout-form total (the server
+`/quote`) and the amount `createOrder` charged could disagree, because the two
+paths applied the margin floor differently:
 
-**Root cause.** The two paths represent the bundle campaign price differently:
+- **Quote** (`campaigns.public.service.js` → `priceQuoteLine`): bundle lines
+  carried `floor_ngn: null` (campaign price baked in, unclamped), while styled /
+  product lines fed a real `floor_ngn` into `computeDeals`, which clamped.
+- **Charge** (`checkout` → `salesService.createOrder`): the campaign deal
+  discount was routed through `applyOrderDiscount`, which clamps every
+  order-level discount at each base variant's `min_price_ngn`.
 
-- **Quote** (`campaigns.public.service.js` → `priceQuoteLine`, ~line 691):
-  the bundle line's `unit_price_ngn` IS the campaign price and carries
-  `floor_ngn: null` — the saving is baked into the unit price and is **never**
-  margin-floor clamped.
-- **Checkout** (`checkout` → `resolveBundleForCheckout`, ~line 604/941/1126):
-  the bundle is priced at **sum-of-parts** and the campaign-price saving is
-  added as an order-level `campaign_deal_discount_ngn`, which
-  `salesService.createOrder` then **clamps** against each base variant's
-  `min_price_ngn` (`sales.service.js` `applyOrderDiscount`).
+So a styled bundle (or any line) with a high base-variant floor could be charged
+**more** than the floor-free figure the buyer saw on the "Pay" button.
 
-If a styled bundle's base-variant floors are high relative to its campaign
-price, `createOrder` clamps the discount down and the order total exceeds the
-quote. The same asymmetry affects the deal **ladder**: `checkout` hands
-`deal.gross_discount_ngn` (pre-clamp) to `createOrder`, which re-clamps against
-order-line floors that the quote did not use for bundle lines.
+**Decision (owner, 2026-06-24).** Do **not** consider the margin floor anywhere
+in the sales-campaign discount path. The buyer is always charged exactly the
+quoted figure; a campaign may sell below the variant `min_price_ngn`. The rest
+of the system is untouched — coupons, loyalty points, F-2 bundles and the
+per-unit sale-price clamp all remain floor-respecting.
 
-**Fix direction (when picked up).** Make the `/quote` path apply the *same*
-margin-floor clamp `createOrder` uses (resolve each bundle line's base-variant
-`min_price_ngn` and clamp there), so drawer = form = charge in all cases. Add a
-test that drives `quoteCart` and `createOrder` on the same fixed-price-bundle
-cart and asserts the final totals are equal — no test currently pins that
+**What changed.**
+
+- `sales.service.js` (§3.8 campaign deal ladder): `campaign_deal_discount_ngn`
+  is now allocated against each line's **full remaining value** (down to ₦0),
+  not the floor-limited headroom used by coupons/points/bundles.
+- `campaigns.public.service.js` `priceQuoteLine`: styled / product lines now
+  return `floor_ngn: null` (bundle lines already did), so `computeDeals` no
+  longer clamps the quote. `resolveVariantFloor` was removed (no longer used).
+- `computeDeals` itself is unchanged — it still clamps when a caller passes a
+  `floor_ngn`; the campaign path simply stops passing one.
+
+**Follow-up (optional, low priority).** Add a regression test that drives
+`quoteCart` and `createOrder` on the same campaign cart (incl. a fixed-price
+bundle) and asserts the final totals are equal — no test currently pins that
 agreement (`campaigns.bundle-pricing.test.js` checks the pure math only;
 `checkout-styled-bundle.test.js` never compares order total to the quote).
-
-**Verified safe meanwhile:** non-bundle campaigns (styled/raw wigs + position
-ladder, quantity tier, reseller/bulk) clamp against the *same* base-variant
-floors in both paths, so the displayed total already equals the charge — which
-is why the current live sale is unaffected.
 
 ---
 

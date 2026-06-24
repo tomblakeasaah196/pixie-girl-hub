@@ -150,6 +150,8 @@ async function listBundleItems({ client, brand, bundle_id }) {
             p.name                    AS product_name,
             sp.name                   AS styled_name,
             sp.slug                   AS styled_slug,
+            sp.base_variant_id        AS styled_base_variant_id,
+            sp.base_product_id        AS styled_base_product_id,
             pv.sku                    AS variant_sku,
             COALESCE(
               sp.retail_price_ngn,
@@ -237,6 +239,7 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
   const { rows } = await ex(client)(
     `SELECT scb.*,
             pb.slug AS bundle_slug, pb.name AS bundle_name,
+            pb.description AS bundle_description,
             pb.hero_image_url AS bundle_hero_image_url,
             pb.default_per_item_discount_ngn,
             pb.default_preorder_loss_pct
@@ -247,6 +250,20 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
     [campaign_id],
   );
   return rows;
+}
+
+// Fetch a single campaign↔bundle link (incl. campaign_bundle_price_ngn) so the
+// public checkout/quote can price a bundle at the operator-set campaign price
+// rather than re-deriving it from components. Returns null when the bundle isn't
+// attached to the campaign.
+async function getCampaignBundle({ client, brand, campaign_id, bundle_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "sales_campaign_bundles")}
+      WHERE campaign_id = $1 AND bundle_id = $2
+      LIMIT 1`,
+    [campaign_id, bundle_id],
+  );
+  return rows[0] || null;
 }
 
 async function attachCampaignBundle({ client, brand, campaign_id, input }) {
@@ -506,6 +523,7 @@ module.exports = {
   reorderBundleItems,
   // campaign attachment
   listCampaignBundles,
+  getCampaignBundle,
   attachCampaignBundle,
   detachCampaignBundle,
   // tiers

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -28,6 +28,7 @@ import {
 } from "@/lib/catalogue";
 import { useAddStyledToCampaign, type Campaign } from "@/lib/campaigns";
 import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
+import { useToastStore } from "@/components/notifications/NotificationToast";
 import { AvailabilityPill, StyledStatusBadge } from "./parts";
 import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
@@ -191,6 +192,7 @@ function StyledEditor({
   onBack: () => void;
 }) {
   const update = useUpdateStyled(s.styled_id);
+  const toast = useToastStore();
   const publish = usePublishStyled();
   const unpublish = useUnpublishStyled();
   const remove = useRemoveStyled();
@@ -215,7 +217,16 @@ function StyledEditor({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingBase, setEditingBase] = useState(false);
 
+  // Seed the editable fields from the server row ONCE per styled product — not
+  // on every refetch. Adding a colour/size in the manager below (and any other
+  // background refetch) invalidates this product's detail query; without this
+  // guard the re-seed would silently revert an in-progress description/price
+  // edit, and the next Save would then persist the stale text. That is the
+  // reported "I edit the descriptions, save, and they don't appear".
+  const seededFor = useRef<string | null>(null);
   useEffect(() => {
+    if (seededFor.current === s.styled_id) return;
+    seededFor.current = s.styled_id;
     setName(s.name);
     setShortDesc(s.short_description ?? "");
     setLongDesc(s.long_description ?? "");
@@ -241,8 +252,12 @@ function StyledEditor({
     compareAtUsd !==
       (s.compare_at_price_usd != null ? String(s.compare_at_price_usd) : "");
 
-  const save = () =>
-    update.mutate({
+  const save = () => {
+    // Persist exactly the trimmed values we send. On success, snap the local
+    // fields to that same payload so the form immediately reads "clean" (Save
+    // disables) — visible confirmation the edit took. Storefront reads are live
+    // (no publish snapshot/cache), so a saved change ships at once.
+    const payload = {
       name: name.trim(),
       short_description: shortDesc.trim() || null,
       long_description: longDesc.trim() || null,
@@ -250,7 +265,69 @@ function StyledEditor({
       retail_price_usd: retailUsd ? Number(retailUsd) : null,
       compare_at_price_ngn: compareAt ? Number(compareAt) : null,
       compare_at_price_usd: compareAtUsd ? Number(compareAtUsd) : null,
+    };
+    update.mutate(payload, {
+      onSuccess: () => {
+        setName(payload.name);
+        setShortDesc(payload.short_description ?? "");
+        setLongDesc(payload.long_description ?? "");
+        setRetail(
+          payload.retail_price_ngn != null
+            ? String(payload.retail_price_ngn)
+            : "",
+        );
+        setRetailUsd(
+          payload.retail_price_usd != null
+            ? String(payload.retail_price_usd)
+            : "",
+        );
+        setCompareAt(
+          payload.compare_at_price_ngn != null
+            ? String(payload.compare_at_price_ngn)
+            : "",
+        );
+        setCompareAtUsd(
+          payload.compare_at_price_usd != null
+            ? String(payload.compare_at_price_usd)
+            : "",
+        );
+        toast.add({
+          notification_id: crypto.randomUUID(),
+          user_id: "",
+          business: null,
+          type: "catalogue_save_complete",
+          priority: "low",
+          title: "Changes saved",
+          body: `“${payload.name}” has been updated.`,
+          reference_type: null,
+          reference_id: null,
+          action_url: null,
+          is_read: false,
+          read_at: null,
+          created_at: new Date().toISOString(),
+        });
+      },
+      onError: (err) =>
+        toast.add({
+          notification_id: crypto.randomUUID(),
+          user_id: "",
+          business: null,
+          type: "catalogue",
+          priority: "high",
+          title: "Could not save",
+          body:
+            err instanceof Error
+              ? err.message
+              : "Something went wrong saving your changes.",
+          reference_type: null,
+          reference_id: null,
+          action_url: null,
+          is_read: false,
+          read_at: null,
+          created_at: new Date().toISOString(),
+        }),
     });
+  };
 
   const handleAddToCampaign = (campaign: Campaign) => {
     addToCampaign.mutate(

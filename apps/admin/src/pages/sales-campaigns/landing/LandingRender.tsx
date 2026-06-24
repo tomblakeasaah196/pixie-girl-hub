@@ -463,11 +463,17 @@ function BlockSection({
     case "countdown":
       return null; // already rendered in the header
 
-    case "bundle_showcase":
+    case "bundle_showcase": {
+      const defaultBundles = [
+        { name: "The Signature Set 1", description: "A fixed, curated composition — styled to wear together.", price_ngn: "180000", regular_price_ngn: "240000", image_url: "" },
+        { name: "The Signature Set 2", description: "A fixed, curated composition — styled to wear together.", price_ngn: "160000", regular_price_ngn: "220000", image_url: "" },
+        { name: "The Signature Set 3", description: "A fixed, curated composition — styled to wear together.", price_ngn: "140000", regular_price_ngn: "200000", image_url: "" },
+      ];
+      const bundles = (Array.isArray(block.props?.bundles) ? block.props!.bundles : defaultBundles) as Array<{ name: string; description: string; price_ngn: string; regular_price_ngn: string; image_url: string }>;
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {[0, 1, 2].map((n) => (
+            {bundles.map((bundle, n) => (
               <article
                 key={n}
                 className="group rounded-[20px] overflow-hidden border border-line/70 bg-panel/40 hover:-translate-y-1 transition-transform"
@@ -475,23 +481,24 @@ function BlockSection({
                 <div
                   className="h-56"
                   style={{
-                    background: placeholderBg(`bundle-${model.slug}-${n}`),
+                    backgroundImage: bundle.image_url ? `url("${bundle.image_url}")` : undefined,
+                    background: bundle.image_url ? undefined : placeholderBg(`bundle-${model.slug}-${n}`),
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
                   }}
                 />
                 <div className="p-5">
-                  <div className="font-display text-[20px]">
-                    The Signature Set {n + 1}
-                  </div>
-                  <p className="text-text-muted text-[13px] mt-1.5">
-                    A fixed, curated composition — styled to wear together.
-                  </p>
+                  <div className="font-display text-[20px]">{bundle.name}</div>
+                  <p className="text-text-muted text-[13px] mt-1.5">{bundle.description}</p>
                   <div className="mt-4 flex items-baseline gap-2">
                     <span className="font-mono text-[20px] text-accent-glow">
-                      {priceLabel(180000 - n * 20000)}
+                      {priceLabel(Number(bundle.price_ngn))}
                     </span>
-                    <span className="text-text-faint text-[13px] line-through">
-                      {priceLabel(240000 - n * 20000)}
-                    </span>
+                    {bundle.regular_price_ngn && (
+                      <span className="text-text-faint text-[13px] line-through">
+                        {priceLabel(Number(bundle.regular_price_ngn))}
+                      </span>
+                    )}
                   </div>
                 </div>
               </article>
@@ -499,34 +506,34 @@ function BlockSection({
           </div>
         </Section>
       );
+    }
 
-    case "quantity_tier_visualiser":
+    case "quantity_tier_visualiser": {
+      const defaultTiers = [{ qty: 2, save_ngn: "15000" }, { qty: 3, save_ngn: "30000" }, { qty: 4, save_ngn: "55000" }];
+      const tiers = (Array.isArray(block.props?.tiers) ? block.props!.tiers : defaultTiers) as Array<{ qty: number; save_ngn: string }>;
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { q: 2, s: 15000 },
-              { q: 3, s: 30000 },
-              { q: 4, s: 55000 },
-            ].map((t) => (
+            {tiers.map((t, i) => (
               <div
-                key={t.q}
+                key={i}
                 className="rounded-[18px] border border-accent/30 bg-accent/[0.06] p-6 text-center"
               >
                 <div className="font-display text-[40px] leading-none">
-                  {t.q}+
+                  {t.qty}+
                 </div>
                 <div className="text-text-muted text-[13px] mt-2">
                   bundles in one order
                 </div>
                 <div className="mt-4 font-mono text-accent-glow text-[18px]">
-                  save {priceLabel(t.s)}
+                  save {priceLabel(Number(t.save_ngn))}
                 </div>
               </div>
             ))}
           </div>
         </Section>
       );
+    }
 
     case "featured_products":
       return (
@@ -696,20 +703,26 @@ function BlockSection({
         </Section>
       );
 
-    case "brand_story":
+    case "brand_story": {
+      const storyImageUrl = typeof block.props?.image_url === "string" ? block.props.image_url : null;
+      const storyTitle = typeof block.props?.title === "string" ? block.props.title : "A house that gets it.";
       return (
         <Section>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
             <div
               className="aspect-[4/5] rounded-[22px]"
-              style={{ background: placeholderBg(`story-${model.slug}`) }}
+              style={
+                storyImageUrl
+                  ? { backgroundImage: `url("${storyImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" }
+                  : { background: placeholderBg(`story-${model.slug}`) }
+              }
             />
             <div>
               <div className="text-[11px] tracking-[0.3em] uppercase text-accent-glow/90 font-semibold mb-3">
                 {meta?.eyebrow}
               </div>
               <h2 className="font-display text-[30px] md:text-[40px] leading-[1.05]">
-                {meta?.title}
+                {storyTitle}
               </h2>
               <p className="text-text-muted mt-5 leading-relaxed">
                 {blockBody(block) ||
@@ -719,104 +732,106 @@ function BlockSection({
           </div>
         </Section>
       );
+    }
 
-    case "founder_quote":
+    case "founder_quote": {
+      const attribution = typeof block.props?.author === "string" ? block.props.author : (typeof block.props?.attribution === "string" ? block.props.attribution : "The Founder");
+      const quoteText = typeof block.props?.quote === "string" ? block.props.quote : blockBody(block);
       return (
         <Section className="text-center">
           <blockquote className="font-display italic text-[26px] md:text-[40px] leading-[1.25] max-w-[860px] mx-auto">
-            “
-            {blockBody(block) ||
-              "We don't do ordinary. We do the piece she remembers."}
-            ”
+            &ldquo;
+            {quoteText || "We don't do ordinary. We do the piece she remembers."}
+            &rdquo;
           </blockquote>
           <div className="mt-6 text-[12px] tracking-[0.25em] uppercase text-text-muted">
-            — The Founder
+            &mdash; {attribution}
           </div>
         </Section>
       );
+    }
 
-    case "why_buy":
+    case "why_buy": {
+      const defaultItems = [
+        { title: "Real human hair, every strand", body: "Sourced and inspected by us — never substituted." },
+        { title: "Stylist-tested fit", body: "Cap construction tested on hundreds of head shapes." },
+        { title: "Wear-it-forever care", body: "Detailed care guide in every box; replace nothing." },
+      ];
+      const items = (Array.isArray(block.props?.items) ? block.props!.items : defaultItems) as Array<{ title: string; body: string }>;
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {[
-              [
-                "Ethically sourced",
-                "Full-density, raw hair — traceable to the bundle.",
-              ],
-              ["Made to last", "Wears, washes and styles like your own."],
-              ["Loved by thousands", "A community of women who don't settle."],
-            ].map(([t, d]) => (
-              <div key={t} className="rounded-[18px] border border-line/70 p-6">
-                <div className="font-display text-[20px]">{t}</div>
+            {items.map((item, i) => (
+              <div key={i} className="rounded-[18px] border border-line/70 p-6">
+                <div className="font-display text-[20px]">{item.title}</div>
                 <p className="text-text-muted text-[13.5px] mt-2 leading-relaxed">
-                  {d}
+                  {item.body}
                 </p>
               </div>
             ))}
           </div>
         </Section>
       );
+    }
 
-    case "testimonials":
+    case "testimonials": {
+      const testimonials = (Array.isArray(block.props?.items) ? block.props!.items : []) as Array<{ quote: string; name?: string; handle?: string }>;
+      if (!testimonials.length) return null;
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {[0, 1, 2].map((n) => (
+            {testimonials.map((item, n) => (
               <figure
                 key={n}
                 className="rounded-[18px] bg-panel/40 border border-line/70 p-6"
               >
                 <div className="text-accent-glow text-[15px] mb-3">★★★★★</div>
                 <blockquote className="text-[14px] leading-relaxed text-text-primary/90">
-                  “Easily the best I've ordered. The quality speaks before I
-                  do.”
+                  &ldquo;{item.quote}&rdquo;
                 </blockquote>
                 <figcaption className="mt-4 text-[12px] text-text-muted">
-                  — Verified customer
+                  &mdash; {item.name || "Verified customer"}{item.handle ? ` · @${item.handle}` : ""}
                 </figcaption>
               </figure>
             ))}
           </div>
         </Section>
       );
+    }
 
-    case "faq":
+    case "faq": {
+      const defaultFaq = [
+        { q: "How long does delivery take?", a: "Lagos: 1–2 days. Nationwide: 2–4 days via DHL." },
+        { q: "Can I return an item?", a: "Unworn pieces can be returned within 7 days of delivery." },
+        { q: "Are prices in this drop final?", a: "Yes — these are limited-time prices, only while the drop is live." },
+      ];
+      const faqItems = (Array.isArray(block.props?.items) ? block.props!.items : defaultFaq) as Array<{ q: string; a: string }>;
       return (
         <Section eyebrow={meta?.eyebrow} title={meta?.title}>
           <div className="max-w-[760px] mx-auto divide-y divide-line/60">
-            {[
-              [
-                "How long does delivery take?",
-                "Lagos: 1–2 days. Nationwide: 2–4 days via DHL.",
-              ],
-              [
-                "Can I return an item?",
-                "Unworn pieces can be returned within 7 days of delivery.",
-              ],
-              [
-                "Are prices in this drop final?",
-                "Yes — these are limited-time prices, only while the drop is live.",
-              ],
-            ].map(([q, a]) => (
-              <details key={q} className="group py-5">
+            {faqItems.map((item, i) => (
+              <details key={i} className="group py-5">
                 <summary className="flex items-center justify-between cursor-pointer list-none font-medium text-[15px]">
-                  {q}
+                  {item.q}
                   <span className="text-accent-glow text-[20px] transition-transform group-open:rotate-45">
                     +
                   </span>
                 </summary>
                 <p className="text-text-muted text-[13.5px] mt-3 leading-relaxed">
-                  {a}
+                  {item.a}
                 </p>
               </details>
             ))}
           </div>
         </Section>
       );
+    }
 
     case "newsletter_capture":
-    case "vip_signup":
+    case "vip_signup": {
+      const captureHeading = typeof block.props?.title === "string" ? block.props.title : meta?.title;
+      const captureDescription = typeof block.props?.description === "string" ? block.props.description : "First access to every drop, private prices and the occasional gift. No noise.";
+      const captureButton = typeof block.props?.button_label === "string" ? block.props.button_label : "Join the list";
       return (
         <Section className="text-center">
           <div className="max-w-[620px] mx-auto rounded-[24px] border border-accent/30 bg-accent/[0.05] p-8 md:p-12">
@@ -824,11 +839,10 @@ function BlockSection({
               {meta?.eyebrow}
             </div>
             <h2 className="font-display text-[28px] md:text-[36px]">
-              {meta?.title}
+              {captureHeading}
             </h2>
             <p className="text-text-muted mt-3 text-[14px]">
-              First access to every drop, private prices and the occasional
-              gift. No noise.
+              {captureDescription}
             </p>
             <form
               className="mt-6 flex flex-col sm:flex-row gap-3"
@@ -839,14 +853,35 @@ function BlockSection({
                 className="flex-1 h-[52px] px-5 rounded-full bg-bg/60 border border-line outline-none focus:border-accent/60 text-[14px]"
               />
               <button className="h-[52px] px-7 rounded-full bg-accent text-[#F4E9D9] font-semibold whitespace-nowrap">
-                Join the list
+                {captureButton}
               </button>
             </form>
           </div>
         </Section>
       );
+    }
 
-    case "shipping_returns":
+    case "shipping_returns": {
+      const defaultCards = [
+        { title: "DHL worldwide", subtitle: "Tracked, insured." },
+        { title: "Hand-inspected", subtitle: "Every unit, every time." },
+        { title: "48-hour grace", subtitle: "Reach us in two days; we'll work it out." },
+      ];
+      const srCards = (Array.isArray(block.props?.cards) ? block.props!.cards : defaultCards) as Array<{ title: string; subtitle: string }>;
+      return (
+        <Section eyebrow={meta?.eyebrow} title={meta?.title}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-[860px] mx-auto">
+            {srCards.map((card, i) => (
+              <div key={i} className="rounded-[16px] border border-line/70 bg-panel/40 p-5">
+                <div className="font-semibold text-[14px]">{card.title}</div>
+                <div className="text-text-muted text-[12.5px] mt-1">{card.subtitle}</div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      );
+    }
+
     case "wig_care":
     case "stylist_spotlight":
     case "stock_counter":

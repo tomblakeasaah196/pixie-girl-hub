@@ -219,6 +219,35 @@ export function ProductDetailModal({
     onClose();
   }
 
+  // "Order unstyled / raw": the same wig WITHOUT styling, priced at the anchor
+  // (no size/lace premiums). Flagged `unstyled` so the server prices it raw and
+  // counts it toward the reseller/bulk tier. Kept as its own cart line.
+  function handleAddUnstyled() {
+    if (!product || !selectedVariant?.variant_id) return;
+    const anchor = Number(
+      product.anchor_price_ngn ?? product.retail_price_ngn ?? 0,
+    );
+    if (!anchor) return;
+    add({
+      id: `raw:${selectedVariant.variant_id}`,
+      type: "styled",
+      styled_variant_id: selectedVariant.variant_id,
+      product_id: undefined,
+      unstyled: true,
+      name: `${product.name} — Unstyled`,
+      image_url: product.gallery[0]?.url,
+      unit_price_ngn: anchor,
+      retail_price_ngn: Number(product.retail_price_ngn || 0) || undefined,
+      quantity: 1,
+    });
+    openCart();
+    onClose();
+  }
+
+  const anchorOnly = Number(
+    product?.anchor_price_ngn ?? product?.retail_price_ngn ?? 0,
+  );
+
   return (
     <AnimatePresence>
       {open && (
@@ -263,40 +292,69 @@ export function ProductDetailModal({
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-[1.1fr_1fr] gap-5">
                     <div>
-                      <div
-                        className="relative w-full aspect-[4/5] rounded-[16px] overflow-hidden bg-black/20 border border-white/5"
-                        style={
-                          product.gallery[slide]?.url
-                            ? {
-                                backgroundImage: `url("${product.gallery[slide].url}")`,
-                                backgroundSize: "cover",
-                                backgroundPosition: "center",
-                              }
-                            : undefined
-                        }
-                      />
-                      {product.gallery.length > 1 && (
-                        <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
-                          {product.gallery.map((g, i) => (
-                            <button
-                              key={`${g.url}-${i}`}
-                              type="button"
-                              onClick={() => setSlide(i)}
-                              aria-label={`Image ${i + 1}`}
-                              className={
-                                "relative shrink-0 w-16 h-20 rounded-[10px] overflow-hidden border transition-colors " +
-                                (i === slide
-                                  ? "border-white"
-                                  : "border-white/15 hover:border-white/40")
-                              }
+                      <div className="relative w-full aspect-[4/5] rounded-[16px] overflow-hidden bg-black/20 border border-white/5">
+                        <AnimatePresence initial={false} mode="popLayout">
+                          {product.gallery[slide]?.url && (
+                            <motion.div
+                              key={`${product.gallery[slide].url}-${slide}`}
+                              initial={{ opacity: 0, scale: 1.03 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.98 }}
+                              transition={{
+                                duration: 0.35,
+                                ease: [0.22, 1, 0.36, 1],
+                              }}
+                              className="absolute inset-0"
                               style={{
-                                backgroundImage: `url("${g.url}")`,
+                                backgroundImage: `url("${product.gallery[slide].url}")`,
                                 backgroundSize: "cover",
                                 backgroundPosition: "center",
                               }}
                             />
-                          ))}
-                        </div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                      {product.gallery.length > 1 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.05, duration: 0.3 }}
+                          className="flex gap-2 mt-2 overflow-x-auto pb-1"
+                        >
+                          {product.gallery.map((g, i) => {
+                            const active = i === slide;
+                            return (
+                              <motion.button
+                                key={`${g.url}-${i}`}
+                                type="button"
+                                onClick={() => setSlide(i)}
+                                aria-label={`Image ${i + 1}`}
+                                aria-pressed={active}
+                                whileHover={{ y: -2 }}
+                                whileTap={{ scale: 0.96 }}
+                                animate={{
+                                  scale: active ? 1.06 : 1,
+                                  opacity: active ? 1 : 0.75,
+                                }}
+                                transition={{
+                                  duration: 0.25,
+                                  ease: [0.22, 1, 0.36, 1],
+                                }}
+                                className={
+                                  "relative shrink-0 w-16 h-20 rounded-[10px] overflow-hidden border " +
+                                  (active
+                                    ? "border-white shadow-[0_0_0_2px_rgba(255,255,255,0.15)]"
+                                    : "border-white/15 hover:border-white/40")
+                                }
+                                style={{
+                                  backgroundImage: `url("${g.url}")`,
+                                  backgroundSize: "cover",
+                                  backgroundPosition: "center",
+                                }}
+                              />
+                            );
+                          })}
+                        </motion.div>
                       )}
                     </div>
 
@@ -410,6 +468,16 @@ export function ProductDetailModal({
                         <ShoppingBag className="w-4 h-4" />
                         Add to bag
                       </button>
+                      {anchorOnly > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleAddUnstyled}
+                          disabled={!selectedVariant?.variant_id}
+                          className="w-full inline-flex items-center justify-center gap-1.5 h-10 rounded-xl border border-white/15 bg-white/[0.03] text-[rgb(var(--text))] text-[13px] font-medium hover:bg-white/[0.07] disabled:opacity-40"
+                        >
+                          Order unstyled · {money(anchorOnly)}
+                        </button>
+                      )}
                     </div>
                   </div>
 

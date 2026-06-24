@@ -152,6 +152,7 @@ export interface HrSettings {
   default_grace_minutes: number;
   default_expected_start_time: string | null;
   working_days: string[];
+  leave_escalation_days: number;
   earnings_tracker_enabled: boolean;
   geofence_enabled: boolean;
   geofence_required_on_site: boolean;
@@ -456,6 +457,23 @@ export const listPerfReviews = (params: Record<string, string> = {}) =>
   api.get<PerfReview[]>(`/hr/performance-reviews${qs(params)}`);
 export const advancePerfReview = (id: string, status: string) =>
   api.post<PerfReview>(`/hr/performance-reviews/${id}/advance`, { status });
+
+export interface KpiDef {
+  kpi_id: string;
+  kpi_key: string;
+  display_name: string;
+  weight_pct: number;
+  min_score: number;
+  max_score: number;
+}
+export const listKpiDefinitions = () =>
+  api.get<KpiDef[]>("/hr/kpi-definitions");
+export const scoreStaff = (
+  cycleId: string,
+  body: { user_id: string; scores: { kpi_id: string; raw_score: number; comments?: string }[] },
+) => api.post(`/hr/performance-cycles/${cycleId}/scores`, body);
+export const generatePerfReview = (cycleId: string, user_id: string) =>
+  api.post<PerfReview>(`/hr/performance-cycles/${cycleId}/reviews`, { user_id });
 
 function qs(params: Record<string, string>): string {
   const entries = Object.entries(params).filter(([, v]) => v != null && v !== "");

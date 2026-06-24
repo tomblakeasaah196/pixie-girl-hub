@@ -42,8 +42,11 @@ async function notifyRepOnSale({ brand, order_id }) {
 
 async function sendCustomerConfirmationEmail({ brand, order_id }) {
   try {
-    const emailService = require("../../services/email.service");
     const { query: dbQuery } = require("../../config/database");
+    const {
+      sendOrderConfirmationEmail,
+    } = require("../../services/order-confirmation-email");
+
     const order = await salesRepo.findById({ brand, id: order_id });
     if (!order || !order.contact_id) return;
 
@@ -54,45 +57,9 @@ async function sendCustomerConfirmationEmail({ brand, order_id }) {
     const contact = rows[0];
     if (!contact || !contact.email) return;
 
-    const { rows: brandRows } = await dbQuery(
-      `SELECT display_name, support_email FROM shared.business_config WHERE business_key = $1`,
-      [brand],
-    );
-    const brandInfo = brandRows[0] || {};
-    const brandName = brandInfo.display_name || brand;
-    const supportEmail = brandInfo.support_email || "";
-
-    const name = contact.first_name || contact.display_name || "there";
-    const lines = (order.lines || [])
-      .map(
-        (l) =>
-          `<tr><td style="padding:6px 12px;border-bottom:1px solid #eee">${l.product_name_snapshot || "Item"} ${l.variant_label_snapshot ? `(${l.variant_label_snapshot})` : ""}</td><td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:center">${l.quantity}</td><td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:right">₦${Number(l.unit_price_ngn).toLocaleString()}</td></tr>`,
-      )
-      .join("");
-
-    const html = `
-      <div style="max-width:560px;margin:0 auto;font-family:system-ui,sans-serif;color:#1a1a1a">
-        <h2 style="color:#690909">Thank you for your order, ${name}!</h2>
-        <p>Your order <strong>${order.order_number}</strong> has been confirmed and payment received.</p>
-        <table style="width:100%;border-collapse:collapse;margin:16px 0">
-          <thead><tr style="background:#f5f5f5"><th style="padding:8px 12px;text-align:left">Item</th><th style="padding:8px 12px;text-align:center">Qty</th><th style="padding:8px 12px;text-align:right">Price</th></tr></thead>
-          <tbody>${lines}</tbody>
-        </table>
-        <p style="font-size:18px;font-weight:600">Total: ₦${Number(order.total_ngn).toLocaleString()}</p>
-        <p style="color:#666;font-size:13px">We'll send you tracking information once your order ships. If you have any questions, reply to this email${supportEmail ? ` or reach us at ${supportEmail}` : ""}.</p>
-        <p style="margin-top:24px;color:#999;font-size:12px">— ${brandName}</p>
-      </div>`;
-
-    await emailService.send({
-      to: contact.email,
-      subject: `Order confirmed — ${order.order_number}`,
-      html,
-      brand,
-    });
-    logger.info(
-      { order_id, email: contact.email },
-      "customer confirmation email sent",
-    );
+    // Premium, fully-branded confirmation: logo, brand colours, itemised order,
+    // delivery ETA or pickup window (Settings-driven), signed "Sales, {brand}".
+    await sendOrderConfirmationEmail({ brand, order, contact });
   } catch (err) {
     logger.error(
       { err: err.message, brand, order_id },

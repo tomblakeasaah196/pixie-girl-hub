@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   Clock,
   CircleAlert,
-  Layers,
   Trash2,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -46,14 +45,14 @@ import {
   type DeliveryItem,
 } from "@/lib/logistics-api";
 import { searchContacts } from "@/pages/sales/api";
-import { ZonesManagerDrawer } from "./LogisticsZones";
+import { ShippingRatesTab } from "./ShippingRates";
 
 /**
  * Logistics (`/logistics`) — dispatch queue, tracking and proof of delivery.
  * Ports the hub-system UX onto this backend's delivery state machine.
  */
 
-type Tab = "queue" | "active" | "delivered" | "issues" | "all";
+type Tab = "queue" | "active" | "delivered" | "issues" | "all" | "rates";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "queue", label: "Queue" },
@@ -61,6 +60,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "delivered", label: "Delivered" },
   { key: "issues", label: "Issues" },
   { key: "all", label: "All" },
+  { key: "rates", label: "Shipping Rates" },
 ];
 
 export function LogisticsPage() {
@@ -69,7 +69,6 @@ export function LogisticsPage() {
   const [tab, setTab] = useState<Tab>("queue");
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
-  const [zonesOpen, setZonesOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const deliveriesQ = useDeliveries({ q: search || undefined });
@@ -85,7 +84,7 @@ export function LogisticsPage() {
   }, [all]);
 
   const rows = useMemo(() => {
-    if (tab === "all") return all;
+    if (tab === "all" || tab === "rates") return all;
     const set = new Set(TAB_STATUSES[tab]);
     return all.filter((d) => set.has(d.status));
   }, [all, tab]);
@@ -96,27 +95,26 @@ export function LogisticsPage() {
 
   return (
     <div className="max-w-[1180px] space-y-5">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center flex-1 min-w-[220px] max-w-md rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">
-          <Search className="w-4 h-4 text-text-faint" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search deliveries (number, recipient)…"
-            className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none"
-          />
+      {tab !== "rates" && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center flex-1 min-w-[220px] max-w-md rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">
+            <Search className="w-4 h-4 text-text-faint" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search deliveries (number, recipient)…"
+              className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            {can("logistics", "create") && (
+              <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>
+                New delivery
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" icon={<Layers className="w-4 h-4" />} onClick={() => setZonesOpen(true)}>
-            Zone management
-          </Button>
-          {can("logistics", "create") && (
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>
-              New delivery
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
       <nav className="flex items-center gap-1 border-b border-line overflow-x-auto">
         {TABS.map((t) => (
@@ -130,7 +128,7 @@ export function LogisticsPage() {
             }`}
           >
             {t.label}
-            {t.key !== "all" && counts[t.key] > 0 && (
+            {t.key !== "all" && t.key !== "rates" && counts[t.key] > 0 && (
               <span className="text-[10.5px] rounded-full bg-accent/[0.15] text-accent-glow px-1.5 py-px">
                 {counts[t.key]}
               </span>
@@ -139,7 +137,9 @@ export function LogisticsPage() {
         ))}
       </nav>
 
-      {deliveriesQ.isLoading ? (
+      {tab === "rates" ? (
+        <ShippingRatesTab />
+      ) : deliveriesQ.isLoading ? (
         <Card className="p-4 space-y-3">
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} style={{ height: 52 }} />)}
         </Card>
@@ -200,7 +200,6 @@ export function LogisticsPage() {
       )}
 
       {creating && <CreateDeliveryDrawer onClose={() => setCreating(false)} />}
-      {zonesOpen && <ZonesManagerDrawer onClose={() => setZonesOpen(false)} />}
       {detailId && (
         <DeliveryDetailDrawer id={detailId} onClose={() => setDetailId(null)} />
       )}

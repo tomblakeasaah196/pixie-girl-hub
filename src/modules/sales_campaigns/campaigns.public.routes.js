@@ -84,6 +84,17 @@ router.post(
   controller.signup,
 );
 
+// Live cart quote: the landing cart posts its current items on every change to
+// get the server-authoritative running total (position ladder + stacking bonus
+// + quantity tier + reseller/bulk, stacked and floor-clamped). Read-only, uses
+// the cheap landing limiter. Never trusts client-sent prices.
+router.post(
+  "/:slug/quote",
+  landingReadLimiter,
+  validator.validateQuote,
+  controller.quote,
+);
+
 // Checkout: the live sale "Pay now" flow. Uses its own roomier limiter so a
 // retrying buyer is never mistaken for a bot and 429'd mid-purchase.
 router.post(

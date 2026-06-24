@@ -44,18 +44,20 @@ async function create({ brand, z, user_id }) {
   const { rows } = await query(
     `INSERT INTO ${t(brand, "delivery_zones")}
        (name, description, geometry_type, geometry, fee_ngn, country_code,
-        priority, is_active, created_by)
-     VALUES ($1,$2,$3,$4::jsonb,COALESCE($5,0),$6,COALESCE($7,0),COALESCE($8,true),$9)
+        priority, is_active, rate_card, courier_key, created_by)
+     VALUES ($1,$2,$3,$4::jsonb,COALESCE($5,0),$6,COALESCE($7,0),COALESCE($8,true),$9::jsonb,$10,$11)
      RETURNING *`,
     [
       z.name,
       z.description || null,
       z.geometry_type,
-      JSON.stringify(z.geometry),
+      JSON.stringify(z.geometry || {}),
       z.fee_ngn,
       z.country_code || null,
       z.priority,
       z.is_active,
+      JSON.stringify(z.rate_card || { tiers: [] }),
+      z.courier_key || null,
       user_id || null,
     ],
   );
@@ -71,6 +73,7 @@ async function update({ brand, id, patch }) {
     "country_code",
     "priority",
     "is_active",
+    "courier_key",
   ];
   const set = [];
   const params = [id];
@@ -83,6 +86,10 @@ async function update({ brand, id, patch }) {
   if (patch.geometry !== undefined) {
     set.push(`geometry = $${i++}::jsonb`);
     params.push(JSON.stringify(patch.geometry));
+  }
+  if (patch.rate_card !== undefined) {
+    set.push(`rate_card = $${i++}::jsonb`);
+    params.push(JSON.stringify(patch.rate_card));
   }
   if (!set.length) return getById({ brand, id });
   const { rows } = await query(

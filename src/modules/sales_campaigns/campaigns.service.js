@@ -590,17 +590,25 @@ async function getLanding({ brand, id }) {
   const c = await repo.findById({ brand, id });
   if (!c) throw new NotFoundError("Campaign");
   return {
+    // Campaign identity — used by the studio header and preview model.
+    id: c.campaign_id,
+    name: c.name,
+    slug: c.slug,
+    starts_at: c.starts_at,
+    ends_at: c.ends_at,
+    // Landing fields.
     landing_hero_title: c.landing_hero_title,
     landing_hero_subtitle: c.landing_hero_subtitle,
     landing_hero_image_url: c.landing_hero_image_url,
     landing_cta_text: c.landing_cta_text,
-    landing_blocks: c.landing_blocks,
+    landing_blocks: c.landing_blocks || [],
     countdown_message: c.countdown_message,
     ended_message: c.ended_message,
     ended_redirect_to: c.ended_redirect_to,
     meta_title: c.meta_title,
     meta_description: c.meta_description,
     og_image_url: c.og_image_url,
+    landing_extras: c.landing_extras || {},
   };
 }
 
@@ -616,6 +624,7 @@ async function preview({ brand, id, state }) {
 }
 
 function buildLandingPayload(c, products, state) {
+  const extras = c.landing_extras || {};
   return {
     slug: c.slug,
     name: c.name,
@@ -625,10 +634,22 @@ function buildLandingPayload(c, products, state) {
       subtitle: c.landing_hero_subtitle,
       image_url: c.landing_hero_image_url,
       cta_text: c.landing_cta_text,
+      // Extra campaign landing fields surfaced to Next.js components.
+      live_now_pill: extras.live_now_pill || null,
+      browse_cta_text: extras.browse_cta_text || null,
+      overlay_opacity:
+        extras.hero_overlay_opacity != null
+          ? Number(extras.hero_overlay_opacity)
+          : null,
+      watermark_opacity:
+        extras.watermark_opacity != null
+          ? Number(extras.watermark_opacity)
+          : null,
     },
     countdown_to:
       state === "before" ? c.starts_at : state === "live" ? c.ends_at : null,
-    countdown_message: c.countdown_message,
+    countdown_message:
+      extras.countdown_closes_label || c.countdown_message || null,
     signup_for_notifications: state === "before" && c.signup_for_notifications,
     blocks: c.landing_blocks || [],
     // Customer-facing FX SSOT: the static "1 USD = N NGN" rate the campaign
@@ -664,19 +685,26 @@ function buildLandingPayload(c, products, state) {
               styled_id: p.styled_id,
               category_id: p.category_id,
               name: p.styled_name || p.product_name || p.category_name,
-              // Long + short copy: prefer the snapshot taken on add, fall back to
-              // the live styled product so older links still render description.
+              // Long + short copy: the Catalogue is the single source of truth,
+              // so prefer the LIVE styled product description and only fall back
+              // to the snapshot taken on add when the styled row is gone (e.g.
+              // deleted from the catalogue). This makes catalogue copy edits show
+              // on the live campaign card immediately — no re-import required.
               short_description:
-                p.short_description ?? p.styled_short_description ?? null,
+                p.styled_short_description ?? p.short_description ?? null,
               long_description:
-                p.long_description ?? p.styled_long_description ?? null,
+                p.styled_long_description ?? p.long_description ?? null,
               campaign_price_ngn: p.campaign_price_ngn,
               campaign_price_usd: p.campaign_price_usd,
-              // Both-currency reference prices (snapshot, else live styled retail).
+              // Both-currency reference (strikethrough) prices. Catalogue is the
+              // source of truth, so prefer the LIVE styled retail price and fall
+              // back to the snapshot only when the styled row is gone. The actual
+              // sale price (campaign_price_*) stays a deliberate per-campaign
+              // override and is intentionally NOT re-derived here.
               regular_price_ngn:
-                p.regular_price_ngn ?? p.styled_retail_price_ngn ?? null,
+                p.styled_retail_price_ngn ?? p.regular_price_ngn ?? null,
               regular_price_usd:
-                p.regular_price_usd ?? p.styled_retail_price_usd ?? null,
+                p.styled_retail_price_usd ?? p.regular_price_usd ?? null,
               is_featured: p.is_featured,
               // live_base_stock is computed from stock_levels across all
               // storefront locations for the base product. All styled products

@@ -128,6 +128,20 @@ async function decideLeave({ brand, user, request_id, id, status, reason }) {
     if (before.status !== "pending") {
       throw new ConflictError("Leave request already decided");
     }
+    // Escalation (answer #11): long leave can only be APPROVED by the CEO.
+    if (status === "approved") {
+      const settings = await repo.getSettings({ client, brand });
+      const threshold = Number(settings.leave_escalation_days || 0);
+      if (
+        threshold > 0 &&
+        Number(before.days_requested) >= threshold &&
+        !(user && user.is_ceo)
+      ) {
+        throw new ConflictError(
+          `Leave of ${threshold}+ days needs CEO approval.`,
+        );
+      }
+    }
     const updated = await repo.setLeaveStatus({
       client, brand, id, status, userId: user.user_id, reason,
     });
@@ -325,6 +339,32 @@ async function updateTargetProgress({ brand, user, request_id, id, current_value
     events.emit("target_achieved", { brand, target_id: id });
   }
   return updated;
+}
+
+/**
+ * Increment a staff member's active monthly target for a metric (auto
+ * progress from Sales / Service Jobs). Resolves the user's profile, bumps the
+ * matching target, and emits `target_achieved` exactly once on crossing the
+ * goal (which the bonus subscriber turns into a pending bonus). Defensive: no
+ * profile or no matching target → silent no-op.
+ */
+async function bumpTargetProgress({ brand, userId, metric, delta }) {
+  if (!userId || !(delta > 0)) return null;
+  const { year, month } = ym();
+  const profileId = await repo.profileIdForUser({ brand, userId });
+  if (!profileId) return null;
+  const row = await repo.incrementActiveTarget({
+    brand, profileId, metric, delta, year, month,
+  });
+  if (!row) return null;
+  events.emit("target_progress", { brand, target_id: row.target_id, status: row.status });
+  if (
+    Number(row.prev_value) < Number(row.target_value) &&
+    Number(row.current_value) >= Number(row.target_value)
+  ) {
+    events.emit("target_achieved", { brand, target_id: row.target_id });
+  }
+  return row;
 }
 
 async function removeTarget({ brand, user, request_id, id }) {
@@ -845,6 +885,7 @@ module.exports = {
   listTargets,
   setTarget,
   updateTargetProgress,
+  bumpTargetProgress,
   removeTarget,
   reconcileDay,
   applyLapsedOffsite,

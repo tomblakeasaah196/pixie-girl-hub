@@ -65,12 +65,18 @@ export async function postCheckout(args: {
         country?: string;
       };
     };
-    address: {
+    address?: {
       line1: string;
       line2?: string;
       city: string;
-      state: string;
+      state?: string;
       country?: string;
+      /** ISO-2 country (e.g. "GB") OR the NG delivery-zone code
+       *  (state "NG-AB", Lagos LGA "NG-LA-AGEGE"). Drives the server-side
+       *  delivery quote. */
+      country_code?: string;
+      zone_code?: string;
+      landmark?: string;
     };
     consent: {
       whatsapp_opt_in: boolean;
@@ -78,6 +84,9 @@ export async function postCheckout(args: {
       terms_accepted: boolean;
     };
   };
+  /** "delivery" ships to the address; "pickup" collects in store (no address,
+   *  no delivery fee). Defaults to delivery on the Hub. */
+  fulfilment_type?: "delivery" | "pickup";
   cart: Array<{
     bundle_id?: string;
     product_id?: string;
@@ -121,6 +130,78 @@ export async function postCheckout(args: {
     throw err;
   }
   return res.json();
+}
+
+/** A single applied/next-rung deal component in the cart quote. */
+export interface QuoteComponent {
+  applied: boolean;
+  discount_ngn: string;
+  label?: string | null;
+  // present on some components
+  filled_positions?: number;
+  per_item_ngn?: string;
+  raw_wig_quantity?: number;
+  tier_id?: string | null;
+  next?: Record<string, unknown> | null;
+}
+
+export interface CartQuote {
+  slug: string;
+  currency: string;
+  subtotal_ngn: string;
+  components: {
+    position_ladder: QuoteComponent;
+    stacking_bonus: QuoteComponent;
+    quantity_tier: QuoteComponent;
+    bulk_tier: QuoteComponent;
+  };
+  cart: {
+    total_quantity: number;
+    styled_wig_units: number;
+    raw_wig_quantity: number;
+    distinct_bundles: number;
+  };
+  gross_discount_ngn: string;
+  total_discount_ngn: string;
+  final_total_ngn: string;
+  clamped: boolean;
+}
+
+/**
+ * Server-authoritative cart quote. The landing cart posts its current items on
+ * every change to get the running total with EVERY deal rule applied (per-wig
+ * position ladder + bundle stacking bonus + quantity-tier ladder +
+ * reseller/bulk tiers, stacked and clamped at the margin floor). Prices are
+ * resolved server-side — the client never computes the discount itself.
+ */
+export async function postQuote(args: {
+  slug: string;
+  cart: Array<{
+    bundle_id?: string;
+    product_id?: string;
+    styled_variant_id?: string;
+    unstyled?: boolean;
+    quantity: number;
+  }>;
+}): Promise<CartQuote | null> {
+  try {
+    const res = await fetch(
+      `/api/public/sale/${encodeURIComponent(args.slug)}/quote`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ cart: args.cart }),
+      },
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: CartQuote };
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchOrderStatus(

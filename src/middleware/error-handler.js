@@ -160,15 +160,24 @@ function errorHandler(err, req, res, _next) {
   }
 
   // Fallthrough — unexpected. Still never a dead-end: apologise, invite a
-  // retry, and hand the buyer a way to reach a human with the request id as a
-  // reference they can quote.
+  // retry, and hand the caller a reference (request id) they can quote.
   logger.error({ err, request_id }, "unhandled error");
-  const support = supportFor(req);
+  // The "your card was not charged" reassurance + buyer support contact only
+  // make sense on the public buyer flow (the checkout POST). Showing them for
+  // an admin 500 — e.g. saving a campaign in the Landing Studio — is confusing
+  // and alarming, because there is no card or order in play. Scope the payment
+  // wording to the actual checkout route; everyone else gets a neutral message.
+  const url = req.originalUrl || req.url || "";
+  const isBuyerRoute = url.startsWith("/api/public");
+  const isCheckout = isBuyerRoute && /\/checkout\b/.test(url);
+  const support = isBuyerRoute ? supportFor(req) : null;
+  const message = isCheckout
+    ? "Something went wrong on our side. Your card was not charged — please try again in a moment."
+    : "Something went wrong on our side — please try again in a moment.";
   return res.status(500).json({
     error: {
       code: "INTERNAL_ERROR",
-      message:
-        "Something went wrong on our side. Your card was not charged — please try again in a moment.",
+      message,
       retryable: true,
       reference: request_id,
       ...(support ? { support } : {}),

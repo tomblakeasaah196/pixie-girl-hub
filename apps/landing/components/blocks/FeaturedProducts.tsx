@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { Clock, ShoppingBag } from "lucide-react";
+import { Clock, ShoppingBag, Search, X } from "lucide-react";
 import type { LandingPayload, LandingProduct } from "@/lib/types";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
@@ -70,17 +70,42 @@ export function FeaturedProducts({
   // the modal fetches. Lifting this here means a card click never re-mounts
   // a modal per product (which was wasting transitions).
   const [openId, setOpenId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   // Live stock overrides the page-baked stock_remaining (beats CDN caching).
   const liveStock = useLiveStock(payload.slug, state === "live");
 
+  // Filter products by search term (name and short description).
+  const filtered = useMemo(
+    () =>
+      searchTerm.trim() === ""
+        ? products
+        : products.filter((p) => {
+            const term = searchTerm.toLowerCase();
+            const name = (p.name || "").toLowerCase();
+            const desc = (p.short_description || "").toLowerCase();
+            return name.includes(term) || desc.includes(term);
+          }),
+    [products, searchTerm],
+  );
+
   if (!products.length) return null;
+
+  // Read section header copy from block props (set via Landing Studio).
+  const block = (payload.blocks || []).find((b) => b.key === "featured_products");
+  const bp = (block?.props as Record<string, unknown>) || {};
+  const sectionEyebrow = (bp.eyebrow as string) || "Styled products";
+  const sectionTitle = (bp.title as string) || "Pick one and play.";
+  const sectionSubtitle =
+    (bp.intro as string) ||
+    "For the woman who wants one perfect piece, not the whole set.";
+
   return (
     <section data-block="featured_products" className="section">
       <div className="mx-auto max-w-[1180px]">
         <SectionHeader
-          eyebrow="Styled products"
-          title="Pick one and play."
-          subtitle="For the woman who wants one perfect piece, not the whole set."
+          eyebrow={sectionEyebrow}
+          title={sectionTitle}
+          subtitle={sectionSubtitle}
         />
         {payload.position_ladder && payload.position_ladder.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-2 justify-center">
@@ -102,8 +127,38 @@ export function FeaturedProducts({
             ))}
           </div>
         )}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-10">
-          {products.map((p, i) => (
+
+        {/* Product search */}
+        <div className="mt-10 mb-8 max-w-md mx-auto">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--text-muted))] pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-[rgb(var(--text)/0.06)] border border-[rgb(var(--border-c)/0.1)] text-[13px] placeholder:text-[rgb(var(--text-faint))] focus:outline-none focus:bg-[rgb(var(--text)/0.08)] focus:border-[rgb(var(--accent)/0.3)] transition"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))] flex items-center justify-center"
+                aria-label="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {searchTerm && filtered.length === 0 && (
+            <p className="mt-4 text-center text-[12px] text-[rgb(var(--text-muted))]">
+              No products match &ldquo;{searchTerm}&rdquo;
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {filtered.map((p, i) => (
             <Card
               key={p.product_id || p.styled_id || i}
               product={p}

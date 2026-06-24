@@ -15,6 +15,7 @@
 
 const fx = require("../../services/fx.service");
 const zones = require("../logistics/zones.service");
+const bizRepo = require("../business_setup/business-config.repo");
 
 // ISO-2 country → display currency. Unknown non-NG countries default to USD.
 const CURRENCY_BY_COUNTRY = {
@@ -69,9 +70,9 @@ async function resolveCurrency({ country }) {
   };
 }
 
-/** Delivery fee for the customer's picked coordinates (geofenced zones). */
-function deliveryQuote({ brand, lat, lng, country }) {
-  return zones.quote({ brand, lat, lng, country_code: country });
+/** Delivery fee for the customer's picked coordinates/zone code. */
+function deliveryQuote({ brand, lat, lng, country, qty }) {
+  return zones.quote({ brand, lat, lng, country_code: country, qty });
 }
 
 /**
@@ -83,9 +84,26 @@ function shippingRates({ brand }) {
   return zones.shippingRates({ brand });
 }
 
+/**
+ * Geo picker options for the checkout autofill (countries, Nigerian states,
+ * Lagos LGAs) — codes match the delivery zones so the quote resolves exactly.
+ */
+function geoOptions({ brand }) {
+  return zones.geoOptions({ brand });
+}
+
+/** Business pickup address for the storefront "collect in store" option. */
+async function pickupAddress({ brand }) {
+  const config = await bizRepo.findByKey(brand);
+  if (!config) return { address: null, phone: null };
+  return { address: config.address || null, phone: config.phone || null };
+}
+
 module.exports = {
   resolveCurrency,
   deliveryQuote,
   shippingRates,
+  geoOptions,
+  pickupAddress,
   currencyForCountry,
 };

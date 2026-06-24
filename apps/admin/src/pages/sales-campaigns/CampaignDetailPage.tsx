@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Copy,
   Gift,
+  Layout,
   Pencil,
   Send,
   Share2,
@@ -113,6 +114,11 @@ export function CampaignDetailPage() {
           >
             <Button variant="ghost" icon={<Pencil className="w-4 h-4" />}>
               Open builder
+            </Button>
+          </Link>
+          <Link to={`/landing-studio?campaign=${campaign.campaign_id}`}>
+            <Button variant="ghost" icon={<Layout className="w-4 h-4" />}>
+              Landing Studio
             </Button>
           </Link>
         </div>

@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Gift, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
+import { postQuote, type CartQuote } from "@/lib/api-client";
 import type { LandingPayload } from "@/lib/types";
+
+const n = (v: string | number | undefined) => Number(v ?? 0) || 0;
 
 export function CartDrawer({ payload }: { payload: LandingPayload }) {
   const router = useRouter();
@@ -17,25 +20,114 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
   const setQ = useCart((s) => s.setQuantity);
   const remove = useCart((s) => s.remove);
   const subtotal = useCart((s) => s.subtotalNgn());
-  const retail = useCart((s) => s.retailSubtotalNgn());
-  const savings = useCart((s) => s.savingsNgn());
-  const distinctBundles = useCart((s) => s.distinctBundleCount());
 
-  const stacking = payload.stacking_bonus;
-  const stackingUnlocked =
-    stacking &&
-    stacking.min_distinct_bundles > 0 &&
-    distinctBundles >= stacking.min_distinct_bundles;
-  const stackingDiscount = stackingUnlocked ? stacking.discount_ngn : 0;
+  // Server-authoritative quote: the Hub applies EVERY deal rule (per-wig
+  // position ladder, bundle stacking bonus, quantity-tier ladder, reseller/bulk
+  // tiers) and clamps the stack at the margin floor. We never compute the
+  // discount on the client — we just render what the Hub returns. The local
+  // subtotal is used only as an instant optimistic figure while the quote
+  // is in flight.
+  const [quote, setQuote] = useState<CartQuote | null>(null);
+
+  // Re-quote (debounced) whenever the cart contents change.
+  const quoteKey = useMemo(
+    () =>
+      items
+        .map((i) => `${i.id}:${i.quantity}:${i.unstyled ? "raw" : "styled"}`)
+        .join("|"),
+    [items],
+  );
+  useEffect(() => {
+    if (items.length === 0) {
+      setQuote(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const q = await postQuote({
+        slug: payload.slug,
+        cart: items.map((i) => ({
+          bundle_id: i.bundle_id,
+          product_id: i.product_id,
+          styled_variant_id: i.styled_variant_id,
+          unstyled: i.unstyled,
+          quantity: i.quantity,
+        })),
+      });
+      if (!cancelled) setQuote(q);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [quoteKey, items, payload.slug]);
+
+  const totalDiscount = quote ? n(quote.total_discount_ngn) : 0;
+  const finalTotal = quote ? n(quote.final_total_ngn) : subtotal;
+  const comps = quote?.components;
+  const dealRows: Array<{ label: string; amount: number }> = [];
+  if (comps) {
+    if (comps.position_ladder.applied)
+      dealRows.push({
+        label: "Multi-wig discount",
+        amount: n(comps.position_ladder.discount_ngn),
+      });
+    if (comps.stacking_bonus.applied)
+      dealRows.push({
+        label: comps.stacking_bonus.label || "Bundle bonus",
+        amount: n(comps.stacking_bonus.discount_ngn),
+      });
+    if (comps.quantity_tier.applied)
+      dealRows.push({
+        label: comps.quantity_tier.label || "Quantity discount",
+        amount: n(comps.quantity_tier.discount_ngn),
+      });
+    if (comps.bulk_tier.applied)
+      dealRows.push({
+        label: comps.bulk_tier.label || "Reseller / bulk",
+        amount: n(comps.bulk_tier.discount_ngn),
+      });
+  }
+
+  // "Next rung" nudge — surface whichever unlock is closest to encourage one
+  // more wig / bundle. Priority: stacking bonus, then position ladder.
+  const nudge = (() => {
+    const sb = comps?.stacking_bonus?.next as
+      | { add_bundles?: number; unlock_discount_ngn?: string; label?: string }
+      | null
+      | undefined;
+    if (sb && sb.add_bundles)
+      return `Add ${sb.add_bundles} more bundle${sb.add_bundles !== 1 ? "s" : ""} to unlock ${money(n(sb.unlock_discount_ngn))} off`;
+    const pl = comps?.position_ladder?.next as
+      | { add_wigs?: number; extra_discount_ngn?: string }
+      | null
+      | undefined;
+    if (pl && pl.add_wigs)
+      return `Add ${pl.add_wigs} more wig${pl.add_wigs !== 1 ? "s" : ""} for an extra ${money(n(pl.extra_discount_ngn))} off`;
+    const bt = comps?.bulk_tier?.next as
+      | { add_raw_wigs?: number; per_item_ngn?: string }
+      | null
+      | undefined;
+    if (bt && bt.add_raw_wigs)
+      return `Add ${bt.add_raw_wigs} more raw wig${bt.add_raw_wigs !== 1 ? "s" : ""} to reach ${money(n(bt.per_item_ngn))}/wig off`;
+    return null;
+  })();
 
   useEffect(() => {
     if (!open) return;
+    // Warm the checkout route the moment the drawer opens — Next prefetches the
+    // route's JS chunk AND its server-rendered data (the campaign payload). By
+    // the time the buyer taps "Checkout" the page is already in cache, so the
+    // navigation is instant instead of paying for a cold server round-trip
+    // (the old behaviour: click → server fetch campaign → render → "stays for a
+    // while or never works" when the backend was cold).
+    router.prefetch(`/checkout/${payload.slug}`);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, close]);
+  }, [open, close, router, payload.slug]);
 
   return (
     <AnimatePresence>
@@ -81,34 +173,24 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                   </p>
                 </div>
               )}
-              {stackingUnlocked && (
+              {totalDiscount > 0 && (
                 <div className="rounded-[14px] p-3.5 bg-[rgb(var(--success)/0.1)] border border-[rgb(var(--success)/0.3)] flex items-center gap-3">
                   <Gift className="w-5 h-5 text-[rgb(var(--success))] flex-shrink-0" />
                   <div>
                     <div className="text-[13px] font-semibold text-[rgb(var(--success))]">
-                      You unlocked {money(stacking.discount_ngn)} off!
+                      You&apos;re saving {money(totalDiscount)}!
                     </div>
                     <div className="text-[11px] text-[rgb(var(--text-muted))] mt-0.5">
-                      {stacking.label ||
-                        `Bonus for combining ${distinctBundles} bundles`}
+                      Every campaign discount has been applied.
                     </div>
                   </div>
                 </div>
               )}
-              {!stackingUnlocked &&
-                stacking &&
-                stacking.min_distinct_bundles > 0 &&
-                distinctBundles > 0 &&
-                distinctBundles < stacking.min_distinct_bundles && (
-                  <div className="rounded-[14px] p-3 bg-[rgb(var(--accent)/0.06)] border border-[rgb(var(--accent)/0.2)] text-[12px] text-[rgb(var(--text-muted))]">
-                    Add{" "}
-                    <span className="font-semibold text-[rgb(var(--accent-glow))]">
-                      {stacking.min_distinct_bundles - distinctBundles} more
-                      bundle{stacking.min_distinct_bundles - distinctBundles !== 1 ? "s" : ""}
-                    </span>{" "}
-                    to unlock {money(stacking.discount_ngn)} off
-                  </div>
-                )}
+              {nudge && (
+                <div className="rounded-[14px] p-3 bg-[rgb(var(--accent)/0.06)] border border-[rgb(var(--accent)/0.2)] text-[12px] text-[rgb(var(--text-muted))]">
+                  {nudge}
+                </div>
+              )}
               {items.map((it) => (
                 <div
                   key={it.id}
@@ -188,32 +270,29 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
               <div className="flex justify-between text-[13px]">
                 <span className="text-[rgb(var(--text-muted))]">Subtotal</span>
                 <span className="font-mono tabular-nums">
-                  {money(subtotal)}
+                  {money(quote ? n(quote.subtotal_ngn) : subtotal)}
                 </span>
               </div>
-              {stackingDiscount > 0 && (
-                <div className="flex justify-between text-[13px]">
+              {dealRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="flex justify-between text-[13px]"
+                >
                   <span className="text-[rgb(var(--success))]">
-                    Bundle bonus
+                    {row.label}
                   </span>
                   <span className="font-mono tabular-nums text-[rgb(var(--success))]">
-                    −{money(stackingDiscount)}
+                    −{money(row.amount)}
                   </span>
                 </div>
-              )}
-              {savings > 0 && (
-                <div className="flex justify-between text-[13px]">
-                  <span className="text-[rgb(var(--success))]">You save</span>
-                  <span className="font-mono tabular-nums text-[rgb(var(--success))]">
-                    −{money(savings + stackingDiscount)}
+              ))}
+              {totalDiscount > 0 && (
+                <div className="flex justify-between text-[13px] pt-1 border-t hairline">
+                  <span className="text-[rgb(var(--success))] font-semibold">
+                    You save
                   </span>
-                </div>
-              )}
-              {savings > 0 && (
-                <div className="flex justify-between text-[12px] text-[rgb(var(--text-faint))]">
-                  <span>vs retail</span>
-                  <span className="font-mono tabular-nums line-through">
-                    {money(retail)}
+                  <span className="font-mono tabular-nums text-[rgb(var(--success))] font-semibold">
+                    −{money(totalDiscount)}
                   </span>
                 </div>
               )}
@@ -236,7 +315,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                     : "bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))]"
                 }`}
               >
-                Checkout · {money(Math.max(0, subtotal - stackingDiscount))}
+                Checkout · {money(Math.max(0, finalTotal))}
               </button>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 DHL rates apply. Pay with Nomba · Paystack.

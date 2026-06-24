@@ -23,7 +23,20 @@ const calc = require("./payroll.calc");
 const pdf = require("../../services/pdf.service");
 const hrOps = require("./hr_ops.service");
 const disbursement = require("../../services/disbursement.service");
+const { decrypt } = require("../../services/encryption.service");
+const { BRANDS } = require("../../config/brands");
 const events = require("./hr.events");
+
+/** Bank fields are AES-encrypted on staff_profiles; snapshot them in clear on
+ *  the payslip for disbursement. Fail closed (null) on unreadable/legacy data. */
+function decryptField(v) {
+  if (!v) return null;
+  try {
+    return decrypt(v);
+  } catch {
+    return null;
+  }
+}
 const numbering = require("../../services/numbering.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -186,6 +199,8 @@ async function calculateRun({ brand, user, request_id, run_id }) {
           staff_profile_id: s.profile_id,
           job_title_snapshot: s.job_title,
           department_snapshot: s.department,
+          bank_account_snapshot: decryptField(s.bank_account_number),
+          bank_sort_code_snapshot: decryptField(s.bank_sort_code),
           ...slip,
         },
       });
@@ -372,6 +387,38 @@ async function payRun({ brand, user, request_id, run_id, pin }) {
 
 // Back-compat alias (no PIN / no disbursement) retained for internal callers.
 const markRunPaid = (a) => payRun({ ...a, pin: undefined });
+
+/**
+ * Reconcile an async salary-payout result from the Nomba payout webhook.
+ * Disbursement sends `merchantTxRef = PAY-<payslip_id>`, so the webhook
+ * references PAY-… regardless of the event name. Flips the matching payslip
+ * queued → paid/failed. Brand-agnostic (payslips are per-brand) — finds the
+ * owning brand by id. Safe no-op if the reference isn't a payslip payout.
+ */
+async function reconcilePayout({ reference, success, failed, provider_ref }) {
+  const m = /^PAY-(.+)$/i.exec(String(reference || ""));
+  const payslip_id = m ? m[1] : null;
+  if (!payslip_id) return { updated: false, reason: "unrecognised_reference" };
+  const status = success ? "paid" : failed ? "failed" : "queued";
+  for (const brand of BRANDS) {
+    const row = await repo.setPayslipPayment({
+      brand,
+      payslip_id,
+      payment_status: status,
+      fields: {
+        payment_method: "nomba",
+        payment_reference: provider_ref || reference,
+        failure_reason: failed ? "payout_failed" : null,
+        paid_at: success ? new Date().toISOString() : null,
+      },
+    });
+    if (row) {
+      events.emit("payout_reconciled", { brand, payslip_id, status });
+      return { updated: true, brand, status };
+    }
+  }
+  return { updated: false, reason: "payslip_not_found" };
+}
 const reverseRun = (a) => transitionRun({ ...a, to: "reversed" });
 
 // ── payslips (read) ────────────────────────────────────────
@@ -650,6 +697,7 @@ module.exports = {
   approveRun,
   payRun,
   markRunPaid,
+  reconcilePayout,
   reverseRun,
   listPayslips,
   getPayslip,

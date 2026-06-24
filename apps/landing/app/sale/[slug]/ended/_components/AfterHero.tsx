@@ -2,10 +2,20 @@
 
 import { useMemo } from "react";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import { ArrowRight, Bell, Sparkles } from "lucide-react";
 import type { LandingConfig, LandingPayload } from "@/lib/types";
 import { hexToTriplet } from "@/lib/types";
-import { AtelierHourglass } from "@/components/blocks/3d/AtelierHourglass";
+
+// Lazy-load the three.js hourglass so it stays out of the initial bundle —
+// it only ever shows on the ended-sale hero. WebGL can't SSR, so ssr:false.
+const AtelierHourglass = dynamic(
+  () =>
+    import("@/components/blocks/3d/AtelierHourglass").then(
+      (m) => m.AtelierHourglass,
+    ),
+  { ssr: false },
+);
 
 interface Props {
   payload: LandingPayload;

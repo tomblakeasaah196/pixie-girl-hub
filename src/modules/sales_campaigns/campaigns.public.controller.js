@@ -69,6 +69,16 @@ async function checkout(req, res) {
   res.status(201).json({ data: result });
 }
 
+async function quote(req, res) {
+  const data = await publicService.quoteCart({
+    slug: req.params.slug,
+    brand: req.brand,
+    brandHint: brandHint(req),
+    input: req.body,
+  });
+  res.json({ data });
+}
+
 async function orderStatus(req, res) {
   const data = await publicService.getOrderStatus({
     slug: req.params.slug,
@@ -98,6 +108,7 @@ module.exports = {
   stock,
   signup,
   checkout,
+  quote,
   orderStatus,
   productDetail,
 };

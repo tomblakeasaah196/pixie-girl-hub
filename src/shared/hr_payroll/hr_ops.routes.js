@@ -15,8 +15,10 @@ const c = require("./hr_ops.controller");
 const v = require("./hr_ops.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
-// Side-effect: register target-achieved → auto-bonus subscriber.
+// Side-effect: register HR subscribers (target-achieved → auto-bonus;
+// sales/service-job completion → auto target-progress).
 require("./target.subscribers");
+require("./target.progress.subscribers");
 
 const router = express.Router();
 const P = (action) => requirePermission("hr_payroll", action);

@@ -4,6 +4,8 @@
  *
  *   GET  /currency            → display/charge currency + FX rates
  *   GET  /shipping-rates      → country flat fees + local zones (NGN)
+ *   GET  /geo-options         → countries / NG states / Lagos LGAs (autofill)
+ *   GET  /pickup-address      → business pickup address ("collect in store")
  *   POST /delivery-quote      → geofenced delivery fee for {lat,lng}
  *
  * Brand comes from ?brand or the X-Brand-Context header (the storefront sets
@@ -49,10 +51,30 @@ router.get("/shipping-rates", async (req, res, next) => {
 router.post("/delivery-quote", async (req, res, next) => {
   try {
     const brand = resolveBrand(req);
-    const { lat, lng, country } = req.body || {};
+    const { lat, lng, country, qty } = req.body || {};
     res.json({
-      data: await service.deliveryQuote({ brand, lat, lng, country }),
+      data: await service.deliveryQuote({ brand, lat, lng, country, qty }),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/pickup-address", async (req, res, next) => {
+  try {
+    const brand = resolveBrand(req);
+    res.json({ data: await service.pickupAddress({ brand }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Geo picker options (countries / Nigerian states / Lagos LGAs) for the
+// checkout autofill. Codes match the delivery zones so the quote resolves.
+router.get("/geo-options", async (req, res, next) => {
+  try {
+    const brand = resolveBrand(req);
+    res.json({ data: await service.geoOptions({ brand }) });
   } catch (err) {
     next(err);
   }

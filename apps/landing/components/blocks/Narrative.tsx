@@ -41,20 +41,34 @@ export function BrandStory({ payload }: { payload: LandingPayload }) {
 /* ── Founder Quote ──────────────────────────────────────────── */
 export function FounderQuote({ payload }: { payload: LandingPayload }) {
   const props = blockProps(payload, "founder_quote");
-  const quote =
-    (props.quote as string) ||
-    "I built this because nothing on shelves felt like me. Every bundle in this drop is one I'd wear myself.";
-  const author = (props.author as string) || "Faith — founder";
+
+  // Support multi-quote array (props.quotes[]) set by the Landing Studio,
+  // falling back to the legacy single-quote fields for older campaigns.
+  const quotes = Array.isArray(props.quotes)
+    ? (props.quotes as { quote: string; author: string }[])
+    : [
+        {
+          quote:
+            (props.quote as string) ||
+            "I built this because nothing on shelves felt like me. Every bundle in this drop is one I'd wear myself.",
+          author: (props.author as string) || "Faith — founder",
+        },
+      ];
+
   return (
-    <section className="section-tight">
-      <div className="mx-auto max-w-[760px] glass rounded-[var(--radius)] p-8 md:p-10 text-center relative">
-        <Quote className="absolute top-5 left-6 w-7 h-7 text-[rgb(var(--accent-glow)/0.6)]" />
-        <p className="font-display text-[clamp(22px,3vw,30px)] leading-[1.35]">
-          &ldquo;{quote}&rdquo;
-        </p>
-        <div className="micro mt-6">— {author}</div>
-      </div>
-    </section>
+    <>
+      {quotes.map((q, i) => (
+        <section key={i} className="section-tight">
+          <div className="mx-auto max-w-[760px] glass rounded-[var(--radius)] p-8 md:p-10 text-center relative">
+            <Quote className="absolute top-5 left-6 w-7 h-7 text-[rgb(var(--accent-glow)/0.6)]" />
+            <p className="font-display text-[clamp(22px,3vw,30px)] leading-[1.35]">
+              &ldquo;{q.quote}&rdquo;
+            </p>
+            <div className="micro mt-6">— {q.author}</div>
+          </div>
+        </section>
+      ))}
+    </>
   );
 }
 
@@ -280,44 +294,37 @@ export function StylistSpotlight({ payload }: { payload: LandingPayload }) {
 }
 
 /* ── Shipping & Returns ────────────────────────────────────── */
+const SHIPPING_ICONS = [Truck, Heart, Quote];
+const SHIPPING_DEFAULTS = [
+  { title: "DHL worldwide", subtitle: "Tracked, insured." },
+  { title: "Hand-inspected", subtitle: "Every unit, every time." },
+  { title: "48-hour grace", subtitle: "Reach us in two days; we'll work it out." },
+];
+
 export function ShippingReturns({ payload }: { payload: LandingPayload }) {
-  void payload;
+  const props = blockProps(payload, "shipping_returns");
+  const cards = (
+    Array.isArray(props.cards) ? props.cards : SHIPPING_DEFAULTS
+  ) as Array<{ title: string; subtitle: string }>;
   return (
     <section className="section-tight">
       <div className="mx-auto max-w-[920px] glass rounded-[var(--radius)] p-6 grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div className="flex gap-3 items-start">
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))]">
-            <Truck className="w-4.5 h-4.5" />
-          </span>
-          <div>
-            <div className="font-semibold">DHL worldwide</div>
-            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">
-              Tracked, insured.
+        {cards.map((card, i) => {
+          const Icon = SHIPPING_ICONS[i % SHIPPING_ICONS.length];
+          return (
+            <div key={i} className="flex gap-3 items-start">
+              <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))]">
+                <Icon className="w-4.5 h-4.5" />
+              </span>
+              <div>
+                <div className="font-semibold">{card.title}</div>
+                <div className="text-[12.5px] text-[rgb(var(--text-muted))]">
+                  {card.subtitle}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="flex gap-3 items-start">
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))]">
-            <Heart className="w-4.5 h-4.5" />
-          </span>
-          <div>
-            <div className="font-semibold">Hand-inspected</div>
-            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">
-              Every unit, every time.
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-3 items-start">
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--accent-glow))]">
-            <Quote className="w-4.5 h-4.5" />
-          </span>
-          <div>
-            <div className="font-semibold">48-hour grace</div>
-            <div className="text-[12.5px] text-[rgb(var(--text-muted))]">
-              Reach us in two days; we&apos;ll work it out.
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
     </section>
   );

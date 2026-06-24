@@ -262,6 +262,18 @@ const updateProductSchema = z
   })
   .strict();
 
+const landingExtrasSchema = z
+  .object({
+    live_now_pill: z.string().max(60).optional(),
+    browse_cta_text: z.string().max(80).optional(),
+    hero_overlay_opacity: z.number().min(0).max(1).optional(),
+    watermark_opacity: z.number().min(0).max(1).optional(),
+    countdown_closes_label: z.string().max(120).optional(),
+    favicon_url: safeUrl.nullable().optional(),
+    browser_tab_name: z.string().max(80).optional(),
+  })
+  .passthrough(); // allow unknown keys to avoid breaking future additions
+
 const landingSchema = z
   .object({
     landing_hero_title: z.string().max(300).nullable().optional(),
@@ -275,6 +287,7 @@ const landingSchema = z
     meta_title: z.string().max(200).nullable().optional(),
     meta_description: z.string().max(500).nullable().optional(),
     og_image_url: safeUrl.nullable().optional(),
+    landing_extras: landingExtrasSchema.optional(),
   })
   .strict();
 
@@ -539,13 +552,23 @@ const checkoutSchema = z.object({
         message: "recipient_address is required when ship_to_recipient is true",
       })
       .optional(),
-    address: z.object({
-      line1: z.string().trim().min(1).max(400),
-      line2: z.string().max(400).optional(),
-      city: z.string().trim().min(1).max(120),
-      state: z.string().max(120).optional(),
-      country: z.string().max(80).optional(),
-    }),
+    // Optional: a "pickup" (collect-in-store) checkout carries no delivery
+    // address. For delivery the service enforces line1 + city.
+    address: z
+      .object({
+        line1: z.string().trim().min(1).max(400),
+        line2: z.string().max(400).optional(),
+        city: z.string().trim().min(1).max(120),
+        state: z.string().max(120).optional(),
+        country: z.string().max(80).optional(),
+        // ISO-2 country (e.g. "GB") OR the delivery-zone code for NG
+        // (state "NG-AB", Lagos LGA "NG-LA-AGEGE"). The server re-prices the
+        // delivery fee against this zone — never trusts a client-sent amount.
+        country_code: z.string().max(16).optional(),
+        zone_code: z.string().max(24).optional(),
+        landmark: z.string().max(200).optional(),
+      })
+      .optional(),
     consent: z.object({
       whatsapp_opt_in: z.boolean().optional().default(false),
       marketing_opt_in: z.boolean().optional().default(false),
@@ -562,6 +585,10 @@ const checkoutSchema = z.object({
         // line from the styled tables (styled_product_variants), not the base
         // product_variants — see campaigns.public.service checkout().
         styled_variant_id: z.string().uuid().optional(),
+        // "Buy unstyled / raw": order the wig WITHOUT the styling premiums.
+        // Priced at the styled product's anchor (retail_price_ngn) and counted
+        // as a raw wig for the reseller/bulk tier. Server re-prices regardless.
+        unstyled: z.boolean().optional(),
         quantity: z.coerce.number().int().min(1).max(50),
         // Optional — the server re-prices; never trusted from the client.
         unit_price_ngn: z.coerce.number().nonnegative().optional(),
@@ -569,6 +596,9 @@ const checkoutSchema = z.object({
     )
     .min(1)
     .max(30),
+  // "delivery" (ship to the address) or "pickup" (collect in store — no
+  // delivery address, zero delivery fee). Defaults to delivery.
+  fulfilment_type: z.enum(["delivery", "pickup"]).optional().default("delivery"),
   utm: z.record(z.string()).optional(),
   // Optional — currency picks the rail; an explicit hint is honoured for NGN.
   payment_gateway: z.enum(["paystack", "nomba"]).optional(),
@@ -579,6 +609,27 @@ const checkoutSchema = z.object({
   display_currency: z.enum(["NGN", "USD"]).optional().default("NGN"),
   client_idempotency_key: z.string().min(1).max(120),
   coupon_code: z.string().max(60).optional(),
+});
+
+// ── Public cart quote (v3 deals engine) ──────────────────
+// The landing cart posts its current items here on every change to get the
+// server-authoritative running total: per-wig position ladder, bundle stacking
+// bonus, quantity-tier ladder and reseller/bulk tiers — all stacked and clamped
+// at the margin floor. Prices are NEVER trusted from the client.
+const quoteSchema = z.object({
+  slug: z.string().min(1).max(200).optional(),
+  cart: z
+    .array(
+      z.object({
+        bundle_id: z.string().uuid().optional(),
+        product_id: z.string().uuid().optional(),
+        styled_variant_id: z.string().uuid().optional(),
+        unstyled: z.boolean().optional(),
+        quantity: z.coerce.number().int().min(1).max(50),
+      }),
+    )
+    .max(30)
+    .default([]),
 });
 
 // ── Batch / clone / duplicate (migration 000048) ─────────
@@ -640,6 +691,7 @@ module.exports = {
   validateVipGrant: mw(vipGrantSchema),
   validateVipGiftStatus: mw(vipGiftStatusSchema),
   validateCheckout: mw(checkoutSchema),
+  validateQuote: mw(quoteSchema),
   // v3 (migration 000048)
   validateBatchAddProducts: mw(batchAddProductsSchema),
   validateCloneBundles: mw(cloneBundlesSchema),

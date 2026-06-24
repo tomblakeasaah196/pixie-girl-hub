@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,11 +14,15 @@ import {
   placeOrder,
   submitProofOfPayment,
   getOrderTracking,
+  getPickupAddress,
 } from "@services/salesCampaign";
 import {
   checkoutSchema,
   type CheckoutFormValues,
   NIGERIAN_STATES,
+  NIGERIA_STATE_ZONE_CODES,
+  LAGOS_LGAS,
+  WORLD_COUNTRIES,
 } from "@lib/constants/salesCampaignConstants";
 import { fmtMoney } from "@lib/format";
 import type {
@@ -64,6 +68,10 @@ export default function Checkout() {
   const [, setProofDone] = useState(false);
   const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [pickupAddr, setPickupAddr] = useState<{
+    address: string | null;
+    phone: string | null;
+  } | null>(null);
 
   const subtotal = cart.reduce((s, i) => s + i.line_total, 0);
   const totalSave = cart.reduce(
@@ -79,6 +87,7 @@ export default function Checkout() {
     handleSubmit,
     control,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutSchema),
@@ -87,6 +96,10 @@ export default function Checkout() {
 
   const fulfilmentType = watch("fulfilment_type");
   const paymentMethod = watch("payment_method");
+  const watchCountry = watch("delivery_address.country") ?? "";
+  const watchState = watch("delivery_address.state") ?? "";
+  const isNigeria = watchCountry === "Nigeria";
+  const isLagos = isNigeria && watchState === "Lagos";
   // The account the customer actually picked — fall back to the first
   // (or the primary) so the transfer screen never renders the wrong details.
   const selectedBankId = watch("bank_account_id");
@@ -100,6 +113,12 @@ export default function Checkout() {
   useEffect(() => {
     if (!cart.length) navigate(-1);
   }, []);
+
+  // Load the business pickup address for the "collect in store" option
+  useEffect(() => {
+    if (!business) return;
+    getPickupAddress(business).then(setPickupAddr).catch(() => {});
+  }, [business]);
 
   async function onSubmitDetails(values: CheckoutFormValues) {
     setApiError(null);
@@ -352,7 +371,7 @@ export default function Checkout() {
                         <p className="text-xs text-gray-500 mt-0.5">
                           {ft === "delivery"
                             ? "We deliver to you"
-                            : `Collect from ${campaign?.store_location ?? "our store"}`}
+                            : "Collect from our store"}
                         </p>
                       </button>
                     )}
@@ -362,27 +381,42 @@ export default function Checkout() {
 
               {fulfilmentType === "delivery" && (
                 <div className="space-y-3 pt-2">
+                  {/* Country — combobox, all world countries */}
                   <Field
-                    label="Delivery address"
-                    error={errors.delivery_address?.line1?.message}
+                    label="Country"
+                    error={errors.delivery_address?.country?.message}
                   >
-                    <input
-                      {...register("delivery_address.line1")}
-                      placeholder="Street address / house number"
-                      className={INPUT_CLASS}
+                    <Controller
+                      name="delivery_address.country"
+                      control={control}
+                      render={({ field }) => (
+                        <ComboBox
+                          options={WORLD_COUNTRIES}
+                          value={field.value ?? ""}
+                          onChange={(name) => {
+                            field.onChange(name);
+                            setValue("delivery_address.country_code", "");
+                            setValue("delivery_address.zone_code", "");
+                            setValue("delivery_address.state", "");
+                            setValue("delivery_address.city", "");
+                          }}
+                          onSelect={(item) => {
+                            field.onChange(item.name);
+                            setValue("delivery_address.country_code", item.code);
+                            // Clear zone + sub-fields when country changes
+                            setValue("delivery_address.zone_code", "");
+                            setValue("delivery_address.state", "");
+                            setValue("delivery_address.city", "");
+                          }}
+                          placeholder="Search country…"
+                          inputClass={INPUT_CLASS}
+                        />
+                      )}
                     />
                   </Field>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field
-                      label="City"
-                      error={errors.delivery_address?.city?.message}
-                    >
-                      <input
-                        {...register("delivery_address.city")}
-                        placeholder="Lagos"
-                        className={INPUT_CLASS}
-                      />
-                    </Field>
+
+                  {/* State — dropdown for Nigeria, free text otherwise */}
+                  {isNigeria ? (
                     <Field
                       label="State"
                       error={errors.delivery_address?.state?.message}
@@ -393,6 +427,13 @@ export default function Checkout() {
                         render={({ field }) => (
                           <select
                             {...field}
+                            onChange={(e) => {
+                              field.onChange(e.target.value);
+                              // Set zone code from state; clear city on state change
+                              const zc = NIGERIA_STATE_ZONE_CODES[e.target.value] ?? "";
+                              setValue("delivery_address.zone_code", zc);
+                              setValue("delivery_address.city", "");
+                            }}
                             className={cn(INPUT_CLASS, "appearance-none")}
                           >
                             <option value="">Select state</option>
@@ -405,23 +446,104 @@ export default function Checkout() {
                         )}
                       />
                     </Field>
-                  </div>
-                  <Field label="Landmark (optional)">
-                    <input
-                      {...register("delivery_address.landmark")}
-                      placeholder="Near Shoprite, next to..."
-                      className={INPUT_CLASS}
-                    />
-                  </Field>
+                  ) : watchCountry ? (
+                    <Field
+                      label="State / Province (optional)"
+                      error={errors.delivery_address?.state?.message}
+                    >
+                      <input
+                        {...register("delivery_address.state")}
+                        placeholder="State or province"
+                        className={INPUT_CLASS}
+                      />
+                    </Field>
+                  ) : null}
+
+                  {/* City / LGA — dropdown for Lagos, free text otherwise */}
+                  {isLagos ? (
+                    <Field
+                      label="City / LGA"
+                      error={errors.delivery_address?.city?.message}
+                    >
+                      <Controller
+                        name="delivery_address.city"
+                        control={control}
+                        render={({ field }) => (
+                          <ComboBox
+                            options={LAGOS_LGAS}
+                            value={field.value ?? ""}
+                            onChange={(name) => field.onChange(name)}
+                            onSelect={(item) => {
+                              field.onChange(item.name);
+                              setValue("delivery_address.zone_code", item.code);
+                            }}
+                            placeholder="Search LGA…"
+                            inputClass={INPUT_CLASS}
+                          />
+                        )}
+                      />
+                    </Field>
+                  ) : watchCountry ? (
+                    <Field
+                      label="City"
+                      error={errors.delivery_address?.city?.message}
+                    >
+                      <input
+                        {...register("delivery_address.city")}
+                        placeholder="City"
+                        className={INPUT_CLASS}
+                      />
+                    </Field>
+                  ) : null}
+
+                  {/* Street address — only shown once country is selected */}
+                  {watchCountry && (
+                    <>
+                      <Field
+                        label="Street address"
+                        error={errors.delivery_address?.line1?.message}
+                      >
+                        <input
+                          {...register("delivery_address.line1")}
+                          placeholder="House number and street name"
+                          className={INPUT_CLASS}
+                        />
+                      </Field>
+                      <Field label="Landmark (optional)">
+                        <input
+                          {...register("delivery_address.landmark")}
+                          placeholder="Near Shoprite, next to…"
+                          className={INPUT_CLASS}
+                        />
+                      </Field>
+                    </>
+                  )}
+
+                  {/* Hidden fields — sent to backend for zone routing */}
+                  <input type="hidden" {...register("delivery_address.country_code")} />
+                  <input type="hidden" {...register("delivery_address.zone_code")} />
                 </div>
               )}
 
-              {fulfilmentType === "pickup" && campaign?.store_location && (
-                <div className="rounded-xl border border-white/8 bg-white/5 px-4 py-3">
-                  <p className="text-xs text-gray-400 mb-1">Pickup location</p>
-                  <p className="text-sm text-white">
-                    {campaign.store_location}
-                  </p>
+              {fulfilmentType === "pickup" && (
+                <div className="rounded-xl border border-white/8 bg-white/5 px-4 py-3 space-y-1">
+                  <p className="text-xs text-gray-400">Pickup location</p>
+                  {pickupAddr?.address ? (
+                    <>
+                      <p className="text-sm text-white">{pickupAddr.address}</p>
+                      {pickupAddr.phone && (
+                        <p className="text-xs text-gray-400">
+                          {pickupAddr.phone}
+                        </p>
+                      )}
+                    </>
+                  ) : campaign?.store_location ? (
+                    <p className="text-sm text-white">{campaign.store_location}</p>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">
+                      Contact us for pickup details
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1075,6 +1197,90 @@ function DetailRow({
     <div className="flex justify-between items-center py-1.5 border-b border-white/5 last:border-0">
       <span className="text-xs text-gray-500">{label}</span>
       <span className="text-sm text-white font-medium">{value}</span>
+    </div>
+  );
+}
+
+// ── ComboBox ──────────────────────────────────────────────────────────────────
+// Searchable autocomplete. Filters from the first character typed. Selecting an
+// item commits the name as the visible text and fires onSelect so callers can
+// also capture the ISO code. Click-outside or Escape closes the list.
+function ComboBox({
+  options,
+  value,
+  onChange,
+  onSelect,
+  placeholder,
+  inputClass,
+}: {
+  options: { name: string; code: string }[];
+  value: string;
+  onChange: (name: string) => void;
+  onSelect: (item: { name: string; code: string }) => void;
+  placeholder?: string;
+  inputClass?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Keep local query in sync when value is set programmatically (e.g. reset)
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, []);
+
+  const filtered = query.length === 0
+    ? options.slice(0, 8)
+    : options
+        .filter((o) => o.name.toLowerCase().includes(query.toLowerCase()))
+        .slice(0, 25);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        type="text"
+        value={query}
+        autoComplete="off"
+        placeholder={placeholder}
+        className={inputClass}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+        }}
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 w-full mt-1 max-h-52 overflow-y-auto rounded-xl border border-white/10 bg-[#1c1c1c] shadow-2xl">
+          {filtered.map((item) => (
+            <li
+              key={item.code}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setQuery(item.name);
+                onSelect(item);
+                setOpen(false);
+              }}
+              className="px-4 py-2.5 text-sm text-white hover:bg-white/10 cursor-pointer"
+            >
+              {item.name}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

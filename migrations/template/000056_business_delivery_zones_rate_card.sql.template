@@ -1,0 +1,20 @@
+-- ============================================================
+-- TEMPLATE 000056 — delivery_zones: tiered rate card + courier key
+-- Pixie Girl Hub · JBS Praxis
+--
+-- Adds two columns to delivery_zones:
+--   rate_card JSONB — wig-quantity tier pricing.
+--     Shape: { "tiers": [{ "label", "min_qty", "max_qty", "fee_ngn" }],
+--              "add_on_per_2_ngn": <number> }
+--     The first tier (1–2 wigs) mirrors fee_ngn for backward compat.
+--     For qty > last tier's max_qty:
+--       fee = last_tier.fee_ngn + ceil((qty - last_max) / 2) * add_on_per_2_ngn
+--
+--   courier_key TEXT — soft reference to couriers.courier_key (no FK; the
+--     zone and courier tables serve different purposes and the key is
+--     informational / used by the storefront rate lookup).
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.delivery_zones
+  ADD COLUMN IF NOT EXISTS rate_card  JSONB NOT NULL DEFAULT '{"tiers":[]}'::jsonb,
+  ADD COLUMN IF NOT EXISTS courier_key TEXT;

@@ -16,6 +16,9 @@ export interface CartItem {
   unit_price_ngn: number;
   retail_price_ngn?: number;
   quantity: number;
+  /** "Buy unstyled / raw": ordered without styling premiums. Priced server-side
+   *  at the anchor and counted as a raw wig for the reseller/bulk tier. */
+  unstyled?: boolean;
   preorder?: boolean;
   preorder_lead_weeks?: number;
   /** In-stock delivery lead time (weeks) set in the campaign builder. Shown

@@ -267,6 +267,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           bundle_id: i.bundle_id,
           product_id: i.product_id,
           styled_variant_id: i.styled_variant_id,
+          unstyled: i.unstyled,
           quantity: i.quantity,
           unit_price_ngn: i.unit_price_ngn,
         })),

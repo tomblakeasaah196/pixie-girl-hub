@@ -219,6 +219,35 @@ export function ProductDetailModal({
     onClose();
   }
 
+  // "Order unstyled / raw": the same wig WITHOUT styling, priced at the anchor
+  // (no size/lace premiums). Flagged `unstyled` so the server prices it raw and
+  // counts it toward the reseller/bulk tier. Kept as its own cart line.
+  function handleAddUnstyled() {
+    if (!product || !selectedVariant?.variant_id) return;
+    const anchor = Number(
+      product.anchor_price_ngn ?? product.retail_price_ngn ?? 0,
+    );
+    if (!anchor) return;
+    add({
+      id: `raw:${selectedVariant.variant_id}`,
+      type: "styled",
+      styled_variant_id: selectedVariant.variant_id,
+      product_id: undefined,
+      unstyled: true,
+      name: `${product.name} — Unstyled`,
+      image_url: product.gallery[0]?.url,
+      unit_price_ngn: anchor,
+      retail_price_ngn: Number(product.retail_price_ngn || 0) || undefined,
+      quantity: 1,
+    });
+    openCart();
+    onClose();
+  }
+
+  const anchorOnly = Number(
+    product?.anchor_price_ngn ?? product?.retail_price_ngn ?? 0,
+  );
+
   return (
     <AnimatePresence>
       {open && (
@@ -410,6 +439,16 @@ export function ProductDetailModal({
                         <ShoppingBag className="w-4 h-4" />
                         Add to bag
                       </button>
+                      {anchorOnly > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleAddUnstyled}
+                          disabled={!selectedVariant?.variant_id}
+                          className="w-full inline-flex items-center justify-center gap-1.5 h-10 rounded-xl border border-white/15 bg-white/[0.03] text-[rgb(var(--text))] text-[13px] font-medium hover:bg-white/[0.07] disabled:opacity-40"
+                        >
+                          Order unstyled · {money(anchorOnly)}
+                        </button>
+                      )}
                     </div>
                   </div>
 

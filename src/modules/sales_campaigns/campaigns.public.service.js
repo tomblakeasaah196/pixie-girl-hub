@@ -14,6 +14,7 @@
 const repo = require("./campaigns.repo");
 const bundleRepo = require("./campaigns.bundles.repo");
 const bundleService = require("./campaigns.bundles.service");
+const { computeDeals } = require("./campaigns.deals.service");
 const main = require("./campaigns.service");
 const events = require("./campaigns.events");
 const salesService = require("../sales/sales.service");
@@ -427,6 +428,211 @@ async function signup({ slug, brand, brandHint, input, ip, user_agent }) {
  *      automatic fallback).
  *   6. Return { order_id, payment_url } — the frontend redirects the customer.
  */
+// ── Deal-ladder lines ─────────────────────────────────────
+// Map a public cart to the line shape the deals engine needs. The GROSS deal
+// discount (position ladder + stacking bonus + quantity tier + bulk) is built
+// purely from quantities/kinds — it does NOT depend on prices — so this is all
+// checkout needs to compute the figure it hands to salesService.createOrder.
+//
+//   bundle  → wig_units = Σ component quantities (a 3-wig bundle counts as 3)
+//   raw     → an unstyled wig (feeds the reseller/bulk tier)
+//   styled  → a styled wig (feeds the per-wig position ladder)
+async function buildDealLines({ brand, cart }) {
+  const lines = [];
+  for (const item of cart || []) {
+    const quantity = Number(item.quantity) || 0;
+    if (quantity <= 0) continue;
+    if (item.bundle_id) {
+      const items = await bundleRepo.listBundleItems({
+        brand,
+        bundle_id: item.bundle_id,
+      });
+      const wigUnits = items.reduce((a, bi) => a + (Number(bi.quantity) || 1), 0);
+      lines.push({
+        kind: "bundle",
+        bundle_id: item.bundle_id,
+        quantity,
+        wig_units: wigUnits || 1,
+      });
+    } else if (item.styled_variant_id || item.product_id) {
+      lines.push({
+        kind: item.unstyled ? "raw" : "styled",
+        quantity,
+        wig_units: 1,
+      });
+    }
+  }
+  return lines;
+}
+
+/**
+ * Server-authoritative cart quote for the landing page. Resolves each line's
+ * price the same way checkout does (never trusting the client), runs the deals
+ * engine, and returns the full breakdown + "next rung" nudges. The figure here
+ * matches what checkout charges because checkout feeds the SAME gross discount
+ * into createOrder (which re-clamps it against the live margin floor).
+ */
+async function quoteCart({ slug, brand, brandHint, input }) {
+  const found = await resolveCampaign({ slug, brand, brandHint });
+  if (!found) throw new NotFoundError("Campaign");
+  const { campaign, brand: resolvedBrand } = found;
+
+  const tiers = await bundleService
+    .listTiers({ brand: resolvedBrand, campaign_id: campaign.campaign_id })
+    .catch(() => []);
+
+  // Resolve a display price + margin floor for each line (best-effort; the
+  // gross discount is price-independent, prices only drive the displayed
+  // subtotal / savings / final total).
+  const dealLines = [];
+  for (const item of input.cart || []) {
+    const quantity = Number(item.quantity) || 0;
+    if (quantity <= 0) continue;
+    const priced = await priceQuoteLine({
+      brand: resolvedBrand,
+      item,
+    }).catch(() => null);
+    if (!priced) continue;
+    dealLines.push({ ...priced, quantity });
+  }
+
+  const breakdown = computeDeals({ campaign, lines: dealLines, tiers });
+  return {
+    slug: campaign.slug,
+    currency: "NGN",
+    ...breakdown,
+    lines: dealLines.map((l) => ({
+      kind: l.kind,
+      bundle_id: l.bundle_id || null,
+      name: l.name || null,
+      unit_price_ngn: toCurrencyString(money(l.unit_price_ngn || 0)),
+      quantity: l.quantity,
+    })),
+  };
+}
+
+// Resolve one cart line to { kind, unit_price_ngn, wig_units, bundle_id?,
+// floor_ngn, name } for the quote. Read-only; mirrors checkout pricing.
+async function priceQuoteLine({ brand, item }) {
+  if (item.bundle_id) {
+    const items = await bundleRepo.listBundleItems({
+      brand,
+      bundle_id: item.bundle_id,
+    });
+    if (!items.length) return null;
+    // Bundle price = the attached campaign bundle price if set, else the sum of
+    // component variant prices. We read the simplest authoritative source: the
+    // bundle link's campaign_bundle_price_ngn, falling back to component prices.
+    const wigUnits = items.reduce((a, bi) => a + (Number(bi.quantity) || 1), 0);
+    let price = money(0);
+    for (const bi of items) {
+      if (!bi.variant_id) continue;
+      const { rows } = await query(
+        `SELECT price_storefront_ngn FROM ${brand}.product_variants WHERE variant_id = $1`,
+        [bi.variant_id],
+      );
+      if (rows[0])
+        price = price.plus(
+          money(rows[0].price_storefront_ngn || 0).times(bi.quantity || 1),
+        );
+    }
+    return {
+      kind: "bundle",
+      bundle_id: item.bundle_id,
+      unit_price_ngn: toCurrencyString(price),
+      wig_units: wigUnits || 1,
+      floor_ngn: null,
+      name: null,
+    };
+  }
+
+  if (item.styled_variant_id) {
+    const { rows } = await query(
+      `SELECT sv.price_override_ngn, sv.base_product_id AS sv_base_product_id,
+              sp.styled_id, sp.name AS styled_name, sp.retail_price_ngn,
+              sp.base_variant_id, sp.base_product_id AS sp_base_product_id,
+              c.premium_ngn AS colour_premium,
+              st.premium_ngn AS size_premium, ls.premium_ngn AS lace_premium
+         FROM ${brand}.styled_product_variants sv
+         JOIN ${brand}.styled_products sp ON sp.styled_id = sv.styled_id
+         JOIN ${brand}.styled_product_colours c ON c.colour_id = sv.colour_id
+         JOIN ${brand}.styled_size_tiers st ON st.size_code = sv.size_code
+         LEFT JOIN ${brand}.styled_lace_sizes ls ON ls.lace_code = sv.lace_code
+        WHERE sv.styled_variant_id = $1
+          AND sv.is_active = true AND sv.is_deleted = false`,
+      [item.styled_variant_id],
+    );
+    const sv = rows[0];
+    if (!sv) return null;
+    // "Buy unstyled / raw": the anchor price WITHOUT styling premiums. A raw
+    // line feeds the reseller/bulk tier; a styled line feeds the position ladder.
+    const unitPrice = item.unstyled
+      ? money(sv.retail_price_ngn || 0)
+      : sv.price_override_ngn !== null && sv.price_override_ngn !== undefined
+        ? money(sv.price_override_ngn)
+        : money(sv.retail_price_ngn || 0)
+            .plus(money(sv.colour_premium || 0))
+            .plus(money(sv.size_premium || 0))
+            .plus(money(sv.lace_premium || 0));
+    const floor = await resolveVariantFloor({
+      brand,
+      baseVariantId: sv.base_variant_id,
+      baseProductId: sv.sv_base_product_id || sv.sp_base_product_id,
+    });
+    return {
+      kind: item.unstyled ? "raw" : "styled",
+      unit_price_ngn: toCurrencyString(unitPrice),
+      wig_units: 1,
+      floor_ngn: floor,
+      name: sv.styled_name,
+    };
+  }
+
+  if (item.product_id) {
+    const { rows } = await query(
+      `SELECT variant_id, price_storefront_ngn, min_price_ngn
+         FROM ${brand}.product_variants
+        WHERE product_id = $1 AND is_active = true
+        ORDER BY is_default DESC, display_order ASC, created_at ASC
+        LIMIT 1`,
+      [item.product_id],
+    );
+    if (!rows[0]) return null;
+    return {
+      kind: item.unstyled ? "raw" : "styled",
+      unit_price_ngn: toCurrencyString(money(rows[0].price_storefront_ngn || 0)),
+      wig_units: 1,
+      floor_ngn: rows[0].min_price_ngn ?? null,
+      name: null,
+    };
+  }
+  return null;
+}
+
+// Best-effort per-line margin floor for the quote (the variant min_price the
+// checkout clamp also uses). Returns null when none is configured.
+async function resolveVariantFloor({ brand, baseVariantId, baseProductId }) {
+  let variantId = baseVariantId;
+  if (!variantId && baseProductId) {
+    const { rows } = await query(
+      `SELECT variant_id FROM ${brand}.product_variants
+        WHERE product_id = $1 AND is_active = true
+        ORDER BY is_default DESC, display_order ASC, created_at ASC
+        LIMIT 1`,
+      [baseProductId],
+    );
+    variantId = rows[0] ? rows[0].variant_id : null;
+  }
+  if (!variantId) return null;
+  const { rows } = await query(
+    `SELECT min_price_ngn FROM ${brand}.product_variants WHERE variant_id = $1`,
+    [variantId],
+  );
+  return rows[0] && rows[0].min_price_ngn !== null
+    ? rows[0].min_price_ngn
+    : null;
+}
+
 async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   const found = await resolveCampaign({ slug, brand, brandHint });
   if (!found) throw new NotFoundError("Campaign");
@@ -622,8 +828,13 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         );
       }
 
-      const unitPrice =
-        sv.price_override_ngn !== null && sv.price_override_ngn !== undefined
+      // "Buy unstyled / raw": the buyer ordered this wig WITHOUT styling, so we
+      // price it at the styled product's anchor (retail_price_ngn) and drop the
+      // colour/size/lace premiums. The line is flagged raw so it feeds the
+      // reseller/bulk tier rather than the per-wig position ladder.
+      const unitPrice = cartItem.unstyled
+        ? money(sv.retail_price_ngn || 0)
+        : sv.price_override_ngn !== null && sv.price_override_ngn !== undefined
           ? money(sv.price_override_ngn)
           : money(sv.retail_price_ngn || 0)
               .plus(money(sv.colour_premium || 0))
@@ -660,9 +871,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         );
       }
 
-      const label = [sv.colour_name, sv.size_label, sv.lace_code]
-        .filter(Boolean)
-        .join(" · ");
+      const label = cartItem.unstyled
+        ? [sv.colour_name, sv.size_label, "Unstyled"].filter(Boolean).join(" · ")
+        : [sv.colour_name, sv.size_label, sv.lace_code]
+            .filter(Boolean)
+            .join(" · ");
       orderLines.push({
         variant_id: baseVariantId,
         quantity: cartItem.quantity,
@@ -733,6 +946,31 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     }
   }
 
+  // ── 2c. Campaign deal ladder ───────────────────────────
+  // Compute the GROSS deal discount (position ladder + bundle stacking bonus +
+  // quantity-tier ladder + reseller/bulk) from the cart's kinds/quantities —
+  // the only inputs it needs. We hand this single figure to createOrder, which
+  // applies it order-level and re-clamps it against the live margin floor, so
+  // the charged total always matches the quote the buyer saw in the cart.
+  let campaignDealDiscountNgn = "0.00";
+  try {
+    const dealLines = await buildDealLines({
+      brand: resolvedBrand,
+      cart: input.cart,
+    });
+    const tiers = await bundleService.listTiers({
+      brand: resolvedBrand,
+      campaign_id: campaign.campaign_id,
+    });
+    const deal = computeDeals({ campaign, lines: dealLines, tiers });
+    campaignDealDiscountNgn = deal.gross_discount_ngn;
+  } catch (err) {
+    logger.warn(
+      { err: err.message, slug: campaign.slug },
+      "campaign deal-ladder computation skipped",
+    );
+  }
+
   // ── 3. Create the Sales Order ──────────────────────────
   // salesService.createOrder runs its own transaction (discount engine,
   // margin-floor, stock reservation, idempotency, audit — all atomic).
@@ -750,6 +988,10 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       sales_campaign_id: campaign.campaign_id,
       campaign_slug: campaign.slug,
       lines: orderLines,
+      // Gross campaign deal-ladder discount (position ladder + stacking bonus +
+      // quantity tier + reseller/bulk). createOrder applies it order-level and
+      // re-clamps against the margin floor.
+      campaign_deal_discount_ngn: campaignDealDiscountNgn,
       // Server-resolved delivery fee (0 for pickup / unresolved zone). The
       // discount engine still honours a free_shipping coupon on top of this.
       shipping_fee_ngn: shippingFeeNgn,
@@ -1116,6 +1358,7 @@ module.exports = {
   getStock,
   signup,
   checkout,
+  quoteCart,
   getOrderStatus,
   getProductDetail,
 };

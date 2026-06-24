@@ -237,6 +237,7 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
   const { rows } = await ex(client)(
     `SELECT scb.*,
             pb.slug AS bundle_slug, pb.name AS bundle_name,
+            pb.description AS bundle_description,
             pb.hero_image_url AS bundle_hero_image_url,
             pb.default_per_item_discount_ngn,
             pb.default_preorder_loss_pct

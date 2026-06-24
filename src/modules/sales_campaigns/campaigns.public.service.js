@@ -1254,11 +1254,14 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
     throw new NotFoundError("Product");
   }
 
-  // Gallery: prefer images attached to the styled row directly (these include
-  // per-colour shots, which carry both styled_id and styled_colour_id), and
-  // ALWAYS top up with the base product's general images so a styled with
-  // images split across the base and one colour still shows the full set
-  // instead of collapsing to a single hero. Both join points are indexed.
+  // Gallery: STYLED-ONLY. Every image uploaded through the catalogue for a
+  // styled product — including each per-colour multi-angle shot — carries the
+  // styled_id (see catalogue styled_variants.service addColourImage, which sets
+  // product_id=base AND styled_id AND styled_colour_id). So a single query keyed
+  // on styled_id returns the complete multi-angle set. We deliberately do NOT
+  // top up with base-product-only images (styled_id IS NULL): the landing page
+  // must never surface a raw factory/base shot. If a styled product has only one
+  // image, the gallery shows one — fix it by adding angles in the catalogue.
   const { rows: styledRows } = await query(
     `SELECT COALESCE(cdn_url, file_path) AS url, alt_text, is_primary, display_order
        FROM ${resolvedBrand}.product_images
@@ -1267,21 +1270,9 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
       LIMIT 24`,
     [styled_id],
   );
-  let baseRows = [];
-  if (styled.base_product_id) {
-    const { rows } = await query(
-      `SELECT COALESCE(cdn_url, file_path) AS url, alt_text, is_primary, display_order
-         FROM ${resolvedBrand}.product_images
-        WHERE product_id = $1 AND styled_id IS NULL AND variant_id IS NULL
-        ORDER BY is_primary DESC, display_order ASC NULLS LAST
-        LIMIT 24`,
-      [styled.base_product_id],
-    );
-    baseRows = rows;
-  }
   const seen = new Set();
   const gallery = [];
-  for (const r of [...styledRows, ...baseRows]) {
+  for (const r of styledRows) {
     if (!r.url || seen.has(r.url)) continue;
     seen.add(r.url);
     gallery.push(r);

@@ -8,6 +8,7 @@ import type { LandingPayload, LandingBundle } from "@/lib/types";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { BundleDetailModal } from "@/components/product/BundleDetailModal";
 
 export function BundleShowcase({
   payload,
@@ -60,6 +61,7 @@ function BundleCard({
   const add = useCart((s) => s.add);
   const openCart = useCart((s) => s.openCart);
   const [opened, setOpened] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const tease = state !== "live";
   const stockOut = (bundle.current_stock_snapshot ?? 1) <= 0;
   const showPrice = !tease;
@@ -112,7 +114,19 @@ function BundleCard({
       onMouseLeave={() => setOpened(false)}
       className="glass rounded-[var(--radius)] overflow-hidden flex flex-col"
     >
-      <div className="relative aspect-[4/5] bg-[rgb(var(--panel-2))]">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setDetailOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setDetailOpen(true);
+          }
+        }}
+        aria-label={`View ${bundle.bundle_name} details`}
+        className="relative aspect-[4/5] bg-[rgb(var(--panel-2))] cursor-pointer"
+      >
         {bundle.bundle_hero_image_url ? (
           <Image
             src={bundle.bundle_hero_image_url}
@@ -160,9 +174,24 @@ function BundleCard({
       </div>
 
       <div className="p-5 flex-1 flex flex-col">
-        <h3 className="font-display text-[22px] leading-tight">
+        <button
+          type="button"
+          onClick={() => setDetailOpen(true)}
+          className="text-left font-display text-[22px] leading-tight hover:text-[rgb(var(--accent-glow))] transition-colors"
+        >
           {bundle.bundle_name}
-        </h3>
+        </button>
+        {(bundle.component_count ?? bundle.components?.length ?? 0) > 0 && (
+          <button
+            type="button"
+            onClick={() => setDetailOpen(true)}
+            className="mt-1 text-left text-[12.5px] text-[rgb(var(--text-faint))] hover:text-[rgb(var(--text-muted))] transition-colors inline-flex items-center gap-1"
+          >
+            <Package className="w-3.5 h-3.5" />
+            {bundle.component_count ?? bundle.components?.length} pieces · View
+            details
+          </button>
+        )}
         {showPrice ? (
           <div className="mt-4 flex items-end gap-3">
             <div className="font-display text-[28px] tabular-nums">
@@ -223,6 +252,19 @@ function BundleCard({
           )}
         </button>
       </div>
+
+      <BundleDetailModal
+        bundle={bundle}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        onAdd={addToCart}
+        finalPrice={finalPrice}
+        retailTotal={retailTotal}
+        savings={savings}
+        state={state}
+        stockOut={stockOut}
+        preorderLeadWeeks={preorderLeadWeeks}
+      />
     </motion.article>
   );
 }

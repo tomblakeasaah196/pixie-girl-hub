@@ -27,8 +27,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LandingPayload } from "@/lib/types";
+import { readStoredCurrency, writeStoredCurrency } from "@/lib/currency";
 
-const STORAGE_KEY = "pgh.salesCurrency";
 const AMOUNT_RE = /₦\s?([\d.,]+\s?[kKmM]?)/g;
 
 function ngnToNumber(raw: string): number | null {
@@ -86,16 +86,6 @@ function priceTextNodes(root: Node): Text[] {
   return nodes;
 }
 
-function readStoredChoice(): "NGN" | "USD" | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const v = window.localStorage.getItem(STORAGE_KEY);
-    return v === "USD" || v === "NGN" ? v : null;
-  } catch {
-    return null;
-  }
-}
-
 export function CurrencyFloater({ payload }: { payload: LandingPayload }) {
   const fxRate = payload.ngn_per_usd_rate ?? null;
   const hasRate = typeof fxRate === "number" && fxRate > 0;
@@ -120,7 +110,7 @@ export function CurrencyFloater({ payload }: { payload: LandingPayload }) {
       setResolved(true);
       return;
     }
-    const stored = readStoredChoice();
+    const stored = readStoredCurrency();
     if (stored) {
       setUsd(stored === "USD");
       setResolved(true);
@@ -139,7 +129,13 @@ export function CurrencyFloater({ payload }: { payload: LandingPayload }) {
         };
         if (cancelled) return;
         const cc = String(json?.data?.country || "").toUpperCase();
-        if (cc && cc !== "NG") setUsd(true);
+        const resolvedCurrency = cc && cc !== "NG" ? "USD" : "NGN";
+        if (resolvedCurrency === "USD") setUsd(true);
+        // Persist + broadcast the GeoIP default so the React-driven surfaces
+        // (cart drawer, checkout) start in the SAME currency as the observer-
+        // converted live-page blocks. Without this, a foreign visitor saw $
+        // prices on the page but ₦ in the cart drawer.
+        writeStoredCurrency(resolvedCurrency);
       } catch {
         // Stay on NGN if the lookup fails.
       } finally {
@@ -215,11 +211,9 @@ export function CurrencyFloater({ payload }: { payload: LandingPayload }) {
 
   const flip = () => {
     const next = usd ? "NGN" : "USD";
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      /* private mode — ignore */
-    }
+    // Persist per session + broadcast so the cart drawer and checkout (which
+    // convert in React, not via this observer) switch in lockstep.
+    writeStoredCurrency(next);
     setUsd(!usd);
   };
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plus,
   Gift,
@@ -6,6 +6,8 @@ import {
   Image as ImageIcon,
   Pencil,
   Trash2,
+  Upload,
+  Search,
 } from "lucide-react";
 import { useAddBundleToCampaign, type Campaign } from "@/lib/campaigns";
 import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
@@ -39,6 +41,7 @@ import {
   useAddStyledToBundle,
   useBaseProducts,
   useStyledProducts,
+  useUploadCoverImage,
   useAllowBaseInCollectionsBundles,
   type Bundle,
   type BundleComponentInput,
@@ -448,7 +451,7 @@ function BundleEditorModal({
         <Field label="Pricing model">
           <Select value={model} onChange={setModel} options={PRICING_MODELS} />
         </Field>
-        <p className="text-[11.5px] text-text-faint -mt-1">
+        <p className="text-[11.5px] text-accent-glow font-medium -mt-1">
           {PRICING_HELP[model]}
         </p>
 
@@ -572,16 +575,21 @@ function CreateBundleModal({
   onClose: () => void;
 }) {
   const create = useCreateBundle();
-  const bases = useBaseProducts();
+  const upload = useUploadCoverImage();
+  const update = useUpdateBundle();
+  const styledProds = useStyledProducts();
   const [name, setName] = useState("");
   const [model, setModel] = useState("fixed_bundle_price");
   const [amount, setAmount] = useState("");
   const [amountUsd, setAmountUsd] = useState("");
-  // A bundle MUST have ≥1 component (server-enforced). We pick base products.
   const [components, setComponents] = useState<
-    { product_id: string; name: string; quantity: number }[]
+    { styled_id: string; name: string; quantity: number }[]
   >([]);
-  const [pick, setPick] = useState("");
+  const [query, setQuery] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const coverFileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setName("");
@@ -589,30 +597,44 @@ function CreateBundleModal({
     setAmountUsd("");
     setModel("fixed_bundle_price");
     setComponents([]);
-    setPick("");
+    setQuery("");
+    setShowDropdown(false);
+    setCoverFile(null);
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    setCoverPreview(null);
   };
 
-  const addComponent = (productId: string) => {
-    if (!productId || components.some((c) => c.product_id === productId))
-      return;
-    const b = (bases.data ?? []).find((p) => p.product_id === productId);
-    if (!b) return;
+  const q = query.toLowerCase();
+  const hits =
+    q.length >= 1
+      ? (styledProds.data ?? [])
+          .filter(
+            (s) =>
+              s.name?.toLowerCase().includes(q) &&
+              !components.some((c) => c.styled_id === s.styled_id),
+          )
+          .slice(0, 10)
+      : [];
+
+  const addStyled = (s: { styled_id: string; name: string }) => {
+    if (components.some((c) => c.styled_id === s.styled_id)) return;
     setComponents((prev) => [
       ...prev,
-      { product_id: productId, name: b.name, quantity: 1 },
+      { styled_id: s.styled_id, name: s.name, quantity: 1 },
     ]);
-    setPick("");
+    setQuery("");
+    setShowDropdown(false);
   };
 
-  const setQty = (productId: string, qty: number) =>
+  const setQty = (styledId: string, qty: number) =>
     setComponents((prev) =>
       prev.map((c) =>
-        c.product_id === productId ? { ...c, quantity: Math.max(1, qty) } : c,
+        c.styled_id === styledId ? { ...c, quantity: Math.max(1, qty) } : c,
       ),
     );
 
-  const removeComponent = (productId: string) =>
-    setComponents((prev) => prev.filter((c) => c.product_id !== productId));
+  const removeComponent = (styledId: string) =>
+    setComponents((prev) => prev.filter((c) => c.styled_id !== styledId));
 
   const canSubmit = !!name.trim() && components.length > 0 && !create.isPending;
 
@@ -620,7 +642,7 @@ function CreateBundleModal({
     if (!name.trim() || components.length === 0) return;
     const num = amount ? Number(amount) : undefined;
     const payloadComponents: BundleComponentInput[] = components.map((c) => ({
-      product_id: c.product_id,
+      styled_id: c.styled_id,
       quantity: c.quantity,
       role: "core",
     }));
@@ -634,29 +656,35 @@ function CreateBundleModal({
       payload.bundle_price_ngn = num ?? 0;
       payload.bundle_price_usd = amountUsd ? Number(amountUsd) : undefined;
     } else if (model === "pct_off") {
-      // priceBundle multiplies the subtotal by discount_value, so it expects a
-      // FRACTION (0.10), not a whole percent. Convert here.
+      // priceBundle expects a FRACTION (0.10 for 10%), not a whole percent.
       payload.discount_value = (num ?? 0) / 100;
     } else {
       payload.discount_value = num ?? 0;
     }
     create.mutate(payload, {
-      onSuccess: () => {
+      onSuccess: (bundle) => {
+        if (coverFile) {
+          upload.mutate(
+            {
+              file: coverFile,
+              reference_type: "bundle",
+              reference_id: bundle.bundle_id,
+            },
+            {
+              onSuccess: (res) => {
+                update.mutate({
+                  id: bundle.bundle_id,
+                  patch: { hero_image_url: res.cdn_url },
+                });
+              },
+            },
+          );
+        }
         reset();
         onClose();
       },
     });
   };
-
-  const pickOptions = [
-    { value: "", label: "Add a product…" },
-    ...(bases.data ?? [])
-      .filter((b) => !components.some((c) => c.product_id === b.product_id))
-      .map((b) => ({
-        value: b.product_id,
-        label: `${b.name} · ${b.product_code}`,
-      })),
-  ];
 
   return (
     <Modal
@@ -687,10 +715,58 @@ function CreateBundleModal({
             className={inputCls}
           />
         </Field>
+
+        <Field label="Cover image" hint="optional">
+          <div className="space-y-2">
+            {coverPreview ? (
+              <div className="relative aspect-[16/9] rounded-[11px] overflow-hidden border border-line">
+                <img
+                  src={coverPreview}
+                  alt="Cover preview"
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    URL.revokeObjectURL(coverPreview);
+                    setCoverFile(null);
+                    setCoverPreview(null);
+                  }}
+                  className="absolute top-2 right-2 grid place-items-center w-6 h-6 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => coverFileRef.current?.click()}
+                className="w-full h-[72px] rounded-[11px] border border-dashed border-line hover:border-accent/60 flex flex-col items-center justify-center gap-1 text-text-faint hover:text-accent-glow transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="text-[11.5px]">Choose cover image</span>
+              </button>
+            )}
+            <input
+              ref={coverFileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setCoverFile(file);
+                setCoverPreview(URL.createObjectURL(file));
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </Field>
+
         <Field label="Pricing model">
           <Select value={model} onChange={setModel} options={PRICING_MODELS} />
         </Field>
-        <p className="text-[11.5px] text-text-faint -mt-1">
+        <p className="text-[11.5px] text-accent-glow font-medium -mt-1">
           {PRICING_HELP[model]}
         </p>
 
@@ -710,7 +786,9 @@ function CreateBundleModal({
         ) : (
           <Field
             label={model === "pct_off" ? "Discount percentage" : "Discount amount"}
-            hint={model === "pct_off" ? "percent off the total" : "flat ₦ off the bundle"}
+            hint={
+              model === "pct_off" ? "percent off the total" : "flat ₦ off the bundle"
+            }
           >
             <NumberField
               value={amount}
@@ -720,14 +798,45 @@ function CreateBundleModal({
           </Field>
         )}
 
-        <Field label="Products in this bundle" hint="at least one">
-          <Select value={pick} onChange={addComponent} options={pickOptions} />
+        <Field label="Styled products in this bundle" hint="at least one">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setShowDropdown(true);
+              }}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+              placeholder="Type to search styled products…"
+              className={`${inputCls} pl-9`}
+            />
+            {showDropdown && hits.length > 0 && (
+              <div className="absolute z-50 top-full mt-1 left-0 right-0 glass border border-line rounded-[11px] shadow-lg max-h-[220px] overflow-y-auto">
+                {hits.map((s) => (
+                  <button
+                    key={s.styled_id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      addStyled(s);
+                    }}
+                    className="w-full text-left px-3 py-2 text-[13px] hover:bg-text-primary/[0.05] transition-colors first:rounded-t-[11px] last:rounded-b-[11px]"
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </Field>
+
         {components.length > 0 && (
           <div className="space-y-2">
             {components.map((c) => (
               <div
-                key={c.product_id}
+                key={c.styled_id}
                 className="flex items-center gap-2 rounded-[11px] border border-line bg-text-primary/[0.03] px-3 py-2"
               >
                 <span className="flex-1 min-w-0 truncate text-[13px]">
@@ -737,12 +846,12 @@ function CreateBundleModal({
                   type="number"
                   min={1}
                   value={c.quantity}
-                  onChange={(e) => setQty(c.product_id, Number(e.target.value))}
+                  onChange={(e) => setQty(c.styled_id, Number(e.target.value))}
                   className="w-14 h-8 px-2 rounded-[8px] bg-text-primary/[0.05] border border-line text-text-primary text-[12px] text-center outline-none focus:border-accent/50"
                   aria-label="Quantity"
                 />
                 <button
-                  onClick={() => removeComponent(c.product_id)}
+                  onClick={() => removeComponent(c.styled_id)}
                   className="grid place-items-center w-7 h-7 rounded-[8px] text-text-faint hover:text-danger hover:bg-danger/10 transition-colors"
                   aria-label="Remove product"
                 >
@@ -754,8 +863,8 @@ function CreateBundleModal({
         )}
         {components.length === 0 && (
           <p className="text-[11.5px] text-text-faint">
-            Pick the base products this bundle includes. A bundle needs at least
-            one.
+            Search and pick styled products for this bundle. A bundle needs at
+            least one.
           </p>
         )}
 

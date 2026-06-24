@@ -294,6 +294,23 @@ function brandQuery(brand?: string): string {
   return brand ? `?brand=${encodeURIComponent(brand)}` : "";
 }
 
+/** fetch with a hard timeout so a hung backend can never leave the checkout
+ *  spinning ("Calculating…" forever / a dead picker). On timeout the request is
+ *  aborted and the caller falls back to its bundled defaults. */
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  ms = 8000,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Fetch picker options from the Hub. The bundled lists are the floor: until
  *  the delivery zones are seeded the endpoint returns only Nigeria, so we keep
  *  whichever list is more complete per field. The buyer therefore always sees
@@ -303,7 +320,7 @@ export async function fetchGeoOptions(brand?: string): Promise<GeoOptions> {
   const fuller = (remote: GeoOption[] | undefined, local: GeoOption[]) =>
     Array.isArray(remote) && remote.length >= local.length ? remote : local;
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `/api/public/storefront/geo-options${brandQuery(brand)}`,
       { headers: { Accept: "application/json" } },
     );
@@ -331,7 +348,7 @@ export async function fetchPickupAddress(
   brand?: string,
 ): Promise<PickupAddress> {
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `/api/public/storefront/pickup-address${brandQuery(brand)}`,
       { headers: { Accept: "application/json" } },
     );
@@ -358,7 +375,7 @@ export async function fetchDeliveryQuote(args: {
   qty: number;
 }): Promise<DeliveryQuote | null> {
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `/api/public/storefront/delivery-quote${brandQuery(args.brand)}`,
       {
         method: "POST",

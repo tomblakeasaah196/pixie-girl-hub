@@ -30,12 +30,19 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
 
   useEffect(() => {
     if (!open) return;
+    // Warm the checkout route the moment the drawer opens — Next prefetches the
+    // route's JS chunk AND its server-rendered data (the campaign payload). By
+    // the time the buyer taps "Checkout" the page is already in cache, so the
+    // navigation is instant instead of paying for a cold server round-trip
+    // (the old behaviour: click → server fetch campaign → render → "stays for a
+    // while or never works" when the backend was cold).
+    router.prefetch(`/checkout/${payload.slug}`);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, close]);
+  }, [open, close, router, payload.slug]);
 
   return (
     <AnimatePresence>

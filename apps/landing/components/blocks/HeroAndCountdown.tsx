@@ -4,14 +4,28 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import { Bell, CalendarPlus, ChevronDown, Sparkles } from "lucide-react";
 import type { LandingPayload } from "@/lib/types";
 import type { DerivedState } from "@/lib/state-engine";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/lib/cart-store";
 import { buildIcs, googleCalendarUrl } from "@/lib/ics";
-import { CountdownRing } from "./3d/CountdownRing";
-import { HeroCenterpiece } from "./3d/HeroCenterpiece";
+
+// The 2.5D hero pieces pull in the entire three.js + @react-three/fiber stack
+// (~500KB). They render only in the built-in Before/Live hero and never on the
+// live sales page (which uses its own DOM hero via LiveHero). Loading them
+// lazily with ssr:false keeps three.js out of the initial bundle entirely — the
+// chunk is fetched only when a state that actually shows 3D mounts it. WebGL
+// can't server-render anyway, so there's no SSR loss.
+const CountdownRing = dynamic(
+  () => import("./3d/CountdownRing").then((m) => m.CountdownRing),
+  { ssr: false },
+);
+const HeroCenterpiece = dynamic(
+  () => import("./3d/HeroCenterpiece").then((m) => m.HeroCenterpiece),
+  { ssr: false },
+);
 
 interface HeroProps {
   payload: LandingPayload;

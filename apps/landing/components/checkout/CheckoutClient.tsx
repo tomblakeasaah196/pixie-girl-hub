@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -76,6 +76,8 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [deliveryZoneName, setDeliveryZoneName] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
+  // Use useTransition to defer geo/pickup updates so they don't block renders.
+  const [, startTransition] = useTransition();
 
   const [notes, setNotes] = useState("");
   const [isGift, setIsGift] = useState(false);
@@ -133,14 +135,19 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const effectiveZone = isNigeria ? zoneCode : countryCode;
 
   // Load picker options + the in-store pickup address once per brand.
+  // Use startTransition to defer these updates so they don't block form render.
   useEffect(() => {
     let alive = true;
-    fetchGeoOptions(brandKey).then((g) => alive && setGeo(g));
-    fetchPickupAddress(brandKey).then((p) => alive && setPickupAddr(p));
+    fetchGeoOptions(brandKey).then((g) => {
+      if (alive) startTransition(() => setGeo(g));
+    });
+    fetchPickupAddress(brandKey).then((p) => {
+      if (alive) startTransition(() => setPickupAddr(p));
+    });
     return () => {
       alive = false;
     };
-  }, [brandKey]);
+  }, [brandKey, startTransition]);
 
   // Re-quote the delivery fee whenever the zone or basket size changes.
   useEffect(() => {

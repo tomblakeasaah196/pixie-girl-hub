@@ -65,6 +65,8 @@ const THEME_KEYS: { key: keyof LandingConfig["theme"]; label: string }[] = [
   { key: "paper", label: "Paper (bg)" },
   { key: "ink", label: "Ink (hero bg)" },
   { key: "muted", label: "Muted text" },
+  { key: "cartBg", label: "Cart button" },
+  { key: "checkoutBg", label: "Checkout button" },
 ];
 
 type PreviewState = "before" | "live" | "ended";
@@ -515,7 +517,7 @@ function BrandEditor({
       <Section title="Colours">
         <div className="grid grid-cols-2 gap-2">
           {THEME_KEYS.map(({ key, label }) => (
-            <Color key={key} label={label} value={config.theme[key]} onChange={(v) => update((d) => { d.theme[key] = v; })} />
+            <Color key={key} label={label} value={config.theme[key] || config.theme.primaryDeep} onChange={(v) => update((d) => { d.theme[key] = v; })} />
           ))}
         </div>
         <p className="text-[11px] text-text-faint mt-1">Reveal drape colours follow Primary / Accent / Ink automatically.</p>

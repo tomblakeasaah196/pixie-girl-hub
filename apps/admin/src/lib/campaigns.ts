@@ -104,6 +104,9 @@ export interface Campaign {
   exit_intent_enabled: boolean;
   exit_intent_code: string | null;
   exit_intent_discount_ngn: number | null;
+  exit_intent_title: string | null;
+  exit_intent_body: string | null;
+  exit_intent_button: string | null;
   abandonment_recovery_enabled: boolean;
   allow_multi_currency_display: boolean;
   /** Static NGN-per-USD rate the landing page uses for its currency toggle.

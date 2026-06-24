@@ -65,8 +65,6 @@ const THEME_KEYS: { key: keyof LandingConfig["theme"]; label: string }[] = [
   { key: "paper", label: "Paper (bg)" },
   { key: "ink", label: "Ink (hero bg)" },
   { key: "muted", label: "Muted text" },
-  { key: "cartBg", label: "Cart button" },
-  { key: "checkoutBg", label: "Checkout button" },
 ];
 
 type PreviewState = "before" | "live" | "ended";

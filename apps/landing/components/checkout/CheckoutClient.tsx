@@ -16,15 +16,106 @@ import {
   MessageCircle,
   RefreshCw,
   ShieldCheck,
+  Store,
   Tag,
+  Truck,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { postCheckout } from "@/lib/api-client";
 import type { LandingPayload } from "@/lib/types";
+import { WORLD_COUNTRIES, NIGERIAN_STATES, LAGOS_LGAS } from "@/lib/geo";
 
 type Gateway = "paystack" | "nomba";
+type DeliveryMode = "delivery" | "pickup";
 
+// ── Inline ComboBox ────────────────────────────────────────────────
+function ComboBox({
+  options,
+  value,
+  onSelect,
+  placeholder,
+  required,
+}: {
+  options: { name: string; code: string }[];
+  value: string;
+  onSelect: (name: string, code: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Keep query in sync when value is set externally (e.g. cleared).
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options.slice(0, 8);
+    return options.filter((o) => o.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [query, options]);
+
+  // Close on outside click.
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        type="text"
+        value={query}
+        required={required}
+        placeholder={placeholder}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+          if (e.key === "Enter" && filtered.length === 1) {
+            e.preventDefault();
+            onSelect(filtered[0].name, filtered[0].code);
+            setQuery(filtered[0].name);
+            setOpen(false);
+          }
+        }}
+        autoComplete="off"
+        className="w-full h-11 px-3.5 rounded-xl bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.5)] text-[14px]"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-xl border border-[rgb(var(--border-c)/0.12)] bg-[rgb(var(--surface))] shadow-xl text-[13px]">
+          {filtered.map((o) => (
+            <li
+              key={o.code}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onSelect(o.name, o.code);
+                setQuery(o.name);
+                setOpen(false);
+              }}
+              className="px-3.5 py-2 cursor-pointer hover:bg-[rgb(var(--accent)/0.08)] hover:text-[rgb(var(--accent-glow))]"
+            >
+              {o.name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────
 export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const router = useRouter();
   const items = useCart((s) => s.items);
@@ -32,17 +123,32 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const retail = useCart((s) => s.retailSubtotalNgn());
   const savings = useCart((s) => s.savingsNgn());
 
+  // Contact
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("+234 ");
   const [insta, setInsta] = useState("");
+
+  // Delivery mode
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("delivery");
+  const [pickupAddr, setPickupAddr] = useState<{ address: string | null; phone: string | null } | null>(null);
+
+  // Delivery address
+  const [country, setCountry] = useState("Nigeria");
+  const [countryCode, setCountryCode] = useState("NG");
+  const [stateValue, setStateValue] = useState("");
+  const [stateCode, setStateCode] = useState("");
+  const [cityValue, setCityValue] = useState("");
+  const [cityCode, setCityCode] = useState("");
   const [addressLine1, setAddressLine1] = useState("");
   const [addressLine2, setAddressLine2] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("Lagos");
-  const [country] = useState("Nigeria");
   const [notes, setNotes] = useState("");
+
+  const isNigeria = country === "Nigeria";
+  const isLagos = isNigeria && stateValue === "Lagos";
+
+  // Gift
   const [isGift, setIsGift] = useState(false);
   const [giftName, setGiftName] = useState("");
   const [giftPhone, setGiftPhone] = useState("");
@@ -51,15 +157,17 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [recipientLine1, setRecipientLine1] = useState("");
   const [recipientLine2, setRecipientLine2] = useState("");
   const [recipientCity, setRecipientCity] = useState("");
-  const [recipientState, setRecipientState] = useState("Lagos");
-  const [recipientCountry] = useState("Nigeria");
+  const [recipientState, setRecipientState] = useState("");
+  const [recipientCountry, setRecipientCountry] = useState("Nigeria");
+
+  // Payment & consent
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
   const [waOpt, setWaOpt] = useState(false);
   const [mktOpt, setMktOpt] = useState(false);
   const [terms, setTerms] = useState(false);
-  const [honey, setHoney] = useState(""); // honeypot
+  const [honey, setHoney] = useState("");
   const [gateway, setGateway] = useState<Gateway>("paystack");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{
@@ -71,8 +179,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   } | null>(null);
   const errRef = useRef<HTMLDivElement | null>(null);
 
-  // Never let a failure be silent — pull the error into view next to the
-  // Pay button the moment it is set.
+  // Fetch pickup address once.
+  useEffect(() => {
+    const brand = payload.brand?.business_key;
+    if (!brand) return;
+    fetch(`/api/public/storefront/pickup-address?brand=${brand}`)
+      .then((r) => r.json())
+      .then((json) => setPickupAddr(json?.data ?? null))
+      .catch(() => {});
+  }, [payload.brand?.business_key]);
+
   useEffect(() => {
     if (err && errRef.current) {
       errRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -80,22 +196,47 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   }, [err]);
 
   const idemKey = useMemo(
-    () =>
-      `pgh-${payload.slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    () => `pgh-${payload.slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     [payload.slug],
   );
   const empty = items.length === 0;
 
+  // When country changes, reset state + city.
+  function handleCountrySelect(name: string, code: string) {
+    setCountry(name);
+    setCountryCode(code);
+    setStateValue("");
+    setStateCode("");
+    setCityValue("");
+    setCityCode("");
+  }
+
+  // When state changes, reset city.
+  function handleStateSelect(name: string, code: string) {
+    setStateValue(name);
+    setStateCode(code);
+    setCityValue("");
+    setCityCode("");
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    if (honey) return; // bot
+    if (honey) return;
     if (!terms) {
       setErr({ message: "Please accept the terms to continue.", retryable: false });
       return;
     }
-    if (!first || !email || !phone || !addressLine1 || !city) {
+    if (!first || !email || !phone) {
       setErr({ message: "Please fill in all required fields.", retryable: false });
+      return;
+    }
+    if (deliveryMode === "delivery" && (!addressLine1 || !cityValue)) {
+      setErr({ message: "Please fill in your delivery address.", retryable: false });
+      return;
+    }
+    if (isNigeria && deliveryMode === "delivery" && !stateValue) {
+      setErr({ message: "Please select your state.", retryable: false });
       return;
     }
     setBusy(true);
@@ -106,18 +247,30 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             recipient_phone: giftPhone || undefined,
             message: giftMessage || undefined,
             ship_to_recipient: shipToRecipient || undefined,
-            recipient_address:
-              shipToRecipient
-                ? {
-                    line1: recipientLine1,
-                    line2: recipientLine2 || undefined,
-                    city: recipientCity,
-                    state: recipientState || undefined,
-                    country: recipientCountry,
-                  }
-                : undefined,
+            recipient_address: shipToRecipient
+              ? {
+                  line1: recipientLine1,
+                  line2: recipientLine2 || undefined,
+                  city: recipientCity,
+                  state: recipientState || undefined,
+                  country: recipientCountry,
+                }
+              : undefined,
           }
         : undefined;
+
+      const address =
+        deliveryMode === "pickup"
+          ? { line1: pickupAddr?.address || "Store pickup", city: "Lagos", state: "Lagos", country: "Nigeria" }
+          : {
+              line1: addressLine1,
+              line2: addressLine2 || undefined,
+              city: cityValue,
+              state: stateValue || undefined,
+              country,
+              country_code: countryCode || undefined,
+              zone_code: cityCode || stateCode || undefined,
+            };
 
       const res = await postCheckout({
         slug: payload.slug,
@@ -129,18 +282,8 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           instagram_handle: insta || undefined,
           notes: notes || undefined,
           gift: giftPayload,
-          address: {
-            line1: addressLine1,
-            line2: addressLine2 || undefined,
-            city,
-            state,
-            country,
-          },
-          consent: {
-            whatsapp_opt_in: waOpt,
-            marketing_opt_in: mktOpt,
-            terms_accepted: true,
-          },
+          address: address as Parameters<typeof postCheckout>[0]["contact"]["address"],
+          consent: { whatsapp_opt_in: waOpt, marketing_opt_in: mktOpt, terms_accepted: true },
         },
         cart: items.map((i) => ({
           bundle_id: i.bundle_id,
@@ -158,10 +301,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
       const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
       const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
-
-      if (orderId) {
-        sessionStorage.setItem("pgh-last-order-id", orderId);
-      }
+      if (orderId) sessionStorage.setItem("pgh-last-order-id", orderId);
       if (payUrl) {
         window.location.href = payUrl;
       } else {
@@ -213,9 +353,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         </Link>
         <h1 className="font-display text-[36px] md:text-[44px] leading-tight mt-3">
           Almost{" "}
-          <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">
-            yours.
-          </em>
+          <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">yours.</em>
         </h1>
 
         <form
@@ -224,81 +362,147 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           className="mt-8 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6"
         >
           <div className="space-y-5">
+            {/* ── Contact ── */}
             <Section title="Contact">
               <Row>
                 <Field label="First name" required>
-                  <Input
-                    value={first}
-                    onChange={setFirst}
-                    autoComplete="given-name"
-                    required
-                  />
+                  <Input value={first} onChange={setFirst} autoComplete="given-name" required />
                 </Field>
                 <Field label="Last name" required>
-                  <Input
-                    value={last}
-                    onChange={setLast}
-                    autoComplete="family-name"
-                    required
-                  />
+                  <Input value={last} onChange={setLast} autoComplete="family-name" required />
                 </Field>
               </Row>
               <Row>
                 <Field label="Email" required>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={setEmail}
-                    autoComplete="email"
-                    required
-                  />
+                  <Input type="email" value={email} onChange={setEmail} autoComplete="email" required />
                 </Field>
                 <Field label="Phone (with country code)" required>
-                  <Input
-                    value={phone}
-                    onChange={setPhone}
-                    autoComplete="tel"
-                    required
-                  />
+                  <Input value={phone} onChange={setPhone} autoComplete="tel" required />
                 </Field>
               </Row>
               <Field label="Instagram handle (optional)">
-                <Input
-                  value={insta}
-                  onChange={setInsta}
-                  placeholder="@yourhandle"
-                />
+                <Input value={insta} onChange={setInsta} placeholder="@yourhandle" />
               </Field>
             </Section>
 
-            <Section title="Delivery">
-              <Field label="Address line 1" required>
-                <Input
-                  value={addressLine1}
-                  onChange={setAddressLine1}
-                  required
-                />
-              </Field>
-              <Field label="Address line 2">
-                <Input value={addressLine2} onChange={setAddressLine2} />
-              </Field>
-              <Row>
-                <Field label="City" required>
-                  <Input value={city} onChange={setCity} required />
-                </Field>
-                <Field label="State">
-                  <Input value={state} onChange={setState} />
-                </Field>
-              </Row>
-              <Field label="Order notes (optional)">
-                <Textarea
-                  value={notes}
-                  onChange={setNotes}
-                  placeholder="Leave with the security guard, for my sister's birthday, etc."
-                />
-              </Field>
+            {/* ── Pickup or Delivery toggle ── */}
+            <Section title="How would you like to receive your order?">
+              <div className="grid grid-cols-2 gap-2">
+                {(["delivery", "pickup"] as DeliveryMode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setDeliveryMode(m)}
+                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-[13px] font-semibold capitalize transition-colors ${
+                      deliveryMode === m
+                        ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] text-[rgb(var(--accent-glow))]"
+                        : "border-[rgb(var(--border-c)/0.1)] text-[rgb(var(--text-muted))]"
+                    }`}
+                  >
+                    {m === "delivery" ? (
+                      <><Truck className="w-3.5 h-3.5" /> Delivery</>
+                    ) : (
+                      <><Store className="w-3.5 h-3.5" /> Store Pickup</>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {deliveryMode === "pickup" && (
+                <div className="mt-3 p-3.5 rounded-xl bg-[rgb(var(--accent)/0.05)] border border-[rgb(var(--accent)/0.12)]">
+                  <div className="flex items-start gap-2 text-[13px]">
+                    <MapPin className="w-4 h-4 mt-0.5 shrink-0 text-[rgb(var(--accent-glow))]" />
+                    <div>
+                      <p className="font-semibold text-[rgb(var(--text))]">Pickup Address</p>
+                      {pickupAddr?.address ? (
+                        <p className="text-[rgb(var(--text-muted))] mt-0.5">{pickupAddr.address}</p>
+                      ) : (
+                        <p className="text-[rgb(var(--text-faint))] mt-0.5 italic">Loading address…</p>
+                      )}
+                      {pickupAddr?.phone && (
+                        <p className="text-[rgb(var(--text-muted))] mt-0.5">{pickupAddr.phone}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </Section>
 
+            {/* ── Delivery address ── */}
+            {deliveryMode === "delivery" && (
+              <Section title="Delivery">
+                {/* Country — always a ComboBox */}
+                <Field label="Country" required>
+                  <ComboBox
+                    options={WORLD_COUNTRIES}
+                    value={country}
+                    onSelect={handleCountrySelect}
+                    placeholder="Search country…"
+                    required
+                  />
+                </Field>
+
+                {/* State — dropdown for Nigeria, free text elsewhere */}
+                {isNigeria ? (
+                  <Field label="State" required>
+                    <div className="relative">
+                      <select
+                        value={stateValue}
+                        required
+                        onChange={(e) => {
+                          const opt = NIGERIAN_STATES.find((s) => s.name === e.target.value);
+                          handleStateSelect(e.target.value, opt?.code ?? "");
+                        }}
+                        className="w-full h-11 px-3.5 pr-9 rounded-xl bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.5)] text-[14px] appearance-none"
+                      >
+                        <option value="">Select state…</option>
+                        {NIGERIAN_STATES.map((s) => (
+                          <option key={s.code} value={s.name}>{s.name}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--text-muted))]" />
+                    </div>
+                  </Field>
+                ) : (
+                  <Field label="State / Province">
+                    <Input value={stateValue} onChange={(v) => { setStateValue(v); setStateCode(""); }} placeholder="State or province" />
+                  </Field>
+                )}
+
+                {/* City — ComboBox for Lagos, free text elsewhere */}
+                {isLagos ? (
+                  <Field label="City / LGA" required>
+                    <ComboBox
+                      options={LAGOS_LGAS}
+                      value={cityValue}
+                      onSelect={(name, code) => { setCityValue(name); setCityCode(code); }}
+                      placeholder="Search LGA…"
+                      required
+                    />
+                  </Field>
+                ) : (
+                  <Field label="City" required>
+                    <Input value={cityValue} onChange={(v) => { setCityValue(v); setCityCode(""); }} required />
+                  </Field>
+                )}
+
+                <Field label="Address line 1" required>
+                  <Input value={addressLine1} onChange={setAddressLine1} required />
+                </Field>
+                <Field label="Address line 2">
+                  <Input value={addressLine2} onChange={setAddressLine2} />
+                </Field>
+                <Field label="Order notes (optional)">
+                  <Textarea
+                    value={notes}
+                    onChange={setNotes}
+                    placeholder="Leave with the security guard, for my sister's birthday, etc."
+                  />
+                </Field>
+              </Section>
+            )}
+
+            {/* ── Gift ── */}
             <Section title="Gift order?">
               <label className="flex items-center gap-2 text-[13px]">
                 <input
@@ -336,39 +540,29 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   {shipToRecipient && (
                     <div className="mt-2 space-y-3 pl-1 border-l-2 border-[rgb(var(--accent)/0.15)]">
                       <Field label="Recipient address line 1" required>
-                        <Input
-                          value={recipientLine1}
-                          onChange={setRecipientLine1}
-                          required
-                        />
+                        <Input value={recipientLine1} onChange={setRecipientLine1} required />
                       </Field>
                       <Field label="Recipient address line 2">
-                        <Input
-                          value={recipientLine2}
-                          onChange={setRecipientLine2}
-                        />
+                        <Input value={recipientLine2} onChange={setRecipientLine2} />
                       </Field>
                       <Row>
                         <Field label="City" required>
-                          <Input
-                            value={recipientCity}
-                            onChange={setRecipientCity}
-                            required
-                          />
+                          <Input value={recipientCity} onChange={setRecipientCity} required />
                         </Field>
                         <Field label="State">
-                          <Input
-                            value={recipientState}
-                            onChange={setRecipientState}
-                          />
+                          <Input value={recipientState} onChange={setRecipientState} />
                         </Field>
                       </Row>
+                      <Field label="Country">
+                        <Input value={recipientCountry} onChange={setRecipientCountry} />
+                      </Field>
                     </div>
                   )}
                 </div>
               )}
             </Section>
 
+            {/* ── Payment gateway ── */}
             <Section title="Pay with">
               <div className="grid grid-cols-2 gap-2">
                 {(["paystack", "nomba"] as Gateway[]).map((g) => (
@@ -388,33 +582,14 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               </div>
             </Section>
 
+            {/* ── Consent ── */}
             <Section title="Consent &amp; terms">
-              <Toggle
-                label="Send me sale-day updates on WhatsApp"
-                checked={waOpt}
-                onChange={setWaOpt}
-              />
-              <Toggle
-                label="Sign me up for the newsletter"
-                checked={mktOpt}
-                onChange={setMktOpt}
-              />
-              <Toggle
-                label="I accept the terms and privacy policy"
-                checked={terms}
-                onChange={setTerms}
-                required
-              />
-              {/* Honeypot — hidden anti-bot field */}
+              <Toggle label="Send me sale-day updates on WhatsApp" checked={waOpt} onChange={setWaOpt} />
+              <Toggle label="Sign me up for the newsletter" checked={mktOpt} onChange={setMktOpt} />
+              <Toggle label="I accept the terms and privacy policy" checked={terms} onChange={setTerms} required />
               <label className="hidden" aria-hidden>
                 Leave this empty
-                <input
-                  type="text"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={honey}
-                  onChange={(e) => setHoney(e.target.value)}
-                />
+                <input type="text" tabIndex={-1} autoComplete="off" value={honey} onChange={(e) => setHoney(e.target.value)} />
               </label>
             </Section>
 
@@ -429,65 +604,51 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             )}
           </div>
 
+          {/* ── Order summary sidebar ── */}
           <aside className="lg:sticky lg:top-6 h-fit">
             <div className="glass rounded-[var(--radius)] p-5 space-y-4">
               <h3 className="font-display text-[20px]">Order summary</h3>
               <ul className="space-y-2.5">
                 {items.map((i) => (
                   <li key={i.id} className="flex items-start gap-3 text-[13px]">
-                    <div className="font-mono text-[rgb(var(--text-faint))] tabular-nums">
-                      ×{i.quantity}
-                    </div>
+                    <div className="font-mono text-[rgb(var(--text-faint))] tabular-nums">×{i.quantity}</div>
                     <div className="flex-1 min-w-0">
                       <div className="truncate font-semibold">{i.name}</div>
                       {i.preorder ? (
                         <div className="text-[11px] text-[rgb(var(--warn))]">
-                          Out of stock · pre-order ships in{" "}
-                          {i.preorder_lead_weeks ?? 3} weeks
+                          Out of stock · pre-order ships in {i.preorder_lead_weeks ?? 3} weeks
                         </div>
                       ) : (
-                        i.delivery_weeks != null &&
-                        i.delivery_weeks > 0 && (
+                        i.delivery_weeks != null && i.delivery_weeks > 0 && (
                           <div className="text-[11px] text-[rgb(var(--text-faint))]">
-                            Delivery in {i.delivery_weeks} week
-                            {i.delivery_weeks !== 1 ? "s" : ""}
+                            Delivery in {i.delivery_weeks} week{i.delivery_weeks !== 1 ? "s" : ""}
                           </div>
                         )
                       )}
                     </div>
-                    <div className="tabular-nums font-mono">
-                      {money(i.unit_price_ngn * i.quantity)}
-                    </div>
+                    <div className="tabular-nums font-mono">{money(i.unit_price_ngn * i.quantity)}</div>
                   </li>
                 ))}
               </ul>
               <div className="border-t hairline pt-3 space-y-1.5 text-[13px]">
                 <div className="flex justify-between">
-                  <span className="text-[rgb(var(--text-muted))]">
-                    Subtotal
-                  </span>
-                  <span className="tabular-nums font-mono">
-                    {money(subtotal)}
-                  </span>
+                  <span className="text-[rgb(var(--text-muted))]">Subtotal</span>
+                  <span className="tabular-nums font-mono">{money(subtotal)}</span>
                 </div>
                 {savings > 0 && (
                   <div className="flex justify-between text-[rgb(var(--success))]">
                     <span>You save</span>
-                    <span className="tabular-nums font-mono">
-                      −{money(savings)}
-                    </span>
+                    <span className="tabular-nums font-mono">−{money(savings)}</span>
                   </div>
                 )}
                 {savings > 0 && (
                   <div className="flex justify-between text-[12px] text-[rgb(var(--text-faint))]">
                     <span>vs retail</span>
-                    <span className="tabular-nums font-mono line-through">
-                      {money(retail)}
-                    </span>
+                    <span className="tabular-nums font-mono line-through">{money(retail)}</span>
                   </div>
                 )}
               </div>
-              {/* Promo code */}
+              {/* Promo */}
               <div className="border-t hairline pt-3">
                 {!promoOpen ? (
                   <button
@@ -495,26 +656,20 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     onClick={() => setPromoOpen(true)}
                     className="inline-flex items-center gap-1.5 text-[12px] text-[rgb(var(--accent-glow))] font-semibold hover:underline"
                   >
-                    <Tag className="w-3 h-3" /> Have a promo code?{" "}
-                    <ChevronDown className="w-3 h-3" />
+                    <Tag className="w-3 h-3" /> Have a promo code? <ChevronDown className="w-3 h-3" />
                   </button>
                 ) : (
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={promoCode}
-                      onChange={(e) => {
-                        setPromoCode(e.target.value.toUpperCase());
-                        setPromoApplied(false);
-                      }}
+                      onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoApplied(false); }}
                       placeholder="Enter code"
                       className="flex-1 h-9 px-3 rounded-lg bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.5)] text-[13px] font-mono"
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        if (promoCode.trim()) setPromoApplied(true);
-                      }}
+                      onClick={() => { if (promoCode.trim()) setPromoApplied(true); }}
                       disabled={!promoCode.trim()}
                       className="h-9 px-3 rounded-lg bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] text-[12px] font-semibold disabled:opacity-40"
                     >
@@ -524,19 +679,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                 )}
                 {promoApplied && (
                   <div className="mt-1.5 flex items-center gap-1 text-[12px] text-[rgb(var(--success))]">
-                    <Check className="w-3 h-3" /> Code{" "}
-                    <span className="font-mono font-semibold">{promoCode}</span>{" "}
-                    will be applied
+                    <Check className="w-3 h-3" /> Code <span className="font-mono font-semibold">{promoCode}</span> will be applied
                   </div>
                 )}
               </div>
 
               <div className="border-t hairline pt-3 flex justify-between">
                 <span className="font-semibold">Total</span>
-                <span className="font-display text-[22px] tabular-nums">
-                  {money(subtotal)}
-                </span>
+                <span className="font-display text-[22px] tabular-nums">{money(subtotal)}</span>
               </div>
+
               {err && (
                 <div
                   ref={errRef}
@@ -544,22 +696,15 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   aria-live="assertive"
                   className="rounded-xl border border-[rgb(var(--danger)/0.4)] bg-[rgb(var(--danger)/0.08)] px-4 py-3 space-y-2.5"
                 >
-                  {/* Icon + message */}
                   <div className="flex items-start gap-2.5">
                     <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[rgb(var(--danger))]" />
-                    <p className="text-[13px] leading-snug text-[rgb(var(--danger))]">
-                      {err.message}
-                    </p>
+                    <p className="text-[13px] leading-snug text-[rgb(var(--danger))]">{err.message}</p>
                   </div>
-
-                  {/* Order reference (so support can find the order) */}
                   {(err.order_id || err.reference) && (
                     <p className="text-[11px] text-[rgb(var(--text-faint))] font-mono pl-[26px]">
                       Ref: {err.order_id || err.reference}
                     </p>
                   )}
-
-                  {/* WhatsApp / email support */}
                   {err.support?.whatsapp && (
                     <a
                       href={`https://wa.me/${err.support.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hi, I need help with my order. Ref: ${err.order_id || err.reference || ""}`)}`}
@@ -571,8 +716,6 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       Chat with us on WhatsApp
                     </a>
                   )}
-
-                  {/* Retry button (only when the action is safe to retry) */}
                   {err.retryable && (
                     <button
                       type="submit"
@@ -580,33 +723,25 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       disabled={busy}
                       className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))] pl-[26px] disabled:opacity-50"
                     >
-                      <RefreshCw className="w-3 h-3" />
-                      Try again
+                      <RefreshCw className="w-3 h-3" /> Try again
                     </button>
                   )}
                 </div>
               )}
+
               <motion.button
                 type="submit"
                 whileTap={{ scale: 0.99 }}
                 disabled={busy}
                 className="w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen disabled:opacity-60"
               >
-                {busy ? (
-                  "Securing your order…"
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4" /> Pay {money(subtotal)}
-                  </>
-                )}
+                {busy ? "Securing your order…" : <><Lock className="w-4 h-4" /> Pay {money(subtotal)}</>}
               </motion.button>
               <div className="text-[11px] text-[rgb(var(--text-faint))] text-center inline-flex items-center justify-center gap-1 w-full">
-                <ShieldCheck className="w-3 h-3 text-[rgb(var(--success))]" />{" "}
-                Secure checkout · Shipping calculated at fulfilment
+                <ShieldCheck className="w-3 h-3 text-[rgb(var(--success))]" /> Secure checkout · Shipping calculated at fulfilment
               </div>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
-                <CreditCard className="inline w-3 h-3 mr-1" />
-                You&apos;ll be redirected to your gateway.
+                <CreditCard className="inline w-3 h-3 mr-1" />You&apos;ll be redirected to your gateway.
               </p>
             </div>
           </aside>
@@ -616,13 +751,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+// ── Layout helpers ─────────────────────────────────────────────────
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="glass rounded-[var(--radius)] p-5 space-y-3">
       <h3 className="font-display text-[18px]">{title}</h3>
@@ -632,25 +763,14 @@ function Section({
 }
 
 function Row({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>
-  );
+  return <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>;
 }
 
-function Field({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="micro mb-1.5 block">
-        {label}{" "}
-        {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
+        {label} {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
       </span>
       {children}
     </label>
@@ -685,15 +805,7 @@ function Input({
   );
 }
 
-function Textarea({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
+function Textarea({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <textarea
       value={value}
@@ -726,25 +838,17 @@ function Toggle({
         className="mt-0.5 accent-[rgb(var(--accent-deep))]"
       />
       <span>
-        {label}{" "}
-        {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
-        {checked && (
-          <Check className="inline w-3 h-3 text-[rgb(var(--success))] ml-1" />
-        )}
+        {label} {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
+        {checked && <Check className="inline w-3 h-3 text-[rgb(var(--success))] ml-1" />}
       </span>
     </label>
   );
 }
 
-/** The buyer's currency choice from the live-page ₦⇄$ toggle (persisted by
- *  CurrencyFloater). Drives gateway-rail selection on the Hub; the order is
- *  still placed in NGN. Defaults to NGN when never toggled. */
 function readDisplayCurrency(): "NGN" | "USD" {
   if (typeof window === "undefined") return "NGN";
   try {
-    return window.localStorage.getItem("pgh.salesCurrency") === "USD"
-      ? "USD"
-      : "NGN";
+    return window.localStorage.getItem("pgh.salesCurrency") === "USD" ? "USD" : "NGN";
   } catch {
     return "NGN";
   }
@@ -754,13 +858,7 @@ function readUtm(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const p = new URLSearchParams(window.location.search);
   const out: Record<string, string> = {};
-  for (const k of [
-    "utm_source",
-    "utm_medium",
-    "utm_campaign",
-    "utm_content",
-    "utm_term",
-  ]) {
+  for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
     const v = p.get(k);
     if (v) out[k] = v;
   }

@@ -145,24 +145,44 @@ describe("quantity-tier ladder", () => {
   });
 });
 
-describe("stacking + floor clamp", () => {
-  it("stacks all rules additively", () => {
-    const tiers = [
-      { tier_id: "t1", min_quantity: 2, fixed_discount_ngn: 10000, is_active: true },
-    ];
-    // 2 distinct bundles, each 1 wig, priced high so nothing clamps.
+describe("three independent lanes", () => {
+  const tiers = [
+    { tier_id: "t1", min_quantity: 2, fixed_discount_ngn: 10000, is_active: true },
+    { tier_id: "t2", min_quantity: 3, fixed_discount_ngn: 30000, is_active: true },
+  ];
+
+  it("bundles do NOT earn the position ladder or quantity tier", () => {
+    // 2 distinct bundles ⇒ stacking bonus only. No styled wigs ⇒ no ladder/tier.
     const r = computeDeals({
       campaign,
       lines: [bundle("A", 1, 500000), bundle("B", 1, 500000)],
       tiers,
     });
-    // position: 2 wig units ⇒ 16k+25k = 41k
-    // stacking: 120k
-    // quantity tier (qty 2): 10k
-    // bulk: 0 (no raw)
-    // total = 171,000
-    expect(r.gross_discount_ngn).toBe("171000.00");
-    expect(r.total_discount_ngn).toBe("171000.00");
+    expect(r.components.position_ladder.discount_ngn).toBe("0.00");
+    expect(r.components.quantity_tier.discount_ngn).toBe("0.00");
+    expect(r.components.stacking_bonus.discount_ngn).toBe("120000.00");
+    expect(r.gross_discount_ngn).toBe("120000.00");
+  });
+
+  it("the one case entitled to ALL mechanisms: 1 bundle + 3 styled + 12 unstyled", () => {
+    const r = computeDeals({
+      campaign,
+      lines: [
+        bundle("A", 1, 500000),
+        styled(3, 300000),
+        raw(12, 150000),
+      ],
+      tiers,
+    });
+    // Individual-wig lane (3 styled): ladder 16k+25k+28k = 69k; quantity tier @3 = 30k
+    expect(r.components.position_ladder.discount_ngn).toBe("69000.00");
+    expect(r.components.quantity_tier.discount_ngn).toBe("30000.00");
+    // Bundle lane (1 bundle): not enough for the 2-bundle bonus
+    expect(r.components.stacking_bonus.applied).toBe(false);
+    // Bulk lane (12 raw): 67k × 12 = 804k
+    expect(r.components.bulk_tier.discount_ngn).toBe("804000.00");
+    // All lanes sum (priced high so nothing clamps): 69k+30k+804k = 903k
+    expect(r.gross_discount_ngn).toBe("903000.00");
     expect(r.clamped).toBe(false);
   });
 

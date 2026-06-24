@@ -7,21 +7,25 @@
  * endpoint + checkout) resolves prices/floors from the DB and feeds them
  * in. No I/O, no req/res, no events.
  *
- * Rules applied (all STACK additively, then the whole stack is clamped at
- * the margin floor so no line can ever sell below its cost floor):
+ * THREE INDEPENDENT LANES (owner's rule): each mechanism discounts ONLY its own
+ * slice of the cart, so they never double-dip. A cart can trigger all three at
+ * once, but only when it actually contains all three kinds of item.
  *
- *   1. position_ladder   — per-wig escalating ₦ off. The numbers are SUMMED:
- *                          3 wigs with [16k, 25k, 28k] ⇒ ₦69,000 off.
- *                          Positions beyond the last defined rung add nothing.
- *   2. stacking_bonus    — buy ≥ N DISTINCT bundles ⇒ a one-off ₦ bonus.
- *   3. quantity_tiers    — the cart-level tier ladder (sales_campaign_quantity_tiers).
- *                          Highest tier whose min_quantity ≤ cart qty wins (single).
- *   4. bulk_tiers        — reseller/bulk on RAW (unstyled) wigs only. Highest
- *                          tier whose min_qty ≤ raw-wig qty wins; the saving is
- *                          discount_per_item_ngn × raw-wig qty (per-item × qty).
+ *   ┌ Individual-wig lane — STYLED wigs bought outside a bundle ──────────────┐
+ *   │  1. position_ladder  — per-wig escalating ₦ off, SUMMED across filled    │
+ *   │                        positions: 3 wigs [16k,25k,28k] ⇒ ₦69,000 off.    │
+ *   │                        Positions past the last defined rung add nothing. │
+ *   │  2. quantity_tier    — "buy N save X" ladder, keyed off the individual-  │
+ *   │                        wig count (highest qualifying tier; single).      │
+ *   ├ Bundle lane — bundles only ─────────────────────────────────────────────┤
+ *   │  3. stacking_bonus   — buy ≥ N DISTINCT bundles ⇒ a one-off ₦ bonus.     │
+ *   ├ Bulk / reseller lane — RAW (unstyled) base wigs only ───────────────────┤
+ *   │  4. bulk_tiers       — discount_per_item_ngn × raw-wig qty (per item).   │
+ *   └─────────────────────────────────────────────────────────────────────────┘
  *
- * The engine also returns "next rung" hints (add 1 more wig / 1 more bundle /
- * N more raw wigs to unlock X) so the cart can nudge the buyer.
+ * The summed total is then clamped at the margin floor so no line can ever sell
+ * below cost. The engine also returns "next rung" hints (add 1 more wig / 1
+ * more bundle / N more raw wigs to unlock X) so the cart can nudge the buyer.
  */
 
 "use strict";
@@ -60,18 +64,19 @@ function computeDeals({ campaign, lines = [], tiers = [] }) {
   const stackingBonus = normaliseStacking(campaign && campaign.stacking_bonus);
   const bulkTiers = normaliseBulk(campaign && campaign.bulk_tiers);
 
-  // ── Cart aggregates ──────────────────────────────────────
+  // ── Cart aggregates, split into the THREE independent lanes ──
   const totalQty = lines.reduce((a, l) => a + Number(l.quantity || 0), 0);
-  // Styled wig units drive the per-wig POSITION LADDER (a "wig unit" defaults to
-  // 1 per line-unit; a bundle can carry more). RAW (unstyled) wigs do NOT feed
-  // the position ladder — they have their own reseller/bulk path — so they're
-  // excluded here to avoid double-dipping.
-  const wigUnits = lines
-    .filter((l) => l.kind !== "raw")
+  // Individual-wig lane: STYLED wigs bought outside a bundle. These — and ONLY
+  // these — feed the position ladder and the quantity tier. Bundles have their
+  // own lane; raw wigs have theirs; so nothing double-dips.
+  const styledWigUnits = lines
+    .filter((l) => l.kind === "styled")
     .reduce((a, l) => a + wigUnitsOf(l) * Number(l.quantity || 0), 0);
+  // Bulk / reseller lane: RAW (unstyled) base wigs.
   const rawWigQty = lines
     .filter((l) => l.kind === "raw")
     .reduce((a, l) => a + Number(l.quantity || 0), 0);
+  // Bundle lane: distinct bundles in the cart.
   const distinctBundles = new Set(
     lines.filter((l) => l.kind === "bundle" && l.bundle_id).map((l) => l.bundle_id),
   ).size;
@@ -81,16 +86,14 @@ function computeDeals({ campaign, lines = [], tiers = [] }) {
     new Decimal(0),
   );
 
-  // ── 1. Position ladder (summed per filled position) ──────
-  const position = computePositionLadder(positionLadder, wigUnits);
+  // ── Individual-wig lane: position ladder (summed) + quantity tier ──
+  const position = computePositionLadder(positionLadder, styledWigUnits);
+  const quantityTier = computeQuantityTier(tiers, styledWigUnits);
 
-  // ── 2. Bundle stacking bonus ─────────────────────────────
+  // ── Bundle lane: stacking bonus ──────────────────────────
   const stacking = computeStackingBonus(stackingBonus, distinctBundles);
 
-  // ── 3. Quantity-tier ladder (single best) ────────────────
-  const quantityTier = computeQuantityTier(tiers, totalQty);
-
-  // ── 4. Reseller / bulk on raw wigs (per-item × qty) ──────
+  // ── Bulk / reseller lane: raw wigs only (per-item × qty) ──
   const bulk = computeBulkTier(bulkTiers, rawWigQty);
 
   // ── Sum, then clamp at the margin floor ──────────────────
@@ -129,7 +132,7 @@ function computeDeals({ campaign, lines = [], tiers = [] }) {
     },
     cart: {
       total_quantity: totalQty,
-      wig_units: wigUnits,
+      styled_wig_units: styledWigUnits,
       raw_wig_quantity: rawWigQty,
       distinct_bundles: distinctBundles,
     },

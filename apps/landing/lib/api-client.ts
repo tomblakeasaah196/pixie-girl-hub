@@ -157,7 +157,7 @@ export interface CartQuote {
   };
   cart: {
     total_quantity: number;
-    wig_units: number;
+    styled_wig_units: number;
     raw_wig_quantity: number;
     distinct_bundles: number;
   };

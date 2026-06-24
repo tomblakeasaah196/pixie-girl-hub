@@ -318,7 +318,8 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                 Checkout · {money(Math.max(0, finalTotal))}
               </button>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
-                DHL rates apply. Pay with Nomba · Paystack.
+                DHL rates apply. Secure checkout — payment options shown at the
+                next step.
               </p>
             </div>
           </motion.aside>

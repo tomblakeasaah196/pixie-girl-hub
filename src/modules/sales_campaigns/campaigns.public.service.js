@@ -1118,16 +1118,42 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // NGN → Nomba then Paystack). Declared out here so the catch can branch on it.
   const checkoutCurrency = String(input.display_currency || "NGN").toUpperCase();
 
+  // Per-campaign gateway gate: the owner can disable a rail for this sale in
+  // the builder. Enforce it server-side — the public checkout only shows the
+  // allowed buttons, so a value outside this set is a stale/tampered client.
+  const allowedGateways =
+    Array.isArray(campaign.allowed_payment_gateways) &&
+    campaign.allowed_payment_gateways.length
+      ? campaign.allowed_payment_gateways
+      : ["paystack", "nomba"];
+  // USD has only the Nomba rail; NGN honours the buyer's pick, else the first
+  // gateway the campaign still has enabled.
+  const preferredProvider =
+    checkoutCurrency === "USD"
+      ? "nomba"
+      : input.payment_gateway && allowedGateways.includes(input.payment_gateway)
+        ? input.payment_gateway
+        : allowedGateways[0];
+  if (!allowedGateways.includes(preferredProvider)) {
+    // Either the buyer forced a disabled rail, or USD checkout hit a campaign
+    // that has turned Nomba off — there is no valid rail to settle on.
+    throw new AppError(
+      "GATEWAY_NOT_AVAILABLE",
+      checkoutCurrency === "USD"
+        ? "USD payment is not available for this sale."
+        : "That payment method is not available for this sale.",
+      422,
+    );
+  }
+
   try {
     const payResult = await paymentLink.createPaymentLink({
       brand: resolvedBrand,
       order_id: order.order_id,
       currency: checkoutCurrency,
       return_url_base: returnUrlBase,
-      // USD only ships on the Nomba rail — ignore any buyer-preferred
-      // provider override when currency forces the chain.
-      preferred_provider:
-        checkoutCurrency === "USD" ? "nomba" : input.payment_gateway,
+      // Resolved against the campaign's enabled gateways above; USD forces Nomba.
+      preferred_provider: preferredProvider,
     });
     events.emit("checkout_completed", {
       brand: resolvedBrand,

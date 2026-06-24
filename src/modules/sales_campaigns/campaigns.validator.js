@@ -131,6 +131,14 @@ const v2CampaignFields = {
   // ── Static FX rate for the landing currency toggle (migration 000051) ──
   // Customer-facing display only. Order settlement uses the live rate.
   ngn_per_usd_rate: z.coerce.number().positive().nullable().optional(),
+  // ── Per-campaign payment gateways (migration 000058) ──
+  // Which gateways the public checkout offers for THIS sale. At least one must
+  // stay enabled. USD always settles on Nomba regardless (the only USD rail),
+  // so dropping Nomba only affects NGN checkout.
+  allowed_payment_gateways: z
+    .array(z.enum(["paystack", "nomba"]))
+    .min(1, "at least one payment gateway must stay enabled")
+    .optional(),
 };
 
 const createSchema = z

@@ -57,6 +57,7 @@ import {
   type CartUpsell,
   type BundleItem,
   type CampaignStatus,
+  type PaymentGateway,
   useAddProductsBatch,
   useBrand,
   useBundle,
@@ -531,6 +532,21 @@ function BriefStep({
   const [multiCurrency, setMultiCurrency] = useState(
     campaign.allow_multi_currency_display,
   );
+  // Payment gateways offered at checkout for this campaign. Older rows with no
+  // value fall back to both rails on. At least one must stay enabled.
+  const initialGateways =
+    campaign.allowed_payment_gateways &&
+    campaign.allowed_payment_gateways.length
+      ? campaign.allowed_payment_gateways
+      : (["paystack", "nomba"] as PaymentGateway[]);
+  const [gwPaystack, setGwPaystack] = useState(
+    initialGateways.includes("paystack"),
+  );
+  const [gwNomba, setGwNomba] = useState(initialGateways.includes("nomba"));
+  const allowedGateways = [
+    ...(gwPaystack ? (["paystack"] as PaymentGateway[]) : []),
+    ...(gwNomba ? (["nomba"] as PaymentGateway[]) : []),
+  ];
   const [abandonment, setAbandonment] = useState(
     campaign.abandonment_recovery_enabled,
   );
@@ -581,6 +597,8 @@ function BriefStep({
         ? String(campaign.exit_intent_discount_ngn)
         : "") ||
     multiCurrency !== campaign.allow_multi_currency_display ||
+    allowedGateways.slice().sort().join(",") !==
+      initialGateways.slice().sort().join(",") ||
     abandonment !== campaign.abandonment_recovery_enabled ||
     deliveryWeeks !==
       (campaign.delivery_weeks != null
@@ -621,6 +639,7 @@ function BriefStep({
         exit_intent_discount_ngn:
           exitEnabled && exitDiscount ? Number(exitDiscount) : null,
         allow_multi_currency_display: multiCurrency,
+        allowed_payment_gateways: allowedGateways,
         abandonment_recovery_enabled: abandonment,
         delivery_weeks: deliveryWeeks ? Number(deliveryWeeks) : null,
         preorder_extra_weeks: Number(preorderExtraWeeks) || 4,
@@ -816,6 +835,47 @@ function BriefStep({
             />
           </Field>
         </div>
+      </FormSection>
+
+      <FormSection title="Payment gateways">
+        <p className="text-[12px] text-text-faint -mt-2 mb-2">
+          Choose which gateways buyers can pay with on this sale's checkout.
+          Keep at least one on. USD orders always settle on Nomba (the only
+          USD rail), so turning Nomba off only affects Naira checkout.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Paystack" hint="Cards, bank transfer, USSD (NGN)">
+            <Toggle
+              checked={gwPaystack}
+              onChange={(next) => {
+                // Never let both rails be turned off — refuse the last one.
+                if (!next && !gwNomba) return;
+                setGwPaystack(next);
+              }}
+              disabled={!canEdit}
+              label={gwPaystack ? "On" : "Off"}
+            />
+          </Field>
+          <Field label="Nomba" hint="NGN + the USD settlement rail">
+            <Toggle
+              checked={gwNomba}
+              onChange={(next) => {
+                if (!next && !gwPaystack) return;
+                setGwNomba(next);
+              }}
+              disabled={!canEdit}
+              label={gwNomba ? "On" : "Off"}
+            />
+          </Field>
+        </div>
+        {!gwNomba && multiCurrency && (
+          <div className="flex items-center gap-2 text-[12px] text-warn mt-1">
+            <span>
+              USD display is on but Nomba is off — USD buyers won't be able to
+              pay. Turn Nomba back on or disable multi-currency display.
+            </span>
+          </div>
+        )}
       </FormSection>
 
       <FormSection title="Smart-viewer ticker">

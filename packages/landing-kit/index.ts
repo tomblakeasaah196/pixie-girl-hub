@@ -11,7 +11,7 @@
  */
 
 export * from "./config";
-export { LandingPreview, type LandingSubmit } from "./LandingPreview";
+export { LandingPreview, LandingFooter, type LandingSubmit } from "./LandingPreview";
 export { AtelierRevealPreview } from "./AtelierRevealPreview";
 export { AtelierStage } from "./AtelierStage";
 // Retained for back-compat with existing app-level shims; the reveal now uses

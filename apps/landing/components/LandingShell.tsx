@@ -36,7 +36,6 @@ import { CartUpsellModal } from "./cart/CartUpsellModal";
 import { ExitIntent } from "./cart/ExitIntent";
 import { ViewerTicker } from "./social-proof/ViewerTicker";
 import { JustBoughtTicker } from "./social-proof/JustBoughtTicker";
-import { SaleFooter } from "./blocks/SaleFooter";
 
 const NULL_RENDERERS: Record<string, () => null> = {};
 
@@ -115,7 +114,10 @@ export function LandingShell({
 
       {isEnded && <EndedFarewell payload={payload} />}
 
-      <SaleFooter payload={payload} />
+      {/* The footer is rendered by the host (LiveShell) using the shared
+          landing-kit <LandingFooter>, so the live drop carries the SAME
+          "house" footer the owner authors on the apex page — consistent
+          across the before / live / ended states. */}
 
       {/* Live-state overlays. */}
       {state === "live" && (

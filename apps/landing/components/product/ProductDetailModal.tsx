@@ -263,40 +263,69 @@ export function ProductDetailModal({
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-[1.1fr_1fr] gap-5">
                     <div>
-                      <div
-                        className="relative w-full aspect-[4/5] rounded-[16px] overflow-hidden bg-black/20 border border-white/5"
-                        style={
-                          product.gallery[slide]?.url
-                            ? {
-                                backgroundImage: `url("${product.gallery[slide].url}")`,
-                                backgroundSize: "cover",
-                                backgroundPosition: "center",
-                              }
-                            : undefined
-                        }
-                      />
-                      {product.gallery.length > 1 && (
-                        <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
-                          {product.gallery.map((g, i) => (
-                            <button
-                              key={`${g.url}-${i}`}
-                              type="button"
-                              onClick={() => setSlide(i)}
-                              aria-label={`Image ${i + 1}`}
-                              className={
-                                "relative shrink-0 w-16 h-20 rounded-[10px] overflow-hidden border transition-colors " +
-                                (i === slide
-                                  ? "border-white"
-                                  : "border-white/15 hover:border-white/40")
-                              }
+                      <div className="relative w-full aspect-[4/5] rounded-[16px] overflow-hidden bg-black/20 border border-white/5">
+                        <AnimatePresence initial={false} mode="popLayout">
+                          {product.gallery[slide]?.url && (
+                            <motion.div
+                              key={`${product.gallery[slide].url}-${slide}`}
+                              initial={{ opacity: 0, scale: 1.03 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.98 }}
+                              transition={{
+                                duration: 0.35,
+                                ease: [0.22, 1, 0.36, 1],
+                              }}
+                              className="absolute inset-0"
                               style={{
-                                backgroundImage: `url("${g.url}")`,
+                                backgroundImage: `url("${product.gallery[slide].url}")`,
                                 backgroundSize: "cover",
                                 backgroundPosition: "center",
                               }}
                             />
-                          ))}
-                        </div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                      {product.gallery.length > 1 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.05, duration: 0.3 }}
+                          className="flex gap-2 mt-2 overflow-x-auto pb-1"
+                        >
+                          {product.gallery.map((g, i) => {
+                            const active = i === slide;
+                            return (
+                              <motion.button
+                                key={`${g.url}-${i}`}
+                                type="button"
+                                onClick={() => setSlide(i)}
+                                aria-label={`Image ${i + 1}`}
+                                aria-pressed={active}
+                                whileHover={{ y: -2 }}
+                                whileTap={{ scale: 0.96 }}
+                                animate={{
+                                  scale: active ? 1.06 : 1,
+                                  opacity: active ? 1 : 0.75,
+                                }}
+                                transition={{
+                                  duration: 0.25,
+                                  ease: [0.22, 1, 0.36, 1],
+                                }}
+                                className={
+                                  "relative shrink-0 w-16 h-20 rounded-[10px] overflow-hidden border " +
+                                  (active
+                                    ? "border-white shadow-[0_0_0_2px_rgba(255,255,255,0.15)]"
+                                    : "border-white/15 hover:border-white/40")
+                                }
+                                style={{
+                                  backgroundImage: `url("${g.url}")`,
+                                  backgroundSize: "cover",
+                                  backgroundPosition: "center",
+                                }}
+                              />
+                            );
+                          })}
+                        </motion.div>
                       )}
                     </div>
 

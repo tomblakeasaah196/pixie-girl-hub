@@ -28,6 +28,7 @@ import {
 } from "@/lib/catalogue";
 import { useAddStyledToCampaign, type Campaign } from "@/lib/campaigns";
 import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
+import { useToastStore } from "@/components/notifications/NotificationToast";
 import { AvailabilityPill, StyledStatusBadge } from "./parts";
 import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
@@ -191,6 +192,7 @@ function StyledEditor({
   onBack: () => void;
 }) {
   const update = useUpdateStyled(s.styled_id);
+  const toast = useToastStore();
   const publish = usePublishStyled();
   const unpublish = useUnpublishStyled();
   const remove = useRemoveStyled();
@@ -242,15 +244,54 @@ function StyledEditor({
       (s.compare_at_price_usd != null ? String(s.compare_at_price_usd) : "");
 
   const save = () =>
-    update.mutate({
-      name: name.trim(),
-      short_description: shortDesc.trim() || null,
-      long_description: longDesc.trim() || null,
-      retail_price_ngn: retail ? Number(retail) : null,
-      retail_price_usd: retailUsd ? Number(retailUsd) : null,
-      compare_at_price_ngn: compareAt ? Number(compareAt) : null,
-      compare_at_price_usd: compareAtUsd ? Number(compareAtUsd) : null,
-    });
+    update.mutate(
+      {
+        name: name.trim(),
+        short_description: shortDesc.trim() || null,
+        long_description: longDesc.trim() || null,
+        retail_price_ngn: retail ? Number(retail) : null,
+        retail_price_usd: retailUsd ? Number(retailUsd) : null,
+        compare_at_price_ngn: compareAt ? Number(compareAt) : null,
+        compare_at_price_usd: compareAtUsd ? Number(compareAtUsd) : null,
+      },
+      {
+        onSuccess: () =>
+          toast.add({
+            notification_id: crypto.randomUUID(),
+            user_id: "",
+            business: null,
+            type: "catalogue_save_complete",
+            priority: "low",
+            title: "Changes saved",
+            body: `“${name.trim()}” has been updated.`,
+            reference_type: null,
+            reference_id: null,
+            action_url: null,
+            is_read: false,
+            read_at: null,
+            created_at: new Date().toISOString(),
+          }),
+        onError: (err) =>
+          toast.add({
+            notification_id: crypto.randomUUID(),
+            user_id: "",
+            business: null,
+            type: "catalogue",
+            priority: "high",
+            title: "Could not save",
+            body:
+              err instanceof Error
+                ? err.message
+                : "Something went wrong saving your changes.",
+            reference_type: null,
+            reference_id: null,
+            action_url: null,
+            is_read: false,
+            read_at: null,
+            created_at: new Date().toISOString(),
+          }),
+      },
+    );
 
   const handleAddToCampaign = (campaign: Campaign) => {
     addToCampaign.mutate(

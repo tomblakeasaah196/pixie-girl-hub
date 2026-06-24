@@ -336,13 +336,12 @@ async function listProducts({ client, brand, campaign_id }) {
        LEFT JOIN ${t(brand, "product_categories")} pc ON pc.category_id = scp.category_id
        LEFT JOIN ${t(brand, "styled_products")} sp  ON sp.styled_id   = scp.styled_id
        LEFT JOIN LATERAL (
-         -- Resolve the card image the way the catalogue does: explicit
-         -- primary_image_id → the default colour's first picture → any
-         -- styled picture → base product picture. Without this the
-         -- previous LIMIT 1 ordering on the raw base_product_id grab-bag
-         -- left campaign cards stuck on whichever old image happened to
-         -- have the lowest display_order, even after the catalogue had
-         -- been re-imaged.
+         -- Styled-only resolution: primary_image_id → the default colour's
+         -- first picture → any styled picture. A base-product picture is
+         -- NEVER used as a fallback — if the styled product has no images
+         -- of its own the card stays blank rather than borrowing a generic
+         -- factory shot from the base. This matches the catalogue's own
+         -- card resolution exactly.
          SELECT COALESCE(
            (SELECT COALESCE(pi.cdn_url, pi.file_path)
               FROM ${t(brand, "product_images")} pi
@@ -359,14 +358,6 @@ async function listProducts({ client, brand, campaign_id }) {
            (SELECT COALESCE(pi.cdn_url, pi.file_path)
               FROM ${t(brand, "product_images")} pi
              WHERE pi.styled_id = sp.styled_id
-             ORDER BY pi.is_primary DESC,
-                      pi.display_order ASC NULLS LAST
-             LIMIT 1),
-           (SELECT COALESCE(pi.cdn_url, pi.file_path)
-              FROM ${t(brand, "product_images")} pi
-             WHERE pi.product_id = COALESCE(sp.base_product_id, scp.product_id)
-               AND pi.styled_id IS NULL
-               AND pi.styled_colour_id IS NULL
              ORDER BY pi.is_primary DESC,
                       pi.display_order ASC NULLS LAST
              LIMIT 1)

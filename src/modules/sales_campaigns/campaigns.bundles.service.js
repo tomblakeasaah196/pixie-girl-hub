@@ -170,10 +170,19 @@ async function reorderBundleItems({
 /**
  * Mirror ONE Catalogue bundle (retention bundle_offers row) into the campaign's
  * own product_bundles table and attach it. Idempotent — re-importing the same
- * offer into the same campaign upserts the link rather than duplicating items.
+ * offer into the same campaign re-syncs every mirrored field (name, copy,
+ * hero, items, discount math) so a catalogue edit + re-import always shows the
+ * latest. The link upserts rather than duplicating items.
  *
  * Pricing model + bundle price + per-item discount are inherited from the
- * source offer so the campaign view matches what the user sees in Catalogue.
+ * source offer so the campaign view matches what the user sees in Catalogue:
+ *   fixed_bundle_price → campaign_bundle_price_ngn
+ *   amount_off         → per_item_discount_ngn (+ default_per_item_discount_ngn)
+ *   pct_off            → campaign_bundle_price_ngn computed from the live
+ *                        component subtotal × (1 − discount_value)
+ *   buy_x_get_y, tiered_qty → no representation on the campaign bundle yet,
+ *                        so the bundle imports with no discount and a console
+ *                        warning is emitted at import time.
  */
 async function mirrorAndAttach({
   client,
@@ -192,76 +201,141 @@ async function mirrorAndAttach({
     offer.bundle_code || offer.display_name,
   )}`.slice(0, 120);
 
-  let target = await repo.findBundleBySlug({
-    client,
-    brand,
+  // Carry the offer's amount_off / discount_value through as the per-item
+  // default so the campaign-bundle row inherits the discount the user set
+  // in Catalogue. Fixed-bundle-price offers use campaign_bundle_price_ngn
+  // instead (handled on the attach below).
+  const defaultPerItemDiscount =
+    offer.pricing_model === "amount_off"
+      ? Number(offer.discount_value || 0) || 0
+      : 0;
+
+  // Component subtotal — needed so pct_off offers translate into the
+  // equivalent campaign_bundle_price_ngn. unit_price_ngn comes from the
+  // retention list query (styled retail or variant storefront price), so
+  // this matches what the buyer sees on the standalone bundle page.
+  const componentSubtotalNgn = components.reduce(
+    (sum, c) =>
+      sum + Number(c.unit_price_ngn || 0) * (Number(c.quantity) || 1),
+    0,
+  );
+
+  const baseInput = {
     slug: newSlug,
-  });
+    name: offer.display_name,
+    description: offer.description,
+    hero_image_url: offer.hero_image_url,
+    is_fixed_composition: true,
+    default_per_item_discount_ngn: defaultPerItemDiscount,
+    status: "active",
+    display_order: offer.display_order,
+  };
+
+  let target = await repo.findBundleBySlug({ client, brand, slug: newSlug });
   if (!target) {
-    // Carry the offer's amount_off / discount_value through as the per-item
-    // default so the campaign-bundle row inherits the discount the user set
-    // in Catalogue. Fixed-bundle-price offers use campaign_bundle_price_ngn
-    // instead (handled on the attach below).
-    const defaultPerItemDiscount =
-      offer.pricing_model === "amount_off"
-        ? Number(offer.discount_value || 0) || 0
-        : 0;
     target = await repo.createBundle({
       client,
       brand,
       user_id: user.user_id,
-      input: {
-        slug: newSlug,
-        name: offer.display_name,
-        description: offer.description,
-        hero_image_url: offer.hero_image_url,
-        is_fixed_composition: true,
-        default_per_item_discount_ngn: defaultPerItemDiscount,
-        status: "active",
-        display_order: offer.display_order,
+      input: baseInput,
+    });
+  } else {
+    // Re-sync the mirror so re-importing after a catalogue edit refreshes
+    // the campaign view. Without this the hero image, copy, and default
+    // discount stayed pinned to whatever the catalogue looked like the
+    // first time the bundle was imported.
+    await repo.updateBundle({
+      client,
+      brand,
+      id: target.bundle_id,
+      patch: {
+        name: baseInput.name,
+        description: baseInput.description,
+        hero_image_url: baseInput.hero_image_url,
+        default_per_item_discount_ngn: baseInput.default_per_item_discount_ngn,
       },
     });
-    for (const comp of components) {
-      // Belt-and-braces fallback for installs that haven't applied 000053
-      // yet: if the source component is styled-only (the common case post-
-      // 000048), derive the base product_id from the styled row so the
-      // INSERT satisfies the OLD product_bundle_items CHECK as well. On a
-      // fully migrated install the styled_id alone is now valid; either
-      // way the row is accepted.
-      let resolvedProductId = comp.product_id || null;
-      if (!resolvedProductId && !comp.variant_id && comp.styled_id) {
-        const { rows: spRows } = await client.query(
-          `SELECT base_product_id FROM ${brand}.styled_products
-            WHERE styled_id = $1 AND is_deleted = false`,
-          [comp.styled_id],
-        );
-        resolvedProductId = spRows[0]?.base_product_id || null;
-      }
-      await repo.addBundleItem({
+    // Re-sync items too — drop and re-add so removed/renamed components
+    // don't linger on the campaign side.
+    const existingItems = await repo.listBundleItems({
+      client,
+      brand,
+      bundle_id: target.bundle_id,
+    });
+    for (const it of existingItems) {
+      await repo.removeBundleItem({
         client,
         brand,
-        bundle_id: target.bundle_id,
-        input: {
-          product_id: resolvedProductId,
-          variant_id: comp.variant_id,
-          styled_id: comp.styled_id,
-          quantity: comp.quantity,
-          per_item_discount_ngn: null,
-          display_position: comp.display_order,
-        },
+        bundle_item_id: it.bundle_item_id,
       });
     }
   }
+
+  for (const comp of components) {
+    // Belt-and-braces fallback for installs that haven't applied 000053
+    // yet: if the source component is styled-only (the common case post-
+    // 000048), derive the base product_id from the styled row so the
+    // INSERT satisfies the OLD product_bundle_items CHECK as well. On a
+    // fully migrated install the styled_id alone is now valid; either
+    // way the row is accepted.
+    let resolvedProductId = comp.product_id || null;
+    if (!resolvedProductId && !comp.variant_id && comp.styled_id) {
+      const { rows: spRows } = await client.query(
+        `SELECT base_product_id FROM ${brand}.styled_products
+          WHERE styled_id = $1 AND is_deleted = false`,
+        [comp.styled_id],
+      );
+      resolvedProductId = spRows[0]?.base_product_id || null;
+    }
+    await repo.addBundleItem({
+      client,
+      brand,
+      bundle_id: target.bundle_id,
+      input: {
+        product_id: resolvedProductId,
+        variant_id: comp.variant_id,
+        styled_id: comp.styled_id,
+        quantity: comp.quantity,
+        per_item_discount_ngn: null,
+        display_position: comp.display_order,
+      },
+    });
+  }
+
+  // Resolve the displayed campaign bundle price by pricing model. pct_off
+  // is computed from the live subtotal so the maths matches the bundle page
+  // — without this, pct_off bundles imported with no discount applied.
+  let campaignBundlePriceNgn = null;
+  if (offer.pricing_model === "fixed_bundle_price") {
+    campaignBundlePriceNgn = offer.bundle_price_ngn ?? null;
+  } else if (offer.pricing_model === "pct_off") {
+    const pct = Number(offer.discount_value || 0);
+    if (componentSubtotalNgn > 0 && pct > 0 && pct < 1) {
+      campaignBundlePriceNgn = Math.round(
+        componentSubtotalNgn * (1 - pct) * 100,
+      ) / 100;
+    }
+  } else if (
+    offer.pricing_model === "buy_x_get_y" ||
+    offer.pricing_model === "tiered_qty"
+  ) {
+    // No representation on the campaign bundle yet — flag so the operator
+    // notices the bundle came across without its quantity-tier discount.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[campaigns.bundles] '${offer.pricing_model}' on '${offer.bundle_code}'` +
+        ` is not yet mirrored to the campaign bundle — imported with no` +
+        ` discount applied. Configure a manual override on the link.`,
+    );
+  }
+
   const link = await repo.attachCampaignBundle({
     client,
     brand,
     campaign_id,
     input: {
       bundle_id: target.bundle_id,
-      campaign_bundle_price_ngn:
-        offer.pricing_model === "fixed_bundle_price"
-          ? (offer.bundle_price_ngn ?? null)
-          : null,
+      campaign_bundle_price_ngn: campaignBundlePriceNgn,
       per_item_discount_ngn:
         offer.pricing_model === "amount_off"
           ? (Number(offer.discount_value || 0) || null)

@@ -1012,11 +1012,11 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
     throw new NotFoundError("Product");
   }
 
-  // Gallery: prefer images attached to the styled row directly (these include
-  // per-colour shots, which carry both styled_id and styled_colour_id), and
-  // ALWAYS top up with the base product's general images so a styled with
-  // images split across the base and one colour still shows the full set
-  // instead of collapsing to a single hero. Both join points are indexed.
+  // Gallery is STRICTLY styled-only — every shot is either pinned to the
+  // styled row directly or attached via one of its colour galleries (both
+  // routes carry styled_id). Base product images are intentionally not
+  // included, so a buyer never sees a raw factory shot of the underlying
+  // product. If the styled has no images of its own, the gallery is empty.
   const { rows: styledRows } = await query(
     `SELECT COALESCE(cdn_url, file_path) AS url, alt_text, is_primary, display_order
        FROM ${resolvedBrand}.product_images
@@ -1025,25 +1025,12 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
       LIMIT 24`,
     [styled_id],
   );
-  let baseRows = [];
-  if (styled.base_product_id) {
-    const { rows } = await query(
-      `SELECT COALESCE(cdn_url, file_path) AS url, alt_text, is_primary, display_order
-         FROM ${resolvedBrand}.product_images
-        WHERE product_id = $1 AND styled_id IS NULL AND variant_id IS NULL
-        ORDER BY is_primary DESC, display_order ASC NULLS LAST
-        LIMIT 24`,
-      [styled.base_product_id],
-    );
-    baseRows = rows;
-  }
   const seen = new Set();
   const gallery = [];
-  for (const r of [...styledRows, ...baseRows]) {
+  for (const r of styledRows) {
     if (!r.url || seen.has(r.url)) continue;
     seen.add(r.url);
     gallery.push(r);
-    if (gallery.length >= 24) break;
   }
 
   const variants = await styledVariantsRepo.listVariants({

@@ -73,16 +73,32 @@ export interface BulkTierConfig {
   label?: string;
 }
 
+export interface BundleComponent {
+  bundle_item_id: string;
+  styled_id?: string | null;
+  styled_slug?: string | null;
+  product_id?: string | null;
+  variant_id?: string | null;
+  display_name: string;
+  hero_image_url?: string | null;
+  quantity: number;
+  unit_price_ngn: number;
+  line_total_ngn: number;
+}
+
 export interface LandingBundle {
   link_id: string;
   bundle_id: string;
   bundle_slug: string;
   bundle_name: string;
+  description?: string | null;
   bundle_hero_image_url?: string | null;
   campaign_bundle_price_ngn?: number | null;
   per_item_discount_ngn?: number | null;
   total_retail_ngn?: number | null;
   total_savings_ngn?: number | null;
+  components?: BundleComponent[];
+  component_count?: number;
   preorder_enabled?: boolean;
   preorder_price_ngn?: number | null;
   preorder_lead_weeks?: number | null;

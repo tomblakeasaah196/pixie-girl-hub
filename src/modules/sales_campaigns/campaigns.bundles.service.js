@@ -197,15 +197,15 @@ async function mirrorAndAttach({
     brand,
     slug: newSlug,
   });
+  // Carry the offer's amount_off / discount_value through as the per-item
+  // default so the campaign-bundle row inherits the discount the user set
+  // in Catalogue. Fixed-bundle-price and pct_off offers resolve to a concrete
+  // campaign_bundle_price_ngn below instead.
+  const defaultPerItemDiscount =
+    offer.pricing_model === "amount_off"
+      ? Number(offer.discount_value || 0) || 0
+      : 0;
   if (!target) {
-    // Carry the offer's amount_off / discount_value through as the per-item
-    // default so the campaign-bundle row inherits the discount the user set
-    // in Catalogue. Fixed-bundle-price offers use campaign_bundle_price_ngn
-    // instead (handled on the attach below).
-    const defaultPerItemDiscount =
-      offer.pricing_model === "amount_off"
-        ? Number(offer.discount_value || 0) || 0
-        : 0;
     target = await repo.createBundle({
       client,
       brand,
@@ -251,21 +251,75 @@ async function mirrorAndAttach({
         },
       });
     }
+  } else {
+    // Re-import: re-sync the mirror's scalar fields from the Catalogue offer so
+    // a name / description / hero-image / discount edit in Catalogue reflects on
+    // the campaign without a manual fix-up. Component rows are left intact to
+    // avoid disturbing a live campaign — re-add the bundle fresh if its
+    // composition changed.
+    await repo.updateBundle({
+      client,
+      brand,
+      id: target.bundle_id,
+      patch: {
+        name: offer.display_name,
+        description: offer.description,
+        hero_image_url: offer.hero_image_url,
+        default_per_item_discount_ngn: defaultPerItemDiscount,
+      },
+    });
   }
+
+  // Resolve the discounted campaign bundle price from the Catalogue pricing
+  // model using the LIVE component subtotal. This mirrors retention
+  // bundle.service priceBundle so the campaign price matches the standalone
+  // bundle page — in particular pct_off bundles, which previously imported at
+  // full price because no price was computed at all.
+  const mirrorItems = await repo.listBundleItems({
+    client,
+    brand,
+    bundle_id: target.bundle_id,
+  });
+  const componentSubtotal = mirrorItems.reduce(
+    (s, it) =>
+      s + (Number(it.unit_price_ngn) || 0) * (Number(it.quantity) || 1),
+    0,
+  );
+  let campaignBundlePrice = null;
+  let perItemDiscount = null;
+  if (offer.pricing_model === "fixed_bundle_price") {
+    campaignBundlePrice = offer.bundle_price_ngn ?? null;
+  } else if (offer.pricing_model === "pct_off") {
+    // discount_value is a fraction (0.20 = 20% off), matching priceBundle.
+    const pct = Number(offer.discount_value || 0);
+    if (pct > 0 && componentSubtotal > 0) {
+      campaignBundlePrice =
+        Math.round(componentSubtotal * (1 - pct) * 100) / 100;
+    }
+  } else if (offer.pricing_model === "amount_off") {
+    perItemDiscount = Number(offer.discount_value || 0) || null;
+  }
+  // buy_x_get_y / tiered_qty have no single campaign-bundle price column to land
+  // in — they import without a campaign discount (full component subtotal) and
+  // need a manual override. Surface it so the operator notices.
+  if (
+    offer.pricing_model === "buy_x_get_y" ||
+    offer.pricing_model === "tiered_qty"
+  ) {
+    console.warn(
+      `[sales_campaigns] bundle "${offer.display_name}" uses ${offer.pricing_model}; ` +
+        `imported at full component price — set a manual campaign bundle price.`,
+    );
+  }
+
   const link = await repo.attachCampaignBundle({
     client,
     brand,
     campaign_id,
     input: {
       bundle_id: target.bundle_id,
-      campaign_bundle_price_ngn:
-        offer.pricing_model === "fixed_bundle_price"
-          ? (offer.bundle_price_ngn ?? null)
-          : null,
-      per_item_discount_ngn:
-        offer.pricing_model === "amount_off"
-          ? (Number(offer.discount_value || 0) || null)
-          : null,
+      campaign_bundle_price_ngn: campaignBundlePrice,
+      per_item_discount_ngn: perItemDiscount,
       is_featured: false,
     },
   });
@@ -480,8 +534,68 @@ async function duplicateBundle({
 }
 
 // ── Campaign attachment ──────────────────────────────────
+/**
+ * List a campaign's attached bundles, each enriched with its component
+ * breakdown and live pricing math so the public landing page can render a
+ * bundle-detail modal (the component wigs, each one's live price, the
+ * discounted bundle price, and the savings vs sum-of-parts) with no extra
+ * round-trips.
+ *
+ * Component prices are read LIVE from the Catalogue inside listBundleItems
+ * (styled retail price), so a price edit in the Catalogue reflects on the
+ * campaign bundle immediately — the Catalogue stays the single source of truth.
+ */
 async function listCampaignBundles({ brand, campaign_id }) {
-  return repo.listCampaignBundles({ brand, campaign_id });
+  const rows = await repo.listCampaignBundles({ brand, campaign_id });
+  return Promise.all(
+    rows.map(async (b) => {
+      const items = await repo.listBundleItems({
+        brand,
+        bundle_id: b.bundle_id,
+      });
+      const components = items.map((it) => {
+        const qty = Number(it.quantity) || 1;
+        const unit = Number(it.unit_price_ngn) || 0;
+        return {
+          bundle_item_id: it.bundle_item_id,
+          styled_id: it.styled_id,
+          styled_slug: it.styled_slug,
+          product_id: it.product_id,
+          variant_id: it.variant_id,
+          display_name: it.display_name,
+          hero_image_url: it.hero_image_url,
+          quantity: qty,
+          unit_price_ngn: unit,
+          line_total_ngn: unit * qty,
+        };
+      });
+      const totalRetail = components.reduce((s, c) => s + c.line_total_ngn, 0);
+      const totalQty = components.reduce((s, c) => s + c.quantity, 0);
+      // Resolve the discounted bundle price from the link. fixed_bundle_price
+      // and pct_off bundles store the resolved price in campaign_bundle_price_ngn
+      // at import time; amount_off bundles carry a per-item discount; anything
+      // else falls back to the live component subtotal (no campaign discount).
+      const perItemDiscount = Number(b.per_item_discount_ngn) || 0;
+      let bundlePrice;
+      if (b.campaign_bundle_price_ngn !== null && b.campaign_bundle_price_ngn !== undefined) {
+        bundlePrice = Number(b.campaign_bundle_price_ngn);
+      } else if (perItemDiscount > 0) {
+        bundlePrice = Math.max(0, totalRetail - perItemDiscount * totalQty);
+      } else {
+        bundlePrice = totalRetail;
+      }
+      const savings = Math.max(0, totalRetail - bundlePrice);
+      return {
+        ...b,
+        description: b.bundle_description ?? null,
+        components,
+        component_count: components.length,
+        total_retail_ngn: totalRetail,
+        campaign_bundle_price_ngn: bundlePrice,
+        total_savings_ngn: savings,
+      };
+    }),
+  );
 }
 
 async function attachCampaignBundle({

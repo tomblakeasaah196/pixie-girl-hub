@@ -685,19 +685,26 @@ function buildLandingPayload(c, products, state) {
               styled_id: p.styled_id,
               category_id: p.category_id,
               name: p.styled_name || p.product_name || p.category_name,
-              // Long + short copy: prefer the snapshot taken on add, fall back to
-              // the live styled product so older links still render description.
+              // Long + short copy: the Catalogue is the single source of truth,
+              // so prefer the LIVE styled product description and only fall back
+              // to the snapshot taken on add when the styled row is gone (e.g.
+              // deleted from the catalogue). This makes catalogue copy edits show
+              // on the live campaign card immediately — no re-import required.
               short_description:
-                p.short_description ?? p.styled_short_description ?? null,
+                p.styled_short_description ?? p.short_description ?? null,
               long_description:
-                p.long_description ?? p.styled_long_description ?? null,
+                p.styled_long_description ?? p.long_description ?? null,
               campaign_price_ngn: p.campaign_price_ngn,
               campaign_price_usd: p.campaign_price_usd,
-              // Both-currency reference prices (snapshot, else live styled retail).
+              // Both-currency reference (strikethrough) prices. Catalogue is the
+              // source of truth, so prefer the LIVE styled retail price and fall
+              // back to the snapshot only when the styled row is gone. The actual
+              // sale price (campaign_price_*) stays a deliberate per-campaign
+              // override and is intentionally NOT re-derived here.
               regular_price_ngn:
-                p.regular_price_ngn ?? p.styled_retail_price_ngn ?? null,
+                p.styled_retail_price_ngn ?? p.regular_price_ngn ?? null,
               regular_price_usd:
-                p.regular_price_usd ?? p.styled_retail_price_usd ?? null,
+                p.styled_retail_price_usd ?? p.regular_price_usd ?? null,
               is_featured: p.is_featured,
               // live_base_stock is computed from stock_levels across all
               // storefront locations for the base product. All styled products

@@ -165,6 +165,13 @@ export interface CartQuote {
   total_discount_ngn: string;
   final_total_ngn: string;
   clamped: boolean;
+  lines: Array<{
+    kind: "bundle" | "styled" | "raw";
+    bundle_id: string | null;
+    name: string | null;
+    unit_price_ngn: string;
+    quantity: number;
+  }>;
 }
 
 /**

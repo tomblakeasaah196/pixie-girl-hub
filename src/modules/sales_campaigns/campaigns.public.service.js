@@ -491,6 +491,7 @@ async function quoteCart({ slug, brand, brandHint, input }) {
     const priced = await priceQuoteLine({
       brand: resolvedBrand,
       item,
+      campaign_id: campaign.campaign_id,
     }).catch(() => null);
     if (!priced) continue;
     dealLines.push({ ...priced, quantity });
@@ -511,35 +512,183 @@ async function quoteCart({ slug, brand, brandHint, input }) {
   };
 }
 
+// PURE. Given a bundle's resolved component prices (per single bundle) and the
+// campaign's fixed bundle price (campaign_bundle_price_ngn, or null when the
+// operator didn't set one), return the sum-of-parts, the price the buyer pays
+// per bundle, and the discount per bundle that brings the component sum down to
+// the campaign price. The discount is applied ORDER-LEVEL (never per item) so it
+// can't double-count with the deal ladder, and is clamped ≥ 0 so a mis-set
+// campaign price can never INFLATE a bundle above its sum-of-parts.
+function computeBundleDiscount({ components, campaignBundlePrice }) {
+  const sumOfParts = (components || []).reduce(
+    (a, c) =>
+      a.plus(money(c.unit_price_ngn || 0).times(Number(c.quantity) || 1)),
+    money(0),
+  );
+  const hasCampaignPrice =
+    campaignBundlePrice !== null &&
+    campaignBundlePrice !== undefined &&
+    campaignBundlePrice !== "";
+  // The campaign price may only ever DISCOUNT the bundle, never mark it up: a
+  // price set above sum-of-parts is ignored (we keep sum-of-parts), so the quote
+  // and the till always agree and effectivePrice === sumOfParts − discount.
+  let effectivePrice = sumOfParts;
+  if (hasCampaignPrice) {
+    const cp = money(campaignBundlePrice);
+    if (cp.lt(sumOfParts)) effectivePrice = cp;
+  }
+  const discountPerBundle = sumOfParts.minus(effectivePrice);
+  return { sumOfParts, effectivePrice, discountPerBundle };
+}
+
+// The active default variant for a base product (stock/fulfilment anchor).
+async function defaultVariantId({ brand, product_id }) {
+  if (!product_id) return null;
+  const { rows } = await query(
+    `SELECT variant_id FROM ${brand}.product_variants
+      WHERE product_id = $1 AND is_active = true
+      ORDER BY is_default DESC, display_order ASC, created_at ASC
+      LIMIT 1`,
+    [product_id],
+  );
+  return rows[0] ? rows[0].variant_id : null;
+}
+
+// Resolve a bundle to sellable, variant-level order lines for `units` copies of
+// the bundle, plus the order-level discount that lands the whole group at the
+// campaign bundle price. STYLED components have no variant_id post-migration —
+// they used to be silently skipped (`if (!bi.variant_id) continue`), so the
+// bundle resolved to zero lines, quoted at ₦0 and never applied its discount.
+// We now resolve each styled component to its styled product's base variant for
+// stock/fulfilment, price it at the styled retail anchor (already resolved by
+// listBundleItems), and carry the styled name as a snapshot so the order shows
+// the styled item. The per-bundle discount = Σ component prices − campaign
+// bundle price; createOrder re-clamps the combined order discount at the §6.25
+// margin floor, so a bundle can never sell below cost.
+async function resolveBundleForCheckout({
+  brand,
+  campaign_id,
+  bundle_id,
+  units,
+}) {
+  const copies = Number(units) || 1;
+  const items = await bundleRepo.listBundleItems({ brand, bundle_id });
+  if (!items.length) {
+    throw new AppError("BUNDLE_EMPTY", `Bundle ${bundle_id} has no items`, 409);
+  }
+  const orderLines = [];
+  const components = []; // per single bundle, drives the discount math
+  for (const bi of items) {
+    const compQty = Number(bi.quantity) || 1;
+    const unitPrice = bi.unit_price_ngn || 0; // styled retail / variant storefront
+    components.push({ unit_price_ngn: unitPrice, quantity: compQty });
+
+    if (bi.styled_id) {
+      let baseVariantId = bi.styled_base_variant_id;
+      if (!baseVariantId) {
+        baseVariantId = await defaultVariantId({
+          brand,
+          product_id: bi.styled_base_product_id,
+        });
+      }
+      if (!baseVariantId) {
+        throw new AppError(
+          "BUNDLE_COMPONENT_UNAVAILABLE",
+          "One of the items in your bundle is no longer available. Please try again.",
+          409,
+        );
+      }
+      orderLines.push({
+        variant_id: baseVariantId,
+        quantity: compQty * copies,
+        unit_price_ngn: toCurrencyString(money(unitPrice)),
+        product_name_snapshot: bi.styled_name || bi.display_name || null,
+      });
+    } else if (bi.variant_id) {
+      orderLines.push({
+        variant_id: bi.variant_id,
+        quantity: compQty * copies,
+        unit_price_ngn: toCurrencyString(money(unitPrice)),
+      });
+    } else if (bi.product_id) {
+      const variantId = await defaultVariantId({
+        brand,
+        product_id: bi.product_id,
+      });
+      if (!variantId) {
+        throw new AppError(
+          "BUNDLE_COMPONENT_UNAVAILABLE",
+          "One of the items in your bundle is no longer available. Please try again.",
+          409,
+        );
+      }
+      orderLines.push({
+        variant_id: variantId,
+        quantity: compQty * copies,
+        unit_price_ngn: toCurrencyString(money(unitPrice)),
+      });
+    }
+  }
+  if (!orderLines.length) {
+    throw new AppError(
+      "BUNDLE_EMPTY",
+      `Bundle ${bundle_id} has no sellable items`,
+      409,
+    );
+  }
+  const link = await bundleRepo.getCampaignBundle({
+    brand,
+    campaign_id,
+    bundle_id,
+  });
+  const { discountPerBundle, effectivePrice, sumOfParts } = computeBundleDiscount(
+    {
+      components,
+      campaignBundlePrice: link ? link.campaign_bundle_price_ngn : null,
+    },
+  );
+  return {
+    orderLines,
+    discountNgn: discountPerBundle.times(copies),
+    effectivePrice,
+    sumOfParts,
+  };
+}
+
 // Resolve one cart line to { kind, unit_price_ngn, wig_units, bundle_id?,
 // floor_ngn, name } for the quote. Read-only; mirrors checkout pricing.
-async function priceQuoteLine({ brand, item }) {
+async function priceQuoteLine({ brand, item, campaign_id }) {
   if (item.bundle_id) {
     const items = await bundleRepo.listBundleItems({
       brand,
       bundle_id: item.bundle_id,
     });
     if (!items.length) return null;
-    // Bundle price = the attached campaign bundle price if set, else the sum of
-    // component variant prices. We read the simplest authoritative source: the
-    // bundle link's campaign_bundle_price_ngn, falling back to component prices.
+    // Bundle quote price = the operator-set campaign bundle price when present,
+    // else the live sum of component prices (styled retail / variant storefront,
+    // already resolved by listBundleItems). STYLED components have no variant_id
+    // and used to be skipped here, quoting the bundle at ₦0 — they are now priced
+    // the same way checkout charges them, so the cart matches the till.
     const wigUnits = items.reduce((a, bi) => a + (Number(bi.quantity) || 1), 0);
-    let price = money(0);
-    for (const bi of items) {
-      if (!bi.variant_id) continue;
-      const { rows } = await query(
-        `SELECT price_storefront_ngn FROM ${brand}.product_variants WHERE variant_id = $1`,
-        [bi.variant_id],
-      );
-      if (rows[0])
-        price = price.plus(
-          money(rows[0].price_storefront_ngn || 0).times(bi.quantity || 1),
-        );
-    }
+    const components = items.map((bi) => ({
+      unit_price_ngn: bi.unit_price_ngn || 0,
+      quantity: Number(bi.quantity) || 1,
+    }));
+    const link = campaign_id
+      ? await bundleRepo.getCampaignBundle({
+          brand,
+          campaign_id,
+          bundle_id: item.bundle_id,
+        })
+      : null;
+    const { effectivePrice } = computeBundleDiscount({
+      components,
+      campaignBundlePrice: link ? link.campaign_bundle_price_ngn : null,
+    });
     return {
       kind: "bundle",
       bundle_id: item.bundle_id,
-      unit_price_ngn: toCurrencyString(price),
+      unit_price_ngn: toCurrencyString(effectivePrice),
       wig_units: wigUnits || 1,
       floor_ngn: null,
       name: null,
@@ -772,27 +921,24 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // constituent variant(s) so salesService.createOrder can do its job.
   // Prices are NEVER trusted from the client.
   const orderLines = [];
+  // Σ of each bundle's (sum-of-parts − campaign bundle price). Folded into the
+  // single order-level discount below so the campaign bundle price is actually
+  // applied (it never was) without double-counting against the deal ladder.
+  let bundlePriceDiscount = money(0);
 
   for (const cartItem of input.cart) {
     if (cartItem.bundle_id) {
-      const items = await bundleRepo.listBundleItems({
+      // Resolve the bundle to variant-level lines (INCLUDING styled components,
+      // which were previously skipped → ₦0 bundles) and accumulate the discount
+      // that lands the bundle at its campaign price.
+      const resolved = await resolveBundleForCheckout({
         brand: resolvedBrand,
+        campaign_id: campaign.campaign_id,
         bundle_id: cartItem.bundle_id,
+        units: cartItem.quantity,
       });
-      if (!items.length) {
-        throw new AppError(
-          "BUNDLE_EMPTY",
-          `Bundle ${cartItem.bundle_id} has no items`,
-          409,
-        );
-      }
-      for (const bi of items) {
-        if (!bi.variant_id) continue;
-        orderLines.push({
-          variant_id: bi.variant_id,
-          quantity: (bi.quantity || 1) * cartItem.quantity,
-        });
-      }
+      orderLines.push(...resolved.orderLines);
+      bundlePriceDiscount = bundlePriceDiscount.plus(resolved.discountNgn);
     } else if (cartItem.styled_variant_id) {
       // Styled product line. Price comes from the STYLED tables (not the base
       // product_variants, which are intentionally ₦0 for a styled product):
@@ -968,6 +1114,18 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     logger.warn(
       { err: err.message, slug: campaign.slug },
       "campaign deal-ladder computation skipped",
+    );
+  }
+
+  // Fold the bundle-price savings (Σ sum-of-parts − campaign bundle price) into
+  // the single order-level discount. The deal ladder above only covers the
+  // multi-bundle stacking bonus — the per-bundle campaign price is a separate
+  // axis, so adding it here does not double-count. createOrder re-clamps the
+  // combined figure at the §6.25 margin floor, so a bundle can never sell below
+  // cost.
+  if (bundlePriceDiscount.gt(money(0))) {
+    campaignDealDiscountNgn = toCurrencyString(
+      money(campaignDealDiscountNgn).plus(bundlePriceDiscount),
     );
   }
 
@@ -1363,4 +1521,7 @@ module.exports = {
   quoteCart,
   getOrderStatus,
   getProductDetail,
+  // Exported for unit tests / reuse.
+  computeBundleDiscount,
+  resolveBundleForCheckout,
 };

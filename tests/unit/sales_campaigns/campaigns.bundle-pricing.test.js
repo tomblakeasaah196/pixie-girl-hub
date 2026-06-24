@@ -1,0 +1,242 @@
+"use strict";
+
+/**
+ * Styled-bundle checkout pricing (revenue-critical regression).
+ *
+ * The bug: the public checkout + quote skipped styled bundle components
+ * (`if (!bi.variant_id) continue`) because, post-migration, styled products carry
+ * `styled_id` and NOT `variant_id`. A styled-wig bundle therefore resolved to ZERO
+ * line items, quoted at ₦0, and never applied `campaign_bundle_price_ngn`.
+ *
+ * These tests drive the ACTUAL resolution + pricing logic with the data layer
+ * mocked, so they run without a database and would have caught the bug:
+ *   - computeBundleDiscount: the pure money math (sum-of-parts, campaign-price
+ *     discount, never a markup).
+ *   - resolveBundleForCheckout: that styled components resolve to a sellable base
+ *     variant line (NOT skipped) and the campaign price lands as an order discount.
+ */
+
+// Mock the data layer BEFORE requiring the service under test.
+jest.mock("../../../src/config/database", () => ({
+  query: jest.fn(),
+  transaction: jest.fn(),
+}));
+jest.mock("../../../src/modules/sales_campaigns/campaigns.bundles.repo", () => ({
+  listBundleItems: jest.fn(),
+  getCampaignBundle: jest.fn(),
+}));
+
+const { query } = require("../../../src/config/database");
+const bundleRepo = require("../../../src/modules/sales_campaigns/campaigns.bundles.repo");
+const { toCurrencyString } = require("../../../src/utils/money");
+const {
+  computeBundleDiscount,
+  resolveBundleForCheckout,
+} = require("../../../src/modules/sales_campaigns/campaigns.public.service");
+
+const fmt = (m) => toCurrencyString(m);
+
+afterEach(() => jest.clearAllMocks());
+
+describe("computeBundleDiscount (pure)", () => {
+  it("sums component prices — styled components are PRICED, not skipped", () => {
+    // Two styled components (no variant_id in real data); the bug dropped them.
+    const r = computeBundleDiscount({
+      components: [
+        { unit_price_ngn: "250000", quantity: 1 },
+        { unit_price_ngn: "250000", quantity: 1 },
+      ],
+      campaignBundlePrice: null,
+    });
+    expect(fmt(r.sumOfParts)).toBe("500000.00");
+    expect(fmt(r.effectivePrice)).toBe("500000.00"); // no campaign price → sum of parts
+    expect(fmt(r.discountPerBundle)).toBe("0.00");
+  });
+
+  it("applies the campaign bundle price as a discount (sum-of-parts − price)", () => {
+    const r = computeBundleDiscount({
+      components: [
+        { unit_price_ngn: "250000", quantity: 1 },
+        { unit_price_ngn: "250000", quantity: 1 },
+      ],
+      campaignBundlePrice: "400000",
+    });
+    expect(fmt(r.sumOfParts)).toBe("500000.00");
+    expect(fmt(r.effectivePrice)).toBe("400000.00");
+    expect(fmt(r.discountPerBundle)).toBe("100000.00");
+  });
+
+  it("multiplies component price by component quantity", () => {
+    const r = computeBundleDiscount({
+      components: [{ unit_price_ngn: "150000", quantity: 3 }],
+      campaignBundlePrice: "400000",
+    });
+    expect(fmt(r.sumOfParts)).toBe("450000.00");
+    expect(fmt(r.discountPerBundle)).toBe("50000.00");
+  });
+
+  it("never marks a bundle UP: a campaign price above sum-of-parts is ignored", () => {
+    const r = computeBundleDiscount({
+      components: [{ unit_price_ngn: "250000", quantity: 1 }],
+      campaignBundlePrice: "300000", // higher than the ₦250k sum-of-parts
+    });
+    expect(fmt(r.effectivePrice)).toBe("250000.00");
+    expect(fmt(r.discountPerBundle)).toBe("0.00");
+  });
+
+  it("keeps effectivePrice === sumOfParts − discount (quote and till agree)", () => {
+    const r = computeBundleDiscount({
+      components: [
+        { unit_price_ngn: "250000", quantity: 1 },
+        { unit_price_ngn: "180000", quantity: 2 },
+      ],
+      campaignBundlePrice: "500000",
+    });
+    expect(fmt(r.sumOfParts)).toBe("610000.00");
+    expect(fmt(r.effectivePrice)).toBe("500000.00");
+    expect(fmt(r.discountPerBundle)).toBe("110000.00");
+    expect(fmt(r.sumOfParts.minus(r.discountPerBundle))).toBe(
+      fmt(r.effectivePrice),
+    );
+  });
+
+  it("treats empty/missing components as ₦0", () => {
+    const r = computeBundleDiscount({ components: [], campaignBundlePrice: null });
+    expect(fmt(r.sumOfParts)).toBe("0.00");
+    expect(fmt(r.discountPerBundle)).toBe("0.00");
+  });
+});
+
+describe("resolveBundleForCheckout (styled components → sellable lines)", () => {
+  it("resolves a STYLED component to its base variant line instead of skipping it", async () => {
+    bundleRepo.listBundleItems.mockResolvedValue([
+      {
+        styled_id: "sty-1",
+        variant_id: null, // styled products have no variant_id post-migration
+        product_id: null,
+        styled_base_variant_id: "var-base-1",
+        styled_base_product_id: "prod-base-1",
+        styled_name: "Pixie Bob — Honey",
+        display_name: "Pixie Bob — Honey",
+        quantity: 1,
+        unit_price_ngn: "250000",
+      },
+      {
+        styled_id: "sty-2",
+        variant_id: null,
+        product_id: null,
+        styled_base_variant_id: "var-base-2",
+        styled_base_product_id: "prod-base-2",
+        styled_name: "Pixie Bob — Black",
+        display_name: "Pixie Bob — Black",
+        quantity: 1,
+        unit_price_ngn: "250000",
+      },
+    ]);
+    bundleRepo.getCampaignBundle.mockResolvedValue({
+      campaign_bundle_price_ngn: "400000",
+    });
+
+    const res = await resolveBundleForCheckout({
+      brand: "pixiegirl",
+      campaign_id: "camp-1",
+      bundle_id: "bun-1",
+      units: 1,
+    });
+
+    // The crux: BOTH styled components produced a sellable, priced order line.
+    expect(res.orderLines).toHaveLength(2);
+    expect(res.orderLines[0]).toMatchObject({
+      variant_id: "var-base-1",
+      quantity: 1,
+      unit_price_ngn: "250000.00",
+      product_name_snapshot: "Pixie Bob — Honey",
+    });
+    expect(res.orderLines[1].variant_id).toBe("var-base-2");
+
+    expect(fmt(res.sumOfParts)).toBe("500000.00");
+    expect(fmt(res.effectivePrice)).toBe("400000.00");
+    expect(fmt(res.discountNgn)).toBe("100000.00");
+    // base_variant_id was present → no default-variant DB lookup needed.
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the base product's default variant when base_variant_id is unset", async () => {
+    bundleRepo.listBundleItems.mockResolvedValue([
+      {
+        styled_id: "sty-1",
+        variant_id: null,
+        product_id: null,
+        styled_base_variant_id: null,
+        styled_base_product_id: "prod-base-1",
+        styled_name: "Pixie Bob",
+        quantity: 1,
+        unit_price_ngn: "250000",
+      },
+    ]);
+    bundleRepo.getCampaignBundle.mockResolvedValue(null); // no campaign price set
+    query.mockResolvedValue({ rows: [{ variant_id: "var-default-1" }] });
+
+    const res = await resolveBundleForCheckout({
+      brand: "pixiegirl",
+      campaign_id: "camp-1",
+      bundle_id: "bun-1",
+      units: 1,
+    });
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(res.orderLines[0].variant_id).toBe("var-default-1");
+    // No campaign price → bundle charged at sum-of-parts, no discount.
+    expect(fmt(res.discountNgn)).toBe("0.00");
+    expect(fmt(res.effectivePrice)).toBe("250000.00");
+  });
+
+  it("multiplies quantities and the discount by the number of bundles bought", async () => {
+    bundleRepo.listBundleItems.mockResolvedValue([
+      {
+        styled_id: "sty-1",
+        variant_id: null,
+        styled_base_variant_id: "var-base-1",
+        styled_name: "Styled wig",
+        quantity: 1,
+        unit_price_ngn: "250000",
+      },
+      {
+        styled_id: null,
+        variant_id: "var-raw-1", // a plain base-variant component
+        styled_base_variant_id: null,
+        quantity: 2,
+        unit_price_ngn: "150000",
+      },
+    ]);
+    bundleRepo.getCampaignBundle.mockResolvedValue({
+      campaign_bundle_price_ngn: "500000",
+    });
+
+    const res = await resolveBundleForCheckout({
+      brand: "pixiegirl",
+      campaign_id: "camp-1",
+      bundle_id: "bun-1",
+      units: 2, // buyer takes two of this bundle
+    });
+
+    // per bundle: 250000 + 150000*2 = 550000; campaign price 500000 → 50000 off.
+    expect(fmt(res.sumOfParts)).toBe("550000.00");
+    expect(fmt(res.discountNgn)).toBe("100000.00"); // 50000 × 2 bundles
+    // line quantities scale by units.
+    expect(res.orderLines[0]).toMatchObject({ variant_id: "var-base-1", quantity: 2 });
+    expect(res.orderLines[1]).toMatchObject({ variant_id: "var-raw-1", quantity: 4 });
+  });
+
+  it("throws on an empty bundle rather than checking out an empty order", async () => {
+    bundleRepo.listBundleItems.mockResolvedValue([]);
+    await expect(
+      resolveBundleForCheckout({
+        brand: "pixiegirl",
+        campaign_id: "camp-1",
+        bundle_id: "bun-1",
+        units: 1,
+      }),
+    ).rejects.toThrow(/no items/i);
+  });
+});

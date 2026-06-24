@@ -115,12 +115,17 @@ export interface Campaign {
   position_ladder: PositionLadderItem[] | null;
   stacking_bonus: StackingBonus | null;
   bulk_tiers: BulkTier[] | null;
+  /** Payment gateways this campaign offers at checkout. At least one stays on.
+   *  USD always settles on Nomba regardless — dropping it only affects NGN. */
+  allowed_payment_gateways: PaymentGateway[];
   public_state?: PublicState;
   approved_at: string | null;
   approved_by: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type PaymentGateway = "paystack" | "nomba";
 
 export interface PositionLadderItem {
   position: number;

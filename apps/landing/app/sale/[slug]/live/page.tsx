@@ -35,9 +35,15 @@ export async function generateMetadata({
     brandConfig.seo.ogImageUrl ||
     brandConfig.hero.imageUrl ||
     null;
+  // The apex redirects an active sale straight here, so this page must carry
+  // the brand's configured favicon too (matching the before/ended states and
+  // the apex itself); otherwise the live drop falls back to the static
+  // /favicon.ico shipped in public/.
+  const favicon = brandConfig.seo.faviconUrl || brandConfig.logo.url || null;
   return {
     title,
     description,
+    icons: favicon ? { icon: favicon, apple: favicon } : undefined,
     openGraph: {
       title,
       description,

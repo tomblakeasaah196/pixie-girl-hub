@@ -195,4 +195,8 @@ export interface LandingPayload {
    *  product cards can render a "save ₦X / wig" estimate. */
   discount_type?: string | null;
   discount_value?: number | null;
+  /** Payment gateways the campaign offers at checkout. The checkout renders
+   *  only these buttons. Absent/empty → both rails (older campaigns). USD
+   *  always settles on Nomba regardless. */
+  allowed_payment_gateways?: ("paystack" | "nomba")[];
 }

@@ -95,6 +95,10 @@ const CREATE_COLS = [
   // dedicated column: live_now_pill, browse_cta_text, hero_overlay_opacity,
   // watermark_opacity, countdown_closes_label, favicon_url, browser_tab_name.
   "landing_extras",
+  // ── Per-campaign payment gateways (migration 000058) ──
+  // TEXT[] of enabled gateways for this sale's checkout. node-pg binds a JS
+  // array straight to the Postgres array column — no JSONB cast.
+  "allowed_payment_gateways",
 ];
 const UPDATE_COLS = CREATE_COLS; // same set is editable (status excluded by design)
 const JSONB_COLS = new Set([

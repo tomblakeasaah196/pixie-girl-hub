@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import type { LandingConfig } from "@landing-kit";
+import { LandingFooter, type LandingConfig } from "@landing-kit";
 import type { LandingPayload } from "@/lib/types";
 import { BrandThemeProvider } from "@/components/BrandThemeProvider";
 import { LandingShell } from "@/components/LandingShell";
@@ -26,6 +26,10 @@ import { CurrencyFloater } from "./CurrencyFloater";
  *               featured products, lookbook, stock counter) and the live
  *               overlays (sticky cart, cart drawer, upsell modal, exit-intent,
  *               viewer + just-bought tickers).
+ *   ───────────────────────────────────────────────────────
+ *   LandingFooter — the shared landing-kit "house" footer (the same one the
+ *               owner authors on the apex page), rendered inside the brand
+ *               theme so live / before / ended / apex all share one footer.
  */
 export function LiveShell({
   payload,
@@ -47,6 +51,10 @@ export function LiveShell({
       <LiveHero payload={payload} brandConfig={brandConfig} />
       <BrandThemeProvider brandConfig={brandConfig}>
         <LandingShell payload={payload} omitHero />
+        {/* The shared "house" footer (same one authored on the apex page),
+            rendered inside the brand theme so it matches the before/ended
+            states and the apex itself. */}
+        <LandingFooter config={brandConfig} />
       </BrandThemeProvider>
       <CurrencyFloater payload={payload} />
     </>

@@ -50,13 +50,20 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
 
   // Server-authoritative quote: the Hub runs the FULL deal engine (per-wig
   // position ladder, bundle stacking bonus, quantity-tier ladder,
-  // reseller/bulk tiers, per-bundle campaign price) and clamps at the margin
-  // floor — exactly what the cart drawer shows and exactly what checkout
-  // charges. The form must never recompute the discount on the client; it
-  // renders what the Hub returns. (Previously this form summed line prices
-  // and ignored every campaign discount, so the displayed Total — and the
-  // "Pay" button — showed the full, undiscounted amount.)
+  // reseller/bulk tiers, per-bundle campaign price) — exactly what the cart
+  // drawer shows and exactly what checkout charges. The form must never
+  // recompute the discount on the client; it renders what the Hub returns.
+  // (Previously this form summed line prices and ignored every campaign
+  // discount, so the displayed Total — and the "Pay" button — showed the
+  // full, undiscounted amount.)
   const [quote, setQuote] = useState<CartQuote | null>(null);
+
+  // Gateways this campaign offers. Absent/empty → both rails (older campaigns).
+  // The owner can turn a rail off per campaign in the builder.
+  const allowedGateways: Gateway[] =
+    payload.allowed_payment_gateways && payload.allowed_payment_gateways.length
+      ? payload.allowed_payment_gateways
+      : ["paystack", "nomba"];
 
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -107,7 +114,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [mktOpt, setMktOpt] = useState(false);
   const [terms, setTerms] = useState(false);
   const [honey, setHoney] = useState(""); // honeypot
-  const [gateway, setGateway] = useState<Gateway>("paystack");
+  const [gateway, setGateway] = useState<Gateway>(allowedGateways[0]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{
     message: string;
@@ -731,8 +738,12 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             </Section>
 
             <Section title="Pay with">
-              <div className="grid grid-cols-2 gap-2">
-                {(["paystack", "nomba"] as Gateway[]).map((g) => (
+              <div
+                className={`grid gap-2 ${
+                  allowedGateways.length > 1 ? "grid-cols-2" : "grid-cols-1"
+                }`}
+              >
+                {allowedGateways.map((g) => (
                   <button
                     key={g}
                     type="button"

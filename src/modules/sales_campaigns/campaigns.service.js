@@ -676,6 +676,13 @@ function buildLandingPayload(c, products, state) {
     position_ladder: c.position_ladder || null,
     stacking_bonus: c.stacking_bonus || null,
     bulk_tiers: c.bulk_tiers || null,
+    // Gateways this campaign offers at checkout. Falls back to both rails for
+    // older rows created before the column existed. USD still forces Nomba.
+    allowed_payment_gateways:
+      Array.isArray(c.allowed_payment_gateways) &&
+      c.allowed_payment_gateways.length
+        ? c.allowed_payment_gateways
+        : ["paystack", "nomba"],
     products:
       state === "live"
         ? products

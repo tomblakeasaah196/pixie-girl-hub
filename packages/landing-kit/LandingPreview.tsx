@@ -277,6 +277,57 @@ export type LandingSubmit = (fields: {
   channel: "email" | "whatsapp" | "both";
 }) => Promise<{ code: string }>;
 
+/**
+ * LandingFooter — the brand "house" footer (logo + tagline, studio/legal,
+ * socials + storefront, copyright bar). Extracted so every campaign state
+ * (apex "no active sale", before, live, ended) renders the SAME footer the
+ * owner authors on the apex landing page, rather than a separate per-state
+ * footer. Driven entirely by LandingConfig and the brand CSS-var tokens, so
+ * it inherits whatever brand theme its host has injected.
+ */
+export function LandingFooter({ config }: { config: LandingConfig }) {
+  return (
+    <footer className="py-16 px-6 md:px-12" style={{ borderTop: "1px solid rgb(var(--brand-accent)/0.2)" }}>
+      <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-10 md:gap-16 items-start">
+        <div className="space-y-4">
+          <LogoMark url={config.logo.url} tint={config.logo.footerTint} scale={config.logo.footerScale} alt={config.brandName} fallback={config.brandName} />
+          <p className="text-sm leading-relaxed max-w-xs" style={{ color: "rgb(var(--brand-muted))" }}>{config.tagline}</p>
+        </div>
+        <div className="space-y-3">
+          <div className="text-[10px] tracking-[0.35em] uppercase" style={{ color: "rgb(var(--brand-primary))" }}>The Studio</div>
+          <div className="text-lg" style={{ ...DISPLAY, color: "rgb(var(--brand-primary-deep))" }}>{config.legalName}</div>
+          <p className="text-sm leading-relaxed not-italic" style={{ color: "rgb(var(--brand-muted))" }}>{config.address}</p>
+        </div>
+        <div className="space-y-4">
+          <div className="text-[10px] tracking-[0.35em] uppercase" style={{ color: "rgb(var(--brand-primary))" }}>Follow the House</div>
+          <div className="flex flex-wrap gap-3">
+            {config.socials.map((s) => (
+              <a
+                key={s.platform}
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={s.label || s.platform}
+                className="w-11 h-11 rounded-full flex items-center justify-center transition-all"
+                style={{ border: "1px solid rgb(var(--brand-accent)/0.35)", background: "rgb(var(--brand-paper)/0.04)", color: "rgb(var(--brand-primary-deep))" }}
+              >
+                <SocialIcon platform={s.platform} />
+              </a>
+            ))}
+          </div>
+          <a href={config.storefront} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase pt-2" style={{ color: "rgb(var(--brand-primary-deep))" }}>
+            Visit the storefront <span aria-hidden>→</span>
+          </a>
+        </div>
+      </div>
+      <div className="max-w-6xl mx-auto mt-12 pt-6 flex flex-col md:flex-row items-center justify-between gap-4" style={{ borderTop: "1px solid rgb(var(--brand-accent)/0.15)" }}>
+        <div className="text-[10px] tracking-[0.3em] uppercase" style={{ color: "rgb(var(--brand-muted))" }}>© {new Date().getFullYear()} {config.legalName}</div>
+        <div className="text-[10px] tracking-[0.3em] uppercase" style={{ color: "rgb(var(--brand-muted))" }}>{config.domain}</div>
+      </div>
+    </footer>
+  );
+}
+
 export function LandingPreview({
   config,
   onSubmit,
@@ -855,44 +906,7 @@ export function LandingPreview({
       </section>
 
       {/* ─── FOOTER ─── */}
-      <footer className="py-16 px-6 md:px-12" style={{ borderTop: "1px solid rgb(var(--brand-accent)/0.2)" }}>
-        <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-10 md:gap-16 items-start">
-          <div className="space-y-4">
-            <LogoMark url={config.logo.url} tint={config.logo.footerTint} scale={config.logo.footerScale} alt={config.brandName} fallback={config.brandName} />
-            <p className="text-sm leading-relaxed max-w-xs" style={{ color: "rgb(var(--brand-muted))" }}>{config.tagline}</p>
-          </div>
-          <div className="space-y-3">
-            <div className="text-[10px] tracking-[0.35em] uppercase" style={{ color: "rgb(var(--brand-primary))" }}>The Studio</div>
-            <div className="text-lg" style={{ ...DISPLAY, color: "rgb(var(--brand-primary-deep))" }}>{config.legalName}</div>
-            <p className="text-sm leading-relaxed not-italic" style={{ color: "rgb(var(--brand-muted))" }}>{config.address}</p>
-          </div>
-          <div className="space-y-4">
-            <div className="text-[10px] tracking-[0.35em] uppercase" style={{ color: "rgb(var(--brand-primary))" }}>Follow the House</div>
-            <div className="flex flex-wrap gap-3">
-              {config.socials.map((s) => (
-                <a
-                  key={s.platform}
-                  href={s.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={s.label || s.platform}
-                  className="w-11 h-11 rounded-full flex items-center justify-center transition-all"
-                  style={{ border: "1px solid rgb(var(--brand-accent)/0.35)", background: "rgb(var(--brand-paper)/0.04)", color: "rgb(var(--brand-primary-deep))" }}
-                >
-                  <SocialIcon platform={s.platform} />
-                </a>
-              ))}
-            </div>
-            <a href={config.storefront} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase pt-2" style={{ color: "rgb(var(--brand-primary-deep))" }}>
-              Visit the storefront <span aria-hidden>→</span>
-            </a>
-          </div>
-        </div>
-        <div className="max-w-6xl mx-auto mt-12 pt-6 flex flex-col md:flex-row items-center justify-between gap-4" style={{ borderTop: "1px solid rgb(var(--brand-accent)/0.15)" }}>
-          <div className="text-[10px] tracking-[0.3em] uppercase" style={{ color: "rgb(var(--brand-muted))" }}>© {new Date().getFullYear()} {config.legalName}</div>
-          <div className="text-[10px] tracking-[0.3em] uppercase" style={{ color: "rgb(var(--brand-muted))" }}>{config.domain}</div>
-        </div>
-      </footer>
+      <LandingFooter config={config} />
     </main>
   );
 }

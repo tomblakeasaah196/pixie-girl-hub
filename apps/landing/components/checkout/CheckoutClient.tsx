@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
-import { postCheckout } from "@/lib/api-client";
+import { postCheckout, postQuote, type CartQuote } from "@/lib/api-client";
 import {
   fetchGeoOptions,
   fetchPickupAddress,
@@ -42,11 +42,21 @@ type Gateway = "paystack" | "nomba";
 export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const router = useRouter();
   const items = useCart((s) => s.items);
+  // Local line-sum — an instant optimistic figure used only while the
+  // server quote is in flight.
   const subtotal = useCart((s) => s.subtotalNgn());
-  const retail = useCart((s) => s.retailSubtotalNgn());
-  const savings = useCart((s) => s.savingsNgn());
 
   const brandKey = payload.brand?.business_key;
+
+  // Server-authoritative quote: the Hub runs the FULL deal engine (per-wig
+  // position ladder, bundle stacking bonus, quantity-tier ladder,
+  // reseller/bulk tiers, per-bundle campaign price) and clamps at the margin
+  // floor — exactly what the cart drawer shows and exactly what checkout
+  // charges. The form must never recompute the discount on the client; it
+  // renders what the Hub returns. (Previously this form summed line prices
+  // and ignored every campaign discount, so the displayed Total — and the
+  // "Pay" button — showed the full, undiscounted amount.)
+  const [quote, setQuote] = useState<CartQuote | null>(null);
 
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -123,6 +133,74 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   );
   const empty = items.length === 0;
 
+  // Re-quote (debounced) whenever the cart contents change — same contract as
+  // the cart drawer so the two screens always show the same number.
+  const quoteKey = useMemo(
+    () =>
+      items
+        .map((i) => `${i.id}:${i.quantity}:${i.unstyled ? "raw" : "styled"}`)
+        .join("|"),
+    [items],
+  );
+  useEffect(() => {
+    if (items.length === 0) {
+      setQuote(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const q = await postQuote({
+        slug: payload.slug,
+        cart: items.map((i) => ({
+          bundle_id: i.bundle_id,
+          product_id: i.product_id,
+          styled_variant_id: i.styled_variant_id,
+          unstyled: i.unstyled,
+          quantity: i.quantity,
+        })),
+      });
+      if (!cancelled) setQuote(q);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [quoteKey, items, payload.slug]);
+
+  // Derived discount figures from the server quote (mirrors CartDrawer). While
+  // the quote is in flight we fall back to the raw line-sum so the summary is
+  // never blank — it just briefly shows the pre-discount figure, then settles.
+  const n = (v: string | number | undefined) => Number(v ?? 0) || 0;
+  const quotedSubtotal = quote ? n(quote.subtotal_ngn) : subtotal;
+  const totalDiscount = quote ? n(quote.total_discount_ngn) : 0;
+  // The discounted goods total (before delivery) — what the buyer actually pays
+  // for the items. Matches the drawer's "Checkout · …" figure.
+  const discountedGoods = quote ? n(quote.final_total_ngn) : subtotal;
+  const comps = quote?.components;
+  const dealRows: Array<{ label: string; amount: number }> = [];
+  if (comps) {
+    if (comps.position_ladder.applied)
+      dealRows.push({
+        label: "Multi-wig discount",
+        amount: n(comps.position_ladder.discount_ngn),
+      });
+    if (comps.stacking_bonus.applied)
+      dealRows.push({
+        label: comps.stacking_bonus.label || "Bundle bonus",
+        amount: n(comps.stacking_bonus.discount_ngn),
+      });
+    if (comps.quantity_tier.applied)
+      dealRows.push({
+        label: comps.quantity_tier.label || "Quantity discount",
+        amount: n(comps.quantity_tier.discount_ngn),
+      });
+    if (comps.bulk_tier.applied)
+      dealRows.push({
+        label: comps.bulk_tier.label || "Reseller / bulk",
+        amount: n(comps.bulk_tier.discount_ngn),
+      });
+  }
+
   // ── Geo-conditional autofill state ───────────────────────
   const countries = geo?.countries ?? GEO_FALLBACK.countries;
   const ngStates = geo?.nigeria_states ?? GEO_FALLBACK.nigeria_states;
@@ -177,7 +255,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // copy reads "calculated at fulfilment").
   const deliveryDue =
     fulfilment === "delivery" && deliveryFee != null ? deliveryFee : 0;
-  const total = subtotal + deliveryDue;
+  // Total = discounted goods (server quote) + delivery. This is the figure the
+  // gateway actually charges, so the "Pay" button and the order it creates now
+  // agree to the naira.
+  const total = discountedGoods + deliveryDue;
 
   // Right-hand summary label for the delivery line.
   const deliveryLabel =
@@ -747,22 +828,25 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     Subtotal
                   </span>
                   <span className="tabular-nums font-mono">
-                    {money(subtotal)}
+                    {money(quotedSubtotal)}
                   </span>
                 </div>
-                {savings > 0 && (
-                  <div className="flex justify-between text-[rgb(var(--success))]">
-                    <span>You save</span>
+                {dealRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex justify-between text-[rgb(var(--success))]"
+                  >
+                    <span>{row.label}</span>
                     <span className="tabular-nums font-mono">
-                      −{money(savings)}
+                      −{money(row.amount)}
                     </span>
                   </div>
-                )}
-                {savings > 0 && (
-                  <div className="flex justify-between text-[12px] text-[rgb(var(--text-faint))]">
-                    <span>vs retail</span>
-                    <span className="tabular-nums font-mono line-through">
-                      {money(retail)}
+                ))}
+                {totalDiscount > 0 && (
+                  <div className="flex justify-between text-[rgb(var(--success))] font-semibold">
+                    <span>You save</span>
+                    <span className="tabular-nums font-mono">
+                      −{money(totalDiscount)}
                     </span>
                   </div>
                 )}

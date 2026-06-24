@@ -404,6 +404,21 @@ async function createOrderTx({ brand, user, request_id, input }) {
       bundleLineTotal = applyOrderDiscount(d);
     }
 
+    // 3.8 Campaign deal ladder (v3): the per-wig position ladder, the bundle
+    // stacking bonus, the cart-level quantity-tier ladder and the reseller/bulk
+    // tiers. These are pre-computed by the caller (the public quote + checkout
+    // flow in sales_campaigns), where the cart semantics they depend on — wig
+    // units, distinct bundles, raw-vs-styled — are still known (they're lost
+    // once the cart is flattened to variant lines here). The amount is a fixed ₦
+    // total, so we apply it order-level through the SAME headroom-respecting
+    // helper as coupons/points: the §6.25 margin floor is never breached, and a
+    // ladder that over-promises is clamped exactly like every other discount.
+    let dealLineTotal = money(0);
+    if (input.campaign_deal_discount_ngn) {
+      const want = money(input.campaign_deal_discount_ngn);
+      if (want.gt(money(0))) dealLineTotal = applyOrderDiscount(want);
+    }
+
     // 4. Totals + VAT.
     let subtotal = money(0),
       discountTotal = money(0),
@@ -626,6 +641,25 @@ async function createOrderTx({ brand, user, request_id, input }) {
         client,
         brand,
         bundle_id: bundleMeta.bundle_id,
+      });
+    }
+
+    // 5a-iv. Record the campaign deal-ladder discount IN Sales (position
+    // ladder + stacking bonus + quantity tier + reseller/bulk). Logged under
+    // the 'quantity_rule' source and linked to the campaign so the order's
+    // discount breakdown is complete and the figure ties out end-to-end.
+    if (dealLineTotal.gt(0)) {
+      await repo.insertDiscount({
+        client,
+        brand,
+        disc: {
+          order_id: order.order_id,
+          source: "quantity_rule",
+          source_reference: campaign ? campaign.slug : "campaign_deal",
+          sales_campaign_id: campaign ? campaign.campaign_id : null,
+          amount_ngn: toCurrencyString(dealLineTotal),
+          discount_type: "fixed",
+        },
       });
     }
 

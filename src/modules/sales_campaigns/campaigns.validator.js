@@ -585,6 +585,10 @@ const checkoutSchema = z.object({
         // line from the styled tables (styled_product_variants), not the base
         // product_variants — see campaigns.public.service checkout().
         styled_variant_id: z.string().uuid().optional(),
+        // "Buy unstyled / raw": order the wig WITHOUT the styling premiums.
+        // Priced at the styled product's anchor (retail_price_ngn) and counted
+        // as a raw wig for the reseller/bulk tier. Server re-prices regardless.
+        unstyled: z.boolean().optional(),
         quantity: z.coerce.number().int().min(1).max(50),
         // Optional — the server re-prices; never trusted from the client.
         unit_price_ngn: z.coerce.number().nonnegative().optional(),
@@ -605,6 +609,27 @@ const checkoutSchema = z.object({
   display_currency: z.enum(["NGN", "USD"]).optional().default("NGN"),
   client_idempotency_key: z.string().min(1).max(120),
   coupon_code: z.string().max(60).optional(),
+});
+
+// ── Public cart quote (v3 deals engine) ──────────────────
+// The landing cart posts its current items here on every change to get the
+// server-authoritative running total: per-wig position ladder, bundle stacking
+// bonus, quantity-tier ladder and reseller/bulk tiers — all stacked and clamped
+// at the margin floor. Prices are NEVER trusted from the client.
+const quoteSchema = z.object({
+  slug: z.string().min(1).max(200).optional(),
+  cart: z
+    .array(
+      z.object({
+        bundle_id: z.string().uuid().optional(),
+        product_id: z.string().uuid().optional(),
+        styled_variant_id: z.string().uuid().optional(),
+        unstyled: z.boolean().optional(),
+        quantity: z.coerce.number().int().min(1).max(50),
+      }),
+    )
+    .max(30)
+    .default([]),
 });
 
 // ── Batch / clone / duplicate (migration 000048) ─────────
@@ -666,6 +691,7 @@ module.exports = {
   validateVipGrant: mw(vipGrantSchema),
   validateVipGiftStatus: mw(vipGiftStatusSchema),
   validateCheckout: mw(checkoutSchema),
+  validateQuote: mw(quoteSchema),
   // v3 (migration 000048)
   validateBatchAddProducts: mw(batchAddProductsSchema),
   validateCloneBundles: mw(cloneBundlesSchema),

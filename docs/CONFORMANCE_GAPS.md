@@ -107,5 +107,53 @@ now does real FFmpeg work — probe + transcode (H.264/AAC, ≤720p, faststart)
 Remaining follow-ups are operational only: the social-platform UGC connector
 (Instagram/TikTok capture) and the doc-hygiene counts below.
 
+---
+
+## Part 4 — Known pricing inconsistencies (post-launch, deferred)
+
+### G-1 — Bundle campaign price is floor-clamped at checkout but NOT in the cart quote
+
+**Severity:** medium · **Scope:** fixed-price bundles only · **Status:** open
+(deferred 2026-06-24 — does not affect the current live campaign, which uses
+styled items + the position-ladder "Multi-wig discount").
+
+**Symptom.** For a bundle that has a fixed `campaign_bundle_price_ngn`, the
+cart drawer / checkout-form total (the server `/quote`) can show a *lower*
+total than the order actually charges. The buyer is then charged **more** than
+the figure on the "Pay" button.
+
+**Root cause.** The two paths represent the bundle campaign price differently:
+
+- **Quote** (`campaigns.public.service.js` → `priceQuoteLine`, ~line 691):
+  the bundle line's `unit_price_ngn` IS the campaign price and carries
+  `floor_ngn: null` — the saving is baked into the unit price and is **never**
+  margin-floor clamped.
+- **Checkout** (`checkout` → `resolveBundleForCheckout`, ~line 604/941/1126):
+  the bundle is priced at **sum-of-parts** and the campaign-price saving is
+  added as an order-level `campaign_deal_discount_ngn`, which
+  `salesService.createOrder` then **clamps** against each base variant's
+  `min_price_ngn` (`sales.service.js` `applyOrderDiscount`).
+
+If a styled bundle's base-variant floors are high relative to its campaign
+price, `createOrder` clamps the discount down and the order total exceeds the
+quote. The same asymmetry affects the deal **ladder**: `checkout` hands
+`deal.gross_discount_ngn` (pre-clamp) to `createOrder`, which re-clamps against
+order-line floors that the quote did not use for bundle lines.
+
+**Fix direction (when picked up).** Make the `/quote` path apply the *same*
+margin-floor clamp `createOrder` uses (resolve each bundle line's base-variant
+`min_price_ngn` and clamp there), so drawer = form = charge in all cases. Add a
+test that drives `quoteCart` and `createOrder` on the same fixed-price-bundle
+cart and asserts the final totals are equal — no test currently pins that
+agreement (`campaigns.bundle-pricing.test.js` checks the pure math only;
+`checkout-styled-bundle.test.js` never compares order total to the quote).
+
+**Verified safe meanwhile:** non-bundle campaigns (styled/raw wigs + position
+ladder, quantity tier, reseller/bulk) clamp against the *same* base-variant
+floors in both paths, so the displayed total already equals the charge — which
+is why the current live sale is unaffected.
+
+---
+
 See `migrations/CHANGELOG.md` for what shipped and `VERIFICATION_REPORT.md`
 for the per-module evidence behind this list.

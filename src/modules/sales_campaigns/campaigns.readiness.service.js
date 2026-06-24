@@ -141,24 +141,38 @@ async function check({ brand, campaign, client = null, autofix = true }) {
     logger.warn({ err: err.message, brand }, "readiness: currency check failed");
   }
 
-  // 4. At least one active gateway per offered currency.
+  // 4. At least one active gateway per offered currency — intersected with the
+  //    gateways this campaign still has enabled (the builder can turn rails off).
+  const allowedGateways =
+    Array.isArray(campaign.allowed_payment_gateways) &&
+    campaign.allowed_payment_gateways.length
+      ? campaign.allowed_payment_gateways
+      : ["paystack", "nomba"];
   try {
     const ngnChain = await gateways.getActiveChain({ brand, currency: "NGN" });
-    if (!ngnChain.length)
+    const ngnUsable = ngnChain.filter((g) =>
+      allowedGateways.includes(g.provider),
+    );
+    if (!ngnUsable.length)
       issues.push({
         code: "NO_NGN_GATEWAY",
         severity: "block",
-        message:
-          "No active payment gateway is configured for NGN — buyers cannot pay.",
+        message: ngnChain.length
+          ? "Every NGN gateway is turned off for this campaign — buyers cannot pay. Enable a gateway in the brief."
+          : "No active payment gateway is configured for NGN — buyers cannot pay.",
       });
     if (wantsUsd) {
       const usdChain = await gateways.getActiveChain({ brand, currency: "USD" });
-      if (!usdChain.length)
+      const usdUsable = usdChain.filter((g) =>
+        allowedGateways.includes(g.provider),
+      );
+      if (!usdUsable.length)
         issues.push({
           code: "NO_USD_GATEWAY",
           severity: "block",
-          message:
-            "USD display is on but no USD gateway (Nomba) is configured — USD buyers cannot pay.",
+          message: usdChain.length
+            ? "USD display is on but Nomba (the only USD rail) is turned off for this campaign — USD buyers cannot pay."
+            : "USD display is on but no USD gateway (Nomba) is configured — USD buyers cannot pay.",
         });
     }
   } catch (err) {

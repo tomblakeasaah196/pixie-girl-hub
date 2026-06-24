@@ -1,0 +1,11 @@
+-- Per-campaign payment gateway selection.
+-- Lets a campaign owner turn individual gateways (Paystack / Nomba) on or off
+-- for a single sale from the builder, without touching the brand-wide gateway
+-- config. The public checkout only offers the gateways listed here.
+--
+-- Default is both rails on, so existing campaigns behave exactly as before.
+-- NOTE: USD orders always settle on the Nomba rail regardless of this list —
+-- it is the only USD gateway — so dropping Nomba only affects NGN checkout.
+ALTER TABLE {{BUSINESS}}.sales_campaigns
+  ADD COLUMN IF NOT EXISTS allowed_payment_gateways TEXT[] NOT NULL
+    DEFAULT ARRAY['paystack', 'nomba']::text[];

@@ -48,6 +48,13 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
 
   const brandKey = payload.brand?.business_key;
 
+  // Gateways this campaign offers. Absent/empty → both rails (older campaigns).
+  // The owner can turn a rail off per campaign in the builder.
+  const allowedGateways: Gateway[] =
+    payload.allowed_payment_gateways && payload.allowed_payment_gateways.length
+      ? payload.allowed_payment_gateways
+      : ["paystack", "nomba"];
+
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [email, setEmail] = useState("");
@@ -97,7 +104,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [mktOpt, setMktOpt] = useState(false);
   const [terms, setTerms] = useState(false);
   const [honey, setHoney] = useState(""); // honeypot
-  const [gateway, setGateway] = useState<Gateway>("paystack");
+  const [gateway, setGateway] = useState<Gateway>(allowedGateways[0]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{
     message: string;
@@ -650,8 +657,12 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             </Section>
 
             <Section title="Pay with">
-              <div className="grid grid-cols-2 gap-2">
-                {(["paystack", "nomba"] as Gateway[]).map((g) => (
+              <div
+                className={`grid gap-2 ${
+                  allowedGateways.length > 1 ? "grid-cols-2" : "grid-cols-1"
+                }`}
+              >
+                {allowedGateways.map((g) => (
                   <button
                     key={g}
                     type="button"

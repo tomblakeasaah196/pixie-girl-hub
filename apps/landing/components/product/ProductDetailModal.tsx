@@ -82,14 +82,106 @@ interface ProductDetail {
   } | null;
 }
 
-function youtubeEmbed(url: string): string | null {
+/**
+ * Pulls the YouTube video id out of whatever the owner pasted into the
+ * catalogue's "Head-size video" box: a share link (youtu.be/ID), a watch URL
+ * (youtube.com/watch?v=ID), an embed URL (youtube.com/embed/ID), a Shorts URL,
+ * OR a full `<iframe …>` embed snippet (we just read the src inside it).
+ * Returns null for non-YouTube URLs so the caller falls back to a native
+ * <video> player.
+ */
+function youtubeId(url: string): string | null {
   const m =
     url.match(
       /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/,
     ) || url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
-  return m
-    ? `https://www.youtube.com/embed/${m[1]}?rel=0&modestbranding=1`
-    : null;
+  return m ? m[1] : null;
+}
+
+/**
+ * Lazy "facade" YouTube player. We render a branded poster + play button and
+ * only mount the real YouTube iframe AFTER the first click. Benefits:
+ *  - The modal opens instantly (no heavy player on load).
+ *  - We build the embed URL with `origin` set to the live page, which fixes
+ *    the intermittent "Error 153 — video player configuration error" YouTube
+ *    throws when it can't verify the embedding origin.
+ *  - `youtube-nocookie.com` + `modestbranding` + `rel=0` keep it on-brand with
+ *    minimal YouTube chrome; the view still counts on YouTube.
+ *  - If the player ever fails, a quiet "Watch on YouTube" link is the escape
+ *    hatch instead of a dead black box.
+ */
+function YouTubeFacade({ videoId, title }: { videoId: string; title: string }) {
+  const [playing, setPlaying] = useState(false);
+
+  // Built on demand so `origin` reflects the actual live domain (SSR-safe).
+  const embedSrc = useMemo(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const params = new URLSearchParams({
+      autoplay: "1",
+      rel: "0",
+      modestbranding: "1",
+      playsinline: "1",
+      iv_load_policy: "3",
+      ...(origin ? { origin } : {}),
+    });
+    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+  }, [videoId]);
+
+  // hqdefault always exists (unlike maxresdefault, which 404s to a grey card).
+  const poster = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  if (playing) {
+    return (
+      <div className="mb-3">
+        <div className="relative w-full aspect-video rounded-[10px] overflow-hidden border border-white/10 bg-black/50">
+          <iframe
+            src={embedSrc}
+            title={title}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            className="absolute inset-0 w-full h-full"
+          />
+        </div>
+        <a
+          href={watchUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 inline-block text-[11px] opacity-50 hover:opacity-80 transition-opacity"
+        >
+          Trouble playing? Watch on YouTube ↗
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setPlaying(true)}
+      aria-label="Play video"
+      className="group relative block w-full aspect-video rounded-[10px] overflow-hidden border border-white/10 mb-3 bg-black/50"
+    >
+      {/* Plain <img> (not next/image) so we don't need i.ytimg.com in the
+          next.config remotePatterns allowlist. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={poster}
+        alt={title}
+        loading="lazy"
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+      <span className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/10" />
+      <span className="absolute inset-0 grid place-items-center">
+        <span className="grid place-items-center w-16 h-16 rounded-full bg-[rgb(var(--accent-deep))] shadow-[0_8px_30px_rgba(0,0,0,0.45)] transition-transform duration-300 group-hover:scale-110">
+          <Play
+            className="w-6 h-6 text-[rgb(var(--text))] translate-x-0.5"
+            fill="currentColor"
+          />
+        </span>
+      </span>
+    </button>
+  );
 }
 
 export function ProductDetailModal({
@@ -182,8 +274,8 @@ export function ProductDetailModal({
     return anchor + Number(sizeP) + Number(laceP);
   }, [product, size, lace]);
 
-  const embed = product?.size_guide?.video_url
-    ? youtubeEmbed(product.size_guide.video_url)
+  const videoId = product?.size_guide?.video_url
+    ? youtubeId(product.size_guide.video_url)
     : null;
 
   // The concrete styled variant for the chosen size/lace (default colour, as
@@ -680,18 +772,13 @@ export function ProductDetailModal({
                             {product.size_guide.title}
                           </h3>
                         </div>
-                        {embed && (
-                          <div className="relative w-full aspect-video rounded-[10px] overflow-hidden border border-white/10 mb-3 bg-black/50">
-                            <iframe
-                              src={embed}
-                              title="Head size guide"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                              className="absolute inset-0 w-full h-full"
-                            />
-                          </div>
+                        {videoId && (
+                          <YouTubeFacade
+                            videoId={videoId}
+                            title={product.size_guide.title || "Head size guide"}
+                          />
                         )}
-                        {!embed && product.size_guide.video_url && (
+                        {!videoId && product.size_guide.video_url && (
                           <video
                             src={product.size_guide.video_url}
                             controls
@@ -703,7 +790,7 @@ export function ProductDetailModal({
                             {product.size_guide.guide_md}
                           </div>
                         )}
-                        {!product.size_guide.guide_md && embed && (
+                        {!product.size_guide.guide_md && videoId && (
                           <p className="text-[11.5px] opacity-60 flex items-center gap-1.5">
                             <Play className="w-3 h-3" /> Watch the brand's
                             how-to above.

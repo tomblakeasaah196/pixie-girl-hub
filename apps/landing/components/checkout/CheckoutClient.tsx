@@ -319,8 +319,8 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         : deliveryFee != null
           ? fmt(deliveryFee)
           : effectiveZone
-            ? "At fulfilment"
-            : "—";
+            ? "Check location"
+            : "Select location";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -350,8 +350,43 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         setErr({ message: "Please select your city / LGA.", retryable: false });
         return;
       }
+      // The location must have RESOLVED to a billable zone. Typing a country /
+      // state (or browser autofill) without picking it from the list leaves
+      // `effectiveZone` blank — the visible address looks complete but we have
+      // no zone to price. Never let that pay ₦0 delivery.
+      if (!effectiveZone) {
+        setErr({
+          message: isNigeria
+            ? "Please pick your state from the list (and your LGA for Lagos) so we can calculate delivery."
+            : "Please pick your country from the list so we can calculate delivery.",
+          retryable: false,
+        });
+        return;
+      }
+      // Quote still in flight — wait for the fee rather than submitting blind.
+      if (quoting) {
+        setErr({
+          message: "Calculating delivery… give it a second, then tap Pay again.",
+          retryable: true,
+        });
+        return;
+      }
+      // Zone resolved but priced to nothing (uncovered / unseeded). The server
+      // also blocks this, but stop it here so the buyer gets a clear prompt
+      // instead of a rejected payment.
+      if (deliveryFee == null) {
+        setErr({
+          message:
+            "We couldn't calculate delivery for that location. Please re-check your country, state and city.",
+          retryable: false,
+        });
+        return;
+      }
     }
     setBusy(true);
+    // Declared outside try so the catch block can reuse it for the
+    // near-duplicate "Place new order" retry.
+    let checkoutPayload: Parameters<typeof postCheckout>[0] | null = null;
     try {
       const giftPayload = isGift
         ? {
@@ -372,7 +407,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           }
         : undefined;
 
-      const res = await postCheckout({
+      // Build the full payload once so the near-duplicate "Place new order"
+      // retry can resend the EXACT same order (address, consent, cart and all)
+      // — the server re-prices delivery off this address and now refuses an
+      // order it can't bill, so the retry must carry the same complete payload.
+      checkoutPayload = {
         slug: payload.slug,
         contact: {
           first_name: first,
@@ -416,7 +455,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         display_currency: displayCurrency,
         client_idempotency_key: idemKey,
         coupon_code: promoApplied && promoCode ? promoCode : undefined,
-      });
+      };
+
+      const res = await postCheckout(checkoutPayload);
       const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
       const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
       const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
@@ -438,29 +479,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         support?: { whatsapp?: string; email?: string; message?: string } | null;
         existing_orders?: DupOrder[] | null;
       };
-      if (ex?.code === "POTENTIAL_DUPLICATE" && ex.existing_orders?.length) {
-        // Hold the current payload so the "Place new order" button can reuse it.
-        setPendingCheckoutPayload({
-          slug: payload.slug,
-          contact: {
-            first_name: first,
-            last_name: last,
-            email,
-            phone,
-          },
-          cart: items.map((i) => ({
-            bundle_id: i.bundle_id,
-            product_id: i.product_id,
-            styled_variant_id: i.styled_variant_id,
-            unstyled: i.unstyled,
-            quantity: i.quantity,
-            unit_price_ngn: i.unit_price_ngn,
-          })),
-          payment_gateway: gateway,
-          display_currency: displayCurrency,
-          client_idempotency_key: idemKey,
-          coupon_code: promoApplied && promoCode ? promoCode : undefined,
-        } as Parameters<typeof postCheckout>[0]);
+      if (ex?.code === "POTENTIAL_DUPLICATE" && ex.existing_orders?.length && checkoutPayload) {
+        // Hold the exact payload so "Place new order" can resend it verbatim.
+        setPendingCheckoutPayload(checkoutPayload);
         setDupOrders(ex.existing_orders);
         setBusy(false);
         return;

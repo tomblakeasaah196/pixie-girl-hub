@@ -223,5 +223,26 @@ enrolled_by)`), a backfill script, and wiring the segment check in
 
 ---
 
+### G-4 — Gift "ship to recipient" is billed at the buyer's delivery zone
+
+**Severity:** low · **Status:** DEFERRED 2026-06-25 (logistics hotfix).
+
+**Problem.** `campaigns.public.service.js` §2b computes the delivery fee from
+`input.contact.address` (the **buyer's** address) only. When a buyer sends a
+gift with `ship_to_recipient: true`, the parcel ships to
+`gift.recipient_address` but the freight is still priced against the buyer's
+zone. A Lagos buyer gifting to the US is charged Lagos rates; the reverse
+overcharges. The order still bills *a* fee (so it's not the ₦0 hole fixed in
+the logistics hotfix), but the figure is for the wrong destination.
+
+**Deferred rationale.** Correct fix is to resolve the fee against the
+ship-to-recipient address when present (its own country/state/LGA zone), which
+means the gift recipient form must capture a resolvable `zone_code` /
+`country_code` the same way the buyer's address picker does — today the gift
+recipient address is free-text (`line1/city/state/country`) with no zone
+picker. Scoped as a follow-up to the logistics hotfix.
+
+---
+
 See `migrations/CHANGELOG.md` for what shipped and `VERIFICATION_REPORT.md`
 for the per-module evidence behind this list.

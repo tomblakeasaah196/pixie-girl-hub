@@ -1049,32 +1049,70 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // The wig-quantity tier × the buyer's delivery zone drives the fee. We NEVER
   // trust a client-sent amount — we re-quote against the seeded zone using the
   // zone_code (NG state/LGA) or ISO-2 country code the autofill captured.
-  // Pickup is always free. An unresolved zone falls back to 0 ("calculated at
-  // fulfilment") rather than blocking the sale.
+  // Pickup is always free.
+  //
+  // FAIL CLOSED (owner mandate): a *delivery* order must resolve to a real,
+  // billable zone before it can be created. Browser autofill (or typing a
+  // country/state without picking it from the list) leaves the zone code blank
+  // while the visible address looks complete — and an uncovered zone prices to
+  // null. Both used to fall back to ₦0, so we shipped hair we couldn't bill and
+  // ate the logistics cost. We now refuse the order in both cases. Every
+  // country, every NG state and every Lagos LGA is seeded, so a genuine buyer
+  // selection always prices; if it ever doesn't, this surfaces the seeding gap
+  // loudly instead of silently absorbing the freight.
   let shippingFeeNgn = 0;
   let deliveryQuote = null;
   if (!isPickup) {
     const addr = input.contact.address || {};
     const zoneCode = addr.zone_code || addr.country_code || null;
     const wigQty = orderLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
-    if (zoneCode) {
-      deliveryQuote = await zonesService
-        .quote({ brand: resolvedBrand, country_code: zoneCode, qty: wigQty })
-        .catch((err) => {
-          logger.warn({ err: err.message, zoneCode }, "delivery quote failed");
-          return null;
-        });
-      if (deliveryQuote && deliveryQuote.fee_ngn !== null) {
-        shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
-      } else if (!isPickup) {
-        // No zone matched — delivery fee cannot be determined automatically.
-        // Flag it on the order so fulfilment knows to collect it separately.
-        logger.warn(
-          { zoneCode, slug: campaign.slug },
-          "delivery zone unresolved — order will be created with 0 shipping fee; fulfilment must collect separately",
-        );
-      }
+
+    // (1) No zone code at all — the location was never resolved to a country /
+    //     state / LGA we can price. Block, don't guess at ₦0.
+    if (!zoneCode) {
+      logger.warn(
+        { slug: campaign.slug },
+        "checkout blocked — delivery address has no resolved zone/country code",
+      );
+      throw new AppError(
+        "DELIVERY_LOCATION_REQUIRED",
+        "Delivery order has no resolvable zone/country code",
+        422,
+        {
+          user_message:
+            "Please pick your country from the list (and your state, plus your LGA for Lagos) so we can calculate delivery before you pay.",
+        },
+      );
     }
+
+    deliveryQuote = await zonesService
+      .quote({ brand: resolvedBrand, country_code: zoneCode, qty: wigQty })
+      .catch((err) => {
+        logger.warn({ err: err.message, zoneCode }, "delivery quote failed");
+        return null;
+      });
+
+    // (2) Zone code present but no zone matched (uncovered / unseeded) → the
+    //     fee is unknown. fee_ngn === null means "no zone"; a real zone may
+    //     legitimately price to ₦0 (an intentional free-delivery zone) and is
+    //     allowed through. Anything we cannot price is refused.
+    if (!deliveryQuote || deliveryQuote.fee_ngn === null) {
+      logger.error(
+        { zoneCode, slug: campaign.slug },
+        "checkout blocked — delivery zone unresolved; refusing to create a ₦0-shipping order",
+      );
+      throw new AppError(
+        "DELIVERY_UNAVAILABLE",
+        `No delivery zone covers '${zoneCode}'`,
+        422,
+        {
+          user_message:
+            "We couldn't calculate delivery for that location. Please double-check your country, state and city — or contact us and we'll complete your order.",
+        },
+      );
+    }
+
+    shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
   }
 
   // ── 2c. Campaign deal ladder ───────────────────────────

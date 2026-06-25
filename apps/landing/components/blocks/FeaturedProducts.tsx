@@ -412,6 +412,14 @@ function Card({
   const campaignPrice = Number(product.campaign_price_ngn || 0);
   const retail = Number(product.regular_price_ngn || 0);
   const price = campaignPrice > 0 ? campaignPrice : retail;
+  // Wholesale (raw) economics: the anchor is what checkout charges for an
+  // unstyled wig; the best bulk price is the anchor minus the top tier's
+  // per-wig discount.
+  const anchor = Number(product.anchor_price_ngn ?? product.regular_price_ngn ?? 0);
+  const wholesaleNow =
+    anchor > 0 && wholesaleHintNgn > 0
+      ? Math.max(0, anchor - wholesaleHintNgn)
+      : 0;
   // Live stock (polled) overrides the page-baked stock_remaining when present.
   const liveQty =
     liveStock?.[product.styled_id ?? ""] ??
@@ -506,15 +514,46 @@ function Card({
         )}
         {wholesale ? (
           <div className="mt-2">
-            <div className="text-[12.5px] font-semibold">Raw / unstyled</div>
-            {wholesaleHintNgn > 0 && (
-              <div className="text-[12px] font-semibold text-[rgb(var(--accent-readable))]">
-                Save up to {money(wholesaleHintNgn)}/wig in bulk
-              </div>
+            {anchor > 0 ? (
+              <>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <div
+                    className="font-display text-[18px] tabular-nums font-extrabold"
+                    style={wholesaleNow > 0 ? { color: "#16A34A" } : undefined}
+                  >
+                    {money(wholesaleNow > 0 ? wholesaleNow : anchor)}
+                  </div>
+                  {wholesaleNow > 0 && anchor > wholesaleNow && (
+                    <div className="text-[12px] text-[rgb(var(--text-faint))] line-through font-mono">
+                      {money(anchor)}
+                    </div>
+                  )}
+                  <span className="text-[10px] text-[rgb(var(--text-faint))]">
+                    /wig
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[10.5px] font-semibold text-[rgb(var(--accent-readable))]">
+                  {wholesaleHintNgn > 0
+                    ? `Best bulk price · save up to ${money(wholesaleHintNgn)}/wig`
+                    : "Raw / unstyled · trade price"}
+                </div>
+                <div className="mt-0.5 text-[11px] text-[rgb(var(--text-faint))]">
+                  Raw / unstyled — tap to order
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[12.5px] font-semibold">Raw / unstyled</div>
+                {wholesaleHintNgn > 0 && (
+                  <div className="text-[12px] font-semibold text-[rgb(var(--accent-readable))]">
+                    Save up to {money(wholesaleHintNgn)}/wig in bulk
+                  </div>
+                )}
+                <div className="mt-0.5 text-[11px] text-[rgb(var(--text-faint))]">
+                  Tap to order at trade price
+                </div>
+              </>
             )}
-            <div className="mt-0.5 text-[11px] text-[rgb(var(--text-faint))]">
-              Tap to order at trade price
-            </div>
           </div>
         ) : deal ? (
           /* Was / Now pricing — sale red treatment */

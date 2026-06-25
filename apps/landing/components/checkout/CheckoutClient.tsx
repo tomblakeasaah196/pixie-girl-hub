@@ -118,12 +118,6 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [giftName, setGiftName] = useState("");
   const [giftPhone, setGiftPhone] = useState("");
   const [giftMessage, setGiftMessage] = useState("");
-  const [shipToRecipient, setShipToRecipient] = useState(false);
-  const [recipientLine1, setRecipientLine1] = useState("");
-  const [recipientLine2, setRecipientLine2] = useState("");
-  const [recipientCity, setRecipientCity] = useState("");
-  const [recipientState, setRecipientState] = useState("Lagos");
-  const [recipientCountry] = useState("Nigeria");
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
@@ -406,17 +400,6 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             recipient_name: giftName,
             recipient_phone: giftPhone || undefined,
             message: giftMessage || undefined,
-            ship_to_recipient: shipToRecipient || undefined,
-            recipient_address:
-              shipToRecipient
-                ? {
-                    line1: recipientLine1,
-                    line2: recipientLine2 || undefined,
-                    city: recipientCity,
-                    state: recipientState || undefined,
-                    country: recipientCountry,
-                  }
-                : undefined,
           }
         : undefined;
 
@@ -627,7 +610,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               </div>
 
               {fulfilment === "delivery" ? (
-                <div className="space-y-3 pt-1">
+                <div id="delivery-address" className="space-y-3 pt-1">
                   {/* Country — searchable, choose from the dropdown */}
                   <Field label="Country" required>
                     <ComboBox
@@ -799,48 +782,21 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   <Field label="Gift message">
                     <Textarea value={giftMessage} onChange={setGiftMessage} />
                   </Field>
-                  <label className="flex items-center gap-2 text-[13px] mt-2">
-                    <input
-                      type="checkbox"
-                      checked={shipToRecipient}
-                      onChange={(e) => setShipToRecipient(e.target.checked)}
-                      className="accent-[rgb(var(--accent-deep))]"
-                    />
-                    <MapPin className="w-3.5 h-3.5 text-[rgb(var(--accent-readable))]" />
-                    <span>Ship directly to the recipient</span>
-                  </label>
-                  {shipToRecipient && (
-                    <div className="mt-2 space-y-3 pl-1 border-l-2 border-[rgb(var(--accent)/0.15)]">
-                      <Field label="Recipient address line 1" required>
-                        <Input
-                          value={recipientLine1}
-                          onChange={setRecipientLine1}
-                          required
-                        />
-                      </Field>
-                      <Field label="Recipient address line 2">
-                        <Input
-                          value={recipientLine2}
-                          onChange={setRecipientLine2}
-                        />
-                      </Field>
-                      <Row>
-                        <Field label="City" required>
-                          <Input
-                            value={recipientCity}
-                            onChange={setRecipientCity}
-                            required
-                          />
-                        </Field>
-                        <Field label="State">
-                          <Input
-                            value={recipientState}
-                            onChange={setRecipientState}
-                          />
-                        </Field>
-                      </Row>
-                    </div>
-                  )}
+                  <p className="text-[13px] mt-2 text-red-600 leading-snug">
+                    Shipped to the address above.{" "}
+                    <a
+                      href="#delivery-address"
+                      className="underline underline-offset-2 hover:opacity-80"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document
+                          .getElementById("delivery-address")
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                    >
+                      Want to change the address?
+                    </a>
+                  </p>
                 </div>
               )}
             </Section>

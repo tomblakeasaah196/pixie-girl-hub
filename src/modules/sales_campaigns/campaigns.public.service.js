@@ -789,6 +789,33 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     );
   }
 
+  // ── Wholesale minimum (cart-wide) ──────────────────────
+  // Raw / unstyled wigs are a wholesale-only SKU: they only sell at or above the
+  // lowest configured bulk tier. The minimum is enforced on the COMBINED raw-wig
+  // count across every style in the cart — not per product — so a buyer can mix
+  // styles to reach it. The cart drawer mirrors this; this is the authoritative
+  // guard so the client check can't be bypassed.
+  const bulkTiersForMin = Array.isArray(campaign.bulk_tiers)
+    ? campaign.bulk_tiers
+    : [];
+  const minBulkQty = bulkTiersForMin
+    .map((t) => Number(t && t.min_qty))
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .sort((a, b) => a - b)[0];
+  if (minBulkQty) {
+    const rawWigQty = (input.cart || []).reduce(
+      (sum, it) => sum + (it && it.unstyled ? Number(it.quantity) || 0 : 0),
+      0,
+    );
+    if (rawWigQty > 0 && rawWigQty < minBulkQty) {
+      throw new AppError(
+        "WHOLESALE_MINIMUM_NOT_MET",
+        `Raw (unstyled) wigs are sold wholesale — a minimum of ${minBulkQty} across any style. You have ${rawWigQty}. Add ${minBulkQty - rawWigQty} more, or remove the raw wigs, to continue.`,
+        409,
+      );
+    }
+  }
+
   // Pickup (collect-in-store) carries no delivery address and no delivery fee.
   const isPickup = input.fulfilment_type === "pickup";
 

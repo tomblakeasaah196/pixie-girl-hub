@@ -349,26 +349,35 @@ export function ProductDetailModal({
     product?.anchor_price_ngn ?? product?.retail_price_ngn ?? 0,
   );
 
-  // Wholesale gate: sorted bulk tiers and current raw-wig count in cart
+  // Wholesale is a CART-WIDE concept: every unstyled wig across every style in
+  // the cart counts toward the same minimum. So the modal never blocks the add —
+  // buyers freely accumulate raw wigs across products, and the wholesale rate
+  // unlocks (server-side, in the cart + at checkout) once the COMBINED raw-wig
+  // count crosses the lowest tier. This panel only informs progress.
   const sortedBulkTiers = (bulkTiers || [])
     .filter((t) => t.min_qty > 0 && t.discount_per_item_ngn > 0)
     .sort((a, b) => a.min_qty - b.min_qty);
   const hasWholesale = sortedBulkTiers.length > 0 && anchorOnly > 0;
   const minBulkTier = sortedBulkTiers[0];
-  // Count all unstyled wigs already in the cart (cross-product)
+  // Raw wigs already in the cart (across all styles) + this modal's stepper.
   const cartRawQty = cartItems
     .filter((i) => i.unstyled === true)
     .reduce((sum, i) => sum + i.quantity, 0);
   const totalRawWithStepper = cartRawQty + unstyledQty;
-  // Find which tier applies at total raw qty
+  // Highest tier the combined count qualifies for, and the next tier above it.
   const qualifyingTier = [...sortedBulkTiers]
     .reverse()
     .find((t) => totalRawWithStepper >= t.min_qty);
   const nextTier = sortedBulkTiers.find(
     (t) => totalRawWithStepper < t.min_qty,
   );
-  const gateOpen =
-    !hasWholesale || (minBulkTier != null && totalRawWithStepper >= minBulkTier.min_qty);
+  // Whether the combined raw count meets the wholesale minimum (lowest tier),
+  // and how many more raw wigs (across any style) are still needed to get there.
+  const meetsMinimum =
+    minBulkTier != null && totalRawWithStepper >= minBulkTier.min_qty;
+  const remainingToMin = minBulkTier
+    ? Math.max(0, minBulkTier.min_qty - totalRawWithStepper)
+    : 0;
 
   return (
     <AnimatePresence>
@@ -653,30 +662,41 @@ export function ProductDetailModal({
                             })}
                           </div>
 
-                          {/* Progress toward gate */}
+                          {/* Cross-product progress — never a block. Raw wigs
+                              accumulate across every style toward one minimum. */}
                           {minBulkTier && (
                             <div className="text-[11.5px] text-[rgb(var(--text-muted))] space-y-1">
                               {cartRawQty > 0 && (
                                 <div>
                                   You already have {cartRawQty} raw wig
-                                  {cartRawQty !== 1 ? "s" : ""} in your cart.
-                                  All unstyled wigs across every style count
+                                  {cartRawQty !== 1 ? "s" : ""} in your cart —
+                                  every unstyled wig across all styles counts
                                   together.
                                 </div>
                               )}
-                              {!gateOpen && nextTier && (
+                              {!meetsMinimum && (
                                 <div style={{ color: SALE_RED }}>
-                                  Add{" "}
-                                  {nextTier.min_qty - totalRawWithStepper} more
-                                  to unlock the {money(nextTier.discount_per_item_ngn)}/wig
-                                  rate.
+                                  Add {remainingToMin} more raw wig
+                                  {remainingToMin !== 1 ? "s" : ""} — from this or
+                                  any other style — to unlock the{" "}
+                                  {money(minBulkTier.discount_per_item_ngn)}/wig
+                                  wholesale rate.
                                 </div>
                               )}
-                              {qualifyingTier && gateOpen && (
+                              {meetsMinimum && qualifyingTier && (
                                 <div style={{ color: "#16A34A" }}>
                                   ✓ Wholesale rate unlocked:{" "}
                                   {money(qualifyingTier.discount_per_item_ngn)}{" "}
                                   off each raw wig.
+                                  {nextTier && (
+                                    <>
+                                      {" "}
+                                      Add {nextTier.min_qty -
+                                        totalRawWithStepper}{" "}
+                                      more to reach{" "}
+                                      {money(nextTier.discount_per_item_ngn)}/wig.
+                                    </>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -717,24 +737,21 @@ export function ProductDetailModal({
                             </span>
                           </div>
 
+                          {/* Always addable — the wholesale minimum is enforced
+                              cart-wide (in the cart + at checkout), not here, so
+                              buyers can build the minimum across several styles. */}
                           <button
                             type="button"
                             onClick={handleAddUnstyled}
-                            disabled={!selectedVariant?.variant_id || !gateOpen}
+                            disabled={!selectedVariant?.variant_id}
                             className="w-full inline-flex items-center justify-center gap-1.5 h-10 rounded-xl border text-[13px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            style={
-                              gateOpen
-                                ? {
-                                    borderColor: SALE_RED,
-                                    color: SALE_RED,
-                                    background: `${SALE_RED}10`,
-                                  }
-                                : { borderColor: "rgba(255,255,255,0.12)" }
-                            }
+                            style={{
+                              borderColor: SALE_RED,
+                              color: SALE_RED,
+                              background: `${SALE_RED}10`,
+                            }}
                           >
-                            {gateOpen
-                              ? `Add ${unstyledQty} raw wig${unstyledQty !== 1 ? "s" : ""} to cart`
-                              : `Need ${minBulkTier ? minBulkTier.min_qty - totalRawWithStepper : 0} more to unlock`}
+                            {`Add ${unstyledQty} raw wig${unstyledQty !== 1 ? "s" : ""} to cart`}
                           </button>
                         </div>
                       )}

@@ -123,6 +123,22 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
     return null;
   })();
 
+  // Wholesale raw wigs are a cart-wide minimum: a raw (unstyled) line only sells
+  // at or above the lowest bulk tier, but that minimum is met by the COMBINED
+  // raw-wig count across every style — so buyers mix products to reach it. We
+  // block checkout (and the server re-checks) while raw wigs are present but the
+  // combined count is still under the minimum.
+  const bulkTiers = (payload.bulk_tiers || [])
+    .filter((t) => t.min_qty > 0 && t.discount_per_item_ngn > 0)
+    .sort((a, b) => a.min_qty - b.min_qty);
+  const minBulkQty = bulkTiers[0]?.min_qty ?? 0;
+  const rawQty = items
+    .filter((i) => i.unstyled === true)
+    .reduce((sum, i) => sum + i.quantity, 0);
+  const rawBelowMin = minBulkQty > 0 && rawQty > 0 && rawQty < minBulkQty;
+  const rawShortfall = rawBelowMin ? minBulkQty - rawQty : 0;
+  const checkoutDisabled = items.length === 0 || rawBelowMin;
+
   useEffect(() => {
     if (!open) return;
     // Warm the checkout route the moment the drawer opens — Next prefetches the
@@ -307,11 +323,22 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                   </span>
                 </div>
               )}
+              {rawBelowMin && (
+                <div className="rounded-[14px] p-3 bg-[rgb(var(--warn)/0.1)] border border-[rgb(var(--warn)/0.3)] text-[12px] text-[rgb(var(--text-muted))]">
+                  Raw (unstyled) wigs are wholesale — a minimum of {minBulkQty}{" "}
+                  across any style. You have {rawQty}.{" "}
+                  <span className="text-[rgb(var(--warn))] font-medium">
+                    Add {rawShortfall} more raw wig
+                    {rawShortfall !== 1 ? "s" : ""}
+                  </span>{" "}
+                  (any style counts) — or remove them — to check out.
+                </div>
+              )}
               <button
                 type="button"
-                disabled={items.length === 0}
+                disabled={checkoutDisabled}
                 onClick={() => {
-                  if (items.length === 0) return;
+                  if (checkoutDisabled) return;
                   // Navigate first, then close. The old <Link onClick={close}>
                   // closed the drawer in the same click, and framer-motion's
                   // exit-unmount intermittently swallowed the navigation — the
@@ -321,12 +348,14 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                   close();
                 }}
                 className={`w-full inline-flex items-center justify-center h-12 rounded-xl font-semibold cta-sheen disabled:cursor-not-allowed ${
-                  items.length === 0
+                  checkoutDisabled
                     ? "bg-[rgb(var(--text)/0.06)] text-[rgb(var(--text-faint))]"
                     : "bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))]"
                 }`}
               >
-                Checkout · {money(Math.max(0, finalTotal))}
+                {rawBelowMin
+                  ? `Add ${rawShortfall} more raw wig${rawShortfall !== 1 ? "s" : ""} to continue`
+                  : `Checkout · ${money(Math.max(0, finalTotal))}`}
               </button>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 DHL rates apply. Secure checkout — payment options shown at the

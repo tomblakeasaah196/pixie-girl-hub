@@ -115,6 +115,9 @@ export interface Campaign {
   ngn_per_usd_rate: number | null;
   delivery_weeks: number | null;
   preorder_extra_weeks: number;
+  /** Free-shipping threshold: when cart goods subtotal ≥ this amount, delivery
+   *  is automatically zeroed. NULL = no threshold. */
+  free_shipping_threshold_ngn: number | null;
   position_ladder: PositionLadderItem[] | null;
   stacking_bonus: StackingBonus | null;
   bulk_tiers: BulkTier[] | null;

@@ -575,8 +575,8 @@ function BriefStep({
   // Free-shipping threshold: when cart goods subtotal ≥ this amount, delivery
   // is automatically zeroed. Empty string = no threshold.
   const [freeShippingThreshold, setFreeShippingThreshold] = useState<string>(
-    (campaign as Record<string, unknown>).free_shipping_threshold_ngn != null
-      ? String((campaign as Record<string, unknown>).free_shipping_threshold_ngn)
+    campaign.free_shipping_threshold_ngn != null
+      ? String(campaign.free_shipping_threshold_ngn)
       : "",
   );
   const [saving, setSaving] = useState(false);
@@ -629,8 +629,8 @@ function BriefStep({
         ? String(campaign.ngn_per_usd_rate)
         : "") ||
     freeShippingThreshold !==
-      ((campaign as Record<string, unknown>).free_shipping_threshold_ngn != null
-        ? String((campaign as Record<string, unknown>).free_shipping_threshold_ngn)
+      (campaign.free_shipping_threshold_ngn != null
+        ? String(campaign.free_shipping_threshold_ngn)
         : "");
 
   async function save(advance = false) {

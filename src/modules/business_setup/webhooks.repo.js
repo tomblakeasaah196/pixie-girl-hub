@@ -55,10 +55,10 @@ async function findById(id) {
 async function markProcessed(id, { error_message = null } = {}) {
   await query(
     `UPDATE shared.webhook_log
-        SET processed = ($2 IS NULL),
+        SET processed = ($2::text IS NULL),
             processed_at = now(),
             error_message = $2,
-            retry_count = retry_count + CASE WHEN $2 IS NULL THEN 0 ELSE 1 END
+            retry_count = retry_count + CASE WHEN $2::text IS NULL THEN 0 ELSE 1 END
       WHERE webhook_id = $1`,
     [id, error_message],
   );

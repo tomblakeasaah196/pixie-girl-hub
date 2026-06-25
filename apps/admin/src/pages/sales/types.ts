@@ -135,6 +135,7 @@ export interface SalesOrder {
   amount_paid_ngn: string;
   balance_due_ngn: string;
   display_currency: string | null;
+  display_total: string | null;
   fx_rate_used: string | null;
   coupon_code: string | null;
   payment_model: string | null;

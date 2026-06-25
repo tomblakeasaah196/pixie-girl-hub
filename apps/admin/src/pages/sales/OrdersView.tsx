@@ -83,8 +83,37 @@ const columns: Column<SalesOrder>[] = [
     },
   },
   {
+    key: "usd",
+    header: "$ Amount",
+    align: "right",
+    render: (o) =>
+      o.display_currency && o.display_currency !== "NGN" && o.display_total ? (
+        <span className="font-mono tabular-nums">
+          ${Number(o.display_total).toLocaleString()}
+        </span>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      ),
+  },
+  {
+    key: "fx",
+    header: "Exchange Rate",
+    align: "right",
+    render: (o) =>
+      o.display_currency &&
+      o.display_currency !== "NGN" &&
+      o.fx_rate_used &&
+      Number(o.fx_rate_used) > 1 ? (
+        <span className="text-[12px] text-text-muted tabular-nums">
+          ₦{Number(o.fx_rate_used).toLocaleString()}/$
+        </span>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      ),
+  },
+  {
     key: "total",
-    header: "Total",
+    header: "Total (₦)",
     align: "right",
     render: (o) => <MoneyText ngn={Number(o.total_ngn)} />,
   },

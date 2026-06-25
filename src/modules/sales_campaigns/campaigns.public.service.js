@@ -1215,13 +1215,36 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         }
       : null;
 
+    // Currency snapshot (admin clarity). USD checkouts settle in dollars at the
+    // gateway using the campaign's static rate (ngn_per_usd_rate, set in the
+    // builder); record the dollar total + that rate on the order so the Sales
+    // views can show "$X @ ₦rate → ₦total" instead of only Naira. NGN orders
+    // keep the defaults (display_currency 'NGN', fx_rate_used 1.0, display_total
+    // NULL → shown as "—"). Recording the real rate also fixes the realised-FX
+    // posting in addPayment, which books against order.fx_rate_used.
+    const displayCurrency = String(input.display_currency || "NGN").toUpperCase();
+    const campaignRate =
+      campaign.ngn_per_usd_rate != null ? Number(campaign.ngn_per_usd_rate) : null;
+    let displayTotal = null;
+    let fxRateUsed = null; // null → keep the existing NOT NULL default (1.0)
+    if (displayCurrency !== "NGN" && campaignRate && campaignRate > 0) {
+      // Same conversion the gateway charges: NGN total → whole units, ceil.
+      displayTotal = toCurrencyString(
+        money(order.total_ngn).dividedBy(money(campaignRate)).ceil(),
+      );
+      fxRateUsed = campaignRate;
+    }
+
     try {
       await query(
         `UPDATE ${resolvedBrand}.sales_orders
             SET customer_notes = $1,
                 internal_notes = $2,
                 delivery_address_id = COALESCE($3, delivery_address_id),
-                delivery_address_snapshot = COALESCE($4::jsonb, delivery_address_snapshot)
+                delivery_address_snapshot = COALESCE($4::jsonb, delivery_address_snapshot),
+                display_currency = $6,
+                display_total = $7,
+                fx_rate_used = COALESCE($8, fx_rate_used)
           WHERE order_id = $5`,
         [
           customerParts.length ? customerParts.join("\n") : null,
@@ -1229,6 +1252,9 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
           deliveryAddress ? deliveryAddress.address_id : null,
           addressSnapshot ? JSON.stringify(addressSnapshot) : null,
           order.order_id,
+          displayCurrency,
+          displayTotal,
+          fxRateUsed,
         ],
       );
     } catch (err) {

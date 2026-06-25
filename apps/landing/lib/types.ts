@@ -50,6 +50,9 @@ export interface LandingProduct {
   campaign_price_usd?: number | null;
   regular_price_ngn?: number | null;
   regular_price_usd?: number | null;
+  /** Raw / unstyled anchor price — what checkout charges for a wig ordered
+   *  without styling. Drives the wholesale view's real per-wig price. */
+  anchor_price_ngn?: number | null;
   is_featured?: boolean;
   stock_remaining?: number | null;
   image_url?: string | null;

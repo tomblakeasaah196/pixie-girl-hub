@@ -118,6 +118,13 @@ const schema = z.object({
   FAITLYN_NOMBA_CLIENT_ID: z.string().optional(),
   FAITLYN_NOMBA_API_KEY: z.string().optional(),
   FAITLYN_NOMBA_ACCOUNT_ID: z.string().optional(),
+  // Nomba webhook signature key — a SEPARATE secret set in the Nomba dashboard
+  // (Developer → Webhook Setup), NOT the API client secret. Used only to VERIFY
+  // inbound webhooks (HMAC-SHA256 over the canonical field string). Unprefixed
+  // is the legacy single-tenant fallback; per-brand overrides mirror the API keys.
+  NOMBA_WEBHOOK_SIG_KEY: z.string().optional(),
+  PIXIE_NOMBA_WEBHOOK_SIG_KEY: z.string().optional(),
+  FAITLYN_NOMBA_WEBHOOK_SIG_KEY: z.string().optional(),
   // Stripe
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),

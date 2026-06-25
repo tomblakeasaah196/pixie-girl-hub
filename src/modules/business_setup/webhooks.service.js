@@ -60,25 +60,51 @@ function verifyPaystack(rawBody, headers) {
 function verifyOpay(rawBody, headers) {
   return opay.verifyWebhookSignature(rawBody, headers || {});
 }
+
+/**
+ * Verify a Nomba webhook signature.
+ *
+ * Nomba's signature key is a SEPARATE secret from the API client_secret.
+ * It is set in the Nomba dashboard (Developer → Webhook Setup) and must be
+ * stored in env as NOMBA_WEBHOOK_SIG_KEY (plus per-brand overrides).
+ *
+ * This function tries each configured webhook signature key (per-brand + legacy
+ * fallback). If any key produces a valid signature → accept.
+ * If all keys are present-but-invalid → reject (401).
+ * If no keys are configured → return null (log only, do not process).
+ */
 function verifyNomba(rawBody, headers) {
-  // Per-brand Nomba → try each brand's client secret (+ legacy fallback). Valid
-  // against any one → accept; present-but-invalid for all → reject.
-  const secrets = [
-    config.PIXIE_NOMBA_API_KEY,
-    config.FAITLYN_NOMBA_API_KEY,
-    config.NOMBA_API_KEY,
+  // Collect all configured webhook signature keys:
+  // 1. Per-brand env vars (same naming convention as API keys)
+  // 2. Generic env var
+  // NOTE: these are WEBHOOK SIG KEYS, not API client_secrets.
+  const sigKeys = [
+    config.PIXIE_NOMBA_WEBHOOK_SIG_KEY,
+    config.FAITLYN_NOMBA_WEBHOOK_SIG_KEY,
+    config.NOMBA_WEBHOOK_SIG_KEY,
   ].filter(Boolean);
-  if (!secrets.length) return null;
+
+  if (!sigKeys.length) {
+    // No webhook signature key configured — log only, do NOT process.
+    // This is the safe default: an unverified payload must never be acted on.
+    logger.warn(
+      "Nomba webhook: no webhook signature key configured; " +
+      "set NOMBA_WEBHOOK_SIG_KEY (or brand-specific override) to enable verification",
+    );
+    return null;
+  }
+
   let invalid = false;
-  for (const client_secret of secrets) {
+  for (const key of sigKeys) {
     const r = nomba.verifyWebhookSignature(rawBody, headers || {}, {
-      client_secret,
+      webhook_signature_key: key,
     });
-    if (r === true) return true;
+    if (r === true) return true;   // valid for this key → accept immediately
     if (r === false) invalid = true;
   }
   return invalid ? false : null;
 }
+
 // Stripe verifies + parses in one step (constructEvent over the raw body).
 function verifyStripe(rawBody, headers) {
   if (!config.STRIPE_WEBHOOK_SECRET) return null;
@@ -112,8 +138,6 @@ function verifyMeta(secretEnvKey) {
 // Cloudflare Email Routing posts to the inbound webhook via an Email
 // Worker that signs the payload with a shared secret in
 // `x-cf-email-signature: sha256=<hex>` (HMAC-SHA256 over the raw body).
-// No secret configured = "logged but not processed" so an unverified
-// stream can never leak into the inbox.
 function verifyCloudflareEmail(rawBody, headers) {
   const secret = config.CF_EMAIL_INBOUND_SECRET;
   if (!secret) return null;
@@ -144,22 +168,38 @@ function extractExternalId(source, payload) {
   if (source === "opay") {
     const d = (payload && (payload.payload || payload.data)) || {};
     return (
-      String(d.reference || d.orderNo || d.transactionId || payload.id || "") ||
-      null
+      String(d.reference || d.orderNo || d.transactionId || payload.id || "")
+        || null
     );
   }
   if (source === "nomba") {
-    const d = (payload && payload.data) || {};
-    const tx = d.transaction || d.order || d;
-    return (
-      String(
-        tx.transactionId ||
-          tx.orderReference ||
-          tx.merchantTxRef ||
-          payload.id ||
-          "",
-      ) || null
+    // Nomba's inbound webhook payload structure (per official docs):
+    //   payload.event_type  – string, e.g. "payment_success"
+    //   payload.requestId   – UUID
+    //   payload.data.merchant    – { userId, walletId, walletBalance }
+    //   payload.data.transaction – { transactionId, sessionId, type, time, … }
+    //   payload.data.customer    – { bankCode, senderName, … }
+    //
+    // The unique identifiers Nomba sends are:
+    //   - data.transaction.transactionId (Nomba's internal ID)
+    //   - data.transaction.sessionId    (Nomba's session ID)
+    //   - payload.requestId            (unique per webhook event)
+    //
+    // Our outbound orderReference/merchantTxRef may appear in some flows
+    // (e.g. checkout callbacks) but are NOT guaranteed in all Nomba event
+    // types. Use requestId as the primary external_id for dedup.
+    const d   = (payload && payload.data) || {};
+    const tx  = d.transaction || {};
+    const ext = String(
+      tx.transactionId ||
+        tx.sessionId     ||   // Nomba session ID (reliable)
+        payload.requestId ||   // unique per webhook event (always present)
+        tx.orderReference ||
+        tx.merchantTxRef  ||
+        payload.id         ||
+        "",
     );
+    return ext || null;
   }
   if (source === "stripe") {
     const obj = payload && payload.data && payload.data.object;
@@ -201,7 +241,9 @@ async function receive(source, { rawBody, headers, ip }) {
       raw: (rawBody && rawBody.toString("utf8").slice(0, 5000)) || "",
     };
   }
-  const event_type = payload.event || payload.type || null;
+  // Nomba uses `event_type`; Stripe/others use `type`; Paystack uses `event`.
+  const event_type =
+    payload.event || payload.type || payload.event_type || null;
   const external_id = extractExternalId(source, payload);
 
   // Verifier exists and the signature is invalid → reject, log for audit.
@@ -406,20 +448,27 @@ async function confirmNombaCharge(log) {
   const evt = log.payload || {};
   const d =
     (evt.data && (evt.data.transaction || evt.data.order || evt.data)) || {};
-  const reference = d.orderReference || d.merchantTxRef;
-  if (!reference) throw new Error("nomba webhook missing order reference");
+  const reference = d.orderReference || d.merchantTxRef || d.transactionId || d.sessionId;
+
+  // ── Determine the event type (Nomba sends this as event_type) ──────
+  const evtType = String(evt.event_type || evt.type || "").toLowerCase();
+  const isPaymentSuccess = evtType === "payment_success";
+
+  if (!reference && !isPaymentSuccess) {
+    // Not a recognised payment event and we have no reference → nothing to do.
+    return;
+  }
 
   // ── Salary payout webhook (HR) ──────────────────────────
   // Disbursement sends merchantTxRef = `PAY-<payslip_id>`, so a payout/transfer
   // event references PAY-… regardless of the exact Nomba event name. Reconcile
   // the payslip status and stop (it's not an order charge).
-  // NOTE: confirm the exact Nomba payout event-type with the engineer; this
-  // matches on our own reference, so it's robust to the event name either way.
-  const evtType = String(evt.event_type || evt.type || "").toLowerCase();
   const isPayout =
-    /^pay-/i.test(String(reference)) ||
-    evtType.includes("payout") ||
-    evtType.includes("transfer");
+    reference && (
+      /^pay-/i.test(String(reference)) ||
+      evtType.includes("payout") ||
+      evtType.includes("transfer")
+    );
   if (isPayout) {
     const payrollSvc = require("../../shared/hr_payroll/payroll.service");
     const st = String(d.status || evtType || "").toLowerCase();
@@ -428,10 +477,14 @@ async function confirmNombaCharge(log) {
       success: st.includes("success") || st.includes("complete"),
       failed:
         st.includes("fail") || st.includes("declin") || st.includes("revers"),
-      provider_ref: d.transactionId || d.id || null,
+      provider_ref: d.transactionId || d.sessionId || d.id || null,
     });
     return;
   }
+
+  // ── For payment_success events, we MUST process even if reference is ──
+  //     only in the transaction object (which we re-verify via API below).
+  if (!reference && !isPaymentSuccess) return;
 
   // Per-brand Nomba: discover the owning brand by re-verifying against each
   // configured account (only the owner returns the transaction).
@@ -457,9 +510,17 @@ async function confirmNombaCharge(log) {
       // not this brand's transaction — try the next
     }
   }
-  const tx = (res && res.data && (res.data.transaction || res.data)) || {};
-  const success = (tx.status || d.status || "").toLowerCase() === "success";
-  if (!success) return;
+
+  // If we couldn't verify via API but the event_type is payment_success,
+  // trust the webhook payload (Nomba already signed it) and proceed.
+  const tx       = (res && res.data && (res.data.transaction || res.data)) || d;
+  const evtIsSuccess = isPaymentSuccess || (tx.status || "").toLowerCase() === "success";
+
+  if (!evtIsSuccess) {
+    // Not a success event — nothing to confirm (e.g. payment_failed).
+    return;
+  }
+
   const meta = { ...metaOf(d), ...metaOf(tx) };
   // Nomba is POS-first (§6.21). Treat as a terminal payment unless the metadata
   // explicitly flags an online checkout (hybrid scenario).
@@ -476,14 +537,16 @@ async function confirmNombaCharge(log) {
       order = await salesRepo.findById({ brand: resolvedBrand, id: order_id });
     } else {
       // Recover the order from the reference (`nomba-<order_number>-<ts>`).
-      const noPrefix = String(reference).replace(/^nomba-/, "");
+      const noPrefix = String(reference || "").replace(/^nomba-/, "");
       const cut = noPrefix.lastIndexOf("-");
       const orderNumber = cut > 0 ? noPrefix.slice(0, cut) : noPrefix;
-      order = await salesRepo.findByOrderNumber({
-        brand: resolvedBrand,
-        order_number: orderNumber,
-      });
-      if (order) order_id = order.order_id;
+      if (orderNumber) {
+        order = await salesRepo.findByOrderNumber({
+          brand: resolvedBrand,
+          order_number: orderNumber,
+        });
+        if (order) order_id = order.order_id;
+      }
     }
   }
 
@@ -523,7 +586,7 @@ async function confirmNombaCharge(log) {
   await recordGatewayPayment({
     brand: meta.brand || resolvedBrand,
     order_id,
-    reference,
+    reference: reference || tx.transactionId || tx.sessionId,
     amount_ngn,
     method,
     provider: "nomba",

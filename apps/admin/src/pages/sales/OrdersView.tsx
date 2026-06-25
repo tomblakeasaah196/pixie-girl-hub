@@ -37,8 +37,10 @@ const columns: Column<SalesOrder>[] = [
     header: "Channel",
     render: (o) => (
       <span className="text-[12px] text-text-muted">
-        {SALES_CHANNELS.find((c) => c.value === o.sales_channel)?.label ??
-          o.sales_channel}
+        {o.sales_campaign_id
+          ? `Sales Campaign${o.utm_campaign ? ` · ${o.utm_campaign}` : ""}`
+          : (SALES_CHANNELS.find((c) => c.value === o.sales_channel)?.label ??
+            o.sales_channel)}
       </span>
     ),
   },

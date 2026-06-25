@@ -86,7 +86,7 @@ async function provisionBusiness({ input, user, request_id }) {
           trading_currency, settlement_currency, vat_rate, wht_rate)
        VALUES ($1,$2,$3,$4,
                COALESCE($5,'NGN'), COALESCE($6,'NGN'),
-               COALESCE($7,0.075), COALESCE($8,0.05))`,
+               COALESCE($7,0), COALESCE($8,0.05))`,
       [
         key,
         input.display_name,

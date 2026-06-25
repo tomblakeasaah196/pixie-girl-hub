@@ -186,11 +186,11 @@ export function OrderDetail({
                 <div>
                   <div className="micro">Channel</div>
                   <div className="text-[13px] mt-1">
-                    {
-                      SALES_CHANNELS.find(
-                        (c) => c.value === order.sales_channel,
-                      )?.label ?? order.sales_channel
-                    }
+                    {order.sales_campaign_id
+                      ? `Sales Campaign${order.utm_campaign ? ` · ${order.utm_campaign}` : ""}`
+                      : (SALES_CHANNELS.find(
+                          (c) => c.value === order.sales_channel,
+                        )?.label ?? order.sales_channel)}
                   </div>
                 </div>
                 <div>
@@ -228,8 +228,13 @@ export function OrderDetail({
                           </div>
                         )}
                       </div>
-                      <div className="text-text-muted mx-3">×{l.quantity}</div>
-                      <MoneyText ngn={Number(l.line_total)} />
+                      <div className="text-text-muted mx-3 text-right shrink-0">
+                        <div>×{l.quantity}</div>
+                        <div className="text-[10px] text-text-faint">
+                          @ {Number(l.unit_price_ngn).toLocaleString()}
+                        </div>
+                      </div>
+                      <MoneyText ngn={Number(l.line_total_ngn)} />
                     </div>
                   ))}
                   <div className="h-px bg-line my-2" />

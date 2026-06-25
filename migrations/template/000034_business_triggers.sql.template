@@ -44,12 +44,18 @@ BEGIN
      WHERE variant_id = NEW.variant_id AND location_id = NEW.location_id;
   ELSE
     -- Net stock change at this location
-    INSERT INTO {{BUSINESS}}.stock_levels (variant_id, location_id, on_hand, last_movement_at)
-    VALUES (NEW.variant_id, NEW.location_id, NEW.quantity, NEW.performed_at)
-    ON CONFLICT (variant_id, location_id) DO UPDATE
-      SET on_hand = {{BUSINESS}}.stock_levels.on_hand + EXCLUDED.on_hand,
-          last_movement_at = EXCLUDED.last_movement_at,
-          updated_at = now();
+    -- UPDATE-first to avoid proposing negative on_hand to CHECK constraint
+    UPDATE {{BUSINESS}}.stock_levels
+       SET on_hand = on_hand + NEW.quantity,
+           last_movement_at = NEW.performed_at,
+           updated_at = now()
+     WHERE variant_id = NEW.variant_id AND location_id = NEW.location_id;
+
+    -- If no row existed, insert it (should only occur for positive movements)
+    IF NOT FOUND THEN
+      INSERT INTO {{BUSINESS}}.stock_levels (variant_id, location_id, on_hand, last_movement_at)
+      VALUES (NEW.variant_id, NEW.location_id, NEW.quantity, NEW.performed_at);
+    END IF;
   END IF;
   RETURN NEW;
 END;

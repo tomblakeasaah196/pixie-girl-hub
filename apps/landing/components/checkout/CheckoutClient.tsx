@@ -42,7 +42,17 @@ type Fulfilment = "delivery" | "pickup";
 
 type Gateway = "paystack" | "nomba";
 
-export function CheckoutClient({ payload }: { payload: LandingPayload }) {
+export function CheckoutClient({
+  payload,
+  /** True when the checkout page rendered without a live campaign payload
+   *  (the Hub was momentarily unreachable). The form still works — it
+   *  re-quotes and charges client-side — so we just show a gentle, self-
+   *  healing notice until the first quote lands. */
+  degraded = false,
+}: {
+  payload: LandingPayload;
+  degraded?: boolean;
+}) {
   const router = useRouter();
   const items = useCart((s) => s.items);
   // Local line-sum — an instant optimistic figure used only while the
@@ -533,6 +543,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             yours.
           </em>
         </h1>
+
+        {degraded && !quote && (
+          <div
+            role="status"
+            className="mt-4 rounded-xl border border-[rgb(var(--warn)/0.35)] bg-[rgb(var(--warn)/0.08)] px-4 py-3 text-[13px] text-[rgb(var(--text-muted))]"
+          >
+            We&apos;re reconnecting to load live pricing. Go ahead and fill in
+            your details — your final total will appear here before you pay.
+          </div>
+        )}
 
         <form
           id="checkout-form"

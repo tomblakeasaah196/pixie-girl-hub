@@ -21,9 +21,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Play, Ruler, ShoppingBag, X } from "lucide-react";
+import { Minus, Play, Plus, Ruler, ShoppingBag, Store, X } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
+import type { BulkTierConfig } from "@/lib/types";
 import { money } from "@/lib/format";
+import { SALE_RED } from "@/lib/deals";
 
 interface ProductGalleryImage {
   url: string;
@@ -95,11 +97,14 @@ export function ProductDetailModal({
   styledId,
   open,
   onClose,
+  bulkTiers,
 }: {
   slug: string;
   styledId: string | null;
   open: boolean;
   onClose: () => void;
+  /** Bulk tiers from the campaign — drives the wholesale gate for unstyled wigs. */
+  bulkTiers?: BulkTierConfig[] | null;
 }) {
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -107,15 +112,18 @@ export function ProductDetailModal({
   const [slide, setSlide] = useState(0);
   const [size, setSize] = useState<string | null>(null);
   const [lace, setLace] = useState<string | null>(null);
+  const [unstyledQty, setUnstyledQty] = useState(1);
 
   const add = useCart((s) => s.add);
   const openCart = useCart((s) => s.openCart);
+  const cartItems = useCart((s) => s.items);
 
   // Reset state when the modal closes / styledId changes.
   useEffect(() => {
     if (!open || !styledId) {
       setProduct(null);
       setErr(null);
+      setUnstyledQty(1);
       return;
     }
     let cancelled = false;
@@ -238,7 +246,7 @@ export function ProductDetailModal({
       image_url: product.gallery[0]?.url,
       unit_price_ngn: anchor,
       retail_price_ngn: Number(product.retail_price_ngn || 0) || undefined,
-      quantity: 1,
+      quantity: unstyledQty,
     });
     openCart();
     onClose();
@@ -247,6 +255,27 @@ export function ProductDetailModal({
   const anchorOnly = Number(
     product?.anchor_price_ngn ?? product?.retail_price_ngn ?? 0,
   );
+
+  // Wholesale gate: sorted bulk tiers and current raw-wig count in cart
+  const sortedBulkTiers = (bulkTiers || [])
+    .filter((t) => t.min_qty > 0 && t.discount_per_item_ngn > 0)
+    .sort((a, b) => a.min_qty - b.min_qty);
+  const hasWholesale = sortedBulkTiers.length > 0 && anchorOnly > 0;
+  const minBulkTier = sortedBulkTiers[0];
+  // Count all unstyled wigs already in the cart (cross-product)
+  const cartRawQty = cartItems
+    .filter((i) => i.unstyled === true)
+    .reduce((sum, i) => sum + i.quantity, 0);
+  const totalRawWithStepper = cartRawQty + unstyledQty;
+  // Find which tier applies at total raw qty
+  const qualifyingTier = [...sortedBulkTiers]
+    .reverse()
+    .find((t) => totalRawWithStepper >= t.min_qty);
+  const nextTier = sortedBulkTiers.find(
+    (t) => totalRawWithStepper < t.min_qty,
+  );
+  const gateOpen =
+    !hasWholesale || (minBulkTier != null && totalRawWithStepper >= minBulkTier.min_qty);
 
   return (
     <AnimatePresence>
@@ -377,11 +406,14 @@ export function ProductDetailModal({
                         <div className="font-display tabular-nums text-[26px] font-extrabold">
                           {effectivePrice != null ? money(effectivePrice) : "—"}
                         </div>
-                        <div className="text-[11px] opacity-60 mt-1">
-                          Anchor{" "}
-                          {money(Number(product.anchor_price_ngn || 0))} + size
-                          & lace premiums
-                        </div>
+                        {(product.size_tiers.some((t) => t.premium_ngn > 0) ||
+                          product.lace_sizes.some((l) => l.premium_ngn > 0)) && (
+                          <div className="text-[11px] opacity-60 mt-1">
+                            Base{" "}
+                            {money(Number(product.anchor_price_ngn || 0))} +
+                            selected size & lace
+                          </div>
+                        )}
                       </div>
 
                       {product.size_tiers.length > 0 && (
@@ -468,7 +500,153 @@ export function ProductDetailModal({
                         <ShoppingBag className="w-4 h-4" />
                         Add to bag
                       </button>
-                      {anchorOnly > 0 && (
+                      {/* Wholesale / unstyled gate */}
+                      {anchorOnly > 0 && hasWholesale && (
+                        <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Store
+                              className="w-4 h-4 flex-shrink-0"
+                              style={{ color: SALE_RED }}
+                            />
+                            <div
+                              className="text-[13px] font-bold"
+                              style={{ color: SALE_RED }}
+                            >
+                              Wholesale — raw wigs
+                            </div>
+                          </div>
+                          <p className="text-[12px] text-[rgb(var(--text-muted))] leading-relaxed">
+                            No styling, no branded luxury box. You receive the
+                            raw wig exactly as it comes from the factory — for
+                            professional stylists and resellers who finish the
+                            wig themselves.
+                          </p>
+
+                          {/* Tier economics */}
+                          <div className="space-y-1.5">
+                            {sortedBulkTiers.map((t) => {
+                              const active = totalRawWithStepper >= t.min_qty;
+                              const nowPrice = anchorOnly - t.discount_per_item_ngn;
+                              return (
+                                <div
+                                  key={t.min_qty}
+                                  className="flex items-center justify-between rounded-xl px-3 py-2 text-[12px] border transition-colors"
+                                  style={
+                                    active
+                                      ? {
+                                          borderColor: `${SALE_RED}55`,
+                                          background: `${SALE_RED}10`,
+                                        }
+                                      : { borderColor: "rgba(255,255,255,0.08)" }
+                                  }
+                                >
+                                  <span className="text-[rgb(var(--text-muted))]">
+                                    {t.min_qty}+ wigs
+                                    {t.label ? ` · ${t.label}` : ""}
+                                  </span>
+                                  <span className="font-bold tabular-nums">
+                                    {money(nowPrice)}{" "}
+                                    <span
+                                      className="font-normal text-[11px]"
+                                      style={
+                                        active ? { color: SALE_RED } : {}
+                                      }
+                                    >
+                                      (save {money(t.discount_per_item_ngn)}/ea)
+                                    </span>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Progress toward gate */}
+                          {minBulkTier && (
+                            <div className="text-[11.5px] text-[rgb(var(--text-muted))] space-y-1">
+                              {cartRawQty > 0 && (
+                                <div>
+                                  You already have {cartRawQty} raw wig
+                                  {cartRawQty !== 1 ? "s" : ""} in your cart.
+                                  All unstyled wigs across every style count
+                                  together.
+                                </div>
+                              )}
+                              {!gateOpen && nextTier && (
+                                <div style={{ color: SALE_RED }}>
+                                  Add{" "}
+                                  {nextTier.min_qty - totalRawWithStepper} more
+                                  to unlock the {money(nextTier.discount_per_item_ngn)}/wig
+                                  rate.
+                                </div>
+                              )}
+                              {qualifyingTier && gateOpen && (
+                                <div style={{ color: "#16A34A" }}>
+                                  ✓ Wholesale rate unlocked:{" "}
+                                  {money(qualifyingTier.discount_per_item_ngn)}{" "}
+                                  off each raw wig.
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Qty stepper */}
+                          <div className="flex items-center gap-3">
+                            <span className="text-[12px] text-[rgb(var(--text-faint))]">
+                              Qty:
+                            </span>
+                            <div className="flex items-center gap-2 rounded-xl border border-white/10 px-2 py-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setUnstyledQty((q) => Math.max(1, q - 1))
+                                }
+                                className="w-7 h-7 grid place-items-center rounded-lg hover:bg-white/10 transition-colors"
+                                aria-label="Decrease qty"
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              <span className="w-6 text-center text-[14px] font-bold tabular-nums">
+                                {unstyledQty}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setUnstyledQty((q) => q + 1)}
+                                className="w-7 h-7 grid place-items-center rounded-lg hover:bg-white/10 transition-colors"
+                                aria-label="Increase qty"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <span className="text-[11.5px] text-[rgb(var(--text-faint))]">
+                              {cartRawQty > 0
+                                ? `${totalRawWithStepper} total raw wigs`
+                                : `${totalRawWithStepper} raw wig${totalRawWithStepper !== 1 ? "s" : ""}`}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleAddUnstyled}
+                            disabled={!selectedVariant?.variant_id || !gateOpen}
+                            className="w-full inline-flex items-center justify-center gap-1.5 h-10 rounded-xl border text-[13px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={
+                              gateOpen
+                                ? {
+                                    borderColor: SALE_RED,
+                                    color: SALE_RED,
+                                    background: `${SALE_RED}10`,
+                                  }
+                                : { borderColor: "rgba(255,255,255,0.12)" }
+                            }
+                          >
+                            {gateOpen
+                              ? `Add ${unstyledQty} raw wig${unstyledQty !== 1 ? "s" : ""} to cart`
+                              : `Need ${minBulkTier ? minBulkTier.min_qty - totalRawWithStepper : 0} more to unlock`}
+                          </button>
+                        </div>
+                      )}
+                      {/* No bulk tiers configured — show plain unstyled option */}
+                      {anchorOnly > 0 && !hasWholesale && (
                         <button
                           type="button"
                           onClick={handleAddUnstyled}

@@ -82,6 +82,50 @@ interface ProductDetail {
   } | null;
 }
 
+// ── Product-detail cache + prefetch ──────────────────────────────────────
+// The modal used to fetch the product on open, so a cold/slow backend left the
+// buyer staring at "Loading…". We cache the in-flight promise per styled id and
+// let the product grid PREFETCH on hover/touch, so by the time the card is
+// tapped the detail is usually already in hand and the modal opens instantly.
+const detailCache = new Map<string, Promise<ProductDetail>>();
+
+async function fetchDetail(
+  slug: string,
+  styledId: string,
+): Promise<ProductDetail> {
+  const res = await fetch(
+    `/api/public/sale/${encodeURIComponent(slug)}/product/${encodeURIComponent(styledId)}`,
+    { headers: { Accept: "application/json" } },
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = (await res.json()) as { data: ProductDetail };
+  return json.data;
+}
+
+function getProductDetail(
+  slug: string,
+  styledId: string,
+): Promise<ProductDetail> {
+  const key = `${slug}::${styledId}`;
+  let p = detailCache.get(key);
+  if (!p) {
+    // Drop the cache entry on failure so a later open can retry from scratch.
+    p = fetchDetail(slug, styledId).catch((e) => {
+      detailCache.delete(key);
+      throw e;
+    });
+    detailCache.set(key, p);
+  }
+  return p;
+}
+
+/** Warm the cache for a product the buyer is about to tap. Safe to call often;
+ *  it dedupes and swallows errors (a real open will surface them). */
+export function prefetchProductDetail(slug: string, styledId?: string | null) {
+  if (!slug || !styledId) return;
+  void getProductDetail(slug, styledId).catch(() => {});
+}
+
 /**
  * Pulls the YouTube video id out of whatever the owner pasted into the
  * catalogue's "Head-size video" box: a share link (youtu.be/ID), a watch URL
@@ -228,20 +272,13 @@ export function ProductDetailModal({
       setLoading(true);
       setErr(null);
       try {
-        const res = await fetch(
-          `/api/public/sale/${encodeURIComponent(slug)}/product/${encodeURIComponent(styledId)}`,
-          { headers: { Accept: "application/json" } },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as { data: ProductDetail };
+        const data = await getProductDetail(slug, styledId);
         if (cancelled) return;
-        setProduct(json.data);
+        setProduct(data);
         setSlide(0);
-        const def =
-          json.data.variants.find((v) => v.is_default) ||
-          json.data.variants[0];
-        setSize(def?.size_code ?? json.data.size_tiers[0]?.size_code ?? null);
-        setLace(def?.lace_code ?? json.data.lace_sizes[0]?.lace_code ?? null);
+        const def = data.variants.find((v) => v.is_default) || data.variants[0];
+        setSize(def?.size_code ?? data.size_tiers[0]?.size_code ?? null);
+        setLace(def?.lace_code ?? data.lace_sizes[0]?.lace_code ?? null);
       } catch (e) {
         if (!cancelled)
           setErr(
@@ -463,8 +500,15 @@ export function ProductDetailModal({
 
             <div className="p-5 md:p-7 overflow-y-auto">
               {loading && !product && (
-                <div className="grid place-items-center py-16 opacity-70">
-                  Loading…
+                <div className="grid grid-cols-1 md:grid-cols-[1.1fr_1fr] gap-5 animate-pulse">
+                  <div className="aspect-[4/5] rounded-[16px] bg-white/5" />
+                  <div className="space-y-4">
+                    <div className="h-7 w-2/3 rounded bg-white/5" />
+                    <div className="h-4 w-full rounded bg-white/5" />
+                    <div className="h-20 rounded-[14px] bg-white/5" />
+                    <div className="h-10 w-1/2 rounded-[12px] bg-white/5" />
+                    <div className="h-12 rounded-xl bg-white/10" />
+                  </div>
                 </div>
               )}
               {err && !loading && (

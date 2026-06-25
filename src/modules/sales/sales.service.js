@@ -93,10 +93,19 @@ async function createOrder({ brand, user, request_id, input }) {
 async function createOrderTx({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const cfg = await businessConfig.findByKey(brand);
-    const defaultVat =
-      cfg && cfg.vat_rate !== null && cfg.vat_rate !== undefined
-        ? money(cfg.vat_rate)
-        : money("0");
+    if (!cfg) {
+      throw new AppError(
+        "BUSINESS_CONFIG_MISSING",
+        `Business configuration not found for brand "${brand}"`,
+        500,
+        "System configuration error — please contact support",
+      );
+    }
+    // VAT rate is read from business_config as SSOT. The DB guarantees a row
+    // exists (migration 000239 set DEFAULT 0) so cfg.vat_rate is always present.
+    // No JS-level fallback: if vat_rate is 0 we apply 0; if it is ever changed
+    // in settings that change takes effect here immediately.
+    const defaultVat = money(cfg.vat_rate);
 
     // 1. Resolve line pricing context + base unit prices.
     const built = [];
@@ -128,17 +137,29 @@ async function createOrderTx({ brand, user, request_id, input }) {
         ? { slug: input.campaign_slug }
         : null;
     if (campaignRef) {
+      // Determine real eligibility flags for this contact so first-time-buyer
+      // and segment-targeted campaigns actually fire. is_first_time = no prior
+      // paid order on this brand. segment_ids cannot be populated yet (no
+      // contact→segment membership table; see CONFORMANCE_GAPS G-2).
+      const isFirstTime = input.contact_id
+        ? !(await repo.hasPaidOrder({
+            client,
+            brand,
+            contact_id: input.contact_id,
+          }))
+        : false;
       const res = await discount.resolveDiscount({
         brand,
         campaignRef,
         cart: {
           items: built.map((b) => ({
             product_id: b.ctx.product_id,
+            category_id: b.ctx.category_id || null,
             unit_price_ngn: toCurrencyString(b.unit),
             quantity: b.li.quantity,
           })),
         },
-        contact: { is_first_time: false, segment_ids: [] },
+        contact: { is_first_time: isFirstTime, segment_ids: [] },
         allowStacking: false,
       });
       if (res.eligible) {
@@ -491,6 +512,12 @@ async function createOrderTx({ brand, user, request_id, input }) {
         unit_price_ngn: toCurrencyString(b.unit),
         unit_cost_ngn: b.ctx.cost_price_ngn,
         line_discount_ngn: toCurrencyString(lineDiscount),
+        // Portion from resolveDiscount only (percentage / fixed / price-override).
+        // Used for the per-line "campaign" breakdown row so that order-level
+        // discounts (coupon, points, bundle, deal) are not double-counted there.
+        _campaign_resolve_discount_ngn: toCurrencyString(
+          b.perUnitDiscount.times(qty),
+        ),
         tax_rate: rate.toFixed(4),
         tax_amount_ngn: toCurrencyString(tax),
         line_total_ngn: toCurrencyString(lineTotal),
@@ -558,12 +585,22 @@ async function createOrderTx({ brand, user, request_id, input }) {
     });
 
     for (const lr of lineRows) {
+      // Strip the internal helper field before persisting — it is not a DB column.
+      const { _campaign_resolve_discount_ngn, ...lineForDb } = lr;
       const line = await repo.insertLine({
         client,
         brand,
-        line: { ...lr, order_id: order.order_id },
+        line: { ...lineForDb, order_id: order.order_id },
       });
-      if (campaign && money(lr.line_discount_ngn).gt(0)) {
+      // Per-line campaign discount row: record only the resolveDiscount share
+      // (percentage / fixed / price-override). Order-level discounts (coupon,
+      // points, bundle, deal-ladder) each have their own breakdown rows below,
+      // so using the full line_discount_ngn here would double-count them all.
+      if (
+        campaign &&
+        _campaign_resolve_discount_ngn &&
+        money(_campaign_resolve_discount_ngn).gt(0)
+      ) {
         await repo.insertDiscount({
           client,
           brand,
@@ -573,7 +610,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
             source_reference: campaign.slug,
             sales_campaign_id: campaign.campaign_id,
             applied_to_line_id: line.line_id,
-            amount_ngn: lr.line_discount_ngn,
+            amount_ngn: _campaign_resolve_discount_ngn,
             discount_type:
               campaign.discount_type === "percentage"
                 ? "percentage"
@@ -856,6 +893,33 @@ async function updateOrder({ brand, user, request_id, id, patch }) {
   });
 }
 
+async function setDeliveryFee({ brand, user, request_id, id, fee_ngn }) {
+  return transaction(async (client) => {
+    const before = await repo.findById({ client, brand, id });
+    if (!before) throw new NotFoundError("Order");
+    if (["cancelled", "refunded"].includes(before.status)) {
+      throw new AppError(
+        "INVALID_STATE",
+        `Cannot update delivery fee on a ${before.status} order`,
+        409,
+      );
+    }
+    const updated = await repo.setDeliveryFee({ client, brand, id, fee_ngn });
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales.order.delivery_fee_set",
+      target_type: "sales_order",
+      target_id: id,
+      before: { shipping_fee_ngn: before.shipping_fee_ngn, total_ngn: before.total_ngn },
+      after: { shipping_fee_ngn: updated.shipping_fee_ngn, total_ngn: updated.total_ngn },
+      request_id,
+    });
+    events.emit("order.updated", { brand, order_id: id });
+    return updated;
+  });
+}
+
 async function addPayment({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
     const order = await repo.findById({ client, brand, id });
@@ -1115,12 +1179,21 @@ async function markPaid({ client, brand, user, _request_id, order }) {
     }
   }
   if (order.sales_campaign_id) {
+    // Sum only rows attributed to this campaign (source = 'campaign' or
+    // 'quantity_rule') — coupon/points/bundle discounts must not inflate
+    // the campaign's analytics figures.
+    const campaignDiscountNgn = await repo.sumCampaignDiscount({
+      client,
+      brand,
+      order_id: order.order_id,
+      campaign_id: order.sales_campaign_id,
+    });
     await discount.recordUsage({
       client,
       brand,
       campaign_id: order.sales_campaign_id,
       revenue_ngn: order.total_ngn,
-      discount_ngn: order.discount_amount_ngn,
+      discount_ngn: campaignDiscountNgn,
     });
   }
   const paid = await repo.setStatus({
@@ -1709,4 +1782,5 @@ module.exports = {
   getCancellation,
   requestCancellation,
   reviewCancellation,
+  setDeliveryFee,
 };

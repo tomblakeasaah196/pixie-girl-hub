@@ -189,7 +189,8 @@ async function variantContext({ client, brand, variant_id }) {
   const { rows } = await ex(client)(
     `SELECT pv.variant_id, pv.sku, pv.variant_name, pv.price_storefront_ngn, pv.price_pos_ngn,
             pv.price_wholesale_ngn, pv.price_partner_ngn, pv.cost_price_ngn, pv.min_price_ngn,
-            p.product_id, p.name AS product_name, p.taxable, p.vat_rate AS product_vat
+            p.product_id, p.name AS product_name, p.taxable, p.vat_rate AS product_vat,
+            p.category_id
        FROM ${t(brand, "product_variants")} pv
        JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
       WHERE pv.variant_id = $1`,
@@ -293,6 +294,9 @@ async function listOrders({
   if (filters.q) {
     where.push(`so.order_number ILIKE $${i++}`);
     params.push(`%${filters.q}%`);
+  }
+  if (filters.fee_pending) {
+    where.push(`(so.internal_notes->'delivery'->>'fee_pending')::boolean = true`);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
@@ -725,6 +729,78 @@ async function setCancellationStatus({
   return rows[0] || null;
 }
 
+/**
+ * Sum the discount rows whose source is attributable to the campaign itself
+ * ('campaign' = resolveDiscount share, 'quantity_rule' = deal ladder).
+ * Used by markPaid's recordUsage call so coupon/points/bundle discounts are
+ * not counted as campaign savings in analytics.
+ */
+async function sumCampaignDiscount({ client, brand, order_id, campaign_id }) {
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(amount_ngn::numeric), 0) AS total
+       FROM ${t(brand, "sales_order_discounts")}
+      WHERE order_id            = $1
+        AND sales_campaign_id   = $2
+        AND source IN ('campaign', 'quantity_rule')`,
+    [order_id, campaign_id],
+  );
+  return rows[0].total;
+}
+
+/** True when the contact has at least one paid order for this brand. */
+async function hasPaidOrder({ client, brand, contact_id }) {
+  if (!contact_id) return false;
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "sales_orders")}
+      WHERE contact_id = $1 AND status = 'paid'
+      LIMIT 1`,
+    [contact_id],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Near-duplicate check: existing pending_payment orders for this
+ * contact + campaign created in the last `minutes` minutes.
+ * Used by public checkout to surface a warning instead of silently
+ * creating another order for what might be the same intent.
+ */
+async function findNearDuplicates({ brand, contact_id, campaign_id, minutes }) {
+  const { rows } = await query(
+    `SELECT order_id, order_number, total_ngn, created_at
+       FROM ${t(brand, "sales_orders")}
+      WHERE contact_id        = $1
+        AND sales_campaign_id = $2
+        AND status            = 'pending_payment'
+        AND created_at       >= now() - ($3 || ' minutes')::interval
+      ORDER BY created_at DESC`,
+    [contact_id, campaign_id, String(Number(minutes) || 15)],
+  );
+  return rows;
+}
+
+async function setDeliveryFee({ client, brand, id, fee_ngn }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET shipping_fee_ngn = $2,
+            total_ngn        = subtotal_ngn - discount_amount_ngn + tax_amount_ngn + $2,
+            internal_notes   = CASE
+              WHEN internal_notes IS NULL THEN NULL
+              WHEN internal_notes->'delivery' IS NULL THEN internal_notes
+              ELSE jsonb_set(
+                internal_notes,
+                '{delivery}',
+                (internal_notes->'delivery') - 'fee_pending'
+              )
+            END,
+            updated_at = now()
+      WHERE order_id = $1
+      RETURNING *`,
+    [id, fee_ngn],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   updateOrderHeader,
   listDiscounts,
@@ -756,4 +832,8 @@ module.exports = {
   findCancellationById,
   listCancellations,
   setCancellationStatus,
+  hasPaidOrder,
+  sumCampaignDiscount,
+  findNearDuplicates,
+  setDeliveryFee,
 };

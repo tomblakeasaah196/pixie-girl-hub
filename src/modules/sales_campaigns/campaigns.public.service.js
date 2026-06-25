@@ -495,16 +495,32 @@ async function quoteCart({ slug, brand, brandHint, input }) {
       brand: resolvedBrand,
       item,
       campaign_id: campaign.campaign_id,
-    }).catch(() => null);
+    });
     if (!priced) continue;
     dealLines.push({ ...priced, quantity });
   }
 
   const breakdown = computeDeals({ campaign, lines: dealLines, tiers });
+
+  // Pre-compute whether the free-shipping threshold is met for this cart so
+  // the cart UI can show "Free delivery applied" before checkout is submitted.
+  const cartSubtotal = dealLines.reduce(
+    (s, l) => s + Number(l.unit_price_ngn || 0) * (Number(l.quantity) || 0),
+    0,
+  );
+  const freeShippingThreshold =
+    campaign.free_shipping_threshold_ngn !== null &&
+    campaign.free_shipping_threshold_ngn !== undefined
+      ? Number(campaign.free_shipping_threshold_ngn)
+      : null;
+
   return {
     slug: campaign.slug,
     currency: "NGN",
     ...breakdown,
+    free_shipping_threshold_ngn: freeShippingThreshold,
+    free_shipping_unlocked:
+      freeShippingThreshold !== null && cartSubtotal >= freeShippingThreshold,
     lines: dealLines.map((l) => ({
       kind: l.kind,
       bundle_id: l.bundle_id || null,
@@ -1049,23 +1065,119 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // The wig-quantity tier × the buyer's delivery zone drives the fee. We NEVER
   // trust a client-sent amount — we re-quote against the seeded zone using the
   // zone_code (NG state/LGA) or ISO-2 country code the autofill captured.
-  // Pickup is always free. An unresolved zone falls back to 0 ("calculated at
-  // fulfilment") rather than blocking the sale.
+  // Pickup is always free.
+  //
+  // FAIL CLOSED (owner mandate): a *delivery* order must resolve to a real,
+  // billable zone before it can be created. Browser autofill (or typing a
+  // country/state without picking it from the list) leaves the zone code blank
+  // while the visible address looks complete — and an uncovered zone prices to
+  // null. Both used to fall back to ₦0, so we shipped hair we couldn't bill and
+  // ate the logistics cost. We now refuse the order in both cases. Every
+  // country, every NG state and every Lagos LGA is seeded, so a genuine buyer
+  // selection always prices; if it ever doesn't, this surfaces the seeding gap
+  // loudly instead of silently absorbing the freight.
   let shippingFeeNgn = 0;
   let deliveryQuote = null;
+  // Set when a zone resolves but prices to ₦0 WITHOUT being marked free — a
+  // config gap that "should never happen". Per owner decision we still take the
+  // order (don't lose the sale), flag it, and confirm the rate before dispatch.
+  let deliveryFeePending = false;
   if (!isPickup) {
     const addr = input.contact.address || {};
     const zoneCode = addr.zone_code || addr.country_code || null;
     const wigQty = orderLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
-    if (zoneCode) {
-      deliveryQuote = await zonesService
-        .quote({ brand: resolvedBrand, country_code: zoneCode, qty: wigQty })
-        .catch((err) => {
-          logger.warn({ err: err.message, zoneCode }, "delivery quote failed");
-          return null;
-        });
-      if (deliveryQuote && deliveryQuote.fee_ngn !== null) {
-        shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
+
+    // (1) No zone code at all — the location was never resolved to a country /
+    //     state / LGA we can price. Block, don't guess at ₦0.
+    if (!zoneCode) {
+      logger.warn(
+        { slug: campaign.slug },
+        "checkout blocked — delivery address has no resolved zone/country code",
+      );
+      throw new AppError(
+        "DELIVERY_LOCATION_REQUIRED",
+        "Delivery order has no resolvable zone/country code",
+        422,
+        {
+          user_message:
+            "Please pick your country from the list (and your state, plus your LGA for Lagos) so we can calculate delivery before you pay.",
+        },
+      );
+    }
+
+    deliveryQuote = await zonesService
+      .quote({ brand: resolvedBrand, country_code: zoneCode, qty: wigQty })
+      .catch((err) => {
+        logger.warn({ err: err.message, zoneCode }, "delivery quote failed");
+        return null;
+      });
+
+    // (2) No zone covers this location at all (unserviceable) → we genuinely
+    //     cannot ship here. Refuse rather than create an order we can't fulfil.
+    //     fee_ngn === null / fee_status 'unserviceable' both mean "no zone".
+    if (
+      !deliveryQuote ||
+      deliveryQuote.fee_ngn === null ||
+      deliveryQuote.fee_status === "unserviceable"
+    ) {
+      logger.error(
+        { zoneCode, slug: campaign.slug },
+        "checkout blocked — no delivery zone covers this location",
+      );
+      throw new AppError(
+        "DELIVERY_UNAVAILABLE",
+        `No delivery zone covers '${zoneCode}'`,
+        422,
+        {
+          user_message:
+            "We couldn't calculate delivery for that location. Please double-check your country, state and city — or contact us and we'll complete your order.",
+        },
+      );
+    }
+
+    // (3) Zone resolved. fee_status tells the three valid outcomes apart:
+    //     'priced' → charge the fee; 'free' → intentional ₦0 (a promo), charge
+    //     ₦0 confidently; 'pending' → ₦0 with no free marker (config gap) →
+    //     take the order at ₦0 now but flag it so the rate is confirmed before
+    //     dispatch (owner decision: never lose the sale, never silently eat it).
+    shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
+    if (deliveryQuote.fee_status === "pending") {
+      deliveryFeePending = true;
+      logger.warn(
+        { zoneCode, zone: deliveryQuote.zone_name, slug: campaign.slug },
+        "delivery fee pending — zone resolved to ₦0 without a free-delivery marker; order flagged for rate confirmation before dispatch",
+      );
+    }
+
+    // ── Free-shipping threshold override ──────────────────
+    // If the campaign has a threshold and the cart goods subtotal meets it,
+    // delivery is intentionally free — overrides the zone fee entirely.
+    if (
+      campaign.free_shipping_threshold_ngn !== null &&
+      campaign.free_shipping_threshold_ngn !== undefined
+    ) {
+      const goodsSubtotal = orderLines.reduce(
+        (s, l) =>
+          s + Number(l.unit_price_ngn || 0) * (Number(l.quantity) || 0),
+        0,
+      );
+      if (goodsSubtotal >= Number(campaign.free_shipping_threshold_ngn)) {
+        shippingFeeNgn = 0;
+        deliveryFeePending = false;
+        deliveryQuote = {
+          ...deliveryQuote,
+          fee_ngn: 0,
+          fee_status: "free",
+          is_free_delivery: true,
+        };
+        logger.info(
+          {
+            slug: campaign.slug,
+            goodsSubtotal,
+            threshold: campaign.free_shipping_threshold_ngn,
+          },
+          "free-shipping threshold met — delivery zeroed",
+        );
       }
     }
   }
@@ -1076,24 +1188,30 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // the only inputs it needs. We hand this single figure to createOrder, which
   // applies it order-level and re-clamps it against the live margin floor, so
   // the charged total always matches the quote the buyer saw in the cart.
-  let campaignDealDiscountNgn = "0.00";
+  // Quantity-tier bonuses (best-effort) — a tier DB hiccup skips the tier
+  // bonus but must never silently zero the position ladder or bulk discount.
+  let checkoutTiers = [];
   try {
-    const dealLines = await buildDealLines({
-      brand: resolvedBrand,
-      cart: input.cart,
-    });
-    const tiers = await bundleService.listTiers({
+    checkoutTiers = await bundleService.listTiers({
       brand: resolvedBrand,
       campaign_id: campaign.campaign_id,
     });
-    const deal = computeDeals({ campaign, lines: dealLines, tiers });
-    campaignDealDiscountNgn = deal.gross_discount_ngn;
   } catch (err) {
     logger.warn(
       { err: err.message, slug: campaign.slug },
-      "campaign deal-ladder computation skipped",
+      "campaign quantity-tier fetch failed — quantity-tier bonus will not apply this checkout",
     );
   }
+  // buildDealLines and computeDeals are NOT allowed to fail silently.
+  // A transient error here must surface to the caller so the buyer retries —
+  // the order is idempotent on client_idempotency_key so retrying is safe.
+  // Swallowing these errors would zero the entire discount and charge full price.
+  const dealLines = await buildDealLines({
+    brand: resolvedBrand,
+    cart: input.cart,
+  });
+  const deal = computeDeals({ campaign, lines: dealLines, tiers: checkoutTiers });
+  let campaignDealDiscountNgn = deal.gross_discount_ngn;
 
   // Fold the bundle-price savings (Σ sum-of-parts − campaign bundle price) into
   // the single order-level discount. The deal ladder above only covers the
@@ -1105,6 +1223,41 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     campaignDealDiscountNgn = toCurrencyString(
       money(campaignDealDiscountNgn).plus(bundlePriceDiscount),
     );
+  }
+
+  // ── 2d. Near-duplicate guard ─────────────────────────────
+  // A buyer who abandons the Paystack/Nomba page and opens a new browser
+  // tab (different session → new idempotency key) creates a fresh order each
+  // time. Before writing a new order, check whether the same contact already
+  // has a pending_payment order on this campaign within the last 15 minutes.
+  // If yes — and the caller has not confirmed intent — surface a warning so
+  // the frontend can ask the buyer rather than silently duplicating.
+  if (!input.force_new_order) {
+    const nearDups = await salesRepo.findNearDuplicates({
+      brand: resolvedBrand,
+      contact_id: contact.contact_id,
+      campaign_id: campaign.campaign_id,
+      minutes: 15,
+    });
+    if (nearDups.length > 0) {
+      throw new AppError(
+        "POTENTIAL_DUPLICATE",
+        "Near-duplicate pending order detected for same contact + campaign within 15 min",
+        409,
+        {
+          user_message:
+            "You appear to have placed a recent order. Check your inbox or tap 'Place new order' to continue.",
+          metadata: {
+            existing_orders: nearDups.map((o) => ({
+              order_id: o.order_id,
+              order_number: o.order_number,
+              total_ngn: o.total_ngn,
+              created_at: o.created_at,
+            })),
+          },
+        },
+      );
+    }
   }
 
   // ── 3. Create the Sales Order ──────────────────────────
@@ -1166,6 +1319,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         courier_key: deliveryQuote.courier_key,
         country_code: deliveryQuote.country_code,
         fee_ngn: shippingFeeNgn,
+        fee_status: deliveryQuote.fee_status || null,
+        // Back-office flag: the delivery rate could not be priced (₦0 with no
+        // free-delivery marker). Confirm the rate with the buyer and bill it
+        // before dispatch. Surfaced as a badge/filter in the sales dashboard.
+        ...(deliveryFeePending ? { fee_pending: true } : {}),
       };
     }
     if (order._preorder && order._preorder.is_preorder) {
@@ -1185,6 +1343,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       customerParts.push(
         `Delivery zone: ${internal.delivery.zone_name} (${internal.delivery.courier_key}).`,
       );
+      if (deliveryFeePending) {
+        customerParts.push(
+          "⚠ DELIVERY FEE PENDING — this zone resolved to ₦0 with no free-delivery rate set. Confirm the delivery rate with the customer and bill it BEFORE dispatch.",
+        );
+      }
     }
     if (order._preorder && order._preorder.is_preorder) {
       customerParts.push("Contains pre-order item(s).");

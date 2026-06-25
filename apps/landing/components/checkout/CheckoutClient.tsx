@@ -33,6 +33,7 @@ import {
   type GeoOption,
   type GeoOptions,
   type PickupAddress,
+  type DeliveryFeeStatus,
 } from "@/lib/geo";
 import type { LandingPayload } from "@/lib/types";
 
@@ -105,6 +106,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [pickupAddr, setPickupAddr] = useState<PickupAddress | null>(null);
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [deliveryZoneName, setDeliveryZoneName] = useState<string | null>(null);
+  // 'free' → intentional ₦0 (promo); 'pending' → ₦0 we'll confirm before
+  // dispatch; 'priced' → real fee; 'unserviceable' → no zone (blocks checkout).
+  const [deliveryStatus, setDeliveryStatus] = useState<DeliveryFeeStatus | null>(null);
   const [quoting, setQuoting] = useState(false);
   // Use useTransition to defer geo/pickup updates so they don't block renders.
   const [, startTransition] = useTransition();
@@ -137,6 +141,13 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     support?: { whatsapp?: string; email?: string; message?: string } | null;
   } | null>(null);
   const errRef = useRef<HTMLDivElement | null>(null);
+
+  // Near-duplicate guard: when the server returns POTENTIAL_DUPLICATE, hold
+  // the pending checkout payload here so the user can confirm before we retry
+  // with force_new_order = true.
+  type DupOrder = { order_id: string; order_number: string; total_ngn: string; created_at: string };
+  const [dupOrders, setDupOrders] = useState<DupOrder[] | null>(null);
+  const [pendingCheckoutPayload, setPendingCheckoutPayload] = useState<Parameters<typeof postCheckout>[0] | null>(null);
 
   // Never let a failure be silent — pull the error into view next to the
   // Pay button the moment it is set.
@@ -275,6 +286,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     if (fulfilment !== "delivery" || !effectiveZone) {
       setDeliveryFee(null);
       setDeliveryZoneName(null);
+      setDeliveryStatus(null);
       setQuoting(false);
       return;
     }
@@ -285,6 +297,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         if (cancelled) return;
         setDeliveryFee(q?.fee_ngn ?? null);
         setDeliveryZoneName(q?.zone_name ?? null);
+        setDeliveryStatus(q?.fee_status ?? null);
       })
       .finally(() => {
         if (!cancelled) setQuoting(false);
@@ -303,17 +316,24 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // agree to the naira.
   const total = discountedGoods + deliveryDue;
 
-  // Right-hand summary label for the delivery line.
+  // Right-hand summary label for the delivery line. A resolved zone can be a
+  // real fee, an intentional ₦0 (promo → "Free delivery") or a ₦0 we'll confirm
+  // before dispatch ("Confirmed before dispatch"). Only an unresolved location
+  // shows the prompt to pick one.
   const deliveryLabel =
     fulfilment === "pickup"
       ? "Free"
       : quoting
         ? "Calculating…"
-        : deliveryFee != null
-          ? fmt(deliveryFee)
-          : effectiveZone
-            ? "At fulfilment"
-            : "—";
+        : deliveryStatus === "free"
+          ? "Free delivery"
+          : deliveryStatus === "pending"
+            ? "Confirmed before dispatch"
+            : deliveryFee != null
+              ? fmt(deliveryFee)
+              : effectiveZone
+                ? "Check location"
+                : "Select location";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -343,8 +363,43 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         setErr({ message: "Please select your city / LGA.", retryable: false });
         return;
       }
+      // The location must have RESOLVED to a billable zone. Typing a country /
+      // state (or browser autofill) without picking it from the list leaves
+      // `effectiveZone` blank — the visible address looks complete but we have
+      // no zone to price. Never let that pay ₦0 delivery.
+      if (!effectiveZone) {
+        setErr({
+          message: isNigeria
+            ? "Please pick your state from the list (and your LGA for Lagos) so we can calculate delivery."
+            : "Please pick your country from the list so we can calculate delivery.",
+          retryable: false,
+        });
+        return;
+      }
+      // Quote still in flight — wait for the fee rather than submitting blind.
+      if (quoting) {
+        setErr({
+          message: "Calculating delivery… give it a second, then tap Pay again.",
+          retryable: true,
+        });
+        return;
+      }
+      // Zone resolved but priced to nothing (uncovered / unseeded). The server
+      // also blocks this, but stop it here so the buyer gets a clear prompt
+      // instead of a rejected payment.
+      if (deliveryFee == null) {
+        setErr({
+          message:
+            "We couldn't calculate delivery for that location. Please re-check your country, state and city.",
+          retryable: false,
+        });
+        return;
+      }
     }
     setBusy(true);
+    // Declared outside try so the catch block can reuse it for the
+    // near-duplicate "Place new order" retry.
+    let checkoutPayload: Parameters<typeof postCheckout>[0] | null = null;
     try {
       const giftPayload = isGift
         ? {
@@ -365,7 +420,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           }
         : undefined;
 
-      const res = await postCheckout({
+      // Build the full payload once so the near-duplicate "Place new order"
+      // retry can resend the EXACT same order (address, consent, cart and all)
+      // — the server re-prices delivery off this address and now refuses an
+      // order it can't bill, so the retry must carry the same complete payload.
+      checkoutPayload = {
         slug: payload.slug,
         contact: {
           first_name: first,
@@ -409,7 +468,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         display_currency: displayCurrency,
         client_idempotency_key: idemKey,
         coupon_code: promoApplied && promoCode ? promoCode : undefined,
-      });
+      };
+
+      const res = await postCheckout(checkoutPayload);
       const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
       const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
       const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
@@ -424,11 +485,20 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       }
     } catch (e) {
       const ex = e as Error & {
+        code?: string;
         retryable?: boolean;
         reference?: string;
         order_id?: string;
         support?: { whatsapp?: string; email?: string; message?: string } | null;
+        existing_orders?: DupOrder[] | null;
       };
+      if (ex?.code === "POTENTIAL_DUPLICATE" && ex.existing_orders?.length && checkoutPayload) {
+        // Hold the exact payload so "Place new order" can resend it verbatim.
+        setPendingCheckoutPayload(checkoutPayload);
+        setDupOrders(ex.existing_orders);
+        setBusy(false);
+        return;
+      }
       setErr({
         message: ex?.message || "Checkout failed. Please try again.",
         retryable: ex?.retryable !== false,
@@ -938,6 +1008,23 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   </span>
                   <span className="tabular-nums font-mono">{deliveryLabel}</span>
                 </div>
+                {/* White-glove notice when the zone resolved but couldn't be
+                    priced (₦0, no free-delivery marker). The order is taken;
+                    the rate is confirmed before dispatch. Framed as premium
+                    service, not a system error. */}
+                {fulfilment === "delivery" && deliveryStatus === "pending" && (
+                  <div className="mt-1 rounded-lg border border-[rgb(var(--accent)/0.25)] bg-[rgb(var(--accent)/0.06)] px-3 py-2">
+                    <p className="text-[12px] leading-snug text-[rgb(var(--text-muted))]">
+                      <span className="font-semibold text-[rgb(var(--text))]">
+                        Delivery confirmed before dispatch.
+                      </span>{" "}
+                      Your order is secured. Because you&apos;re in a special
+                      delivery area, our team will confirm the exact delivery
+                      rate and share your final total before we ship — nothing
+                      else to do right now.
+                    </p>
+                  </div>
+                )}
               </div>
               {/* Promo code */}
               <div className="border-t hairline pt-3">
@@ -989,7 +1076,66 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   {fmt(total)}
                 </span>
               </div>
-              {err && (
+              {/* Near-duplicate warning — shown instead of the normal error */}
+              {dupOrders && dupOrders.length > 0 && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-amber-500/40 bg-amber-500/8 px-4 py-3 space-y-3"
+                >
+                  <p className="text-[13px] font-semibold text-amber-400 leading-snug">
+                    You have a recent pending order
+                  </p>
+                  {dupOrders.map((o) => (
+                    <p key={o.order_id} className="text-[12px] text-[rgb(var(--text-muted))]">
+                      {o.order_number} &middot;{" "}
+                      {displayMoney(Number(o.total_ngn))} &middot;{" "}
+                      {new Date(o.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  ))}
+                  <p className="text-[12px] text-[rgb(var(--text-faint))]">
+                    Is this the same order or a new one?
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setDupOrders(null)}
+                      className="flex-1 h-9 rounded-lg border border-white/10 text-[12.5px] font-semibold text-[rgb(var(--text-muted))] hover:bg-white/5"
+                    >
+                      Same order
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!pendingCheckoutPayload) return;
+                        setDupOrders(null);
+                        setBusy(true);
+                        try {
+                          const res = await postCheckout({
+                            ...pendingCheckoutPayload,
+                            force_new_order: true,
+                          });
+                          const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
+                          const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
+                          const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
+                          if (orderId) sessionStorage.setItem("pgh-last-order-id", orderId);
+                          if (payUrl) window.location.href = payUrl;
+                          else router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
+                        } catch (e2) {
+                          const ex2 = e2 as Error & { retryable?: boolean };
+                          setErr({ message: (ex2 as Error).message || "Checkout failed.", retryable: ex2?.retryable !== false });
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                      className="flex-1 h-9 rounded-lg bg-[rgb(var(--accent-deep))] text-[12.5px] font-semibold disabled:opacity-60"
+                    >
+                      {busy ? "Securing…" : "Place new order"}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {err && !dupOrders && (
                 <div
                   ref={errRef}
                   role="alert"

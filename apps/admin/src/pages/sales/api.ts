@@ -125,6 +125,14 @@ export const requestCancellation = (
 
 export const getSalesKpis = () => api.get<SalesKpis>(`/dashboards/kpis/sales`);
 
+export const listDeliveryPendingOrders = (params: Omit<OrderListParams, "status"> = {}) =>
+  api.get<PaginatedResponse<SalesOrder>>(
+    `${S}/orders${qs({ ...params, fee_pending: "true" })}`,
+  );
+
+export const setOrderDeliveryFee = (id: string, fee_ngn: number) =>
+  api.patch<SalesOrder>(`${S}/orders/${id}/delivery-fee`, { fee_ngn });
+
 // ── Contact search ─────────────────────────────────────────
 
 export const searchContacts = (q: string, limit = 6) =>

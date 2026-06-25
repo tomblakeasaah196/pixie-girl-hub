@@ -155,5 +155,120 @@ agreement (`campaigns.bundle-pricing.test.js` checks the pure math only;
 
 ---
 
+---
+
+### G-2 — Position-ladder / bulk-tier discounts not computed on staff/POS/admin orders
+
+**Severity:** medium · **Status:** DEFERRED 2026-06-25 (hotfix sprint).
+
+**Problem.** The three-lane deal engine (`campaigns.deals.service.js`:
+`computeDeals`) is only called from the **web checkout** path
+(`campaigns.public.service.js → checkout()`). Staff-keyed orders (DM / POS /
+admin `createOrder`), quote-to-order conversions, and instalment top-ups all
+go directly to `salesService.createOrder`. That path calls `resolveDiscount`
+(percentage / fixed / buy-X-get-Y), but never `computeDeals`, so:
+
+- Position ladder (₦16 k 1st wig, ₦41 k 2nd wig, …) → **₦0**
+- Bundle stacking bonus → **₦0**
+- Bulk / reseller tiers (12+ raw wigs) → **₦0**
+
+Affected orders are silently correct on quantity-tier or flat-percentage
+campaigns, but wrong on ladder / bulk campaigns. The live dashboard shows
+`discount_amount_ngn = 0` for every non-web order on ladder campaigns.
+
+**Deferred rationale.** A correct fix must thread the campaign entity, cart
+lines, and `computeDeals` result through `createOrder` without duplicating the
+deal engine's already-tested logic. The `createOrder` interface currently
+receives a `discount_amount_ngn` scalar from every caller — wiring the full
+campaign context without breaking the seven other callers is a non-trivial
+refactor. Shipped as a known gap because the web checkout (the live revenue
+path) is correct; staff DM orders are a small fraction of volume and the
+operator can see the shortfall in the dashboard.
+
+**Correct long-term fix (for the engineering backlog).**
+
+1. Add `campaign_cart?: CartLine[]` and `campaign_id?: string` to the
+   `createOrder` input type.
+2. When both are present, run `buildDealLines` + `computeDeals` inside
+   `createOrderTx` and add the result to `campaign_deal_discount_ngn` (already
+   a column on `sales_orders`).
+3. Remove the now-redundant `discount_amount_ngn` parameter from callers that
+   pass `campaign_cart` — let the service derive it.
+4. Add an integration test covering a POS order on a ladder campaign to pin the
+   behaviour.
+
+---
+
+### G-3 — Contact segment membership unimplementable (no junction table)
+
+**Severity:** low · **Status:** DEFERRED 2026-06-25 (hotfix sprint).
+
+**Problem.** `campaigns.validator.js` and the campaign builder accept
+`segment_ids` on both the campaign schema and the discount schema, implying
+that a campaign can target a specific contact segment (e.g. "VIP" only). But:
+
+- `shared.contacts` has no `customer_segment_id` column.
+- `contact_segments` (the segment-definition table) has no membership
+  junction — there is nowhere to record which contacts belong to a segment.
+
+Without membership data, the `resolveDiscount` segment-eligibility check
+always falls through to "no segment restriction" (effectively targeting
+everyone). The UI builder field for segment targeting is therefore cosmetic.
+
+**Deferred rationale.** Correct implementation requires a new migration
+(`shared.contact_segment_memberships(contact_id, segment_id, enrolled_at,
+enrolled_by)`), a backfill script, and wiring the segment check in
+`resolveDiscount`. Scheduled for the next sprint; in the meantime
+`segment_ids` is accepted on schemas and stored, but has no runtime effect.
+
+---
+
+### G-4 — Gift "ship to recipient" is billed at the buyer's delivery zone
+
+**Severity:** low · **Status:** DEFERRED 2026-06-25 (logistics hotfix).
+
+**Problem.** `campaigns.public.service.js` §2b computes the delivery fee from
+`input.contact.address` (the **buyer's** address) only. When a buyer sends a
+gift with `ship_to_recipient: true`, the parcel ships to
+`gift.recipient_address` but the freight is still priced against the buyer's
+zone. A Lagos buyer gifting to the US is charged Lagos rates; the reverse
+overcharges. The order still bills *a* fee (so it's not the ₦0 hole fixed in
+the logistics hotfix), but the figure is for the wrong destination.
+
+**Deferred rationale.** Correct fix is to resolve the fee against the
+ship-to-recipient address when present (its own country/state/LGA zone), which
+means the gift recipient form must capture a resolvable `zone_code` /
+`country_code` the same way the buyer's address picker does — today the gift
+recipient address is free-text (`line1/city/state/country`) with no zone
+picker. Scoped as a follow-up to the logistics hotfix.
+
+---
+
+### G-5 — Delivery-fee-pending follow-ups (queue surfacing + zone free toggle)
+
+**Severity:** medium · **Status:** OPEN 2026-06-25 (logistics hotfix follow-ups).
+
+The logistics hotfix added a third delivery outcome — **pending**: a zone that
+resolves to ₦0 with no explicit free-delivery marker (a config gap that "should
+not happen"). Per owner decision the order is still taken (never lose the sale)
+but flagged so the rate is confirmed and billed **before dispatch**. The flag
+is written to the order: `internal_notes.delivery.fee_pending = true` plus a
+"⚠ DELIVERY FEE PENDING" customer-note line. Two follow-ups make it actionable:
+
+1. **Sales dashboard surfacing (REQUIRED).** "Bill it later" rots into "bill it
+   never" without a visible queue — that is exactly how the ₦0 orders slipped
+   through originally. The Sales views must show a badge/filter for orders with
+   `delivery.fee_pending = true`, and ideally a one-click "set delivery fee"
+   action. Until then the flag lives only in the order JSON.
+
+2. **Admin zone builder toggle.** The API and DB now support
+   `is_free_delivery` on `delivery_zones` (migration `template/000059`, repo +
+   validator wired), so a brand *can* mark a zone free via the API — but the
+   admin logistics UI has no toggle yet. Add the checkbox so free-delivery
+   promos read "Free delivery" at checkout instead of falling into the pending
+   queue.
+
+---
+
 See `migrations/CHANGELOG.md` for what shipped and `VERIFICATION_REPORT.md`
 for the per-module evidence behind this list.

@@ -142,6 +142,10 @@ const v2CampaignFields = {
     .array(z.enum(["paystack", "nomba"]))
     .min(1, "at least one payment gateway must stay enabled")
     .optional(),
+  // ── Free-shipping threshold ──
+  // When the cart goods subtotal (pre-discount) meets or exceeds this amount,
+  // delivery is automatically zeroed. Null = no threshold (default behaviour).
+  free_shipping_threshold_ngn: moneyNgn.nullable().optional(),
 };
 
 const createSchema = z
@@ -225,7 +229,35 @@ const updateSchema = z
     total_usage_limit: z.coerce.number().int().positive().nullable().optional(),
     ...v2CampaignFields,
   })
-  .strict();
+  .strict()
+  .superRefine((val, ctx) => {
+    // Mirror the create-time guards so an edit cannot introduce
+    // an impossible date range or a catastrophic percentage.
+    if (
+      val.starts_at &&
+      val.ends_at &&
+      new Date(val.ends_at) <= new Date(val.starts_at)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ends_at"],
+        message: "ends_at must be after starts_at",
+      });
+    }
+    if (
+      val.discount_type === "percentage" &&
+      val.discount_value !== null &&
+      val.discount_value !== undefined &&
+      val.discount_value > 1
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discount_value"],
+        message:
+          "percentage discount_value must be a fraction (e.g. 0.20 for 20%)",
+      });
+    }
+  });
 
 const addProductSchema = z
   .object({
@@ -620,6 +652,10 @@ const checkoutSchema = z.object({
   display_currency: z.enum(["NGN", "USD"]).optional().default("NGN"),
   client_idempotency_key: z.string().min(1).max(120),
   coupon_code: z.string().max(60).optional(),
+  // When the server returns POTENTIAL_DUPLICATE and the buyer confirms they
+  // want a new order, the frontend re-posts with this flag to bypass the
+  // near-duplicate guard for this one request.
+  force_new_order: z.boolean().optional(),
 });
 
 // ── Public cart quote (v3 deals engine) ──────────────────

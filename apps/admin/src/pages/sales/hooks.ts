@@ -198,6 +198,31 @@ export function useRequestCancellation() {
   });
 }
 
+// ── Delivery pending orders ──────────────────────────────────
+
+export function useDeliveryPendingOrders(params: salesApi.OrderListParams = {}) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-orders-fee-pending", biz, params],
+    queryFn: () => salesApi.listDeliveryPendingOrders(params),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useSetOrderDeliveryFee() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ id, fee_ngn }: { id: string; fee_ngn: number }) =>
+      salesApi.setOrderDeliveryFee(id, fee_ngn),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sales-orders-fee-pending", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+    },
+  });
+}
+
 // ── KPIs ────────────────────────────────────────────────────
 
 export function useSalesKpis() {

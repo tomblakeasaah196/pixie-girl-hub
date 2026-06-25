@@ -44,8 +44,8 @@ async function create({ brand, z, user_id }) {
   const { rows } = await query(
     `INSERT INTO ${t(brand, "delivery_zones")}
        (name, description, geometry_type, geometry, fee_ngn, country_code,
-        priority, is_active, rate_card, courier_key, created_by)
-     VALUES ($1,$2,$3,$4::jsonb,COALESCE($5,0),$6,COALESCE($7,0),COALESCE($8,true),$9::jsonb,$10,$11)
+        priority, is_active, rate_card, courier_key, is_free_delivery, created_by)
+     VALUES ($1,$2,$3,$4::jsonb,COALESCE($5,0),$6,COALESCE($7,0),COALESCE($8,true),$9::jsonb,$10,COALESCE($11,false),$12)
      RETURNING *`,
     [
       z.name,
@@ -58,6 +58,7 @@ async function create({ brand, z, user_id }) {
       z.is_active,
       JSON.stringify(z.rate_card || { tiers: [] }),
       z.courier_key || null,
+      z.is_free_delivery === undefined ? null : z.is_free_delivery,
       user_id || null,
     ],
   );
@@ -74,6 +75,7 @@ async function update({ brand, id, patch }) {
     "priority",
     "is_active",
     "courier_key",
+    "is_free_delivery",
   ];
   const set = [];
   const params = [id];

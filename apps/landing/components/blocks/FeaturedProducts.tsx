@@ -19,7 +19,10 @@ import { money } from "@/lib/format";
 import { cardHeadline, SALE_RED } from "@/lib/deals";
 import { SectionHeader } from "./BundleShowcase";
 import { DealExplainerModal } from "./DealExplainerModal";
-import { ProductDetailModal } from "../product/ProductDetailModal";
+import {
+  ProductDetailModal,
+  prefetchProductDetail,
+} from "../product/ProductDetailModal";
 
 /**
  * Live stock map, keyed by styled_id and product_id → current available qty.
@@ -431,8 +434,16 @@ function Card({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ delay: index * 0.04, duration: 0.5 }}
-      onMouseEnter={() => setHover(true)}
+      onMouseEnter={() => {
+        setHover(true);
+        if (product.styled_id)
+          prefetchProductDetail(payload.slug, product.styled_id);
+      }}
       onMouseLeave={() => setHover(false)}
+      onTouchStart={() => {
+        if (product.styled_id)
+          prefetchProductDetail(payload.slug, product.styled_id);
+      }}
       className="glass rounded-[var(--radius)] overflow-hidden flex flex-col"
     >
       {/* Clickable cover: tapping the image OR the title opens the product

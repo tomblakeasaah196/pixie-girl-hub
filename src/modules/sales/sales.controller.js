@@ -25,6 +25,7 @@ async function listOrders(req, res) {
         sales_channel: req.query.sales_channel,
         sales_campaign_id: req.query.sales_campaign_id,
         q: req.query.q,
+        fee_pending: req.query.fee_pending === "true" ? true : undefined,
       },
       page,
       page_size,
@@ -180,6 +181,15 @@ const rejectCancellation = async (req, res) =>
     }),
   });
 
+const setDeliveryFee = async (req, res) =>
+  res.json({
+    data: await service.setDeliveryFee({
+      ...base(req),
+      id: req.params.id,
+      fee_ngn: req.body.fee_ngn,
+    }),
+  });
+
 module.exports = {
   listOrders,
   getById,
@@ -189,6 +199,7 @@ module.exports = {
   addPayment,
   cancelOrder,
   createPaymentLink,
+  setDeliveryFee,
   listQuotations,
   getQuotation,
   createQuotation,

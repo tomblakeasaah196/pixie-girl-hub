@@ -572,6 +572,13 @@ function BriefStep({
       ? String(campaign.ngn_per_usd_rate)
       : "",
   );
+  // Free-shipping threshold: when cart goods subtotal ≥ this amount, delivery
+  // is automatically zeroed. Empty string = no threshold.
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState<string>(
+    (campaign as Record<string, unknown>).free_shipping_threshold_ngn != null
+      ? String((campaign as Record<string, unknown>).free_shipping_threshold_ngn)
+      : "",
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -620,6 +627,10 @@ function BriefStep({
     ngnPerUsd !==
       (campaign.ngn_per_usd_rate != null
         ? String(campaign.ngn_per_usd_rate)
+        : "") ||
+    freeShippingThreshold !==
+      ((campaign as Record<string, unknown>).free_shipping_threshold_ngn != null
+        ? String((campaign as Record<string, unknown>).free_shipping_threshold_ngn)
         : "");
 
   async function save(advance = false) {
@@ -659,6 +670,9 @@ function BriefStep({
         delivery_weeks: deliveryWeeks ? Number(deliveryWeeks) : null,
         preorder_extra_weeks: Number(preorderExtraWeeks) || 4,
         ngn_per_usd_rate: ngnPerUsd ? Number(ngnPerUsd) : null,
+        free_shipping_threshold_ngn: freeShippingThreshold
+          ? Number(freeShippingThreshold)
+          : null,
       } as Partial<Campaign>);
       if (cleanSlug) setSlug(cleanSlug);
       setSavedAt(Date.now());
@@ -1074,6 +1088,36 @@ function BriefStep({
             <span>
               In-stock: {deliveryWeeks} weeks · Preorder:{" "}
               {Number(deliveryWeeks) + Number(preorderExtraWeeks || 4)} weeks
+            </span>
+          </div>
+        )}
+      </FormSection>
+
+      <FormSection title="Free-shipping threshold">
+        <p className="text-[12px] text-text-faint -mt-2 mb-3">
+          Automatically zero the delivery fee when a customer's goods subtotal
+          reaches this amount. Leave blank to disable (each order pays the
+          normal zone rate).
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field
+            label="Minimum order for free shipping (₦)"
+            hint="Cart goods total must meet or exceed this figure"
+          >
+            <NumberField
+              value={freeShippingThreshold}
+              onChange={setFreeShippingThreshold}
+              allowDecimal={false}
+              suffix="NGN"
+              disabled={!canEdit}
+            />
+          </Field>
+        </div>
+        {freeShippingThreshold && Number(freeShippingThreshold) > 0 && (
+          <div className="flex items-center gap-2 text-[12px] text-success mt-1">
+            <span>
+              Orders of ₦{Number(freeShippingThreshold).toLocaleString()} or
+              more get free delivery.
             </span>
           </div>
         )}

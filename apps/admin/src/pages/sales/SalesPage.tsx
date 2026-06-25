@@ -1,18 +1,20 @@
 import { useSearchParams } from "react-router-dom";
-import { ShoppingBag, Zap, FileText } from "lucide-react";
+import { ShoppingBag, Zap, FileText, Truck } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { KpiTile } from "@/components/ui/primitives";
 import { money } from "@/lib/format";
-import { useSalesKpis } from "./hooks";
+import { useSalesKpis, useDeliveryPendingOrders } from "./hooks";
 import { QuickSaleForm } from "./QuickSaleForm";
 import { OrdersView } from "./OrdersView";
 import { QuotationsView } from "./QuotationsView";
+import { DeliveryPendingView } from "./DeliveryPendingView";
 
-type SalesTab = "quick-sale" | "orders" | "quotations";
+type SalesTab = "quick-sale" | "orders" | "quotations" | "delivery-pending";
 const TABS: { key: SalesTab; label: string; icon: typeof Zap }[] = [
   { key: "quick-sale", label: "Quick Sale", icon: Zap },
   { key: "orders", label: "Orders", icon: ShoppingBag },
   { key: "quotations", label: "Quotations", icon: FileText },
+  { key: "delivery-pending", label: "Delivery Pending", icon: Truck },
 ];
 
 export function SalesPage() {
@@ -20,6 +22,8 @@ export function SalesPage() {
   const tab = (sp.get("tab") as SalesTab) ?? "quick-sale";
   const setTab = (t: SalesTab) => setSp({ tab: t });
   const { data: kpis } = useSalesKpis();
+  const { data: pendingFee } = useDeliveryPendingOrders({ page_size: 1 });
+  const pendingCount = pendingFee?.meta?.total ?? 0;
 
   return (
     <div className="space-y-5">
@@ -69,6 +73,14 @@ export function SalesPage() {
             >
               <Icon className="w-4 h-4" />
               {t.label}
+              {t.key === "delivery-pending" && pendingCount > 0 && (
+                <span className={cn(
+                  "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold",
+                  on ? "bg-white/20 text-white" : "bg-warn text-black",
+                )}>
+                  {pendingCount > 99 ? "99+" : pendingCount}
+                </span>
+              )}
             </button>
           );
         })}
@@ -77,6 +89,7 @@ export function SalesPage() {
       {tab === "quick-sale" && <QuickSaleForm />}
       {tab === "orders" && <OrdersView />}
       {tab === "quotations" && <QuotationsView />}
+      {tab === "delivery-pending" && <DeliveryPendingView />}
     </div>
   );
 }

@@ -170,6 +170,10 @@ const paymentLink = z
   })
   .strict();
 
+const setDeliveryFee = z
+  .object({ fee_ngn: z.coerce.number().nonnegative() })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -186,6 +190,7 @@ module.exports = {
   validateQuotationConvert: mw(quotationConvert),
   validateCancellationRequest: mw(cancellationRequest),
   validateCancellationReview: mw(cancellationReview),
+  validateSetDeliveryFee: mw(setDeliveryFee),
   orderCreate,
   orderUpdate,
   paymentCreate,

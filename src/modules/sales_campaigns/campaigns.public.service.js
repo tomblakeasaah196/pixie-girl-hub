@@ -501,10 +501,26 @@ async function quoteCart({ slug, brand, brandHint, input }) {
   }
 
   const breakdown = computeDeals({ campaign, lines: dealLines, tiers });
+
+  // Pre-compute whether the free-shipping threshold is met for this cart so
+  // the cart UI can show "Free delivery applied" before checkout is submitted.
+  const cartSubtotal = dealLines.reduce(
+    (s, l) => s + Number(l.unit_price_ngn || 0) * (Number(l.quantity) || 0),
+    0,
+  );
+  const freeShippingThreshold =
+    campaign.free_shipping_threshold_ngn !== null &&
+    campaign.free_shipping_threshold_ngn !== undefined
+      ? Number(campaign.free_shipping_threshold_ngn)
+      : null;
+
   return {
     slug: campaign.slug,
     currency: "NGN",
     ...breakdown,
+    free_shipping_threshold_ngn: freeShippingThreshold,
+    free_shipping_unlocked:
+      freeShippingThreshold !== null && cartSubtotal >= freeShippingThreshold,
     lines: dealLines.map((l) => ({
       kind: l.kind,
       bundle_id: l.bundle_id || null,
@@ -1131,6 +1147,38 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         { zoneCode, zone: deliveryQuote.zone_name, slug: campaign.slug },
         "delivery fee pending — zone resolved to ₦0 without a free-delivery marker; order flagged for rate confirmation before dispatch",
       );
+    }
+
+    // ── Free-shipping threshold override ──────────────────
+    // If the campaign has a threshold and the cart goods subtotal meets it,
+    // delivery is intentionally free — overrides the zone fee entirely.
+    if (
+      campaign.free_shipping_threshold_ngn !== null &&
+      campaign.free_shipping_threshold_ngn !== undefined
+    ) {
+      const goodsSubtotal = orderLines.reduce(
+        (s, l) =>
+          s + Number(l.unit_price_ngn || 0) * (Number(l.quantity) || 0),
+        0,
+      );
+      if (goodsSubtotal >= Number(campaign.free_shipping_threshold_ngn)) {
+        shippingFeeNgn = 0;
+        deliveryFeePending = false;
+        deliveryQuote = {
+          ...deliveryQuote,
+          fee_ngn: 0,
+          fee_status: "free",
+          is_free_delivery: true,
+        };
+        logger.info(
+          {
+            slug: campaign.slug,
+            goodsSubtotal,
+            threshold: campaign.free_shipping_threshold_ngn,
+          },
+          "free-shipping threshold met — delivery zeroed",
+        );
+      }
     }
   }
 

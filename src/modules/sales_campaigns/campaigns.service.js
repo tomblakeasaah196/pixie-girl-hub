@@ -683,6 +683,12 @@ function buildLandingPayload(c, products, state) {
       c.allowed_payment_gateways.length
         ? c.allowed_payment_gateways
         : ["paystack", "nomba"],
+    // Goods subtotal threshold above which delivery is automatically free.
+    free_shipping_threshold_ngn:
+      c.free_shipping_threshold_ngn !== null &&
+      c.free_shipping_threshold_ngn !== undefined
+        ? Number(c.free_shipping_threshold_ngn)
+        : null,
     products:
       state === "live"
         ? products

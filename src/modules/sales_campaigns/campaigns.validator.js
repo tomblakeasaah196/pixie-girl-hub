@@ -142,6 +142,10 @@ const v2CampaignFields = {
     .array(z.enum(["paystack", "nomba"]))
     .min(1, "at least one payment gateway must stay enabled")
     .optional(),
+  // ── Free-shipping threshold ──
+  // When the cart goods subtotal (pre-discount) meets or exceeds this amount,
+  // delivery is automatically zeroed. Null = no threshold (default behaviour).
+  free_shipping_threshold_ngn: moneyNgn.nullable().optional(),
 };
 
 const createSchema = z

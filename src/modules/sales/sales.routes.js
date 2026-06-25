@@ -35,6 +35,12 @@ router.post(
   c.createPaymentLink,
 );
 router.post("/orders/:id/cancel", can("edit"), c.cancelOrder);
+router.patch(
+  "/orders/:id/delivery-fee",
+  can("edit"),
+  v.validateSetDeliveryFee,
+  c.setDeliveryFee,
+);
 
 // Quotations
 router.get("/quotations", can("view"), c.listQuotations);

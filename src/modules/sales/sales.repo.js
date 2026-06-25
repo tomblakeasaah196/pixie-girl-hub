@@ -295,6 +295,9 @@ async function listOrders({
     where.push(`so.order_number ILIKE $${i++}`);
     params.push(`%${filters.q}%`);
   }
+  if (filters.fee_pending) {
+    where.push(`(so.internal_notes->'delivery'->>'fee_pending')::boolean = true`);
+  }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
@@ -776,6 +779,28 @@ async function findNearDuplicates({ brand, contact_id, campaign_id, minutes }) {
   return rows;
 }
 
+async function setDeliveryFee({ client, brand, id, fee_ngn }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET shipping_fee_ngn = $2,
+            total_ngn        = subtotal_ngn - discount_amount_ngn + tax_amount_ngn + $2,
+            internal_notes   = CASE
+              WHEN internal_notes IS NULL THEN NULL
+              WHEN internal_notes->'delivery' IS NULL THEN internal_notes
+              ELSE jsonb_set(
+                internal_notes,
+                '{delivery}',
+                (internal_notes->'delivery') - 'fee_pending'
+              )
+            END,
+            updated_at = now()
+      WHERE order_id = $1
+      RETURNING *`,
+    [id, fee_ngn],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   updateOrderHeader,
   listDiscounts,
@@ -810,4 +835,5 @@ module.exports = {
   hasPaidOrder,
   sumCampaignDiscount,
   findNearDuplicates,
+  setDeliveryFee,
 };

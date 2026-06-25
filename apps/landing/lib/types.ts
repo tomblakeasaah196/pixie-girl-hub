@@ -202,4 +202,7 @@ export interface LandingPayload {
    *  only these buttons. Absent/empty → both rails (older campaigns). USD
    *  always settles on Nomba regardless. */
   allowed_payment_gateways?: ("paystack" | "nomba")[];
+  /** Cart goods subtotal (₦) at or above which delivery is automatically free.
+   *  NULL = no threshold rule on this campaign. */
+  free_shipping_threshold_ngn?: number | null;
 }

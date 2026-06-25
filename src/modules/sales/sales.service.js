@@ -893,6 +893,33 @@ async function updateOrder({ brand, user, request_id, id, patch }) {
   });
 }
 
+async function setDeliveryFee({ brand, user, request_id, id, fee_ngn }) {
+  return transaction(async (client) => {
+    const before = await repo.findById({ client, brand, id });
+    if (!before) throw new NotFoundError("Order");
+    if (["cancelled", "refunded"].includes(before.status)) {
+      throw new AppError(
+        "INVALID_STATE",
+        `Cannot update delivery fee on a ${before.status} order`,
+        409,
+      );
+    }
+    const updated = await repo.setDeliveryFee({ client, brand, id, fee_ngn });
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales.order.delivery_fee_set",
+      target_type: "sales_order",
+      target_id: id,
+      before: { shipping_fee_ngn: before.shipping_fee_ngn, total_ngn: before.total_ngn },
+      after: { shipping_fee_ngn: updated.shipping_fee_ngn, total_ngn: updated.total_ngn },
+      request_id,
+    });
+    events.emit("order.updated", { brand, order_id: id });
+    return updated;
+  });
+}
+
 async function addPayment({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
     const order = await repo.findById({ client, brand, id });
@@ -1755,4 +1782,5 @@ module.exports = {
   getCancellation,
   requestCancellation,
   reviewCancellation,
+  setDeliveryFee,
 };

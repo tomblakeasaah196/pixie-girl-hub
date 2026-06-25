@@ -495,7 +495,7 @@ async function quoteCart({ slug, brand, brandHint, input }) {
       brand: resolvedBrand,
       item,
       campaign_id: campaign.campaign_id,
-    }).catch(() => null);
+    });
     if (!priced) continue;
     dealLines.push({ ...priced, quantity });
   }
@@ -1076,24 +1076,30 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // the only inputs it needs. We hand this single figure to createOrder, which
   // applies it order-level and re-clamps it against the live margin floor, so
   // the charged total always matches the quote the buyer saw in the cart.
-  let campaignDealDiscountNgn = "0.00";
+  // Quantity-tier bonuses (best-effort) — a tier DB hiccup skips the tier
+  // bonus but must never silently zero the position ladder or bulk discount.
+  let checkoutTiers = [];
   try {
-    const dealLines = await buildDealLines({
-      brand: resolvedBrand,
-      cart: input.cart,
-    });
-    const tiers = await bundleService.listTiers({
+    checkoutTiers = await bundleService.listTiers({
       brand: resolvedBrand,
       campaign_id: campaign.campaign_id,
     });
-    const deal = computeDeals({ campaign, lines: dealLines, tiers });
-    campaignDealDiscountNgn = deal.gross_discount_ngn;
   } catch (err) {
     logger.warn(
       { err: err.message, slug: campaign.slug },
-      "campaign deal-ladder computation skipped",
+      "campaign quantity-tier fetch failed — quantity-tier bonus will not apply this checkout",
     );
   }
+  // buildDealLines and computeDeals are NOT allowed to fail silently.
+  // A transient error here must surface to the caller so the buyer retries —
+  // the order is idempotent on client_idempotency_key so retrying is safe.
+  // Swallowing these errors would zero the entire discount and charge full price.
+  const dealLines = await buildDealLines({
+    brand: resolvedBrand,
+    cart: input.cart,
+  });
+  const deal = computeDeals({ campaign, lines: dealLines, tiers: checkoutTiers });
+  let campaignDealDiscountNgn = deal.gross_discount_ngn;
 
   // Fold the bundle-price savings (Σ sum-of-parts − campaign bundle price) into
   // the single order-level discount. The deal ladder above only covers the

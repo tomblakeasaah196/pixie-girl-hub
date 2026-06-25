@@ -93,10 +93,19 @@ async function createOrder({ brand, user, request_id, input }) {
 async function createOrderTx({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const cfg = await businessConfig.findByKey(brand);
-    const defaultVat =
-      cfg && cfg.vat_rate !== null && cfg.vat_rate !== undefined
-        ? money(cfg.vat_rate)
-        : money("0");
+    if (!cfg) {
+      throw new AppError(
+        "BUSINESS_CONFIG_MISSING",
+        `Business configuration not found for brand "${brand}"`,
+        500,
+        "System configuration error — please contact support",
+      );
+    }
+    // VAT rate is read from business_config as SSOT. The DB guarantees a row
+    // exists (migration 000239 set DEFAULT 0) so cfg.vat_rate is always present.
+    // No JS-level fallback: if vat_rate is 0 we apply 0; if it is ever changed
+    // in settings that change takes effect here immediately.
+    const defaultVat = money(cfg.vat_rate);
 
     // 1. Resolve line pricing context + base unit prices.
     const built = [];

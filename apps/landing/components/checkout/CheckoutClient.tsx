@@ -25,6 +25,7 @@ import { useCart } from "@/lib/cart-store";
 import { displayMoney } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
 import { postCheckout, postQuote, type CartQuote } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import {
   fetchGeoOptions,
   fetchPickupAddress,
@@ -225,27 +226,29 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // for the items. Matches the drawer's "Checkout · …" figure.
   const discountedGoods = quote ? n(quote.final_total_ngn) : subtotal;
   const comps = quote?.components;
+  // Defensive optional chaining: a malformed/partial quote must never throw
+  // during render and crash the checkout form.
   const dealRows: Array<{ label: string; amount: number }> = [];
   if (comps) {
-    if (comps.position_ladder.applied)
+    if (comps.position_ladder?.applied)
       dealRows.push({
         label: "Multi-wig discount",
-        amount: n(comps.position_ladder.discount_ngn),
+        amount: n(comps.position_ladder?.discount_ngn),
       });
-    if (comps.stacking_bonus.applied)
+    if (comps.stacking_bonus?.applied)
       dealRows.push({
-        label: comps.stacking_bonus.label || "Bundle bonus",
-        amount: n(comps.stacking_bonus.discount_ngn),
+        label: comps.stacking_bonus?.label || "Bundle bonus",
+        amount: n(comps.stacking_bonus?.discount_ngn),
       });
-    if (comps.quantity_tier.applied)
+    if (comps.quantity_tier?.applied)
       dealRows.push({
-        label: comps.quantity_tier.label || "Quantity discount",
-        amount: n(comps.quantity_tier.discount_ngn),
+        label: comps.quantity_tier?.label || "Quantity discount",
+        amount: n(comps.quantity_tier?.discount_ngn),
       });
-    if (comps.bulk_tier.applied)
+    if (comps.bulk_tier?.applied)
       dealRows.push({
-        label: comps.bulk_tier.label || "Reseller / bulk",
-        amount: n(comps.bulk_tier.discount_ngn),
+        label: comps.bulk_tier?.label || "Reseller / bulk",
+        amount: n(comps.bulk_tier?.discount_ngn),
       });
   }
 
@@ -500,13 +503,18 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         setBusy(false);
         return;
       }
+      const message = ex?.message || "Checkout failed. Please try again.";
       setErr({
-        message: ex?.message || "Checkout failed. Please try again.",
+        message,
         retryable: ex?.retryable !== false,
         reference: ex?.reference,
         order_id: ex?.order_id,
         support: ex?.support ?? null,
       });
+      // Second, impossible-to-miss channel for the failure — the inline card
+      // scrolls into view, but a toast guarantees the buyer sees it even if the
+      // summary is off-screen on mobile.
+      toast.error("We couldn't complete your order", message);
     } finally {
       setBusy(false);
     }
@@ -1102,7 +1110,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                           else router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
                         } catch (e2) {
                           const ex2 = e2 as Error & { retryable?: boolean };
-                          setErr({ message: (ex2 as Error).message || "Checkout failed.", retryable: ex2?.retryable !== false });
+                          const m2 = (ex2 as Error).message || "Checkout failed.";
+                          setErr({ message: m2, retryable: ex2?.retryable !== false });
+                          toast.error("We couldn't place your order", m2);
                         } finally {
                           setBusy(false);
                         }

@@ -31,6 +31,10 @@
 
 "use strict";
 
+// Load .env the same way the app does, so a bare `node scripts/...` run sees
+// NOMBA_WEBHOOK_SIG_KEY (and the per-brand variants) without exporting them.
+require("dotenv").config();
+
 const crypto = require("crypto");
 const axios = require("axios");
 

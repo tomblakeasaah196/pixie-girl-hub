@@ -36,6 +36,9 @@
 
 "use strict";
 
+// Load .env the same way the app does (for APP_URL / defaults).
+require("dotenv").config();
+
 const axios = require("axios");
 
 function arg(name, fallback) {

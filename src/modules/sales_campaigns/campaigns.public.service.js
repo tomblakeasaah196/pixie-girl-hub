@@ -132,46 +132,6 @@ async function resolveCampaign({ slug, brand, brandHint }) {
   return c ? { campaign: c, brand: targetBrand } : null;
 }
 
-const NIGERIAN_CITIES = [
-  "Lagos",
-  "Abuja",
-  "Port Harcourt",
-  "Ibadan",
-  "Lekki",
-  "Ikeja",
-  "Victoria Island",
-  "Ikoyi",
-  "Ajah",
-  "Surulere",
-  "Yaba",
-  "Enugu",
-  "Kaduna",
-  "Benin City",
-  "Warri",
-];
-
-function generateSimulatedSocialProof(campaign, bundles) {
-  const bundleNames = bundles.map((b) => b.bundle_name).filter(Boolean);
-  if (!bundleNames.length) return { recent_orders: [], live_viewers: 0 };
-
-  const now = Date.now();
-  const recent_orders = [];
-  const count = 3 + Math.floor(Math.random() * 4);
-  for (let i = 0; i < count; i++) {
-    recent_orders.push({
-      bundle_name: bundleNames[Math.floor(Math.random() * bundleNames.length)],
-      city: NIGERIAN_CITIES[Math.floor(Math.random() * NIGERIAN_CITIES.length)],
-      at: now - Math.floor(Math.random() * 30 * 60_000),
-    });
-  }
-  recent_orders.sort((a, b) => b.at - a.at);
-
-  const floor = campaign.viewer_count_floor || 15;
-  const live_viewers =
-    floor + Math.floor(Math.random() * Math.ceil(floor * 0.6));
-
-  return { recent_orders, live_viewers };
-}
 
 async function getLanding({ slug, brand, brandHint }) {
   const found = await resolveCampaign({ slug, brand, brandHint });
@@ -208,11 +168,9 @@ async function getLanding({ slug, brand, brandHint }) {
     payload.upsells = upsells || [];
   }
 
-  if (state === "live") {
-    const proof = generateSimulatedSocialProof(campaign, bundles || []);
-    payload.recent_orders = proof.recent_orders;
-    payload.live_viewers = proof.live_viewers;
-  }
+  // Owner directive: the live-page social-proof overlays — the "X just bought
+  // from Lekki/Ajah" purchase popups AND the "X viewing" viewer ticker — are
+  // removed entirely, so no simulated social-proof is emitted.
 
   payload.starts_at = campaign.starts_at;
   payload.ends_at = campaign.ends_at;
@@ -560,6 +518,23 @@ function computeBundleDiscount({ components, campaignBundlePrice }) {
   return { sumOfParts, effectivePrice, discountPerBundle };
 }
 
+// The campaign bundle price to charge for ONE bundle. Resolved LIVE from the
+// source Catalogue offer (so the till matches the storefront the instant a
+// discount is edited + saved in Catalogue → Bundles), falling back to the
+// stored snapshot for one-off bundles with no Catalogue source. The link rows
+// carry src_* pricing from getCampaignBundle. computeBundleDiscount then clamps
+// it ≤ sum-of-parts, so a bundle can never be marked up or sold below its parts
+// beyond the §6.25 margin floor enforced in createOrder.
+function effectiveCampaignBundlePrice(link, components) {
+  if (!link) return null;
+  const subtotal = (components || []).reduce(
+    (s, c) => s + (Number(c.unit_price_ngn) || 0) * (Number(c.quantity) || 1),
+    0,
+  );
+  const live = bundleService.liveBundlePriceFromSource(link, subtotal);
+  return live !== null ? live : (link.campaign_bundle_price_ngn ?? null);
+}
+
 // The active default variant for a base product (stock/fulfilment anchor).
 async function defaultVariantId({ brand, product_id }) {
   if (!product_id) return null;
@@ -663,7 +638,7 @@ async function resolveBundleForCheckout({
   const { discountPerBundle, effectivePrice, sumOfParts } = computeBundleDiscount(
     {
       components,
-      campaignBundlePrice: link ? link.campaign_bundle_price_ngn : null,
+      campaignBundlePrice: effectiveCampaignBundlePrice(link, components),
     },
   );
   return {
@@ -702,7 +677,7 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
       : null;
     const { effectivePrice } = computeBundleDiscount({
       components,
-      campaignBundlePrice: link ? link.campaign_bundle_price_ngn : null,
+      campaignBundlePrice: effectiveCampaignBundlePrice(link, components),
     });
     return {
       kind: "bundle",

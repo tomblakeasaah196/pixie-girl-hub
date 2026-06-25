@@ -17,6 +17,47 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, ConflictError } = require("../../utils/errors");
 
+/**
+ * Resolve a campaign bundle's price LIVE from its source Catalogue offer's
+ * current pricing, given the live component subtotal. Mirrors the retention
+ * bundle.service `priceBundle` semantics exactly so the campaign storefront,
+ * the standalone Catalogue bundle, and checkout all agree:
+ *   - fixed_bundle_price → the offer's bundle_price_ngn
+ *   - pct_off           → subtotal × (1 − discount_value)   (discount_value is a fraction)
+ *   - amount_off        → subtotal − discount_value          (flat, clamped ≥ 0)
+ *   - buy_x_get_y / tiered_qty → null (no single bundle price; caller falls back)
+ *
+ * Returns null when there's no resolvable source price, so callers keep the
+ * stored snapshot for one-off (non-Catalogue) bundles.
+ *
+ * @param {{src_pricing_model?:string, src_discount_value?:number|string, src_bundle_price_ngn?:number|string}} src
+ * @param {number} componentSubtotal  live Σ(component price × qty)
+ * @returns {number|null}
+ */
+function liveBundlePriceFromSource(src, componentSubtotal) {
+  if (!src || !src.src_pricing_model) return null;
+  const sub = Number(componentSubtotal) || 0;
+  switch (src.src_pricing_model) {
+    case "fixed_bundle_price": {
+      const p = Number(src.src_bundle_price_ngn);
+      return Number.isFinite(p) && p > 0 ? p : null;
+    }
+    case "pct_off": {
+      const pct = Number(src.src_discount_value) || 0;
+      if (pct <= 0) return null;
+      return Math.round(sub * (1 - pct) * 100) / 100;
+    }
+    case "amount_off": {
+      const amt = Number(src.src_discount_value) || 0;
+      if (amt <= 0) return null;
+      return Math.max(0, Math.round((sub - amt) * 100) / 100);
+    }
+    default:
+      // buy_x_get_y / tiered_qty need per-line context — no single price here.
+      return null;
+  }
+}
+
 /** Kebab-case a bundle code / name for a campaign bundle slug (≤80 chars). */
 function slugifyBundle(s) {
   return (
@@ -571,19 +612,27 @@ async function listCampaignBundles({ brand, campaign_id }) {
       });
       const totalRetail = components.reduce((s, c) => s + c.line_total_ngn, 0);
       const totalQty = components.reduce((s, c) => s + c.quantity, 0);
-      // Resolve the discounted bundle price from the link. fixed_bundle_price
-      // and pct_off bundles store the resolved price in campaign_bundle_price_ngn
-      // at import time; amount_off bundles carry a per-item discount; anything
-      // else falls back to the live component subtotal (no campaign discount).
+      // Price priority:
+      //   1. LIVE from the source Catalogue offer (matched by name) — so a
+      //      discount edited + saved in Catalogue → Bundles shows on the
+      //      storefront immediately, no re-import. This is the source of truth.
+      //   2. The stored campaign snapshot (fixed/pct bundles, one-off bundles).
+      //   3. The stored per-item discount (amount_off snapshot).
+      //   4. The live component subtotal (no campaign discount).
+      const liveSourcePrice = liveBundlePriceFromSource(b, totalRetail);
       const perItemDiscount = Number(b.per_item_discount_ngn) || 0;
       let bundlePrice;
-      if (b.campaign_bundle_price_ngn !== null && b.campaign_bundle_price_ngn !== undefined) {
+      if (liveSourcePrice !== null) {
+        bundlePrice = liveSourcePrice;
+      } else if (b.campaign_bundle_price_ngn !== null && b.campaign_bundle_price_ngn !== undefined) {
         bundlePrice = Number(b.campaign_bundle_price_ngn);
       } else if (perItemDiscount > 0) {
         bundlePrice = Math.max(0, totalRetail - perItemDiscount * totalQty);
       } else {
         bundlePrice = totalRetail;
       }
+      // A campaign price may only ever DISCOUNT, never inflate above the parts.
+      bundlePrice = Math.min(bundlePrice, totalRetail);
       const savings = Math.max(0, totalRetail - bundlePrice);
       // Prefer live stock over the stale snapshot. The snapshot was computed
       // once at attach time and never refreshed; the live query resolves
@@ -873,4 +922,5 @@ module.exports = {
   listAmbassadorContacts,
   promoteContactToAmbassador,
   demoteAmbassador,
+  liveBundlePriceFromSource,
 };

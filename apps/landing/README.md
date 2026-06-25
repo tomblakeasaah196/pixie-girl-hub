@@ -77,10 +77,6 @@ components/
     CartUpsellModal.tsx            Temu-style escalating popup
     ExitIntent.tsx                 One-time exclusive code modal
 
-  social-proof/
-    ViewerTicker.tsx               "X viewing" — smart policy from state-engine
-    JustBoughtTicker.tsx           "Y just bought from Lagos" — throttled, city-only
-
   checkout/CheckoutClient.tsx      Inline guest checkout
 
 lib/

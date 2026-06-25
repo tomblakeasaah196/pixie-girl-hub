@@ -33,10 +33,60 @@ const {
   computeBundleDiscount,
   resolveBundleForCheckout,
 } = require("../../../src/modules/sales_campaigns/campaigns.public.service");
+const {
+  liveBundlePriceFromSource,
+} = require("../../../src/modules/sales_campaigns/campaigns.bundles.service");
 
 const fmt = (m) => toCurrencyString(m);
 
 afterEach(() => jest.clearAllMocks());
+
+describe("liveBundlePriceFromSource (live Catalogue pricing)", () => {
+  it("pct_off: subtotal × (1 − discount_value)", () => {
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "pct_off", src_discount_value: "0.2" },
+        500000,
+      ),
+    ).toBe(400000);
+  });
+
+  it("amount_off: flat ₦ off the subtotal, clamped ≥ 0", () => {
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "amount_off", src_discount_value: "60000" },
+        500000,
+      ),
+    ).toBe(440000);
+    // Discount larger than subtotal can't go negative.
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "amount_off", src_discount_value: "900000" },
+        500000,
+      ),
+    ).toBe(0);
+  });
+
+  it("fixed_bundle_price: the offer's set price", () => {
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "fixed_bundle_price", src_bundle_price_ngn: "350000" },
+        500000,
+      ),
+    ).toBe(350000);
+  });
+
+  it("returns null for quantity models and when there is no source", () => {
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "buy_x_get_y", src_discount_value: "0.3" },
+        500000,
+      ),
+    ).toBeNull();
+    expect(liveBundlePriceFromSource({}, 500000)).toBeNull();
+    expect(liveBundlePriceFromSource(null, 500000)).toBeNull();
+  });
+});
 
 describe("computeBundleDiscount (pure)", () => {
   it("sums component prices — styled components are PRICED, not skipped", () => {
@@ -238,5 +288,44 @@ describe("resolveBundleForCheckout (styled components → sellable lines)", () =
         units: 1,
       }),
     ).rejects.toThrow(/no items/i);
+  });
+
+  it("charges the LIVE Catalogue discount, overriding a stale snapshot", async () => {
+    bundleRepo.listBundleItems.mockResolvedValue([
+      {
+        styled_id: "sty-1",
+        variant_id: null,
+        styled_base_variant_id: "var-base-1",
+        styled_name: "Styled wig",
+        quantity: 1,
+        unit_price_ngn: "300000",
+      },
+      {
+        styled_id: "sty-2",
+        variant_id: null,
+        styled_base_variant_id: "var-base-2",
+        styled_name: "Styled wig 2",
+        quantity: 1,
+        unit_price_ngn: "200000",
+      },
+    ]);
+    // The stored snapshot is stale (₦480k). The Catalogue offer now says 30% off
+    // → the till must charge 30% off the ₦500k live sum-of-parts = ₦350k.
+    bundleRepo.getCampaignBundle.mockResolvedValue({
+      campaign_bundle_price_ngn: "480000",
+      src_pricing_model: "pct_off",
+      src_discount_value: "0.3",
+    });
+
+    const res = await resolveBundleForCheckout({
+      brand: "pixiegirl",
+      campaign_id: "camp-1",
+      bundle_id: "bun-1",
+      units: 1,
+    });
+
+    expect(fmt(res.sumOfParts)).toBe("500000.00");
+    expect(fmt(res.effectivePrice)).toBe("350000.00"); // live, not the ₦480k snapshot
+    expect(fmt(res.discountNgn)).toBe("150000.00");
   });
 });

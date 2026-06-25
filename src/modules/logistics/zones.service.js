@@ -205,7 +205,21 @@ async function quote({ brand, lat, lng, country_code, qty }) {
   for (const z of zones) {
     if (zoneContains(z, la, ln, country_code)) {
       const hasQty = qty !== null && qty !== undefined;
-      const fee = hasQty ? computeFeeForQty(z, qty) : Number(z.fee_ngn);
+      const isFree = z.is_free_delivery === true;
+      // An explicitly-free zone is ₦0 by design (a promo / VIP rate); the
+      // marker overrides whatever fee_ngn/rate_card holds. Otherwise compute
+      // the tiered fee for the basket size.
+      const fee = isFree ? 0 : hasQty ? computeFeeForQty(z, qty) : Number(z.fee_ngn);
+      // fee_status disambiguates the two very different meanings of ₦0:
+      //   'free'    → intentional free delivery (marked) → charge ₦0, say so.
+      //   'pending' → resolved to ₦0 but NOT marked free → a config gap; the
+      //               order is taken but the fee is confirmed before dispatch.
+      //   'priced'  → a real positive fee.
+      const fee_status = isFree
+        ? "free"
+        : Number(fee) > 0
+          ? "priced"
+          : "pending";
       return {
         zone_id: z.zone_id,
         zone_name: z.name,
@@ -213,17 +227,23 @@ async function quote({ brand, lat, lng, country_code, qty }) {
         geometry_type: z.geometry_type,
         courier_key: z.courier_key || null,
         fee_ngn: fee,
+        fee_status,
+        is_free_delivery: isFree,
         rate_card: z.rate_card || { tiers: [] },
         currency: "NGN",
       };
     }
   }
+  // No active zone covers this location — unserviceable. fee_ngn stays null so
+  // every caller can tell "no zone" apart from a real ₦0.
   return {
     zone_id: null,
     zone_name: null,
     country_code: null,
     courier_key: null,
     fee_ngn: null,
+    fee_status: "unserviceable",
+    is_free_delivery: false,
     rate_card: null,
     currency: "NGN",
   };

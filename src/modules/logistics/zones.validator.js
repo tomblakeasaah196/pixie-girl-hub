@@ -41,6 +41,10 @@ const zoneBase = z.object({
   is_active: z.boolean().optional(),
   rate_card: rateCard.optional(),
   courier_key: z.string().max(60).optional(),
+  // Explicit "this zone is free on purpose" marker. Lets the system tell an
+  // intentional ₦0 (a promo / VIP rate → "Free delivery") apart from a zone
+  // that was never priced (→ fee confirmed before dispatch).
+  is_free_delivery: z.boolean().optional(),
 });
 
 const zoneCreate = zoneBase.strict();

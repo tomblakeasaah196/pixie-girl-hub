@@ -360,10 +360,17 @@ export async function fetchPickupAddress(
   }
 }
 
+export type DeliveryFeeStatus =
+  | "priced" // a real positive fee
+  | "free" // intentional free delivery (promo / VIP) → ₦0 by design
+  | "pending" // resolved to ₦0 with no free marker → confirmed before dispatch
+  | "unserviceable"; // no zone covers this location → cannot ship here
+
 export interface DeliveryQuote {
   zone_name: string | null;
   courier_key: string | null;
   fee_ngn: number | null;
+  fee_status: DeliveryFeeStatus | null;
   currency: string;
 }
 
@@ -394,6 +401,7 @@ export async function fetchDeliveryQuote(args: {
       zone_name: d.zone_name ?? null,
       courier_key: d.courier_key ?? null,
       fee_ngn: d.fee_ngn != null ? Number(d.fee_ngn) : null,
+      fee_status: d.fee_status ?? null,
       currency: d.currency || "NGN",
     };
   } catch {

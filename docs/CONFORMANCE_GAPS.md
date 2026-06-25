@@ -244,5 +244,31 @@ picker. Scoped as a follow-up to the logistics hotfix.
 
 ---
 
+### G-5 — Delivery-fee-pending follow-ups (queue surfacing + zone free toggle)
+
+**Severity:** medium · **Status:** OPEN 2026-06-25 (logistics hotfix follow-ups).
+
+The logistics hotfix added a third delivery outcome — **pending**: a zone that
+resolves to ₦0 with no explicit free-delivery marker (a config gap that "should
+not happen"). Per owner decision the order is still taken (never lose the sale)
+but flagged so the rate is confirmed and billed **before dispatch**. The flag
+is written to the order: `internal_notes.delivery.fee_pending = true` plus a
+"⚠ DELIVERY FEE PENDING" customer-note line. Two follow-ups make it actionable:
+
+1. **Sales dashboard surfacing (REQUIRED).** "Bill it later" rots into "bill it
+   never" without a visible queue — that is exactly how the ₦0 orders slipped
+   through originally. The Sales views must show a badge/filter for orders with
+   `delivery.fee_pending = true`, and ideally a one-click "set delivery fee"
+   action. Until then the flag lives only in the order JSON.
+
+2. **Admin zone builder toggle.** The API and DB now support
+   `is_free_delivery` on `delivery_zones` (migration `template/000059`, repo +
+   validator wired), so a brand *can* mark a zone free via the API — but the
+   admin logistics UI has no toggle yet. Add the checkbox so free-delivery
+   promos read "Free delivery" at checkout instead of falling into the pending
+   queue.
+
+---
+
 See `migrations/CHANGELOG.md` for what shipped and `VERIFICATION_REPORT.md`
 for the per-module evidence behind this list.

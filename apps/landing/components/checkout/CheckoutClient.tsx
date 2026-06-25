@@ -33,6 +33,7 @@ import {
   type GeoOption,
   type GeoOptions,
   type PickupAddress,
+  type DeliveryFeeStatus,
 } from "@/lib/geo";
 import type { LandingPayload } from "@/lib/types";
 
@@ -105,6 +106,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [pickupAddr, setPickupAddr] = useState<PickupAddress | null>(null);
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [deliveryZoneName, setDeliveryZoneName] = useState<string | null>(null);
+  // 'free' → intentional ₦0 (promo); 'pending' → ₦0 we'll confirm before
+  // dispatch; 'priced' → real fee; 'unserviceable' → no zone (blocks checkout).
+  const [deliveryStatus, setDeliveryStatus] = useState<DeliveryFeeStatus | null>(null);
   const [quoting, setQuoting] = useState(false);
   // Use useTransition to defer geo/pickup updates so they don't block renders.
   const [, startTransition] = useTransition();
@@ -282,6 +286,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     if (fulfilment !== "delivery" || !effectiveZone) {
       setDeliveryFee(null);
       setDeliveryZoneName(null);
+      setDeliveryStatus(null);
       setQuoting(false);
       return;
     }
@@ -292,6 +297,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         if (cancelled) return;
         setDeliveryFee(q?.fee_ngn ?? null);
         setDeliveryZoneName(q?.zone_name ?? null);
+        setDeliveryStatus(q?.fee_status ?? null);
       })
       .finally(() => {
         if (!cancelled) setQuoting(false);
@@ -310,17 +316,24 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // agree to the naira.
   const total = discountedGoods + deliveryDue;
 
-  // Right-hand summary label for the delivery line.
+  // Right-hand summary label for the delivery line. A resolved zone can be a
+  // real fee, an intentional ₦0 (promo → "Free delivery") or a ₦0 we'll confirm
+  // before dispatch ("Confirmed before dispatch"). Only an unresolved location
+  // shows the prompt to pick one.
   const deliveryLabel =
     fulfilment === "pickup"
       ? "Free"
       : quoting
         ? "Calculating…"
-        : deliveryFee != null
-          ? fmt(deliveryFee)
-          : effectiveZone
-            ? "Check location"
-            : "Select location";
+        : deliveryStatus === "free"
+          ? "Free delivery"
+          : deliveryStatus === "pending"
+            ? "Confirmed before dispatch"
+            : deliveryFee != null
+              ? fmt(deliveryFee)
+              : effectiveZone
+                ? "Check location"
+                : "Select location";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -995,6 +1008,23 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   </span>
                   <span className="tabular-nums font-mono">{deliveryLabel}</span>
                 </div>
+                {/* White-glove notice when the zone resolved but couldn't be
+                    priced (₦0, no free-delivery marker). The order is taken;
+                    the rate is confirmed before dispatch. Framed as premium
+                    service, not a system error. */}
+                {fulfilment === "delivery" && deliveryStatus === "pending" && (
+                  <div className="mt-1 rounded-lg border border-[rgb(var(--accent)/0.25)] bg-[rgb(var(--accent)/0.06)] px-3 py-2">
+                    <p className="text-[12px] leading-snug text-[rgb(var(--text-muted))]">
+                      <span className="font-semibold text-[rgb(var(--text))]">
+                        Delivery confirmed before dispatch.
+                      </span>{" "}
+                      Your order is secured. Because you&apos;re in a special
+                      delivery area, our team will confirm the exact delivery
+                      rate and share your final total before we ship — nothing
+                      else to do right now.
+                    </p>
+                  </div>
+                )}
               </div>
               {/* Promo code */}
               <div className="border-t hairline pt-3">

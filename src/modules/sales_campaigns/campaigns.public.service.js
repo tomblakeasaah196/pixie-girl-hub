@@ -1062,6 +1062,10 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // loudly instead of silently absorbing the freight.
   let shippingFeeNgn = 0;
   let deliveryQuote = null;
+  // Set when a zone resolves but prices to ₦0 WITHOUT being marked free — a
+  // config gap that "should never happen". Per owner decision we still take the
+  // order (don't lose the sale), flag it, and confirm the rate before dispatch.
+  let deliveryFeePending = false;
   if (!isPickup) {
     const addr = input.contact.address || {};
     const zoneCode = addr.zone_code || addr.country_code || null;
@@ -1092,14 +1096,17 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         return null;
       });
 
-    // (2) Zone code present but no zone matched (uncovered / unseeded) → the
-    //     fee is unknown. fee_ngn === null means "no zone"; a real zone may
-    //     legitimately price to ₦0 (an intentional free-delivery zone) and is
-    //     allowed through. Anything we cannot price is refused.
-    if (!deliveryQuote || deliveryQuote.fee_ngn === null) {
+    // (2) No zone covers this location at all (unserviceable) → we genuinely
+    //     cannot ship here. Refuse rather than create an order we can't fulfil.
+    //     fee_ngn === null / fee_status 'unserviceable' both mean "no zone".
+    if (
+      !deliveryQuote ||
+      deliveryQuote.fee_ngn === null ||
+      deliveryQuote.fee_status === "unserviceable"
+    ) {
       logger.error(
         { zoneCode, slug: campaign.slug },
-        "checkout blocked — delivery zone unresolved; refusing to create a ₦0-shipping order",
+        "checkout blocked — no delivery zone covers this location",
       );
       throw new AppError(
         "DELIVERY_UNAVAILABLE",
@@ -1112,7 +1119,19 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       );
     }
 
+    // (3) Zone resolved. fee_status tells the three valid outcomes apart:
+    //     'priced' → charge the fee; 'free' → intentional ₦0 (a promo), charge
+    //     ₦0 confidently; 'pending' → ₦0 with no free marker (config gap) →
+    //     take the order at ₦0 now but flag it so the rate is confirmed before
+    //     dispatch (owner decision: never lose the sale, never silently eat it).
     shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
+    if (deliveryQuote.fee_status === "pending") {
+      deliveryFeePending = true;
+      logger.warn(
+        { zoneCode, zone: deliveryQuote.zone_name, slug: campaign.slug },
+        "delivery fee pending — zone resolved to ₦0 without a free-delivery marker; order flagged for rate confirmation before dispatch",
+      );
+    }
   }
 
   // ── 2c. Campaign deal ladder ───────────────────────────
@@ -1252,6 +1271,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         courier_key: deliveryQuote.courier_key,
         country_code: deliveryQuote.country_code,
         fee_ngn: shippingFeeNgn,
+        fee_status: deliveryQuote.fee_status || null,
+        // Back-office flag: the delivery rate could not be priced (₦0 with no
+        // free-delivery marker). Confirm the rate with the buyer and bill it
+        // before dispatch. Surfaced as a badge/filter in the sales dashboard.
+        ...(deliveryFeePending ? { fee_pending: true } : {}),
       };
     }
     if (order._preorder && order._preorder.is_preorder) {
@@ -1271,6 +1295,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       customerParts.push(
         `Delivery zone: ${internal.delivery.zone_name} (${internal.delivery.courier_key}).`,
       );
+      if (deliveryFeePending) {
+        customerParts.push(
+          "⚠ DELIVERY FEE PENDING — this zone resolved to ₦0 with no free-delivery rate set. Confirm the delivery rate with the customer and bill it BEFORE dispatch.",
+        );
+      }
     }
     if (order._preorder && order._preorder.is_preorder) {
       customerParts.push("Contains pre-order item(s).");

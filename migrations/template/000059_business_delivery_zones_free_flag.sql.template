@@ -1,0 +1,21 @@
+-- ============================================================
+-- TEMPLATE 000059 — delivery_zones: explicit free-delivery marker
+-- Pixie Girl Hub · JBS Praxis
+--
+-- Adds is_free_delivery to delivery_zones.
+--
+-- Why: fee_ngn defaults to 0 and rate_card defaults to {"tiers":[]}, so an
+-- UNCONFIGURED zone resolves to ₦0 — byte-for-byte identical to a zone where
+-- the brand DELIBERATELY offers free delivery (a promo / VIP rate). Without an
+-- explicit flag the checkout cannot tell "free on purpose" from "broken config"
+-- and would silently ship hair it never billed.
+--
+-- With this flag, zones.service.quote() returns a fee_status:
+--   'free'    → is_free_delivery = true  → charge ₦0, show "Free delivery".
+--   'pending' → ₦0 but is_free_delivery = false → config gap; take the order
+--               but flag it so the rate is confirmed before dispatch.
+--   'priced'  → a real positive fee.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.delivery_zones
+  ADD COLUMN IF NOT EXISTS is_free_delivery BOOLEAN NOT NULL DEFAULT false;

@@ -1066,6 +1066,13 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         });
       if (deliveryQuote && deliveryQuote.fee_ngn !== null) {
         shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
+      } else if (!isPickup) {
+        // No zone matched — delivery fee cannot be determined automatically.
+        // Flag it on the order so fulfilment knows to collect it separately.
+        logger.warn(
+          { zoneCode, slug: campaign.slug },
+          "delivery zone unresolved — order will be created with 0 shipping fee; fulfilment must collect separately",
+        );
       }
     }
   }
@@ -1111,6 +1118,41 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     campaignDealDiscountNgn = toCurrencyString(
       money(campaignDealDiscountNgn).plus(bundlePriceDiscount),
     );
+  }
+
+  // ── 2d. Near-duplicate guard ─────────────────────────────
+  // A buyer who abandons the Paystack/Nomba page and opens a new browser
+  // tab (different session → new idempotency key) creates a fresh order each
+  // time. Before writing a new order, check whether the same contact already
+  // has a pending_payment order on this campaign within the last 15 minutes.
+  // If yes — and the caller has not confirmed intent — surface a warning so
+  // the frontend can ask the buyer rather than silently duplicating.
+  if (!input.force_new_order) {
+    const nearDups = await salesRepo.findNearDuplicates({
+      brand: resolvedBrand,
+      contact_id: contact.contact_id,
+      campaign_id: campaign.campaign_id,
+      minutes: 15,
+    });
+    if (nearDups.length > 0) {
+      throw new AppError(
+        "POTENTIAL_DUPLICATE",
+        "Near-duplicate pending order detected for same contact + campaign within 15 min",
+        409,
+        {
+          user_message:
+            "You appear to have placed a recent order. Check your inbox or tap 'Place new order' to continue.",
+          metadata: {
+            existing_orders: nearDups.map((o) => ({
+              order_id: o.order_id,
+              order_number: o.order_number,
+              total_ngn: o.total_ngn,
+              created_at: o.created_at,
+            })),
+          },
+        },
+      );
+    }
   }
 
   // ── 3. Create the Sales Order ──────────────────────────

@@ -138,6 +138,13 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   } | null>(null);
   const errRef = useRef<HTMLDivElement | null>(null);
 
+  // Near-duplicate guard: when the server returns POTENTIAL_DUPLICATE, hold
+  // the pending checkout payload here so the user can confirm before we retry
+  // with force_new_order = true.
+  type DupOrder = { order_id: string; order_number: string; total_ngn: string; created_at: string };
+  const [dupOrders, setDupOrders] = useState<DupOrder[] | null>(null);
+  const [pendingCheckoutPayload, setPendingCheckoutPayload] = useState<Parameters<typeof postCheckout>[0] | null>(null);
+
   // Never let a failure be silent — pull the error into view next to the
   // Pay button the moment it is set.
   useEffect(() => {
@@ -424,11 +431,40 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       }
     } catch (e) {
       const ex = e as Error & {
+        code?: string;
         retryable?: boolean;
         reference?: string;
         order_id?: string;
         support?: { whatsapp?: string; email?: string; message?: string } | null;
+        existing_orders?: DupOrder[] | null;
       };
+      if (ex?.code === "POTENTIAL_DUPLICATE" && ex.existing_orders?.length) {
+        // Hold the current payload so the "Place new order" button can reuse it.
+        setPendingCheckoutPayload({
+          slug: payload.slug,
+          contact: {
+            first_name: first,
+            last_name: last,
+            email,
+            phone,
+          },
+          cart: items.map((i) => ({
+            bundle_id: i.bundle_id,
+            product_id: i.product_id,
+            styled_variant_id: i.styled_variant_id,
+            unstyled: i.unstyled,
+            quantity: i.quantity,
+            unit_price_ngn: i.unit_price_ngn,
+          })),
+          payment_gateway: gateway,
+          display_currency: displayCurrency,
+          client_idempotency_key: idemKey,
+          coupon_code: promoApplied && promoCode ? promoCode : undefined,
+        } as Parameters<typeof postCheckout>[0]);
+        setDupOrders(ex.existing_orders);
+        setBusy(false);
+        return;
+      }
       setErr({
         message: ex?.message || "Checkout failed. Please try again.",
         retryable: ex?.retryable !== false,
@@ -989,7 +1025,66 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   {fmt(total)}
                 </span>
               </div>
-              {err && (
+              {/* Near-duplicate warning — shown instead of the normal error */}
+              {dupOrders && dupOrders.length > 0 && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-amber-500/40 bg-amber-500/8 px-4 py-3 space-y-3"
+                >
+                  <p className="text-[13px] font-semibold text-amber-400 leading-snug">
+                    You have a recent pending order
+                  </p>
+                  {dupOrders.map((o) => (
+                    <p key={o.order_id} className="text-[12px] text-[rgb(var(--text-muted))]">
+                      {o.order_number} &middot;{" "}
+                      {displayMoney(Number(o.total_ngn))} &middot;{" "}
+                      {new Date(o.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  ))}
+                  <p className="text-[12px] text-[rgb(var(--text-faint))]">
+                    Is this the same order or a new one?
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setDupOrders(null)}
+                      className="flex-1 h-9 rounded-lg border border-white/10 text-[12.5px] font-semibold text-[rgb(var(--text-muted))] hover:bg-white/5"
+                    >
+                      Same order
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!pendingCheckoutPayload) return;
+                        setDupOrders(null);
+                        setBusy(true);
+                        try {
+                          const res = await postCheckout({
+                            ...pendingCheckoutPayload,
+                            force_new_order: true,
+                          });
+                          const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
+                          const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
+                          const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
+                          if (orderId) sessionStorage.setItem("pgh-last-order-id", orderId);
+                          if (payUrl) window.location.href = payUrl;
+                          else router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
+                        } catch (e2) {
+                          const ex2 = e2 as Error & { retryable?: boolean };
+                          setErr({ message: (ex2 as Error).message || "Checkout failed.", retryable: ex2?.retryable !== false });
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                      className="flex-1 h-9 rounded-lg bg-[rgb(var(--accent-deep))] text-[12.5px] font-semibold disabled:opacity-60"
+                    >
+                      {busy ? "Securing…" : "Place new order"}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {err && !dupOrders && (
                 <div
                   ref={errRef}
                   role="alert"

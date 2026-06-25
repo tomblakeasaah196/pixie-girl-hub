@@ -87,6 +87,8 @@ function errorHandler(err, req, res, _next) {
         ...(meta.retryable !== undefined ? { retryable: meta.retryable } : {}),
         ...(meta.order_id ? { order_id: meta.order_id } : {}),
         ...(meta.support ? { support: meta.support } : {}),
+        // POTENTIAL_DUPLICATE: let the frontend show the existing orders.
+        ...(meta.existing_orders ? { existing_orders: meta.existing_orders } : {}),
       },
       request_id,
     });

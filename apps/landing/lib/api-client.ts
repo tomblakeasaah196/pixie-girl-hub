@@ -101,6 +101,8 @@ export async function postCheckout(args: {
   display_currency?: "NGN" | "USD";
   client_idempotency_key: string;
   coupon_code?: string;
+  /** Bypass the near-duplicate guard after the buyer has confirmed intent. */
+  force_new_order?: boolean;
 }) {
   const res = await fetch(
     `/api/public/sale/${encodeURIComponent(args.slug)}/checkout`,
@@ -126,6 +128,7 @@ export async function postCheckout(args: {
       reference: e?.reference,
       order_id: e?.order_id,
       support: e?.support ?? null,
+      existing_orders: (parsed as { error?: { existing_orders?: unknown } })?.error?.existing_orders ?? null,
     });
     throw err;
   }

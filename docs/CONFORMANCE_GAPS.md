@@ -155,5 +155,73 @@ agreement (`campaigns.bundle-pricing.test.js` checks the pure math only;
 
 ---
 
+---
+
+### G-2 — Position-ladder / bulk-tier discounts not computed on staff/POS/admin orders
+
+**Severity:** medium · **Status:** DEFERRED 2026-06-25 (hotfix sprint).
+
+**Problem.** The three-lane deal engine (`campaigns.deals.service.js`:
+`computeDeals`) is only called from the **web checkout** path
+(`campaigns.public.service.js → checkout()`). Staff-keyed orders (DM / POS /
+admin `createOrder`), quote-to-order conversions, and instalment top-ups all
+go directly to `salesService.createOrder`. That path calls `resolveDiscount`
+(percentage / fixed / buy-X-get-Y), but never `computeDeals`, so:
+
+- Position ladder (₦16 k 1st wig, ₦41 k 2nd wig, …) → **₦0**
+- Bundle stacking bonus → **₦0**
+- Bulk / reseller tiers (12+ raw wigs) → **₦0**
+
+Affected orders are silently correct on quantity-tier or flat-percentage
+campaigns, but wrong on ladder / bulk campaigns. The live dashboard shows
+`discount_amount_ngn = 0` for every non-web order on ladder campaigns.
+
+**Deferred rationale.** A correct fix must thread the campaign entity, cart
+lines, and `computeDeals` result through `createOrder` without duplicating the
+deal engine's already-tested logic. The `createOrder` interface currently
+receives a `discount_amount_ngn` scalar from every caller — wiring the full
+campaign context without breaking the seven other callers is a non-trivial
+refactor. Shipped as a known gap because the web checkout (the live revenue
+path) is correct; staff DM orders are a small fraction of volume and the
+operator can see the shortfall in the dashboard.
+
+**Correct long-term fix (for the engineering backlog).**
+
+1. Add `campaign_cart?: CartLine[]` and `campaign_id?: string` to the
+   `createOrder` input type.
+2. When both are present, run `buildDealLines` + `computeDeals` inside
+   `createOrderTx` and add the result to `campaign_deal_discount_ngn` (already
+   a column on `sales_orders`).
+3. Remove the now-redundant `discount_amount_ngn` parameter from callers that
+   pass `campaign_cart` — let the service derive it.
+4. Add an integration test covering a POS order on a ladder campaign to pin the
+   behaviour.
+
+---
+
+### G-3 — Contact segment membership unimplementable (no junction table)
+
+**Severity:** low · **Status:** DEFERRED 2026-06-25 (hotfix sprint).
+
+**Problem.** `campaigns.validator.js` and the campaign builder accept
+`segment_ids` on both the campaign schema and the discount schema, implying
+that a campaign can target a specific contact segment (e.g. "VIP" only). But:
+
+- `shared.contacts` has no `customer_segment_id` column.
+- `contact_segments` (the segment-definition table) has no membership
+  junction — there is nowhere to record which contacts belong to a segment.
+
+Without membership data, the `resolveDiscount` segment-eligibility check
+always falls through to "no segment restriction" (effectively targeting
+everyone). The UI builder field for segment targeting is therefore cosmetic.
+
+**Deferred rationale.** Correct implementation requires a new migration
+(`shared.contact_segment_memberships(contact_id, segment_id, enrolled_at,
+enrolled_by)`), a backfill script, and wiring the segment check in
+`resolveDiscount`. Scheduled for the next sprint; in the meantime
+`segment_ids` is accepted on schemas and stored, but has no runtime effect.
+
+---
+
 See `migrations/CHANGELOG.md` for what shipped and `VERIFICATION_REPORT.md`
 for the per-module evidence behind this list.

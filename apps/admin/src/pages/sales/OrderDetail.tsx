@@ -186,11 +186,11 @@ export function OrderDetail({
                 <div>
                   <div className="micro">Channel</div>
                   <div className="text-[13px] mt-1">
-                    {
-                      SALES_CHANNELS.find(
-                        (c) => c.value === order.sales_channel,
-                      )?.label ?? order.sales_channel
-                    }
+                    {order.sales_campaign_id
+                      ? `Sales Campaign${order.utm_campaign ? ` · ${order.utm_campaign}` : ""}`
+                      : (SALES_CHANNELS.find(
+                          (c) => c.value === order.sales_channel,
+                        )?.label ?? order.sales_channel)}
                   </div>
                 </div>
                 <div>
@@ -203,6 +203,14 @@ export function OrderDetail({
                   <div className="micro">Fulfilment</div>
                   <div className="text-[13px] mt-1 capitalize">
                     {order.order_type?.replace(/_/g, " ")}
+                  </div>
+                </div>
+                <div>
+                  <div className="micro">Paid in</div>
+                  <div className="text-[13px] mt-1">
+                    {order.display_currency && order.display_currency !== "NGN"
+                      ? `${order.display_currency} · ₦${Number(order.fx_rate_used).toLocaleString()}/$`
+                      : "Naira (₦)"}
                   </div>
                 </div>
               </FormGrid>
@@ -228,8 +236,13 @@ export function OrderDetail({
                           </div>
                         )}
                       </div>
-                      <div className="text-text-muted mx-3">×{l.quantity}</div>
-                      <MoneyText ngn={Number(l.line_total)} />
+                      <div className="text-text-muted mx-3 text-right shrink-0">
+                        <div>×{l.quantity}</div>
+                        <div className="text-[10px] text-text-faint">
+                          @ {Number(l.unit_price_ngn).toLocaleString()}
+                        </div>
+                      </div>
+                      <MoneyText ngn={Number(l.line_total_ngn)} />
                     </div>
                   ))}
                   <div className="h-px bg-line my-2" />
@@ -258,9 +271,26 @@ export function OrderDetail({
                     </div>
                   )}
                   <div className="flex justify-between text-[15px] font-semibold pt-1">
-                    <span>Total</span>
+                    <span>Total (₦)</span>
                     <MoneyText ngn={Number(order.total_ngn)} />
                   </div>
+                  {order.display_currency &&
+                    order.display_currency !== "NGN" && (
+                      <div className="mt-2 pt-2 border-t border-line space-y-1.5">
+                        <div className="flex justify-between text-[13px]">
+                          <span className="text-text-muted">Exchange rate</span>
+                          <span className="tabular-nums">
+                            ₦{Number(order.fx_rate_used).toLocaleString()} / $1
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-[14px] font-semibold">
+                          <span>Charged in {order.display_currency}</span>
+                          <span className="tabular-nums">
+                            ${Number(order.display_total ?? 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                 </div>
               </Card>
             )}

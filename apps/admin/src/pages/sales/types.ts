@@ -77,12 +77,12 @@ export interface OrderLine {
   variant_label_snapshot: string | null;
   sku_snapshot: string | null;
   quantity: number;
-  unit_price: string;
-  unit_cost: string | null;
-  line_discount: string;
+  unit_price_ngn: string;
+  unit_cost_ngn: string | null;
+  line_discount_ngn: string;
   tax_rate: string;
-  tax_amount: string;
-  line_total: string;
+  tax_amount_ngn: string;
+  line_total_ngn: string;
   display_order: number;
   notes: string | null;
 }
@@ -135,6 +135,7 @@ export interface SalesOrder {
   amount_paid_ngn: string;
   balance_due_ngn: string;
   display_currency: string | null;
+  display_total: string | null;
   fx_rate_used: string | null;
   coupon_code: string | null;
   payment_model: string | null;

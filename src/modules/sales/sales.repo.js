@@ -497,7 +497,7 @@ async function findExistingPayment({ client, brand, payment }) {
 }
 async function listPayments({ client, brand, order_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_order_payments")} WHERE order_id = $1 ORDER BY created_at`,
+    `SELECT * FROM ${t(brand, "sales_order_payments")} WHERE order_id = $1 ORDER BY recorded_at`,
     [order_id],
   );
   return rows;

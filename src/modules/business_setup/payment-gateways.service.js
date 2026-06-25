@@ -63,6 +63,10 @@ function envCreds(provider, brand) {
         client_id: pick("CLIENT_ID"),
         client_secret: pick("API_KEY"),
         account_id: pick("ACCOUNT_ID"),
+        // Webhook signature key (dashboard secret, NOT the client secret). Used
+        // by webhooks.service.verifyNomba to verify inbound webhooks. A DB-stored
+        // value in the encrypted bag (webhook_signature_key) overrides this.
+        webhook_signature_key: pick("WEBHOOK_SIG_KEY"),
       };
     }
     case "stripe":

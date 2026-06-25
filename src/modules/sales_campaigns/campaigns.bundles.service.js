@@ -585,9 +585,16 @@ async function listCampaignBundles({ brand, campaign_id }) {
         bundlePrice = totalRetail;
       }
       const savings = Math.max(0, totalRetail - bundlePrice);
+      // Prefer live stock over the stale snapshot. The snapshot was computed
+      // once at attach time and never refreshed; the live query resolves
+      // styled-only items that the old snapshot function missed entirely.
+      const liveStock = b.live_bundle_stock !== null && b.live_bundle_stock !== undefined
+        ? Number(b.live_bundle_stock)
+        : b.current_stock_snapshot;
       return {
         ...b,
         description: b.bundle_description ?? null,
+        current_stock_snapshot: liveStock,
         components,
         component_count: components.length,
         total_retail_ngn: totalRetail,

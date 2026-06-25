@@ -240,11 +240,58 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
     `SELECT scb.*,
             pb.slug AS bundle_slug, pb.name AS bundle_name,
             pb.description AS bundle_description,
-            pb.hero_image_url AS bundle_hero_image_url,
+            COALESCE(pb.hero_image_url, fallback_img.image_url) AS bundle_hero_image_url,
             pb.default_per_item_discount_ngn,
-            pb.default_preorder_loss_pct
+            pb.default_preorder_loss_pct,
+            live_stk.live_stock AS live_bundle_stock
        FROM ${t(brand, "sales_campaign_bundles")} scb
        JOIN ${t(brand, "product_bundles")} pb ON pb.bundle_id = scb.bundle_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(
+           (SELECT COALESCE(pi.cdn_url, pi.file_path)
+              FROM ${t(brand, "product_images")} pi
+             WHERE pi.styled_id = bi0.styled_id AND bi0.styled_id IS NOT NULL
+             ORDER BY pi.is_primary DESC, pi.display_order ASC NULLS LAST LIMIT 1),
+           (SELECT COALESCE(pi.cdn_url, pi.file_path)
+              FROM ${t(brand, "product_images")} pi
+             WHERE pi.variant_id = bi0.variant_id AND bi0.variant_id IS NOT NULL
+             ORDER BY pi.is_primary DESC, pi.display_order ASC NULLS LAST LIMIT 1),
+           (SELECT COALESCE(pi.cdn_url, pi.file_path)
+              FROM ${t(brand, "product_images")} pi
+             WHERE pi.product_id = bi0.product_id AND bi0.product_id IS NOT NULL
+               AND pi.styled_id IS NULL AND pi.variant_id IS NULL
+             ORDER BY pi.is_primary DESC, pi.display_order ASC NULLS LAST LIMIT 1)
+         ) AS image_url
+           FROM ${t(brand, "product_bundle_items")} bi0
+          WHERE bi0.bundle_id = pb.bundle_id
+          ORDER BY bi0.display_position ASC
+          LIMIT 1
+       ) fallback_img ON pb.hero_image_url IS NULL
+       LEFT JOIN LATERAL (
+         SELECT MIN(
+           COALESCE(
+             (SELECT SUM(sl.available)
+                FROM ${t(brand, "stock_levels")} sl
+                JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+               WHERE sl.variant_id = COALESCE(
+                       bi.variant_id,
+                       sp.base_variant_id,
+                       (SELECT pv.variant_id
+                          FROM ${t(brand, "product_variants")} pv
+                         WHERE pv.product_id = COALESCE(sp.base_product_id, bi.product_id)
+                           AND pv.is_active = true
+                         ORDER BY pv.is_default DESC, pv.display_order ASC
+                         LIMIT 1)
+                     )
+                 AND loc.available_for_storefront = true),
+             0
+           ) / GREATEST(bi.quantity, 1)
+         )::INTEGER AS live_stock
+           FROM ${t(brand, "product_bundle_items")} bi
+           LEFT JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = bi.styled_id
+          WHERE bi.bundle_id = scb.bundle_id
+            AND (bi.variant_id IS NOT NULL OR bi.styled_id IS NOT NULL OR bi.product_id IS NOT NULL)
+       ) live_stk ON true
       WHERE scb.campaign_id = $1
       ORDER BY scb.display_order ASC, scb.created_at ASC`,
     [campaign_id],

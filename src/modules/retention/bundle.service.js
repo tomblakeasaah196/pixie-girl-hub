@@ -180,7 +180,14 @@ async function priceBundle({ brand, bundle_id, component_subtotal_ngn }) {
       };
     }
     case "amount_off": {
-      let discount = money(bundle.discount_value || 0);
+      // ₦ off EACH unit (owner directive): the discount_value comes off every
+      // item in the bundle, so it scales with the unit count — a 6-piece bundle
+      // at "₦35k off each" saves ₦210k. Clamp the total discount at the subtotal.
+      const units = (bundle.components || []).reduce(
+        (n, c) => n + (Number(c.quantity) || 1),
+        0,
+      );
+      let discount = money(bundle.discount_value || 0).times(Math.max(1, units));
       if (discount.gt(sub)) discount = sub;
       return {
         pricing_model: bundle.pricing_model,

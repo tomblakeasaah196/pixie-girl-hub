@@ -19,12 +19,13 @@ const { NotFoundError, ConflictError } = require("../../utils/errors");
 
 /**
  * Resolve a campaign bundle's price LIVE from its source Catalogue offer's
- * current pricing, given the live component subtotal. Mirrors the retention
- * bundle.service `priceBundle` semantics exactly so the campaign storefront,
- * the standalone Catalogue bundle, and checkout all agree:
+ * current pricing, given the live component subtotal and unit count. Mirrors the
+ * retention bundle.service `priceBundle` semantics exactly so the campaign
+ * storefront, the standalone Catalogue bundle, and checkout all agree:
  *   - fixed_bundle_price → the offer's bundle_price_ngn
  *   - pct_off           → subtotal × (1 − discount_value)   (discount_value is a fraction)
- *   - amount_off        → subtotal − discount_value          (flat, clamped ≥ 0)
+ *   - amount_off        → subtotal − discount_value × units  (₦ off EACH unit, owner
+ *                          directive — a 6-piece "₦35k off each" saves ₦210k)
  *   - buy_x_get_y / tiered_qty → null (no single bundle price; caller falls back)
  *
  * Returns null when there's no resolvable source price, so callers keep the
@@ -32,11 +33,13 @@ const { NotFoundError, ConflictError } = require("../../utils/errors");
  *
  * @param {{src_pricing_model?:string, src_discount_value?:number|string, src_bundle_price_ngn?:number|string}} src
  * @param {number} componentSubtotal  live Σ(component price × qty)
+ * @param {number} totalUnits         live Σ(component qty) — the number of items in the bundle
  * @returns {number|null}
  */
-function liveBundlePriceFromSource(src, componentSubtotal) {
+function liveBundlePriceFromSource(src, componentSubtotal, totalUnits) {
   if (!src || !src.src_pricing_model) return null;
   const sub = Number(componentSubtotal) || 0;
+  const units = Math.max(1, Number(totalUnits) || 1);
   switch (src.src_pricing_model) {
     case "fixed_bundle_price": {
       const p = Number(src.src_bundle_price_ngn);
@@ -48,9 +51,11 @@ function liveBundlePriceFromSource(src, componentSubtotal) {
       return Math.round(sub * (1 - pct) * 100) / 100;
     }
     case "amount_off": {
+      // ₦ off EACH unit: multiply by the unit count, clamp the discount ≤ subtotal.
       const amt = Number(src.src_discount_value) || 0;
       if (amt <= 0) return null;
-      return Math.max(0, Math.round((sub - amt) * 100) / 100);
+      const discount = Math.min(sub, amt * units);
+      return Math.max(0, Math.round((sub - discount) * 100) / 100);
     }
     default:
       // buy_x_get_y / tiered_qty need per-line context — no single price here.
@@ -619,7 +624,7 @@ async function listCampaignBundles({ brand, campaign_id }) {
       //   2. The stored campaign snapshot (fixed/pct bundles, one-off bundles).
       //   3. The stored per-item discount (amount_off snapshot).
       //   4. The live component subtotal (no campaign discount).
-      const liveSourcePrice = liveBundlePriceFromSource(b, totalRetail);
+      const liveSourcePrice = liveBundlePriceFromSource(b, totalRetail, totalQty);
       const perItemDiscount = Number(b.per_item_discount_ngn) || 0;
       let bundlePrice;
       if (liveSourcePrice !== null) {

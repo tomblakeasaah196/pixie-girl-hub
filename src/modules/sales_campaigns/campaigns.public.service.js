@@ -531,7 +531,11 @@ function effectiveCampaignBundlePrice(link, components) {
     (s, c) => s + (Number(c.unit_price_ngn) || 0) * (Number(c.quantity) || 1),
     0,
   );
-  const live = bundleService.liveBundlePriceFromSource(link, subtotal);
+  const totalUnits = (components || []).reduce(
+    (s, c) => s + (Number(c.quantity) || 1),
+    0,
+  );
+  const live = bundleService.liveBundlePriceFromSource(link, subtotal, totalUnits);
   return live !== null ? live : (link.campaign_bundle_price_ngn ?? null);
 }
 

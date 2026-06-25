@@ -1694,7 +1694,7 @@ function CatalogueBundlePicker({
 function prettyPricingModel(m: string): string {
   if (m === "fixed_bundle_price") return "Fixed ₦ price";
   if (m === "pct_off") return "% off the bundle";
-  if (m === "amount_off") return "Fixed ₦ off the bundle";
+  if (m === "amount_off") return "₦ off each unit";
   if (m === "buy_x_get_y") return "Buy X get Y";
   if (m === "tiered") return "Tiered";
   return m || "Bundle";
@@ -1706,7 +1706,7 @@ function pricingModelHelp(m: string): string {
   if (m === "pct_off")
     return "Take this percentage off the total of everything in the bundle.";
   if (m === "amount_off")
-    return "Take this fixed ₦ amount off the whole bundle. It stays the same no matter how many products you add.";
+    return "Take this fixed ₦ amount off EACH unit — it multiplies by the number of items in the bundle.";
   if (m === "buy_x_get_y")
     return "Buy a quantity, get another at a discount.";
   if (m === "tiered") return "Different discount at different quantities.";

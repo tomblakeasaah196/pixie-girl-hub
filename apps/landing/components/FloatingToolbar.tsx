@@ -3,16 +3,22 @@
 /**
  * FloatingToolbar — unified draggable currency + help toolbar.
  *
- * Replaces the separate CurrencyFloater (fixed bottom-right) and HowToShop
- * (fixed bottom-right, slightly higher). Both overlapped. This merges them
- * into one draggable pill that the visitor can reposition anywhere on the
- * viewport so it never hides content.
+ * Replaces the separate CurrencyFloater and HowToShop, which overlapped at the
+ * bottom-right (the help button hid behind the currency pill). This merges them
+ * into ONE pill the visitor can drag anywhere on the viewport so it never hides
+ * content (price, CTA, etc.).
  *
- * Styling: platform Maroon Noir palette (hard-coded — this is platform chrome,
- * not brand content). No CSS variables used for the pill background so the
- * Faitlyn Hair `data-business` accent override (olive) does not affect it.
+ * Position: defaults to LEFT-MIDDLE (clear of the bottom cart bar and the
+ * right-side price / checkout). Fully draggable — the whole pill is the drag
+ * handle, with a small movement threshold so a tap still toggles currency /
+ * opens help but a drag relocates it.
  *
- * Currency logic is identical to the original CurrencyFloater (static
+ * Colour: the BRAND palette. The component renders inside <BrandThemeProvider>,
+ * so `--accent` / `--accent-deep` resolve to the brand's published Atelier
+ * colours — Faitlyn dark brown (#3A2418 → #281D15), Pixie oxblood
+ * (#5C0A14 → #36060D). No hard-coded hexes.
+ *
+ * Currency logic is unchanged from the original CurrencyFloater (static
  * ngn_per_usd_rate from the payload, MutationObserver rewrite, GeoIP default,
  * ceil-rounded USD).
  */
@@ -93,12 +99,17 @@ const STEPS = [
   { icon: CreditCard,  title: "Checkout & pay",   body: "Open your cart, tap Checkout, fill in delivery, and pay securely with Paystack or Nomba." },
 ];
 
-// ── Pill styling constants (Maroon Noir platform palette) ────────────────────
+// ── Pill styling (brand palette via CSS vars from BrandThemeProvider) ─────────
 
-const PILL_BG  = "linear-gradient(170deg, #a31515 0%, #690909 100%)";
+const PILL_BG =
+  "linear-gradient(165deg, rgb(var(--accent)) 0%, rgb(var(--accent-deep)) 100%)";
 const PILL_SHADOW =
-  "0 8px 32px rgba(105,9,9,0.55), 0 2px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.14)";
-const PILL_BORDER = "1px solid rgba(255,255,255,0.10)";
+  "0 10px 34px rgb(var(--accent-deep) / 0.55), 0 2px 8px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.16)";
+const PILL_BORDER = "1px solid rgb(255 255 255 / 0.12)";
+
+// Movement past this many px (from pointer-down) counts as a drag, not a tap.
+const DRAG_THRESHOLD = 5;
+const EDGE_GAP = 12; // viewport inset for the default position + clamp
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -116,14 +127,37 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
   // Help modal
   const [helpOpen, setHelpOpen] = useState(false);
 
-  // Drag
-  const toolbarRef   = useRef<HTMLDivElement>(null);
+  // Drag — the whole pill is the handle. A pointer-down that moves past
+  // DRAG_THRESHOLD relocates the pill; a stationary press is treated as a tap
+  // so the buttons still fire. `movedRef` carries the tap/drag verdict into the
+  // button onClick (which fires right after pointerup).
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [dragPos, setDragPos]   = useState<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState(false);
-  const dragOrigin = useRef<{
-    pointerX: number; pointerY: number;
-    elX: number; elY: number;
-  } | null>(null);
+  const movedRef = useRef(false);
+
+  // Default position: left-middle, once we can measure the viewport + pill.
+  // Kept null until mounted to avoid an SSR/hydration mismatch; the pill is
+  // hidden for that first frame so it doesn't flash at the wrong spot.
+  useEffect(() => {
+    const place = () => {
+      const h = toolbarRef.current?.offsetHeight ?? 96;
+      setDragPos((prev) => {
+        if (prev) {
+          // Re-clamp an existing position on resize.
+          const w = toolbarRef.current?.offsetWidth ?? 52;
+          return {
+            x: Math.max(EDGE_GAP, Math.min(window.innerWidth - w - EDGE_GAP, prev.x)),
+            y: Math.max(EDGE_GAP, Math.min(window.innerHeight - h - EDGE_GAP, prev.y)),
+          };
+        }
+        return { x: EDGE_GAP, y: Math.round(window.innerHeight / 2 - h / 2) };
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, []);
 
   useEffect(() => { rateRef.current = fxRate || 1; }, [fxRate]);
 
@@ -210,51 +244,64 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
   }, []);
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
+  //
+  // We listen on `window` (not via React handlers + pointer capture) for the
+  // duration of a press. This is the most reliable cross-browser pattern on
+  // MOBILE: we keep receiving move/up even when the finger outruns the small
+  // pill, and we avoid the iOS Safari quirk where setPointerCapture can swallow
+  // the follow-up `click`. `touch-action: none` (set in CSS on the pill + its
+  // buttons) stops the browser from scrolling instead of dragging.
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Let button clicks through — only drag on the pill background itself
-    if ((e.target as HTMLElement).closest("button")) return;
-    e.preventDefault();
     const el = toolbarRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    dragOrigin.current = {
-      pointerX: e.clientX,
-      pointerY: e.clientY,
-      elX: rect.left,
-      elY: rect.top,
+    const origin = { px: e.clientX, py: e.clientY, ex: rect.left, ey: rect.top };
+    movedRef.current = false;
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - origin.px;
+      const dy = ev.clientY - origin.py;
+      // Only commit to a drag past the threshold — keeps taps tappable.
+      if (!movedRef.current && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      movedRef.current = true;
+      setDragging(true);
+      if (ev.cancelable) ev.preventDefault();
+      const w = el.offsetWidth || 52;
+      const h = el.offsetHeight || 96;
+      setDragPos({
+        x: Math.max(EDGE_GAP, Math.min(window.innerWidth  - w - EDGE_GAP, origin.ex + dx)),
+        y: Math.max(EDGE_GAP, Math.min(window.innerHeight - h - EDGE_GAP, origin.ey + dy)),
+      });
     };
-    el.setPointerCapture(e.pointerId);
-    setDragging(true);
-  };
-
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragging || !dragOrigin.current) return;
-    const dx = e.clientX - dragOrigin.current.pointerX;
-    const dy = e.clientY - dragOrigin.current.pointerY;
-    const newX = dragOrigin.current.elX + dx;
-    const newY = dragOrigin.current.elY + dy;
-    const el = toolbarRef.current;
-    const w = el?.offsetWidth  ?? 52;
-    const h = el?.offsetHeight ?? 110;
-    setDragPos({
-      x: Math.max(8, Math.min(window.innerWidth  - w - 8, newX)),
-      y: Math.max(8, Math.min(window.innerHeight - h - 8, newY)),
-    });
-  };
-
-  const onPointerUp = () => {
-    setDragging(false);
-    dragOrigin.current = null;
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      setDragging(false);
+      // Keep movedRef truthy through the `click` that fires right after a
+      // drag-release (so it's suppressed), then clear it on the next tick.
+      window.setTimeout(() => { movedRef.current = false; }, 0);
+    };
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
   // ── Currency flip ──────────────────────────────────────────────────────────
 
   const flip = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (movedRef.current) return; // was a drag, not a tap
     const next = usd ? "NGN" : "USD";
     writeStoredCurrency(next);
     setUsd(!usd);
+  };
+
+  const openHelp = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (movedRef.current) return; // was a drag, not a tap
+    setHelpOpen(true);
   };
 
   // ── Help modal ─────────────────────────────────────────────────────────────
@@ -265,12 +312,6 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
   function closeHelp() { setHelpOpen(false); markSeen(); }
 
   const activeGlyph = usd ? "$" : "₦";
-
-  // Position: free-drag overrides the CSS default (bottom-right)
-  const posStyle: React.CSSProperties = dragPos
-    ? { top: dragPos.y, left: dragPos.x, bottom: "auto", right: "auto" }
-    : { bottom: "6.5rem", right: "1rem" };
-
   const showCurrency = hasRate && resolved;
 
   return (
@@ -279,10 +320,15 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
       <div
         ref={toolbarRef}
         data-no-convert
+        className="pgh-toolbar"
         style={{
           position: "fixed",
-          ...posStyle,
+          top: dragPos ? dragPos.y : "50%",
+          left: dragPos ? dragPos.x : EDGE_GAP,
           zIndex: 55,
+          // Hidden until the left-middle default is measured, so it never
+          // flashes at the wrong spot on first paint.
+          visibility: dragPos ? "visible" : "hidden",
           background: PILL_BG,
           boxShadow: PILL_SHADOW,
           border: PILL_BORDER,
@@ -294,14 +340,11 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
           gap: "2px",
           touchAction: "none",
           userSelect: "none",
-          animation: dragging ? "none" : "pgh-heartbeat 3s ease-in-out infinite",
+          animation: dragging ? "none" : "pgh-heartbeat 3.4s ease-in-out infinite",
           cursor: dragging ? "grabbing" : "grab",
-          willChange: dragging ? "transform" : "auto",
+          willChange: dragging ? "top, left" : "auto",
         }}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
       >
         {/* Currency toggle */}
         {showCurrency && (
@@ -344,7 +387,7 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
         {/* Help button */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setHelpOpen(true); }}
+          onClick={openHelp}
           aria-label="How to shop"
           title="How to shop"
           style={{
@@ -443,6 +486,11 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
       </AnimatePresence>
 
       <style>{`
+        /* Touch must not pan/scroll the page when it starts on the pill OR any
+           of its buttons — otherwise the browser claims the gesture and the
+           drag never starts on mobile. Scoped to the pill so the help modal's
+           own controls keep normal touch behaviour. */
+        .pgh-toolbar, .pgh-toolbar * { touch-action: none; -webkit-user-select: none; }
         @keyframes pgh-heartbeat {
           0%,  56%, 100% { transform: scale(1); }
           14%             { transform: scale(1.07); }

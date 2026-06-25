@@ -36,8 +36,6 @@ import { CartDrawer } from "./cart/CartDrawer";
 import { CartUpsellModal } from "./cart/CartUpsellModal";
 import { ExitIntent } from "./cart/ExitIntent";
 import { FloatingToolbar } from "./FloatingToolbar";
-import { ViewerTicker } from "./social-proof/ViewerTicker";
-import { JustBoughtTicker } from "./social-proof/JustBoughtTicker";
 
 const NULL_RENDERERS: Record<string, () => null> = {};
 
@@ -131,8 +129,6 @@ export function LandingShell({
           <CartDrawer payload={payload} />
           <CartUpsellModal payload={payload} />
           {payload.exit_intent_enabled && <ExitIntent payload={payload} />}
-          <ViewerTicker payload={payload} />
-          <JustBoughtTicker payload={payload} />
           <FloatingToolbar payload={payload} />
         </>
       )}

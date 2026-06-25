@@ -58,13 +58,13 @@ import { ImportExportControls } from "@/components/catalogue/ImportExportControl
  * Pricing in plain terms (owner-confirmed):
  *  • Fixed bundle price — one flat price for the whole bundle.
  *  • % off — take a percentage off the total of everything inside.
- *  • Amount off — take a fixed ₦ amount off the whole bundle. It STAYS THE SAME
- *    no matter how many products you add (a flat, per-bundle discount).
+ *  • Amount off — take a fixed ₦ amount off EACH unit in the bundle. It scales
+ *    with the number of items: "₦35,000 off each" on a 6-piece bundle = ₦210,000.
  */
 const PRICING_MODELS = [
   { value: "fixed_bundle_price", label: "Fixed bundle price" },
   { value: "pct_off", label: "% off the bundle total" },
-  { value: "amount_off", label: "Fixed ₦ off the bundle" },
+  { value: "amount_off", label: "₦ off each unit" },
 ];
 
 const PRICING_HELP: Record<string, string> = {
@@ -73,7 +73,7 @@ const PRICING_HELP: Record<string, string> = {
   pct_off:
     "Take this percentage off the total of everything in the bundle (scales naturally as you add products).",
   amount_off:
-    "Take this fixed ₦ amount off the whole bundle. It stays the same no matter how many products you add.",
+    "Take this fixed ₦ amount off EACH unit in the bundle — it multiplies by the number of items (e.g. ₦35,000 off each on a 6-piece bundle saves ₦210,000).",
 };
 
 const inputCls =
@@ -467,7 +467,7 @@ function BundleEditorModal({
         ) : (
           <Field
             label={model === "pct_off" ? "Discount percentage" : "Discount amount"}
-            hint={model === "pct_off" ? "percent off the total" : "flat ₦ off the bundle"}
+            hint={model === "pct_off" ? "percent off the total" : "₦ off each unit (× number of items)"}
           >
             <NumberField
               value={amount}

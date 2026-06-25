@@ -33,10 +33,74 @@ const {
   computeBundleDiscount,
   resolveBundleForCheckout,
 } = require("../../../src/modules/sales_campaigns/campaigns.public.service");
+const {
+  liveBundlePriceFromSource,
+} = require("../../../src/modules/sales_campaigns/campaigns.bundles.service");
 
 const fmt = (m) => toCurrencyString(m);
 
 afterEach(() => jest.clearAllMocks());
+
+describe("liveBundlePriceFromSource (live Catalogue pricing)", () => {
+  it("pct_off: subtotal × (1 − discount_value) (unit count irrelevant)", () => {
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "pct_off", src_discount_value: "0.2" },
+        500000,
+        6,
+      ),
+    ).toBe(400000);
+  });
+
+  it("amount_off: ₦ off EACH unit — discount × unit count, clamped ≥ 0", () => {
+    // ₦35k off each of 6 units = ₦210k off → price ₦290k (the owner's case).
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "amount_off", src_discount_value: "35000" },
+        500000,
+        6,
+      ),
+    ).toBe(290000);
+    // One unit → just the per-unit amount off.
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "amount_off", src_discount_value: "35000" },
+        500000,
+        1,
+      ),
+    ).toBe(465000);
+    // Total discount can't exceed the subtotal (price floors at 0).
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "amount_off", src_discount_value: "200000" },
+        500000,
+        6,
+      ),
+    ).toBe(0);
+  });
+
+  it("fixed_bundle_price: the offer's set price", () => {
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "fixed_bundle_price", src_bundle_price_ngn: "350000" },
+        500000,
+        6,
+      ),
+    ).toBe(350000);
+  });
+
+  it("returns null for quantity models and when there is no source", () => {
+    expect(
+      liveBundlePriceFromSource(
+        { src_pricing_model: "buy_x_get_y", src_discount_value: "0.3" },
+        500000,
+        6,
+      ),
+    ).toBeNull();
+    expect(liveBundlePriceFromSource({}, 500000, 6)).toBeNull();
+    expect(liveBundlePriceFromSource(null, 500000, 6)).toBeNull();
+  });
+});
 
 describe("computeBundleDiscount (pure)", () => {
   it("sums component prices — styled components are PRICED, not skipped", () => {
@@ -238,5 +302,75 @@ describe("resolveBundleForCheckout (styled components → sellable lines)", () =
         units: 1,
       }),
     ).rejects.toThrow(/no items/i);
+  });
+
+  it("charges the LIVE Catalogue discount, overriding a stale snapshot", async () => {
+    bundleRepo.listBundleItems.mockResolvedValue([
+      {
+        styled_id: "sty-1",
+        variant_id: null,
+        styled_base_variant_id: "var-base-1",
+        styled_name: "Styled wig",
+        quantity: 1,
+        unit_price_ngn: "300000",
+      },
+      {
+        styled_id: "sty-2",
+        variant_id: null,
+        styled_base_variant_id: "var-base-2",
+        styled_name: "Styled wig 2",
+        quantity: 1,
+        unit_price_ngn: "200000",
+      },
+    ]);
+    // The stored snapshot is stale (₦480k). The Catalogue offer now says 30% off
+    // → the till must charge 30% off the ₦500k live sum-of-parts = ₦350k.
+    bundleRepo.getCampaignBundle.mockResolvedValue({
+      campaign_bundle_price_ngn: "480000",
+      src_pricing_model: "pct_off",
+      src_discount_value: "0.3",
+    });
+
+    const res = await resolveBundleForCheckout({
+      brand: "pixiegirl",
+      campaign_id: "camp-1",
+      bundle_id: "bun-1",
+      units: 1,
+    });
+
+    expect(fmt(res.sumOfParts)).toBe("500000.00");
+    expect(fmt(res.effectivePrice)).toBe("350000.00"); // live, not the ₦480k snapshot
+    expect(fmt(res.discountNgn)).toBe("150000.00");
+  });
+
+  it("charges amount_off PER UNIT (₦35k off each × 6 = ₦210k) at the till", async () => {
+    // A 6-piece bundle, each component a styled wig priced ₦100k → ₦600k parts.
+    bundleRepo.listBundleItems.mockResolvedValue(
+      Array.from({ length: 6 }, (_, i) => ({
+        styled_id: `sty-${i}`,
+        variant_id: null,
+        styled_base_variant_id: `var-base-${i}`,
+        styled_name: `Wig ${i}`,
+        quantity: 1,
+        unit_price_ngn: "100000",
+      })),
+    );
+    // The source Catalogue offer says "₦35,000 off each unit".
+    bundleRepo.getCampaignBundle.mockResolvedValue({
+      campaign_bundle_price_ngn: null,
+      src_pricing_model: "amount_off",
+      src_discount_value: "35000",
+    });
+
+    const res = await resolveBundleForCheckout({
+      brand: "faitlynhair",
+      campaign_id: "camp-1",
+      bundle_id: "bun-mix-01",
+      units: 1,
+    });
+
+    expect(fmt(res.sumOfParts)).toBe("600000.00");
+    expect(fmt(res.discountNgn)).toBe("210000.00"); // 35,000 × 6 units
+    expect(fmt(res.effectivePrice)).toBe("390000.00");
   });
 });

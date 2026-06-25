@@ -243,9 +243,25 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
             COALESCE(pb.hero_image_url, fallback_img.image_url) AS bundle_hero_image_url,
             pb.default_per_item_discount_ngn,
             pb.default_preorder_loss_pct,
-            live_stk.live_stock AS live_bundle_stock
+            live_stk.live_stock AS live_bundle_stock,
+            src.src_pricing_model,
+            src.src_discount_value,
+            src.src_bundle_price_ngn
        FROM ${t(brand, "sales_campaign_bundles")} scb
        JOIN ${t(brand, "product_bundles")} pb ON pb.bundle_id = scb.bundle_id
+       LEFT JOIN LATERAL (
+         -- The Catalogue (retention) bundle_offer this campaign bundle mirrors,
+         -- matched by display name (the mirror copies offer.display_name → name).
+         -- Lets the storefront resolve the discount LIVE from Catalogue so an
+         -- edit there shows immediately, no re-import. NULL for one-off bundles.
+         SELECT bo.pricing_model   AS src_pricing_model,
+                bo.discount_value  AS src_discount_value,
+                bo.bundle_price_ngn AS src_bundle_price_ngn
+           FROM ${t(brand, "bundle_offers")} bo
+          WHERE bo.display_name = pb.name AND bo.is_active = true
+          ORDER BY bo.created_at DESC NULLS LAST
+          LIMIT 1
+       ) src ON true
        LEFT JOIN LATERAL (
          SELECT COALESCE(
            (SELECT COALESCE(pi.cdn_url, pi.file_path)
@@ -299,14 +315,31 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
   return rows;
 }
 
-// Fetch a single campaign↔bundle link (incl. campaign_bundle_price_ngn) so the
-// public checkout/quote can price a bundle at the operator-set campaign price
-// rather than re-deriving it from components. Returns null when the bundle isn't
-// attached to the campaign.
+// Fetch a single campaign↔bundle link so the public checkout/quote can price a
+// bundle. Returns the link PLUS the source Catalogue offer's LIVE pricing
+// (matched by name, same as listCampaignBundles), so checkout charges the same
+// discount the storefront shows the moment it is edited in Catalogue — without
+// a re-import. `src_*` are null for one-off bundles with no Catalogue source.
+// Returns null when the bundle isn't attached to the campaign.
 async function getCampaignBundle({ client, brand, campaign_id, bundle_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_campaign_bundles")}
-      WHERE campaign_id = $1 AND bundle_id = $2
+    `SELECT scb.*,
+            pb.name AS bundle_name,
+            src.src_pricing_model,
+            src.src_discount_value,
+            src.src_bundle_price_ngn
+       FROM ${t(brand, "sales_campaign_bundles")} scb
+       JOIN ${t(brand, "product_bundles")} pb ON pb.bundle_id = scb.bundle_id
+       LEFT JOIN LATERAL (
+         SELECT bo.pricing_model   AS src_pricing_model,
+                bo.discount_value  AS src_discount_value,
+                bo.bundle_price_ngn AS src_bundle_price_ngn
+           FROM ${t(brand, "bundle_offers")} bo
+          WHERE bo.display_name = pb.name AND bo.is_active = true
+          ORDER BY bo.created_at DESC NULLS LAST
+          LIMIT 1
+       ) src ON true
+      WHERE scb.campaign_id = $1 AND scb.bundle_id = $2
       LIMIT 1`,
     [campaign_id, bundle_id],
   );

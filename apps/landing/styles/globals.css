@@ -243,6 +243,57 @@ body::before {
   );
 }
 
+/* ── Primary CTA — must always read as a raised, tappable button ──────
+   The old purchase buttons used --accent-deep, which on the light Atelier
+   palette equals the dark --panel surface of the cart drawer + product modal
+   (.dropglass) — so the Checkout / Add-to-bag button literally vanished into
+   the drawer ("brown on brown — you struggle to find the button").
+
+   Fix: a dedicated, elevated CTA.
+     • On the light commerce body  → deep brand colour + paper text (high
+       contrast on cream cards).
+     • Inside a .dropglass overlay  → the brand's WARM accent (tan/gold) + dark
+       ink, so the button pops off the dark surface and can never blend in.
+   Elevation + hover-lift make the affordance obvious on every surface. */
+[data-atelier-commerce] .btn-cta {
+  background: rgb(var(--accent-deep));
+  color: rgb(var(--bg));
+  border: 1px solid rgb(0 0 0 / 0.1);
+  box-shadow:
+    0 6px 18px rgb(0 0 0 / 0.22),
+    inset 0 1px 0 rgb(255 255 255 / 0.18);
+  transition:
+    transform 0.15s ease,
+    filter 0.15s ease,
+    box-shadow 0.15s ease;
+}
+[data-atelier-commerce] .btn-cta:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 26px rgb(0 0 0 / 0.28),
+    inset 0 1px 0 rgb(255 255 255 / 0.2);
+}
+[data-atelier-commerce] .btn-cta:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+/* Warm, light fill on the dark overlays so the CTA always contrasts. */
+[data-atelier-commerce] .dropglass .btn-cta {
+  background: rgb(var(--brand-accent));
+  color: rgb(var(--cta-ink));
+  border: 1px solid rgb(0 0 0 / 0.18);
+}
+/* Keep the moving sheen subtle and on-tone over the warm fill. */
+[data-atelier-commerce] .dropglass .btn-cta.cta-sheen::after {
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.35) 50%,
+    transparent 70%
+  );
+}
+
 /* Subtle paper-grain texture (matches the Atelier apex). */
 [data-atelier-commerce]::before {
   content: "";

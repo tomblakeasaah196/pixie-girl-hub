@@ -9,6 +9,7 @@ import {
 } from "next/font/google";
 import { headers } from "next/headers";
 import { getBrand } from "@/lib/brand";
+import { PwaCleanup } from "@/components/PwaCleanup";
 import "@/styles/globals.css";
 
 const playfair = Playfair_Display({
@@ -88,7 +89,10 @@ export default function RootLayout({
       data-business={brand}
       className={`${playfair.variable} ${montserrat.variable} ${jetbrains.variable} ${italiana.variable} ${fraunces.variable} ${interTight.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <PwaCleanup />
+        {children}
+      </body>
     </html>
   );
 }

@@ -35,6 +35,7 @@ import { CartButton } from "./cart/CartButton";
 import { CartDrawer } from "./cart/CartDrawer";
 import { CartUpsellModal } from "./cart/CartUpsellModal";
 import { ExitIntent } from "./cart/ExitIntent";
+import { HowToShop } from "./HowToShop";
 import { ViewerTicker } from "./social-proof/ViewerTicker";
 import { JustBoughtTicker } from "./social-proof/JustBoughtTicker";
 
@@ -132,6 +133,7 @@ export function LandingShell({
           {payload.exit_intent_enabled && <ExitIntent payload={payload} />}
           <ViewerTicker payload={payload} />
           <JustBoughtTicker payload={payload} />
+          <HowToShop />
         </>
       )}
     </main>

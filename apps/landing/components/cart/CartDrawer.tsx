@@ -242,6 +242,11 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                     <div className="text-[13px] font-semibold truncate">
                       {it.name}
                     </div>
+                    {it.variant_label && (
+                      <div className="text-[11px] text-[rgb(var(--text-muted))] truncate mt-0.5">
+                        {it.variant_label}
+                      </div>
+                    )}
                     {it.preorder ? (
                       <div className="text-[10px] text-[rgb(var(--warn))] mt-0.5">
                         Out of stock · pre-order ships in{" "}
@@ -350,7 +355,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                 className={`w-full inline-flex items-center justify-center h-12 rounded-xl font-semibold cta-sheen disabled:cursor-not-allowed ${
                   checkoutDisabled
                     ? "bg-[rgb(var(--text)/0.06)] text-[rgb(var(--text-faint))]"
-                    : "bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))]"
+                    : "btn-cta"
                 }`}
               >
                 {rawBelowMin

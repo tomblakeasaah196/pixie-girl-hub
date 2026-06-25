@@ -538,7 +538,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         </Link>
         <h1 className="font-display text-[36px] md:text-[44px] leading-tight mt-3">
           Almost{" "}
-          <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">
+          <em className="not-italic md:italic text-[rgb(var(--accent-readable))]">
             yours.
           </em>
         </h1>
@@ -616,7 +616,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     }`}
                   >
                     <span className="flex items-center gap-1.5 text-[13px] font-semibold">
-                      <opt.icon className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
+                      <opt.icon className="w-3.5 h-3.5 text-[rgb(var(--accent-readable))]" />
                       {opt.label}
                     </span>
                     <span className="block text-[11px] text-[rgb(var(--text-faint))] mt-0.5">
@@ -743,7 +743,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                 <div className="space-y-3 pt-1">
                   <div className="rounded-xl border border-[rgb(var(--border-c)/0.12)] bg-[rgb(var(--text)/0.03)] px-4 py-3">
                     <p className="micro mb-1.5 flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
+                      <MapPin className="w-3.5 h-3.5 text-[rgb(var(--accent-readable))]" />
                       Pickup location
                     </p>
                     {pickupAddr?.address ? (
@@ -783,7 +783,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   onChange={(e) => setIsGift(e.target.checked)}
                   className="accent-[rgb(var(--accent-deep))]"
                 />
-                <Gift className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
+                <Gift className="w-3.5 h-3.5 text-[rgb(var(--accent-readable))]" />
                 <span>Yes — this is a gift</span>
               </label>
               {isGift && (
@@ -806,7 +806,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       onChange={(e) => setShipToRecipient(e.target.checked)}
                       className="accent-[rgb(var(--accent-deep))]"
                     />
-                    <MapPin className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
+                    <MapPin className="w-3.5 h-3.5 text-[rgb(var(--accent-readable))]" />
                     <span>Ship directly to the recipient</span>
                   </label>
                   {shipToRecipient && (
@@ -858,7 +858,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     onClick={() => setGateway(g)}
                     className={`p-3 rounded-xl border text-[13px] font-semibold capitalize ${
                       gateway === g
-                        ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] text-[rgb(var(--accent-glow))]"
+                        ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)] text-[rgb(var(--accent-readable))]"
                         : "border-[rgb(var(--border-c)/0.1)] text-[rgb(var(--text-muted))]"
                     }`}
                   >
@@ -948,6 +948,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="truncate font-semibold">{i.name}</div>
+                      {i.variant_label && (
+                        <div className="truncate text-[11px] text-[rgb(var(--text-muted))]">
+                          {i.variant_label}
+                        </div>
+                      )}
                       {i.preorder ? (
                         <div className="text-[11px] text-[rgb(var(--warn))]">
                           Out of stock · pre-order ships in{" "}
@@ -1032,7 +1037,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   <button
                     type="button"
                     onClick={() => setPromoOpen(true)}
-                    className="inline-flex items-center gap-1.5 text-[12px] text-[rgb(var(--accent-glow))] font-semibold hover:underline"
+                    className="inline-flex items-center gap-1.5 text-[12px] text-[rgb(var(--accent-readable))] font-semibold hover:underline"
                   >
                     <Tag className="w-3 h-3" /> Have a promo code?{" "}
                     <ChevronDown className="w-3 h-3" />
@@ -1188,7 +1193,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                 type="submit"
                 whileTap={{ scale: 0.99 }}
                 disabled={busy}
-                className="w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen disabled:opacity-60"
+                className="btn-cta w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl font-semibold cta-sheen disabled:opacity-60"
               >
                 {busy ? (
                   "Securing your order…"
@@ -1252,7 +1257,7 @@ function Field({
     <label className="block">
       <span className="micro mb-1.5 block">
         {label}{" "}
-        {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
+        {required && <span className="text-[rgb(var(--accent-readable))]">*</span>}
       </span>
       {children}
     </label>
@@ -1329,7 +1334,7 @@ function Toggle({
       />
       <span>
         {label}{" "}
-        {required && <span className="text-[rgb(var(--accent-glow))]">*</span>}
+        {required && <span className="text-[rgb(var(--accent-readable))]">*</span>}
         {checked && (
           <Check className="inline w-3 h-3 text-[rgb(var(--success))] ml-1" />
         )}

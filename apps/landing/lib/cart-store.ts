@@ -12,6 +12,10 @@ export interface CartItem {
    *  the line from the styled tables (styled_product_variants). */
   styled_variant_id?: string;
   name: string;
+  /** Human-readable summary of the chosen options (e.g. "Small · HD Lace
+   *  13x6"). Shown under the line name in the cart + checkout so the buyer
+   *  can see the head size / lace they picked. */
+  variant_label?: string;
   image_url?: string;
   unit_price_ngn: number;
   retail_price_ngn?: number;

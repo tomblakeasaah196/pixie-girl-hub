@@ -4,6 +4,33 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import type { LandingConfig } from "@landing-kit";
 import { hexToTriplet, fontStack, fontHrefs } from "@landing-kit";
 
+/** Parse "#rrggbb" → [r,g,b]. Falls back to black on a malformed value. */
+function parseHex(hex: string | null | undefined): [number, number, number] {
+  if (!hex) return [0, 0, 0];
+  const h = hex.replace("#", "");
+  if (h.length < 6) return [0, 0, 0];
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+/**
+ * Blend two brand hex colours and return the "r g b" triplet the token system
+ * expects. Used to derive *readable* secondary-text tones from the brand's own
+ * ink + paper, instead of the brand "muted" swatch — which on the light Atelier
+ * palette is a pale greige that fails WCAG on cream (≈1.6:1). Mixing ink toward
+ * paper keeps the tone on-brand while guaranteeing contrast (0.30 ≈ 7:1,
+ * 0.46 ≈ 4.8:1 on a cream paper).
+ */
+function mixTriplet(hexA: string, hexB: string, t: number): string {
+  const a = parseHex(hexA);
+  const b = parseHex(hexB);
+  const m = (i: number) => Math.round(a[i] + (b[i] - a[i]) * t);
+  return `${m(0)} ${m(1)} ${m(2)}`;
+}
+
 /**
  * Wraps the live-state commerce body in the brand's Atelier visual identity.
  *
@@ -61,13 +88,22 @@ export function BrandThemeProvider({
       "--panel-2": hexToTriplet(t.primary),
       "--panel-alpha": "0.05",
       "--text": hexToTriplet(t.ink),
-      "--text-muted": hexToTriplet(t.muted),
-      "--text-faint": hexToTriplet(t.muted),
+      // Readable secondary text: blend the brand ink toward paper rather than
+      // using the pale brand "muted" swatch (which fails WCAG on cream).
+      "--text-muted": mixTriplet(t.ink, t.paper, 0.3),
+      "--text-faint": mixTriplet(t.ink, t.paper, 0.46),
+      // Dark ink reserved for text on the warm CTA fill inside dark overlays
+      // (the cart drawer + product modal), where --text flips to paper.
+      "--cta-ink": hexToTriplet(t.ink),
       "--border-c": hexToTriplet(t.primary),
       "--border-alpha": "0.12",
       "--accent": hexToTriplet(t.primary),
       "--accent-deep": hexToTriplet(t.primaryDeep),
       "--accent-glow": hexToTriplet(t.glow),
+      // A deepened gold for accent TEXT/links on the light cream body. The raw
+      // brand glow (a pale camel) fails WCAG as small text on paper; darkening
+      // it toward ink keeps the gold character while passing contrast (~4.6:1).
+      "--accent-readable": mixTriplet(t.glow, t.ink, 0.38),
       "--font-display": fontStack(typ?.display, "serif"),
       "--font-body": fontStack(typ?.body, "sans"),
       "--blur": `${tex?.glassBlur ?? 12}px`,

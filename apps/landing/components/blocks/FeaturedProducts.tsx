@@ -3,7 +3,16 @@
 import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { Clock, Quote, ShoppingBag, Search, X } from "lucide-react";
+import {
+  Clock,
+  Package,
+  Quote,
+  Search,
+  ShoppingBag,
+  Sparkles,
+  Store,
+  X,
+} from "lucide-react";
 import type { LandingPayload, LandingProduct } from "@/lib/types";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
@@ -74,8 +83,40 @@ export function FeaturedProducts({
   const [openId, setOpenId] = useState<string | null>(null);
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  // Styled (retail) vs Wholesale (bulk / raw) shopping mode. Wholesale is only
+  // offered when the campaign has bulk tiers configured.
+  const [mode, setMode] = useState<"styled" | "wholesale">("styled");
   // Live stock overrides the page-baked stock_remaining (beats CDN caching).
   const liveStock = useLiveStock(payload.slug, state === "live");
+
+  const bulkTiers = useMemo(
+    () =>
+      (payload.bulk_tiers || [])
+        .filter((t) => t.min_qty > 0 && t.discount_per_item_ngn > 0)
+        .sort((a, b) => a.min_qty - b.min_qty),
+    [payload.bulk_tiers],
+  );
+  const wholesaleAvailable = state === "live" && bulkTiers.length > 0;
+  const maxBulkDiscount = bulkTiers.length
+    ? Math.max(...bulkTiers.map((t) => t.discount_per_item_ngn))
+    : 0;
+  const minBulkQty = bulkTiers[0]?.min_qty ?? 0;
+  const wholesale = wholesaleAvailable && mode === "wholesale";
+
+  // Let the hero (or a shared link) deep-link into wholesale via #wholesale,
+  // and keep the toggle in sync if the hash changes while on the page.
+  useEffect(() => {
+    if (!wholesaleAvailable) return;
+    const apply = () => {
+      if (typeof window === "undefined") return;
+      const h = window.location.hash.replace("#", "");
+      if (h === "wholesale") setMode("wholesale");
+      if (h === "shop" || h === "styled") setMode("styled");
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, [wholesaleAvailable]);
 
   // Filter products by search term (name and short description).
   const filtered = useMemo(
@@ -152,13 +193,98 @@ export function FeaturedProducts({
   }
 
   return (
-    <section data-block="featured_products" className="section">
+    <section id="shop" data-block="featured_products" className="section scroll-mt-20">
       <div className="mx-auto max-w-[1180px]">
         <SectionHeader
-          eyebrow={sectionEyebrow}
-          title={sectionTitle}
-          subtitle={sectionSubtitle}
+          eyebrow={wholesale ? "Wholesale · bulk" : sectionEyebrow}
+          title={wholesale ? "Buy in bulk." : sectionTitle}
+          subtitle={
+            wholesale
+              ? "The same wigs, ordered raw and unstyled at trade prices — for stylists and resellers."
+              : sectionSubtitle
+          }
         />
+
+        {/* Styled vs Wholesale segmented control — only when the campaign
+            offers wholesale (bulk tiers configured). Gives the buyer a clear
+            "two ways to shop" instead of burying the bulk opportunity. */}
+        {wholesaleAvailable && (
+          <div className="mt-8 flex justify-center">
+            <div
+              className="inline-flex rounded-full border border-[rgb(var(--border-c)/0.18)] bg-[rgb(var(--text)/0.04)] p-1"
+              role="tablist"
+              aria-label="Shopping mode"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!wholesale}
+                onClick={() => {
+                  setMode("styled");
+                  if (typeof history !== "undefined")
+                    history.replaceState(null, "", "#shop");
+                }}
+                className={
+                  "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-semibold transition " +
+                  (!wholesale
+                    ? "bg-[rgb(var(--accent-deep))] text-[rgb(var(--bg))] shadow-[0_2px_10px_rgb(0_0_0/0.2)]"
+                    : "text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]")
+                }
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Shop Styled
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={wholesale}
+                onClick={() => {
+                  setMode("wholesale");
+                  if (typeof history !== "undefined")
+                    history.replaceState(null, "", "#wholesale");
+                }}
+                className={
+                  "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-semibold transition " +
+                  (wholesale
+                    ? "bg-[rgb(var(--accent-deep))] text-[rgb(var(--bg))] shadow-[0_2px_10px_rgb(0_0_0/0.2)]"
+                    : "text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]")
+                }
+              >
+                <Package className="h-3.5 w-3.5" /> Shop Wholesale
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Wholesale explainer — the bulk-tier economics, surfaced up front. */}
+        {wholesale && (
+          <div className="mt-6 mx-auto max-w-[760px] rounded-[var(--radius)] border border-[rgb(var(--brand-accent)/0.3)] bg-[rgb(var(--brand-accent)/0.08)] p-5">
+            <div className="flex items-center gap-2">
+              <Store className="h-4 w-4 text-[rgb(var(--accent-readable))]" />
+              <h3 className="font-display text-[18px]">
+                Reseller &amp; bulk pricing
+              </h3>
+            </div>
+            <p className="mt-1.5 text-[13px] text-[rgb(var(--text-muted))] leading-relaxed">
+              Open any wig below and choose{" "}
+              <em>Wholesale — raw wigs</em>. The bulk rate unlocks across every
+              style in your cart — mix and match to reach the minimum of{" "}
+              {minBulkQty}.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {bulkTiers.map((t) => (
+                <span
+                  key={t.min_qty}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[rgb(var(--brand-accent)/0.3)] bg-[rgb(var(--text)/0.03)] px-3 py-1.5 text-[12px]"
+                >
+                  <span className="font-semibold">{t.min_qty}+ wigs</span>
+                  <span className="font-semibold text-[rgb(var(--accent-readable))]">
+                    save {money(t.discount_per_item_ngn)}/wig
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Product search */}
         <div className="mt-10 mb-8 max-w-md mx-auto">
@@ -225,6 +351,8 @@ export function FeaturedProducts({
                   deliveryWeeks={payload.delivery_weeks}
                   preorderExtraWeeks={payload.preorder_extra_weeks}
                   payload={payload}
+                  wholesale={wholesale}
+                  wholesaleHintNgn={maxBulkDiscount}
                   onOpen={(id) => setOpenId(id)}
                   onOpenExplainer={() => setExplainerOpen(true)}
                 />
@@ -257,6 +385,8 @@ function Card({
   deliveryWeeks,
   preorderExtraWeeks,
   payload,
+  wholesale = false,
+  wholesaleHintNgn = 0,
   onOpen,
   onOpenExplainer,
   liveStock,
@@ -267,6 +397,8 @@ function Card({
   deliveryWeeks?: number | null;
   preorderExtraWeeks?: number;
   payload: LandingPayload;
+  wholesale?: boolean;
+  wholesaleHintNgn?: number;
   onOpen: (styledId: string) => void;
   onOpenExplainer: () => void;
   liveStock?: Record<string, number>;
@@ -328,13 +460,22 @@ function Card({
             Out of stock · Preorder
           </div>
         )}
-        {/* Red percentage-off badge — hardcoded sale red per owner directive */}
-        {deal && (
+        {/* Red savings badge — shows the NAIRA amount saved (owner directive:
+            "₦16,000 off", not "4%") so the deal reads as real money. */}
+        {!wholesale && deal && deal.saveNgn > 0 && (
           <div
-            className="absolute top-2 right-2 rounded-md px-2 py-1 text-[11px] font-extrabold text-white leading-none"
+            className="absolute top-2 right-2 rounded-md px-2 py-1 text-[11px] font-extrabold text-white leading-none shadow-[0_2px_8px_rgb(0_0_0/0.3)]"
             style={{ background: SALE_RED }}
           >
-            −{deal.pctOff}%
+            {money(deal.saveNgn)} OFF
+          </div>
+        )}
+        {wholesale && (
+          <div
+            className="absolute top-2 right-2 rounded-md px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider leading-none text-[rgb(var(--cta-ink))] shadow-[0_2px_8px_rgb(0_0_0/0.3)]"
+            style={{ background: "rgb(var(--brand-accent))" }}
+          >
+            Raw
           </div>
         )}
       </button>
@@ -352,7 +493,19 @@ function Card({
             {product.short_description}
           </div>
         )}
-        {deal ? (
+        {wholesale ? (
+          <div className="mt-2">
+            <div className="text-[12.5px] font-semibold">Raw / unstyled</div>
+            {wholesaleHintNgn > 0 && (
+              <div className="text-[12px] font-semibold text-[rgb(var(--accent-readable))]">
+                Save up to {money(wholesaleHintNgn)}/wig in bulk
+              </div>
+            )}
+            <div className="mt-0.5 text-[11px] text-[rgb(var(--text-faint))]">
+              Tap to order at trade price
+            </div>
+          </div>
+        ) : deal ? (
           /* Was / Now pricing — sale red treatment */
           <div className="mt-2 space-y-0.5">
             <div className="flex items-baseline gap-2 flex-wrap">
@@ -413,41 +566,56 @@ function Card({
             </span>
           </div>
         )}
-        {live && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              // Styled products must be configured (size/lace) before adding —
-              // the base product_id prices at ₦0. Open the detail modal, which
-              // adds the chosen styled_variant_id to the cart.
-              if (product.styled_id) {
+        {live &&
+          (wholesale ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
                 open();
-                return;
-              }
-              const itemId = product.product_id;
-              if (!itemId) return;
-              add({
-                id: itemId,
-                type: "product",
-                product_id: product.product_id,
-                name: product.name || "",
-                image_url: product.image_url || undefined,
-                unit_price_ngn: price,
-                retail_price_ngn: retail || undefined,
-                quantity: 1,
-                preorder: isPreorder,
-                preorder_lead_weeks: isPreorder ? weeks ?? undefined : undefined,
-                delivery_weeks: !isPreorder ? weeks ?? undefined : undefined,
-              });
-              openCart();
-            }}
-            className="mt-3 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-[rgb(var(--checkout-bg,var(--accent-deep)))] text-[rgb(var(--text))] text-[12px] font-semibold cta-sheen"
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />{" "}
-            {isPreorder ? "Pre-order" : "Add"}
-          </button>
-        )}
+              }}
+              disabled={!openable}
+              className="btn-cta mt-3 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-semibold cta-sheen disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Package className="w-3.5 h-3.5" /> Order wholesale
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                // Styled products must be configured (size/lace) before adding —
+                // the base product_id prices at ₦0. Open the detail modal, which
+                // adds the chosen styled_variant_id to the cart.
+                if (product.styled_id) {
+                  open();
+                  return;
+                }
+                const itemId = product.product_id;
+                if (!itemId) return;
+                add({
+                  id: itemId,
+                  type: "product",
+                  product_id: product.product_id,
+                  name: product.name || "",
+                  image_url: product.image_url || undefined,
+                  unit_price_ngn: price,
+                  retail_price_ngn: retail || undefined,
+                  quantity: 1,
+                  preorder: isPreorder,
+                  preorder_lead_weeks: isPreorder
+                    ? weeks ?? undefined
+                    : undefined,
+                  delivery_weeks: !isPreorder ? weeks ?? undefined : undefined,
+                });
+                openCart();
+              }}
+              className="btn-cta mt-3 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-semibold cta-sheen"
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />{" "}
+              {isPreorder ? "Pre-order" : "Add"}
+            </button>
+          ))}
       </div>
     </motion.article>
   );

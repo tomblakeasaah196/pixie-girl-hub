@@ -206,6 +206,9 @@ export function ProductDetailModal({
   const [size, setSize] = useState<string | null>(null);
   const [lace, setLace] = useState<string | null>(null);
   const [unstyledQty, setUnstyledQty] = useState(1);
+  // Surfaced when an add can't be completed — never fail silently (the buyer
+  // used to tap "Add to bag" and nothing happened, with no explanation).
+  const [addErr, setAddErr] = useState<string | null>(null);
 
   const add = useCart((s) => s.add);
   const openCart = useCart((s) => s.openCart);
@@ -216,6 +219,7 @@ export function ProductDetailModal({
     if (!open || !styledId) {
       setProduct(null);
       setErr(null);
+      setAddErr(null);
       setUnstyledQty(1);
       return;
     }
@@ -297,20 +301,56 @@ export function ProductDetailModal({
     );
   }, [product, size, lace]);
 
+  // A readable summary of the chosen options ("Small · HD Lace 13x6") built
+  // from what the buyer actually selected — shown in the cart + checkout so
+  // they can see their head size / lace. Falls back to the variant's own
+  // labels if the tier lists are sparse.
+  const chosenVariantLabel = useMemo(() => {
+    if (!product) return "";
+    const sizeLabel =
+      product.size_tiers.find((t) => t.size_code === size)?.label ||
+      selectedVariant?.size_label ||
+      size ||
+      "";
+    const laceLabel =
+      product.lace_sizes.find((l) => l.lace_code === lace)?.label ||
+      selectedVariant?.lace_label ||
+      "";
+    return [sizeLabel, laceLabel].filter(Boolean).join(" · ");
+  }, [product, size, lace, selectedVariant]);
+
+  // Clear any prior add-error the moment the buyer changes their selection.
+  useEffect(() => {
+    setAddErr(null);
+  }, [size, lace]);
+
   function handleAdd() {
+    setAddErr(null);
     // Never add an unresolvable line: without a styled_variant_id the checkout
-    // can't price it (it would 409 CART_ITEM_UNRESOLVED). Require a variant.
-    if (!product || !selectedVariant?.variant_id) return;
+    // can't price it (it would 409 CART_ITEM_UNRESOLVED). Tell the buyer
+    // instead of doing nothing.
+    if (!product || !selectedVariant?.variant_id) {
+      setAddErr(
+        "This size and lace combination isn't available right now. Try a different size or lace.",
+      );
+      return;
+    }
     const price =
       Number(selectedVariant.effective_price_ngn) || effectivePrice || 0;
-    if (!price) return;
+    if (!price) {
+      setAddErr(
+        "We couldn't price this option. Please pick a size and lace, or contact us to order.",
+      );
+      return;
+    }
     add({
       // Unique per styled variant so different size/colour are separate lines.
       id: `styled:${selectedVariant.variant_id}`,
       type: "styled",
       styled_variant_id: selectedVariant.variant_id,
       product_id: undefined,
-      name: `${product.name} — ${selectedVariant.size_label}`,
+      name: product.name,
+      variant_label: chosenVariantLabel || undefined,
       image_url: product.gallery[0]?.url,
       unit_price_ngn: price,
       retail_price_ngn: Number(product.retail_price_ngn || 0) || undefined,
@@ -324,18 +364,30 @@ export function ProductDetailModal({
   // (no size/lace premiums). Flagged `unstyled` so the server prices it raw and
   // counts it toward the reseller/bulk tier. Kept as its own cart line.
   function handleAddUnstyled() {
-    if (!product || !selectedVariant?.variant_id) return;
+    setAddErr(null);
+    if (!product || !selectedVariant?.variant_id) {
+      setAddErr(
+        "This option isn't available to order raw right now. Try a different size or lace.",
+      );
+      return;
+    }
     const anchor = Number(
       product.anchor_price_ngn ?? product.retail_price_ngn ?? 0,
     );
-    if (!anchor) return;
+    if (!anchor) {
+      setAddErr("We couldn't price the raw option for this wig.");
+      return;
+    }
     add({
       id: `raw:${selectedVariant.variant_id}`,
       type: "styled",
       styled_variant_id: selectedVariant.variant_id,
       product_id: undefined,
       unstyled: true,
-      name: `${product.name} — Unstyled`,
+      name: product.name,
+      variant_label: [chosenVariantLabel, "Unstyled / raw"]
+        .filter(Boolean)
+        .join(" · "),
       image_url: product.gallery[0]?.url,
       unit_price_ngn: anchor,
       retail_price_ngn: Number(product.retail_price_ngn || 0) || undefined,
@@ -597,11 +649,24 @@ export function ProductDetailModal({
                         type="button"
                         onClick={handleAdd}
                         disabled={!effectivePrice}
-                        className="w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen disabled:opacity-40"
+                        className="btn-cta w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl font-semibold cta-sheen disabled:opacity-40"
                       >
                         <ShoppingBag className="w-4 h-4" />
                         Add to bag
+                        {effectivePrice != null && (
+                          <span className="opacity-90">
+                            · {money(effectivePrice)}
+                          </span>
+                        )}
                       </button>
+                      {addErr && (
+                        <div
+                          role="alert"
+                          className="flex items-start gap-2 rounded-xl border border-[rgb(var(--danger)/0.4)] bg-[rgb(var(--danger)/0.1)] px-3 py-2 text-[12.5px] text-[rgb(var(--danger))]"
+                        >
+                          <span>{addErr}</span>
+                        </div>
+                      )}
                       {/* Wholesale / unstyled gate */}
                       {anchorOnly > 0 && hasWholesale && (
                         <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4 space-y-3">

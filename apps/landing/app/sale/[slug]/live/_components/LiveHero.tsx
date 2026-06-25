@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ShoppingBag } from "lucide-react";
+import { ChevronDown, ShoppingBag, Store } from "lucide-react";
 import type { LandingConfig, LandingPayload } from "@/lib/types";
 import { hexToTriplet } from "@/lib/types";
 import { deriveState } from "@/lib/state-engine";
-import { useCart } from "@/lib/cart-store";
 
 interface Props {
   payload: LandingPayload;
@@ -21,6 +20,42 @@ function splitHeadline(title: string) {
   const words = title.trim().split(/\s+/);
   if (words.length <= 1) return { head: "", accent: title };
   return { head: words.slice(0, -1).join(" "), accent: words[words.length - 1] };
+}
+
+/**
+ * Scroll the visitor into the shopping body. The old CTAs targeted `#bundles`
+ * only — but the bundle section unmounts entirely when a campaign has no
+ * bundles, so the anchor didn't exist and the buttons did nothing ("Browse the
+ * collection" failed). Resolve to whichever shop section is actually on the
+ * page, newest-buyer-first: bundles → styled products → wholesale → first
+ * commerce section. Falls back to a one-viewport scroll so a click is never a
+ * dead end.
+ */
+function scrollToShop() {
+  if (typeof document === "undefined") return;
+  const target =
+    document.getElementById("bundles") ||
+    document.getElementById("shop") ||
+    document.querySelector('[data-block="featured_products"]') ||
+    document.querySelector('[data-block="reseller_bulk"]') ||
+    document.querySelector("[data-atelier-commerce]");
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else {
+    window.scrollTo({ top: window.innerHeight, behavior: "smooth" });
+  }
+}
+
+/** Jump into the wholesale view: flip the products section into Wholesale mode
+ *  (via the #wholesale hash its toggle listens for) and scroll to it. */
+function goWholesale() {
+  if (typeof window === "undefined") return;
+  window.location.hash = "wholesale";
+  const el =
+    document.getElementById("shop") ||
+    document.querySelector('[data-block="featured_products"]') ||
+    document.querySelector('[data-block="reseller_bulk"]');
+  el?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 /** Live-updating diff to ends_at, recomputed every second. */
@@ -45,7 +80,11 @@ export function LiveHero({ payload, brandConfig }: Props) {
   const { derived, msToEnd } = useMemo(() => deriveState(payload), [payload]);
   const isLastCall = derived === "live_last_call";
   const isSoldOut = derived === "live_sold_out_hold";
-  const openCart = useCart((s) => s.openCart);
+  const hasWholesale =
+    Array.isArray(payload.bulk_tiers) &&
+    payload.bulk_tiers.some(
+      (t) => t.min_qty > 0 && t.discount_per_item_ngn > 0,
+    );
 
   const startsMs = useMemo(
     () => new Date(payload.starts_at).getTime(),
@@ -300,13 +339,8 @@ export function LiveHero({ payload, brandConfig }: Props) {
         >
           <button
             type="button"
-            onClick={() => {
-              document.getElementById("bundles")?.scrollIntoView({
-                behavior: "smooth",
-              });
-              openCart();
-            }}
-            className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-[11px] font-semibold tracking-[0.25em] uppercase transition hover:brightness-105"
+            onClick={scrollToShop}
+            className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-[11px] font-semibold tracking-[0.25em] uppercase shadow-[0_8px_24px_rgb(0_0_0/0.35)] transition hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0"
             style={{
               background: "rgb(var(--brand-glow))",
               color: "rgb(var(--brand-ink))",
@@ -315,18 +349,32 @@ export function LiveHero({ payload, brandConfig }: Props) {
             <ShoppingBag className="h-3.5 w-3.5" />
             {primaryLabel}
           </button>
-          <a
-            href="#bundles"
-            className="inline-flex items-center gap-2 rounded-full border px-6 py-3 text-[11px] tracking-[0.25em] uppercase transition"
+          <button
+            type="button"
+            onClick={scrollToShop}
+            className="inline-flex items-center gap-2 rounded-full border px-7 py-3.5 text-[11px] tracking-[0.25em] uppercase transition hover:bg-[rgb(var(--brand-paper)/0.08)]"
             style={{
-              borderColor: "rgb(var(--brand-paper) / 0.2)",
-              color: "rgb(var(--brand-paper) / 0.75)",
+              borderColor: "rgb(var(--brand-paper) / 0.45)",
+              color: "rgb(var(--brand-paper) / 0.92)",
             }}
           >
             Browse the collection
             <ChevronDown className="h-3.5 w-3.5" />
-          </a>
+          </button>
         </motion.div>
+
+        {hasWholesale && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7, duration: 1 }}
+            onClick={goWholesale}
+            className="mt-4 inline-flex items-center gap-1.5 text-[11px] tracking-[0.18em] uppercase text-[rgb(var(--brand-paper)/0.6)] underline-offset-4 transition hover:text-[rgb(var(--brand-paper)/0.95)] hover:underline"
+          >
+            <Store className="h-3 w-3" /> Buying in bulk? Shop wholesale →
+          </motion.button>
+        )}
       </main>
 
       {/* Ambient elapsed hairline pinned to the bottom of the hero */}

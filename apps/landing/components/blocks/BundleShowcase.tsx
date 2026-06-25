@@ -147,13 +147,14 @@ function BundleCard({
             <Heart className="w-3 h-3" /> Featured
           </span>
         )}
-        {/* Red savings badge — hardcoded sale red per owner directive */}
+        {/* Red savings badge — shows the NAIRA amount saved (owner directive:
+            real money, not a percentage). */}
         {savings > 0 && retailTotal && finalPrice > 0 && (
           <span
-            className="absolute top-3 right-3 rounded-md px-2 py-1 text-[11px] font-extrabold text-white leading-none"
+            className="absolute top-3 right-3 rounded-md px-2 py-1 text-[11px] font-extrabold text-white leading-none shadow-[0_2px_8px_rgb(0_0_0/0.3)]"
             style={{ background: SALE_RED }}
           >
-            −{Math.round((savings / retailTotal) * 100)}%
+            {money(savings)} OFF
           </span>
         )}
         {state === "live" && bundle.current_stock_snapshot !== null && (
@@ -187,7 +188,7 @@ function BundleCard({
         <button
           type="button"
           onClick={() => setDetailOpen(true)}
-          className="text-left font-display text-[22px] leading-tight hover:text-[rgb(var(--accent-glow))] transition-colors"
+          className="text-left font-display text-[22px] leading-tight hover:text-[rgb(var(--accent-readable))] transition-colors"
         >
           {bundle.bundle_name}
         </button>
@@ -253,7 +254,7 @@ function BundleCard({
           className={cn(
             "mt-5 inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold cta-sheen disabled:opacity-50 disabled:cursor-not-allowed",
             state === "live"
-              ? "bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))]"
+              ? "btn-cta"
               : "bg-[rgb(var(--text)/0.06)] text-[rgb(var(--text-muted))]",
           )}
         >
@@ -302,7 +303,7 @@ export function SectionHeader({
       {eyebrow && <div className="micro mb-3">{eyebrow}</div>}
       <h2 className="font-display text-[clamp(30px,5vw,52px)] leading-[1.05]">
         {title.replace(/\s\S+$/, "")}{" "}
-        <em className="not-italic md:italic text-[rgb(var(--accent-glow))]">
+        <em className="not-italic md:italic text-[rgb(var(--accent-readable))]">
           {title.split(/\s+/).slice(-1)[0]}
         </em>
       </h2>

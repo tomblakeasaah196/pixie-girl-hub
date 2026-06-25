@@ -18,6 +18,30 @@ export function money(
   return `${sym}${value.toLocaleString("en-NG")}`;
 }
 
+/**
+ * Render an NGN amount in the buyer's chosen display currency.
+ *
+ * NGN renders exactly as `money` does. USD divides by the campaign's static
+ * `ngn_per_usd_rate` and ceil-rounds to a whole dollar (owner directive:
+ * 10.29 → $11) — identical math to the live-page currency toggle, so every
+ * surface agrees to the dollar. A missing/invalid rate falls back to NGN so we
+ * can never print a wrong dollar figure.
+ *
+ * This is DISPLAY ONLY. Orders settle in NGN; the gateway charges the Naira
+ * amount and the buyer's card issuer does the FX conversion.
+ */
+export function displayMoney(
+  ngnAmount: number,
+  currency: Currency | string = "NGN",
+  rate?: number | null,
+): string {
+  if (currency === "USD" && typeof rate === "number" && rate > 0) {
+    const usd = Math.ceil(Number(ngnAmount || 0) / rate);
+    return `$${usd.toLocaleString("en-US")}`;
+  }
+  return money(ngnAmount, "NGN");
+}
+
 export function moneyDecimal(
   amount: number,
   currency: Currency | string = "NGN",

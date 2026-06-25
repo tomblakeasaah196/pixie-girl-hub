@@ -96,7 +96,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
     const defaultVat =
       cfg && cfg.vat_rate !== null && cfg.vat_rate !== undefined
         ? money(cfg.vat_rate)
-        : money("0.075");
+        : money("0");
 
     // 1. Resolve line pricing context + base unit prices.
     const built = [];
@@ -1284,7 +1284,7 @@ async function buildQuotationLines({
   const defaultVat =
     cfg && cfg.vat_rate !== null && cfg.vat_rate !== undefined
       ? money(cfg.vat_rate)
-      : money("0.075");
+      : money("0");
   let subtotal = money(0),
     discountTotal = money(0),
     taxTotal = money(0);

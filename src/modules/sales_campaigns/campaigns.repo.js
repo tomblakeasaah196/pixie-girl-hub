@@ -74,6 +74,9 @@ const CREATE_COLS = [
   "exit_intent_enabled",
   "exit_intent_code",
   "exit_intent_discount_ngn",
+  "exit_intent_title",
+  "exit_intent_body",
+  "exit_intent_button",
   "abandonment_recovery_enabled",
   "allow_multi_currency_display",
   // ── Sales Campaigns v3 (migration 000048) — deals engine ──

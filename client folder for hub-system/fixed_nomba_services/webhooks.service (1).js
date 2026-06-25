@@ -241,9 +241,7 @@ async function receive(source, { rawBody, headers, ip }) {
       raw: (rawBody && rawBody.toString("utf8").slice(0, 5000)) || "",
     };
   }
-  // Nomba uses `event_type`; Stripe/others use `type`; Paystack uses `event`.
-  const event_type =
-    payload.event || payload.type || payload.event_type || null;
+  const event_type = payload.event || payload.type || null;
   const external_id = extractExternalId(source, payload);
 
   // Verifier exists and the signature is invalid → reject, log for audit.

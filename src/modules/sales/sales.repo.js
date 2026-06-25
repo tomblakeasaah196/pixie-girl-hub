@@ -275,33 +275,36 @@ async function listOrders({
   const params = [];
   let i = 1;
   if (filters.status) {
-    where.push(`status = $${i++}`);
+    where.push(`so.status = $${i++}`);
     params.push(filters.status);
   }
   if (filters.contact_id) {
-    where.push(`contact_id = $${i++}`);
+    where.push(`so.contact_id = $${i++}`);
     params.push(filters.contact_id);
   }
   if (filters.sales_channel) {
-    where.push(`sales_channel = $${i++}`);
+    where.push(`so.sales_channel = $${i++}`);
     params.push(filters.sales_channel);
   }
   if (filters.sales_campaign_id) {
-    where.push(`sales_campaign_id = $${i++}`);
+    where.push(`so.sales_campaign_id = $${i++}`);
     params.push(filters.sales_campaign_id);
   }
   if (filters.q) {
-    where.push(`order_number ILIKE $${i++}`);
+    where.push(`so.order_number ILIKE $${i++}`);
     params.push(`%${filters.q}%`);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "sales_orders")} ${w}`,
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "sales_orders")} so ${w}`,
     params,
   );
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "sales_orders")} ${w} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+    `SELECT so.*, c.display_name AS contact_name
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+       ${w} ORDER BY so.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {
@@ -494,7 +497,7 @@ async function findExistingPayment({ client, brand, payment }) {
 }
 async function listPayments({ client, brand, order_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_order_payments")} WHERE order_id = $1 ORDER BY created_at`,
+    `SELECT * FROM ${t(brand, "sales_order_payments")} WHERE order_id = $1 ORDER BY recorded_at`,
     [order_id],
   );
   return rows;

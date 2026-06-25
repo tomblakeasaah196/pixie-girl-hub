@@ -28,7 +28,7 @@ const columns: Column<SalesOrder>[] = [
     header: "Customer",
     render: (o) => (
       <span className="text-[13px]">
-        {o.contact_name ?? o.contact_id.slice(0, 8)}
+        {o.contact_name ?? "—"}
       </span>
     ),
   },
@@ -37,8 +37,10 @@ const columns: Column<SalesOrder>[] = [
     header: "Channel",
     render: (o) => (
       <span className="text-[12px] text-text-muted">
-        {SALES_CHANNELS.find((c) => c.value === o.sales_channel)?.label ??
-          o.sales_channel}
+        {o.sales_campaign_id
+          ? `Sales Campaign${o.utm_campaign ? ` · ${o.utm_campaign}` : ""}`
+          : (SALES_CHANNELS.find((c) => c.value === o.sales_channel)?.label ??
+            o.sales_channel)}
       </span>
     ),
   },
@@ -51,10 +53,80 @@ const columns: Column<SalesOrder>[] = [
     },
   },
   {
+    key: "discount",
+    header: "Discount",
+    align: "right",
+    render: (o) => {
+      const d = Number(o.discount_amount_ngn);
+      return d > 0 ? (
+        <span className="text-danger tabular-nums">
+          −<MoneyText ngn={d} />
+        </span>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      );
+    },
+  },
+  {
+    key: "logistics",
+    header: "Logistics",
+    align: "right",
+    render: (o) => {
+      const s = Number(o.shipping_fee_ngn);
+      return s > 0 ? (
+        <span className="text-danger tabular-nums">
+          <MoneyText ngn={s} />
+        </span>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      );
+    },
+  },
+  {
+    key: "usd",
+    header: "$ Amount",
+    align: "right",
+    render: (o) =>
+      o.display_currency && o.display_currency !== "NGN" && o.display_total ? (
+        <span className="font-mono tabular-nums">
+          ${Number(o.display_total).toLocaleString()}
+        </span>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      ),
+  },
+  {
+    key: "fx",
+    header: "Exchange Rate",
+    align: "right",
+    render: (o) =>
+      o.display_currency &&
+      o.display_currency !== "NGN" &&
+      o.fx_rate_used &&
+      Number(o.fx_rate_used) > 1 ? (
+        <span className="text-[12px] text-text-muted tabular-nums">
+          ₦{Number(o.fx_rate_used).toLocaleString()}/$
+        </span>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      ),
+  },
+  {
     key: "total",
-    header: "Total",
+    header: "Total (₦)",
     align: "right",
     render: (o) => <MoneyText ngn={Number(o.total_ngn)} />,
+  },
+  {
+    key: "net",
+    header: "Net (goods)",
+    align: "right",
+    render: (o) => (
+      <MoneyText
+        ngn={Number(o.total_ngn) - Number(o.shipping_fee_ngn)}
+        className="text-success"
+      />
+    ),
   },
   {
     key: "balance",
@@ -71,13 +143,19 @@ const columns: Column<SalesOrder>[] = [
   },
   {
     key: "date",
-    header: "Date",
-    width: "110px",
-    render: (o) => (
-      <span className="text-[12px] text-text-muted">
-        {new Date(o.created_at).toLocaleDateString()}
-      </span>
-    ),
+    header: "Date & Time",
+    width: "140px",
+    render: (o) => {
+      const d = new Date(o.created_at);
+      return (
+        <span className="text-[12px] text-text-muted">
+          <span className="block">{d.toLocaleDateString()}</span>
+          <span className="block text-[11px] opacity-70">
+            {d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </span>
+      );
+    },
   },
 ];
 

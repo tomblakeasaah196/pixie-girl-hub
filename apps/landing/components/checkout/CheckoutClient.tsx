@@ -22,7 +22,8 @@ import {
   Truck,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
-import { money } from "@/lib/format";
+import { displayMoney } from "@/lib/format";
+import { useDisplayCurrency } from "@/lib/currency";
 import { postCheckout, postQuote, type CartQuote } from "@/lib/api-client";
 import {
   fetchGeoOptions,
@@ -47,6 +48,18 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const subtotal = useCart((s) => s.subtotalNgn());
 
   const brandKey = payload.brand?.business_key;
+
+  // Display currency (₦/$) — driven by React, NOT the live page's DOM observer
+  // (which never ran here and raced async figures into a mixed ₦/$ state). The
+  // choice is cached per session, so it carries from the live page and survives
+  // a refresh. Every figure in the summary is converted through `fmt` with the
+  // campaign's static rate, so the screen is always internally consistent.
+  const fxRate = payload.ngn_per_usd_rate ?? null;
+  const hasRate = typeof fxRate === "number" && fxRate > 0;
+  const [currency, setCurrency] = useDisplayCurrency();
+  // Force NGN display when the campaign has no rate (the toggle is hidden).
+  const displayCurrency = hasRate ? currency : "NGN";
+  const fmt = (ngn: number) => displayMoney(ngn, displayCurrency, fxRate);
 
   // Server-authoritative quote: the Hub runs the FULL deal engine (per-wig
   // position ladder, bundle stacking bonus, quantity-tier ladder,
@@ -133,22 +146,45 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     }
   }, [err]);
 
-  const idemKey = useMemo(
-    () =>
-      `pgh-${payload.slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    [payload.slug],
-  );
-  const empty = items.length === 0;
-
-  // Re-quote (debounced) whenever the cart contents change — same contract as
-  // the cart drawer so the two screens always show the same number.
-  const quoteKey = useMemo(
+  // Cart signature — identifies "the same cart" across renders AND across the
+  // gateway round-trip (Pay → gateway → Back). Drives a STABLE idempotency key.
+  const cartSig = useMemo(
     () =>
       items
         .map((i) => `${i.id}:${i.quantity}:${i.unstyled ? "raw" : "styled"}`)
         .join("|"),
     [items],
   );
+
+  // Idempotency key persisted in sessionStorage, keyed to the cart signature.
+  // The bug it fixes: the key used to be minted fresh on every page load
+  // (`Date.now()`), so paying → Nomba → Back → paying again created a SECOND
+  // order. Now the same cart in the same browser session reuses ONE key, so the
+  // Hub returns the existing order (and a fresh pay link) instead of duplicating
+  // it. Changing the cart yields a new key (a genuinely different order).
+  const idemKey = useMemo(() => {
+    const fresh = () =>
+      `pgh-${payload.slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (typeof window === "undefined" || !cartSig) return fresh();
+    const storeKey = `pgh-idem-${payload.slug}`;
+    try {
+      const raw = sessionStorage.getItem(storeKey);
+      if (raw) {
+        const saved = JSON.parse(raw) as { sig?: string; key?: string };
+        if (saved.sig === cartSig && saved.key) return saved.key;
+      }
+      const key = fresh();
+      sessionStorage.setItem(storeKey, JSON.stringify({ sig: cartSig, key }));
+      return key;
+    } catch {
+      return fresh();
+    }
+  }, [payload.slug, cartSig]);
+  const empty = items.length === 0;
+
+  // Re-quote (debounced) whenever the cart contents change — same contract as
+  // the cart drawer so the two screens always show the same number.
+  const quoteKey = cartSig;
   useEffect(() => {
     if (items.length === 0) {
       setQuote(null);
@@ -274,7 +310,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       : quoting
         ? "Calculating…"
         : deliveryFee != null
-          ? money(deliveryFee)
+          ? fmt(deliveryFee)
           : effectiveZone
             ? "At fulfilment"
             : "—";
@@ -368,7 +404,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         })),
         utm: readUtm(),
         payment_gateway: gateway,
-        display_currency: readDisplayCurrency(),
+        // Drives gateway routing on the Hub (USD → Nomba). The order still
+        // settles in NGN; this is the buyer's displayed-currency choice.
+        display_currency: displayCurrency,
         client_idempotency_key: idemKey,
         coupon_code: promoApplied && promoCode ? promoCode : undefined,
       });
@@ -801,9 +839,37 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             )}
           </div>
 
-          <aside className="lg:sticky lg:top-6 h-fit">
+          {/* data-no-convert: this summary converts currency in React (below).
+              It guards against any stray DOM currency observer double-converting
+              these figures into a mixed ₦/$ state. */}
+          <aside className="lg:sticky lg:top-6 h-fit" data-no-convert>
             <div className="glass rounded-[var(--radius)] p-5 space-y-4">
-              <h3 className="font-display text-[20px]">Order summary</h3>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-display text-[20px]">Order summary</h3>
+                {hasRate && (
+                  <div
+                    className="inline-flex items-center rounded-full border border-[rgb(var(--border-c)/0.15)] p-0.5 text-[12px] font-semibold"
+                    role="group"
+                    aria-label="Display currency"
+                  >
+                    {(["NGN", "USD"] as const).map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setCurrency(c)}
+                        aria-pressed={displayCurrency === c}
+                        className={`h-7 w-9 rounded-full transition-colors ${
+                          displayCurrency === c
+                            ? "bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))]"
+                            : "text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]"
+                        }`}
+                      >
+                        {c === "NGN" ? "₦" : "$"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <ul className="space-y-2.5">
                 {items.map((i) => (
                   <li key={i.id} className="flex items-start gap-3 text-[13px]">
@@ -828,7 +894,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       )}
                     </div>
                     <div className="tabular-nums font-mono">
-                      {money(i.unit_price_ngn * i.quantity)}
+                      {fmt(i.unit_price_ngn * i.quantity)}
                     </div>
                   </li>
                 ))}
@@ -839,7 +905,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     Subtotal
                   </span>
                   <span className="tabular-nums font-mono">
-                    {money(quotedSubtotal)}
+                    {fmt(quotedSubtotal)}
                   </span>
                 </div>
                 {dealRows.map((row) => (
@@ -849,7 +915,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   >
                     <span>{row.label}</span>
                     <span className="tabular-nums font-mono">
-                      −{money(row.amount)}
+                      −{fmt(row.amount)}
                     </span>
                   </div>
                 ))}
@@ -857,7 +923,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   <div className="flex justify-between text-[rgb(var(--success))] font-semibold">
                     <span>You save</span>
                     <span className="tabular-nums font-mono">
-                      −{money(totalDiscount)}
+                      −{fmt(totalDiscount)}
                     </span>
                   </div>
                 )}
@@ -920,7 +986,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               <div className="border-t hairline pt-3 flex justify-between items-baseline">
                 <span className="font-semibold">Total</span>
                 <span className="font-display text-[22px] tabular-nums">
-                  {money(total)}
+                  {fmt(total)}
                 </span>
               </div>
               {err && (
@@ -982,7 +1048,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   "Securing your order…"
                 ) : (
                   <>
-                    <Lock className="w-4 h-4" /> Pay {money(total)}
+                    <Lock className="w-4 h-4" /> Pay {fmt(total)}
                   </>
                 )}
               </motion.button>
@@ -1214,20 +1280,6 @@ function ComboBox({
       )}
     </div>
   );
-}
-
-/** The buyer's currency choice from the live-page ₦⇄$ toggle (persisted by
- *  CurrencyFloater). Drives gateway-rail selection on the Hub; the order is
- *  still placed in NGN. Defaults to NGN when never toggled. */
-function readDisplayCurrency(): "NGN" | "USD" {
-  if (typeof window === "undefined") return "NGN";
-  try {
-    return window.localStorage.getItem("pgh.salesCurrency") === "USD"
-      ? "USD"
-      : "NGN";
-  } catch {
-    return "NGN";
-  }
 }
 
 function readUtm(): Record<string, string> {

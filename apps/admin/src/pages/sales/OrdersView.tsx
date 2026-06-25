@@ -53,10 +53,51 @@ const columns: Column<SalesOrder>[] = [
     },
   },
   {
+    key: "discount",
+    header: "Discount",
+    align: "right",
+    render: (o) => {
+      const d = Number(o.discount_amount_ngn);
+      return d > 0 ? (
+        <span className="text-danger tabular-nums">
+          −<MoneyText ngn={d} />
+        </span>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      );
+    },
+  },
+  {
+    key: "logistics",
+    header: "Logistics",
+    align: "right",
+    render: (o) => {
+      const s = Number(o.shipping_fee_ngn);
+      return s > 0 ? (
+        <span className="text-danger tabular-nums">
+          <MoneyText ngn={s} />
+        </span>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      );
+    },
+  },
+  {
     key: "total",
     header: "Total",
     align: "right",
     render: (o) => <MoneyText ngn={Number(o.total_ngn)} />,
+  },
+  {
+    key: "net",
+    header: "Net (goods)",
+    align: "right",
+    render: (o) => (
+      <MoneyText
+        ngn={Number(o.total_ngn) - Number(o.shipping_fee_ngn)}
+        className="text-success"
+      />
+    ),
   },
   {
     key: "balance",

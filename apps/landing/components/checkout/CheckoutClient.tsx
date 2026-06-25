@@ -146,22 +146,45 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     }
   }, [err]);
 
-  const idemKey = useMemo(
-    () =>
-      `pgh-${payload.slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    [payload.slug],
-  );
-  const empty = items.length === 0;
-
-  // Re-quote (debounced) whenever the cart contents change — same contract as
-  // the cart drawer so the two screens always show the same number.
-  const quoteKey = useMemo(
+  // Cart signature — identifies "the same cart" across renders AND across the
+  // gateway round-trip (Pay → gateway → Back). Drives a STABLE idempotency key.
+  const cartSig = useMemo(
     () =>
       items
         .map((i) => `${i.id}:${i.quantity}:${i.unstyled ? "raw" : "styled"}`)
         .join("|"),
     [items],
   );
+
+  // Idempotency key persisted in sessionStorage, keyed to the cart signature.
+  // The bug it fixes: the key used to be minted fresh on every page load
+  // (`Date.now()`), so paying → Nomba → Back → paying again created a SECOND
+  // order. Now the same cart in the same browser session reuses ONE key, so the
+  // Hub returns the existing order (and a fresh pay link) instead of duplicating
+  // it. Changing the cart yields a new key (a genuinely different order).
+  const idemKey = useMemo(() => {
+    const fresh = () =>
+      `pgh-${payload.slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (typeof window === "undefined" || !cartSig) return fresh();
+    const storeKey = `pgh-idem-${payload.slug}`;
+    try {
+      const raw = sessionStorage.getItem(storeKey);
+      if (raw) {
+        const saved = JSON.parse(raw) as { sig?: string; key?: string };
+        if (saved.sig === cartSig && saved.key) return saved.key;
+      }
+      const key = fresh();
+      sessionStorage.setItem(storeKey, JSON.stringify({ sig: cartSig, key }));
+      return key;
+    } catch {
+      return fresh();
+    }
+  }, [payload.slug, cartSig]);
+  const empty = items.length === 0;
+
+  // Re-quote (debounced) whenever the cart contents change — same contract as
+  // the cart drawer so the two screens always show the same number.
+  const quoteKey = cartSig;
   useEffect(() => {
     if (items.length === 0) {
       setQuote(null);

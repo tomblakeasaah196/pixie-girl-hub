@@ -6,7 +6,6 @@ import type { LandingPayload } from "@/lib/types";
 import { BrandThemeProvider } from "@/components/BrandThemeProvider";
 import { LandingShell } from "@/components/LandingShell";
 import { LiveHero } from "./LiveHero";
-import { CurrencyFloater } from "./CurrencyFloater";
 
 /**
  * Live-state composition (June 2026 — owner directive removed the
@@ -56,7 +55,6 @@ export function LiveShell({
             states and the apex itself. */}
         <LandingFooter config={brandConfig} />
       </BrandThemeProvider>
-      <CurrencyFloater payload={payload} />
     </>
   );
 }

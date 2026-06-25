@@ -28,6 +28,7 @@ import {
   ShippingReturns,
 } from "./blocks/Narrative";
 import { ResellerBulkSection } from "./blocks/ResellerBulkSection";
+import { DiscountSummaryBanner } from "./blocks/DiscountSummaryBanner";
 import { NewsletterCapture, VipSignup } from "./blocks/Signup";
 import { UgcCarousel } from "./blocks/UgcCarousel";
 import { CartButton } from "./cart/CartButton";
@@ -86,6 +87,9 @@ export function LandingShell({
       {!omitHero && (
         <Hero payload={payload} derived={derived} msToEnd={msToEnd} />
       )}
+
+      {/* Red discount summary banner — only when the sale is live. */}
+      {state === "live" && <DiscountSummaryBanner payload={payload} />}
 
       {/* Before-state cinematic reveal (animated curtain on first load). */}
       <AnimatePresence>

@@ -7,7 +7,9 @@ import { Clock, ShoppingBag, Search, X } from "lucide-react";
 import type { LandingPayload, LandingProduct } from "@/lib/types";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
+import { cardHeadline, SALE_RED } from "@/lib/deals";
 import { SectionHeader } from "./BundleShowcase";
+import { DealExplainerModal } from "./DealExplainerModal";
 import { ProductDetailModal } from "../product/ProductDetailModal";
 
 /**
@@ -70,6 +72,7 @@ export function FeaturedProducts({
   // the modal fetches. Lifting this here means a card click never re-mounts
   // a modal per product (which was wasting transitions).
   const [openId, setOpenId] = useState<string | null>(null);
+  const [explainerOpen, setExplainerOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   // Live stock overrides the page-baked stock_remaining (beats CDN caching).
   const liveStock = useLiveStock(payload.slug, state === "live");
@@ -107,26 +110,6 @@ export function FeaturedProducts({
           title={sectionTitle}
           subtitle={sectionSubtitle}
         />
-        {payload.position_ladder && payload.position_ladder.length > 0 && (
-          <div className="mt-6 flex flex-wrap gap-2 justify-center">
-            {payload.position_ladder.map((r) => (
-              <div
-                key={r.position}
-                className="glass rounded-lg px-3 py-1.5 text-[12px] font-semibold"
-              >
-                <span className="text-[rgb(var(--accent))]">
-                  {ordinal(r.position)} wig
-                </span>{" "}
-                → <span className="font-mono">−{money(r.discount_ngn)}</span>
-                {r.label && (
-                  <span className="text-[rgb(var(--text-faint))] ml-1">
-                    {r.label}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Product search */}
         <div className="mt-10 mb-8 max-w-md mx-auto">
@@ -167,10 +150,9 @@ export function FeaturedProducts({
               liveStock={liveStock}
               deliveryWeeks={payload.delivery_weeks}
               preorderExtraWeeks={payload.preorder_extra_weeks}
-              positionLadder={payload.position_ladder ?? null}
-              discountType={payload.discount_type ?? null}
-              discountValue={payload.discount_value ?? null}
+              payload={payload}
               onOpen={(id) => setOpenId(id)}
+              onOpenExplainer={() => setExplainerOpen(true)}
             />
           ))}
         </div>
@@ -180,39 +162,17 @@ export function FeaturedProducts({
         styledId={openId}
         open={openId != null}
         onClose={() => setOpenId(null)}
+        bulkTiers={payload.bulk_tiers ?? null}
+      />
+      <DealExplainerModal
+        payload={payload}
+        open={explainerOpen}
+        onClose={() => setExplainerOpen(false)}
       />
     </section>
   );
 }
 
-function ordinal(n: number): string {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
-
-/** "Save ₦X per wig assuming 1 wig in cart" — uses the campaign's position
- *  ladder first rung (1st-wig discount), else the top-level discount on the
- *  campaign. Returns 0 when nothing applies so the badge stays hidden. */
-function estimateSavePerWig(
-  unitNgn: number,
-  ladder: { position: number; discount_ngn: number }[] | null,
-  discountType: string | null,
-  discountValue: number | null,
-): number {
-  if (!Number.isFinite(unitNgn) || unitNgn <= 0) return 0;
-  if (ladder && ladder.length) {
-    const first = [...ladder].sort((a, b) => a.position - b.position)[0];
-    if (first?.discount_ngn) return Number(first.discount_ngn) || 0;
-  }
-  if (discountType === "percentage" && discountValue) {
-    return Math.round(unitNgn * Number(discountValue));
-  }
-  if (discountType === "fixed_amount" && discountValue) {
-    return Math.round(Number(discountValue));
-  }
-  return 0;
-}
 
 function Card({
   product,
@@ -220,10 +180,9 @@ function Card({
   live,
   deliveryWeeks,
   preorderExtraWeeks,
-  positionLadder,
-  discountType,
-  discountValue,
+  payload,
   onOpen,
+  onOpenExplainer,
   liveStock,
 }: {
   product: LandingProduct;
@@ -231,10 +190,9 @@ function Card({
   live: boolean;
   deliveryWeeks?: number | null;
   preorderExtraWeeks?: number;
-  positionLadder: { position: number; discount_ngn: number }[] | null;
-  discountType: string | null;
-  discountValue: number | null;
+  payload: LandingPayload;
   onOpen: (styledId: string) => void;
+  onOpenExplainer: () => void;
   liveStock?: Record<string, number>;
 }) {
   const add = useCart((s) => s.add);
@@ -243,7 +201,6 @@ function Card({
   const campaignPrice = Number(product.campaign_price_ngn || 0);
   const retail = Number(product.regular_price_ngn || 0);
   const price = campaignPrice > 0 ? campaignPrice : retail;
-  const hasDiscount = campaignPrice > 0 && retail > campaignPrice;
   // Live stock (polled) overrides the page-baked stock_remaining when present.
   const liveQty =
     liveStock?.[product.styled_id ?? ""] ??
@@ -253,12 +210,7 @@ function Card({
   const weeks = isPreorder
     ? (deliveryWeeks || 0) + (preorderExtraWeeks ?? 4)
     : deliveryWeeks;
-  const save = estimateSavePerWig(
-    price,
-    positionLadder,
-    discountType,
-    discountValue,
-  );
+  const deal = cardHeadline(product, payload);
   const openable = Boolean(product.styled_id);
 
   function open() {
@@ -300,6 +252,15 @@ function Card({
             Out of stock · Preorder
           </div>
         )}
+        {/* Red percentage-off badge — hardcoded sale red per owner directive */}
+        {deal && (
+          <div
+            className="absolute top-2 right-2 rounded-md px-2 py-1 text-[11px] font-extrabold text-white leading-none"
+            style={{ background: SALE_RED }}
+          >
+            −{deal.pctOff}%
+          </div>
+        )}
       </button>
       <div className="p-3.5 flex-1 flex flex-col">
         <button
@@ -315,24 +276,50 @@ function Card({
             {product.short_description}
           </div>
         )}
-        {price > 0 && (
-          <div className="mt-2 flex items-end gap-2 flex-wrap">
+        {deal ? (
+          /* Was / Now pricing — sale red treatment */
+          <div className="mt-2 space-y-0.5">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              {/* NOW price — green & bold */}
+              <div
+                className="font-display text-[18px] tabular-nums font-extrabold"
+                style={{ color: "#16A34A" }}
+              >
+                {money(deal.nowNgn)}
+              </div>
+              {/* BEFORE price — muted strikethrough */}
+              <div className="text-[12px] text-[rgb(var(--text-faint))] line-through font-mono">
+                {money(deal.beforeNgn)}
+              </div>
+            </div>
+            {/* Condition label + explainer link */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span
+                className="text-[10.5px] font-semibold"
+                style={{ color: SALE_RED }}
+              >
+                {deal.conditionLabel}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenExplainer();
+                }}
+                className="text-[10.5px] underline underline-offset-2 transition-opacity hover:opacity-70"
+                style={{ color: SALE_RED }}
+              >
+                See how →
+              </button>
+            </div>
+          </div>
+        ) : price > 0 ? (
+          <div className="mt-2">
             <div className="font-display text-[18px] tabular-nums">
               {money(price)}
             </div>
-            {hasDiscount && (
-              <div className="text-[11px] text-[rgb(var(--text-faint))] line-through font-mono">
-                {money(retail)}
-              </div>
-            )}
           </div>
-        )}
-        {save > 0 && (
-          <div className="mt-1 text-[11px] font-mono text-[rgb(var(--success))]">
-            save {money(save)}{" "}
-            <span className="opacity-60">/ wig</span>
-          </div>
-        )}
+        ) : null}
         {weeks != null && weeks > 0 && (
           <div
             className={`mt-1.5 flex items-center gap-1 text-[11px] ${

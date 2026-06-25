@@ -8,6 +8,7 @@ import type { LandingPayload, LandingBundle } from "@/lib/types";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { SALE_RED } from "@/lib/deals";
 import { BundleDetailModal } from "@/components/product/BundleDetailModal";
 
 export function BundleShowcase({
@@ -146,6 +147,15 @@ function BundleCard({
             <Heart className="w-3 h-3" /> Featured
           </span>
         )}
+        {/* Red savings badge — hardcoded sale red per owner directive */}
+        {savings > 0 && retailTotal && finalPrice > 0 && (
+          <span
+            className="absolute top-3 right-3 rounded-md px-2 py-1 text-[11px] font-extrabold text-white leading-none"
+            style={{ background: SALE_RED }}
+          >
+            −{Math.round((savings / retailTotal) * 100)}%
+          </span>
+        )}
         {state === "live" && bundle.current_stock_snapshot !== null && (
           <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.18em] bg-[rgb(0_0_0/0.55)] text-[rgb(var(--text))] backdrop-blur">
             {stockOut
@@ -193,23 +203,32 @@ function BundleCard({
           </button>
         )}
         {showPrice ? (
-          <div className="mt-4 flex items-end gap-3">
-            <div className="font-display text-[28px] tabular-nums">
-              {money(finalPrice)}
+          <div className="mt-4">
+            <div className="flex items-baseline gap-3 flex-wrap">
+              {/* NOW price — green & bold when there's a saving */}
+              <div
+                className="font-display text-[28px] tabular-nums font-extrabold"
+                style={savings > 0 ? { color: "#16A34A" } : undefined}
+              >
+                {money(finalPrice)}
+              </div>
+              {retailTotal && retailTotal > finalPrice && (
+                <div className="text-[rgb(var(--text-faint))] line-through font-mono text-[14px]">
+                  {money(retailTotal)}
+                </div>
+              )}
             </div>
-            {retailTotal && retailTotal > finalPrice && (
-              <div className="text-[rgb(var(--text-faint))] line-through font-mono">
-                {money(retailTotal)}
+            {savings > 0 && (
+              <div
+                className="text-[12px] mt-1 font-semibold"
+                style={{ color: SALE_RED }}
+              >
+                You save {money(savings)}
               </div>
             )}
           </div>
         ) : (
           <div className="mt-4 micro">Prices reveal at launch</div>
-        )}
-        {savings > 0 && showPrice && (
-          <div className="text-[13px] text-[rgb(var(--success))] mt-1.5 font-medium">
-            You save {money(savings)}
-          </div>
         )}
         {stockOut && bundle.preorder_enabled && state === "live" && (
           <div className="text-[12.5px] text-[rgb(var(--warn))] mt-2 inline-flex items-center gap-1.5">

@@ -446,9 +446,12 @@ async function confirmOpayCharge(log) {
 
 async function confirmNombaCharge(log) {
   const evt = log.payload || {};
-  const d =
-    (evt.data && (evt.data.transaction || evt.data.order || evt.data)) || {};
-  const reference = d.orderReference || d.merchantTxRef || d.transactionId || d.sessionId;
+  const dataOrder = (evt.data && evt.data.order) || {};
+  const dataTx = (evt.data && evt.data.transaction) || {};
+
+  // For online_checkout (USD via Stripe): orderReference in order, currency/amount in order
+  // For terminal (NGN): everything in transaction. Prefer order.orderReference.
+  const reference = dataOrder.orderReference || dataTx.transactionId || dataTx.sessionId || dataTx.merchantTxRef;
 
   // ── Determine the event type (Nomba sends this as event_type) ──────
   const evtType = String(evt.event_type || evt.type || "").toLowerCase();
@@ -471,13 +474,13 @@ async function confirmNombaCharge(log) {
     );
   if (isPayout) {
     const payrollSvc = require("../../shared/hr_payroll/payroll.service");
-    const st = String(d.status || evtType || "").toLowerCase();
+    const st = String(dataTx.status || evtType || "").toLowerCase();
     await payrollSvc.reconcilePayout({
       reference: String(reference),
       success: st.includes("success") || st.includes("complete"),
       failed:
         st.includes("fail") || st.includes("declin") || st.includes("revers"),
-      provider_ref: d.transactionId || d.sessionId || d.id || null,
+      provider_ref: dataTx.transactionId || dataTx.sessionId || dataTx.id || null,
     });
     return;
   }
@@ -490,7 +493,22 @@ async function confirmNombaCharge(log) {
   // configured account (only the owner returns the transaction).
   const gateways = require("./payment-gateways.service");
   let res = null;
-  let resolvedBrand = metaOf(d).brand || null;
+  const orderMeta = dataOrder.metadata || dataOrder.orderMetaData || {};
+  const txMeta = dataTx.metadata || {};
+  const meta = { ...txMeta, ...orderMeta };
+
+  let resolvedBrand = meta.brand || null;
+
+  // If brand not in metadata, extract from order number pattern in reference.
+  // "nomba-FLH-SO-0037-mqsyyrps" → FLH → faitlynhair
+  // "nomba-PXG-SO-0001-..." → PXG → pixiegirl
+  if (!resolvedBrand && reference && reference.includes("-")) {
+    const brandMatch = reference.match(/-(FLH|PXG)-/);
+    if (brandMatch) {
+      resolvedBrand = brandMatch[1] === "FLH" ? "faitlynhair" : "pixiegirl";
+    }
+  }
+
   const tryBrands = resolvedBrand ? [resolvedBrand] : VALID_BRANDS;
   for (const b of tryBrands) {
     const creds = await gateways.resolveCredentials({
@@ -513,7 +531,7 @@ async function confirmNombaCharge(log) {
 
   // If we couldn't verify via API but the event_type is payment_success,
   // trust the webhook payload (Nomba already signed it) and proceed.
-  const tx       = (res && res.data && (res.data.transaction || res.data)) || d;
+  const tx       = (res && res.data && (res.data.transaction || res.data)) || dataTx;
   const evtIsSuccess = isPaymentSuccess || (tx.status || "").toLowerCase() === "success";
 
   if (!evtIsSuccess) {
@@ -521,14 +539,13 @@ async function confirmNombaCharge(log) {
     return;
   }
 
-  const meta = { ...metaOf(d), ...metaOf(tx) };
   // Nomba is POS-first (§6.21). Treat as a terminal payment unless the metadata
   // explicitly flags an online checkout (hybrid scenario).
   const method = meta.channel === "online" ? "nomba_online" : "nomba_terminal";
 
   // Resolve the order row. We need it both to recover order_id when the payload
   // carried no metadata AND to derive the NGN amount for a foreign-currency
-  // settlement (below) — for a USD charge Nomba's tx.amount is in DOLLARS, so it
+  // settlement (below) — for a USD charge Nomba's order.amount is in DOLLARS, so it
   // must never be treated as the Naira figure.
   let order_id = meta.order_id;
   let order = null;
@@ -550,17 +567,19 @@ async function confirmNombaCharge(log) {
     }
   }
 
-  // Settlement currency from Nomba's VERIFIED transaction (same account settles
-  // both — owner confirmed). NGN → record the Naira amount directly (legacy
-  // behaviour). Foreign (USD) → tx.amount is in that currency, so the Naira
-  // value comes from the order's outstanding balance, and we stamp
-  // paid_currency/paid_amount/fx_rate_used so addPayment books the realised-FX
-  // variance (§6.6) exactly like the Stripe path.
-  const settledCurrency = String(tx.currency || d.currency || "").toUpperCase();
+  // ── Settlement currency and amount ──
+  // For online_checkout (USD via Stripe): currency and amount in dataOrder
+  // For terminal (NGN): in dataTx. Foreign currency → book realised FX variance.
+  const isOnlineCheckout = (dataTx.type || "").toLowerCase() === "online_checkout";
+  const settledCurrency = isOnlineCheckout
+    ? String(dataOrder.currency || "").toUpperCase()
+    : String(tx.currency || dataTx.currency || "").toUpperCase();
+
   let amount_ngn;
   let paid_currency = null;
   let paid_amount = null;
   let fx_rate_used = null;
+
   if (settledCurrency && settledCurrency !== "NGN") {
     if (!order)
       throw new Error(
@@ -573,14 +592,16 @@ async function confirmNombaCharge(log) {
       outstanding.gt(0) ? outstanding : money(order.total_ngn),
     );
     paid_currency = settledCurrency;
-    paid_amount = toCurrencyString(money(tx.amount || d.amount || 0));
+    // For online_checkout, amount is in dataOrder; for terminal, in tx
+    const txAmount = isOnlineCheckout ? dataOrder.amount : (tx.amount || dataTx.amount || 0);
+    paid_amount = toCurrencyString(money(txAmount));
     if (money(paid_amount).gt(0))
       fx_rate_used = money(amount_ngn).dividedBy(money(paid_amount)).toFixed(6);
   } else {
     amount_ngn =
       meta.amount_ngn !== null && meta.amount_ngn !== undefined
         ? toCurrencyString(money(meta.amount_ngn))
-        : toCurrencyString(money(tx.amount || d.amount || 0)); // Nomba NGN major units
+        : toCurrencyString(money(tx.amount || dataTx.amount || 0)); // Nomba NGN major units
   }
 
   await recordGatewayPayment({

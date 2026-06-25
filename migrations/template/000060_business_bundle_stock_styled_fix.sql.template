@@ -1,0 +1,55 @@
+-- ============================================================
+-- TEMPLATE 000060 — Fix bundle stock snapshot for styled-only items.
+--
+-- fn_refresh_campaign_bundle_stock only considered items with a direct
+-- variant_id. Post-migration 000048/000053 most bundle items imported
+-- from the Catalogue carry only a styled_id (no variant_id), so the
+-- MIN() returned NULL → COALESCE(NULL, 0) = 0 → every newly-imported
+-- bundle showed "Sold out" even though all component wigs have stock.
+--
+-- The replacement resolves the effective variant through:
+--   1. bi.variant_id (if set directly)
+--   2. sp.base_variant_id (the styled product's pinned variant)
+--   3. The default active variant of the base product
+-- It also filters to storefront-available locations, matching the
+-- live stock query used for styled products.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_refresh_campaign_bundle_stock(p_link_id UUID)
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE
+  v_min_stock INTEGER;
+BEGIN
+  SELECT MIN(
+    COALESCE(
+      (SELECT SUM(sl.available)
+         FROM {{BUSINESS}}.stock_levels sl
+         JOIN {{BUSINESS}}.stock_locations loc ON loc.location_id = sl.location_id
+        WHERE sl.variant_id = COALESCE(
+                bi.variant_id,
+                sp.base_variant_id,
+                (SELECT pv.variant_id
+                   FROM {{BUSINESS}}.product_variants pv
+                  WHERE pv.product_id = COALESCE(sp.base_product_id, bi.product_id)
+                    AND pv.is_active = true
+                  ORDER BY pv.is_default DESC, pv.display_order ASC
+                  LIMIT 1)
+              )
+          AND loc.available_for_storefront = true),
+      0
+    ) / GREATEST(bi.quantity, 1)
+  )
+    INTO v_min_stock
+    FROM {{BUSINESS}}.sales_campaign_bundles scb
+    JOIN {{BUSINESS}}.product_bundle_items bi ON bi.bundle_id = scb.bundle_id
+    LEFT JOIN {{BUSINESS}}.styled_products sp ON sp.styled_id = bi.styled_id
+   WHERE scb.link_id = p_link_id
+     AND (bi.variant_id IS NOT NULL OR bi.styled_id IS NOT NULL OR bi.product_id IS NOT NULL);
+
+  UPDATE {{BUSINESS}}.sales_campaign_bundles
+     SET current_stock_snapshot = COALESCE(v_min_stock, 0)
+   WHERE link_id = p_link_id;
+
+  RETURN COALESCE(v_min_stock, 0);
+END;
+$$;

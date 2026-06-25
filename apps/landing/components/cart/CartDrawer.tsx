@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,7 +9,6 @@ import { useCart } from "@/lib/cart-store";
 import { displayMoney } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
 import { postQuote, type CartQuote } from "@/lib/api-client";
-import { toast } from "@/lib/toast";
 import type { LandingPayload } from "@/lib/types";
 
 const n = (v: string | number | undefined) => Number(v ?? 0) || 0;
@@ -76,30 +75,27 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
   const totalDiscount = quote ? n(quote.total_discount_ngn) : 0;
   const finalTotal = quote ? n(quote.final_total_ngn) : subtotal;
   const comps = quote?.components;
-  // Defensive optional chaining: a malformed/partial quote (missing a component)
-  // must never throw during render and take the whole drawer — and the checkout
-  // button — down with it.
   const dealRows: Array<{ label: string; amount: number }> = [];
   if (comps) {
-    if (comps.position_ladder?.applied)
+    if (comps.position_ladder.applied)
       dealRows.push({
         label: "Multi-wig discount",
-        amount: n(comps.position_ladder?.discount_ngn),
+        amount: n(comps.position_ladder.discount_ngn),
       });
-    if (comps.stacking_bonus?.applied)
+    if (comps.stacking_bonus.applied)
       dealRows.push({
-        label: comps.stacking_bonus?.label || "Bundle bonus",
-        amount: n(comps.stacking_bonus?.discount_ngn),
+        label: comps.stacking_bonus.label || "Bundle bonus",
+        amount: n(comps.stacking_bonus.discount_ngn),
       });
-    if (comps.quantity_tier?.applied)
+    if (comps.quantity_tier.applied)
       dealRows.push({
-        label: comps.quantity_tier?.label || "Quantity discount",
-        amount: n(comps.quantity_tier?.discount_ngn),
+        label: comps.quantity_tier.label || "Quantity discount",
+        amount: n(comps.quantity_tier.discount_ngn),
       });
-    if (comps.bulk_tier?.applied)
+    if (comps.bulk_tier.applied)
       dealRows.push({
-        label: comps.bulk_tier?.label || "Reseller / bulk",
-        amount: n(comps.bulk_tier?.discount_ngn),
+        label: comps.bulk_tier.label || "Reseller / bulk",
+        amount: n(comps.bulk_tier.discount_ngn),
       });
   }
 
@@ -158,62 +154,6 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, close, router, payload.slug]);
-
-  // Bulletproof checkout navigation. The old failure mode: a soft `router.push`
-  // could be swallowed (framer-motion exit-unmount, an RSC render error with no
-  // boundary, or a stale route chunk after a deploy) — the drawer closed and
-  // the buyer was dumped back on the sale page with zero feedback. Now:
-  //   1. guard a missing slug (a push to "/checkout/" is a dead end);
-  //   2. try the fast, prefetched soft navigation;
-  //   3. close the drawer a tick LATER so the exit animation can't race it;
-  //   4. if we're somehow still NOT on a checkout path after a beat, the soft
-  //      nav didn't commit — hard-navigate (a full load can't be swallowed and
-  //      always lands on the checkout route, which now has loading + error
-  //      boundaries that guarantee visible feedback);
-  //   5. any synchronous throw shows a friendly toast and falls back to a hard
-  //      nav. There is no path here that does nothing.
-  // Holds the pending hard-nav fallback timer so it can be cancelled the moment
-  // this drawer unmounts — which is exactly what happens when the soft
-  // navigation DID succeed and tore down the live page. Without this, a buyer
-  // who reaches checkout and taps "back" within the fallback window would be
-  // yanked forward again.
-  const navFallbackRef = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (navFallbackRef.current) window.clearTimeout(navFallbackRef.current);
-    },
-    [],
-  );
-
-  const goToCheckout = useCallback(() => {
-    if (checkoutDisabled) return;
-    const slug = payload.slug;
-    if (!slug) {
-      toast.error(
-        "We couldn't open checkout",
-        "Please refresh the page and try again.",
-      );
-      return;
-    }
-    const href = `/checkout/${encodeURIComponent(slug)}`;
-    try {
-      router.push(href);
-    } catch {
-      // Soft nav threw synchronously — go straight to a hard load.
-      window.location.assign(href);
-      return;
-    }
-    // Close after the push so the exit-unmount can't cancel the navigation.
-    window.setTimeout(close, 60);
-    // Safety net: if the soft navigation never commits (a swallowed push — e.g.
-    // a stale route chunk after a deploy), force a hard load so the buyer always
-    // reaches checkout. Cancelled on unmount when the soft nav DOES commit.
-    navFallbackRef.current = window.setTimeout(() => {
-      if (!window.location.pathname.startsWith("/checkout/")) {
-        window.location.assign(href);
-      }
-    }, 2000);
-  }, [checkoutDisabled, payload.slug, router, close]);
 
   return (
     <AnimatePresence>
@@ -402,7 +342,16 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
               <button
                 type="button"
                 disabled={checkoutDisabled}
-                onClick={goToCheckout}
+                onClick={() => {
+                  if (checkoutDisabled) return;
+                  // Navigate first, then close. The old <Link onClick={close}>
+                  // closed the drawer in the same click, and framer-motion's
+                  // exit-unmount intermittently swallowed the navigation — the
+                  // drawer just closed and nothing happened. Programmatic push
+                  // is deterministic; closing after can't cancel it.
+                  router.push(`/checkout/${payload.slug}`);
+                  close();
+                }}
                 className={`w-full inline-flex items-center justify-center h-12 rounded-xl font-semibold cta-sheen disabled:cursor-not-allowed ${
                   checkoutDisabled
                     ? "bg-[rgb(var(--text)/0.06)] text-[rgb(var(--text-faint))]"

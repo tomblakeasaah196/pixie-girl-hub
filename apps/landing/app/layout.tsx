@@ -10,7 +10,6 @@ import {
 import { headers } from "next/headers";
 import { getBrand } from "@/lib/brand";
 import { PwaCleanup } from "@/components/PwaCleanup";
-import { Toaster } from "@/components/Toaster";
 import "@/styles/globals.css";
 
 const playfair = Playfair_Display({
@@ -93,7 +92,6 @@ export default function RootLayout({
       <body>
         <PwaCleanup />
         {children}
-        <Toaster />
       </body>
     </html>
   );

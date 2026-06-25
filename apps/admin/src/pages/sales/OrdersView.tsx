@@ -28,7 +28,7 @@ const columns: Column<SalesOrder>[] = [
     header: "Customer",
     render: (o) => (
       <span className="text-[13px]">
-        {o.contact_name ?? o.contact_id.slice(0, 8)}
+        {o.contact_name ?? "—"}
       </span>
     ),
   },
@@ -71,13 +71,19 @@ const columns: Column<SalesOrder>[] = [
   },
   {
     key: "date",
-    header: "Date",
-    width: "110px",
-    render: (o) => (
-      <span className="text-[12px] text-text-muted">
-        {new Date(o.created_at).toLocaleDateString()}
-      </span>
-    ),
+    header: "Date & Time",
+    width: "140px",
+    render: (o) => {
+      const d = new Date(o.created_at);
+      return (
+        <span className="text-[12px] text-text-muted">
+          <span className="block">{d.toLocaleDateString()}</span>
+          <span className="block text-[11px] opacity-70">
+            {d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </span>
+      );
+    },
   },
 ];
 

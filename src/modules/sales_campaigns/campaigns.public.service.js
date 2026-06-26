@@ -132,7 +132,6 @@ async function resolveCampaign({ slug, brand, brandHint }) {
   return c ? { campaign: c, brand: targetBrand } : null;
 }
 
-
 async function getLanding({ slug, brand, brandHint }) {
   const found = await resolveCampaign({ slug, brand, brandHint });
   if (!found || !PUBLIC_STATUSES.has(found.campaign.status)) {
@@ -408,7 +407,10 @@ async function buildDealLines({ brand, cart }) {
         brand,
         bundle_id: item.bundle_id,
       });
-      const wigUnits = items.reduce((a, bi) => a + (Number(bi.quantity) || 1), 0);
+      const wigUnits = items.reduce(
+        (a, bi) => a + (Number(bi.quantity) || 1),
+        0,
+      );
       lines.push({
         kind: "bundle",
         bundle_id: item.bundle_id,
@@ -535,7 +537,11 @@ function effectiveCampaignBundlePrice(link, components) {
     (s, c) => s + (Number(c.quantity) || 1),
     0,
   );
-  const live = bundleService.liveBundlePriceFromSource(link, subtotal, totalUnits);
+  const live = bundleService.liveBundlePriceFromSource(
+    link,
+    subtotal,
+    totalUnits,
+  );
   return live !== null ? live : (link.campaign_bundle_price_ngn ?? null);
 }
 
@@ -639,12 +645,11 @@ async function resolveBundleForCheckout({
     campaign_id,
     bundle_id,
   });
-  const { discountPerBundle, effectivePrice, sumOfParts } = computeBundleDiscount(
-    {
+  const { discountPerBundle, effectivePrice, sumOfParts } =
+    computeBundleDiscount({
       components,
       campaignBundlePrice: effectiveCampaignBundlePrice(link, components),
-    },
-  );
+    });
   return {
     orderLines,
     discountNgn: discountPerBundle.times(copies),
@@ -745,7 +750,9 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
     if (!rows[0]) return null;
     return {
       kind: item.unstyled ? "raw" : "styled",
-      unit_price_ngn: toCurrencyString(money(rows[0].price_storefront_ngn || 0)),
+      unit_price_ngn: toCurrencyString(
+        money(rows[0].price_storefront_ngn || 0),
+      ),
       wig_units: 1,
       // Floor-free (owner decision, CONFORMANCE_GAPS G-1) — see styled branch.
       floor_ngn: null,
@@ -1018,7 +1025,9 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       }
 
       const label = cartItem.unstyled
-        ? [sv.colour_name, sv.size_label, "Unstyled"].filter(Boolean).join(" · ")
+        ? [sv.colour_name, sv.size_label, "Unstyled"]
+            .filter(Boolean)
+            .join(" · ")
         : [sv.colour_name, sv.size_label, sv.lace_code]
             .filter(Boolean)
             .join(" · ");
@@ -1091,7 +1100,10 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   if (!isPickup) {
     const addr = input.contact.address || {};
     const zoneCode = addr.zone_code || addr.country_code || null;
-    const wigQty = orderLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
+    const wigQty = orderLines.reduce(
+      (s, l) => s + (Number(l.quantity) || 0),
+      0,
+    );
 
     // (1) No zone code at all — the location was never resolved to a country /
     //     state / LGA we can price. Block, don't guess at ₦0.
@@ -1163,8 +1175,7 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       campaign.free_shipping_threshold_ngn !== undefined
     ) {
       const goodsSubtotal = orderLines.reduce(
-        (s, l) =>
-          s + Number(l.unit_price_ngn || 0) * (Number(l.quantity) || 0),
+        (s, l) => s + Number(l.unit_price_ngn || 0) * (Number(l.quantity) || 0),
         0,
       );
       if (goodsSubtotal >= Number(campaign.free_shipping_threshold_ngn)) {
@@ -1185,6 +1196,34 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
           "free-shipping threshold met — delivery zeroed",
         );
       }
+    }
+
+    // ── FAIL CLOSED: a delivery order MUST carry a real logistics fee ──
+    // Owner mandate (never ever): if the address didn't resolve to a billable
+    // shipping fee (zone priced to ₦0 without being a genuine free-delivery
+    // promo — i.e. the old 'pending' config-gap case), reject the checkout and
+    // make the buyer enter a valid address. Genuine free shipping (fee_status
+    // 'free' — a zone promo or the threshold override above) is still allowed.
+    if (
+      shippingFeeNgn <= 0 &&
+      !(deliveryQuote && deliveryQuote.fee_status === "free")
+    ) {
+      logger.error(
+        {
+          zoneCode: addr.zone_code || addr.country_code || null,
+          slug: campaign.slug,
+        },
+        "checkout blocked — delivery order has no resolved logistics fee",
+      );
+      throw new AppError(
+        "DELIVERY_FEE_REQUIRED",
+        "Delivery order has no resolved logistics fee",
+        422,
+        {
+          user_message:
+            "We couldn't calculate a delivery fee for your address. Please enter a valid delivery address so we can charge shipping before you pay.",
+        },
+      );
     }
   }
 
@@ -1216,7 +1255,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     brand: resolvedBrand,
     cart: input.cart,
   });
-  const deal = computeDeals({ campaign, lines: dealLines, tiers: checkoutTiers });
+  const deal = computeDeals({
+    campaign,
+    lines: dealLines,
+    tiers: checkoutTiers,
+  });
   let campaignDealDiscountNgn = deal.gross_discount_ngn;
 
   // Fold the bundle-price savings (Σ sum-of-parts − campaign bundle price) into
@@ -1391,9 +1434,14 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     // keep the defaults (display_currency 'NGN', fx_rate_used 1.0, display_total
     // NULL → shown as "—"). Recording the real rate also fixes the realised-FX
     // posting in addPayment, which books against order.fx_rate_used.
-    const displayCurrency = String(input.display_currency || "NGN").toUpperCase();
+    const displayCurrency = String(
+      input.display_currency || "NGN",
+    ).toUpperCase();
     const campaignRate =
-      campaign.ngn_per_usd_rate != null ? Number(campaign.ngn_per_usd_rate) : null;
+      campaign.ngn_per_usd_rate !== null &&
+      campaign.ngn_per_usd_rate !== undefined
+        ? Number(campaign.ngn_per_usd_rate)
+        : null;
     let displayTotal = null;
     let fxRateUsed = null; // null → keep the existing NOT NULL default (1.0)
     if (displayCurrency !== "NGN" && campaignRate && campaignRate > 0) {
@@ -1447,7 +1495,9 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
 
   // Buyer's chosen display currency drives gateway routing (USD → Nomba only,
   // NGN → Nomba then Paystack). Declared out here so the catch can branch on it.
-  const checkoutCurrency = String(input.display_currency || "NGN").toUpperCase();
+  const checkoutCurrency = String(
+    input.display_currency || "NGN",
+  ).toUpperCase();
 
   // Per-campaign gateway gate: the owner can disable a rail for this sale in
   // the builder. Enforce it server-side — the public checkout only shows the
@@ -1503,7 +1553,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     };
   } catch (err) {
     logger.error(
-      { err: err.message, order_id: order.order_id, currency: checkoutCurrency },
+      {
+        err: err.message,
+        order_id: order.order_id,
+        currency: checkoutCurrency,
+      },
       "payment gateway init failed after order creation",
     );
     // USD has no NGN fallback rail (owner: dollar is the universal currency for

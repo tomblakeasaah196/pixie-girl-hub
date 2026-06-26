@@ -112,6 +112,7 @@ function ColoursCard({
   const [name, setName] = useState("");
   const [hex, setHex] = useState("#1B1B1B");
   const [premium, setPremium] = useState("");
+  const [premiumUsd, setPremiumUsd] = useState("");
 
   const add = () => {
     if (!name.trim()) return;
@@ -120,12 +121,14 @@ function ColoursCard({
         name: name.trim(),
         hex: hex || null,
         premium_ngn: premium ? Number(premium) : 0,
+        premium_usd: premiumUsd.trim() === "" ? null : Number(premiumUsd) || 0,
         is_default: colours.length === 0,
       },
       {
         onSuccess: () => {
           setName("");
           setPremium("");
+          setPremiumUsd("");
         },
       },
     );
@@ -183,12 +186,20 @@ function ColoursCard({
                 className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
               />
             </div>
-            <div className="w-[150px]">
+            <div className="w-[140px]">
               <NumberField
                 value={premium}
                 onChange={setPremium}
                 suffix="₦+"
-                placeholder="Colour premium"
+                placeholder="₦ premium"
+              />
+            </div>
+            <div className="w-[130px]">
+              <NumberField
+                value={premiumUsd}
+                onChange={setPremiumUsd}
+                suffix="$+"
+                placeholder="$ premium"
               />
             </div>
             <Button
@@ -204,7 +215,8 @@ function ColoursCard({
           <p className="text-[11px] text-text-faint mt-2">
             Leave the premium at 0 to price a colour the same as the rest. Set
             it (e.g. blonde, highlights) to charge more for that colour across
-            every size.
+            every size. The $ premium is independent — set it for USD-priced
+            products, leave blank to skip.
           </p>
         </div>
       )}
@@ -236,6 +248,15 @@ function ColourRow({
   const [igUrl, setIgUrl] = useState(colour.external_video_url ?? "");
   const [editName, setEditName] = useState(colour.name);
   const [editHex, setEditHex] = useState(colour.hex ?? "#1B1B1B");
+  const [editPremiumNgn, setEditPremiumNgn] = useState(
+    String(colour.premium_ngn ?? 0),
+  );
+  const [editPremiumUsd, setEditPremiumUsd] = useState(
+    colour.premium_usd != null ? String(colour.premium_usd) : "",
+  );
+  const premiumDirty =
+    editPremiumNgn !== String(colour.premium_ngn ?? 0) ||
+    editPremiumUsd !== (colour.premium_usd != null ? String(colour.premium_usd) : "");
 
   const imgs = images.data ?? [];
 
@@ -259,6 +280,11 @@ function ColourRow({
             {Number(colour.premium_ngn) > 0 && (
               <span className="text-[11px] text-accent-glow">
                 +₦{Number(colour.premium_ngn).toLocaleString()}
+              </span>
+            )}
+            {colour.premium_usd != null && Number(colour.premium_usd) > 0 && (
+              <span className="text-[11px] text-accent-glow">
+                +${Number(colour.premium_usd).toLocaleString()}
               </span>
             )}
           </div>
@@ -459,6 +485,46 @@ function ColourRow({
               }
               label="Active"
             />
+          </div>
+          {/* Per-colour price bump — NGN + the independent USD premium. */}
+          <div className="flex flex-wrap items-end gap-2.5">
+            <div className="w-[150px]">
+              <label className="micro block mb-1">Colour premium (₦)</label>
+              <NumberField
+                value={editPremiumNgn}
+                onChange={setEditPremiumNgn}
+                suffix="₦+"
+              />
+            </div>
+            <div className="w-[150px]">
+              <label className="micro block mb-1">Colour premium ($)</label>
+              <NumberField
+                value={editPremiumUsd}
+                onChange={setEditPremiumUsd}
+                suffix="$+"
+                placeholder="—"
+              />
+            </div>
+            {premiumDirty && (
+              <Button
+                size="sm"
+                disabled={update.isPending}
+                onClick={() =>
+                  update.mutate({
+                    colourId: colour.colour_id,
+                    patch: {
+                      premium_ngn: Number(editPremiumNgn) || 0,
+                      premium_usd:
+                        editPremiumUsd.trim() === ""
+                          ? null
+                          : Number(editPremiumUsd) || 0,
+                    },
+                  })
+                }
+              >
+                Save premium
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -721,10 +787,21 @@ function VariantRow({
       </td>
       <td className="py-2 text-right">
         {v.effective_price_ngn != null ? (
-          <MoneyText
-            ngn={Number(v.effective_price_ngn)}
-            className="text-[12.5px]"
-          />
+          <div>
+            <MoneyText
+              ngn={Number(v.effective_price_ngn)}
+              className="text-[12.5px]"
+            />
+            {v.effective_price_usd != null && (
+              <span className="block font-mono text-text-faint text-[10px]">
+                $
+                {Number(v.effective_price_usd).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            )}
+          </div>
         ) : (
           <span className="text-text-faint">—</span>
         )}

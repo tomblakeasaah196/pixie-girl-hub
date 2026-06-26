@@ -16,6 +16,8 @@ const styled = require("./styled.controller");
 const styledV = require("./styled.validator");
 const styledVar = require("./styled_variants.controller");
 const styledVarV = require("./styled_variants.validator");
+const usdReprice = require("./usd-reprice.controller");
+const usdRepriceV = require("./usd-reprice.validator");
 const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
 
@@ -141,6 +143,25 @@ router.put(
   styledVarV.validateSizeConfig,
   styledVar.saveSizeConfig,
 );
+
+// ── USD pricing: bulk "Apply exchange rate" tool (Catalogue → Config) ──
+// One NGN-per-USD rate recomputes every USD price from its NGN value; the run
+// is snapshotted so it can be undone. Reads are view; writes are edit.
+router.get("/usd-pricing", can("view"), usdReprice.status);
+router.get("/usd-pricing/market-rate", can("view"), usdReprice.marketRate);
+router.post(
+  "/usd-pricing/preview",
+  can("edit"),
+  usdRepriceV.validatePreview,
+  usdReprice.preview,
+);
+router.post(
+  "/usd-pricing/apply",
+  can("edit"),
+  usdRepriceV.validateApply,
+  usdReprice.apply,
+);
+router.post("/usd-pricing/undo", can("edit"), usdReprice.undo);
 // Import / export engine (PR-B): multi-sheet .xlsx (styled + colours +
 // reference). Literal segments before :id so they're never shadowed.
 router.get("/styled-products/import-template", can("view"), c.styledTemplate);

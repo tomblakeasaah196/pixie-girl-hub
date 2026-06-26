@@ -82,6 +82,8 @@ function enrichRow(styled, available, base_price) {
   const has_base_price = base_price !== null && base_price !== undefined;
   const anchor = styled.retail_price_ngn;
   const has_anchor = anchor !== null && anchor !== undefined;
+  const anchor_usd = styled.retail_price_usd;
+  const has_anchor_usd = anchor_usd !== null && anchor_usd !== undefined;
   const legacy = has_base_price
     ? money(base_price) + money(styled.style_addon_price_ngn)
     : null;
@@ -92,6 +94,9 @@ function enrichRow(styled, available, base_price) {
     retail_price_ngn: has_anchor ? anchor : null,
     // Headline "from" price: the styled retail anchor (size S), else legacy.
     effective_price_ngn: has_anchor ? money(anchor) : legacy,
+    // USD headline: the USD anchor when set. USD has no legacy fallback (there
+    // was never a base+addon USD figure), so it stays NULL until priced.
+    effective_price_usd: has_anchor_usd ? money(anchor_usd) : null,
   };
 }
 
@@ -134,10 +139,17 @@ async function getById({ brand, id }) {
   const prices = variants
     .filter((v) => v.is_active && v.effective_price_ngn !== null)
     .map((v) => Number(v.effective_price_ngn));
+  const pricesUsd = variants
+    .filter((v) => v.is_active && v.effective_price_usd !== null)
+    .map((v) => Number(v.effective_price_usd));
   enriched.colours = colours;
   enriched.variants = variants;
   enriched.price_range = prices.length
     ? { min: Math.min(...prices), max: Math.max(...prices) }
+    : null;
+  // USD range across variants that have a USD price (NULL when none priced).
+  enriched.price_range_usd = pricesUsd.length
+    ? { min: Math.min(...pricesUsd), max: Math.max(...pricesUsd) }
     : null;
   return enriched;
 }

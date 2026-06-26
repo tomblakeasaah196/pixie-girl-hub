@@ -141,10 +141,15 @@ export interface StyledProduct {
   availability: Availability;
   base_price_ngn: number | null;
   effective_price_ngn: number | null;
+  // USD headline ("from") price — the USD anchor when set, else NULL (USD has
+  // no legacy base+addon fallback).
+  effective_price_usd: number | null;
   // Attached on the detail fetch.
   colours?: StyledColour[];
   variants?: StyledVariant[];
   price_range?: { min: number; max: number } | null;
+  // USD price range across variants that carry a USD price (NULL when none).
+  price_range_usd?: { min: number; max: number } | null;
   // Trash list only: the date this product is purged for good (deleted_at + 15d).
   is_deleted?: boolean;
   deleted_at?: string | null;
@@ -160,6 +165,9 @@ export interface StyledColour {
   name: string;
   hex: string | null;
   premium_ngn: number;
+  // Absolute USD premium for this colour (manual, beside premium_ngn — the
+  // missing twin added in 000061 so USD composes like NGN). NULL = none set.
+  premium_usd: number | null;
   video_url: string | null;
   external_video_url: string | null;
   display_order: number;
@@ -195,13 +203,20 @@ export interface StyledVariant {
   colour_name: string;
   colour_hex: string | null;
   colour_premium_ngn: number;
+  colour_premium_usd: number | null;
   size_label: string;
   size_premium_ngn: number;
+  size_premium_usd: number | null;
   lace_label: string | null;
   lace_premium_ngn: number | null;
+  lace_premium_usd: number | null;
   base_product_name?: string | null;
   anchor_price_ngn: number | null;
+  anchor_price_usd: number | null;
   effective_price_ngn: number | null;
+  // USD mirror of effective_price_ngn. NULL when no USD anchor/override is set
+  // (USD ladder columns are nullable, so a partial sum is never invented).
+  effective_price_usd: number | null;
   // Trash (soft-delete). purge_at = deleted_at + 15 days (set on trashed rows).
   is_deleted?: boolean;
   deleted_at?: string | null;
@@ -1277,6 +1292,120 @@ export function useSaveSizeConfig() {
       qc.invalidateQueries({ queryKey: ["catalogue", "size-config", brand] });
       qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
     },
+  });
+}
+
+// ── USD pricing: bulk "Apply exchange rate" tool ─────────
+export type UsdRounding = "exact" | "whole" | "ninety_nine";
+
+/** Per-section count of USD fields a reprice run would touch. */
+export interface UsdRepriceCounts {
+  variants: number;
+  styled: number;
+  styled_variants: number;
+  size_tiers: number;
+  lace_sizes: number;
+  colours: number;
+  bundles: number;
+  services: number;
+  total: number;
+}
+
+export interface UsdPricingStatus {
+  config: {
+    usd_fx_rate: number | null;
+    usd_fx_rate_applied_at: string | null;
+    usd_fx_rate_applied_by: string | null;
+  } | null;
+  last_run: {
+    run_id: string;
+    rate: number;
+    rounding: UsdRounding;
+    rows_changed: number;
+    applied_at: string;
+    is_undone: boolean;
+    applied_by_email: string | null;
+  } | null;
+  counts: UsdRepriceCounts;
+  // Live NGN-per-USD market rate (hint), or null when no FX provider configured.
+  market_rate: number | null;
+}
+
+export interface UsdRepricePreview {
+  rate: number;
+  rounding: UsdRounding;
+  counts: UsdRepriceCounts;
+  sample: {
+    name: string;
+    ngn: number | null;
+    current_usd: number | null;
+    new_usd: number | null;
+  }[];
+}
+
+export interface UsdRepriceResult {
+  run_id: string;
+  rate: number;
+  rounding: UsdRounding;
+  rows_changed: number;
+  counts: UsdRepriceCounts;
+  applied_at: string;
+}
+
+export function useUsdPricing() {
+  const brand = useBrand();
+  return useQuery<UsdPricingStatus>({
+    queryKey: ["catalogue", "usd-pricing", brand],
+    queryFn: () => api.get<UsdPricingStatus>("/catalogue/usd-pricing"),
+  });
+}
+
+/** Read-only preview of a rate: per-section counts + a before/after sample. */
+export function useUsdRepricePreview() {
+  return useMutation({
+    mutationFn: (input: { rate: number; rounding: UsdRounding }) =>
+      api.post<UsdRepricePreview>("/catalogue/usd-pricing/preview", input),
+  });
+}
+
+/** A reprice touches base variants, styled products, the ladders, bundles and
+ *  services — invalidate every catalogue surface so prices refetch. */
+function invalidateAllCatalogue(qc: QueryClient, brand: string) {
+  [
+    "base",
+    "variants",
+    "styled",
+    "size-config",
+    "bundles",
+    "services",
+    "usd-pricing",
+  ].forEach((k) =>
+    qc.invalidateQueries({ queryKey: ["catalogue", k, brand] }),
+  );
+}
+
+export function useApplyUsdReprice() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: { rate: number; rounding: UsdRounding }) =>
+      api.post<UsdRepriceResult>("/catalogue/usd-pricing/apply", {
+        ...input,
+        confirm: true,
+      }),
+    onSuccess: () => invalidateAllCatalogue(qc, brand),
+  });
+}
+
+export function useUndoUsdReprice() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ run_id: string; rows_restored: number }>(
+        "/catalogue/usd-pricing/undo",
+      ),
+    onSuccess: () => invalidateAllCatalogue(qc, brand),
   });
 }
 

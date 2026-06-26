@@ -219,6 +219,7 @@ const COLOUR_COLS = [
   "name",
   "hex",
   "premium_ngn",
+  "premium_usd",
   "video_url",
   "external_video_url",
   "display_order",
@@ -266,14 +267,15 @@ async function getColour({ client, brand, styled_id, colour_id }) {
 async function createColour({ client, brand, styled_id, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "styled_product_colours")}
-       (styled_id, name, hex, premium_ngn, video_url, external_video_url, display_order, is_default, is_active)
-     VALUES ($1,$2,$3,COALESCE($4,0),$5,$6,COALESCE($7,0),COALESCE($8,false),COALESCE($9,true))
+       (styled_id, name, hex, premium_ngn, premium_usd, video_url, external_video_url, display_order, is_default, is_active)
+     VALUES ($1,$2,$3,COALESCE($4,0),$5,$6,$7,COALESCE($8,0),COALESCE($9,false),COALESCE($10,true))
      RETURNING *`,
     [
       styled_id,
       input.name,
       input.hex ?? null,
       input.premium_ngn,
+      input.premium_usd ?? null,
       input.video_url ?? null,
       input.external_video_url ?? null,
       input.display_order,
@@ -402,16 +404,31 @@ async function listVariants({ client, brand, styled_id }) {
   const { rows } = await ex(client)(
     `SELECT v.*,
             c.name AS colour_name, c.hex AS colour_hex, c.premium_ngn AS colour_premium_ngn,
+            c.premium_usd AS colour_premium_usd,
             c.display_order AS colour_order, c.is_default AS colour_is_default,
             st.label AS size_label, st.premium_ngn AS size_premium_ngn,
+            st.premium_usd AS size_premium_usd,
             st.display_order AS size_order,
             ls.label AS lace_label, ls.premium_ngn AS lace_premium_ngn,
+            ls.premium_usd AS lace_premium_usd,
             ls.display_order AS lace_order,
             pr.name AS base_product_name,
             sp.retail_price_ngn AS anchor_price_ngn,
+            sp.retail_price_usd AS anchor_price_usd,
             COALESCE(v.price_override_ngn,
                      sp.retail_price_ngn + c.premium_ngn + st.premium_ngn
-                       + COALESCE(ls.premium_ngn, 0)) AS effective_price_ngn
+                       + COALESCE(ls.premium_ngn, 0)) AS effective_price_ngn,
+            -- USD mirror of effective_price_ngn, but NULL-safe: USD ladder
+            -- columns are nullable (NGN are DEFAULT 0 NOT NULL), so when there
+            -- is no USD anchor and no USD override the styled variant simply has
+            -- no USD price (NULL) rather than a partial sum of premiums.
+            CASE WHEN sp.retail_price_usd IS NULL AND v.price_override_usd IS NULL
+                 THEN NULL
+                 ELSE COALESCE(v.price_override_usd,
+                        sp.retail_price_usd + COALESCE(c.premium_usd, 0)
+                          + COALESCE(st.premium_usd, 0)
+                          + COALESCE(ls.premium_usd, 0))
+            END AS effective_price_usd
        FROM ${t(brand, "styled_product_variants")} v
        JOIN ${t(brand, "styled_product_colours")} c ON c.colour_id = v.colour_id
        JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = v.size_code

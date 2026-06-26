@@ -20,9 +20,7 @@ CREATE TABLE shared.pos_terminal_reconciliation (
   provider            TEXT          NOT NULL DEFAULT 'nomba',
   resolved_brand      TEXT,                                   -- owning brand if the terminal is registered; NULL if unknown
   nomba_terminal_id   TEXT,                                   -- data.terminal.terminalId
-  alias_account_name  TEXT,                                   -- data.transaction.aliasAccountName = OUR terminal name (e.g. "Faitlyn Salon de luxe")
-  sender_name         TEXT,                                   -- data.customer.senderName = who paid (the real matching key for pay_by_transfer)
-  sender_bank         TEXT,                                   -- data.customer.bankName
+  alias_account_name  TEXT,                                   -- data.transaction.aliasAccountName (e.g. "Faitlyn Salon de luxe")
   amount_ngn          NUMERIC(18,2) NOT NULL,                 -- webhook transactionAmount (Naira, major units)
   transaction_time    TIMESTAMPTZ,                            -- data.transaction.time
   provider_reference  TEXT,                                   -- transactionId / merchantTxRef / sessionId

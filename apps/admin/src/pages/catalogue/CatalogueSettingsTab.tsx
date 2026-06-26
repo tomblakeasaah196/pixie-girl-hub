@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Tags, Layers3, Save, ShieldCheck } from "lucide-react";
+import {
+  Plus,
+  Tags,
+  Layers3,
+  Save,
+  ShieldCheck,
+  DollarSign,
+} from "lucide-react";
 import { Button, Card } from "@/components/ui/primitives";
 import { Toggle, NumberField, ErrorState } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
@@ -7,8 +14,10 @@ import { useAuthStore } from "@/stores/auth";
 import {
   useSizeConfig,
   useSaveSizeConfig,
+  useUsdPricing,
   type LaceSize,
 } from "@/lib/catalogue";
+import { UsdRepriceModal } from "./UsdRepriceModal";
 
 /**
  * Catalogue → Config. Two owner controls that don't belong on a product:
@@ -61,6 +70,9 @@ export function CatalogueSettingsTab() {
         canEdit={canEdit}
       />
 
+      {/* USD pricing — bulk apply exchange rate */}
+      <UsdPricingCard canEdit={canEdit} />
+
       {/* Allow base products in collections/bundles */}
       <Card className="p-5">
         <div className="flex items-start gap-3">
@@ -88,6 +100,45 @@ export function CatalogueSettingsTab() {
         </div>
       </Card>
     </div>
+  );
+}
+
+/** USD pricing card — open the "Apply exchange rate" tool. Shows the last rate
+ *  applied (if any) so the owner knows the catalogue's current USD basis. */
+function UsdPricingCard({ canEdit }: { canEdit: boolean }) {
+  const [open, setOpen] = useState(false);
+  const status = useUsdPricing();
+  const lastRun =
+    status.data?.last_run && !status.data.last_run.is_undone
+      ? status.data.last_run
+      : null;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start gap-3">
+        <div className="grid place-items-center w-10 h-10 rounded-[11px] bg-accent/10 text-accent-glow shrink-0">
+          <DollarSign className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-[15px] font-semibold">USD pricing</h3>
+          <p className="text-[12.5px] text-text-muted mt-0.5">
+            {lastRun
+              ? `Last applied ₦${Number(lastRun.rate).toLocaleString()}/$1 across the catalogue.`
+              : "Set every USD price from one exchange rate. Recomputes USD from each item’s Naira price — base variants, styled products, the ladders, bundles and services."}
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="primary"
+          icon={<DollarSign className="w-3.5 h-3.5" />}
+          disabled={!canEdit}
+          onClick={() => setOpen(true)}
+        >
+          Apply exchange rate
+        </Button>
+      </div>
+      <UsdRepriceModal open={open} onClose={() => setOpen(false)} />
+    </Card>
   );
 }
 

@@ -107,11 +107,16 @@ async function initOnGateway({
     return { provider, reference, checkout_url: url };
   }
   if (provider === "nomba") {
-    // Nomba settles NGN and USD on the SAME account (owner confirmed) — we just
-    // hand it the amount + currency. `charge_amount` is in the settlement
-    // currency's major units (Naira total for NGN; whole dollars for USD,
-    // already converted from the campaign rate by createPaymentLink). NGN takes
-    // major units (not kobo).
+    // Nomba denominates the checkout in the order's settlement currency, and
+    // BOTH work for this account (confirmed by live webhooks):
+    //   • NGN orders → currency NGN, Naira total. The buyer can still pick
+    //     another currency on Nomba's hosted page; Nomba converts and settles
+    //     NGN (e.g. an NGN order paid as £212.75 / $431.96).
+    //   • USD orders → currency USD, the dollar `charge_amount`. The buyer pays
+    //     by card via Nomba's Stripe-card option; funds settle to the USD wallet
+    //     and the webhook returns currency USD (e.g. FLH-SO-0044 → $426.89,
+    //     merchantTxRef "ch_…").
+    // Amounts are MAJOR units in both cases (Naira / whole dollars, not minor).
     const data = await nomba.initializePayment({
       reference,
       amount: charge_amount,
@@ -144,7 +149,14 @@ async function initOnGateway({
   if (provider === "stripe") {
     const session = await stripe.createCheckoutSession({
       reference,
-      amount_minor: toKobo(amount_ngn), // NGN→kobo; foreign uses same minor-unit scale
+      // Charge in the SETTLEMENT currency's minor units, derived from
+      // `charge_amount` — which createPaymentLink already converted into that
+      // currency's MAJOR units (Naira for NGN, whole dollars for USD). Using
+      // amount_ngn here was the bug: for a USD order it billed the Naira total
+      // as dollars (e.g. ₦505,300 → $505,300, ~1,300× the real $389), so the
+      // card declined and the order stayed pending. Both NGN and USD are
+      // 2-decimal in Stripe, so ×100 (toKobo) gives the right minor units.
+      amount_minor: toKobo(charge_amount),
       currency: String(currency || "NGN").toLowerCase(),
       email,
       success_url: callback_url,

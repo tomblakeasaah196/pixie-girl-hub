@@ -811,8 +811,11 @@ async function enqueueReplay({
       "replay",
       { webhook_id: r.webhook_id },
       // Stable jobId collapses duplicate enqueues for the same webhook while one
-      // is still pending, so overlapping sweeps don't pile up.
-      { jobId: `replay:${r.webhook_id}` },
+      // is still pending, so overlapping sweeps don't pile up. NOTE: BullMQ
+      // forbids ':' in a custom jobId ("Custom Id cannot contain :") — it uses
+      // ':' as its own key separator — so use '-'. Using ':' made every
+      // enqueueReplay throw, which silently broke the 30-min replay sweep.
+      { jobId: `replay-${r.webhook_id}` },
     );
   }
   logger.info({ source, count: rows.length }, "enqueued webhook replay batch");

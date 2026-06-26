@@ -592,16 +592,28 @@ async function confirmNombaCharge(log) {
       outstanding.gt(0) ? outstanding : money(order.total_ngn),
     );
     paid_currency = settledCurrency;
-    // For online_checkout, amount is in dataOrder; for terminal, in tx
-    const txAmount = isOnlineCheckout ? dataOrder.amount : (tx.amount || dataTx.amount || 0);
+    // For online_checkout, amount is in dataOrder; for terminal, Nomba uses
+    // data.transaction.transactionAmount (not the non-existent tx.amount).
+    const txAmount = isOnlineCheckout
+      ? dataOrder.amount
+      : (dataTx.transactionAmount || tx.amount || dataTx.amount || 0);
     paid_amount = toCurrencyString(money(txAmount));
     if (money(paid_amount).gt(0))
       fx_rate_used = money(amount_ngn).dividedBy(money(paid_amount)).toFixed(6);
   } else {
+    // Nomba sends the NGN figure under different keys depending on the path:
+    //   • online checkout / bank transfer → data.order.amount      (dataOrder.amount)
+    //   • POS / terminal                  → data.transaction.transactionAmount
+    // The legacy tx.amount / dataTx.amount fields do not exist in Nomba's
+    // payload, so they resolved to 0 and tripped the database check constraint
+    // sales_order_payments_amount_ngn_check, silently blocking confirmation.
+    const nombaNgnAmount = isOnlineCheckout
+      ? dataOrder.amount
+      : dataTx.transactionAmount;
     amount_ngn =
       meta.amount_ngn !== null && meta.amount_ngn !== undefined
         ? toCurrencyString(money(meta.amount_ngn))
-        : toCurrencyString(money(tx.amount || dataTx.amount || 0)); // Nomba NGN major units
+        : toCurrencyString(money(nombaNgnAmount || 0)); // Nomba NGN major units
   }
 
   await recordGatewayPayment({

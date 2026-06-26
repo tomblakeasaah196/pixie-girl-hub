@@ -511,6 +511,36 @@ async function listPayments({ client, brand, order_id }) {
  * already been recorded on this order? Used by the webhook confirm handler so a
  * re-delivered charge.success never double-records the payment.
  */
+/**
+ * Candidate orders for matching an unattributed POS/terminal payment
+ * (Fallback 1): open in-store orders whose outstanding balance equals the
+ * paid amount, optionally within a time window around the payment. Newest
+ * first; capped. Suggests matches to staff — never auto-applies.
+ */
+async function findReconcilablePosOrders({
+  client,
+  brand,
+  amount_ngn,
+  since = null,
+  until = null,
+  limit = 20,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT order_id, order_number, status, total_ngn, amount_paid_ngn,
+            balance_due_ngn, created_at
+       FROM ${t(brand, "sales_orders")}
+      WHERE sales_channel = 'pos'
+        AND balance_due_ngn = $1
+        AND balance_due_ngn > 0
+        AND status NOT IN ('cancelled','refunded','voided')
+        AND ($2::timestamptz IS NULL OR created_at >= $2)
+        AND ($3::timestamptz IS NULL OR created_at <= $3)
+      ORDER BY created_at DESC
+      LIMIT $4`,
+    [amount_ngn, since, until, limit],
+  );
+  return rows;
+}
 async function paymentExistsByProviderRef({
   client,
   brand,
@@ -821,6 +851,7 @@ module.exports = {
   markReminderSent,
   addPayment,
   listPayments,
+  findReconcilablePosOrders,
   paymentExistsByProviderRef,
   claimReminderSend,
   createQuotation,

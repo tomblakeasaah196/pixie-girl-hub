@@ -448,6 +448,7 @@ async function confirmNombaCharge(log) {
   const evt = log.payload || {};
   const dataOrder = (evt.data && evt.data.order) || {};
   const dataTx = (evt.data && evt.data.transaction) || {};
+  const dataTerminal = (evt.data && evt.data.terminal) || {};
 
   // For online_checkout (USD via Stripe): orderReference in order, currency/amount in order
   // For terminal (NGN): everything in transaction. Prefer order.orderReference.
@@ -616,6 +617,59 @@ async function confirmNombaCharge(log) {
         : toCurrencyString(money(nombaNgnAmount || 0)); // Nomba NGN major units
   }
 
+  // ── Fallback 1: unmatched in-store terminal payment ──────────
+  // A POS/terminal payment that arrived with no usable order reference
+  // (no merchantTxRef, or one that didn't resolve to an order) cannot be
+  // auto-confirmed. Park it in the reconciliation queue for staff to match
+  // by amount + terminal + time, instead of throwing it into an endless
+  // retry loop. Online-checkout payments are NOT parked — a missing order
+  // there is a real error and should surface. Returning normally marks the
+  // webhook processed so the replay sweep leaves it alone.
+  if (method === "nomba_terminal" && !order_id) {
+    const posRepo = require("../pos/pos.repo");
+    const nombaTerminalId = dataTerminal.terminalId || null;
+    // Recover the owning brand from the terminal registry when the reference
+    // didn't give us one (POS payloads carry no brand otherwise).
+    let reconBrand = resolvedBrand;
+    if (!reconBrand && nombaTerminalId) {
+      for (const b of VALID_BRANDS) {
+        const term = await posRepo.findTerminalByNombaId({
+          brand: b,
+          nomba_terminal_id: nombaTerminalId,
+        });
+        if (term) {
+          reconBrand = b;
+          break;
+        }
+      }
+    }
+    await posRepo.enqueueReconciliation({
+      row: {
+        webhook_id: log.webhook_id,
+        provider: "nomba",
+        resolved_brand: reconBrand || null,
+        nomba_terminal_id: nombaTerminalId,
+        alias_account_name:
+          tx.aliasAccountName || dataTx.aliasAccountName || null,
+        amount_ngn,
+        transaction_time: tx.time || dataTx.time || null,
+        provider_reference:
+          reference || tx.transactionId || dataTx.transactionId || null,
+        raw_payload: evt,
+      },
+    });
+    logger.warn(
+      {
+        webhook_id: log.webhook_id,
+        nomba_terminal_id: nombaTerminalId,
+        amount_ngn,
+        resolved_brand: reconBrand || null,
+      },
+      "nomba terminal payment parked for manual reconciliation (no order reference)",
+    );
+    return;
+  }
+
   await recordGatewayPayment({
     brand: meta.brand || resolvedBrand,
     order_id,
@@ -761,4 +815,7 @@ module.exports = {
   register,
   onWebhookReceived,
   enqueueReplay,
+  // Exposed so POS terminal reconciliation can confirm a manually-matched
+  // payment through the same idempotent, fee-aware path the webhook uses.
+  recordGatewayPayment,
 };

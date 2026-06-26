@@ -134,6 +134,10 @@ async function requestTerminalCharge({
   if (!creds)
     throw new AppError("NOMBA_NOT_CONFIGURED", "Nomba is not configured", 503);
 
+  // The reference embeds the order number (e.g. "nomba-FLH-SO-0044-mq1z9").
+  // Nomba echoes it back as data.transaction.merchantTxRef on the webhook, where
+  // confirmNombaCharge extracts the brand from the -FLH-/-PXG- pattern and
+  // recovers the order via findByOrderNumber — auto-confirming the payment.
   const reference =
     `nomba-${order.order_number}-${Date.now().toString(36)}`.replace(
       /[^A-Za-z0-9_-]/g,
@@ -143,13 +147,6 @@ async function requestTerminalCharge({
     terminal_id: terminal.nomba_terminal_id,
     amount_ngn: amountStr,
     reference,
-    metadata: {
-      brand,
-      order_id,
-      amount_ngn: amountStr,
-      channel: "pos",
-      terminal_id,
-    },
     creds,
   });
   await A(
@@ -162,6 +159,137 @@ async function requestTerminalCharge({
     request_id,
   );
   return { reference, terminal_id, amount_ngn: amountStr, nomba: resp };
+}
+// ── Terminal reconciliation (Fallback 1) ─────────────────
+// In-store Nomba payments that arrived without a resolvable order are parked
+// in shared.pos_terminal_reconciliation by the webhook handler. Staff list
+// them, see candidate orders (same outstanding amount, POS channel, near the
+// payment time), then confirm a match (records the payment against the order)
+// or ignore the item.
+const RECON_WINDOW_MS = 6 * 60 * 60 * 1000; // ±6h around the payment time
+
+async function listTerminalReconciliation({ brand, status, page, page_size }) {
+  return repo.listReconciliation({
+    client: null,
+    brand,
+    status: status || "pending",
+    page,
+    page_size,
+    offset: (page - 1) * page_size,
+  });
+}
+function assertReconBrand(recon, brand) {
+  if (!recon) throw new NotFoundError("Reconciliation item not found");
+  if (recon.resolved_brand && recon.resolved_brand !== brand)
+    throw new AppError(
+      "WRONG_BRAND",
+      "This payment belongs to another business",
+      403,
+    );
+}
+async function getTerminalReconciliation({ brand, id }) {
+  const recon = await repo.getReconciliation({ client: null, id });
+  assertReconBrand(recon, brand);
+  // Suggest candidate orders to match against.
+  const salesRepo = require("../sales/sales.repo");
+  let since = null;
+  let until = null;
+  if (recon.transaction_time) {
+    const ts = new Date(recon.transaction_time).getTime();
+    since = new Date(ts - RECON_WINDOW_MS).toISOString();
+    until = new Date(ts + RECON_WINDOW_MS).toISOString();
+  }
+  const candidates = await salesRepo.findReconcilablePosOrders({
+    client: null,
+    brand,
+    amount_ngn: toCurrencyString(money(recon.amount_ngn)),
+    since,
+    until,
+  });
+  return { ...recon, candidate_orders: candidates };
+}
+async function matchTerminalReconciliation({
+  brand,
+  user,
+  request_id,
+  recon_id,
+  order_id,
+}) {
+  const recon = await repo.getReconciliation({ client: null, id: recon_id });
+  assertReconBrand(recon, brand);
+  if (recon.status !== "pending")
+    throw new ConflictError(`Item already ${recon.status}`);
+  const order = await salesService.getById({ brand, id: order_id });
+  if (!order) throw new NotFoundError("Order not found");
+
+  // Confirm the payment through the same idempotent, fee-aware path the webhook
+  // uses (dedups on provider_reference, books the gateway fee, fires order.paid).
+  const webhooks = require("../business_setup/webhooks.service");
+  await webhooks.recordGatewayPayment({
+    brand,
+    order_id,
+    reference: recon.provider_reference,
+    amount_ngn: toCurrencyString(money(recon.amount_ngn)),
+    method: "nomba_terminal",
+    provider: "nomba",
+    webhook_id: recon.webhook_id,
+  });
+
+  const updated = await repo.setReconciliationStatus({
+    client: null,
+    id: recon_id,
+    patch: {
+      status: "matched",
+      resolved_brand: brand,
+      matched_brand: brand,
+      matched_order_id: order_id,
+      matched_by: user?.user_id || null,
+      matched_at: new Date().toISOString(),
+    },
+  });
+  await A(
+    brand,
+    user?.user_id,
+    "pos.reconciliation.match",
+    "pos_terminal_reconciliation",
+    recon_id,
+    { order_id, amount_ngn: recon.amount_ngn },
+    request_id,
+  );
+  return updated;
+}
+async function ignoreTerminalReconciliation({
+  brand,
+  user,
+  request_id,
+  recon_id,
+  note,
+}) {
+  const recon = await repo.getReconciliation({ client: null, id: recon_id });
+  assertReconBrand(recon, brand);
+  if (recon.status !== "pending")
+    throw new ConflictError(`Item already ${recon.status}`);
+  const updated = await repo.setReconciliationStatus({
+    client: null,
+    id: recon_id,
+    patch: {
+      status: "ignored",
+      resolved_brand: recon.resolved_brand || brand,
+      matched_by: user?.user_id || null,
+      matched_at: new Date().toISOString(),
+      note: note || null,
+    },
+  });
+  await A(
+    brand,
+    user?.user_id,
+    "pos.reconciliation.ignore",
+    "pos_terminal_reconciliation",
+    recon_id,
+    { note: note || null },
+    request_id,
+  );
+  return updated;
 }
 async function updateTerminal({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
@@ -705,6 +833,10 @@ module.exports = {
   getTerminal,
   listTerminals,
   requestTerminalCharge,
+  listTerminalReconciliation,
+  getTerminalReconciliation,
+  matchTerminalReconciliation,
+  ignoreTerminalReconciliation,
   updateTerminal,
   setPin,
   verifyPin,

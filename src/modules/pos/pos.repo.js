@@ -77,6 +77,14 @@ async function getTerminal({ client, brand, id }) {
   );
   return rows[0] || null;
 }
+async function findTerminalByNombaId({ client, brand, nomba_terminal_id }) {
+  if (!nomba_terminal_id) return null;
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "pos_terminals")} WHERE nomba_terminal_id = $1 LIMIT 1`,
+    [nomba_terminal_id],
+  );
+  return rows[0] || null;
+}
 async function listTerminals({ client, brand, is_active }) {
   const where = [];
   const params = [];
@@ -484,12 +492,101 @@ async function getSummary({ client, brand, session_id }) {
   return rows[0] || null;
 }
 
+// ── shared.pos_terminal_reconciliation (Fallback 1) ──────
+// Cross-brand queue: webhooks are received before the brand is known, so this
+// table lives in `shared`. Rows are filtered to a brand by resolved_brand.
+async function enqueueReconciliation({ client, row }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.pos_terminal_reconciliation
+       (webhook_id, provider, resolved_brand, nomba_terminal_id, alias_account_name,
+        amount_ngn, transaction_time, provider_reference, raw_payload)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+     ON CONFLICT (provider, provider_reference) WHERE provider_reference IS NOT NULL
+       DO NOTHING
+     RETURNING *`,
+    [
+      row.webhook_id || null,
+      row.provider || "nomba",
+      row.resolved_brand || null,
+      row.nomba_terminal_id || null,
+      row.alias_account_name || null,
+      row.amount_ngn,
+      row.transaction_time || null,
+      row.provider_reference || null,
+      JSON.stringify(row.raw_payload || {}),
+    ],
+  );
+  return rows[0] || null;
+}
+async function listReconciliation({
+  client,
+  brand,
+  status = "pending",
+  page = 1,
+  page_size = 25,
+  offset = 0,
+}) {
+  // A brand sees its own terminals' items plus any still-unresolved (NULL) rows.
+  const where = `WHERE (resolved_brand = $1 OR resolved_brand IS NULL) AND status = $2`;
+  const params = [brand, status];
+  const run = ex(client);
+  const { rows: c } = await run(
+    `SELECT COUNT(*)::int AS total FROM shared.pos_terminal_reconciliation ${where}`,
+    params,
+  );
+  const { rows } = await run(
+    `SELECT * FROM shared.pos_terminal_reconciliation ${where}
+      ORDER BY transaction_time DESC NULLS LAST, created_at DESC
+      LIMIT $3 OFFSET $4`,
+    [...params, page_size, offset],
+  );
+  return {
+    data: rows,
+    meta: {
+      page,
+      page_size,
+      total: c[0].total,
+      has_more: offset + rows.length < c[0].total,
+    },
+  };
+}
+async function getReconciliation({ client, id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.pos_terminal_reconciliation WHERE recon_id = $1`,
+    [id],
+  );
+  return rows[0] || null;
+}
+async function setReconciliationStatus({ client, id, patch }) {
+  const cols = [
+    "status",
+    "resolved_brand",
+    "matched_brand",
+    "matched_order_id",
+    "matched_by",
+    "matched_at",
+    "note",
+  ];
+  const { f, p, next } = buildUpdate(cols, patch);
+  if (f.length === 0) return getReconciliation({ client, id });
+  const { rows } = await ex(client)(
+    `UPDATE shared.pos_terminal_reconciliation SET ${f.join(", ")} WHERE recon_id = $${next} RETURNING *`,
+    [...p, id],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   nextNumber,
   createTerminal,
   getTerminal,
+  findTerminalByNombaId,
   listTerminals,
   updateTerminal,
+  enqueueReconciliation,
+  listReconciliation,
+  getReconciliation,
+  setReconciliationStatus,
   getPinByUser,
   upsertPin,
   setPinState,

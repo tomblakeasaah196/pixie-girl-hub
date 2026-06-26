@@ -139,11 +139,18 @@ async function initializePayment({
 
 /**
  * Push a charge to a physical Nomba POS terminal (PD §6.21 — Nomba is the
- * in-store POS gateway). `amount_ngn` in NGN major units. The terminal prompts
- * the customer to tap/insert; the result arrives via webhook (confirmed as
- * method 'nomba_terminal'). metadata carries { brand, order_id, amount_ngn,
- * channel:'pos' } for confirmation. NOTE: verify the exact terminal endpoint/
- * payload against your Nomba account's POS API before go-live.
+ * in-store POS gateway). `amount_ngn` is the NGN total in MAJOR units (Naira).
+ * The terminal prompts the customer to tap/insert; the result arrives via
+ * webhook (confirmed as method 'nomba_terminal'). `reference` is sent as
+ * `merchantTxRef` so Nomba echoes it back on the webhook, letting us auto-match
+ * the payment to its order (Option 2). Set it to the order number so the webhook
+ * handler's brand + order resolution works.
+ *
+ * ⚠️  UNITS: unlike /v1/checkout/order (major units / Naira), the terminal
+ *    payment-request endpoint expects the amount in the SMALLEST unit (kobo) —
+ *    Nomba docs: "amount … in the smallest currency unit (e.g. kobo)". So we
+ *    convert Naira → kobo here. (The webhook we receive back reports the amount
+ *    in major Naira units; the two directions use different units.)
  */
 async function requestTerminalPayment({
   terminal_id,
@@ -151,12 +158,13 @@ async function requestTerminalPayment({
   reference,
   creds,
 }) {
+  const amountKobo = Math.round(Number(amount_ngn) * 100);
   return authed(
     "post",
     `/v1/terminals/payment-request/${encodeURIComponent(terminal_id)}`,
     {
       merchantTxRef: reference,
-      amount: Number(amount_ngn),
+      amount: amountKobo,
       currency: "NGN",
     },
     creds,

@@ -139,6 +139,12 @@ const terminalCharge = z
   })
   .strict();
 
+// ── Terminal reconciliation (Fallback 1) ─────────────────
+const reconMatch = z.object({ order_id: z.string().uuid() }).strict();
+const reconIgnore = z
+  .object({ note: z.string().max(500).optional() })
+  .strict();
+
 const mw = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body ?? {});
   next();
@@ -148,6 +154,8 @@ module.exports = {
   validateTerminalCreate: mw(terminalCreate),
   validateTerminalUpdate: mw(terminalUpdate),
   validateTerminalCharge: mw(terminalCharge),
+  validateReconMatch: mw(reconMatch),
+  validateReconIgnore: mw(reconIgnore),
   validatePinSet: mw(pinSet),
   validatePinVerify: mw(pinVerify),
   validateSessionOpen: mw(sessionOpen),

@@ -40,6 +40,32 @@ router.post(
   controller.requestTerminalCharge,
 );
 
+// ── Terminal reconciliation (Fallback 1) ─────────────────
+// Unattributed in-store Nomba payments parked by the webhook handler; staff
+// match them to an open order or ignore them.
+router.get(
+  "/terminal-reconciliation",
+  can("view"),
+  controller.listTerminalReconciliation,
+);
+router.get(
+  "/terminal-reconciliation/:id",
+  can("view"),
+  controller.getTerminalReconciliation,
+);
+router.post(
+  "/terminal-reconciliation/:id/match",
+  can("approve"),
+  validator.validateReconMatch,
+  controller.matchTerminalReconciliation,
+);
+router.post(
+  "/terminal-reconciliation/:id/ignore",
+  can("approve"),
+  validator.validateReconIgnore,
+  controller.ignoreTerminalReconciliation,
+);
+
 // ── Staff PINs (never returned) ──────────────────────────
 router.post("/pins", can("edit"), validator.validatePinSet, controller.setPin);
 router.post(

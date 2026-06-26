@@ -50,6 +50,42 @@ const requestTerminalCharge = async (req, res) =>
     }),
   });
 
+// ── Terminal reconciliation (Fallback 1) ─────────────────
+async function listTerminalReconciliation(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  res.json(
+    await service.listTerminalReconciliation({
+      brand: req.brand,
+      status: req.query.status,
+      page,
+      page_size,
+    }),
+  );
+}
+const getTerminalReconciliation = async (req, res) =>
+  res.json({
+    data: await service.getTerminalReconciliation({
+      brand: req.brand,
+      id: req.params.id,
+    }),
+  });
+const matchTerminalReconciliation = async (req, res) =>
+  res.json({
+    data: await service.matchTerminalReconciliation({
+      ...base(req),
+      recon_id: req.params.id,
+      order_id: req.body.order_id,
+    }),
+  });
+const ignoreTerminalReconciliation = async (req, res) =>
+  res.json({
+    data: await service.ignoreTerminalReconciliation({
+      ...base(req),
+      recon_id: req.params.id,
+      note: req.body.note,
+    }),
+  });
+
 // ── PINs ─────────────────────────────────────────────────
 const setPin = async (req, res) =>
   res.status(201).json({
@@ -155,6 +191,10 @@ module.exports = {
   createTerminal,
   updateTerminal,
   requestTerminalCharge,
+  listTerminalReconciliation,
+  getTerminalReconciliation,
+  matchTerminalReconciliation,
+  ignoreTerminalReconciliation,
   setPin,
   verifyPin,
   listSessions,

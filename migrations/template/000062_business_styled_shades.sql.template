@@ -1,0 +1,73 @@
+-- ============================================================
+-- TEMPLATE 000062 — Catalogue: Product Shades (standalone section)
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000061) and to EXISTING brands by
+-- repair-business-schema.js. The sentinel is the FIRST (and only) CREATE TABLE
+-- below — styled_shades — so the whole file runs once and is skipped on every
+-- later repair. The single ALTER is idempotent (ADD COLUMN IF NOT EXISTS) so a
+-- re-run would also be safe.
+--
+-- WHY (owner directive, June 2026):
+--   The storefront has a "Shop by shade" section. A shade (Icy Grey, Plum
+--   Cherry, …) is NOT just a filter — it is a standalone content page with its
+--   own cover image, short + long copy ("how to blend it"), and SEO slug. It
+--   sits beside Collections as a first-class catalogue section. STYLED products
+--   only carry a shade (a base stock-room product never does), so the link is a
+--   nullable shade_id on styled_products (one shade per styled listing).
+--
+-- New:
+--   styled_shades                — the standalone shade content entity (SENTINEL)
+-- Altered:
+--   styled_products              — shade_id (the membership target)
+-- ============================================================
+
+-- ── 1. The shade content entity (SENTINEL — first CREATE TABLE) ──
+-- One row per shade. `slug` is the SEO URL key (/shades/<slug>), unique within
+-- the brand. short_/long_description power the list teaser + the dedicated
+-- shade page body. cover_image_url is the shade hero.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.styled_shades (
+  shade_id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                  TEXT          NOT NULL,
+  -- SEO slug, kebab-case, unique per brand (partial-unique over live rows).
+  slug                  TEXT          NOT NULL,
+  short_description     TEXT,
+  long_description      TEXT,
+  -- Shade hero / cover picture for the list card + the dedicated page.
+  cover_image_url       TEXT,
+  display_order         INTEGER       NOT NULL DEFAULT 0,
+  is_active             BOOLEAN       NOT NULL DEFAULT true,
+  is_visible_storefront BOOLEAN       NOT NULL DEFAULT true,
+  meta_title            TEXT,
+  meta_description      TEXT,
+  created_by            UUID          REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_styled_shades_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.styled_shades
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+-- One shade per slug within the brand.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_shades_slug
+  ON {{BUSINESS}}.styled_shades (slug);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_shades_order
+  ON {{BUSINESS}}.styled_shades (display_order, name);
+
+-- ── 2. Membership target on the styled product ───────────
+-- A styled listing belongs to at most one shade. NULL = unshaded. ON DELETE
+-- SET NULL so removing a shade simply unshades its products (never deletes them).
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS shade_id UUID
+    REFERENCES {{BUSINESS}}.styled_shades (shade_id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_products_shade
+  ON {{BUSINESS}}.styled_products (shade_id)
+  WHERE shade_id IS NOT NULL;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT to_regclass('{{BUSINESS}}.styled_shades');               -- not null
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}'
+--       AND table_name = 'styled_products' AND column_name = 'shade_id';
+-- ============================================================

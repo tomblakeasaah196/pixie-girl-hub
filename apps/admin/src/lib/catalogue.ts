@@ -129,6 +129,8 @@ export interface StyledProduct {
   // Module-card hero: explicit override id + the resolved url (list + detail).
   primary_image_id?: string | null;
   primary_image_url?: string | null;
+  // "Shop by shade" membership (NULL = unshaded). Set via the Shades tab.
+  shade_id?: string | null;
   // AI provenance (P0-8).
   ai_drafted?: boolean;
   ai_model?: string | null;
@@ -434,6 +436,40 @@ export interface CollectionMember {
 /** Collection detail (GET /catalogue/collections/:id) carries its members. */
 export interface CollectionDetail extends Collection {
   members: CollectionMember[];
+}
+
+/** A Product Shade — a standalone "Shop by shade" page (cover + copy + SEO
+ *  slug) that sits beside Collections. STYLED products carry a shade. */
+export interface Shade {
+  shade_id: string;
+  name: string;
+  slug: string;
+  short_description: string | null;
+  long_description: string | null;
+  cover_image_url: string | null;
+  display_order: number;
+  is_active: boolean;
+  is_visible_storefront: boolean;
+  meta_title: string | null;
+  meta_description: string | null;
+  // Joined: live styled-product count in this shade (list only).
+  product_count?: number;
+  created_at?: string;
+}
+
+export interface ShadeMember {
+  styled_id: string;
+  styled_name: string;
+  styled_slug: string;
+  status: StyledStatus;
+  retail_price_ngn: number | null;
+  retail_price_usd: number | null;
+  image_url: string | null;
+}
+
+/** Shade detail (GET /catalogue/shades/:id) carries its styled products. */
+export interface ShadeDetail extends Shade {
+  members: ShadeMember[];
 }
 
 // ════════════════════════════════════════════════════════════
@@ -856,6 +892,105 @@ export function useUpdateCollection() {
       api.patch<Collection>(`/catalogue/collections/${id}`, patch),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["catalogue", "collections", brand] }),
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// Product Shades ("Shop by shade") — /catalogue/shades
+// ════════════════════════════════════════════════════════════
+function invalidateShades(qc: QueryClient, brand: string) {
+  qc.invalidateQueries({ queryKey: ["catalogue", "shades", brand] });
+  // A shade (re)assignment changes styled products' shade_id.
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
+}
+
+export function useShades() {
+  const brand = useBrand();
+  return useQuery<Shade[]>({
+    queryKey: ["catalogue", "shades", brand],
+    queryFn: () => api.get<Shade[]>("/catalogue/shades"),
+  });
+}
+
+export function useShade(id: string | null) {
+  const brand = useBrand();
+  return useQuery<ShadeDetail>({
+    queryKey: ["catalogue", "shades", brand, "one", id],
+    queryFn: () => api.get<ShadeDetail>(`/catalogue/shades/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateShade() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: Partial<Shade>) =>
+      api.post<Shade>("/catalogue/shades", input),
+    onSuccess: () => invalidateShades(qc, brand),
+  });
+}
+
+export function useUpdateShade() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<Shade> }) =>
+      api.patch<Shade>(`/catalogue/shades/${id}`, patch),
+    onSuccess: (_d, vars) => {
+      invalidateShades(qc, brand);
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "shades", brand, "one", vars.id],
+      });
+    },
+  });
+}
+
+export function useDeleteShade() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/catalogue/shades/${id}`),
+    onSuccess: () => invalidateShades(qc, brand),
+  });
+}
+
+/** Flow-2 bulk assign: drop many styled products into a shade in one call. */
+export function useAssignShadeMembers() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({
+      shadeId,
+      styledIds,
+    }: {
+      shadeId: string;
+      styledIds: string[];
+    }) =>
+      api.post<{ assigned: number }>(`/catalogue/shades/${shadeId}/members`, {
+        styled_ids: styledIds,
+      }),
+    onSuccess: (_d, vars) => {
+      invalidateShades(qc, brand);
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "shades", brand, "one", vars.shadeId],
+      });
+    },
+  });
+}
+
+export function useRemoveShadeMember(shadeId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (styledId: string) =>
+      api.delete<void>(`/catalogue/shades/${shadeId}/members/${styledId}`),
+    onSuccess: () => {
+      invalidateShades(qc, brand);
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "shades", brand, "one", shadeId],
+      });
+    },
   });
 }
 

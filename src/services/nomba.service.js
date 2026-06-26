@@ -4,11 +4,16 @@
  * OAuth client-credentials → access token (cached per client_id until ~expiry):
  *   - initializePayment: create an online checkout order (redirect link).
  *   - verifyTransaction: server-side lookup by order reference.
- *   - verifyWebhookSignature: HMAC-SHA256 of the raw body keyed on the client
- *     secret, compared to the `x-nomba-signature` header.
+ *   - verifyWebhookSignature: HMAC-SHA256 over the canonical field string
+ *     keyed on the WEBHOOK SIGNATURE KEY (set in Nomba dashboard), compared
+ *     to the `nomba-signature` header. true | false | null.
  *
  * Each function accepts an optional `creds` ({ client_id, client_secret,
- * account_id }) resolved per-brand; omitted → env fallback.
+ * account_id, webhook_signature_key }) resolved per-brand; omitted → env fallback.
+ *
+ * ⚠️  The webhook signature key is a SEPARATE secret from the API client_secret.
+ *    It is set in the Nomba dashboard under Developer → Webhook Setup.
+ *    Store it in env as NOMBA_WEBHOOK_SIG_KEY (and per-brand variants).
  */
 
 "use strict";
@@ -20,11 +25,19 @@ const { AppError } = require("../utils/errors");
 
 const tokenCache = new Map(); // client_id → { token, expiresAt }
 
+// ── creds helpers ───────────────────────────────────────
+// `creds` may carry webhook_signature_key (from per-brand config).
+// Fallback: env NOMBA_WEBHOOK_SIG_KEY (and per-brand overrides below).
 function keys(creds) {
   return {
     client_id: (creds && creds.client_id) || config.NOMBA_CLIENT_ID,
     client_secret: (creds && creds.client_secret) || config.NOMBA_API_KEY,
     account_id: (creds && creds.account_id) || config.NOMBA_ACCOUNT_ID,
+    // Webhook signature key: per-brand via creds, then env, then null.
+    webhook_signature_key:
+      (creds && creds.webhook_signature_key) ||
+      config.NOMBA_WEBHOOK_SIG_KEY ||
+      null,
   };
 }
 
@@ -161,52 +174,120 @@ async function verifyTransaction(reference, creds) {
 }
 
 /**
- * Verify an inbound webhook: HMAC-SHA256 over the raw body keyed on the client
- * secret, compared to the x-nomba-signature header. true | false | null.
+ * Verify an inbound Nomba webhook signature.
+ *
+ * Nomba's official docs (all language samples) define the signature as:
+ *
+ *   1. Construct a canonical string from the JSON payload fields:
+ *        event_type : requestId : userId : walletId : transactionId : transactionType : transactionTime : responseCode : timestamp
+ *      (each field separated by ':', empty string if field is missing)
+ *   2. HMAC-SHA256(the above string, webhook_signature_key) → raw bytes
+ *   3. Base64-encode the raw bytes → this is the expected signature
+ *   4. Compare to the value in the `nomba-signature` header (case-insensitively)
+ *
+ * The timestamp is read from the `nomba-timestamp` header (RFC-3339 string).
+ *
+ * Returns: true (valid), false (present but invalid), null (no secret configured → skip verification).
+ *
+ * @param {Buffer|string} rawBody  – the raw request body (Buffer or string)
+ * @param {object}      headers   – the request headers (lowercase keys)
+ * @param {object}      [creds]   – optional per-brand creds { webhook_signature_key }
  */
 function verifyWebhookSignature(rawBody, headers = {}, creds) {
-  const secret = (creds && creds.client_secret) || config.NOMBA_API_KEY;
-  if (!secret) return null;
+  // ── 1. Resolve the webhook signature key ──────────────────
+  // Per-brand: creds.webhook_signature_key
+  // Fallback:   env NOMBA_WEBHOOK_SIG_KEY
+  // Also support per-brand env vars (same pattern as API keys):
+  //   PIXIE_NOMBA_WEBHOOK_SIG_KEY, FAITLYN_NOMBA_WEBHOOK_SIG_KEY
+  const envSigKey =
+    config.NOMBA_WEBHOOK_SIG_KEY ||
+    config.PIXIE_NOMBA_WEBHOOK_SIG_KEY ||
+    config.FAITLYN_NOMBA_WEBHOOK_SIG_KEY ||
+    null;
 
-  const sig = headers["nomba-signature"] || headers["nomba-sig-value"] || null;
-  const timestamp = headers["nomba-timestamp"] || null;
-  if (!sig || !timestamp) return false;
+  const secret =
+    (creds && creds.webhook_signature_key) || envSigKey;
 
+  if (!secret) return null; // no secret configured → skip (log only)
+
+  // ── 2. Read Nomba's signature headers ─────────────────────
+  // Nomba sends: nomba-signature, nomba-sig-value (both same value),
+  //               nomba-timestamp (RFC-3339 string).
+  // Header names are case-insensitive; express normalises to lowercase.
+  const sig =
+    headers["nomba-signature"] ||
+    headers["nomba-sig-value"] ||
+    null;
+
+  const timestamp =
+    headers["nomba-timestamp"] ||
+    null;
+
+  if (!sig || !timestamp) return false; // required headers missing → reject
+
+  // ── 3. Parse the payload (we need individual fields, not the raw body) ──
   let payload;
   try {
-    payload = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+    payload =
+      typeof rawBody === "string"
+        ? JSON.parse(rawBody)
+        : JSON.parse(rawBody.toString("utf8"));
   } catch {
-    return false;
+    return false; // malformed body → reject
   }
 
-  const data = payload.data || {};
-  const merchant = data.merchant || {};
-  const transaction = data.transaction || {};
+  const data        = payload.data        || {};
+  const merchant    = data.merchant      || {};
+  const transaction = data.transaction    || {};
 
+  // ── 4. Build the canonical hashing payload (EXACTLY as Nomba's docs) ──
+  // Nomba's docs: "event_type:requestId:userId:walletId:transactionId:transactionType:transactionTime:responseCode:timestamp"
+  //
+  // Official samples (Go/Python/JS/Java/C#/PHP) all use these exact 8 fields
+  // joined by ':', with empty-string fallback for missing fields, and treat the
+  // string "null" (the JSON value null serialised) as empty string.
   let responseCode = transaction.responseCode || "";
   if (responseCode === "null") responseCode = "";
 
-  const hashInput = [
-    payload.event_type || "",
-    payload.requestId || "",
-    merchant.userId || "",
-    merchant.walletId || "",
+  const hashingPayload = [
+    payload.event_type   || "",
+    payload.requestId    || "",
+    merchant.userId      || "",
+    merchant.walletId    || "",
     transaction.transactionId || "",
-    transaction.type || "",
-    transaction.time || "",
+    transaction.type     || "",
+    transaction.time     || "",
     responseCode,
     timestamp,
   ].join(":");
 
+  // ── 5. Compute HMAC-SHA256 → base64 ─────────────────────
   const computed = crypto
     .createHmac("sha256", secret)
-    .update(hashInput)
+    .update(hashingPayload, "utf8")
     .digest("base64");
 
+  // ── 6. Constant-time, case-INSENSITIVE compare ──────────
+  // Nomba's own samples (C#, PHP, Go) all compare case-insensitively.
+  // Base64 can have '+'/'-' and '/'/'_' differences between standard and
+  // URL-safe encodings, and the header value may have trailing whitespace.
   try {
-    return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(sig));
+    const sigNormalised  = (sig || "").toString().trim();
+    const compNormalised = (computed || "").toString().trim();
+    return crypto.timingSafeEqual(
+      Buffer.from(sigNormalised,  "utf8"),
+      Buffer.from(compNormalised, "utf8"),
+    );
   } catch {
-    return false;
+    // If lengths differ (e.g. padding), timingSafeEqual throws.
+    // Do a manual case-insensitive string compare as fallback.
+    try {
+      const a = (sig || "").toString().trim().toLowerCase();
+      const b = (computed || "").toString().trim().toLowerCase();
+      return a === b;
+    } catch {
+      return false;
+    }
   }
 }
 

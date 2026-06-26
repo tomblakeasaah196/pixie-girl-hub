@@ -36,6 +36,8 @@ function receiver(source) {
 // ── Payment gateways ──────────────────────────────────────
 // GET probes for webhook URL validation (Nomba/Stripe/Paystack/Opay
 // send a GET when you save the URL in their dashboard). Must return 200.
+// NOTE: route paths must NOT contain literal \n characters — Express will
+// register them as the Unicode character U+000A, not a path separator.
 router.get("/paystack", (_req, res) => res.status(200).send("OK"));
 router.get("/opay", (_req, res) => res.status(200).send("OK"));
 router.get("/stripe", (_req, res) => res.status(200).send("OK"));

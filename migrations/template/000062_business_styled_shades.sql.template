@@ -1,0 +1,53 @@
+-- ============================================================
+-- TEMPLATE 000062 — Browse-by-shade (styled_shades)
+-- Pixie Girl Hub · JBS Praxis
+--
+-- A "shade" is a curated colour family the storefront lets customers browse by
+-- (e.g. "Blonde Mary", "Icy", "Plum"). Each styled product belongs to at most
+-- one shade; a shade page lists every live styled product carrying that shade.
+-- This is a STOREFRONT-WEBSITE browse axis (Shades / Collections / Bundles /
+-- individual wigs) — it has nothing to do with the Sales Campaign Landing.
+--
+-- Trash/Restore parity: shades soft-delete via deleted_at, and slug uniqueness
+-- is partial (live rows only) to mirror products / styled_products (000041).
+-- Idempotent: CREATE TABLE / ADD COLUMN / CREATE INDEX all use IF NOT EXISTS;
+-- the repair runner skips this template once {{BUSINESS}}.styled_shades exists.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.styled_shades (
+  shade_id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  shade_code        TEXT        NOT NULL,
+  name              TEXT        NOT NULL,
+  slug              TEXT        NOT NULL,            -- SEO URL, unique per brand (live rows)
+  short_description TEXT,
+  long_description  TEXT,                            -- "how to blend it" editorial body
+  cover_media_id    UUID        REFERENCES {{BUSINESS}}.product_images (image_id) ON DELETE SET NULL,
+  cover_image_url   TEXT,
+  display_order     SMALLINT    NOT NULL DEFAULT 0,
+  is_active         BOOLEAN     NOT NULL DEFAULT true,
+  created_by        UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at        TIMESTAMPTZ                       -- Trash/Restore parity
+);
+
+DROP TRIGGER IF EXISTS trg_{{BUSINESS}}_styled_shades_updated_at ON {{BUSINESS}}.styled_shades;
+CREATE TRIGGER trg_{{BUSINESS}}_styled_shades_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.styled_shades
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+-- slug + code unique among LIVE rows only (a trashed shade frees its slug/code).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_shades_slug_live
+  ON {{BUSINESS}}.styled_shades (slug) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_styled_shades_code_live
+  ON {{BUSINESS}}.styled_shades (shade_code) WHERE deleted_at IS NULL;
+-- Active shades in display order (the shade index / navigation).
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_shades_active
+  ON {{BUSINESS}}.styled_shades (display_order) WHERE is_active = true AND deleted_at IS NULL;
+
+-- One shade per styled product (nullable: a product need not be shade-tagged).
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS shade_id UUID
+    REFERENCES {{BUSINESS}}.styled_shades (shade_id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_products_shade
+  ON {{BUSINESS}}.styled_products (shade_id) WHERE is_deleted = false;

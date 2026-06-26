@@ -113,7 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_products_shade
 ```
 One shade per styled product. A shade page lists all live styled products with that `shade_id`. (Catalogue admin gets a Shades tab; out of scope here but the FK + repo are.)
 
-### 4.2 Customer auth — **shared** `000240_shared_customer_auth.sql`
+### 4.2 Customer auth — **shared** `000242_shared_customer_auth.sql`
 Columns `storefront_password_hash` + `storefront_email_verified` already exist on `shared.contacts` (migration `000003`). Add only the supporting tables:
 ```sql
 CREATE TABLE shared.customer_sessions (         -- refresh-token rotation
@@ -135,11 +135,12 @@ CREATE TABLE shared.customer_email_tokens (     -- verify + password reset
 );
 ```
 
-### 4.3 Stripe rail — **shared** `000241_shared_stripe_gateway.sql` (Q-D = build now)
-- Add `'stripe'` to the payment-gateway config the way `000116_shared_payment_gateways` / `000115_business_stripe_payment_method` already model providers. Extend `business_config.payment_methods` JSONB to carry Stripe keys per brand.
-- Studio toggle persists, **per brand, separately for national vs international**, which provider settles each (see §6.4).
+### 4.3 Stripe rail — **no migration needed** (schema already supports it)
+- `shared.payment_gateways.provider` already includes `'stripe'` (`000116_shared_payment_gateways`) with per-brand encrypted `credentials_enc` + `supported_currencies`, and `000115_business_stripe_payment_method` already added the `'stripe_card'` sales method. **So there is no Stripe DDL to write.**
+- What's outstanding for Stripe is **code only** (Phase 2): a `stripe` provider in `payment-link.service` + a `POST /api/webhooks/stripe` handler (see §6.4).
+- The Studio toggle that picks the active provider **per brand, national vs international** persists in the existing gateway config (`payment_gateways.is_active`/`role` + `business_config` payment settings) — no new table.
 
-### 4.4 Studio extensions — **shared** `000242_shared_storefront_studio_ext.sql`
+### 4.4 Studio extensions — **shared** `000243_shared_storefront_studio_ext.sql`
 The theme tokens already cover colours/typography/logo/favicon (JSONB in `storefront_themes.tokens`). Add structured surfaces for the features you asked for:
 ```sql
 -- Popups (newsletter + others) with triggers, Studio-managed
@@ -370,6 +371,95 @@ Plus the **public read** `GET /api/public/storefront/site` (§5.6) that serves t
 
 ---
 
+## 9.5 Retention module — Admin frontend (Phase 2.5)
+
+**Why this exists.** The backend `retention` module is **fully built** (`src/modules/retention/*`: loyalty, streak stars, coupons, bundle offers, wig subscriptions, retention workflows, referrals — plus the public hair-quiz/referral endpoints). The module is even registered in the admin nav (`apps/admin/src/lib/modules.ts` → `key:"retention"`, `route:"/retention"`, group `people`). **But there is no page and no route** — `/retention` currently falls through to `ModulePlaceholder`. Phase 2.5 builds that management surface so staff can run loyalty/coupons/bundles/subscriptions/workflows from the ERP. (This is the **admin** side; the customer-facing retention UI on the website is Phase 3, §8.7.)
+
+**Permission key:** `retention`, actions `view` / `create` / `edit` / `delete` / `approve` (exactly as the routes enforce via `requirePermission("retention", action)`). The UI hides controls the user lacks; the API re-enforces.
+
+**Entity scope:** brand-scoped like every admin module — `X-Brand-Context` from the active business store; every TanStack Query key includes `brand`.
+
+### 9.5.1 File layout (mirror the Marketing module)
+```
+apps/admin/src/lib/retention-api.ts        # typed client + TanStack hooks (model on marketing-api.ts)
+apps/admin/src/pages/retention/
+  RetentionPage.tsx                         # tab shell (model on MarketingPage.tsx)
+  LoyaltyTab.tsx                            # tiers + per-customer points (redeem/adjust)
+  StreakTab.tsx                             # streak tiers + per-customer stars (award)
+  CouponsTab.tsx                            # coupon CRUD + activate + validate tester
+  BundlesTab.tsx                            # bundle offers CRUD + components + price preview + activate
+  SubscriptionsTab.tsx                      # plans CRUD + subscriptions (enrol/pause/resume/cancel)
+  WorkflowsTab.tsx                          # retention workflow rules CRUD + manual trigger + activate
+  parts.tsx                                 # shared small components (status pills, money cells, drawers)
+```
+
+### 9.5.2 Route registration
+- `apps/admin/src/router.tsx`: add a `lazyWithRetry` import for `RetentionPage` and a `{ path: "retention", element: <Suspense><RetentionPage/></Suspense> }` route inside the authenticated `AppShell` children (next to `marketing`, group `people`). `modules.ts` already has the nav entry — no change there.
+- Gate the whole page behind `retention:view`; render `DeniedState` if absent.
+
+### 9.5.3 API client (`retention-api.ts`)
+Mirror `marketing-api.ts`: `const api` from `@/lib/api`, `useBrand()` from `useBusinessStore`, `Paginated<T>` envelope, hooks below. All mounted under `/api/v1/retention`. Mutations `invalidateQueries` on the matching list key.
+
+| Surface | Hooks (query / mutation) | Endpoint |
+|---|---|---|
+| Loyalty | `useLoyaltyTiers()` · `useCustomerLoyalty(contactId)` · `useRedeemPoints()` · `useAdjustPoints()` | `GET /loyalty/tiers` · `GET /customers/:id/loyalty` · `POST …/redeem` (edit) · `POST …/adjust` (approve) |
+| Streak | `useStreakTiers()` · `useCustomerStreak(contactId)` · `useAwardStars()` | `GET /streak/tiers` · `GET /customers/:id/streak` · `POST …/streak/award` (approve) |
+| Referral | `useCustomerReferral(contactId)` | `GET /customers/:id/referral` |
+| Coupons | `useCoupons(filters)` · `useCoupon(id)` · `useCreateCoupon()` · `useUpdateCoupon()` · `useSetCouponActive()` · `useValidateCoupon()` | `/coupons` (GET/POST/PATCH) · `PATCH /coupons/:id/active` · `POST /coupons/validate` |
+| Bundles | `useBundles()` · `useBundle(id)` · `useCreateBundle()` · `useUpdateBundle()` · `useSetBundleActive()` · `usePriceBundle()` · `useAddBundleComponent()` · `useRemoveBundleComponent()` · `useDeleteBundle()` | `/bundles` (GET/POST/PATCH/DELETE) · `…/active` · `…/price` · `…/components` |
+| Subscriptions | `usePlans()` · `useCreatePlan()` · `useUpdatePlan()` · `useSetPlanActive()` · `useSubscriptions()` · `useEnrol()` · `usePauseSub()` · `useResumeSub()` · `useCancelSub()` | `/subscriptions/plans*` · `/subscriptions*` · `…/pause` · `…/resume` · `…/cancel` |
+| Workflows | `useWorkflows()` · `useCreateWorkflow()` · `useUpdateWorkflow()` · `useSetWorkflowActive()` · `useTriggerWorkflow()` | `/workflows*` · `PATCH …/active` · `POST /workflows/trigger` (approve) |
+
+Query keys: `['retention','coupons',brand,filters]`, `['retention','bundle',brand,id]`, `['retention','loyalty',brand,contactId]`, etc.
+
+### 9.5.4 Tabs (detail)
+
+**Loyalty tab** (`retention:view`)
+- **Tiers panel:** read-only cards from `GET /loyalty/tiers` (name, threshold, earn rate, perks). KPI tiles: members, points outstanding (from state where available).
+- **Customer lookup:** a contact picker (reuse the existing contact-search used elsewhere in admin) → `GET /customers/:id/loyalty` shows current balance, tier, and the **ledger** (earn/redeem history).
+- **Actions:** "Redeem points" drawer (`retention:edit` → `…/redeem`, points + notes) and "Adjust points" drawer (`retention:approve` → `…/adjust`, signed amount + reason) — adjust is hidden unless `approve`. Money/points in **JetBrains Mono** via the `money`/number formatter.
+
+**Streak Stars tab** (`retention:view`)
+- Tiers from `GET /streak/tiers`; per-customer state from `GET /customers/:id/streak` (current stars, streak window, next reward).
+- "Award stars" drawer (`retention:approve` → `…/streak/award`: action_type, amount/qty, reference, description). Manual award is approve-gated.
+
+**Coupons tab** (`retention:view`)
+- **List/table** from `GET /coupons` (code, type %/fixed, value, min spend, usage/limit, valid window, status pill). Pagination via `keepPreviousData`.
+- **Create/Edit** drawer (`create`/`edit`) with Zod-validated form matching `coupon.validator` (code, discount type/value, caps, window, applies-to). Money fields via `MoneyText` semantics (NGN, 2dp strings).
+- **Activate/deactivate** toggle → `PATCH /coupons/:id/active`.
+- **Validate tester:** a small inline form → `POST /coupons/validate` (code + cart subtotal) showing the computed discount; lets staff sanity-check a code without a real order. `view`-level.
+
+**Bundle offers tab** (`retention:view`)
+- **List** from `GET /bundles` (name, components count, bundle price NGN + USD if set, savings vs sum-of-parts, active pill).
+- **Create/Edit** drawer (`create`/`edit`): name, description, bundle price, validity. Then a **components editor** inside the detail: add component (`POST /bundles/:id/components` — product/styled target + role core/gift + qty), remove (`DELETE …/components/:componentId`). `edit`-gated.
+- **Price preview:** `POST /bundles/:id/price` renders the server-computed effective price + discount (never client-side math), shown live as components change.
+- **Delete** (`retention:delete`) with confirm.
+
+**Subscriptions tab** (`retention:view`)
+- **Plans sub-section:** list `GET /subscriptions/plans`; create/edit drawer (`create`/`edit`); activate toggle (`…/plans/:id/active`). Fields per `subscription.validator` (interval, price, included items).
+- **Subscriptions sub-section:** list `GET /subscriptions` (customer, plan, status pill, next renewal). State transitions as buttons: **Pause** / **Resume** / **Cancel** (`edit`; pause/cancel take a reason). Enrol drawer (`create` → `POST /subscriptions`) with contact picker + plan select.
+
+**Workflows tab** (`retention:view`)
+- **List** `GET /workflows` (name, trigger, audience, action, active pill, last run from executions if surfaced).
+- **Create/Edit** drawer (`create`/`edit`) per `workflow.validator` (trigger type, conditions, action). Activate toggle (`…/active`).
+- **Manual trigger** button (`retention:approve` → `POST /workflows/trigger`) with a confirm — run a rule on demand for a segment/customer.
+
+> **Hair Quiz / Referral codes:** the hair-quiz has only **public** endpoints today (`GET/POST /api/public/hair-quiz`) and referral has a per-customer read + public validate — there is **no admin CRUD** for quiz definitions yet, so they are **out of scope for this tab set**. Surface referral data read-only inside the Loyalty/customer view (`GET /customers/:id/referral`). Building quiz authoring is a separate backend task (flag in `docs/CONFORMANCE_GAPS.md`), not part of Phase 2.5.
+
+### 9.5.5 Cross-cutting (mandatory)
+- **Four states** on every tab: loading skeleton, empty + CTA, error + retry (`ErrorState`), permission-denied (`DeniedState`).
+- **Permission-aware**: create/edit/delete/approve controls hidden without the matching `retention` action; page hidden without `view`.
+- **Money** via `MoneyText`/`money` (NGN-based, 2dp strings, JetBrains Mono). Show USD only where the backend returns a USD figure (bundles) — never recompute.
+- **Realtime (optional):** `retention.events.js` already emits domain events; subscribe to the `brand:<brand>:retention` Socket.io room to live-refresh lists (same pattern as other modules) — nice-to-have, not blocking.
+- **Design canon:** Maroon Noir tokens, glassmorphic drawers/menus, the 10-question gate in `docs/FRONTEND_INSTRUCTION_MUST_READ.md`. Clone/simplify the loyalty UI from `client folder for hub-system/Reference Node.js E-commerce Platform` where it has equivalents (`src/components/loyalty`, `src/pages/loyalty`).
+
+### 9.5.6 Acceptance
+- `/retention` renders a real tabbed page (no `ModulePlaceholder`); nav entry resolves.
+- Every backend retention endpoint above is reachable from the UI with correct permission gating.
+- Create/activate/transition flows invalidate their lists; four states verified on each tab; money in NGN (+USD where present) with no client-side recompute.
+
+---
+
 ## 10. Seeding (Q-12 = A)
 - **Faitlyn:** seed a **published** `storefront_themes` row from the current Aura design — exact colours, Playfair Display / Montserrat / JetBrains Mono, logo/favicon/OG — plus a published `storefront_navigation` and `storefront_pages` (home + standard pages) and the default `storefront_section_templates`. On build, the website renders pixel-close to today's Lovable design.
 - **Pixie Girl:** seed a distinct theme variant (its palette/logo). Both fully editable in Studio afterward.
@@ -380,8 +470,8 @@ Plus the **public read** `GET /api/public/storefront/site` (§5.6) that serves t
 ## 11. Phased delivery plan
 
 **Phase 0 — Foundations**
-- Migrations §4 (shades, customer auth, Stripe, studio ext). `db:repair` for existing brands.
-- `apps/storefront` scaffold from Aura; **Supabase fully removed** (§3); Hub API client + brand host routing.
+- Migrations §4 (shades `000062` template, customer auth `000242`, studio ext `000243`). **Stripe needs no migration** — schema already supports it. Run `db:migrate:shared` + `db:repair` for existing brands.
+- `apps/storefront` scaffold from the Aura reference (`client folder for hub-system/Reference Node.js E-commerce Platform`); **Supabase fully removed** (§3); Hub API client + brand host routing.
 
 **Phase 1 — Catalogue read-only**
 - Public catalogue endpoints (§5.1) incl. shades/collections/bundles + `effective_price_usd`.
@@ -391,6 +481,9 @@ Plus the **public read** `GET /api/public/storefront/site` (§5.6) that serves t
 - Persistent cart (§5.2), delivery quote (no geocoding), checkout (§5.3) → `createOrder` → Nomba (NGN+USD).
 - **Stripe rail** + webhook (§6.4). Studio gateway toggle (national/international).
 - Thank-you + order tracking (timeline) + install/care hub.
+
+**Phase 2.5 — Retention module Admin frontend** (see §9.5)
+- Build the missing `/retention` admin module in `apps/admin` so staff can manage the already-built backend (loyalty, streak stars, coupons, bundles, subscriptions, retention workflows, referrals). Tabbed page + typed API client + four states + permission gating. This is the ERP-side management surface; the customer-facing retention UI is Phase 3.
 
 **Phase 3 — Accounts + retention**
 - customer_auth (§7), account area, wishlist, loyalty, referrals, reviews, services + booking requests, hair-quiz, newsletter/popups, analytics.

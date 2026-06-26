@@ -253,12 +253,30 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const countries = geo?.countries ?? GEO_FALLBACK.countries;
   const ngStates = geo?.nigeria_states ?? GEO_FALLBACK.nigeria_states;
   const lagosLgas = geo?.lagos_lgas ?? GEO_FALLBACK.lagos_lgas;
+  const norm = (s: string) => s.trim().toLowerCase();
   const isNigeria = country === "Nigeria" || countryCode === "NG";
-  const isLagos = isNigeria && state === "Lagos";
+  const isLagos = isNigeria && norm(state) === "lagos";
   // Total wigs in the basket drive the delivery tier (1–2 / 3–4 / 5–6 / +2).
   const wigQty = items.reduce((s, i) => s + i.quantity, 0);
+  // Resolve the delivery zone even when the buyer TYPED a location that exactly
+  // matches a known option but didn't tap the dropdown item. Otherwise a
+  // typed-but-unselected location leaves the zone blank and silently blocks
+  // "Pay" ("pick from the list") — a top drop-off. Exact, case-insensitive
+  // match only, so we never guess the wrong zone. Lagos still needs an LGA (the
+  // state code NG-LA alone is not a deliverable zone).
+  const resolvedCountryCode =
+    countryCode ||
+    countries.find((o) => norm(o.name) === norm(country))?.code ||
+    "";
+  const resolvedNgZone = zoneCode
+    ? zoneCode
+    : !isNigeria
+      ? ""
+      : isLagos
+        ? lagosLgas.find((o) => norm(o.name) === norm(city))?.code || ""
+        : ngStates.find((o) => norm(o.name) === norm(state))?.code || "";
   // The zone the fee resolves against: NG → state/LGA code; else ISO-2 country.
-  const effectiveZone = isNigeria ? zoneCode : countryCode;
+  const effectiveZone = isNigeria ? resolvedNgZone : resolvedCountryCode;
 
   // Load picker options + the in-store pickup address once per brand.
   // Use startTransition to defer these updates so they don't block form render.
@@ -425,7 +443,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   city,
                   state: state || undefined,
                   country,
-                  country_code: countryCode || undefined,
+                  country_code: resolvedCountryCode || undefined,
                   zone_code: effectiveZone || undefined,
                 }
               : undefined,

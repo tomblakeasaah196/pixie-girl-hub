@@ -10,6 +10,7 @@ import {
 import { headers } from "next/headers";
 import { getBrand } from "@/lib/brand";
 import { PwaCleanup } from "@/components/PwaCleanup";
+import { CartGlitchModal } from "@/components/cart/CartGlitchModal";
 import "@/styles/globals.css";
 
 const playfair = Playfair_Display({
@@ -91,6 +92,9 @@ export default function RootLayout({
     >
       <body>
         <PwaCleanup />
+        {/* One-time apology + free-gift modal. Self-gating: only shows for buyers
+            whose broken cart was cleared by the checkout-glitch migration. */}
+        <CartGlitchModal />
         {children}
       </body>
     </html>

@@ -449,6 +449,7 @@ async function confirmNombaCharge(log) {
   const dataOrder = (evt.data && evt.data.order) || {};
   const dataTx = (evt.data && evt.data.transaction) || {};
   const dataTerminal = (evt.data && evt.data.terminal) || {};
+  const dataCustomer = (evt.data && evt.data.customer) || {};
 
   // For online_checkout (USD via Stripe): orderReference in order, currency/amount in order
   // For terminal (NGN): everything in transaction. Prefer order.orderReference.
@@ -540,9 +541,16 @@ async function confirmNombaCharge(log) {
     return;
   }
 
-  // Nomba is POS-first (§6.21). Treat as a terminal payment unless the metadata
-  // explicitly flags an online checkout (hybrid scenario).
-  const method = meta.channel === "online" ? "nomba_online" : "nomba_terminal";
+  // Online checkout vs in-store terminal. The reliable signal is Nomba's
+  // transaction.type === 'online_checkout' (present on real payloads);
+  // metadata.channel is a legacy hint Nomba does NOT actually send, so keying
+  // off it alone mislabels a genuine online payment as 'nomba_terminal' and —
+  // worse — could park it in the POS reconciliation queue if its order failed
+  // to resolve. Derive from the transaction type, with channel as a fallback.
+  const isOnlineCheckout =
+    (dataTx.type || "").toLowerCase() === "online_checkout" ||
+    meta.channel === "online";
+  const method = isOnlineCheckout ? "nomba_online" : "nomba_terminal";
 
   // Resolve the order row. We need it both to recover order_id when the payload
   // carried no metadata AND to derive the NGN amount for a foreign-currency
@@ -571,7 +579,7 @@ async function confirmNombaCharge(log) {
   // ── Settlement currency and amount ──
   // For online_checkout (USD via Stripe): currency and amount in dataOrder
   // For terminal (NGN): in dataTx. Foreign currency → book realised FX variance.
-  const isOnlineCheckout = (dataTx.type || "").toLowerCase() === "online_checkout";
+  // (isOnlineCheckout was resolved above from the transaction type.)
   const settledCurrency = isOnlineCheckout
     ? String(dataOrder.currency || "").toUpperCase()
     : String(tx.currency || dataTx.currency || "").toUpperCase();
@@ -651,6 +659,8 @@ async function confirmNombaCharge(log) {
         nomba_terminal_id: nombaTerminalId,
         alias_account_name:
           tx.aliasAccountName || dataTx.aliasAccountName || null,
+        sender_name: dataCustomer.senderName || null,
+        sender_bank: dataCustomer.bankName || null,
         amount_ngn,
         transaction_time: tx.time || dataTx.time || null,
         provider_reference:

@@ -146,11 +146,15 @@ async function initializePayment({
  * the payment to its order (Option 2). Set it to the order number so the webhook
  * handler's brand + order resolution works.
  *
- * ⚠️  UNITS: unlike /v1/checkout/order (major units / Naira), the terminal
- *    payment-request endpoint expects the amount in the SMALLEST unit (kobo) —
- *    Nomba docs: "amount … in the smallest currency unit (e.g. kobo)". So we
- *    convert Naira → kobo here. (The webhook we receive back reports the amount
- *    in major Naira units; the two directions use different units.)
+ * ⚠️  AMOUNT UNIT — UNVERIFIED, MUST TEST BEFORE LIVE USE.
+ *    We send the amount in MAJOR units (Naira), matching every other Nomba call
+ *    in this integration (/v1/checkout/order, transfers) and the major-unit
+ *    figures Nomba reports back on webhooks. Nomba's terminal docs, however,
+ *    say this endpoint takes the SMALLEST unit (kobo) — which would mean
+ *    multiplying by 100. The two disagree, and getting it wrong over-charges a
+ *    customer 100×, so we deliberately do NOT multiply until a single real
+ *    sandbox/live charge confirms which unit the terminal endpoint actually
+ *    wants. Verify that before using push-to-terminal for real customers.
  */
 async function requestTerminalPayment({
   terminal_id,
@@ -158,13 +162,12 @@ async function requestTerminalPayment({
   reference,
   creds,
 }) {
-  const amountKobo = Math.round(Number(amount_ngn) * 100);
   return authed(
     "post",
     `/v1/terminals/payment-request/${encodeURIComponent(terminal_id)}`,
     {
       merchantTxRef: reference,
-      amount: amountKobo,
+      amount: Number(amount_ngn),
       currency: "NGN",
     },
     creds,

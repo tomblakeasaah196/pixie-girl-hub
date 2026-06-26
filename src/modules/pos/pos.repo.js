@@ -499,8 +499,8 @@ async function enqueueReconciliation({ client, row }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.pos_terminal_reconciliation
        (webhook_id, provider, resolved_brand, nomba_terminal_id, alias_account_name,
-        amount_ngn, transaction_time, provider_reference, raw_payload)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+        sender_name, sender_bank, amount_ngn, transaction_time, provider_reference, raw_payload)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
      ON CONFLICT (provider, provider_reference) WHERE provider_reference IS NOT NULL
        DO NOTHING
      RETURNING *`,
@@ -510,6 +510,8 @@ async function enqueueReconciliation({ client, row }) {
       row.resolved_brand || null,
       row.nomba_terminal_id || null,
       row.alias_account_name || null,
+      row.sender_name || null,
+      row.sender_bank || null,
       row.amount_ngn,
       row.transaction_time || null,
       row.provider_reference || null,

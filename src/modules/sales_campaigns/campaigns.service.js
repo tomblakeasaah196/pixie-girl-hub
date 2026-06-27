@@ -718,6 +718,13 @@ function buildLandingPayload(c, products, state) {
                 p.styled_retail_price_ngn ?? p.regular_price_ngn ?? null,
               regular_price_usd:
                 p.styled_retail_price_usd ?? p.regular_price_usd ?? null,
+              // Raw / unstyled anchor price — what checkout charges for a wig
+              // ordered WITHOUT styling (styled_products.retail_price_ngn, the
+              // same source the checkout's raw line uses). Surfaced so the
+              // wholesale view can show the real per-wig trade price instead of
+              // only a "save ₦X" hint.
+              anchor_price_ngn:
+                p.styled_retail_price_ngn ?? p.regular_price_ngn ?? null,
               is_featured: p.is_featured,
               // live_base_stock is computed from stock_levels across all
               // storefront locations for the base product. All styled products

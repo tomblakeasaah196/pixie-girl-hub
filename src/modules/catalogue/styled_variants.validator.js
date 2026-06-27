@@ -86,6 +86,7 @@ const colourCreate = z
       .nullable()
       .optional(),
     premium_ngn: money.optional(),
+    premium_usd: money.nullable().optional(),
     video_url: z.string().max(2000).nullable().optional(),
     external_video_url: z.string().max(2000).nullable().optional(),
     display_order: z.coerce.number().int().optional(),

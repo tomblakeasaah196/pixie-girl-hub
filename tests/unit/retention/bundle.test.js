@@ -12,6 +12,7 @@ jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
 
 const {
   quantityBundleDiscount,
+  computeBundleEconomics,
 } = require("../../../src/modules/retention/bundle.service");
 
 const D = (d) => d.toFixed(2);
@@ -118,5 +119,86 @@ describe("quantityBundleDiscount — tiered_qty", () => {
       component_subtotal_ngn: 500,
     });
     expect(D(d)).toBe("500.00");
+  });
+});
+
+describe("computeBundleEconomics — the admin card/editor price + saving", () => {
+  // The owner's real case: a 6-piece bundle, ₦2,248,000 of components, at
+  // "₦40,000 off EACH unit" → ₦240,000 off → the customer pays ₦2,008,000.
+  test("amount_off scales by unit count (₦40k off each × 6)", () => {
+    const e = computeBundleEconomics({
+      pricing_model: "amount_off",
+      discount_value: 40000,
+      subtotal_ngn: 2248000,
+      units: 6,
+    });
+    expect(D(e.discount)).toBe("240000.00");
+    expect(D(e.effective)).toBe("2008000.00");
+  });
+
+  test("amount_off reacts when the discount changes (₦45k off each × 6)", () => {
+    const e = computeBundleEconomics({
+      pricing_model: "amount_off",
+      discount_value: 45000,
+      subtotal_ngn: 2248000,
+      units: 6,
+    });
+    expect(D(e.discount)).toBe("270000.00");
+    expect(D(e.effective)).toBe("1978000.00");
+  });
+
+  test("amount_off counts quantities, not line items", () => {
+    const e = computeBundleEconomics({
+      pricing_model: "amount_off",
+      discount_value: 10000,
+      subtotal_ngn: 600000,
+      units: 4, // e.g. two lines, qty 2 each
+    });
+    expect(D(e.discount)).toBe("40000.00");
+    expect(D(e.effective)).toBe("560000.00");
+  });
+
+  test("amount_off discount is clamped at the subtotal (never below ₦0)", () => {
+    const e = computeBundleEconomics({
+      pricing_model: "amount_off",
+      discount_value: 999999,
+      subtotal_ngn: 300000,
+      units: 3,
+    });
+    expect(D(e.discount)).toBe("300000.00");
+    expect(D(e.effective)).toBe("0.00");
+  });
+
+  test("pct_off takes a fraction off the subtotal", () => {
+    const e = computeBundleEconomics({
+      pricing_model: "pct_off",
+      discount_value: 0.1, // 10%
+      subtotal_ngn: 2248000,
+      units: 6,
+    });
+    expect(D(e.discount)).toBe("224800.00");
+    expect(D(e.effective)).toBe("2023200.00");
+  });
+
+  test("fixed_bundle_price is the flat price; saving is the undercut", () => {
+    const e = computeBundleEconomics({
+      pricing_model: "fixed_bundle_price",
+      bundle_price_ngn: 1800000,
+      subtotal_ngn: 2248000,
+      units: 6,
+    });
+    expect(D(e.effective)).toBe("1800000.00");
+    expect(D(e.discount)).toBe("448000.00");
+  });
+
+  test("fixed price above the subtotal shows no negative saving", () => {
+    const e = computeBundleEconomics({
+      pricing_model: "fixed_bundle_price",
+      bundle_price_ngn: 2500000,
+      subtotal_ngn: 2248000,
+      units: 6,
+    });
+    expect(D(e.effective)).toBe("2500000.00");
+    expect(D(e.discount)).toBe("0.00");
   });
 });

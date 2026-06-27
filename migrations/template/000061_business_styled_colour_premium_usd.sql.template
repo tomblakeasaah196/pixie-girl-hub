@@ -1,0 +1,87 @@
+-- ============================================================
+-- TEMPLATE 000061 — Catalogue: colour USD premium + USD reprice tool.
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000060) and to EXISTING brands by
+-- repair-business-schema.js. The sentinel is the FIRST (and only) CREATE TABLE
+-- below — catalogue_usd_reprice_runs — so the whole file runs once and is
+-- skipped on every later repair. Every ALTER is idempotent (ADD COLUMN IF NOT
+-- EXISTS) so a re-run would also be safe.
+--
+-- WHY (owner directive, June 2026):
+--   • USD must compose like NGN. Size + lace ladders already carry premium_usd
+--     (000048) and the styled anchor/override carry retail_price_usd /
+--     price_override_usd (000046) — but the COLOUR bump had no USD twin, so a
+--     styled product's USD shelf price could never be assembled. Add it here.
+--   • The Catalogue config gains an "Apply USD exchange rate" tool: an admin
+--     enters one NGN-per-USD rate and every USD price is recomputed from its
+--     NGN value in a single, audited, reversible write. The last rate (+ who /
+--     when) lives on catalogue_config; each run snapshots prior values into
+--     catalogue_usd_reprice_runs so the last apply can be undone.
+--
+-- Altered:
+--   styled_product_colours   — premium_usd (the missing ladder)
+--   catalogue_config         — usd_fx_rate / usd_fx_rate_applied_at / _by
+-- New:
+--   catalogue_usd_reprice_runs — bulk-reprice history + undo snapshot (SENTINEL)
+-- ============================================================
+
+-- ── 1. Reprice run history + undo snapshot (SENTINEL — first CREATE TABLE) ──
+-- One row per "Apply USD exchange rate" run. `snapshot` holds the prior USD
+-- values of every row the run changed (table + pk + columns), so Undo can put
+-- them back exactly. `scope` records which sections were repriced.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.catalogue_usd_reprice_runs (
+  run_id        UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- NGN per 1 USD used for this run.
+  rate          NUMERIC(14,4) NOT NULL CHECK (rate > 0),
+  -- 'exact' (2dp) | 'whole' (nearest $1) | 'ninety_nine' (.99 ending).
+  rounding      TEXT          NOT NULL DEFAULT 'exact',
+  -- Sections this run touched, e.g. {"variants":true,"styled":true,…}.
+  scope         JSONB         NOT NULL DEFAULT '{}'::jsonb,
+  rows_changed  INTEGER       NOT NULL DEFAULT 0,
+  -- Prior values for undo: [{ "table": "...", "schema": "...", "pk": {...},
+  --   "before": { "col": <prev>, … } }, …].
+  snapshot      JSONB         NOT NULL DEFAULT '[]'::jsonb,
+  is_undone     BOOLEAN       NOT NULL DEFAULT false,
+  undone_at     TIMESTAMPTZ,
+  undone_by     UUID          REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  applied_by    UUID          REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  applied_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_usd_reprice_runs_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.catalogue_usd_reprice_runs
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_usd_reprice_runs_applied
+  ON {{BUSINESS}}.catalogue_usd_reprice_runs (applied_at DESC);
+
+-- ── 2. Colour USD premium (the missing ladder) ───────────
+-- Absolute USD amount added to a USD-priced styled product for this colour,
+-- mirroring premium_ngn (000041) and the size/lace premium_usd (000048).
+-- NULL = no USD premium configured for this colour yet.
+ALTER TABLE {{BUSINESS}}.styled_product_colours
+  ADD COLUMN IF NOT EXISTS premium_usd NUMERIC(14,2)
+    CHECK (premium_usd IS NULL OR premium_usd >= 0);
+
+-- ── 3. Catalogue config: last applied USD exchange rate ──
+-- The most recent NGN-per-USD rate applied by the reprice tool, for the
+-- "last applied" banner and to prefill the modal. Informational — the stored
+-- USD prices remain the source of truth and stay individually editable.
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS usd_fx_rate NUMERIC(14,4)
+    CHECK (usd_fx_rate IS NULL OR usd_fx_rate > 0),
+  ADD COLUMN IF NOT EXISTS usd_fx_rate_applied_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS usd_fx_rate_applied_by UUID
+    REFERENCES shared.users (user_id) ON DELETE SET NULL;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}'
+--       AND table_name = 'styled_product_colours' AND column_name = 'premium_usd';
+--   SELECT to_regclass('{{BUSINESS}}.catalogue_usd_reprice_runs');  -- not null
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}' AND table_name = 'catalogue_config'
+--       AND column_name LIKE 'usd_fx_rate%';                        -- three rows
+-- ============================================================

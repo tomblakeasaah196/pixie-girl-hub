@@ -174,8 +174,23 @@ const setDeliveryFee = z
   .object({ fee_ngn: z.coerce.number().nonnegative() })
   .strict();
 
+// Sales Report export — query params. from/to are inclusive 'YYYY-MM-DD' (both
+// optional; omitting both exports all orders). Unknown query keys are stripped.
+const reportExport = z.object({
+  from: z.string().date().optional(),
+  to: z.string().date().optional(),
+  status: z.string().max(40).optional(),
+  sales_channel: z.string().max(40).optional(),
+});
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
+  next();
+};
+
+// Query validator: parse + replace req.query with the validated, stripped set.
+const mwQuery = (s) => (req, _res, next) => {
+  req.query = s.parse(req.query ?? {});
   next();
 };
 
@@ -191,6 +206,7 @@ module.exports = {
   validateCancellationRequest: mw(cancellationRequest),
   validateCancellationReview: mw(cancellationReview),
   validateSetDeliveryFee: mw(setDeliveryFee),
+  validateReportExport: mwQuery(reportExport),
   orderCreate,
   orderUpdate,
   paymentCreate,

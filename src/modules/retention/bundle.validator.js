@@ -71,6 +71,31 @@ const priceSchema = z
 
 const activeSchema = z.object({ is_active: z.boolean() }).strict();
 
+// Collage cover: the editable badge (title/eyebrow), the curated title font, and
+// optional palette overrides. All optional — an empty body generates the default
+// editorial cover from the brand palette + piece count.
+const hexColour = z
+  .string()
+  .regex(/^#?[0-9a-fA-F]{6}$/, "expected a #rrggbb colour")
+  .optional();
+const collageSettingsSchema = z
+  .object({
+    title: z.string().max(80).optional(),
+    eyebrow: z.string().max(80).optional(),
+    font_family: z.string().max(60).optional(),
+    bg: hexColour,
+    accent: hexColour,
+  })
+  .strict();
+const collageGenerateSchema = z
+  .object({ settings: collageSettingsSchema.optional() })
+  .strict();
+// Apply-all carries the SHARED style (font/eyebrow/palette) — each bundle keeps
+// its own title, so title is intentionally ignored here.
+const collageApplyAllSchema = z
+  .object({ settings: collageSettingsSchema })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -82,6 +107,8 @@ module.exports = {
   validateComponent: mk(componentSchema),
   validatePrice: mk(priceSchema),
   validateActive: mk(activeSchema),
+  validateCollageGenerate: mk(collageGenerateSchema),
+  validateCollageApplyAll: mk(collageApplyAllSchema),
   createSchema,
   updateSchema,
   componentSchema,

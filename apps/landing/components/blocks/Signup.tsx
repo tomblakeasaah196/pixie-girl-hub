@@ -5,6 +5,7 @@ import { Bell, Check, Crown, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import type { LandingPayload } from "@/lib/types";
 import { postSignup } from "@/lib/api-client";
+import { fbTrack } from "@/lib/fbpixel";
 import { SectionHeader } from "./BundleShowcase";
 
 function blockProps(
@@ -98,8 +99,12 @@ function Form({
       source,
     });
     setBusy(false);
-    if (r.ok) setSent(true);
-    else setErr(r.error);
+    if (r.ok) {
+      setSent(true);
+      // Meta Pixel: Lead — the list signup is the primary conversion on the
+      // before/landing states (where there's nothing to buy yet).
+      fbTrack("Lead", { content_name: source, content_category: "signup" });
+    } else setErr(r.error);
   }
 
   if (sent) {

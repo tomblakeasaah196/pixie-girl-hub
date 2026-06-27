@@ -40,6 +40,9 @@ const styledCreate = z
     lace_size_codes: z.array(z.string().max(8)).nullable().optional(),
     // Explicit module-card hero image (NULL = default colour's first picture).
     primary_image_id: z.string().uuid().nullable().optional(),
+    // "Shop by shade" membership (NULL = unshaded). Bulk-assign is the primary
+    // path; a single product can also be (un)shaded directly here.
+    shade_id: z.string().uuid().nullable().optional(),
   })
   .strict();
 

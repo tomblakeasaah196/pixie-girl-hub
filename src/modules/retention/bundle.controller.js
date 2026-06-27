@@ -97,6 +97,33 @@ async function remove(req, res) {
   res.status(204).end();
 }
 
+function collageFonts(_req, res) {
+  res.json({ data: { fonts: service.listCollageFonts() } });
+}
+
+async function generateCollage(req, res) {
+  res.json({
+    data: await service.generateCollageCover({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      id: req.params.id,
+      settings: req.body.settings || {},
+    }),
+  });
+}
+
+async function applyCollageAll(req, res) {
+  res.json({
+    data: await service.applyCollageStyleToAll({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      settings: req.body.settings || {},
+    }),
+  });
+}
+
 module.exports = {
   create,
   list,
@@ -107,4 +134,7 @@ module.exports = {
   removeComponent,
   price,
   remove,
+  collageFonts,
+  generateCollage,
+  applyCollageAll,
 };

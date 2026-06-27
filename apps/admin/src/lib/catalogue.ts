@@ -129,6 +129,8 @@ export interface StyledProduct {
   // Module-card hero: explicit override id + the resolved url (list + detail).
   primary_image_id?: string | null;
   primary_image_url?: string | null;
+  // "Shop by shade" membership (NULL = unshaded). Set via the Shades tab.
+  shade_id?: string | null;
   // AI provenance (P0-8).
   ai_drafted?: boolean;
   ai_model?: string | null;
@@ -141,10 +143,15 @@ export interface StyledProduct {
   availability: Availability;
   base_price_ngn: number | null;
   effective_price_ngn: number | null;
+  // USD headline ("from") price — the USD anchor when set, else NULL (USD has
+  // no legacy base+addon fallback).
+  effective_price_usd: number | null;
   // Attached on the detail fetch.
   colours?: StyledColour[];
   variants?: StyledVariant[];
   price_range?: { min: number; max: number } | null;
+  // USD price range across variants that carry a USD price (NULL when none).
+  price_range_usd?: { min: number; max: number } | null;
   // Trash list only: the date this product is purged for good (deleted_at + 15d).
   is_deleted?: boolean;
   deleted_at?: string | null;
@@ -160,6 +167,9 @@ export interface StyledColour {
   name: string;
   hex: string | null;
   premium_ngn: number;
+  // Absolute USD premium for this colour (manual, beside premium_ngn — the
+  // missing twin added in 000061 so USD composes like NGN). NULL = none set.
+  premium_usd: number | null;
   video_url: string | null;
   external_video_url: string | null;
   display_order: number;
@@ -195,13 +205,20 @@ export interface StyledVariant {
   colour_name: string;
   colour_hex: string | null;
   colour_premium_ngn: number;
+  colour_premium_usd: number | null;
   size_label: string;
   size_premium_ngn: number;
+  size_premium_usd: number | null;
   lace_label: string | null;
   lace_premium_ngn: number | null;
+  lace_premium_usd: number | null;
   base_product_name?: string | null;
   anchor_price_ngn: number | null;
+  anchor_price_usd: number | null;
   effective_price_ngn: number | null;
+  // USD mirror of effective_price_ngn. NULL when no USD anchor/override is set
+  // (USD ladder columns are nullable, so a partial sum is never invented).
+  effective_price_usd: number | null;
   // Trash (soft-delete). purge_at = deleted_at + 15 days (set on trashed rows).
   is_deleted?: boolean;
   deleted_at?: string | null;
@@ -377,8 +394,30 @@ export interface Bundle {
   is_active: boolean;
   display_order: number;
   hero_image_url?: string | null;
+  // Derived, server-computed economics (decorateBundle) — present on both the
+  // list and the detail fetch. The bundle's saved pricing config stays the
+  // SSOT; these are computed from it so they can never drift.
+  component_subtotal_ngn?: number | null;
+  discount_ngn?: number | null;
+  effective_price_ngn?: number | null;
+  unit_count?: number | null;
+  // Generated collage cover state (when the hero was built from the products).
+  collage_settings?: CollageSettings | null;
+  cover_is_generated?: boolean;
   // Attached on the detail fetch (GET /retention/bundles/:id).
   components?: BundleComponent[];
+}
+
+/** The editable knobs for an auto-generated collage cover. All optional — an
+ *  empty object renders the default editorial cover from the brand palette +
+ *  piece count. */
+export interface CollageSettings {
+  title?: string;
+  eyebrow?: string;
+  /** A curated title font family (from GET /retention/bundles/collage/fonts). */
+  font_family?: string;
+  bg?: string;
+  accent?: string;
 }
 
 /** A component inside a bundle. Going forward this is a STYLED product
@@ -400,6 +439,9 @@ export interface BundleComponent {
   styled_slug: string | null;
   styled_status: StyledStatus | null;
   unit_price_ngn: number | null;
+  // The component's display photo (styled hero → base image), used to build the
+  // collage cover and to count how many products actually have a picture.
+  image_url: string | null;
 }
 
 /** A STYLED product curated into a collection (collections never hold bases). */
@@ -419,6 +461,42 @@ export interface CollectionMember {
 /** Collection detail (GET /catalogue/collections/:id) carries its members. */
 export interface CollectionDetail extends Collection {
   members: CollectionMember[];
+}
+
+/** A Product Shade — a standalone "Shop by shade" page (cover + copy + SEO
+ *  slug) that sits beside Collections. STYLED products carry a shade. */
+export interface Shade {
+  shade_id: string;
+  // Generated server-side (NOT NULL, unique among live shades).
+  shade_code: string;
+  name: string;
+  slug: string;
+  short_description: string | null;
+  long_description: string | null;
+  cover_media_id?: string | null;
+  cover_image_url: string | null;
+  display_order: number;
+  is_active: boolean;
+  meta_title: string | null;
+  meta_description: string | null;
+  // Joined: live styled-product count in this shade (list only).
+  product_count?: number;
+  created_at?: string;
+}
+
+export interface ShadeMember {
+  styled_id: string;
+  styled_name: string;
+  styled_slug: string;
+  status: StyledStatus;
+  retail_price_ngn: number | null;
+  retail_price_usd: number | null;
+  image_url: string | null;
+}
+
+/** Shade detail (GET /catalogue/shades/:id) carries its styled products. */
+export interface ShadeDetail extends Shade {
+  members: ShadeMember[];
 }
 
 // ════════════════════════════════════════════════════════════
@@ -844,6 +922,105 @@ export function useUpdateCollection() {
   });
 }
 
+// ════════════════════════════════════════════════════════════
+// Product Shades ("Shop by shade") — /catalogue/shades
+// ════════════════════════════════════════════════════════════
+function invalidateShades(qc: QueryClient, brand: string) {
+  qc.invalidateQueries({ queryKey: ["catalogue", "shades", brand] });
+  // A shade (re)assignment changes styled products' shade_id.
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
+}
+
+export function useShades() {
+  const brand = useBrand();
+  return useQuery<Shade[]>({
+    queryKey: ["catalogue", "shades", brand],
+    queryFn: () => api.get<Shade[]>("/catalogue/shades"),
+  });
+}
+
+export function useShade(id: string | null) {
+  const brand = useBrand();
+  return useQuery<ShadeDetail>({
+    queryKey: ["catalogue", "shades", brand, "one", id],
+    queryFn: () => api.get<ShadeDetail>(`/catalogue/shades/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateShade() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: Partial<Shade>) =>
+      api.post<Shade>("/catalogue/shades", input),
+    onSuccess: () => invalidateShades(qc, brand),
+  });
+}
+
+export function useUpdateShade() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<Shade> }) =>
+      api.patch<Shade>(`/catalogue/shades/${id}`, patch),
+    onSuccess: (_d, vars) => {
+      invalidateShades(qc, brand);
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "shades", brand, "one", vars.id],
+      });
+    },
+  });
+}
+
+export function useDeleteShade() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/catalogue/shades/${id}`),
+    onSuccess: () => invalidateShades(qc, brand),
+  });
+}
+
+/** Flow-2 bulk assign: drop many styled products into a shade in one call. */
+export function useAssignShadeMembers() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({
+      shadeId,
+      styledIds,
+    }: {
+      shadeId: string;
+      styledIds: string[];
+    }) =>
+      api.post<{ assigned: number }>(`/catalogue/shades/${shadeId}/members`, {
+        styled_ids: styledIds,
+      }),
+    onSuccess: (_d, vars) => {
+      invalidateShades(qc, brand);
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "shades", brand, "one", vars.shadeId],
+      });
+    },
+  });
+}
+
+export function useRemoveShadeMember(shadeId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (styledId: string) =>
+      api.delete<void>(`/catalogue/shades/${shadeId}/members/${styledId}`),
+    onSuccess: () => {
+      invalidateShades(qc, brand);
+      qc.invalidateQueries({
+        queryKey: ["catalogue", "shades", brand, "one", shadeId],
+      });
+    },
+  });
+}
+
 /** Upload a cover image (collection/bundle) → returns its CDN url. The caller
  *  then saves the url onto the entity's hero_image_url. */
 export function useUploadCoverImage() {
@@ -1145,6 +1322,49 @@ export function useDeleteBundle() {
   });
 }
 
+// ── Collage covers (generated from the bundle's product photos) ──
+/** The curated title fonts the server can render into a collage. Single source
+ *  of truth for the picker, so it only offers faces that actually render. */
+export function useCollageFonts() {
+  return useQuery<string[]>({
+    queryKey: ["catalogue", "bundle-collage-fonts"],
+    queryFn: () =>
+      api
+        .get<{ fonts: string[] }>("/retention/bundles/collage/fonts")
+        .then((r) => r.fonts),
+    staleTime: 60 * 60_000,
+  });
+}
+
+/** Generate (or regenerate) a bundle's collage cover from its products. */
+export function useGenerateBundleCollage(bundleId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (settings: CollageSettings) =>
+      api.post<Bundle>(`/retention/bundles/${bundleId}/collage-cover`, {
+        settings,
+      }),
+    onSuccess: () => invalidateBundle(qc, brand, bundleId),
+  });
+}
+
+/** Restyle every already-generated collage with a shared look (font / eyebrow /
+ *  palette). Each bundle keeps its own title. */
+export function useApplyCollageToAll() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (settings: CollageSettings) =>
+      api.post<{ updated: number; skipped: number }>(
+        "/retention/bundles/collage/apply-all",
+        { settings },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
+  });
+}
+
 function invalidateBundle(qc: QueryClient, brand: string, id: string) {
   qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] });
   qc.invalidateQueries({
@@ -1277,6 +1497,120 @@ export function useSaveSizeConfig() {
       qc.invalidateQueries({ queryKey: ["catalogue", "size-config", brand] });
       qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
     },
+  });
+}
+
+// ── USD pricing: bulk "Apply exchange rate" tool ─────────
+export type UsdRounding = "exact" | "whole" | "ninety_nine";
+
+/** Per-section count of USD fields a reprice run would touch. */
+export interface UsdRepriceCounts {
+  variants: number;
+  styled: number;
+  styled_variants: number;
+  size_tiers: number;
+  lace_sizes: number;
+  colours: number;
+  bundles: number;
+  services: number;
+  total: number;
+}
+
+export interface UsdPricingStatus {
+  config: {
+    usd_fx_rate: number | null;
+    usd_fx_rate_applied_at: string | null;
+    usd_fx_rate_applied_by: string | null;
+  } | null;
+  last_run: {
+    run_id: string;
+    rate: number;
+    rounding: UsdRounding;
+    rows_changed: number;
+    applied_at: string;
+    is_undone: boolean;
+    applied_by_email: string | null;
+  } | null;
+  counts: UsdRepriceCounts;
+  // Live NGN-per-USD market rate (hint), or null when no FX provider configured.
+  market_rate: number | null;
+}
+
+export interface UsdRepricePreview {
+  rate: number;
+  rounding: UsdRounding;
+  counts: UsdRepriceCounts;
+  sample: {
+    name: string;
+    ngn: number | null;
+    current_usd: number | null;
+    new_usd: number | null;
+  }[];
+}
+
+export interface UsdRepriceResult {
+  run_id: string;
+  rate: number;
+  rounding: UsdRounding;
+  rows_changed: number;
+  counts: UsdRepriceCounts;
+  applied_at: string;
+}
+
+export function useUsdPricing() {
+  const brand = useBrand();
+  return useQuery<UsdPricingStatus>({
+    queryKey: ["catalogue", "usd-pricing", brand],
+    queryFn: () => api.get<UsdPricingStatus>("/catalogue/usd-pricing"),
+  });
+}
+
+/** Read-only preview of a rate: per-section counts + a before/after sample. */
+export function useUsdRepricePreview() {
+  return useMutation({
+    mutationFn: (input: { rate: number; rounding: UsdRounding }) =>
+      api.post<UsdRepricePreview>("/catalogue/usd-pricing/preview", input),
+  });
+}
+
+/** A reprice touches base variants, styled products, the ladders, bundles and
+ *  services — invalidate every catalogue surface so prices refetch. */
+function invalidateAllCatalogue(qc: QueryClient, brand: string) {
+  [
+    "base",
+    "variants",
+    "styled",
+    "size-config",
+    "bundles",
+    "services",
+    "usd-pricing",
+  ].forEach((k) =>
+    qc.invalidateQueries({ queryKey: ["catalogue", k, brand] }),
+  );
+}
+
+export function useApplyUsdReprice() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: { rate: number; rounding: UsdRounding }) =>
+      api.post<UsdRepriceResult>("/catalogue/usd-pricing/apply", {
+        ...input,
+        confirm: true,
+      }),
+    onSuccess: () => invalidateAllCatalogue(qc, brand),
+  });
+}
+
+export function useUndoUsdReprice() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ run_id: string; rows_restored: number }>(
+        "/catalogue/usd-pricing/undo",
+      ),
+    onSuccess: () => invalidateAllCatalogue(qc, brand),
   });
 }
 

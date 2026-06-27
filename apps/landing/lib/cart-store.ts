@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { fbTrack } from "@/lib/fbpixel";
 
 export interface CartItem {
   id: string;
@@ -30,12 +31,37 @@ export interface CartItem {
   delivery_weeks?: number;
 }
 
+/**
+ * A cart line is "broken" if it would silently fail at quote/checkout — the
+ * symptom buyers hit during the checkout glitch. Two known shapes:
+ *   1. A non-positive / non-finite unit price → the line prices to ₦0, which
+ *      the Hub refuses to bill, so the order dies after the buyer clicks Pay.
+ *   2. A styled item with no `styled_variant_id` (a pre-v2 cart that stored the
+ *      base product_id for a styled product) → the server can't price it.
+ * Anything matching this is the population we clear + apologise to; clean carts
+ * are left exactly as they are.
+ */
+export function isBrokenCartItem(it: unknown): boolean {
+  if (!it || typeof it !== "object") return true;
+  const item = it as Partial<CartItem>;
+  const price = Number(item.unit_price_ngn);
+  if (!Number.isFinite(price) || price <= 0) return true;
+  const qty = Number(item.quantity);
+  if (!Number.isFinite(qty) || qty <= 0) return true;
+  if (item.type === "styled" && !item.styled_variant_id) return true;
+  return false;
+}
+
 interface CartState {
   campaign_slug: string | null;
   items: CartItem[];
   open: boolean;
   /** Upsell rungs already shown this cart open. */
   shown_upsell_ids: string[];
+  /** Set true (once) when a stale, broken cart was discarded on rehydrate by the
+   *  checkout-glitch migration. Drives the one-time apology + gift modal; the
+   *  modal calls `acknowledgeGlitch` to lower it so it shows exactly once. */
+  glitchCleared: boolean;
 
   init: (slug: string) => void;
   add: (item: CartItem) => void;
@@ -46,6 +72,7 @@ interface CartState {
   closeCart: () => void;
   toggleCart: () => void;
   markUpsellShown: (id: string) => void;
+  acknowledgeGlitch: () => void;
 
   totalQty: () => number;
   subtotalNgn: () => number;
@@ -61,6 +88,7 @@ export const useCart = create<CartState>()(
       items: [],
       open: false,
       shown_upsell_ids: [],
+      glitchCleared: false,
 
       init(slug) {
         if (get().campaign_slug !== slug) {
@@ -68,6 +96,17 @@ export const useCart = create<CartState>()(
         }
       },
       add(item) {
+        // Meta Pixel: every add-to-bag (new line or quantity bump) is an
+        // AddToCart. `add` is only ever called from a buyer action, so this is
+        // the single reliable choke point for the event.
+        fbTrack("AddToCart", {
+          content_type: "product",
+          content_ids: [item.product_id || item.bundle_id || item.id],
+          content_name: item.name,
+          contents: [{ id: item.id, quantity: item.quantity }],
+          value: item.unit_price_ngn * item.quantity,
+          currency: "NGN",
+        });
         set((s) => {
           const existing = s.items.find((i) => i.id === item.id);
           if (existing) {
@@ -112,6 +151,9 @@ export const useCart = create<CartState>()(
             : { shown_upsell_ids: [...s.shown_upsell_ids, id] },
         );
       },
+      acknowledgeGlitch() {
+        set({ glitchCleared: false });
+      },
 
       totalQty() {
         return get().items.reduce((a, i) => a + i.quantity, 0);
@@ -145,11 +187,36 @@ export const useCart = create<CartState>()(
       // discarded instead of replayed. v2: items now carry styled_variant_id;
       // a v1 cart could still hold a base product_id for a styled product
       // (which prices at ₦0 and fails payment), so drop pre-v2 carts.
-      version: 2,
+      // v3: targeted checkout-glitch recovery — instead of dropping every old
+      // cart, the migration below inspects items and only clears carts that
+      // carry a broken (silently-failing) line, raising `glitchCleared` so the
+      // buyer gets a one-time apology + gift. Clean carts are preserved.
+      version: 3,
+      // Runs once per browser when a cart persisted at an older version is
+      // rehydrated. We never trust the old contents blindly: a single broken
+      // line is the signature of the checkout glitch, so we wipe the whole cart
+      // (matching the apology's "your cart has been reset" copy) and flag it.
+      // A wholly clean cart is handed back untouched — no clear, no apology.
+      migrate: (persisted) => {
+        const prev = (persisted ?? {}) as Partial<CartState>;
+        const items = Array.isArray(prev.items) ? prev.items : [];
+        const hasBroken = items.length > 0 && items.some(isBrokenCartItem);
+        return {
+          campaign_slug: prev.campaign_slug ?? null,
+          items: hasBroken ? [] : items,
+          shown_upsell_ids: hasBroken
+            ? []
+            : Array.isArray(prev.shown_upsell_ids)
+              ? prev.shown_upsell_ids
+              : [],
+          glitchCleared: hasBroken,
+        } as CartState;
+      },
       partialize: (s) => ({
         campaign_slug: s.campaign_slug,
         items: s.items,
         shown_upsell_ids: s.shown_upsell_ids,
+        glitchCleared: s.glitchCleared,
       }),
     },
   ),

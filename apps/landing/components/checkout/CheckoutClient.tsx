@@ -22,6 +22,7 @@ import {
   Truck,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
+import { fbTrack } from "@/lib/fbpixel";
 import { displayMoney } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
 import { postCheckout, postQuote, type CartQuote } from "@/lib/api-client";
@@ -49,6 +50,26 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const subtotal = useCart((s) => s.subtotalNgn());
 
   const brandKey = payload.brand?.business_key;
+
+  // Meta Pixel: InitiateCheckout — once, when the buyer lands on checkout with
+  // items. Reads the cart store directly (not the reactive selectors) so it
+  // captures the cart at entry and never re-fires on quote/currency updates.
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (checkoutTracked.current) return;
+    const cart = useCart.getState();
+    const lines = cart.items;
+    if (lines.length === 0) return;
+    checkoutTracked.current = true;
+    fbTrack("InitiateCheckout", {
+      content_type: "product",
+      content_ids: lines.map((i) => i.product_id || i.bundle_id || i.id),
+      contents: lines.map((i) => ({ id: i.id, quantity: i.quantity })),
+      num_items: cart.totalQty(),
+      value: cart.subtotalNgn(),
+      currency: "NGN",
+    });
+  }, []);
 
   // Display currency (₦/$) — driven by React, NOT the live page's DOM observer
   // (which never ran here and raced async figures into a mixed ₦/$ state). The
@@ -253,12 +274,30 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const countries = geo?.countries ?? GEO_FALLBACK.countries;
   const ngStates = geo?.nigeria_states ?? GEO_FALLBACK.nigeria_states;
   const lagosLgas = geo?.lagos_lgas ?? GEO_FALLBACK.lagos_lgas;
+  const norm = (s: string) => s.trim().toLowerCase();
   const isNigeria = country === "Nigeria" || countryCode === "NG";
-  const isLagos = isNigeria && state === "Lagos";
+  const isLagos = isNigeria && norm(state) === "lagos";
   // Total wigs in the basket drive the delivery tier (1–2 / 3–4 / 5–6 / +2).
   const wigQty = items.reduce((s, i) => s + i.quantity, 0);
+  // Resolve the delivery zone even when the buyer TYPED a location that exactly
+  // matches a known option but didn't tap the dropdown item. Otherwise a
+  // typed-but-unselected location leaves the zone blank and silently blocks
+  // "Pay" ("pick from the list") — a top drop-off. Exact, case-insensitive
+  // match only, so we never guess the wrong zone. Lagos still needs an LGA (the
+  // state code NG-LA alone is not a deliverable zone).
+  const resolvedCountryCode =
+    countryCode ||
+    countries.find((o) => norm(o.name) === norm(country))?.code ||
+    "";
+  const resolvedNgZone = zoneCode
+    ? zoneCode
+    : !isNigeria
+      ? ""
+      : isLagos
+        ? lagosLgas.find((o) => norm(o.name) === norm(city))?.code || ""
+        : ngStates.find((o) => norm(o.name) === norm(state))?.code || "";
   // The zone the fee resolves against: NG → state/LGA code; else ISO-2 country.
-  const effectiveZone = isNigeria ? zoneCode : countryCode;
+  const effectiveZone = isNigeria ? resolvedNgZone : resolvedCountryCode;
 
   // Load picker options + the in-store pickup address once per brand.
   // Use startTransition to defer these updates so they don't block form render.
@@ -425,7 +464,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   city,
                   state: state || undefined,
                   country,
-                  country_code: countryCode || undefined,
+                  country_code: resolvedCountryCode || undefined,
                   zone_code: effectiveZone || undefined,
                 }
               : undefined,

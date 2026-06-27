@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Minus, Play, Plus, Ruler, ShoppingBag, Store, X } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
+import { fbTrack } from "@/lib/fbpixel";
 import type { BulkTierConfig } from "@/lib/types";
 import { money } from "@/lib/format";
 import { SALE_RED } from "@/lib/deals";
@@ -236,6 +237,19 @@ export function ProductDetailModal({
         const json = (await res.json()) as { data: ProductDetail };
         if (cancelled) return;
         setProduct(json.data);
+        // Meta Pixel: ViewContent — fires once the product detail actually
+        // loads in the opened modal (not on hover/click), so it reflects a real
+        // product view for retargeting + view→purchase optimisation.
+        fbTrack("ViewContent", {
+          content_type: "product",
+          content_ids: [json.data.styled_id],
+          content_name: json.data.name,
+          value:
+            json.data.anchor_price_ngn ??
+            json.data.retail_price_ngn ??
+            undefined,
+          currency: "NGN",
+        });
         setSlide(0);
         const def =
           json.data.variants.find((v) => v.is_default) ||

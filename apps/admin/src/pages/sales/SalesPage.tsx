@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ShoppingBag, Zap, FileText, Truck } from "lucide-react";
+import { ShoppingBag, Zap, FileText, Truck, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { KpiTile } from "@/components/ui/primitives";
+import { Button, KpiTile } from "@/components/ui/primitives";
 import { money } from "@/lib/format";
+import { useAuthStore } from "@/stores/auth";
 import { useSalesKpis, useDeliveryPendingOrders } from "./hooks";
 import { QuickSaleForm } from "./QuickSaleForm";
 import { OrdersView } from "./OrdersView";
 import { QuotationsView } from "./QuotationsView";
 import { DeliveryPendingView } from "./DeliveryPendingView";
+import { SalesReportExportModal } from "./SalesReportExportModal";
 
 type SalesTab = "quick-sale" | "orders" | "quotations" | "delivery-pending";
 const TABS: { key: SalesTab; label: string; icon: typeof Zap }[] = [
@@ -24,12 +27,28 @@ export function SalesPage() {
   const { data: kpis } = useSalesKpis();
   const { data: pendingFee } = useDeliveryPendingOrders({ page_size: 1 });
   const pendingCount = pendingFee?.meta?.total ?? 0;
+  const can = useAuthStore((s) => s.can);
+  const [exportOpen, setExportOpen] = useState(false);
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="font-display text-2xl font-medium">Sales</h1>
+        {can("sales", "export") && (
+          <Button
+            variant="secondary"
+            onClick={() => setExportOpen(true)}
+            icon={<FileSpreadsheet className="w-4 h-4" />}
+          >
+            Export Report
+          </Button>
+        )}
       </div>
+
+      <SalesReportExportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+      />
 
       {kpis && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">

@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { Gift, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
+import { Gift, Minus, Plus, ShoppingBag, Sparkles, Trash2, X } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { displayMoney } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
+import { useCartUpsell } from "@/lib/use-cart-upsell";
 import { postQuote, type CartQuote } from "@/lib/api-client";
 import type { LandingPayload } from "@/lib/types";
 
@@ -21,6 +22,11 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
   const setQ = useCart((s) => s.setQuantity);
   const remove = useCart((s) => s.remove);
   const subtotal = useCart((s) => s.subtotalNgn());
+
+  // Escalating upsell — rendered as a NON-blocking banner inside the drawer so
+  // it can never overlay the Checkout CTA (the cause of the "bundle checkout
+  // bounces back" bug). See lib/use-cart-upsell.
+  const upsell = useCartUpsell(payload);
 
   // Display currency (₦/$) — converted in React with the campaign's static rate
   // so the drawer is always internally consistent. `data-no-convert` (below)
@@ -218,6 +224,55 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                   {nudge}
                 </div>
               )}
+              <AnimatePresence>
+                {upsell.rung && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: "auto" }}
+                    exit={{ opacity: 0, y: -8, height: 0 }}
+                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                    className="rounded-[14px] p-3.5 bg-[rgb(var(--accent)/0.08)] border border-[rgb(var(--accent)/0.25)] relative overflow-hidden"
+                  >
+                    <button
+                      type="button"
+                      onClick={upsell.dismiss}
+                      aria-label="Dismiss offer"
+                      className="absolute top-2 right-2 grid place-items-center w-6 h-6 rounded-lg text-[rgb(var(--text-faint))] hover:text-[rgb(var(--text))] hover:bg-[rgb(var(--text)/0.06)]"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Sparkles className="w-3.5 h-3.5 text-[rgb(var(--accent-glow))]" />
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-[rgb(var(--accent-glow))]">
+                        A small nudge
+                      </span>
+                    </div>
+                    <div className="font-display text-[15px] leading-snug pr-5">
+                      {upsell.rung.offer_label}
+                    </div>
+                    {upsell.rung.offer_subline && (
+                      <div className="text-[12px] text-[rgb(var(--text-muted))] mt-0.5">
+                        {upsell.rung.offer_subline}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 mt-2.5">
+                      {upsell.rung.reward_type === "fixed_amount" &&
+                        upsell.rung.reward_value && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))] text-[11px] font-semibold">
+                            Save {money(Number(upsell.rung.reward_value))}
+                          </span>
+                        )}
+                      <button
+                        type="button"
+                        onClick={upsell.accept}
+                        className="ml-auto h-8 px-3 rounded-lg text-[12px] font-semibold bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] cta-sheen"
+                      >
+                        Show me
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               {items.map((it) => (
                 <div
                   key={it.id}

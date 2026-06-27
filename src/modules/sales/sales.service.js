@@ -25,9 +25,11 @@ const pdf = require("../../services/pdf.service");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const businessConfig = require("../business_setup/business-config.repo");
+const salesReportExport = require("./sales-report.export");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
+const { toUtc, formatTz } = require("../../utils/dates");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 
@@ -503,8 +505,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         variant_id: b.li.variant_id,
         // Snapshot overrides let a caller (e.g. a styled-product checkout line)
         // record the styled name/label/SKU instead of the base variant's.
-        product_name_snapshot:
-          b.li.product_name_snapshot ?? b.ctx.product_name,
+        product_name_snapshot: b.li.product_name_snapshot ?? b.ctx.product_name,
         variant_label_snapshot:
           b.li.variant_label_snapshot ?? b.ctx.variant_name,
         sku_snapshot: b.li.sku_snapshot ?? b.ctx.sku,
@@ -911,8 +912,14 @@ async function setDeliveryFee({ brand, user, request_id, id, fee_ngn }) {
       action_key: "sales.order.delivery_fee_set",
       target_type: "sales_order",
       target_id: id,
-      before: { shipping_fee_ngn: before.shipping_fee_ngn, total_ngn: before.total_ngn },
-      after: { shipping_fee_ngn: updated.shipping_fee_ngn, total_ngn: updated.total_ngn },
+      before: {
+        shipping_fee_ngn: before.shipping_fee_ngn,
+        total_ngn: before.total_ngn,
+      },
+      after: {
+        shipping_fee_ngn: updated.shipping_fee_ngn,
+        total_ngn: updated.total_ngn,
+      },
       request_id,
     });
     events.emit("order.updated", { brand, order_id: id });
@@ -1747,6 +1754,73 @@ async function reviewCancellation({
   });
 }
 
+/**
+ * Sales Report export (V2.2 §6.2) — period-scoped, styled .xlsx.
+ *
+ * Resolves the chosen period into UTC bounds (interpreted in the business
+ * timezone so "pick a month" matches Nigerian business days), pulls the
+ * orders / lines / payments for the window, builds the workbook, and audits
+ * the export (RBAC 'export' action). Read-only: never mutates order data.
+ *
+ * `from`/`to` are 'YYYY-MM-DD' (inclusive). Either may be omitted — omitting
+ * both exports every order for the brand (useful for a full archival capture).
+ */
+async function exportSalesReport({ brand, user, request_id, filters = {} }) {
+  const { from, to, status, sales_channel } = filters;
+  // Inclusive day bounds in the business timezone → precise UTC for the query.
+  const fromTs = from ? toUtc(`${from}T00:00:00.000`) : null;
+  const toTs = to ? toUtc(`${to}T23:59:59.999`) : null;
+  const repoFilters = { from: fromTs, to: toTs, status, sales_channel };
+
+  const [orders, lines, payments, config] = await Promise.all([
+    repo.reportOrders({ brand, filters: repoFilters }),
+    repo.reportLines({ brand, filters: repoFilters }),
+    repo.reportPayments({ brand, filters: repoFilters }),
+    businessConfig.findByKey(brand).catch(() => null),
+  ]);
+
+  const buffer = await salesReportExport.buildWorkbook({
+    brandLabel: (config && config.display_name) || brand,
+    fromLabel: from || "Beginning",
+    toLabel: to || "Today",
+    generatedAt: formatTz(new Date(), "yyyy-MM-dd HH:mm zzz"),
+    generatedBy: user ? user.display_name || user.email || null : null,
+    orders,
+    lines,
+    payments,
+  });
+
+  await audit({
+    business: brand,
+    user_id: user ? user.user_id : null,
+    action_key: "sales.report.export",
+    target_type: "sales_report",
+    target_id: null,
+    after: {
+      from: from || null,
+      to: to || null,
+      status: status || null,
+      sales_channel: sales_channel || null,
+      order_count: orders.length,
+    },
+    request_id,
+  });
+
+  const stamp = `${from || "all"}_${to || "all"}`.replace(
+    /[^0-9A-Za-z_-]/g,
+    "",
+  );
+  const safeBrand = String((config && config.display_name) || brand)
+    .replace(/[^0-9A-Za-z]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return {
+    buffer,
+    filename: `sales-report-${safeBrand}-${stamp}.xlsx`,
+    order_count: orders.length,
+  };
+}
+
 /** Render a paid order to a receipt PDF and persist it via Documents (4.2). */
 async function receiptPdf({ brand, user, id }) {
   const order = await getById({ brand, id });
@@ -1767,6 +1841,7 @@ module.exports = {
   listOrders,
   getById,
   receiptPdf,
+  exportSalesReport,
   createOrder,
   updateOrder,
   addPayment,

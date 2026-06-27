@@ -8,6 +8,7 @@ import { BaseTab } from "./BaseTab";
 import { StyledTab } from "./StyledTab";
 import { CategoriesTab } from "./CategoriesTab";
 import { CollectionsTab } from "./CollectionsTab";
+import { ShadesTab } from "./ShadesTab";
 import { BundlesTab } from "./BundlesTab";
 import { ServicesTab } from "./ServicesTab";
 import { CatalogueSettingsTab } from "./CatalogueSettingsTab";
@@ -44,6 +45,7 @@ export function CataloguePage() {
     { key: "base", label: "Base" },
     ...(categoriesOn ? [{ key: "categories", label: "Categories" }] : []),
     { key: "collections", label: "Collections" },
+    { key: "shades", label: "Shades" },
     { key: "bundles", label: "Bundles" },
     { key: "services", label: "Services" },
     { key: "config", label: "Config" },
@@ -59,6 +61,7 @@ export function CataloguePage() {
       {active === "base" && <BaseTab />}
       {active === "categories" && categoriesOn && <CategoriesTab />}
       {active === "collections" && <CollectionsTab />}
+      {active === "shades" && <ShadesTab />}
       {active === "bundles" && <BundlesTab />}
       {active === "services" && <ServicesTab />}
       {active === "config" && <CatalogueSettingsTab />}

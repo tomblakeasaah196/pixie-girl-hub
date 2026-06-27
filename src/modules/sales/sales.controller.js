@@ -44,6 +44,23 @@ const receiptPdf = async (req, res) =>
       id: req.params.id,
     }),
   });
+async function exportReport(req, res) {
+  const { buffer, filename } = await service.exportSalesReport({
+    ...base(req),
+    filters: {
+      from: req.query.from,
+      to: req.query.to,
+      status: req.query.status,
+      sales_channel: req.query.sales_channel,
+    },
+  });
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.send(buffer);
+}
 const createOrder = async (req, res) =>
   res.status(201).json({
     data: await service.createOrder({ ...base(req), input: req.body }),
@@ -194,6 +211,7 @@ module.exports = {
   listOrders,
   getById,
   receiptPdf,
+  exportReport,
   createOrder,
   updateOrder,
   addPayment,

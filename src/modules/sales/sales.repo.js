@@ -118,8 +118,8 @@ const DOC_SUFFIX = {
 function isMissingSequence(err) {
   return Boolean(
     err &&
-      (err.code === "P0001" || !err.code) &&
-      /document_numbering/i.test(err.message || ""),
+    (err.code === "P0001" || !err.code) &&
+    /document_numbering/i.test(err.message || ""),
   );
 }
 
@@ -136,11 +136,17 @@ async function provisionSequence(run, brand, type) {
   );
   const root =
     (rows[0] && rows[0].root) ||
-    brand.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() ||
+    brand
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 4)
+      .toUpperCase() ||
     "DOC";
   const suffix =
     DOC_SUFFIX[type] ||
-    String(type).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) ||
+    String(type)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 6) ||
     "DOC";
   await run(
     `INSERT INTO shared.document_numbering (business, document_type, prefix, padding, next_number)
@@ -302,7 +308,9 @@ async function listOrders({
     // (invalid input syntax for type boolean) → the whole list 500s. `@>`
     // matches only delivery.fee_pending === true and is null-safe on every other
     // shape (null, non-object, missing key all → no match, no error).
-    where.push(`so.internal_notes @> '{"delivery":{"fee_pending":true}}'::jsonb`);
+    where.push(
+      `so.internal_notes @> '{"delivery":{"fee_pending":true}}'::jsonb`,
+    );
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
@@ -815,6 +823,90 @@ async function findNearDuplicates({ brand, contact_id, campaign_id, minutes }) {
   return rows;
 }
 
+// ── Reporting / export ───────────────────────────────────
+// Period-scoped reads for the Sales Report export. The period filter uses
+// COALESCE(placed_at, created_at) — the same business-date basis the dashboard
+// KPIs use — so the export reconciles with the on-screen tiles. All three
+// queries share the same predicate so Orders / Items / Payments stay in lockstep.
+function reportWhere(filters, startIndex = 1) {
+  const where = [];
+  const params = [];
+  let i = startIndex;
+  if (filters.from) {
+    where.push(`COALESCE(so.placed_at, so.created_at) >= $${i++}`);
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    where.push(`COALESCE(so.placed_at, so.created_at) <= $${i++}`);
+    params.push(filters.to);
+  }
+  if (filters.status) {
+    where.push(`so.status = $${i++}`);
+    params.push(filters.status);
+  }
+  if (filters.sales_channel) {
+    where.push(`so.sales_channel = $${i++}`);
+    params.push(filters.sales_channel);
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return { clause, params };
+}
+
+async function reportOrders({ brand, filters = {} }) {
+  const { clause, params } = reportWhere(filters);
+  const { rows } = await query(
+    `SELECT so.order_number, so.status, so.sales_channel, so.order_type,
+            so.is_custom_order, so.subtotal_ngn, so.discount_amount_ngn,
+            so.tax_amount_ngn, so.shipping_fee_ngn, so.total_ngn,
+            so.amount_paid_ngn, so.balance_due_ngn, so.display_currency,
+            so.display_total, so.fx_rate_used, so.coupon_code, so.payment_model,
+            so.placed_at, so.paid_at, so.created_at,
+            c.display_name  AS contact_name,
+            u.display_name  AS closed_by_name,
+            cmp.name        AS campaign_name
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c        ON c.contact_id  = so.contact_id
+       LEFT JOIN shared.users u           ON u.user_id     = so.closed_by_user_id
+       LEFT JOIN ${t(brand, "sales_campaigns")} cmp ON cmp.campaign_id = so.sales_campaign_id
+       ${clause}
+      ORDER BY COALESCE(so.placed_at, so.created_at) ASC, so.order_number ASC`,
+    params,
+  );
+  return rows;
+}
+
+async function reportLines({ brand, filters = {} }) {
+  const { clause, params } = reportWhere(filters);
+  const { rows } = await query(
+    `SELECT so.order_number, so.status,
+            l.product_name_snapshot, l.variant_label_snapshot, l.sku_snapshot,
+            l.quantity, l.unit_price_ngn, l.line_discount_ngn,
+            l.tax_amount_ngn, l.line_total_ngn, l.display_order
+       FROM ${t(brand, "sales_order_lines")} l
+       JOIN ${t(brand, "sales_orders")} so ON so.order_id = l.order_id
+       ${clause}
+      ORDER BY COALESCE(so.placed_at, so.created_at) ASC, so.order_number ASC, l.display_order ASC`,
+    params,
+  );
+  return rows;
+}
+
+async function reportPayments({ brand, filters = {} }) {
+  const { clause, params } = reportWhere(filters);
+  const { rows } = await query(
+    `SELECT so.order_number,
+            p.payment_number, p.method, p.provider, p.provider_reference,
+            p.amount_ngn, p.fee_ngn, p.net_received_ngn, p.status,
+            p.paid_currency, p.paid_amount, p.captured_at, p.recorded_at
+       FROM ${t(brand, "sales_order_payments")} p
+       JOIN ${t(brand, "sales_orders")} so ON so.order_id = p.order_id
+       ${clause}
+      ORDER BY COALESCE(so.placed_at, so.created_at) ASC, so.order_number ASC, p.recorded_at ASC`,
+    params,
+  );
+  return rows;
+}
+
 async function setDeliveryFee({ client, brand, id, fee_ngn }) {
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
@@ -873,4 +965,7 @@ module.exports = {
   sumCampaignDiscount,
   findNearDuplicates,
   setDeliveryFee,
+  reportOrders,
+  reportLines,
+  reportPayments,
 };

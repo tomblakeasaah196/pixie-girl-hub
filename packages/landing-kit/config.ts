@@ -144,13 +144,19 @@ export interface LandingConfig {
   };
   /** Discovery & sharing: search-engine title/description, the social share
    *  card (Open Graph / Twitter), and the favicon. ogImageUrl is a generated
-   *  1200×630 banner; faviconUrl falls back to the logo when unset. */
+   *  1200×630 banner; faviconUrl falls back to the logo when unset.
+   *  metaPixelId is the brand's Meta (Facebook) Pixel ID — the bare numeric id
+   *  only (not the <script> snippet). The public sales site (apps/landing)
+   *  injects the pixel into the root layout when set, so it fires across every
+   *  sale state (before / live / after / landing) plus checkout. Per-brand by
+   *  design: each business reports to its own pixel, never a shared one. */
   seo: {
     metaTitle: string;
     metaDescription: string;
     ogImageUrl: string | null;
     faviconUrl: string | null;
     twitterHandle: string;
+    metaPixelId: string | null;
   };
   typography: LandingTypography;
   texture: LandingTexture;
@@ -272,6 +278,7 @@ export function defaultConfig(brandKey: string): LandingConfig {
         ogImageUrl: null,
         faviconUrl: null,
         twitterHandle: "@Faitlynhair",
+        metaPixelId: "2190655678008533",
       },
     };
   }
@@ -313,6 +320,7 @@ export function defaultConfig(brandKey: string): LandingConfig {
       ogImageUrl: null,
       faviconUrl: null,
       twitterHandle: "@pixiegirlg",
+      metaPixelId: null,
     },
   };
 }

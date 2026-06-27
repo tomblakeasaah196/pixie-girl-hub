@@ -53,6 +53,30 @@ const DEFAULTS = Object.freeze({
       signoff: "",
     },
   },
+  quotation: {
+    pdf: {
+      note_label: "Terms",
+      note:
+        "This quotation is valid until the date shown above. Prices are held within that window; thereafter we'll be glad to re-quote.",
+      message:
+        "Curated for you, {first_name} — we would be delighted to bring this to life.",
+    },
+    email: {
+      subject: "Your {brand_name} quotation {quotation_number}",
+      heading: "A quotation, prepared for you",
+      body:
+        "Please find your quotation {quotation_number} attached. Take your time — and reply whenever you're ready, a real person will be here to help.",
+      signoff: "Warmly,\nThe {brand_name} team",
+    },
+  },
+  delivery_note: {
+    pdf: {
+      note_label: "Delivery",
+      note:
+        "Please check your items on arrival and sign to confirm they reached you in good condition. Any concern at all — reach out and we'll make it right.",
+      message: "On its way to you, {first_name} — handled with care.",
+    },
+  },
 });
 
 // ── helpers ────────────────────────────────────────────────────

@@ -126,6 +126,14 @@ const documentSettings = z
       .object({ pdf: pdfCopy.optional(), email: receiptEmailCopy.optional() })
       .strict()
       .optional(),
+    quotation: z
+      .object({ pdf: pdfCopy.optional(), email: invoiceEmailCopy.optional() })
+      .strict()
+      .optional(),
+    delivery_note: z
+      .object({ pdf: pdfCopy.optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 

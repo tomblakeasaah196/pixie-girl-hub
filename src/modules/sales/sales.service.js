@@ -32,7 +32,7 @@ const stockRepo = require("../stock/stock.repo");
 const businessConfig = require("../business_setup/business-config.repo");
 const salesReportExport = require("./sales-report.export");
 const { audit } = require("../../middleware/audit");
-const { transaction } = require("../../config/database");
+const { transaction, query } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { toUtc, formatTz } = require("../../utils/dates");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -1605,20 +1605,116 @@ async function sendQuotation({ brand, user, request_id, id, input = {} }) {
   return updated;
 }
 
-/** Render the quotation to PDF and register it in shared.documents. */
-async function archiveQuotationPdf({ brand, user, id }) {
+const QUOTATION_STATUS_LABEL = {
+  draft: "Draft",
+  sent: "Sent",
+  viewed: "Viewed",
+  accepted: "Accepted",
+  rejected: "Declined",
+  expired: "Expired",
+  converted: "Converted",
+  cancelled: "Cancelled",
+};
+
+/** Map a quotation (+ lines + contact) → the brand-doc renderer shape. */
+function buildQuotationDoc({ quotation, brandObj, copy, contact }) {
+  const subtotal = Number(quotation.subtotal_ngn || 0);
+  const discount = Number(quotation.discount_amount_ngn || 0);
+  const tax = Number(quotation.tax_amount_ngn || 0);
+  const base = subtotal - discount;
+  const taxRate = tax > 0 && base > 0 ? tax / base : null;
+  const first = String((contact && contact.display_name) || "").trim().split(/\s+/)[0] || "";
+  const tokens = {
+    first_name: first,
+    brand_name: brandObj.brand_name,
+    quotation_number: quotation.quotation_number || "",
+    order_number: "",
+    total: quotation.total_ngn,
+  };
+  const c = (copy.quotation && copy.quotation.pdf) || {};
+  // Prefer the operator's own customer-facing terms/notes; fall back to copy.
+  const noteText =
+    [quotation.payment_terms, quotation.notes].filter(Boolean).join("\n\n") ||
+    docCopy.fillTokens(c.note, tokens);
+
+  return {
+    status_label: QUOTATION_STATUS_LABEL[quotation.status] || quotation.status,
+    status_tone: "due",
+    from: {
+      name: brandObj.brand_legal_name || brandObj.brand_name,
+      address: brandObj.brand_address,
+      phone: brandObj.brand_phone,
+      email: brandObj.support_email,
+    },
+    bill_to: contact
+      ? { name: contact.display_name, phone: contact.primary_phone, email: contact.email }
+      : null,
+    meta: [
+      ["Quote #", quotation.quotation_number],
+      ["Issue date", _dayISO(quotation.created_at)],
+      ["Valid until", quotation.valid_until ? _dayISO(quotation.valid_until) : "—"],
+    ],
+    lines: (quotation.lines || []).map((l) => ({
+      description:
+        l.description ||
+        [l.product_name_snapshot, l.variant_label_snapshot].filter(Boolean).join(" — "),
+      quantity: l.quantity,
+      unit_price_ngn: l.unit_price_ngn,
+      line_total_ngn: l.line_total_ngn,
+    })),
+    subtotal_ngn: quotation.subtotal_ngn,
+    discount_amount_ngn: quotation.discount_amount_ngn,
+    shipping_fee_ngn: quotation.shipping_fee_ngn,
+    tax_amount_ngn: quotation.tax_amount_ngn,
+    tax_rate: taxRate,
+    total_ngn: quotation.total_ngn,
+    notes_label: c.note_label,
+    notes: noteText,
+    thanks: docCopy.fillTokens(c.message, tokens),
+  };
+}
+
+/** Resolve brand identity + copy and render the quotation PDF into Documents. */
+async function _renderQuotationPdf({ brand, user, id }) {
   const full = await repo.findQuotationById({ brand, id });
-  if (!full) return;
-  const { quotationHtml } = require("../../services/pdf.templates");
-  await pdf.renderAndStore({
+  if (!full) return null;
+  const [tokens, copy, contactRows] = await Promise.all([
+    emailRender.resolveBrandTokens(brand),
+    docCopy.resolveCopy(brand),
+    full.contact_id
+      ? query(
+          `SELECT display_name, primary_phone, email FROM shared.contacts WHERE contact_id = $1`,
+          [full.contact_id],
+        )
+      : Promise.resolve({ rows: [] }),
+  ]);
+  const contact = contactRows.rows[0] || null;
+  const brandObj = brandDocs.brandFromTokens(tokens);
+  const html = brandDocs.quotationHtml(
+    brandObj,
+    buildQuotationDoc({ quotation: full, brandObj, copy, contact }),
+  );
+  return pdf.renderAndStore({
     brand,
     user_id: user ? user.user_id : null,
-    html: quotationHtml({ brand, quotation: full }),
+    html,
     title: `Quotation ${full.quotation_number || id}`,
     document_type: "quotation",
     reference_type: "quotation",
     reference_id: id,
   });
+}
+
+/** Render the quotation to PDF and register it in shared.documents. */
+async function archiveQuotationPdf({ brand, user, id }) {
+  await _renderQuotationPdf({ brand, user, id });
+}
+
+/** On-demand quotation PDF (route POST /quotations/:id/pdf). */
+async function quotationPdf({ brand, user, id }) {
+  const stored = await _renderQuotationPdf({ brand, user, id });
+  if (!stored) throw new NotFoundError("Quotation");
+  return stored;
 }
 async function decideQuotation({
   brand,
@@ -2062,6 +2158,7 @@ module.exports = {
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
   listQuotations,
   getQuotation,
+  quotationPdf,
   createQuotation,
   sendQuotation,
   decideQuotation,

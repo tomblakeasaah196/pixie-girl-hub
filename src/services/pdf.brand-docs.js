@@ -105,6 +105,32 @@ function lineRows(doc) {
   </tr>`).join("");
 }
 
+// Delivery-note items: no prices — Item (+ optional SKU) and Qty only.
+function lineRowsDelivery(doc) {
+  const lines = Array.isArray(doc.lines) ? doc.lines : [];
+  if (!lines.length) return `<tr><td colspan="2" class="muted" style="padding:18px 12px">No items</td></tr>`;
+  return lines.map((l, i) => `<tr${i % 2 ? ' class="zebra"' : ""}>
+    <td class="c-desc">${esc(l.description)}${l.sku ? `<div style="font-size:10px;color:#9b9088">${esc(l.sku)}</div>` : ""}</td>
+    <td class="c-qty">${esc(l.quantity)}</td>
+  </tr>`).join("");
+}
+
+// Right-hand acknowledgement block for delivery notes (replaces the totals).
+function signatureBlock(doc, accent, hairline, muted) {
+  const cod =
+    Number(doc.cod_amount_ngn || 0) > 0
+      ? `<div style="margin-bottom:14px;font-size:12px;color:${accent};font-weight:700">Cash on delivery: ${ngn(doc.cod_amount_ngn)}</div>`
+      : "";
+  const line = (label) =>
+    `<div style="margin-top:20px;border-bottom:1px solid ${hairline};height:1px"></div>
+     <div style="font-size:10px;color:${muted};margin-top:4px;text-transform:uppercase;letter-spacing:1px">${esc(label)}</div>`;
+  return `<div style="width:280px">
+    ${cod}
+    <div class="eyebrow" style="color:${accent}">Received in good condition</div>
+    ${line("Name")}${line("Signature")}${line("Date")}
+  </div>`;
+}
+
 /**
  * @param {object} brand  { brand_name, brand_legal_name, accent, secondary,
  *                          logo_url, website_url, support_email, brand_address,
@@ -131,6 +157,18 @@ function documentHtml(brand, doc) {
   const watermark = doc.watermark
     ? `<div class="stamp" style="color:${doc.watermark_tone === "paid" ? "#1E7A4D" : accent}">${esc(doc.watermark)}</div>`
     : "";
+
+  // Delivery notes carry no money: a 2-column item list + an acknowledgement
+  // block instead of priced columns + a totals table.
+  const isDelivery = (doc.itemsMode || "priced") === "delivery";
+  const itemsHead = isDelivery
+    ? `<th>Item</th><th class="r" style="text-align:center;width:90px">Qty</th>`
+    : `<th>Description</th><th class="r" style="text-align:center">Qty</th>
+       <th class="r">Unit Price</th><th class="r">Amount</th>`;
+  const itemsBody = isDelivery ? lineRowsDelivery(doc) : lineRows(doc);
+  const lowerRight = isDelivery
+    ? signatureBlock(doc, accent, hairline, muted)
+    : `<table class="totals">${totalsRows(doc, accent)}</table>`;
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -226,11 +264,8 @@ function documentHtml(brand, doc) {
     </div>
 
     <table class="items">
-      <thead><tr>
-        <th>Description</th><th class="r" style="text-align:center">Qty</th>
-        <th class="r">Unit Price</th><th class="r">Amount</th>
-      </tr></thead>
-      <tbody>${lineRows(doc)}</tbody>
+      <thead><tr>${itemsHead}</tr></thead>
+      <tbody>${itemsBody}</tbody>
     </table>
 
     <div class="lower">
@@ -238,7 +273,7 @@ function documentHtml(brand, doc) {
         ${doc.notes ? `<div class="eyebrow" style="color:${accent}">${esc(doc.notes_label || "Notes")}</div>
           <div class="notebox">${safeMultiline(doc.notes)}</div>` : ""}
       </div>
-      <table class="totals">${totalsRows(doc, accent)}</table>
+      ${lowerRight}
     </div>
 
     ${doc.thanks ? `<div class="thanks">${esc(doc.thanks)}</div>` : ""}
@@ -256,6 +291,10 @@ function documentHtml(brand, doc) {
 
 const invoiceHtml = (brand, doc) => documentHtml(brand, { ...doc, kind: "INVOICE" });
 const receiptHtml = (brand, doc) => documentHtml(brand, { ...doc, kind: "RECEIPT" });
+const quotationHtml = (brand, doc) =>
+  documentHtml(brand, { ...doc, kind: "QUOTATION" });
+const deliveryNoteHtml = (brand, doc) =>
+  documentHtml(brand, { ...doc, kind: "DELIVERY NOTE", itemsMode: "delivery" });
 
 /**
  * Map email-render.resolveBrandTokens() output → the brand identity shape this
@@ -282,6 +321,8 @@ function brandFromTokens(t = {}) {
 module.exports = {
   invoiceHtml,
   receiptHtml,
+  quotationHtml,
+  deliveryNoteHtml,
   documentHtml,
   brandFromTokens,
   tint,

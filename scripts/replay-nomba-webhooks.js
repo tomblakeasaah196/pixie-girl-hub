@@ -35,23 +35,44 @@
 const { initDatabase, closeDatabase } = require("../src/config/database");
 const { initRedis, closeRedis } = require("../src/config/redis");
 const webhooks = require("../src/modules/business_setup/webhooks.service");
+const repo = require("../src/modules/business_setup/webhooks.repo");
 
 (async () => {
   try {
     await initDatabase();
     await initRedis();
 
-    const ids = await webhooks.enqueueReplay({
+    // Process each stuck row IN-PROCESS via onWebhookReceived, instead of
+    // enqueuing onto the webhooks-replay queue. The queue path reuses a stable
+    // jobId (`replay-<id>`); once those jobs have failed and are retained,
+    // BullMQ treats re-adding the same jobId as a no-op, so a second run never
+    // actually reprocesses (which is why you kept seeing the same error).
+    // Calling the handler directly avoids that entirely. Idempotent:
+    // recordGatewayPayment dedups on the provider reference, and onWebhookReceived
+    // skips a row already marked processed.
+    const rows = await repo.listReplayable({
       source: "nomba",
       limit: 500,
       maxRetries: null, // ignore the retry cap — re-drive everything still stuck
     });
-    console.warn(`Enqueued ${ids.length} Nomba webhook(s) for replay.`);
-    for (const id of ids) console.warn("  " + id);
+    console.warn(`Found ${rows.length} replayable Nomba webhook(s). Processing…\n`);
+
+    let ok = 0;
+    let failed = 0;
+    for (const r of rows) {
+      try {
+        await webhooks.onWebhookReceived({ webhook_id: r.webhook_id });
+        ok += 1;
+        console.warn(`  ok  ${r.webhook_id}`);
+      } catch (err) {
+        failed += 1;
+        console.warn(`  ERR ${r.webhook_id} — ${err.message}`);
+      }
+    }
+    console.warn(`\nDone. confirmed/parked: ${ok}, still failing: ${failed}.`);
     console.warn(
-      "\nThe worker will now reprocess them. Re-check the orders in a minute.\n" +
-        "Note: signature-invalid rows (e.g. FLH-SO-0037) are skipped by design,\n" +
-        "and FLH-SO-0037 also needs the stock-block fix before it can confirm.",
+      "Signature-invalid rows (e.g. FLH-SO-0037) are skipped by listReplayable; " +
+        "0037 also needs the stock-block fix before it can confirm.",
     );
   } catch (e) {
     console.error("replay failed:", e.message);

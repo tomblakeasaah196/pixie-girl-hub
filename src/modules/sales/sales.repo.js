@@ -296,7 +296,13 @@ async function listOrders({
     params.push(`%${filters.q}%`);
   }
   if (filters.fee_pending) {
-    where.push(`(so.internal_notes->'delivery'->>'fee_pending')::boolean = true`);
+    // jsonb containment, NOT a ::boolean cast on ->>. The cast is evaluated for
+    // every row the filter scans, and any order whose internal_notes.delivery
+    // node holds a non-boolean / malformed value makes `'<x>'::boolean` throw
+    // (invalid input syntax for type boolean) → the whole list 500s. `@>`
+    // matches only delivery.fee_pending === true and is null-safe on every other
+    // shape (null, non-object, missing key all → no match, no error).
+    where.push(`so.internal_notes @> '{"delivery":{"fee_pending":true}}'::jsonb`);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);

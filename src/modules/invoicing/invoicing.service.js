@@ -14,6 +14,7 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
 const pdf = require("../../services/pdf.service");
 
 const A = (
@@ -268,9 +269,16 @@ async function send({ brand, user, request_id, id, input = {} }) {
     brand,
     invoice: { ...inv, sent_via: input.sent_via || inv.sent_via },
   }).catch(() => {});
-  // Best-effort: archive the sent invoice PDF in Documents. Non-blocking and
-  // skipped cleanly if PDF rendering is disabled.
-  archiveInvoicePdf({ brand, user, id }).catch(() => {});
+  // Best-effort: archive the sent invoice PDF in Documents. Non-blocking, but
+  // we LOG failures (previously swallowed silently) — a PDF_UNAVAILABLE here is
+  // why system-generated docs never reach the Documents vault, and it must be
+  // visible in the logs instead of disappearing.
+  archiveInvoicePdf({ brand, user, id }).catch((err) =>
+    logger.warn(
+      { err: err.message, invoice_id: id, brand },
+      "invoice PDF archive failed — check PDF rendering (PDF_ENABLED / Chromium)",
+    ),
+  );
   return updated;
 }
 

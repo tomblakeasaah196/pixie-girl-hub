@@ -259,8 +259,17 @@ async function findByOrderNumber({ client, brand, order_number }) {
   return rows[0] || null;
 }
 async function findById({ client, brand, id }) {
+  // Enrich the order header with the customer's contact details so the order
+  // detail view can show name / phone / email instead of a bare contact_id.
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_orders")} WHERE order_id = $1`,
+    `SELECT so.*,
+            c.display_name    AS contact_name,
+            c.primary_phone   AS contact_phone,
+            c.whatsapp_number AS contact_whatsapp,
+            c.email           AS contact_email
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+      WHERE so.order_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
@@ -298,7 +307,12 @@ async function listOrders({
     params.push(filters.sales_campaign_id);
   }
   if (filters.q) {
-    where.push(`so.order_number ILIKE $${i++}`);
+    // Match the order number OR the customer's name / phone / email so staff
+    // can find an order by who placed it, not just by document number.
+    const ph = `$${i++}`;
+    where.push(
+      `(so.order_number ILIKE ${ph} OR c.display_name ILIKE ${ph} OR c.primary_phone ILIKE ${ph} OR c.email ILIKE ${ph})`,
+    );
     params.push(`%${filters.q}%`);
   }
   if (filters.fee_pending) {
@@ -315,7 +329,10 @@ async function listOrders({
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "sales_orders")} so ${w}`,
+    `SELECT COUNT(*)::int AS total
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+       ${w}`,
     params,
   );
   const { rows } = await run(

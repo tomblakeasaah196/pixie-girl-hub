@@ -182,6 +182,26 @@ export function OrderDetail({
                   <div className="text-[14px] font-semibold mt-1">
                     {order.contact_name ?? order.contact_id.slice(0, 8)}
                   </div>
+                  {(order.contact_phone || order.contact_email) && (
+                    <div className="mt-1 space-y-0.5">
+                      {order.contact_phone && (
+                        <a
+                          href={`tel:${order.contact_phone}`}
+                          className="block text-[12px] text-text-muted hover:text-accent"
+                        >
+                          {order.contact_phone}
+                        </a>
+                      )}
+                      {order.contact_email && (
+                        <a
+                          href={`mailto:${order.contact_email}`}
+                          className="block text-[12px] text-text-muted hover:text-accent truncate"
+                        >
+                          {order.contact_email}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="micro">Channel</div>

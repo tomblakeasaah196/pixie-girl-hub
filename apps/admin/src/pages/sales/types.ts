@@ -122,6 +122,9 @@ export interface SalesOrder {
   order_number: string;
   contact_id: string;
   contact_name?: string;
+  contact_phone?: string | null;
+  contact_whatsapp?: string | null;
+  contact_email?: string | null;
   sales_channel: SalesChannel;
   order_type: FulfilmentType;
   is_custom_order: boolean;

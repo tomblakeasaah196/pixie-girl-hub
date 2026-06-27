@@ -17,7 +17,7 @@ export function CoverImageEditor({
 }: {
   value: string | null | undefined;
   onChange: (url: string | null) => void;
-  referenceType: "collection" | "bundle";
+  referenceType: "collection" | "bundle" | "shade";
   referenceId?: string;
 }) {
   const upload = useUploadCoverImage();

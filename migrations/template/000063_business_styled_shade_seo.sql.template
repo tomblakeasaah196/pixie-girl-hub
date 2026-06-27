@@ -1,0 +1,27 @@
+-- ============================================================
+-- TEMPLATE 000063 — Shade SEO meta (meta_title / meta_description)
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000062) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose: the runner uses
+-- the first CREATE TABLE as a skip-sentinel, so this file is re-run every
+-- repair — safe because every statement is idempotent (ADD COLUMN IF NOT EXISTS).
+--
+-- WHY (owner directive, June 2026):
+--   A shade is a standalone "Shop by shade" page (000062). Beyond the SEO slug
+--   it already carries, the owner wants editable per-page SEO meta so each shade
+--   page can set its own <title> and meta description. These are optional;
+--   NULL falls back to the shade name / short description at render time.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.styled_shades
+  ADD COLUMN IF NOT EXISTS meta_title       TEXT,
+  ADD COLUMN IF NOT EXISTS meta_description  TEXT;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}' AND table_name = 'styled_shades'
+--       AND column_name IN ('meta_title','meta_description');   -- two rows
+-- ============================================================

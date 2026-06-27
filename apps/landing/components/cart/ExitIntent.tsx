@@ -29,19 +29,17 @@ export function ExitIntent({ payload }: { payload: LandingPayload }) {
     function onVisibilityChange() {
       if (document.visibilityState === "hidden") trigger();
     }
-    // Mobile: detect back-gesture via history pop.
-    function onPopState() {
-      trigger();
-      window.history.pushState(null, "", window.location.href);
-    }
-    window.history.pushState(null, "", window.location.href);
+    // NB: we deliberately do NOT trap the back button with history.pushState.
+    // Manually pushing/popping history corrupts the Next App Router's own
+    // history state, which made router.push("/checkout/…") blink to the page
+    // and snap straight back — the "checkout closes the drawer and returns to
+    // the landing" bug. Desktop exit-intent uses mouseleave; tab-switch uses
+    // visibilitychange; neither touches the history stack.
     document.addEventListener("mouseleave", onMouseLeave);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("popstate", onPopState);
     return () => {
       document.removeEventListener("mouseleave", onMouseLeave);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("popstate", onPopState);
     };
   }, [payload.slug, cartOpen]);
 

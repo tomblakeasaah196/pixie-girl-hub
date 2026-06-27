@@ -157,13 +157,12 @@ function BundleCard({
             {money(savings)} OFF
           </span>
         )}
-        {state === "live" && bundle.current_stock_snapshot !== null && (
+        {/* Stock state — only the meaningful ones. We deliberately DON'T show a
+            live "N left" count: a number that sits unchanged for hours reads as
+            "this isn't selling". Sold-out / pre-order still surface. */}
+        {state === "live" && stockOut && (
           <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.18em] bg-[rgb(0_0_0/0.55)] text-[rgb(var(--text))] backdrop-blur">
-            {stockOut
-              ? bundle.preorder_enabled
-                ? "Out of stock · Preorder"
-                : "Sold out"
-              : `${bundle.current_stock_snapshot} left`}
+            {bundle.preorder_enabled ? "Out of stock · Preorder" : "Sold out"}
           </span>
         )}
         {/* Bundle unfold sheen on hover. */}

@@ -12,10 +12,14 @@
 "use strict";
 
 const repo = require("./bundle.repo");
+const collage = require("../../services/collage.service");
 const { transaction } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
+
+// Wordmark shown on the generated collage's eyebrow, per brand.
+const BRAND_NAMES = { pixiegirl: "Pixie Girl", faitlynhair: "Faitlyn Hair" };
 
 /**
  * Bundles curate STYLED products. A base (stock-room) product / variant is
@@ -79,13 +83,116 @@ async function createBundle({ brand, user, request_id, input }) {
   return repo.getById({ brand, id: bundle.bundle_id });
 }
 
-const listBundles = ({ brand, only_active, storefront }) =>
-  repo.list({ brand, only_active, storefront });
+/**
+ * Pure bundle economics for a component subtotal + unit count (decimal.js,
+ * never float). Mirrors the per-model discount rules priceBundle() applies and
+ * additionally resolves the FINAL price the customer pays + the saving — the
+ * numbers the admin cards/editor render. Sharing this with priceBundle() keeps
+ * "what the owner sees" identical to "what the customer is charged".
+ *
+ * `units` is the sum of component quantities (a qty-2 line counts twice) so
+ * `amount_off` (₦ off EACH unit) scales exactly like checkout. The discount is
+ * always clamped at the subtotal so a bundle can never price below zero.
+ *
+ * @returns {{ subtotal: Decimal, discount: Decimal, effective: Decimal, units: number }}
+ */
+function computeBundleEconomics({
+  pricing_model,
+  discount_value,
+  bundle_price_ngn,
+  subtotal_ngn,
+  units,
+}) {
+  const subtotal = money(subtotal_ngn || 0);
+  const unitCount = Math.max(1, Number(units) || 0);
+  let discount = money(0);
+  let effective = subtotal;
+
+  switch (pricing_model) {
+    case "fixed_bundle_price": {
+      // The flat price is the source of truth; the "saving" is whatever it
+      // undercuts the component subtotal by (0 when the bundle costs more).
+      effective = money(bundle_price_ngn || 0);
+      discount = subtotal.gt(effective) ? subtotal.minus(effective) : money(0);
+      break;
+    }
+    case "pct_off": {
+      discount = subtotal.times(money(discount_value || 0));
+      if (discount.gt(subtotal)) discount = subtotal;
+      effective = subtotal.minus(discount);
+      break;
+    }
+    case "amount_off": {
+      discount = money(discount_value || 0).times(unitCount);
+      if (discount.gt(subtotal)) discount = subtotal;
+      effective = subtotal.minus(discount);
+      break;
+    }
+    default:
+      // buy_x_get_y / tiered_qty need per-line context — not derivable from a
+      // flat subtotal. Report no discount here; checkout uses priceBundle +
+      // quantityBundleDiscount with the real lines.
+      discount = money(0);
+      effective = subtotal;
+  }
+  if (effective.lt(0)) effective = money(0);
+  return { subtotal, discount, effective, units: unitCount };
+}
+
+/** Sum a component list to { subtotal, units } using each line's resolved
+ *  unit price × quantity (the same figure listComponents/repo surface). */
+function componentTotals(components = []) {
+  let subtotal = 0;
+  let units = 0;
+  for (const c of components) {
+    const qty = Number(c.quantity) || 1;
+    subtotal += (Number(c.unit_price_ngn) || 0) * qty;
+    units += qty;
+  }
+  return { subtotal, units };
+}
+
+/**
+ * Attach the derived economics (component_subtotal_ngn, discount_ngn,
+ * effective_price_ngn, unit_count) to a bundle row so every surface shows the
+ * real price + saving without re-deriving it. The bundle's saved pricing config
+ * (discount_value / bundle_price_ngn) stays the SSOT — this is computed from it,
+ * so it can never drift out of sync with what's stored.
+ */
+function decorateBundle(bundle) {
+  if (!bundle) return bundle;
+  // getById carries components; list carries pre-aggregated subtotal/unit_count.
+  const { subtotal, units } = bundle.components
+    ? componentTotals(bundle.components)
+    : {
+        subtotal: Number(bundle.component_subtotal_ngn) || 0,
+        units: Number(bundle.unit_count) || 0,
+      };
+  const econ = computeBundleEconomics({
+    pricing_model: bundle.pricing_model,
+    discount_value: bundle.discount_value,
+    bundle_price_ngn: bundle.bundle_price_ngn,
+    subtotal_ngn: subtotal,
+    units,
+  });
+  return {
+    ...bundle,
+    component_subtotal_ngn: Number(toCurrencyString(econ.subtotal)),
+    discount_ngn: Number(toCurrencyString(econ.discount)),
+    effective_price_ngn: Number(toCurrencyString(econ.effective)),
+    unit_count: econ.units,
+  };
+}
+
+async function listBundles({ brand, only_active, storefront }) {
+  const rows = await repo.list({ brand, only_active, storefront });
+  return rows.map(decorateBundle);
+}
 
 async function getBundle({ brand, id }) {
   const b = await repo.getById({ brand, id });
   if (!b) throw new NotFoundError("Bundle");
-  return b;
+  return decorateBundle(b);
 }
 
 async function updateBundle({ brand, user, request_id, id, patch }) {
@@ -161,52 +268,165 @@ async function priceBundle({ brand, bundle_id, component_subtotal_ngn }) {
   if (!bundle.is_active)
     throw new AppError("BUNDLE_INACTIVE", "Bundle is not active", 409);
 
-  const sub = money(component_subtotal_ngn || 0);
-  switch (bundle.pricing_model) {
-    case "fixed_bundle_price": {
-      const price = money(bundle.bundle_price_ngn || 0);
-      const discount = sub.gt(price) ? sub.minus(price) : money(0);
-      return {
-        pricing_model: bundle.pricing_model,
-        bundle_price_ngn: toCurrencyString(price),
-        discount_ngn: toCurrencyString(discount),
-      };
-    }
-    case "pct_off": {
-      const discount = sub.times(money(bundle.discount_value || 0));
-      return {
-        pricing_model: bundle.pricing_model,
-        discount_ngn: toCurrencyString(discount),
-      };
-    }
-    case "amount_off": {
-      // ₦ off EACH unit (owner directive): the discount_value comes off every
-      // item in the bundle, so it scales with the unit count — a 6-piece bundle
-      // at "₦35k off each" saves ₦210k. Clamp the total discount at the subtotal.
-      const units = (bundle.components || []).reduce(
-        (n, c) => n + (Number(c.quantity) || 1),
-        0,
-      );
-      let discount = money(bundle.discount_value || 0).times(Math.max(1, units));
-      if (discount.gt(sub)) discount = sub;
-      return {
-        pricing_model: bundle.pricing_model,
-        discount_ngn: toCurrencyString(discount),
-      };
-    }
-    default:
-      // buy_x_get_y / tiered_qty need line-level context — return the params.
-      return {
-        pricing_model: bundle.pricing_model,
-        discount_ngn: "0.00",
-        params: {
-          buy_quantity: bundle.buy_quantity,
-          get_quantity: bundle.get_quantity,
-          get_discount_pct: bundle.get_discount_pct,
-          qty_tiers: bundle.qty_tiers,
-        },
-      };
+  // buy_x_get_y / tiered_qty need line-level context — return the params for
+  // the caller (cart) to apply via quantityBundleDiscount.
+  if (
+    bundle.pricing_model !== "fixed_bundle_price" &&
+    bundle.pricing_model !== "pct_off" &&
+    bundle.pricing_model !== "amount_off"
+  ) {
+    return {
+      pricing_model: bundle.pricing_model,
+      discount_ngn: "0.00",
+      params: {
+        buy_quantity: bundle.buy_quantity,
+        get_quantity: bundle.get_quantity,
+        get_discount_pct: bundle.get_discount_pct,
+        qty_tiers: bundle.qty_tiers,
+      },
+    };
   }
+
+  // ₦ off EACH unit (owner directive) scales with the unit count — a 6-piece
+  // bundle at "₦35k off each" saves ₦210k. Shared economics clamps at subtotal.
+  const units = (bundle.components || []).reduce(
+    (n, c) => n + (Number(c.quantity) || 1),
+    0,
+  );
+  const { discount, effective } = computeBundleEconomics({
+    pricing_model: bundle.pricing_model,
+    discount_value: bundle.discount_value,
+    bundle_price_ngn: bundle.bundle_price_ngn,
+    subtotal_ngn: component_subtotal_ngn,
+    units,
+  });
+  const out = {
+    pricing_model: bundle.pricing_model,
+    discount_ngn: toCurrencyString(discount),
+  };
+  // Preserve the historical shape: the fixed model also echoes its flat price.
+  if (bundle.pricing_model === "fixed_bundle_price") {
+    out.bundle_price_ngn = toCurrencyString(effective);
+  }
+  return out;
+}
+
+// ── Collage cover generation ────────────────────────────────
+/** The curated title fonts the collage can render (picker source of truth). */
+function listCollageFonts() {
+  return collage.curatedTitleFonts();
+}
+
+/**
+ * Render a bundle's collage cover from its component photos, store it, and
+ * point hero_image_url at it. `settings` overrides merge over the bundle's
+ * saved collage_settings, and the resolved settings (title/eyebrow/font) are
+ * persisted so the cover can be re-edited or restyled later.
+ */
+async function renderBundleCover({ brand, user, request_id, bundle, settings }) {
+  // Lazy require — documents.service pulls in the storage/event stack; keeping
+  // it local mirrors pdf.service and avoids any require cycle at module load.
+  const documents = require("../../shared/documents/documents.service");
+  const brandRow = await repo.brandBranding({ brand });
+  const merged = { ...(bundle.collage_settings || {}), ...(settings || {}) };
+  const result = await collage.buildBundleCollage({
+    brand,
+    components: bundle.components || [],
+    settings: merged,
+    brandRow,
+    brandName: BRAND_NAMES[brand],
+  });
+  const doc = await documents.store({
+    brand,
+    user_id: user ? user.user_id : null,
+    buffer: result.buffer,
+    filename: `bundle-${bundle.bundle_code}-collage.webp`,
+    mime_type: result.mime,
+    document_type: "cover_image",
+    title: `${bundle.display_name} — collage`,
+    reference_type: "bundle",
+    reference_id: bundle.bundle_id,
+    request_id,
+  });
+  const collage_settings = { ...merged, ...result.settings };
+  await repo.update({
+    brand,
+    id: bundle.bundle_id,
+    patch: {
+      hero_image_url: doc.url,
+      collage_settings,
+      cover_is_generated: true,
+    },
+  });
+  return { hero_image_url: doc.url, collage_settings, count: result.count };
+}
+
+async function generateCollageCover({ brand, user, request_id, id, settings }) {
+  const bundle = await repo.getById({ brand, id });
+  if (!bundle) throw new NotFoundError("Bundle");
+  const res = await renderBundleCover({
+    brand,
+    user,
+    request_id,
+    bundle,
+    settings,
+  });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.bundle.collage_generate",
+    target_type: "bundle_offer",
+    target_id: id,
+    after: { pieces: res.count, font: res.collage_settings.font_family },
+    request_id,
+  });
+  return getBundle({ brand, id });
+}
+
+/**
+ * Restyle every already-generated collage with a shared look. Only the brand
+ * style (font / eyebrow / palette) is applied — each bundle keeps its own
+ * title. Bundles with fewer than 3 photographed products are skipped, not
+ * failed, so one thin bundle can't abort the batch.
+ */
+async function applyCollageStyleToAll({ brand, user, request_id, settings }) {
+  const style = {};
+  for (const k of ["font_family", "eyebrow", "bg", "accent"]) {
+    if (settings && settings[k] !== undefined) style[k] = settings[k];
+  }
+  const ids = await repo.listGeneratedIds({ brand });
+  let updated = 0;
+  let skipped = 0;
+  for (const id of ids) {
+    const bundle = await repo.getById({ brand, id });
+    if (!bundle) continue;
+    try {
+      await renderBundleCover({
+        brand,
+        user,
+        request_id,
+        bundle,
+        settings: style,
+      });
+      updated += 1;
+    } catch (err) {
+      if (err.code === "COLLAGE_TOO_FEW") {
+        skipped += 1;
+        continue;
+      }
+      throw err;
+    }
+  }
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.bundle.collage_apply_all",
+    target_type: "bundle_offer",
+    target_id: null,
+    after: { updated, skipped },
+    request_id,
+  });
+  return { updated, skipped };
 }
 
 /**
@@ -300,5 +520,9 @@ module.exports = {
   removeComponent,
   deleteBundle,
   priceBundle,
+  computeBundleEconomics,
   quantityBundleDiscount,
+  generateCollageCover,
+  applyCollageStyleToAll,
+  listCollageFonts,
 };

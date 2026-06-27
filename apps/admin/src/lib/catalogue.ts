@@ -392,8 +392,30 @@ export interface Bundle {
   is_active: boolean;
   display_order: number;
   hero_image_url?: string | null;
+  // Derived, server-computed economics (decorateBundle) — present on both the
+  // list and the detail fetch. The bundle's saved pricing config stays the
+  // SSOT; these are computed from it so they can never drift.
+  component_subtotal_ngn?: number | null;
+  discount_ngn?: number | null;
+  effective_price_ngn?: number | null;
+  unit_count?: number | null;
+  // Generated collage cover state (when the hero was built from the products).
+  collage_settings?: CollageSettings | null;
+  cover_is_generated?: boolean;
   // Attached on the detail fetch (GET /retention/bundles/:id).
   components?: BundleComponent[];
+}
+
+/** The editable knobs for an auto-generated collage cover. All optional — an
+ *  empty object renders the default editorial cover from the brand palette +
+ *  piece count. */
+export interface CollageSettings {
+  title?: string;
+  eyebrow?: string;
+  /** A curated title font family (from GET /retention/bundles/collage/fonts). */
+  font_family?: string;
+  bg?: string;
+  accent?: string;
 }
 
 /** A component inside a bundle. Going forward this is a STYLED product
@@ -415,6 +437,9 @@ export interface BundleComponent {
   styled_slug: string | null;
   styled_status: StyledStatus | null;
   unit_price_ngn: number | null;
+  // The component's display photo (styled hero → base image), used to build the
+  // collage cover and to count how many products actually have a picture.
+  image_url: string | null;
 }
 
 /** A STYLED product curated into a collection (collections never hold bases). */
@@ -1155,6 +1180,49 @@ export function useDeleteBundle() {
   const brand = useBrand();
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/retention/bundles/${id}`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
+  });
+}
+
+// ── Collage covers (generated from the bundle's product photos) ──
+/** The curated title fonts the server can render into a collage. Single source
+ *  of truth for the picker, so it only offers faces that actually render. */
+export function useCollageFonts() {
+  return useQuery<string[]>({
+    queryKey: ["catalogue", "bundle-collage-fonts"],
+    queryFn: () =>
+      api
+        .get<{ fonts: string[] }>("/retention/bundles/collage/fonts")
+        .then((r) => r.fonts),
+    staleTime: 60 * 60_000,
+  });
+}
+
+/** Generate (or regenerate) a bundle's collage cover from its products. */
+export function useGenerateBundleCollage(bundleId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (settings: CollageSettings) =>
+      api.post<Bundle>(`/retention/bundles/${bundleId}/collage-cover`, {
+        settings,
+      }),
+    onSuccess: () => invalidateBundle(qc, brand, bundleId),
+  });
+}
+
+/** Restyle every already-generated collage with a shared look (font / eyebrow /
+ *  palette). Each bundle keeps its own title. */
+export function useApplyCollageToAll() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (settings: CollageSettings) =>
+      api.post<{ updated: number; skipped: number }>(
+        "/retention/bundles/collage/apply-all",
+        { settings },
+      ),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["catalogue", "bundles", brand] }),
   });

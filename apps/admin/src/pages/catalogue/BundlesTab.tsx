@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
   Gift,
@@ -48,7 +48,17 @@ import {
   type BundleCreateInput,
 } from "@/lib/catalogue";
 import { CoverImageEditor } from "./CoverImageEditor";
+import { BundleCollageEditor } from "./BundleCollageEditor";
 import { ImportExportControls } from "@/components/catalogue/ImportExportControls";
+import {
+  computeBundleEconomics,
+  componentTotals,
+} from "@/lib/bundle-pricing";
+
+const ngn0 = (n: number) =>
+  new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(
+    Math.round(n),
+  );
 
 /**
  * Bundles run on the promotional engine in the retention module
@@ -163,7 +173,7 @@ export function BundlesTab() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(bundles.data ?? []).map((b: Bundle) => (
             <Card key={b.bundle_id} className="p-4">
-              <div className="aspect-[16/9] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04] relative group">
+              <div className="aspect-[4/5] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04] relative group">
                 {b.hero_image_url ? (
                   <img
                     src={b.hero_image_url}
@@ -207,16 +217,39 @@ export function BundlesTab() {
                   </Pill>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <Pill tone="info" dot={false}>
                   {b.pricing_model.replace(/_/g, " ")}
                 </Pill>
-                {b.bundle_price_ngn != null && (
-                  <MoneyText
-                    ngn={b.bundle_price_ngn}
-                    usd={b.bundle_price_usd ?? undefined}
-                    className="text-[14px]"
-                  />
+                {b.effective_price_ngn != null && b.effective_price_ngn > 0 ? (
+                  <>
+                    <MoneyText
+                      ngn={b.effective_price_ngn}
+                      usd={b.bundle_price_usd ?? undefined}
+                      className="text-[14px]"
+                    />
+                    {b.discount_ngn != null &&
+                      b.discount_ngn > 0 &&
+                      b.component_subtotal_ngn != null && (
+                        <>
+                          <MoneyText
+                            ngn={b.component_subtotal_ngn}
+                            className="text-[11px] text-text-faint line-through"
+                          />
+                          <Pill tone="success" dot={false}>
+                            Save ₦{ngn0(b.discount_ngn)}
+                          </Pill>
+                        </>
+                      )}
+                  </>
+                ) : (
+                  b.bundle_price_ngn != null && (
+                    <MoneyText
+                      ngn={b.bundle_price_ngn}
+                      usd={b.bundle_price_usd ?? undefined}
+                      className="text-[14px]"
+                    />
+                  )
                 )}
               </div>
               {canEdit && (
@@ -256,12 +289,20 @@ function BundleCoverModal({
     );
   return (
     <Modal open onClose={onClose} title={`Cover — ${bundle.display_name}`}>
-      <CoverImageEditor
-        value={bundle.hero_image_url}
-        referenceType="bundle"
-        referenceId={bundle.bundle_id}
-        onChange={save}
-      />
+      <div className="space-y-5">
+        <BundleCollageEditor bundleId={bundle.bundle_id} />
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-line" />
+          <span className="micro">or set it yourself</span>
+          <div className="h-px flex-1 bg-line" />
+        </div>
+        <CoverImageEditor
+          value={bundle.hero_image_url}
+          referenceType="bundle"
+          referenceId={bundle.bundle_id}
+          onChange={save}
+        />
+      </div>
     </Modal>
   );
 }
@@ -343,9 +384,30 @@ function BundleEditorModal({
     }
   }, [bundle]);
 
+  // Memoised so the live-economics hook has a stable dependency, and so both
+  // run before the early return (hooks must never be conditional).
+  const components = useMemo(
+    () => detail.data?.components ?? [],
+    [detail.data],
+  );
+  const num = amount ? Number(amount) : 0;
+  // Live economics from the CURRENT form state (model + discount input +
+  // components), so the price + saving react the instant you change the
+  // discount or add a product — before Save round-trips. Mirrors the backend's
+  // computeBundleEconomics so the preview equals what's stored / charged.
+  const live = useMemo(() => {
+    const { subtotal, units } = componentTotals(components);
+    return computeBundleEconomics({
+      pricing_model: model,
+      discount_value: model === "pct_off" ? num / 100 : num,
+      bundle_price_ngn: priceNgn ? Number(priceNgn) : 0,
+      subtotal_ngn: subtotal,
+      units,
+    });
+  }, [components, model, num, priceNgn]);
+
   if (!bundle) return null;
 
-  const components = detail.data?.components ?? [];
   const componentIds = new Set(components.map((c) => c.product_id));
   const componentStyledIds = new Set(
     components.filter((c) => c.styled_id).map((c) => c.styled_id),
@@ -367,12 +429,6 @@ function BundleEditorModal({
       .filter((s) => !componentStyledIds.has(s.styled_id))
       .map((s) => ({ value: s.styled_id, label: s.name })),
   ];
-
-  // Live subtotal preview from component unit prices × quantity.
-  const subtotal = components.reduce(
-    (sum, c) => sum + (c.unit_price_ngn ?? 0) * (c.quantity ?? 1),
-    0,
-  );
 
   const saveMeta = () => {
     const num = amount ? Number(amount) : undefined;
@@ -477,14 +533,50 @@ function BundleEditorModal({
           </Field>
         )}
 
+        {components.length > 0 && (
+          <div className="rounded-[12px] border border-line bg-text-primary/[0.03] p-3 space-y-1.5">
+            <div className="flex items-center justify-between text-[12px] text-text-faint">
+              <span>Components total</span>
+              <MoneyText ngn={live.subtotal} className="text-[12px]" />
+            </div>
+            {live.discount > 0 && (
+              <div className="flex items-center justify-between text-[12px] text-text-faint">
+                <span>
+                  {model === "amount_off"
+                    ? `Discount · ₦${ngn0(num)} × ${live.units}`
+                    : model === "pct_off"
+                      ? `Discount · ${num}%`
+                      : "Discount"}
+                </span>
+                <span className="text-accent-glow inline-flex items-center gap-0.5">
+                  −<MoneyText ngn={live.discount} className="text-[12px] text-accent-glow" />
+                </span>
+              </div>
+            )}
+            <div className="h-px bg-line my-0.5" />
+            <div className="flex items-center justify-between">
+              <span className="text-[12.5px] font-semibold">Bundle price</span>
+              <div className="flex items-center gap-2">
+                {live.discount > 0 && (
+                  <MoneyText
+                    ngn={live.subtotal}
+                    className="text-[11px] text-text-faint line-through"
+                  />
+                )}
+                <MoneyText ngn={live.effective} className="text-[16px] font-semibold" />
+              </div>
+            </div>
+            {live.discount > 0 && (
+              <div className="text-right text-[11px] text-success">
+                Save ₦{ngn0(live.discount)}
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           <div className="flex items-center justify-between mb-2">
             <div className="micro">Products in this bundle</div>
-            {subtotal > 0 && (
-              <div className="text-[11px] text-text-faint">
-                Components total <MoneyText ngn={subtotal} className="text-[12px]" />
-              </div>
-            )}
           </div>
           <div className="space-y-2">
             <Select

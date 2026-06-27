@@ -35,7 +35,14 @@ const BUNDLE_COLS = [
   "hero_image_url",
   "display_order",
   "is_active",
+  // Collage cover (template 000063): the editable badge/font/palette settings
+  // and a marker for "this hero was generated" (drives the restyle-all action).
+  "collage_settings",
+  "cover_is_generated",
 ];
+
+// Columns whose value is a JS object/array bound as ::jsonb.
+const JSONB_COLS = new Set(["qty_tiers", "collage_settings"]);
 
 function buildInsert(cols, src, extra = {}) {
   const f = [];
@@ -45,8 +52,8 @@ function buildInsert(cols, src, extra = {}) {
   for (const c of cols) {
     if (src[c] === undefined) continue;
     f.push(c);
-    ph.push(c === "qty_tiers" ? `$${i++}::jsonb` : `$${i++}`);
-    p.push(c === "qty_tiers" ? JSON.stringify(src[c]) : src[c]);
+    ph.push(JSONB_COLS.has(c) ? `$${i++}::jsonb` : `$${i++}`);
+    p.push(JSONB_COLS.has(c) ? JSON.stringify(src[c]) : src[c]);
   }
   for (const [c, v] of Object.entries(extra)) {
     f.push(c);
@@ -121,7 +128,26 @@ async function listComponents({ client, brand, bundle_id }) {
                 ORDER BY dv.is_default DESC, dv.display_order
                 LIMIT 1),
               sp.retail_price_ngn
-            ) AS unit_price_ngn
+            ) AS unit_price_ngn,
+            -- The component's display photo for the collage: the styled hero
+            -- (explicit primary → default colour's first picture → any picture)
+            -- then the base product's primary image as a last resort.
+            COALESCE(
+              (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+                WHERE pi.image_id = sp.primary_image_id),
+              (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+                 JOIN ${t(brand, "styled_product_colours")} col
+                   ON col.colour_id = pi.styled_colour_id
+                WHERE col.styled_id = bop.styled_id
+                ORDER BY col.is_default DESC, col.display_order, pi.display_order
+                LIMIT 1),
+              (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+                WHERE pi.styled_id = bop.styled_id
+                ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1),
+              (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+                WHERE pi.product_id = bop.product_id
+                ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1)
+            ) AS image_url
        FROM ${t(brand, "bundle_offer_products")} bop
        LEFT JOIN ${t(brand, "products")} p ON p.product_id = bop.product_id
        LEFT JOIN ${t(brand, "product_variants")} v ON v.variant_id = bop.variant_id
@@ -134,11 +160,39 @@ async function listComponents({ client, brand, bundle_id }) {
 
 async function list({ brand, only_active, storefront }) {
   const where = [];
-  if (only_active) where.push("is_active = true");
-  if (storefront) where.push("is_visible_storefront = true");
+  if (only_active) where.push("b.is_active = true");
+  if (storefront) where.push("b.is_visible_storefront = true");
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  // Pre-aggregate each bundle's component subtotal + unit count so the service
+  // can derive the effective price/saving for the cards without fetching every
+  // component (no N+1). The unit-price COALESCE mirrors listComponents exactly:
+  // pinned variant price → product default-variant price → styled retail.
   const { rows } = await query(
-    `SELECT * FROM ${t(brand, "bundle_offers")} ${w} ORDER BY display_order, created_at DESC`,
+    `SELECT b.*,
+            COALESCE(agg.subtotal, 0) AS component_subtotal_ngn,
+            COALESCE(agg.units, 0)    AS unit_count
+       FROM ${t(brand, "bundle_offers")} b
+       LEFT JOIN LATERAL (
+         SELECT SUM(
+                  COALESCE(
+                    v.price_storefront_ngn,
+                    (SELECT dv.price_storefront_ngn
+                       FROM ${t(brand, "product_variants")} dv
+                      WHERE dv.product_id = bop.product_id
+                      ORDER BY dv.is_default DESC, dv.display_order
+                      LIMIT 1),
+                    sp.retail_price_ngn,
+                    0
+                  ) * COALESCE(bop.quantity, 1)
+                ) AS subtotal,
+                SUM(COALESCE(bop.quantity, 1)) AS units
+           FROM ${t(brand, "bundle_offer_products")} bop
+           LEFT JOIN ${t(brand, "product_variants")} v ON v.variant_id = bop.variant_id
+           LEFT JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = bop.styled_id
+          WHERE bop.bundle_id = b.bundle_id
+       ) agg ON true
+       ${w}
+      ORDER BY b.display_order, b.created_at DESC`,
   );
   return rows;
 }
@@ -157,10 +211,10 @@ async function update({ brand, id, patch }) {
   const keys = Object.keys(patch).filter((k) => BUNDLE_COLS.includes(k));
   if (keys.length === 0) return getById({ brand, id });
   const sets = keys.map((k, i) =>
-    k === "qty_tiers" ? `${k} = $${i + 2}::jsonb` : `${k} = $${i + 2}`,
+    JSONB_COLS.has(k) ? `${k} = $${i + 2}::jsonb` : `${k} = $${i + 2}`,
   );
   const vals = keys.map((k) =>
-    k === "qty_tiers" ? JSON.stringify(patch[k]) : patch[k],
+    JSONB_COLS.has(k) ? JSON.stringify(patch[k]) : patch[k],
   );
   const { rows } = await query(
     `UPDATE ${t(brand, "bundle_offers")} SET ${sets.join(", ")}, updated_at = now()
@@ -188,6 +242,27 @@ async function setActive({ brand, id, is_active }) {
   return rows[0] || null;
 }
 
+/** The brand's branding row for the collage palette (accent + gradient ramp).
+ *  business_key === the brand schema key. */
+async function brandBranding({ brand }) {
+  const { rows } = await query(
+    `SELECT accent_colour, secondary_colour, brand_theme
+       FROM shared.business_config WHERE business_key = $1`,
+    [brand],
+  );
+  return rows[0] || null;
+}
+
+/** Ids of every bundle whose hero was generated (the restyle-all target). */
+async function listGeneratedIds({ brand }) {
+  const { rows } = await query(
+    `SELECT bundle_id FROM ${t(brand, "bundle_offers")}
+      WHERE cover_is_generated = true
+      ORDER BY display_order, created_at DESC`,
+  );
+  return rows.map((r) => r.bundle_id);
+}
+
 /** Hard-delete a bundle. Component rows cascade via the FK. */
 async function remove({ brand, id }) {
   const { rowCount } = await query(
@@ -209,4 +284,6 @@ module.exports = {
   setActive,
   remove,
   bumpUsage,
+  brandBranding,
+  listGeneratedIds,
 };

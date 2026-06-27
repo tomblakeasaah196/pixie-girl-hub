@@ -16,6 +16,15 @@ require("./invoicing.subscribers");
 const router = express.Router();
 const can = (action) => requirePermission("invoicing", action);
 
+// Settings tab — editable copy for invoice/receipt PDFs + their mail (per brand).
+router.get("/settings", can("view"), controller.getDocumentSettings);
+router.put(
+  "/settings",
+  can("edit"),
+  validator.validateDocumentSettings,
+  controller.updateDocumentSettings,
+);
+
 router.get("/invoices", can("view"), controller.listInvoices);
 router.post(
   "/invoices",

@@ -16,6 +16,9 @@ const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const pdf = require("../../services/pdf.service");
+const brandDocs = require("../../services/pdf.brand-docs");
+const docCopy = require("../../services/document-copy");
+const emailRender = require("../email_campaigns/email-render");
 
 const A = (
   brand,
@@ -282,20 +285,121 @@ async function send({ brand, user, request_id, id, input = {} }) {
   return updated;
 }
 
-/** Render the invoice to PDF and register it in shared.documents. */
-async function archiveInvoicePdf({ brand, user, id }) {
+/** First word of a display name, for personalised copy tokens. */
+function firstName(name) {
+  return String(name || "").trim().split(/\s+/)[0] || "";
+}
+const dayISO = (v) => (v ? String(v).slice(0, 10) : "");
+
+const INVOICE_STATUS_LABEL = {
+  draft: "Draft",
+  sent: "Sent",
+  partially_paid: "Part-paid",
+  paid: "Paid",
+  overdue: "Overdue",
+  void: "Void",
+  refunded: "Refunded",
+};
+
+/**
+ * Map an invoice (header + lines + contact_name) → the normalised document the
+ * brand-doc renderer expects, with personalised, Settings-driven copy. A paid
+ * invoice carries the PAID stamp; every money line (discount/delivery/VAT) is
+ * passed through with the real column names so none are dropped.
+ */
+function buildInvoiceDoc({ invoice, brandObj, copy }) {
+  const subtotal = Number(invoice.subtotal_ngn || 0);
+  const discount = Number(invoice.discount_amount_ngn || 0);
+  const tax = Number(invoice.tax_amount_ngn || 0);
+  const base = subtotal - discount;
+  const taxRate = tax > 0 && base > 0 ? tax / base : null;
+  const total = Number(invoice.total_ngn || 0);
+  const paid =
+    invoice.status === "paid" ||
+    (total > 0 && Number(invoice.amount_paid_ngn || 0) >= total);
+
+  const tokens = {
+    first_name: firstName(invoice.contact_name),
+    brand_name: brandObj.brand_name,
+    invoice_number: invoice.invoice_number || "",
+    order_number: "",
+    total: invoice.total_ngn,
+  };
+  const c = (copy.invoice && copy.invoice.pdf) || {};
+
+  return {
+    status_label: INVOICE_STATUS_LABEL[invoice.status] || invoice.status,
+    status_tone: paid ? "paid" : "due",
+    watermark: paid ? "Paid" : null,
+    watermark_tone: "paid",
+    from: {
+      name: brandObj.brand_legal_name || brandObj.brand_name,
+      address: brandObj.brand_address,
+      phone: brandObj.brand_phone,
+      email: brandObj.support_email,
+    },
+    bill_to: { name: invoice.contact_name },
+    meta: [
+      ["Invoice #", invoice.invoice_number],
+      ["Issue date", dayISO(invoice.issue_date || invoice.created_at)],
+      [
+        "Due date",
+        invoice.due_date
+          ? dayISO(invoice.due_date)
+          : invoice.payment_terms || "Due on receipt",
+      ],
+    ],
+    lines: (invoice.lines || []).map((l) => ({
+      description:
+        l.description ||
+        [l.product_name_snapshot, l.variant_label_snapshot]
+          .filter(Boolean)
+          .join(" — "),
+      quantity: l.quantity,
+      unit_price_ngn: l.unit_price_ngn,
+      line_total_ngn: l.line_total_ngn,
+    })),
+    subtotal_ngn: invoice.subtotal_ngn,
+    discount_amount_ngn: invoice.discount_amount_ngn,
+    shipping_fee_ngn: invoice.shipping_fee_ngn,
+    tax_amount_ngn: invoice.tax_amount_ngn,
+    tax_rate: taxRate,
+    total_ngn: invoice.total_ngn,
+    amount_paid_ngn: invoice.amount_paid_ngn,
+    balance_due_ngn: invoice.balance_due_ngn,
+    notes_label: c.note_label,
+    notes: docCopy.fillTokens(c.note, tokens),
+    thanks: docCopy.fillTokens(c.message, tokens),
+  };
+}
+
+/** Resolve brand identity + copy and render the invoice PDF into Documents. */
+async function _renderInvoicePdf({ brand, user, id }) {
   const full = await getById({ brand, id });
-  if (!full) return;
-  const { invoiceHtml } = require("../../services/pdf.templates");
-  await pdf.renderAndStore({
+  if (!full) return null;
+  const [tokens, copy] = await Promise.all([
+    emailRender.resolveBrandTokens(brand),
+    docCopy.resolveCopy(brand),
+  ]);
+  const brandObj = brandDocs.brandFromTokens(tokens);
+  const html = brandDocs.invoiceHtml(
+    brandObj,
+    buildInvoiceDoc({ invoice: full, brandObj, copy }),
+  );
+  return pdf.renderAndStore({
     brand,
     user_id: user ? user.user_id : null,
-    html: invoiceHtml({ brand, invoice: full }),
+    html,
     title: `Invoice ${full.invoice_number || id}`,
     document_type: "invoice",
     reference_type: "invoice",
     reference_id: id,
   });
+}
+
+/** Render the invoice to PDF and register it in shared.documents. */
+async function archiveInvoicePdf({ brand, user, id }) {
+  await _renderInvoicePdf({ brand, user, id });
 }
 async function recordPayment({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
@@ -670,18 +774,40 @@ async function issueReceipt({ brand, user, request_id, input }) {
  * by the route; degrades to a 503 if PDF rendering is disabled.
  */
 async function invoicePdf({ brand, user, id }) {
-  const invoice = await getById({ brand, id });
-  if (!invoice) throw new NotFoundError("Invoice");
-  const { invoiceHtml } = require("../../services/pdf.templates");
-  return pdf.renderAndStore({
+  const stored = await _renderInvoicePdf({ brand, user, id });
+  if (!stored) throw new NotFoundError("Invoice");
+  return stored;
+}
+
+// ── Document settings (Invoicing → Settings tab) ─────────────
+// Editable copy for invoice/receipt PDFs + their mail, per brand. Reads return
+// the curated defaults merged with the brand's overrides so the editor always
+// shows the effective wording; writes persist only the overridden fields.
+async function getDocumentSettings({ brand }) {
+  const [effective, overrides] = await Promise.all([
+    docCopy.resolveCopy(brand),
+    docCopy.getStored(brand),
+  ]);
+  return { effective, overrides, defaults: docCopy.DEFAULTS };
+}
+
+async function updateDocumentSettings({ brand, user, request_id, input }) {
+  const overrides = await docCopy.saveCopy({
     brand,
+    patch: input,
     user_id: user ? user.user_id : null,
-    html: invoiceHtml({ brand, invoice }),
-    title: `Invoice ${invoice.invoice_number || invoice.invoice_id || id}`,
-    document_type: "invoice",
-    reference_type: "invoice",
-    reference_id: invoice.invoice_id || id,
   });
+  await A(
+    brand,
+    user ? user.user_id : null,
+    "invoicing.document_settings.update",
+    "document_settings",
+    brand,
+    { fields: Object.keys(input || {}) },
+    request_id,
+  );
+  events.emit("document_settings.updated", { brand });
+  return { effective: docCopy.deepMerge(docCopy.DEFAULTS, overrides), overrides };
 }
 
 module.exports = {
@@ -703,4 +829,6 @@ module.exports = {
   cancelReminder,
   sendDueReminders,
   invoicePdf,
+  getDocumentSettings,
+  updateDocumentSettings,
 };

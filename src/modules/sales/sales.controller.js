@@ -114,6 +114,14 @@ const getQuotation = async (req, res) =>
       id: req.params.quoId,
     }),
   });
+const quotationPdf = async (req, res) =>
+  res.status(201).json({
+    data: await service.quotationPdf({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.quoId,
+    }),
+  });
 const createQuotation = async (req, res) =>
   res.status(201).json({
     data: await service.createQuotation({ ...base(req), input: req.body }),
@@ -220,6 +228,7 @@ module.exports = {
   setDeliveryFee,
   listQuotations,
   getQuotation,
+  quotationPdf,
   createQuotation,
   sendQuotation,
   acceptQuotation,

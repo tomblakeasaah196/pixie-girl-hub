@@ -13,9 +13,12 @@
 "use strict";
 
 const crypto = require("crypto");
-const { transaction } = require("../../config/database");
+const { transaction, query } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
 const { money } = require("../../utils/money");
+const brandDocs = require("../../services/pdf.brand-docs");
+const docCopy = require("../../services/document-copy");
+const emailRender = require("../email_campaigns/email-render");
 const repo = require("./logistics.repo");
 const events = require("./logistics.events");
 const salesService = require("../sales/sales.service");
@@ -733,18 +736,88 @@ async function trackPublic({ token }) {
  * the Documents gateway. Generated at packing/dispatch time; the document is
  * linked to the delivery (reference_type 'delivery').
  */
+const _dDay = (v) => (v ? String(v).slice(0, 10) : "");
+
+/** Map a delivery (+ items + address snapshot) → the brand-doc renderer shape
+ *  in delivery-note mode (no money; Item/Qty + signature panel). */
+function buildDeliveryDoc({ delivery, brandObj, copy, courierName, orderNumber }) {
+  const addr = delivery.delivery_address_snapshot || {};
+  const first = String(delivery.recipient_name_snapshot || "").trim().split(/\s+/)[0] || "";
+  const tokens = {
+    first_name: first,
+    brand_name: brandObj.brand_name,
+    order_number: orderNumber || "",
+  };
+  const c = (copy.delivery_note && copy.delivery_note.pdf) || {};
+
+  return {
+    from: {
+      name: brandObj.brand_legal_name || brandObj.brand_name,
+      address: brandObj.brand_address,
+      phone: brandObj.brand_phone,
+      email: brandObj.support_email,
+    },
+    ship_to: {
+      name: delivery.recipient_name_snapshot,
+      address: [addr.line1, addr.line2].filter(Boolean).join(", "),
+      cityline: [addr.city, addr.state, addr.country].filter(Boolean).join(", "),
+      phone: delivery.recipient_phone_snapshot,
+    },
+    meta: [
+      ["Delivery #", delivery.delivery_number],
+      ...(orderNumber ? [["Order #", orderNumber]] : []),
+      ["Date", _dDay(delivery.dispatched_at || delivery.created_at)],
+      ...(courierName ? [["Courier", courierName]] : []),
+      ...(delivery.courier_tracking_ref
+        ? [["Tracking", delivery.courier_tracking_ref]]
+        : []),
+    ],
+    lines: (delivery.items || []).map((it) => ({
+      description: it.description || "Item",
+      quantity: it.quantity,
+    })),
+    cod_amount_ngn: delivery.cod_amount_ngn || 0,
+    notes_label: c.note_label,
+    notes: docCopy.fillTokens(c.note, tokens),
+    thanks: docCopy.fillTokens(c.message, tokens),
+  };
+}
+
 async function deliveryLetterPdf({ brand, user, id }) {
   const delivery = await repo.getDelivery({ client: null, brand, id });
   if (!delivery) throw new NotFoundError("Delivery not found");
   const pdf = require("../../services/pdf.service");
-  const { deliveryLetterHtml } = require("../../services/pdf.templates");
-  const html = deliveryLetterHtml({ brand, delivery });
+  const [tokens, copy, courierName, orderNumber] = await Promise.all([
+    emailRender.resolveBrandTokens(brand),
+    docCopy.resolveCopy(brand),
+    delivery.courier_id
+      ? query(
+          `SELECT display_name FROM ${brand}.couriers WHERE courier_id = $1`,
+          [delivery.courier_id],
+        )
+          .then((r) => (r.rows[0] ? r.rows[0].display_name : null))
+          .catch(() => null)
+      : Promise.resolve(null),
+    delivery.order_id
+      ? query(
+          `SELECT order_number FROM ${brand}.sales_orders WHERE order_id = $1`,
+          [delivery.order_id],
+        )
+          .then((r) => (r.rows[0] ? r.rows[0].order_number : null))
+          .catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  const brandObj = brandDocs.brandFromTokens(tokens);
+  const html = brandDocs.deliveryNoteHtml(
+    brandObj,
+    buildDeliveryDoc({ delivery, brandObj, copy, courierName, orderNumber }),
+  );
   const doc = await pdf.renderAndStore({
     brand,
     user_id: user ? user.user_id : null,
     html,
-    title: `Delivery Letter ${delivery.tracking_number || delivery.delivery_number || id}`,
-    document_type: "delivery_letter",
+    title: `Delivery Note ${delivery.delivery_number || delivery.courier_tracking_ref || id}`,
+    document_type: "delivery_note",
     reference_type: "delivery",
     reference_id: id,
   });

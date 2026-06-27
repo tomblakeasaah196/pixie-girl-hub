@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { FileText, Search, Plus } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText, Button } from "@/components/ui/primitives";
@@ -58,8 +59,18 @@ export function InvoicesView() {
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+
+  // The selected invoice lives in the URL (?invoice=<id>) so other screens —
+  // e.g. an order's "View Invoice" button — can deep-link straight into it.
+  const [sp, setSp] = useSearchParams();
+  const selectedId = sp.get("invoice");
+  const openInvoice = (id: string | null) => {
+    const next = new URLSearchParams(sp);
+    if (id) next.set("invoice", id);
+    else next.delete("invoice");
+    setSp(next, { replace: true });
+  };
 
   const { data, isLoading } = useInvoices({
     status: status || undefined,
@@ -77,7 +88,7 @@ export function InvoicesView() {
         columns={columns}
         rows={invoices}
         rowKey={(i) => i.invoice_id}
-        onRowClick={(i) => setSelectedId(i.invoice_id)}
+        onRowClick={(i) => openInvoice(i.invoice_id)}
         loading={isLoading}
         empty={{
           icon: <FileText className="w-8 h-8" />,
@@ -137,11 +148,11 @@ export function InvoicesView() {
         </div>
       )}
 
-      <InvoiceDetail invoiceId={selectedId} onClose={() => setSelectedId(null)} />
+      <InvoiceDetail invoiceId={selectedId} onClose={() => openInvoice(null)} />
       <InvoiceCreateDrawer
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreated={(id) => { setShowCreate(false); setSelectedId(id); }}
+        onCreated={(id) => { setShowCreate(false); openInvoice(id); }}
       />
     </>
   );

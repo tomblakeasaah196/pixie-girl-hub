@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { AnimatePresence, motion, type PanInfo } from "framer-motion";
 import {
@@ -56,6 +57,14 @@ export function BundleDetailModal({
   preorderLeadWeeks: number;
 }) {
   const [slide, setSlide] = useState(0);
+  // Portal target — only available on the client. Rendering the modal into
+  // document.body (below) is essential: the bundle card is a framer-motion
+  // element with a transform, which makes `position: fixed` resolve against the
+  // CARD, not the viewport. On desktop the card is a ~1/3-width column, so an
+  // in-place modal was trapped in that strip (and stuck under the z-40 cart
+  // bar). The portal lets it cover the whole viewport, above everything.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Lock body scroll + close on Escape while open. Restoring the prior overflow
   // (not hard-coding "") respects any value an outer overlay already set.
@@ -112,14 +121,16 @@ export function BundleDetailModal({
         ? "Pre-order now"
         : `Add bundle · ${money(finalPrice)}`;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[80] flex md:items-center md:justify-center md:p-6"
+          className="fixed inset-0 z-[90] flex md:items-center md:justify-center md:p-6"
         >
           <div
             className="absolute inset-0 bg-black/75 backdrop-blur-[6px]"
@@ -250,7 +261,7 @@ export function BundleDetailModal({
                 <X className="w-4 h-4" />
               </button>
 
-              <div className="flex-1 overflow-y-auto -mt-7 md:mt-0 rounded-t-[28px] md:rounded-none bg-[rgb(var(--bg))] px-5 pt-5 pb-6 md:px-7 md:pt-9 relative z-[2]">
+              <div className="flex-1 min-h-0 overflow-y-auto -mt-7 md:mt-0 rounded-t-[28px] md:rounded-none bg-[rgb(var(--bg))] px-5 pt-5 pb-6 md:px-7 md:pt-9 relative z-[2]">
                 {/* Mobile grab handle */}
                 <div className="md:hidden w-10 h-1 rounded-full bg-[rgb(var(--text)/0.18)] mx-auto mb-4" />
 
@@ -388,6 +399,7 @@ export function BundleDetailModal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

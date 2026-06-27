@@ -1702,6 +1702,7 @@ async function _renderQuotationPdf({ brand, user, id }) {
     document_type: "quotation",
     reference_type: "quotation",
     reference_id: id,
+    pdfOptions: brandDocs.PDF_OPTIONS,
   });
 }
 
@@ -2119,6 +2120,7 @@ async function receiptPdf({ brand, user, id }) {
     document_type: "receipt",
     reference_type: "sales_order",
     reference_id: order.order_id || id,
+    pdfOptions: brandDocs.PDF_OPTIONS,
   });
 }
 

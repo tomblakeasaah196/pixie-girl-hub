@@ -131,6 +131,16 @@ async function createFromOrder({ client, brand, order, user_id }) {
         notes: "Auto-applied from paid order",
       },
     });
+    // The invoice is born fully paid → issue its receipt automatically so the
+    // Receipts section is populated without a manual step.
+    await issueReceiptInternal({
+      client: c,
+      brand,
+      invoice: inv,
+      amount_ngn: order.total_ngn,
+      payment_method: "gateway",
+      user_id,
+    });
     await A(
       brand,
       user_id,
@@ -394,6 +404,7 @@ async function _renderInvoicePdf({ brand, user, id }) {
     document_type: "invoice",
     reference_type: "invoice",
     reference_id: id,
+    pdfOptions: brandDocs.PDF_OPTIONS,
   });
 }
 
@@ -436,6 +447,28 @@ async function recordPayment({ brand, user, request_id, id, input }) {
     const balance = money(updated.balance_due_ngn);
     const status = balance.lte(money("0.00")) ? "paid" : "partially_paid";
     await repo.setStatus({ client, brand, id, status });
+
+    // Fully paid → stop chasing it and give the customer a receipt.
+    if (status === "paid") {
+      await repo.cancelScheduledReminders({ client, brand, invoice_id: id });
+      const existingReceipts = await repo.listReceipts({
+        client,
+        brand,
+        invoice_id: id,
+      });
+      if (!existingReceipts.length) {
+        await issueReceiptInternal({
+          client,
+          brand,
+          invoice: updated,
+          amount_ngn: updated.total_ngn,
+          payment_method: input.payment_method || "manual",
+          payment_id: input.sales_order_payment_id || null,
+          user_id: user.user_id,
+        });
+      }
+    }
+
     await A(
       brand,
       user.user_id,
@@ -644,6 +677,9 @@ function addDays(dateStr, days) {
 
 async function scheduleRemindersForInvoice({ client, brand, invoice }) {
   if (!invoice.due_date || !invoice.contact_id) return;
+  // Never schedule reminders for a non-collectible invoice — a paid/void/
+  // refunded invoice owes nothing, so chasing it would be a wrong reminder.
+  if (["paid", "void", "refunded"].includes(invoice.status)) return;
   // Resolve recipient contact address
   const { query } = require("../../config/database");
   const { rows: contacts } = await (client ? client.query.bind(client) : query)(
@@ -750,6 +786,57 @@ async function sendDueReminders({ brand }) {
 function listReceipts({ brand, invoice_id }) {
   return repo.listReceipts({ brand, invoice_id });
 }
+/**
+ * Issue a receipt record for a fully-paid invoice. Used by the automatic paths
+ * (auto-invoice on order.paid + manual full payment) so the Receipts section is
+ * never empty for a paid invoice and no one has to issue it by hand. Runs inside
+ * the caller's transaction; idempotent guarding is the caller's responsibility.
+ */
+async function issueReceiptInternal({
+  client,
+  brand,
+  invoice,
+  amount_ngn,
+  payment_method = "gateway",
+  payment_id = null,
+  user_id = null,
+}) {
+  const receipt_number = await repo.nextNumber({
+    client,
+    brand,
+    type: "receipt",
+  });
+  const receipt = await repo.createReceipt({
+    client,
+    brand,
+    receipt: {
+      receipt_number,
+      invoice_id: invoice.invoice_id,
+      payment_id,
+      contact_id: invoice.contact_id,
+      amount_ngn,
+      payment_method,
+      issued_by: user_id,
+      notes: "Auto-issued on payment",
+    },
+  });
+  await A(
+    brand,
+    user_id,
+    "invoicing.receipt.auto_issue",
+    "receipt",
+    receipt.receipt_id,
+    { receipt_number, invoice_id: invoice.invoice_id },
+    null,
+  );
+  events.emit("receipt.issued", {
+    brand,
+    receipt_id: receipt.receipt_id,
+    invoice_id: invoice.invoice_id,
+  });
+  return receipt;
+}
+
 async function issueReceipt({ brand, user, request_id, input }) {
   const receipt_number = await repo.nextNumber({ brand, type: "receipt" });
   const receipt = await repo.createReceipt({

@@ -133,6 +133,17 @@ const configSchema = z
         ogImageUrl: nullableMediaUrl,
         faviconUrl: nullableMediaUrl,
         twitterHandle: z.string().max(40).optional(),
+        // Meta (Facebook) Pixel ID — bare numeric id only (e.g. 2190655678008533),
+        // never the <script> snippet. Constrained to digits so it can be safely
+        // interpolated into the pixel init on the public site. Empty/omitted =
+        // no pixel for this brand.
+        metaPixelId: z
+          .string()
+          .trim()
+          .regex(/^\d*$/, "Meta Pixel ID must be digits only")
+          .max(32)
+          .nullable()
+          .optional(),
       })
       .passthrough()
       .optional(),

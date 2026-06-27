@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import type { LandingBundle } from "@/lib/types";
 import { money } from "@/lib/format";
+import { fbTrack } from "@/lib/fbpixel";
 
 export function BundleDetailModal({
   bundle,
@@ -76,6 +77,18 @@ export function BundleDetailModal({
   useEffect(() => {
     if (open) setSlide(0);
   }, [open, bundle.bundle_id]);
+
+  // Meta Pixel: ViewContent for the bundle, once each time it's opened.
+  useEffect(() => {
+    if (!open) return;
+    fbTrack("ViewContent", {
+      content_type: "product",
+      content_ids: [bundle.bundle_id],
+      content_name: bundle.bundle_name,
+      value: finalPrice,
+      currency: "NGN",
+    });
+  }, [open, bundle.bundle_id, bundle.bundle_name, finalPrice]);
 
   const components = useMemo(() => bundle.components || [], [bundle.components]);
 

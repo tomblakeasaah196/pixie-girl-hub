@@ -663,6 +663,8 @@ function BrandEditor({
         <Img label="Favicon (a square logo works best)" value={config.seo.faviconUrl} onChange={(v) => update((d) => { d.seo.faviconUrl = v; })} />
         <Text label="Twitter / X handle" value={config.seo.twitterHandle} onChange={(v) => update((d) => { d.seo.twitterHandle = v; })} />
         <p className="text-[11px] text-text-faint">Controls the title, description, preview image and favicon shown by Google and when the link is shared.</p>
+        <Text label="Meta (Facebook) Pixel ID" value={config.seo.metaPixelId ?? ""} onChange={(v) => update((d) => { d.seo.metaPixelId = v.replace(/[^0-9]/g, "") || null; })} />
+        <p className="text-[11px] text-text-faint">Paste only the numeric Pixel ID (e.g. 2190655678008533), not the &lt;script&gt; snippet. When set, the pixel fires on every sale state — before, live, after and the landing — plus checkout. Each brand uses its own pixel; leave blank for none.</p>
       </Section>
 
       <Section title="Reveal">

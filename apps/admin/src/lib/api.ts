@@ -114,14 +114,14 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
   });
 
   // Silent-refresh-and-retry on a 401 — but never for the auth routes
-  // themselves (login/refresh failing 401 is a real auth failure).
-  if (
-    res.status === 401 &&
-    scope === "v1" &&
-    !isAuthRoute &&
-    !_retried &&
-    accessToken !== null
-  ) {
+  // themselves (login/refresh failing 401 is a real auth failure). We attempt
+  // the refresh even when there is NO in-memory access token: the access token
+  // lives in memory only, so a hard reload (or a single earlier transient
+  // refresh failure) leaves it null while the httpOnly refresh cookie is still
+  // valid. Previously this was gated on `accessToken !== null`, which stranded
+  // every subsequent request with a header-less "Authorization header missing"
+  // 401 and no recovery until a full page reload.
+  if (res.status === 401 && scope === "v1" && !isAuthRoute && !_retried) {
     const ok = await refreshAccessToken();
     if (ok) return request<T>(path, { ...opts, _retried: true });
     accessToken = null;

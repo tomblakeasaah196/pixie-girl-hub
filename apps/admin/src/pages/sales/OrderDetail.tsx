@@ -173,7 +173,11 @@ export function OrderDetail({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate(`/invoicing?tab=invoices`)}
+                  onClick={() =>
+                    navigate(
+                      `/invoicing?tab=invoices&invoice=${invoice.invoice_id}`,
+                    )
+                  }
                 >
                   View Invoice
                 </Button>

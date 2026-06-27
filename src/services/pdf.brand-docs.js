@@ -170,10 +170,13 @@ function documentHtml(brand, doc) {
     ? signatureBlock(doc, accent, hairline, muted)
     : `<table class="totals">${totalsRows(doc, accent)}</table>`;
 
+  // NOTE: no external @font-face / @import / <link>. The PDF engine renders with
+  // waitUntil:'networkidle0', so ANY network request (e.g. Google Fonts) makes
+  // it hang until timeout on a locked-down server → "failed to generate PDF".
+  // We name the brand fonts first (used if installed on the host) and always
+  // fall back to bundled system fonts, so rendering is fully offline + instant.
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
   @page { size: A4; margin: 0; }
   * { box-sizing: border-box; }
   html,body { margin:0; padding:0; background:#EDE9E4; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -318,6 +321,15 @@ function brandFromTokens(t = {}) {
   };
 }
 
+// The renderer draws its own full-bleed A4 "sheet" (210×297mm with internal
+// padding), so the PDF engine must apply ZERO page margins — otherwise the
+// sheet sits inside the engine's default margins and overflows/clips. Pass this
+// as renderAndStore({ pdfOptions }) for every brand document.
+const PDF_OPTIONS = {
+  format: "A4",
+  margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
+};
+
 module.exports = {
   invoiceHtml,
   receiptHtml,
@@ -325,6 +337,7 @@ module.exports = {
   deliveryNoteHtml,
   documentHtml,
   brandFromTokens,
+  PDF_OPTIONS,
   tint,
   shade,
 };

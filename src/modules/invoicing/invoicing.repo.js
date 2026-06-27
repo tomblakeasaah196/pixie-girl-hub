@@ -370,6 +370,18 @@ async function listReminders({ client, brand, invoice_id }) {
   return rows;
 }
 
+/** Cancel every still-scheduled reminder for an invoice (e.g. once it's paid),
+ *  so none linger in the UI or ever fire. Returns the number cancelled. */
+async function cancelScheduledReminders({ client, brand, invoice_id }) {
+  const { rowCount } = await ex(client)(
+    `UPDATE ${t(brand, "invoice_reminders")}
+        SET status = 'cancelled'
+      WHERE invoice_id = $1 AND status = 'scheduled'`,
+    [invoice_id],
+  );
+  return rowCount;
+}
+
 async function findDueReminders({ client, brand, limit = 50 }) {
   const { rows } = await ex(client)(
     `SELECT ir.*, i.contact_id, i.invoice_number, i.due_date, i.balance_due_ngn
@@ -440,6 +452,7 @@ module.exports = {
   listReceipts,
   insertReminder,
   listReminders,
+  cancelScheduledReminders,
   findDueReminders,
   updateReminderStatus,
   bumpReminderCount,

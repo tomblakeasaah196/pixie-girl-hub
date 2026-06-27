@@ -265,6 +265,19 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                   <div className="micro">Payment Terms</div>
                   <div className="text-[13px] mt-1">{invoice.payment_terms || "—"}</div>
                 </div>
+                <div>
+                  <div className="micro">Sent to customer</div>
+                  <div className="text-[13px] mt-1">
+                    {invoice.sent_at ? (
+                      <span className="text-success">
+                        via {invoice.sent_via} ·{" "}
+                        {new Date(invoice.sent_at).toLocaleDateString()}
+                      </span>
+                    ) : (
+                      <span className="text-text-faint">Not sent yet</span>
+                    )}
+                  </div>
+                </div>
               </FormGrid>
             </Card>
 
@@ -317,9 +330,13 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
             <Card className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="micro">Receipts</div>
-                <Button variant="ghost" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowReceiptForm(!showReceiptForm)}>
-                  Issue Receipt
-                </Button>
+                {/* Paid invoices issue their receipt automatically; only offer a
+                    manual receipt while a balance is still outstanding. */}
+                {!["paid", "void", "refunded"].includes(invoice.status) && (
+                  <Button variant="ghost" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowReceiptForm(!showReceiptForm)}>
+                    Issue Receipt
+                  </Button>
+                )}
               </div>
               {showReceiptForm && (
                 <div className="mb-3 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line">
@@ -359,8 +376,10 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
               )}
             </Card>
 
-            {/* Reminders */}
-            {reminders && reminders.length > 0 && (
+            {/* Reminders — never shown for a settled invoice (nothing to chase). */}
+            {reminders &&
+              reminders.length > 0 &&
+              !["paid", "void", "refunded"].includes(invoice.status) && (
               <Card className="p-4">
                 <div className="micro mb-3">Reminders</div>
                 <div className="space-y-2">

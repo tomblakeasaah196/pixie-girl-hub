@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { fbTrack } from "@/lib/fbpixel";
 
 export interface CartItem {
   id: string;
@@ -95,6 +96,17 @@ export const useCart = create<CartState>()(
         }
       },
       add(item) {
+        // Meta Pixel: every add-to-bag (new line or quantity bump) is an
+        // AddToCart. `add` is only ever called from a buyer action, so this is
+        // the single reliable choke point for the event.
+        fbTrack("AddToCart", {
+          content_type: "product",
+          content_ids: [item.product_id || item.bundle_id || item.id],
+          content_name: item.name,
+          contents: [{ id: item.id, quantity: item.quantity }],
+          value: item.unit_price_ngn * item.quantity,
+          currency: "NGN",
+        });
         set((s) => {
           const existing = s.items.find((i) => i.id === item.id);
           if (existing) {

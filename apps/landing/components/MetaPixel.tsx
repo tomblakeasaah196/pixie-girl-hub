@@ -3,12 +3,7 @@
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-
-declare global {
-  interface Window {
-    fbq?: (...args: unknown[]) => void;
-  }
-}
+import { fbTrack } from "@/lib/fbpixel";
 
 /**
  * Meta (Facebook) Pixel — base install for the public sales site.
@@ -39,7 +34,7 @@ export function MetaPixel({ pixelId }: { pixelId: string }) {
       firstLoad.current = false;
       return;
     }
-    window.fbq?.("track", "PageView");
+    fbTrack("PageView");
   }, [pathname]);
 
   return (

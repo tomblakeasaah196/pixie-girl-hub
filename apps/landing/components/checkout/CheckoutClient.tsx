@@ -22,6 +22,7 @@ import {
   Truck,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
+import { fbTrack } from "@/lib/fbpixel";
 import { displayMoney } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
 import { postCheckout, postQuote, type CartQuote } from "@/lib/api-client";
@@ -49,6 +50,26 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const subtotal = useCart((s) => s.subtotalNgn());
 
   const brandKey = payload.brand?.business_key;
+
+  // Meta Pixel: InitiateCheckout — once, when the buyer lands on checkout with
+  // items. Reads the cart store directly (not the reactive selectors) so it
+  // captures the cart at entry and never re-fires on quote/currency updates.
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (checkoutTracked.current) return;
+    const cart = useCart.getState();
+    const lines = cart.items;
+    if (lines.length === 0) return;
+    checkoutTracked.current = true;
+    fbTrack("InitiateCheckout", {
+      content_type: "product",
+      content_ids: lines.map((i) => i.product_id || i.bundle_id || i.id),
+      contents: lines.map((i) => ({ id: i.id, quantity: i.quantity })),
+      num_items: cart.totalQty(),
+      value: cart.subtotalNgn(),
+      currency: "NGN",
+    });
+  }, []);
 
   // Display currency (₦/$) — driven by React, NOT the live page's DOM observer
   // (which never ran here and raced async figures into a mixed ₦/$ state). The

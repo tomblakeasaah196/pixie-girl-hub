@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { CheckCircle, Clock, Package, ArrowRight } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
+import { fbTrackOnce } from "@/lib/fbpixel";
 import { fetchOrderStatus } from "@/lib/api-client";
 import { money } from "@/lib/format";
 import type { LandingPayload } from "@/lib/types";
@@ -51,6 +52,16 @@ export function ThankYouClient({
         data.status === "confirmed";
       if (paid) {
         setPolling(false);
+        // Meta Pixel: Purchase — the funnel's terminal conversion. Deduped on
+        // the order id (persisted) so a refresh of this polling page can never
+        // double-count the same sale. Value/currency come from the confirmed
+        // order, not the cart, so they match what was actually billed.
+        fbTrackOnce(data.order_id, "Purchase", {
+          content_type: "product",
+          value: Number(data.total_ngn) || 0,
+          currency: data.currency || "NGN",
+          transaction_id: data.order_number,
+        });
         // Clear the cart ONLY once the gateway has confirmed the payment. A
         // failed or cancelled payment must leave the buyer's items in the cart
         // so they can pay again — never empty a cart for an unpaid order.

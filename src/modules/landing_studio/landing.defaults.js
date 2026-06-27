@@ -108,6 +108,7 @@ function defaultConfig(brandKey) {
         ogImageUrl: null,
         faviconUrl: null,
         twitterHandle: "@Faitlynhair",
+        metaPixelId: "2190655678008533",
       },
     };
   }
@@ -149,6 +150,7 @@ function defaultConfig(brandKey) {
       ogImageUrl: null,
       faviconUrl: null,
       twitterHandle: "@pixiegirlg",
+      metaPixelId: null,
     },
   };
 }

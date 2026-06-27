@@ -9,7 +9,10 @@ import {
 } from "next/font/google";
 import { headers } from "next/headers";
 import { getBrand } from "@/lib/brand";
+import { fetchPublishedLanding } from "@/lib/api";
+import { withDefaults, type LandingConfig } from "@landing-kit";
 import { PwaCleanup } from "@/components/PwaCleanup";
+import { MetaPixel } from "@/components/MetaPixel";
 import { CartGlitchModal } from "@/components/cart/CartGlitchModal";
 import "@/styles/globals.css";
 
@@ -77,12 +80,28 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const brand = getBrand();
+
+  // Resolve the brand's Meta Pixel id from its published landing config, with
+  // the brand defaults filled in (so Faitlyn's seeded pixel fires even before
+  // a config is published). Falls back to a build-time env var for local dev.
+  // Sanitised to digits so it is safe to inline into the pixel init. A failed
+  // fetch must never break the page — degrade to "no pixel".
+  const rawLanding = await fetchPublishedLanding(brand).catch(() => null);
+  const landing = withDefaults(
+    brand,
+    rawLanding as Partial<LandingConfig> | null,
+  );
+  const pixelId = (
+    landing.seo.metaPixelId ||
+    process.env.NEXT_PUBLIC_FB_PIXEL_ID ||
+    ""
+  ).replace(/[^0-9]/g, "");
 
   return (
     <html
@@ -91,6 +110,7 @@ export default function RootLayout({
       className={`${playfair.variable} ${montserrat.variable} ${jetbrains.variable} ${italiana.variable} ${fraunces.variable} ${interTight.variable}`}
     >
       <body>
+        {pixelId ? <MetaPixel pixelId={pixelId} /> : null}
         <PwaCleanup />
         {/* One-time apology + free-gift modal. Self-gating: only shows for buyers
             whose broken cart was cleared by the checkout-glitch migration. */}

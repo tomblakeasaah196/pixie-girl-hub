@@ -33,7 +33,6 @@ import { NewsletterCapture, VipSignup } from "./blocks/Signup";
 import { UgcCarousel } from "./blocks/UgcCarousel";
 import { CartButton } from "./cart/CartButton";
 import { CartDrawer } from "./cart/CartDrawer";
-import { CartUpsellModal } from "./cart/CartUpsellModal";
 import { ExitIntent } from "./cart/ExitIntent";
 import { FloatingToolbar } from "./FloatingToolbar";
 
@@ -127,7 +126,9 @@ export function LandingShell({
         <>
           <CartButton />
           <CartDrawer payload={payload} />
-          <CartUpsellModal payload={payload} />
+          {/* The escalating cart upsell now renders as a non-blocking banner
+              INSIDE the CartDrawer (lib/use-cart-upsell), so it can never
+              overlay the Checkout CTA. */}
           {payload.exit_intent_enabled && <ExitIntent payload={payload} />}
           <FloatingToolbar payload={payload} />
         </>

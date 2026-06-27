@@ -14,6 +14,22 @@ import type { SalesOrder, OrderStatus } from "./types";
 
 const columns: Column<SalesOrder>[] = [
   {
+    key: "date",
+    header: "Date & Time",
+    width: "140px",
+    render: (o) => {
+      const d = new Date(o.created_at);
+      return (
+        <span className="text-[12px] text-text-muted">
+          <span className="block">{d.toLocaleDateString()}</span>
+          <span className="block text-[11px] opacity-70">
+            {d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </span>
+      );
+    },
+  },
+  {
     key: "number",
     header: "Order #",
     width: "130px",
@@ -141,22 +157,6 @@ const columns: Column<SalesOrder>[] = [
       );
     },
   },
-  {
-    key: "date",
-    header: "Date & Time",
-    width: "140px",
-    render: (o) => {
-      const d = new Date(o.created_at);
-      return (
-        <span className="text-[12px] text-text-muted">
-          <span className="block">{d.toLocaleDateString()}</span>
-          <span className="block text-[11px] opacity-70">
-            {d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        </span>
-      );
-    },
-  },
 ];
 
 export function OrdersView() {
@@ -198,7 +198,7 @@ export function OrdersView() {
                 <div className="relative flex-1 min-w-[180px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
                   <input
-                    placeholder="Search orders…"
+                    placeholder="Search by order # or customer…"
                     value={search}
                     onChange={(e) => {
                       setSearch(e.target.value);

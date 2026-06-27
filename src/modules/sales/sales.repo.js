@@ -259,8 +259,17 @@ async function findByOrderNumber({ client, brand, order_number }) {
   return rows[0] || null;
 }
 async function findById({ client, brand, id }) {
+  // Enrich the order header with the customer's contact details so the order
+  // detail view can show name / phone / email instead of a bare contact_id.
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_orders")} WHERE order_id = $1`,
+    `SELECT so.*,
+            c.display_name    AS contact_name,
+            c.primary_phone   AS contact_phone,
+            c.whatsapp_number AS contact_whatsapp,
+            c.email           AS contact_email
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+      WHERE so.order_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
@@ -298,24 +307,33 @@ async function listOrders({
     params.push(filters.sales_campaign_id);
   }
   if (filters.q) {
-    where.push(`so.order_number ILIKE $${i++}`);
+    // Match the order number OR the customer's name / phone / email so staff
+    // can find an order by who placed it, not just by document number.
+    const ph = `$${i++}`;
+    where.push(
+      `(so.order_number ILIKE ${ph} OR c.display_name ILIKE ${ph} OR c.primary_phone ILIKE ${ph} OR c.email ILIKE ${ph})`,
+    );
     params.push(`%${filters.q}%`);
   }
   if (filters.fee_pending) {
-    // jsonb containment, NOT a ::boolean cast on ->>. The cast is evaluated for
-    // every row the filter scans, and any order whose internal_notes.delivery
-    // node holds a non-boolean / malformed value makes `'<x>'::boolean` throw
-    // (invalid input syntax for type boolean) → the whole list 500s. `@>`
-    // matches only delivery.fee_pending === true and is null-safe on every other
-    // shape (null, non-object, missing key all → no match, no error).
-    where.push(
-      `so.internal_notes @> '{"delivery":{"fee_pending":true}}'::jsonb`,
-    );
+    // internal_notes is a TEXT column that stores a JSON-stringified object
+    // (written by the public checkout in campaigns.public.service), so jsonb
+    // operators cannot be applied to it directly: `text @> jsonb` raises
+    // "operator does not exist: text @> jsonb" and 500s the entire list. The
+    // delivery flag is emitted by JSON.stringify as the compact, deterministic
+    // token `"fee_pending":true`, so a substring match selects exactly the
+    // unconfirmed-fee orders and never casts — NULL / non-JSON / missing-key
+    // rows simply don't match, with no error.
+    where.push(`so.internal_notes LIKE $${i++}`);
+    params.push('%"fee_pending":true%');
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "sales_orders")} so ${w}`,
+    `SELECT COUNT(*)::int AS total
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+       ${w}`,
     params,
   );
   const { rows } = await run(
@@ -908,18 +926,25 @@ async function reportPayments({ brand, filters = {} }) {
 }
 
 async function setDeliveryFee({ client, brand, id, fee_ngn }) {
+  // internal_notes is TEXT holding a JSON-stringified object — the same column
+  // the fee_pending filter reads. Now that the rate is confirmed we clear the
+  // delivery.fee_pending flag. The jsonb cast is guarded: a NULL or non-JSON
+  // note is left untouched (so `text -> 'key'` / jsonb_set never run against a
+  // bare string and raise); orders that reach this path were written by the
+  // checkout JSON writer, so the cast is safe for them. The result is cast back
+  // to text to match the column type.
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
         SET shipping_fee_ngn = $2,
             total_ngn        = subtotal_ngn - discount_amount_ngn + tax_amount_ngn + $2,
             internal_notes   = CASE
-              WHEN internal_notes IS NULL THEN NULL
-              WHEN internal_notes->'delivery' IS NULL THEN internal_notes
+              WHEN internal_notes IS NULL OR left(btrim(internal_notes), 1) <> '{' THEN internal_notes
+              WHEN (internal_notes::jsonb) -> 'delivery' IS NULL THEN internal_notes
               ELSE jsonb_set(
-                internal_notes,
+                internal_notes::jsonb,
                 '{delivery}',
-                (internal_notes->'delivery') - 'fee_pending'
-              )
+                ((internal_notes::jsonb) -> 'delivery') - 'fee_pending'
+              )::text
             END,
             updated_at = now()
       WHERE order_id = $1

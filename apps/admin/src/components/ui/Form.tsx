@@ -1,4 +1,8 @@
-import { type InputHTMLAttributes, type ReactNode } from "react";
+import {
+  type InputHTMLAttributes,
+  type ReactNode,
+  type TextareaHTMLAttributes,
+} from "react";
 import { cn } from "@/lib/cn";
 
 /** Schema-driven form atoms (canon §5). Real forms mirror the endpoint
@@ -79,6 +83,23 @@ export function TextInput({
     <input
       className={cn(
         "w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none transition-colors focus:border-accent/50",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+export function TextArea({
+  className,
+  rows = 3,
+  ...rest
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      rows={rows}
+      className={cn(
+        "w-full px-[13px] py-[10px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] leading-[1.55] outline-none transition-colors focus:border-accent/50 resize-y",
         className,
       )}
       {...rest}

@@ -21,6 +21,8 @@ const couponRepo = require("../retention/coupon.repo");
 const retentionRepo = require("../retention/retention.repo");
 const bundleRepo = require("../retention/bundle.repo");
 const bundleService = require("../retention/bundle.service");
+const campaignsRepo = require("../sales_campaigns/campaigns.repo");
+const campaignsService = require("../sales_campaigns/campaigns.service");
 const pdf = require("../../services/pdf.service");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
@@ -202,6 +204,12 @@ async function createOrderTx({ brand, user, request_id, input }) {
     let pointsLineTotal = money(0);
     let pointsUsed = 0;
     let couponMeta = null;
+    // Exit-intent "stay" promo (§6.22): the campaign's exit_intent_code is a
+    // flat ₦-off shown in the exit modal and typed into the SAME promo field as
+    // a coupon — but it is NOT a retention coupon, so it is resolved against the
+    // live campaign here (below) rather than via couponService.
+    let exitIntentMeta = null;
+    let exitIntentLineTotal = money(0);
     // Soft, buyer-facing notices (e.g. "we applied the bigger saving") and
     // pre-order lines — threaded onto the returned order so the public checkout
     // can show them without ever blocking the sale.
@@ -251,8 +259,62 @@ async function createOrderTx({ brand, user, request_id, input }) {
       return amt;
     };
 
-    // Coupon (F-3)
-    if (input.coupon_code) {
+    // Exit-intent code (§6.22). When the entered code matches the LIVE
+    // campaign's exit_intent_code, apply exit_intent_discount_ngn as a flat,
+    // floor-respecting order-level discount and skip the coupon path entirely
+    // (the same code would otherwise be rejected as COUPON_INVALID, which is
+    // exactly why "the amount off was never added" — the exit-intent fields
+    // were never wired into pricing). The discount stacks on top of the live
+    // sale; applyOrderDiscount only ever consumes remaining margin-floor
+    // headroom, so it can never sell below the variant floor.
+    if (input.coupon_code && campaignRef) {
+      const campRow = campaignRef.campaign_id
+        ? await campaignsRepo.findById({
+            client,
+            brand,
+            id: campaignRef.campaign_id,
+          })
+        : await campaignsRepo.findBySlug({
+            client,
+            brand,
+            slug: campaignRef.slug,
+          });
+      const entered = String(input.coupon_code).trim().toUpperCase();
+      if (
+        campRow &&
+        campRow.exit_intent_enabled &&
+        campRow.exit_intent_code &&
+        String(campRow.exit_intent_code).trim().toUpperCase() === entered &&
+        campRow.exit_intent_discount_ngn !== null &&
+        campRow.exit_intent_discount_ngn !== undefined &&
+        money(campRow.exit_intent_discount_ngn).gt(money(0)) &&
+        campaignsService.resolveState(campRow) === "live"
+      ) {
+        // The code is recognised as this campaign's exit-intent promo — claim
+        // it so it never falls through to the coupon validator (which would
+        // reject it as COUPON_INVALID). The applied amount may be 0 if the live
+        // sale already consumed all margin-floor headroom.
+        exitIntentMeta = {
+          campaign_id: campRow.campaign_id,
+          code: campRow.exit_intent_code,
+        };
+        let want = money(campRow.exit_intent_discount_ngn);
+        if (want.gt(preNet)) want = preNet;
+        exitIntentLineTotal = applyOrderDiscount(want);
+        if (exitIntentLineTotal.gt(money(0))) {
+          notices.push({
+            code: "EXIT_INTENT_APPLIED",
+            message: `Code ${campRow.exit_intent_code} applied — ${toCurrencyString(
+              exitIntentLineTotal,
+            )} off.`,
+          });
+        }
+      }
+    }
+
+    // Coupon (F-3) — skipped when the code was already consumed as the
+    // campaign's exit-intent promo above.
+    if (input.coupon_code && !exitIntentMeta) {
       const cr = await couponService.validateCoupon({
         brand,
         code: input.coupon_code,
@@ -663,6 +725,24 @@ async function createOrderTx({ brand, user, request_id, input }) {
           discount_ngn: toCurrencyString(couponAmt),
         });
       }
+    }
+
+    // 5a-i. Record the exit-intent promo as an order-level campaign discount
+    // (source 'campaign', referenced by the entered code so it is distinct from
+    // the per-line sale rows, which reference the campaign slug).
+    if (exitIntentMeta && exitIntentLineTotal.gt(money(0))) {
+      await repo.insertDiscount({
+        client,
+        brand,
+        disc: {
+          order_id: order.order_id,
+          source: "campaign",
+          source_reference: exitIntentMeta.code,
+          sales_campaign_id: exitIntentMeta.campaign_id,
+          amount_ngn: toCurrencyString(exitIntentLineTotal),
+          discount_type: "fixed",
+        },
+      });
     }
 
     // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): a

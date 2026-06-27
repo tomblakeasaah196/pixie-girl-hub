@@ -245,6 +245,22 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // The discounted goods total (before delivery) — what the buyer actually pays
   // for the items. Matches the drawer's "Checkout · …" figure.
   const discountedGoods = quote ? n(quote.final_total_ngn) : subtotal;
+  // Exit-intent "stay" code (a campaign promo, not a coupon). The landing
+  // payload carries the campaign's exit_intent_code + ₦ amount; when the buyer
+  // applies a promo that matches it, reflect the saving in the summary so the
+  // displayed total matches what the server charges. The Hub is authoritative
+  // (it re-clamps the amount at the §6.25 margin floor); this is the matching
+  // client-side display.
+  const exitCode = (payload.exit_intent_code || "").trim().toUpperCase();
+  const exitAmtRaw = Number(payload.exit_intent_discount_ngn || 0) || 0;
+  const exitIntentApplied =
+    promoApplied &&
+    exitCode.length > 0 &&
+    exitAmtRaw > 0 &&
+    promoCode.trim().toUpperCase() === exitCode;
+  const exitIntentDiscount = exitIntentApplied
+    ? Math.min(exitAmtRaw, discountedGoods)
+    : 0;
   const comps = quote?.components;
   const dealRows: Array<{ label: string; amount: number }> = [];
   if (comps) {
@@ -347,7 +363,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // Total = discounted goods (server quote) + delivery. This is the figure the
   // gateway actually charges, so the "Pay" button and the order it creates now
   // agree to the naira.
-  const total = discountedGoods + deliveryDue;
+  const total = discountedGoods + deliveryDue - exitIntentDiscount;
 
   // Right-hand summary label for the delivery line. A resolved zone can be a
   // real fee, an intentional ₦0 (promo → "Free delivery") or a ₦0 we'll confirm
@@ -997,6 +1013,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     </span>
                   </div>
                 )}
+                {exitIntentDiscount > 0 && (
+                  <div className="flex justify-between text-[rgb(var(--success))] font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      <Gift className="w-3 h-3" /> Code {promoCode}
+                    </span>
+                    <span className="tabular-nums font-mono">
+                      −{fmt(exitIntentDiscount)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-[rgb(var(--text-muted))] inline-flex items-center gap-1">
                     {fulfilment === "pickup" ? (
@@ -1065,7 +1091,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   <div className="mt-1.5 flex items-center gap-1 text-[12px] text-[rgb(var(--success))]">
                     <Check className="w-3 h-3" /> Code{" "}
                     <span className="font-mono font-semibold">{promoCode}</span>{" "}
-                    will be applied
+                    {exitIntentApplied
+                      ? `— ${fmt(exitIntentDiscount)} off`
+                      : "will be applied"}
                   </div>
                 )}
               </div>

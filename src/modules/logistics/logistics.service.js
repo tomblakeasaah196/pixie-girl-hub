@@ -820,6 +820,7 @@ async function deliveryLetterPdf({ brand, user, id }) {
     document_type: "delivery_note",
     reference_type: "delivery",
     reference_id: id,
+    pdfOptions: brandDocs.PDF_OPTIONS,
   });
   return { document_id: doc.document_id, url: doc.url };
 }

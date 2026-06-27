@@ -13,6 +13,15 @@ const { requirePermission } = require("../../middleware/rbac");
 const router = express.Router();
 const can = (a) => requirePermission("sales", a);
 
+// Sales Report export (§6.2) — styled .xlsx for a chosen period.
+// Declared before "/orders/:id" so the literal path isn't shadowed.
+router.get(
+  "/reports/export",
+  can("export"),
+  v.validateReportExport,
+  c.exportReport,
+);
+
 router.get("/orders", can("view"), c.listOrders);
 router.post("/orders", can("create"), v.validateOrderCreate, c.createOrder);
 router.get("/orders/:id", can("view"), c.getById);

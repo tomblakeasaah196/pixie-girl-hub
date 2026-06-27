@@ -121,6 +121,22 @@ export const requestCancellation = (
   input: CancellationRequestInput,
 ) => api.post<unknown>(`${S}/orders/${orderId}/cancellation`, input);
 
+// ── Reports ─────────────────────────────────────────────────
+
+export interface SalesReportParams {
+  from?: string;
+  to?: string;
+  status?: string;
+  sales_channel?: string;
+}
+
+/** Download the styled Sales Report .xlsx for a period (authed file download). */
+export const exportSalesReport = (params: SalesReportParams = {}) =>
+  api.download(
+    `${S}/reports/export${qs({ ...params })}`,
+    "sales-report.xlsx",
+  );
+
 // ── KPIs ────────────────────────────────────────────────────
 
 export const getSalesKpis = () => api.get<SalesKpis>(`/dashboards/kpis/sales`);

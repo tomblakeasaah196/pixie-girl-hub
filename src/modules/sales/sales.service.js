@@ -24,6 +24,9 @@ const bundleService = require("../retention/bundle.service");
 const campaignsRepo = require("../sales_campaigns/campaigns.repo");
 const campaignsService = require("../sales_campaigns/campaigns.service");
 const pdf = require("../../services/pdf.service");
+const brandDocs = require("../../services/pdf.brand-docs");
+const docCopy = require("../../services/document-copy");
+const emailRender = require("../email_campaigns/email-render");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const businessConfig = require("../business_setup/business-config.repo");
@@ -1901,15 +1904,121 @@ async function exportSalesReport({ brand, user, request_id, filters = {} }) {
   };
 }
 
-/** Render a paid order to a receipt PDF and persist it via Documents (4.2). */
+const PROVIDER_LABEL = {
+  paystack: "Paystack",
+  opay: "OPay",
+  nomba: "Nomba",
+  stripe: "Stripe",
+  manual: "Manual",
+};
+
+/** Human "Paystack — card" style label from a payment row. */
+function paymentMethodLabel(p) {
+  if (!p) return null;
+  const provider = PROVIDER_LABEL[p.provider] || (p.provider ? String(p.provider) : null);
+  const m = String(p.method || "").toLowerCase();
+  let kind = null;
+  if (m.includes("card")) kind = "card";
+  else if (m.includes("transfer")) kind = "transfer";
+  else if (m.includes("ussd")) kind = "USSD";
+  else if (m.includes("terminal")) kind = "terminal";
+  else if (m.includes("online")) kind = "online";
+  return [provider, kind].filter(Boolean).join(" — ") || provider || "Card";
+}
+
+const _dayISO = (v) => (v ? String(v).slice(0, 10) : "");
+
+/**
+ * Map a paid sales order (header + lines + payments + contact) → the normalised
+ * document the brand-doc renderer expects. Receipts always carry the PAID stamp
+ * and every money line (discount/delivery/VAT) prints with the real columns.
+ */
+function buildReceiptDoc({ order, brandObj, copy }) {
+  const payments = Array.isArray(order.payments) ? order.payments : [];
+  const lastPayment = payments[payments.length - 1] || null;
+  const subtotal = Number(order.subtotal_ngn || 0);
+  const discount = Number(order.discount_amount_ngn || 0);
+  const tax = Number(order.tax_amount_ngn || 0);
+  const base = subtotal - discount;
+  const taxRate = tax > 0 && base > 0 ? tax / base : null;
+
+  const first = String(order.contact_name || "").trim().split(/\s+/)[0] || "";
+  const tokens = {
+    first_name: first,
+    brand_name: brandObj.brand_name,
+    receipt_number: "",
+    order_number: order.order_number || "",
+    total: order.total_ngn,
+  };
+  const c = (copy.receipt && copy.receipt.pdf) || {};
+
+  return {
+    status_label: "Paid",
+    status_tone: "paid",
+    watermark: "Paid",
+    watermark_tone: "paid",
+    from: {
+      name: brandObj.brand_legal_name || brandObj.brand_name,
+      address: brandObj.brand_address,
+      phone: brandObj.brand_phone,
+      email: brandObj.support_email,
+    },
+    bill_to: {
+      name: order.contact_name,
+      phone: order.contact_phone,
+      email: order.contact_email,
+    },
+    meta: [
+      ["Order #", order.order_number],
+      [
+        "Paid on",
+        _dayISO(
+          order.paid_at ||
+            (lastPayment && (lastPayment.captured_at || lastPayment.recorded_at)) ||
+            order.created_at,
+        ),
+      ],
+      ["Method", paymentMethodLabel(lastPayment) || "—"],
+    ],
+    lines: (order.lines || []).map((l) => ({
+      description:
+        [l.product_name_snapshot, l.variant_label_snapshot]
+          .filter(Boolean)
+          .join(" — ") || l.product_name_snapshot,
+      quantity: l.quantity,
+      unit_price_ngn: l.unit_price_ngn,
+      line_total_ngn: l.line_total_ngn,
+    })),
+    subtotal_ngn: order.subtotal_ngn,
+    discount_amount_ngn: order.discount_amount_ngn,
+    shipping_fee_ngn: order.shipping_fee_ngn,
+    tax_amount_ngn: order.tax_amount_ngn,
+    tax_rate: taxRate,
+    total_ngn: order.total_ngn,
+    notes_label: c.note_label,
+    notes: docCopy.fillTokens(c.note, tokens),
+    thanks: docCopy.fillTokens(c.message, tokens),
+  };
+}
+
+/** Render a paid order to a receipt PDF and persist it via Documents (4.2).
+ *  Brand-driven (logo/accent/copy from each brand's config + Settings). */
 async function receiptPdf({ brand, user, id }) {
   const order = await getById({ brand, id });
   if (!order) throw new NotFoundError("Order");
-  const { receiptHtml } = require("../../services/pdf.templates");
+  const [tokens, copy] = await Promise.all([
+    emailRender.resolveBrandTokens(brand),
+    docCopy.resolveCopy(brand),
+  ]);
+  const brandObj = brandDocs.brandFromTokens(tokens);
+  const html = brandDocs.receiptHtml(
+    brandObj,
+    buildReceiptDoc({ order, brandObj, copy }),
+  );
   return pdf.renderAndStore({
     brand,
     user_id: user ? user.user_id : null,
-    html: receiptHtml({ brand, order }),
+    html,
     title: `Receipt ${order.order_number || order.order_id || id}`,
     document_type: "receipt",
     reference_type: "sales_order",
@@ -1917,10 +2026,34 @@ async function receiptPdf({ brand, user, id }) {
   });
 }
 
+/**
+ * Auto-archive the receipt PDF for a paid order (order.paid subscriber).
+ * Idempotent — skips if a receipt document already exists for this order.
+ * Best-effort: never throws (a render hiccup must not fail the order.paid row).
+ */
+async function archiveReceiptPdf({ brand, order_id }) {
+  try {
+    const documents = require("../../shared/documents/documents.service");
+    const existing = await documents.listForReference({
+      brand,
+      reference_type: "sales_order",
+      reference_id: order_id,
+    });
+    if ((existing || []).some((d) => d.document_type === "receipt")) return;
+    await receiptPdf({ brand, user: null, id: order_id });
+  } catch (err) {
+    logger.warn(
+      { err: err.message, brand, order_id },
+      "auto receipt archive failed — check PDF rendering (PDF_ENABLED / Chromium)",
+    );
+  }
+}
+
 module.exports = {
   listOrders,
   getById,
   receiptPdf,
+  archiveReceiptPdf,
   exportSalesReport,
   createOrder,
   updateOrder,

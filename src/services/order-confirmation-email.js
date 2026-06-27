@@ -24,6 +24,7 @@
 
 const email = require("./email.service");
 const T = require("./email-theme");
+const docCopy = require("./document-copy");
 const emailRender = require("../modules/email_campaigns/email-render");
 const { query } = require("../config/database");
 const { logger } = require("../config/logger");
@@ -233,6 +234,7 @@ function buildOrderConfirmationEmail({
   firstName,
   isPickup,
   settings,
+  copyEmail = {},
 }) {
   const name = (firstName || "").trim();
   const brandName = brandTokens.brand_name || "our atelier";
@@ -242,9 +244,26 @@ function buildOrderConfirmationEmail({
     ? `mailto:${brandTokens.support_email}?subject=Order ${order.order_number}`
     : brandTokens.website_url || "";
 
+  // Settings-driven curated copy (Invoicing → Settings · receipt mail). Blank →
+  // the email's built-in wording. Tokens personalise the line per recipient.
+  const tokens = {
+    first_name: name || "there",
+    brand_name: brandName,
+    order_number: order.order_number,
+  };
+  const introBlock = copyEmail.intro
+    ? T.paragraph(esc(docCopy.fillTokens(copyEmail.intro, tokens)))
+    : "";
+  const signoffHtml = copyEmail.signoff
+    ? esc(docCopy.fillTokens(copyEmail.signoff, tokens)).replace(/\r?\n/g, "<br/>")
+    : `With gratitude,<br/><strong style="color:${NEUTRAL.ink}">Sales, ${esc(
+        brandName,
+      )}</strong>`;
+
   const content = [
     T.eyebrow("Payment confirmed"),
     T.heading(`${greeting} — your order is on its way to being made real.`),
+    introBlock,
     T.paragraph(
       `We've received your payment for order <strong>${esc(
         order.order_number,
@@ -274,12 +293,7 @@ function buildOrderConfirmationEmail({
       { muted: true },
     ),
     T.spacer(8),
-    T.paragraph(
-      `With gratitude,<br/><strong style="color:${NEUTRAL.ink}">Sales, ${esc(
-        brandName,
-      )}</strong>`,
-      { muted: true },
-    ),
+    T.paragraph(signoffHtml, { muted: true }),
     T.spacer(22),
   ].join("");
 
@@ -337,12 +351,22 @@ async function sendOrderConfirmationEmail({ brand, order, contact }) {
       internal.fulfilment_type === "pickup" ||
       order.order_type === "collection";
 
+    // Curated, Settings-driven mail copy (Invoicing → Settings · receipt mail).
+    let copyEmail = {};
+    try {
+      const copy = await docCopy.resolveCopy(brand);
+      copyEmail = (copy.receipt && copy.receipt.email) || {};
+    } catch {
+      /* fall back to the email's built-in wording */
+    }
+
     const { subject, html, text } = buildOrderConfirmationEmail({
       brandTokens,
       order,
       firstName: contact.first_name || contact.display_name || "",
       isPickup,
       settings,
+      copyEmail,
     });
 
     await email.send({ to: contact.email, subject, html, text, brand });

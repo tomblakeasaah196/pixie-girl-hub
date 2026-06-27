@@ -90,6 +90,45 @@ const receiptIssue = z
   })
   .strict();
 
+// ── Document settings (Invoicing → Settings tab) ─────────────
+// Editable copy for invoice/receipt PDFs + their mail. Every field is an
+// optional string so the editor can PATCH a single line; unknown keys are
+// rejected (.strict) so a typo can't silently write dead config.
+const copyText = z.string().max(2000);
+const pdfCopy = z
+  .object({
+    note_label: z.string().max(60).optional(),
+    note: copyText.optional(),
+    message: copyText.optional(),
+  })
+  .strict();
+const invoiceEmailCopy = z
+  .object({
+    subject: z.string().max(200).optional(),
+    heading: z.string().max(200).optional(),
+    body: copyText.optional(),
+    signoff: copyText.optional(),
+  })
+  .strict();
+const receiptEmailCopy = z
+  .object({
+    intro: copyText.optional(),
+    signoff: copyText.optional(),
+  })
+  .strict();
+const documentSettings = z
+  .object({
+    invoice: z
+      .object({ pdf: pdfCopy.optional(), email: invoiceEmailCopy.optional() })
+      .strict()
+      .optional(),
+    receipt: z
+      .object({ pdf: pdfCopy.optional(), email: receiptEmailCopy.optional() })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -101,6 +140,7 @@ module.exports = {
   validatePaymentApply: mw(paymentApply),
   validateCreditNoteCreate: mw(creditNoteCreate),
   validateReceiptIssue: mw(receiptIssue),
+  validateDocumentSettings: mw(documentSettings),
   invoiceCreate,
   paymentApply,
 };

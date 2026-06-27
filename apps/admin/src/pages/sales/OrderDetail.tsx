@@ -62,6 +62,12 @@ export function OrderDetail({
     try {
       const res = await createLink.mutateAsync({
         amount_ngn: Number(order.balance_due_ngn),
+        // Settle in the currency the order was sold in. Omitting this billed a
+        // USD order in Naira, letting Nomba reconvert at its own rate (the buyer
+        // saw $708.25 instead of the quoted $764). NGN orders pass undefined.
+        ...(order.display_currency && order.display_currency !== "NGN"
+          ? { currency: order.display_currency }
+          : {}),
       });
       await navigator.clipboard.writeText(res.checkout_url);
       fireToast("Link Copied", "Payment link copied to clipboard.");

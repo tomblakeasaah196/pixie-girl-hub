@@ -1,0 +1,19 @@
+-- ============================================================
+-- TEMPLATE 000063 — Bundle collage cover settings.
+--
+-- The Catalogue → Bundles editor can auto-generate a portrait WebP
+-- collage cover from the bundle's component photos. Two additive,
+-- idempotent columns on bundle_offers carry the editor state:
+--
+--   collage_settings   — the editable badge (title/eyebrow), the
+--                        chosen curated title font, and optional
+--                        palette overrides ({} = brand defaults).
+--   cover_is_generated — true once a hero was generated from the
+--                        products, so "restyle all generated covers"
+--                        knows which bundles to re-render (a hand-
+--                        uploaded cover stays false and is untouched).
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.bundle_offers
+  ADD COLUMN IF NOT EXISTS collage_settings   JSONB   NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS cover_is_generated BOOLEAN NOT NULL DEFAULT false;

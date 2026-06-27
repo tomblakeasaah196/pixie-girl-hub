@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Sitemap directive intentionally omitted until a production domain is set.
+# Crawlers will still discover /sitemap.xml at the well-known path.

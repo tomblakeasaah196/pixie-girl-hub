@@ -58,6 +58,8 @@ const STYLED_COLS = [
   "lace_size_codes",
   // Explicit module-card hero (NULL = default colour's first picture).
   "primary_image_id",
+  // "Shop by shade" section membership (NULL = unshaded). One shade per listing.
+  "shade_id",
 ];
 
 function insert(cols, src, extra = {}) {

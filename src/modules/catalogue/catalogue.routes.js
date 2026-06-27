@@ -18,6 +18,8 @@ const styledVar = require("./styled_variants.controller");
 const styledVarV = require("./styled_variants.validator");
 const usdReprice = require("./usd-reprice.controller");
 const usdRepriceV = require("./usd-reprice.validator");
+const shades = require("./shades.controller");
+const shadesV = require("./shades.validator");
 const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
 
@@ -353,6 +355,48 @@ router.delete(
   "/collections/:colId/members/:styledId",
   can("edit"),
   c.removeCollectionMember,
+);
+
+// ── Product Shades ("Shop by shade") — standalone section beside Collections ──
+// A shade is a content page (cover + copy + SEO slug); STYLED products carry it
+// via shade_id. Literal segments declared before :shadeId so they're never
+// shadowed by the param route.
+router.get("/shades", can("view"), shades.list);
+router.get("/shades/import-template", can("view"), shades.template);
+router.get("/shades/export", can("view"), shades.exportShades);
+router.post(
+  "/shades/import",
+  can("create"),
+  upload.single("file"),
+  shades.importShades,
+);
+// Storefront read by SEO slug — shade metadata + its styled products.
+router.get("/shades/slug/:slug", can("view"), shades.getBySlug);
+router.post(
+  "/shades",
+  can("create"),
+  shadesV.validateShadeCreate,
+  shades.create,
+);
+router.get("/shades/:shadeId", can("view"), shades.getOne);
+router.patch(
+  "/shades/:shadeId",
+  can("edit"),
+  shadesV.validateShadeUpdate,
+  shades.update,
+);
+router.delete("/shades/:shadeId", can("delete"), shades.remove);
+// Flow-2 bulk assignment: drop many styled products into a shade in one call.
+router.post(
+  "/shades/:shadeId/members",
+  can("edit"),
+  shadesV.validateShadeAssign,
+  shades.assignMembers,
+);
+router.delete(
+  "/shades/:shadeId/members/:styledId",
+  can("edit"),
+  shades.removeMember,
 );
 
 // Product images (multipart upload → Documents gateway)

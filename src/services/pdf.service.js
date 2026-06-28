@@ -129,10 +129,42 @@ async function renderHtmlToPdf(html, opts = {}) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
+    // Wait for the DOM only — NOT network idle. The document templates are
+    // self-contained (inline CSS, system fonts), but a brand may carry a
+    // logo_url pointing at a remote/slow host. Under the old
+    // waitUntil:"networkidle0", a logo on an unreachable host (common on a
+    // locked-down live server with restricted egress) kept the network from
+    // ever going idle and hung setContent for the full PDF_RENDER_TIMEOUT_MS,
+    // failing the whole render with an opaque "PDF failed" — even though the
+    // document needs no network at all. domcontentloaded returns as soon as the
+    // markup is parsed; we then give images a short, BOUNDED chance to load.
     await page.setContent(html, {
-      waitUntil: "networkidle0",
+      waitUntil: "domcontentloaded",
       timeout: config.PDF_RENDER_TIMEOUT_MS,
     });
+    // Best-effort: let any <img> (e.g. the brand logo) finish loading so it
+    // appears in the PDF, but never block more than 2s on a resource that will
+    // never arrive — a missing/slow logo must not fail the document.
+    await page
+      .evaluate(
+        () =>
+          new Promise((resolve) => {
+            const pending = Array.from(document.images).filter(
+              (img) => !img.complete,
+            );
+            if (pending.length === 0) return resolve();
+            let settled = 0;
+            const done = () => {
+              if (++settled >= pending.length) resolve();
+            };
+            pending.forEach((img) => {
+              img.addEventListener("load", done);
+              img.addEventListener("error", done);
+            });
+            setTimeout(resolve, 2000);
+          }),
+      )
+      .catch(() => {});
     const displayHeaderFooter = Boolean(
       opts.headerTemplate || opts.footerTemplate,
     );

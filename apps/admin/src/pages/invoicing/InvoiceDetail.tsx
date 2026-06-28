@@ -5,6 +5,7 @@ import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ErrorState, ConfirmDialog, Select, NumberField } from "@/components/ui/controls";
 import { FormGrid, Field } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { saveFileFromUrl } from "@/lib/api";
 import {
   useInvoice,
   useInvoicePdf,
@@ -73,9 +74,13 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   const handleDownloadPdf = async () => {
     try {
       const res = await pdf.mutateAsync();
-      window.open(res.url, "_blank");
-    } catch {
-      fireToast("PDF Failed", "Failed to generate the invoice PDF.", "high");
+      await saveFileFromUrl(res.url, `${invoice?.invoice_number ?? "invoice"}.pdf`);
+    } catch (err) {
+      fireToast(
+        "PDF Failed",
+        err instanceof Error ? err.message : "Failed to generate the invoice PDF.",
+        "high",
+      );
     }
   };
 

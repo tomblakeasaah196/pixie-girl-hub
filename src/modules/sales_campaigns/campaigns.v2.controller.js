@@ -10,15 +10,14 @@ const praxis = require("./campaigns.praxis.service");
 const vip = require("./campaigns.vip.service");
 const { parsePagination } = require("../../utils/pagination");
 
-// ── Bundles (catalogue-level) ────────────────────────────
+// ── Bundles (read-only views of the Catalogue SSOT) ──────
+// Authoring lives in Catalogue → Bundles (retention). Campaigns only read +
+// attach; there is no campaign-side create/update/delete anymore.
 async function listBundles(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  const offset = (page - 1) * page_size;
   const result = await bundles.listBundles({
     brand: req.brand,
     filters: { q: req.query.q, status: req.query.status },
-    limit: page_size,
-    offset,
   });
   res.json({ ...result, meta: { ...(result.meta || {}), page, page_size } });
 }
@@ -26,76 +25,8 @@ async function getBundle(req, res) {
   const data = await bundles.getBundle({ brand: req.brand, id: req.params.id });
   res.json({ data });
 }
-async function createBundle(req, res) {
-  const data = await bundles.createBundle({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    input: req.body,
-  });
-  res.status(201).json({ data });
-}
-async function updateBundle(req, res) {
-  const data = await bundles.updateBundle({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-    patch: req.body,
-  });
-  res.json({ data });
-}
-async function archiveBundle(req, res) {
-  await bundles.archiveBundle({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    id: req.params.id,
-  });
-  res.status(204).end();
-}
-async function addBundleItem(req, res) {
-  const data = await bundles.addBundleItem({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    bundle_id: req.params.id,
-    input: req.body,
-  });
-  res.status(201).json({ data });
-}
-async function removeBundleItem(req, res) {
-  await bundles.removeBundleItem({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    bundle_item_id: req.params.itemId,
-  });
-  res.status(204).end();
-}
-async function reorderBundleItems(req, res) {
-  await bundles.reorderBundleItems({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    bundle_id: req.params.id,
-    ordered_ids: req.body.ordered_ids || [],
-  });
-  res.status(204).end();
-}
 
-// ── Clone / duplicate / import ───────────────────────────
-async function cloneBundles(req, res) {
-  const data = await bundles.cloneAllBundlesToCampaign({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    campaign_id: req.params.id,
-    campaign_slug: req.body.campaign_slug || "campaign",
-  });
-  res.json({ data });
-}
-
+// ── Import (attach a Catalogue bundle by reference) ──────
 async function listCatalogueBundleSources(req, res) {
   const result = await bundles.listCatalogueBundleSources({
     brand: req.brand,
@@ -113,17 +44,6 @@ async function importCatalogueBundle(req, res) {
     source_bundle_offer_id: req.body.source_bundle_offer_id,
   });
   res.status(201).json({ data });
-}
-
-async function duplicateBundleHandler(req, res) {
-  const data = await bundles.duplicateBundle({
-    brand: req.brand,
-    user: req.user,
-    request_id: req.request_id,
-    bundle_id: req.params.id,
-    campaign_id: req.body.campaign_id || null,
-  });
-  res.json({ data });
 }
 
 // ── Campaign attachments ─────────────────────────────────
@@ -371,16 +291,8 @@ async function updateGiftStatus(req, res) {
 module.exports = {
   listBundles,
   getBundle,
-  createBundle,
-  updateBundle,
-  archiveBundle,
-  cloneBundles,
   listCatalogueBundleSources,
   importCatalogueBundle,
-  duplicateBundleHandler,
-  addBundleItem,
-  removeBundleItem,
-  reorderBundleItems,
   listCampaignBundles,
   attachCampaignBundle,
   detachCampaignBundle,

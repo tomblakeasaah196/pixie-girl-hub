@@ -1,0 +1,93 @@
+-- ============================================================
+-- TEMPLATE 000065 — Unify bundles onto ONE source of truth.
+--
+-- Before: bundles lived in TWO places — the Catalogue SSOT
+-- (bundle_offers + bundle_offer_products) AND a campaign-side MIRROR
+-- (product_bundles + product_bundle_items) that "import" copied into,
+-- reconciled back to the SSOT by a fragile display-name match. Editing a
+-- Catalogue bundle's composition never reflected on a live campaign.
+--
+-- After: campaigns reference the Catalogue bundle directly —
+-- sales_campaign_bundles.bundle_id now points at bundle_offers(bundle_id).
+-- The mirror tables are removed. A change to a Catalogue bundle (products,
+-- price, hero) reflects on the live campaign immediately, no re-import.
+--
+-- Owner decision: CLEAN SLATE — existing campaign↔bundle attachments that
+-- pointed at the mirror are dropped; operators re-attach from Catalogue.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap and to EXISTING brands by
+-- repair-business-schema.js.
+--
+-- ⚠️ RE-RUN SAFETY: this template has NO `CREATE TABLE`, so the repair
+-- script has no sentinel for it and RE-RUNS IT ON EVERY REPAIR. Every
+-- statement below is therefore written to be idempotent AND
+-- non-destructive on re-run:
+--   • FK swaps are DROP IF EXISTS → ADD (re-run drops then re-adds).
+--   • DROP TABLE / FUNCTION use IF EXISTS.
+--   • The "clean slate" purge only removes rows whose bundle_id is NOT in
+--     bundle_offers (i.e. the dead mirror rows). Once every row points at a
+--     real bundle_offer, the purge matches nothing — so a repair never
+--     wipes attachments an operator has since re-created.
+-- ============================================================
+
+-- 1. Drop the FKs that reference the mirror table so it can be dropped and
+--    so the link column can be re-pointed. (Anonymous FKs from 000040 are
+--    auto-named <table>_<column>_fkey.)
+ALTER TABLE {{BUSINESS}}.sales_campaign_bundles
+  DROP CONSTRAINT IF EXISTS sales_campaign_bundles_bundle_id_fkey;
+ALTER TABLE {{BUSINESS}}.sales_campaign_cart_upsells
+  DROP CONSTRAINT IF EXISTS sales_campaign_cart_upsells_trigger_bundle_id_fkey;
+ALTER TABLE {{BUSINESS}}.sales_campaign_cart_upsells
+  DROP CONSTRAINT IF EXISTS sales_campaign_cart_upsells_reward_bundle_id_fkey;
+
+-- 2. Drop the mirror tables + the now-unused stock-snapshot function (stock
+--    is computed live from bundle_offer_products by the repo).
+DROP TABLE IF EXISTS {{BUSINESS}}.product_bundle_items;
+DROP TABLE IF EXISTS {{BUSINESS}}.product_bundles CASCADE;
+DROP FUNCTION IF EXISTS {{BUSINESS}}.fn_refresh_campaign_bundle_stock(uuid);
+
+-- 3. Clean slate, re-run-safe: remove only the dead links/refs whose target
+--    is not a real Catalogue bundle. Must run BEFORE re-adding the FK so the
+--    new constraint validates. On re-run every surviving row points at a
+--    bundle_offer, so these match nothing.
+DELETE FROM {{BUSINESS}}.sales_campaign_bundles
+ WHERE bundle_id NOT IN (SELECT bundle_id FROM {{BUSINESS}}.bundle_offers);
+
+UPDATE {{BUSINESS}}.sales_campaign_cart_upsells
+   SET trigger_bundle_id = NULL
+ WHERE trigger_bundle_id IS NOT NULL
+   AND trigger_bundle_id NOT IN (SELECT bundle_id FROM {{BUSINESS}}.bundle_offers);
+
+UPDATE {{BUSINESS}}.sales_campaign_cart_upsells
+   SET reward_bundle_id = NULL
+ WHERE reward_bundle_id IS NOT NULL
+   AND reward_bundle_id NOT IN (SELECT bundle_id FROM {{BUSINESS}}.bundle_offers);
+
+-- Tier scope arrays carry no FK; keep only ids that resolve to a real
+-- Catalogue bundle (drops dead mirror ids, no-op once clean).
+UPDATE {{BUSINESS}}.sales_campaign_quantity_tiers
+   SET scope_bundle_ids = COALESCE(
+         ARRAY(
+           SELECT unnest(scope_bundle_ids)
+           INTERSECT
+           SELECT bundle_id FROM {{BUSINESS}}.bundle_offers
+         ),
+         '{}'::uuid[]
+       )
+ WHERE scope_bundle_ids <> '{}'::uuid[];
+
+-- 4. Re-point the FKs at the Catalogue SSOT. Explicit names match the
+--    auto-generated ones so a future repair's DROP IF EXISTS finds them.
+ALTER TABLE {{BUSINESS}}.sales_campaign_bundles
+  ADD CONSTRAINT sales_campaign_bundles_bundle_id_fkey
+    FOREIGN KEY (bundle_id)
+    REFERENCES {{BUSINESS}}.bundle_offers (bundle_id) ON DELETE RESTRICT;
+ALTER TABLE {{BUSINESS}}.sales_campaign_cart_upsells
+  ADD CONSTRAINT sales_campaign_cart_upsells_trigger_bundle_id_fkey
+    FOREIGN KEY (trigger_bundle_id)
+    REFERENCES {{BUSINESS}}.bundle_offers (bundle_id) ON DELETE CASCADE;
+ALTER TABLE {{BUSINESS}}.sales_campaign_cart_upsells
+  ADD CONSTRAINT sales_campaign_cart_upsells_reward_bundle_id_fkey
+    FOREIGN KEY (reward_bundle_id)
+    REFERENCES {{BUSINESS}}.bundle_offers (bundle_id) ON DELETE CASCADE;

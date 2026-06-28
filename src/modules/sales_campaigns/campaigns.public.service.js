@@ -1653,9 +1653,9 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
     const { rows: bundleRows } = await query(
       `SELECT 1
          FROM ${resolvedBrand}.sales_campaign_bundles scb
-         JOIN ${resolvedBrand}.product_bundle_items bi
-           ON bi.bundle_id = scb.bundle_id
-        WHERE scb.campaign_id = $1 AND bi.styled_id = $2
+         JOIN ${resolvedBrand}.bundle_offer_products bop
+           ON bop.bundle_id = scb.bundle_id
+        WHERE scb.campaign_id = $1 AND bop.styled_id = $2
         LIMIT 1`,
       [campaign.campaign_id, styled_id],
     );

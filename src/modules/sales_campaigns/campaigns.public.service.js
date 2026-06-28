@@ -95,6 +95,7 @@ async function getBrandPublic(brand) {
 // Attach brand public info to a landing payload.
 function withBrandInfo(payload, brandInfo) {
   if (!brandInfo) return payload;
+  const support = getSupportContact(brandInfo.business_key, brandInfo);
   return {
     ...payload,
     brand: {
@@ -103,6 +104,7 @@ function withBrandInfo(payload, brandInfo) {
       storefront_domain: brandInfo.storefront_domain,
       sales_subdomain: brandInfo.sales_subdomain,
       support_email: brandInfo.support_email,
+      support_whatsapp: support.whatsapp || null,
       praxis_voice_profile: brandInfo.praxis_voice_profile,
       show_viewer_count_policy: brandInfo.show_viewer_count_policy,
       viewer_count_floor: brandInfo.viewer_count_floor,

@@ -205,6 +205,26 @@ function ProfileTab({
         </Field>
       </div>
       <div className="grid grid-cols-3 gap-4">
+        <Field label="Instagram" hint="Public @handle — storefront & campaigns">
+          <div className="relative flex items-center">
+            <span className="absolute left-[13px] text-text-faint pointer-events-none select-none">
+              @
+            </span>
+            <TextInput
+              value={draft.instagram_handle ?? ""}
+              onChange={(e) =>
+                set(
+                  "instagram_handle",
+                  e.target.value.replace(/^@+/, "") || null,
+                )
+              }
+              placeholder="faitlynhair"
+              className="pl-7"
+            />
+          </div>
+        </Field>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
         <SensitiveField
           label="TIN"
           hint="Tax Identification Number"

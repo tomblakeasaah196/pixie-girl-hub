@@ -28,6 +28,9 @@ export interface BusinessConfig {
   phone: string | null;
   email: string | null;
   website: string | null;
+  // Public Instagram handle (no leading @) — used on campaign landing
+  // pages and the creator "tag us" flow. Editable in Business Setup.
+  instagram_handle?: string | null;
   // Public identity (Sales Campaigns v2 + storefront).
   storefront_domain?: string | null;
   sales_subdomain?: string | null;

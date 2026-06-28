@@ -48,6 +48,25 @@ const configUpdate = z
     support_email: z.string().email().nullable().optional(),
     support_email_display_name: z.string().max(160).nullable().optional(),
     website: z.string().max(200).optional(),
+    // Public Instagram handle, normalised to a bare handle (no @, no URL).
+    // Accepts what a CEO realistically pastes — "@handle", " handle ", or a
+    // full "instagram.com/handle" profile URL — and stores just the handle
+    // so consumers can render @<handle> / build the URL uniformly. Nullable
+    // so clearing the field persists as NULL. Input is capped generously to
+    // allow a pasted URL; the normalised result is capped at 60.
+    instagram_handle: z
+      .string()
+      .max(120)
+      .transform((s) => {
+        const m = s.trim().match(/instagram\.com\/([^/?#]+)/i);
+        return (m ? m[1] : s)
+          .trim()
+          .replace(/^@+/, "")
+          .replace(/\/+$/, "")
+          .slice(0, 60);
+      })
+      .nullable()
+      .optional(),
     tin: z.string().max(40).optional(),
     cac_number: z.string().max(40).optional(),
     vat_number: z.string().max(40).optional(),

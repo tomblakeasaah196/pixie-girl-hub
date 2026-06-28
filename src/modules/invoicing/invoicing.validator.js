@@ -99,6 +99,10 @@ const pdfCopy = z
   .object({
     note_label: z.string().max(60).optional(),
     note: copyText.optional(),
+    // Invoice-only: the note shown once the invoice is fully paid (so a paid
+    // document never asks for payment). Ignored on other document types.
+    note_label_paid: z.string().max(60).optional(),
+    note_paid: copyText.optional(),
     message: copyText.optional(),
   })
   .strict();

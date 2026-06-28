@@ -182,6 +182,34 @@ export function DocumentSettingsTab({ canEdit }: { canEdit: boolean }) {
               rows={3}
             />
           </Field>
+          {/* A paid invoice should never ask for payment — these replace the
+              note above once it's settled. Invoice-only. */}
+          {doc === "invoice" && (
+            <>
+              <Field
+                label="Paid note heading"
+                hint="label above the note once the invoice is fully paid"
+              >
+                <TextInput
+                  value={val("pdf", "note_label_paid")}
+                  onChange={(e) => set("pdf", "note_label_paid", e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="Payment received"
+                />
+              </Field>
+              <Field
+                label="Paid note"
+                hint="shown instead of the note above when the invoice is paid"
+              >
+                <TextArea
+                  value={val("pdf", "note_paid")}
+                  onChange={(e) => set("pdf", "note_paid", e.target.value)}
+                  disabled={!canEdit}
+                  rows={3}
+                />
+              </Field>
+            </>
+          )}
           <Field
             label="Thank-you line"
             hint="the large, personal line near the total"

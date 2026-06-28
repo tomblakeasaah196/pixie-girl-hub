@@ -11,6 +11,9 @@ import { api } from "@/lib/api";
 export interface PdfCopy {
   note_label?: string;
   note?: string;
+  /** Invoice-only: note shown once the invoice is fully paid. */
+  note_label_paid?: string;
+  note_paid?: string;
   message?: string;
 }
 export interface FullEmailCopy {

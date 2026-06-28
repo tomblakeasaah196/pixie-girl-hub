@@ -337,18 +337,44 @@ function buildInvoiceDoc({ invoice, brandObj, copy }) {
   };
   const c = (copy.invoice && copy.invoice.pdf) || {};
 
+  // A paid invoice must never nag for payment. Swap the "please settle within
+  // terms" note for a settled-in-full acknowledgement (both operator-editable
+  // via the Invoicing → Settings tab; defaults live in services/document-copy).
+  const noteLabel = paid
+    ? c.note_label_paid || "Payment received"
+    : c.note_label;
+  const noteText = paid ? c.note_paid : c.note;
+
+  // The logo carries the brand name in the header, so the "From" block is where
+  // the name lives on the page: lead with the brand name, then the legal entity
+  // (only when it differs), then the contact lines.
+  const brandName = brandObj.brand_name;
+  const legalName = brandObj.brand_legal_name;
+
   return {
     status_label: INVOICE_STATUS_LABEL[invoice.status] || invoice.status,
     status_tone: paid ? "paid" : "due",
     watermark: paid ? "Paid" : null,
     watermark_tone: "paid",
     from: {
-      name: brandObj.brand_legal_name || brandObj.brand_name,
+      name: brandName || legalName,
+      company: legalName && legalName !== brandName ? legalName : null,
       address: brandObj.brand_address,
       phone: brandObj.brand_phone,
       email: brandObj.support_email,
     },
-    bill_to: { name: invoice.contact_name },
+    bill_to: {
+      name: invoice.contact_name,
+      address:
+        [invoice.cust_line1, invoice.cust_line2].filter(Boolean).join(", ") ||
+        null,
+      cityline:
+        [invoice.cust_area, invoice.cust_city, invoice.cust_state]
+          .filter(Boolean)
+          .join(", ") || null,
+      phone: invoice.contact_phone,
+      email: invoice.contact_email,
+    },
     meta: [
       ["Invoice #", invoice.invoice_number],
       ["Issue date", dayISO(invoice.issue_date || invoice.created_at)],
@@ -377,8 +403,8 @@ function buildInvoiceDoc({ invoice, brandObj, copy }) {
     total_ngn: invoice.total_ngn,
     amount_paid_ngn: invoice.amount_paid_ngn,
     balance_due_ngn: invoice.balance_due_ngn,
-    notes_label: c.note_label,
-    notes: docCopy.fillTokens(c.note, tokens),
+    notes_label: noteLabel,
+    notes: docCopy.fillTokens(noteText, tokens),
     thanks: docCopy.fillTokens(c.message, tokens),
   };
 }

@@ -245,10 +245,18 @@ function documentHtml(brand, doc) {
     <div class="head">
       <div class="brandrow">
         ${monogram(brand)}
-        <div>
-          <div class="coname serif">${esc(brand.brand_name)}</div>
+        ${
+          // When a logo image is set it already shows the brand name, so we drop
+          // the repeated name text from the header (the name then lives in the
+          // "From" block). With no logo we keep the monogram + name. The tagline,
+          // if any, still shows alongside the logo.
+          !brand.logo_url || brand.tagline
+            ? `<div>
+          ${!brand.logo_url ? `<div class="coname serif">${esc(brand.brand_name)}</div>` : ""}
           ${brand.tagline ? `<div class="cotag">${esc(brand.tagline)}</div>` : ""}
-        </div>
+        </div>`
+            : ""
+        }
       </div>
       <div>
         <div class="doctitle serif">${esc(doc.kind)}</div>

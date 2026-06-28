@@ -160,6 +160,7 @@ Field/endpoint truth: migration SQL → `docs/openapi.yaml` → `docs/Frontend_E
 - `docs/Frontend_Engineering_Guide_v2.2.md` — screens, tables, states per module
 - `docs/openapi.yaml` — full OpenAPI spec (413KB)
 - `docs/PRODUCTION_READINESS_AND_ARCHITECTURE_AUDIT.md` — comprehensive audit
+- `docs/PDF_RENDERING_SETUP.md` — how PDF generation works + how to set up headless Chrome on any deploy target (the "works locally, fails live" gotcha)
 
 ## RBAC model (5 layers)
 

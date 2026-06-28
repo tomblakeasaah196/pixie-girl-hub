@@ -7,7 +7,6 @@ import {
   Pencil,
   Trash2,
   Upload,
-  Search,
 } from "lucide-react";
 import { useAddBundleToCampaign, type Campaign } from "@/lib/campaigns";
 import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
@@ -41,7 +40,6 @@ import {
   useRemoveBundleComponent,
   useAddStyledToBundle,
   useBaseProducts,
-  useStyledProducts,
   useUploadCoverImage,
   useAllowBaseInCollectionsBundles,
   type Bundle,
@@ -50,6 +48,7 @@ import {
 } from "@/lib/catalogue";
 import { CoverImageEditor } from "./CoverImageEditor";
 import { BundleCollageEditor } from "./BundleCollageEditor";
+import { BundleProductPicker } from "./BundleProductPicker";
 import { ImportExportControls } from "@/components/catalogue/ImportExportControls";
 import {
   computeBundleEconomics,
@@ -172,8 +171,17 @@ export function BundlesTab() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {(bundles.data ?? []).map((b: Bundle) => (
-            <Card key={b.bundle_id} className="p-4">
+          {(bundles.data ?? []).map((b: Bundle) => {
+            // USD only means something for a fixed-price bundle (an entered
+            // anchor). For amount_off / pct_off the price is computed in NGN, so
+            // a stored bundle_price_usd is stale noise (the phantom "$27" that
+            // didn't match ₦2,092,000) — show NGN alone there.
+            const cardUsd =
+              b.pricing_model === "fixed_bundle_price"
+                ? (b.bundle_price_usd ?? undefined)
+                : undefined;
+            return (
+              <Card key={b.bundle_id} className="p-4">
               <div className="aspect-[4/5] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04] relative group">
                 {b.hero_image_url ? (
                   <img
@@ -226,7 +234,7 @@ export function BundlesTab() {
                   <>
                     <MoneyText
                       ngn={b.effective_price_ngn}
-                      usd={b.bundle_price_usd ?? undefined}
+                      usd={cardUsd}
                       className="text-[14px]"
                     />
                     {b.discount_ngn != null &&
@@ -247,7 +255,7 @@ export function BundlesTab() {
                   b.bundle_price_ngn != null && (
                     <MoneyText
                       ngn={b.bundle_price_ngn}
-                      usd={b.bundle_price_usd ?? undefined}
+                      usd={cardUsd}
                       className="text-[14px]"
                     />
                   )
@@ -262,8 +270,9 @@ export function BundlesTab() {
                   <Pencil className="w-3 h-3" /> Edit & manage products
                 </button>
               )}
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -323,7 +332,6 @@ function BundleEditorModal({
   const addStyled = useAddStyledToBundle();
   const removeComp = useRemoveBundleComponent(bundle?.bundle_id ?? "");
   const bases = useBaseProducts();
-  const styledProducts = useStyledProducts();
   const allowBase = useAllowBaseInCollectionsBundles();
   const addToCampaign = useAddBundleToCampaign();
 
@@ -333,7 +341,6 @@ function BundleEditorModal({
   const [priceUsd, setPriceUsd] = useState("");
   const [amount, setAmount] = useState("");
   const [pick, setPick] = useState("");
-  const [pickStyled, setPickStyled] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [campaignFeedback, setCampaignFeedback] = useState<string | null>(null);
 
@@ -381,7 +388,6 @@ function BundleEditorModal({
           : "",
       );
       setPick("");
-      setPickStyled("");
     }
   }, [bundle]);
 
@@ -411,7 +417,9 @@ function BundleEditorModal({
 
   const componentIds = new Set(components.map((c) => c.product_id));
   const componentStyledIds = new Set(
-    components.filter((c) => c.styled_id).map((c) => c.styled_id),
+    components
+      .map((c) => c.styled_id)
+      .filter((id): id is string => !!id),
   );
   const pickOptions = allowBase
     ? [
@@ -424,12 +432,6 @@ function BundleEditorModal({
           })),
       ]
     : [];
-  const styledPickOptions = [
-    { value: "", label: "Add a styled product…" },
-    ...(styledProducts.data ?? [])
-      .filter((s) => !componentStyledIds.has(s.styled_id))
-      .map((s) => ({ value: s.styled_id, label: s.name })),
-  ];
 
   const saveMeta = () => {
     const num = amount ? Number(amount) : undefined;
@@ -581,14 +583,19 @@ function BundleEditorModal({
             <div className="micro">Products in this bundle</div>
           </div>
           <div className="space-y-2">
-            <Select
-              value={pickStyled}
-              onChange={(id) => {
-                if (!id) return;
-                addStyled.mutate({ bundleId: bundle.bundle_id, styledId: id });
-                setPickStyled("");
+            <BundleProductPicker
+              existingStyledIds={componentStyledIds}
+              busy={addStyled.isPending}
+              onAdd={async (items) => {
+                await Promise.all(
+                  items.map((it) =>
+                    addStyled.mutateAsync({
+                      bundleId: bundle.bundle_id,
+                      styledId: it.styled_id,
+                    }),
+                  ),
+                );
               }}
-              options={styledPickOptions}
             />
             {allowBase && (
               <Select value={pick} onChange={add} options={pickOptions} />
@@ -671,7 +678,6 @@ function CreateBundleModal({
   const create = useCreateBundle();
   const upload = useUploadCoverImage();
   const update = useUpdateBundle();
-  const styledProds = useStyledProducts();
   const [name, setName] = useState("");
   const [model, setModel] = useState("fixed_bundle_price");
   const [amount, setAmount] = useState("");
@@ -679,8 +685,6 @@ function CreateBundleModal({
   const [components, setComponents] = useState<
     { styled_id: string; name: string; quantity: number }[]
   >([]);
-  const [query, setQuery] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const coverFileRef = useRef<HTMLInputElement>(null);
@@ -691,34 +695,19 @@ function CreateBundleModal({
     setAmountUsd("");
     setModel("fixed_bundle_price");
     setComponents([]);
-    setQuery("");
-    setShowDropdown(false);
     setCoverFile(null);
     if (coverPreview) URL.revokeObjectURL(coverPreview);
     setCoverPreview(null);
   };
 
-  const q = query.toLowerCase();
-  const hits =
-    q.length >= 1
-      ? (styledProds.data ?? [])
-          .filter(
-            (s) =>
-              s.name?.toLowerCase().includes(q) &&
-              !components.some((c) => c.styled_id === s.styled_id),
-          )
-          .slice(0, 10)
-      : [];
-
-  const addStyled = (s: { styled_id: string; name: string }) => {
-    if (components.some((c) => c.styled_id === s.styled_id)) return;
-    setComponents((prev) => [
-      ...prev,
-      { styled_id: s.styled_id, name: s.name, quantity: 1 },
-    ]);
-    setQuery("");
-    setShowDropdown(false);
-  };
+  const addProducts = (items: { styled_id: string; name: string }[]) =>
+    setComponents((prev) => {
+      const have = new Set(prev.map((c) => c.styled_id));
+      const fresh = items
+        .filter((it) => !have.has(it.styled_id))
+        .map((it) => ({ styled_id: it.styled_id, name: it.name, quantity: 1 }));
+      return [...prev, ...fresh];
+    });
 
   const setQty = (styledId: string, qty: number) =>
     setComponents((prev) =>
@@ -893,37 +882,10 @@ function CreateBundleModal({
         )}
 
         <Field label="Styled products in this bundle" hint="at least one">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
-            <input
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setShowDropdown(true);
-              }}
-              onFocus={() => setShowDropdown(true)}
-              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-              placeholder="Type to search styled products…"
-              className={`${inputCls} pl-9`}
-            />
-            {showDropdown && hits.length > 0 && (
-              <div className="absolute z-50 top-full mt-1 left-0 right-0 glass border border-line rounded-[11px] shadow-lg max-h-[220px] overflow-y-auto">
-                {hits.map((s) => (
-                  <button
-                    key={s.styled_id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      addStyled(s);
-                    }}
-                    className="w-full text-left px-3 py-2 text-[13px] hover:bg-text-primary/[0.05] transition-colors first:rounded-t-[11px] last:rounded-b-[11px]"
-                  >
-                    {s.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <BundleProductPicker
+            existingStyledIds={new Set(components.map((c) => c.styled_id))}
+            onAdd={addProducts}
+          />
         </Field>
 
         {components.length > 0 && (

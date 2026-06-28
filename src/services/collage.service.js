@@ -286,8 +286,14 @@ function buildOverlaySvg({ rects, palette, eyebrow, title, titleFontFile: tff })
   const ruleY = H - 196;
   const rule = `<rect x="${cx - ruleW / 2}" y="${ruleY}" width="${ruleW}" height="2" rx="1" fill="${palette.accent}"/>`;
 
+  // The eyebrow sits on the dark bottom scrim. Rendered in the raw accent it
+  // reads as near-black-on-black (the long-standing "eyebrow invisible" bug —
+  // see "Versatile Bundle"); a warm-cream tint of the accent keeps it clearly
+  // legible while staying a step below the cream title in the hierarchy. A
+  // slightly larger size + the existing wide tracking finishes the label look.
+  const eyebrowColour = mix(palette.accent, 0.72);
   const eyebrowEl = eyebrow
-    ? centredText(eyebrowFont, eyebrow.toUpperCase(), 25, cx, H - 150, palette.accentGlow, {
+    ? centredText(eyebrowFont, eyebrow.toUpperCase(), 27, cx, H - 150, eyebrowColour, {
         letterSpacingEm: 0.34,
         maxWidth: W - PAD * 2,
       })

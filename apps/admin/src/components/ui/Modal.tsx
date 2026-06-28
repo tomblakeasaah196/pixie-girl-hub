@@ -76,7 +76,7 @@ export function Modal({
         )}
         <div className="p-5 overflow-y-auto">{children}</div>
         {footer && (
-          <div className="p-[14px_20px] border-t hairline flex gap-2 justify-end shrink-0">
+          <div className="p-[14px_20px] border-t hairline flex flex-wrap items-center gap-2 justify-end shrink-0">
             {footer}
           </div>
         )}

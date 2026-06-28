@@ -1,15 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Clock, Heart, Package, ShoppingBag } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Clock,
+  Heart,
+  Package,
+  Quote,
+  ShoppingBag,
+} from "lucide-react";
 import type { LandingPayload, LandingBundle } from "@/lib/types";
 import { useCart } from "@/lib/cart-store";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { SALE_RED } from "@/lib/deals";
 import { BundleDetailModal } from "@/components/product/BundleDetailModal";
+
+// Collapsed view shows a curated four — two bundles · a founder quote · two
+// bundles — so a long drop (10+ bundles) never overwhelms on first glance.
+// "View all" reveals the rest.
+const COLLAPSED_BUNDLE_COUNT = 4;
 
 export function BundleShowcase({
   payload,
@@ -19,7 +32,39 @@ export function BundleShowcase({
   state: "before" | "live" | "ended";
 }) {
   const bundles = payload.bundles || [];
+  const [expanded, setExpanded] = useState(false);
+
+  // Reuse the founder quote authored in Landing Studio (the same one that
+  // appears interleaved in the featured products) to give the eye a beat
+  // between the first pair of bundles and the next.
+  const quote = useMemo(() => {
+    const qb = (payload.blocks || []).find((b) => b.key === "founder_quote");
+    const qp = (qb?.props as Record<string, unknown>) || {};
+    if (Array.isArray(qp.quotes) && qp.quotes.length > 0) {
+      return qp.quotes[0] as { quote: string; author: string };
+    }
+    if (typeof qp.quote === "string") {
+      return {
+        quote: qp.quote,
+        author: (qp.author as string) || "The Founder",
+      };
+    }
+    return null;
+  }, [payload.blocks]);
+
   if (bundles.length === 0) return null;
+
+  const hasMore = bundles.length > COLLAPSED_BUNDLE_COUNT;
+  const visible = expanded
+    ? bundles
+    : bundles.slice(0, COLLAPSED_BUNDLE_COUNT);
+  const firstPair = visible.slice(0, 2);
+  const rest = visible.slice(2);
+  // Only break the grid with a quote when there's a pair on each side of it.
+  const showQuote = quote != null && firstPair.length === 2 && rest.length > 0;
+
+  const gridCls = "grid grid-cols-1 md:grid-cols-2 gap-5";
+
   return (
     <section id="bundles" data-block="bundle_showcase" className="section">
       <div className="mx-auto max-w-[1180px]">
@@ -29,8 +74,9 @@ export function BundleShowcase({
           subtitle="Each bundle is composed by hand — colours, lengths, and styles
               already paired. Buy the set, save together."
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mt-10">
-          {bundles.map((b, i) => (
+
+        <div className={cn(gridCls, "mt-10")}>
+          {firstPair.map((b, i) => (
             <BundleCard
               key={b.link_id}
               bundle={b}
@@ -41,6 +87,58 @@ export function BundleShowcase({
             />
           ))}
         </div>
+
+        {showQuote && quote && (
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ duration: 0.6 }}
+            className="my-10 mx-auto max-w-[760px] glass rounded-[var(--radius)] p-8 md:p-10 text-center relative"
+          >
+            <Quote className="absolute top-5 left-6 w-7 h-7 text-[rgb(var(--accent-glow)/0.6)]" />
+            <p className="font-display text-[clamp(20px,2.8vw,28px)] leading-[1.35]">
+              &ldquo;{quote.quote}&rdquo;
+            </p>
+            <div className="mt-5 text-[11px] tracking-[0.25em] uppercase text-[rgb(var(--text-muted))]">
+              — {quote.author}
+            </div>
+          </motion.div>
+        )}
+
+        {rest.length > 0 && (
+          <div className={cn(gridCls, showQuote ? "" : "mt-5")}>
+            {rest.map((b, i) => (
+              <BundleCard
+                key={b.link_id}
+                bundle={b}
+                state={state}
+                index={i + 2}
+                deliveryWeeks={payload.delivery_weeks}
+                preorderExtraWeeks={payload.preorder_extra_weeks}
+              />
+            ))}
+          </div>
+        )}
+
+        {hasMore && (
+          <div className="mt-10 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className="inline-flex items-center gap-2 h-11 px-6 rounded-xl glass font-semibold text-[14px] hover:text-[rgb(var(--accent-readable))] transition-colors"
+            >
+              {expanded ? "Show fewer" : `View all ${bundles.length} bundles`}
+              <ChevronDown
+                className={cn(
+                  "w-4 h-4 transition-transform",
+                  expanded && "rotate-180",
+                )}
+              />
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

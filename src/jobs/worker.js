@@ -250,6 +250,7 @@ async function startWorkers() {
   require("../shared/notifications/notifications.subscribers"); // rep notification
   require("../modules/sales/timeline.subscribers"); // order.paid → timeline event
   require("../modules/sales/receipt.subscribers"); // order.paid → archive receipt PDF
+  require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
   require("../modules/retention/workflow.subscribers"); // order.paid → workflow trigger
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met → service job

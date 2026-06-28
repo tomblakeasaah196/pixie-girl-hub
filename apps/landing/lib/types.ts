@@ -138,6 +138,9 @@ export interface BrandPublic {
   sales_subdomain?: string | null;
   support_email?: string | null;
   support_whatsapp?: string | null;
+  /** Instagram handle (without @) — set in Hub Settings → Business Profile → Social.
+   *  Drives the Creator Collective modal so the handle is dynamic without code changes. */
+  instagram_handle?: string | null;
   /** Brand voice surfaced for footer microcopy. */
   praxis_voice_profile?: Record<string, unknown> | null;
   /** Smart-viewer policy defaults; per-campaign overrides land on the campaign. */

@@ -204,11 +204,13 @@ body::before {
    inline styles can't reach (glass, CTA sheen, subtle typography). */
 
 [data-atelier-commerce] .glass {
-  box-shadow: inset 0 1px 0 rgb(var(--border-c) / 0.06),
+  box-shadow:
+    inset 0 1px 0 rgb(var(--border-c) / 0.06),
     0 8px 24px rgb(var(--panel) / 0.06);
 }
 [data-atelier-commerce] .dropglass {
-  box-shadow: inset 0 1px 0 rgb(var(--border-c) / 0.06),
+  box-shadow:
+    inset 0 1px 0 rgb(var(--border-c) / 0.06),
     0 8px 24px rgb(var(--panel) / 0.06);
 }
 
@@ -228,6 +230,38 @@ body::before {
   --text-muted: var(--bg);
   --text-faint: var(--bg);
   color: rgb(var(--bg));
+}
+
+/* ── Creator Collective glass (caramel-led refresh) ─────────────────────
+   A genuinely translucent dark-glass surface — unlike the blanket
+   `.dropglass` (a 0.92 near-opaque slab whose WCAG patch flattens all
+   three text tiers to one cream). This scope:
+     • drops the panel to 0.66 over the modal's own dark ink scrim, so it
+       reads as glass without losing contrast;
+     • restores a 3-tier WARM text hierarchy (primary cream / secondary
+       warm taupe / tertiary brand-muted) — all AA on the dark surface;
+     • leans on the brand's caramel accent for the hairline + inner sheen.
+   Scoped to its own class so it can be previewed on the Creator modal
+   before rolling out to the other overlays. */
+[data-atelier-commerce] .creator-glass {
+  background:
+    radial-gradient(
+      120% 100% at 50% 0%,
+      rgb(var(--brand-accent) / 0.1) 0%,
+      transparent 55%
+    ),
+    rgb(var(--panel) / 0.66);
+  backdrop-filter: blur(30px) saturate(155%);
+  -webkit-backdrop-filter: blur(30px) saturate(155%);
+  border: 1px solid rgb(var(--brand-accent) / 0.22);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--brand-accent) / 0.14),
+    0 28px 70px rgb(0 0 0 / 0.55);
+  /* Warm 3-tier text hierarchy on the dark glass (all WCAG-AA). */
+  --text: var(--brand-paper);
+  --text-muted: 219 206 193;
+  --text-faint: var(--brand-muted);
+  color: rgb(var(--brand-paper));
 }
 
 /* Accent-background buttons need paper-coloured text in light mode. */

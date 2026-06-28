@@ -51,7 +51,11 @@ export function CreatorModal({
     void copyHandle();
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     if (!isMobile) {
-      window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+      window.open(
+        "https://www.instagram.com/",
+        "_blank",
+        "noopener,noreferrer",
+      );
       return;
     }
     try {
@@ -76,7 +80,11 @@ export function CreatorModal({
       );
       window.location.assign(scheme);
     } catch {
-      window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+      window.open(
+        "https://www.instagram.com/",
+        "_blank",
+        "noopener,noreferrer",
+      );
     }
   }
 
@@ -108,10 +116,11 @@ export function CreatorModal({
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[100] grid place-items-center p-4"
         >
-          {/* Backdrop */}
+          {/* Backdrop — warm ink scrim so the glass reads over a uniform dark
+              field (keeps text contrast no matter what image sits behind). */}
           <div
             className="absolute inset-0 backdrop-blur-sm"
-            style={{ background: "rgba(0,0,0,0.72)" }}
+            style={{ background: "rgb(var(--brand-ink) / 0.68)" }}
             onClick={onClose}
           />
 
@@ -121,7 +130,7 @@ export function CreatorModal({
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 28, opacity: 0, scale: 0.97 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="dropglass relative w-full max-w-[460px] rounded-2xl overflow-hidden"
+            className="creator-glass relative w-full max-w-[460px] rounded-2xl overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Creator Collective"
@@ -131,7 +140,7 @@ export function CreatorModal({
               className="h-[3px] w-full"
               style={{
                 background:
-                  "linear-gradient(90deg, rgb(var(--accent-deep)), rgb(var(--accent-glow)), rgb(var(--accent-deep)))",
+                  "linear-gradient(90deg, rgb(var(--brand-accent) / 0), rgb(var(--brand-accent) / 0.85), rgb(var(--brand-accent) / 0))",
               }}
             />
 
@@ -152,8 +161,8 @@ export function CreatorModal({
                 <div
                   className="mb-4 grid h-14 w-14 place-items-center rounded-2xl"
                   style={{
-                    background: "rgb(var(--accent-deep) / 0.15)",
-                    border: "1px solid rgb(var(--accent-deep) / 0.3)",
+                    background: "rgb(var(--brand-accent) / 0.15)",
+                    border: "1px solid rgb(var(--brand-accent) / 0.3)",
                   }}
                 >
                   <svg
@@ -169,17 +178,22 @@ export function CreatorModal({
                       width="20"
                       height="20"
                       rx="5"
-                      stroke="rgb(var(--accent-glow))"
+                      stroke="rgb(var(--brand-accent))"
                       strokeWidth="1.6"
                     />
                     <circle
                       cx="12"
                       cy="12"
                       r="4"
-                      stroke="rgb(var(--accent-glow))"
+                      stroke="rgb(var(--brand-accent))"
                       strokeWidth="1.6"
                     />
-                    <circle cx="17.5" cy="6.5" r="1.2" fill="rgb(var(--accent-glow))" />
+                    <circle
+                      cx="17.5"
+                      cy="6.5"
+                      r="1.2"
+                      fill="rgb(var(--brand-accent))"
+                    />
                   </svg>
                 </div>
                 <h2
@@ -192,7 +206,8 @@ export function CreatorModal({
                   className="mt-1.5 max-w-[300px] text-[13px] leading-snug"
                   style={{ color: "rgb(var(--text-muted))" }}
                 >
-                  Tag us in your wig post — get featured, win prizes &amp; earn rewards
+                  Tag us in your wig post — get featured, win prizes &amp; earn
+                  rewards
                 </p>
               </div>
 
@@ -209,12 +224,12 @@ export function CreatorModal({
                     className="flex items-center gap-2 rounded-xl px-4 py-3"
                     style={{
                       background: "rgb(var(--text) / 0.06)",
-                      border: "1px solid rgb(var(--border-c) / 0.12)",
+                      border: "1px solid rgb(var(--brand-accent) / 0.12)",
                     }}
                   >
                     <span
                       className="flex-1 font-display text-[20px] font-semibold tracking-tight"
-                      style={{ color: "rgb(var(--accent-glow))" }}
+                      style={{ color: "rgb(var(--brand-accent))" }}
                     >
                       {handle}
                     </span>
@@ -225,14 +240,14 @@ export function CreatorModal({
                       style={{
                         background: copied
                           ? "rgb(var(--success) / 0.18)"
-                          : "rgb(var(--accent-deep) / 0.2)",
+                          : "rgb(var(--brand-accent) / 0.2)",
                         color: copied
                           ? "rgb(var(--success))"
-                          : "rgb(var(--accent-glow))",
+                          : "rgb(var(--brand-accent))",
                         border: `1px solid ${
                           copied
                             ? "rgb(var(--success) / 0.3)"
-                            : "rgb(var(--accent-deep) / 0.35)"
+                            : "rgb(var(--brand-accent) / 0.35)"
                         }`,
                       }}
                     >
@@ -257,7 +272,8 @@ export function CreatorModal({
                     color: "rgb(var(--warn))",
                   }}
                 >
-                  Instagram handle not configured — add it in Hub Settings → Business Profile → Social.
+                  Instagram handle not configured — add it in Hub Settings →
+                  Business Profile → Social.
                 </div>
               )}
 
@@ -269,10 +285,13 @@ export function CreatorModal({
                     className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-center"
                     style={{
                       background: "rgb(var(--text) / 0.04)",
-                      border: "1px solid rgb(var(--border-c) / 0.08)",
+                      border: "1px solid rgb(var(--brand-accent) / 0.08)",
                     }}
                   >
-                    <Icon className="h-4 w-4" style={{ color: "rgb(var(--accent-glow))" }} />
+                    <Icon
+                      className="h-4 w-4"
+                      style={{ color: "rgb(var(--brand-accent))" }}
+                    />
                     <span
                       className="text-[11.5px] font-semibold"
                       style={{ color: "rgb(var(--text))" }}
@@ -319,14 +338,14 @@ export function CreatorModal({
                     onClick={() => launchInstagram(mode)}
                     className="flex flex-col items-center gap-2.5 rounded-xl p-4 transition-all hover:scale-[1.02] active:scale-[0.99]"
                     style={{
-                      background: "rgb(var(--accent-deep) / 0.08)",
-                      border: "2px solid rgb(var(--accent-deep) / 0.35)",
+                      background: "rgb(var(--brand-accent) / 0.08)",
+                      border: "2px solid rgb(var(--brand-accent) / 0.35)",
                       textAlign: "left",
                     }}
                   >
                     <Icon
                       className="h-7 w-7"
-                      style={{ color: "rgb(var(--accent-glow))" }}
+                      style={{ color: "rgb(var(--brand-accent))" }}
                     />
                     <span
                       className="text-[13px] font-bold"
@@ -343,7 +362,7 @@ export function CreatorModal({
                         >
                           <span
                             className="mt-[1px] flex-shrink-0 text-[9px] font-bold"
-                            style={{ color: "rgb(var(--accent-glow))" }}
+                            style={{ color: "rgb(var(--brand-accent))" }}
                           >
                             {si + 1}.
                           </span>
@@ -360,8 +379,8 @@ export function CreatorModal({
                 className="text-center text-[11px] leading-relaxed"
                 style={{ color: "rgb(var(--text-faint))" }}
               >
-                We discover tagged posts on Instagram directly — no submission needed.
-                We&apos;ll reach out when you&apos;re selected. ✨
+                We discover tagged posts on Instagram directly — no submission
+                needed. We&apos;ll reach out when you&apos;re selected. ✨
               </p>
             </div>
           </motion.div>

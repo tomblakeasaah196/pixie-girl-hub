@@ -34,10 +34,19 @@ export function middleware(req: NextRequest) {
   // Clone the inbound request headers and stamp the brand on them. This is
   // what makes the brand visible to `headers()` inside Server Components,
   // which is how lib/api.ts forwards X-Brand-Context to the Hub backend.
+  const country =
+    req.headers.get("cf-ipcountry") ||
+    req.headers.get("x-vercel-ip-country") ||
+    req.headers.get("cloudfront-viewer-country") ||
+    "";
+
   const requestHeaders = new Headers(req.headers);
   if (brand) {
     requestHeaders.set("x-brand", brand);
     requestHeaders.set("x-brand-context", brand);
+  }
+  if (country) {
+    requestHeaders.set("x-visitor-country", country.toUpperCase());
   }
 
   const res = NextResponse.next({ request: { headers: requestHeaders } });

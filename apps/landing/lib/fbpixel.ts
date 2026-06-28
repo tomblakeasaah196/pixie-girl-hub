@@ -47,6 +47,7 @@ export function fbTrackOnce(
   params?: Record<string, unknown>,
 ): void {
   if (typeof window === "undefined" || !key) return;
+  if (!window.fbq) return;
   const storageKey = `pgh-fb-evt:${event}:${key}`;
   try {
     if (localStorage.getItem(storageKey)) return;

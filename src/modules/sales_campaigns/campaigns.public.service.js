@@ -84,7 +84,8 @@ const PUBLIC_STATUSES = new Set(["scheduled", "live", "paused", "ended"]);
 async function getBrandPublic(brand) {
   const { rows } = await query(
     `SELECT business_key, display_name, storefront_domain, sales_subdomain,
-            support_email, praxis_voice_profile, show_viewer_count_policy, viewer_count_floor
+            support_email, instagram_handle, praxis_voice_profile,
+            show_viewer_count_policy, viewer_count_floor
        FROM shared.business_config
       WHERE business_key = $1 AND is_active = true`,
     [brand],
@@ -105,6 +106,8 @@ function withBrandInfo(payload, brandInfo) {
       sales_subdomain: brandInfo.sales_subdomain,
       support_email: brandInfo.support_email,
       support_whatsapp: support.whatsapp || null,
+      // Public Instagram handle (no @) — powers the Creator "tag us" modal.
+      instagram_handle: brandInfo.instagram_handle || null,
       praxis_voice_profile: brandInfo.praxis_voice_profile,
       show_viewer_count_policy: brandInfo.show_viewer_count_policy,
       viewer_count_floor: brandInfo.viewer_count_floor,

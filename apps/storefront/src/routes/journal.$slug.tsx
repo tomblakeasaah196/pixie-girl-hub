@@ -17,7 +17,7 @@ function JournalPost() {
   if (isLoading)
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading…</p>
+        <p className="text-body text-muted-foreground">Loading...</p>
       </Section>
     );
   if (isError || !data)

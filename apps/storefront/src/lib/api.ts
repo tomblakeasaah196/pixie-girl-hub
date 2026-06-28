@@ -46,6 +46,13 @@ function makeError(code: string, httpStatus: number, userMessage: string): ApiEr
   return e;
 }
 
+// In-memory customer access token (never persisted). Set by lib/auth on login
+// and cleared on logout; sent as Authorization: Bearer on browser requests.
+let authToken: string | null = null;
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -59,6 +66,8 @@ async function request<T>(
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (ctx.cookie) headers["Cookie"] = ctx.cookie;
+  if (authToken && typeof window !== "undefined")
+    headers["Authorization"] = `Bearer ${authToken}`;
 
   let res: Response;
   try {

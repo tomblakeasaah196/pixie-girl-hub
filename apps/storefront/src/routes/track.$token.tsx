@@ -39,7 +39,7 @@ function TrackPage() {
   if (isLoading)
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading your order…</p>
+        <p className="text-body text-muted-foreground">Loading your order...</p>
       </Section>
     );
   if (isError || !data)
@@ -66,7 +66,7 @@ function TrackPage() {
       <ol className="mt-8 space-y-5 border-l border-border pl-6">
         {events.length === 0 ? (
           <li className="text-body-sm text-muted-foreground">
-            No updates yet — check back soon.
+            No updates yet - check back soon.
           </li>
         ) : (
           events.map((e, i) => (

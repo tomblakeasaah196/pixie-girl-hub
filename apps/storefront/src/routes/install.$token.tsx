@@ -18,7 +18,7 @@ function InstallHub() {
   if (isLoading)
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading your care hub…</p>
+        <p className="text-body text-muted-foreground">Loading your care hub...</p>
       </Section>
     );
   if (isError || !data)
@@ -39,7 +39,7 @@ function InstallHub() {
       {data.items?.length ? (
         <ul className="mt-6 space-y-1 text-body-sm">
           {data.items.map((it, i) => (
-            <li key={i}>• {it.name}</li>
+            <li key={i}>- {it.name}</li>
           ))}
         </ul>
       ) : null}

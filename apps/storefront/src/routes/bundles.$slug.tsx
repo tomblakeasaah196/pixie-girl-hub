@@ -82,7 +82,7 @@ function BundleDetail() {
                   </div>
                   <div className="flex-1 text-body-sm">{c.name}</div>
                   {c.quantity ? (
-                    <span className="text-body-sm text-muted-foreground">×{c.quantity}</span>
+                    <span className="text-body-sm text-muted-foreground">x{c.quantity}</span>
                   ) : null}
                 </li>
               ))}
@@ -95,7 +95,7 @@ function BundleDetail() {
           disabled={busy}
           className="mt-8 rounded-full bg-primary px-8 py-3 text-body text-primary-foreground disabled:opacity-60"
         >
-          {busy ? "Adding…" : "Add bundle to bag"}
+          {busy ? "Adding..." : "Add bundle to bag"}
         </button>
       </div>
     </Section>

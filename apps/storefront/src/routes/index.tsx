@@ -29,7 +29,7 @@ function Home() {
   const products = data ?? [];
   const page = initial.page as StudioPage | null;
 
-  // Studio-published home → render from its template/sections.
+  // Studio-published home -&gt; render from its template/sections.
   if (hasSections(page)) {
     return <PageTemplate page={page!} products={products} currency={currency} />;
   }

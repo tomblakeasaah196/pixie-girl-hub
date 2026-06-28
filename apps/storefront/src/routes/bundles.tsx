@@ -64,7 +64,7 @@ function BundlesPage() {
                   disabled={busy === b.bundle_id}
                   className="mt-4 w-full rounded-full bg-primary py-2.5 text-body-sm text-primary-foreground disabled:opacity-60"
                 >
-                  {busy === b.bundle_id ? "Adding…" : "Add bundle"}
+                  {busy === b.bundle_id ? "Adding..." : "Add bundle"}
                 </button>
               </div>
             ))}

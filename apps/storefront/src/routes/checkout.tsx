@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { checkout, type CheckoutInput } from "@/lib/storefront";
+import { bootstrapAuth, getMe } from "@/lib/auth";
 import { useCurrency } from "@/lib/useStore";
 import { Section } from "@/components/parts";
 
@@ -20,6 +21,8 @@ function CheckoutPage() {
   const [busy, setBusy] = useState(false);
   const [fulfilment, setFulfilment] = useState<"delivery" | "pickup">("delivery");
   const [gateway, setGateway] = useState("nomba");
+  const [points, setPoints] = useState(0);
+  const [redeem, setRedeem] = useState(0);
   const [f, setF] = useState({
     first_name: "",
     last_name: "",
@@ -33,6 +36,26 @@ function CheckoutPage() {
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF((s) => ({ ...s, [k]: e.target.value }));
+
+  // If the shopper has a session, restore it (so the order attaches to their
+  // account and they can redeem loyalty points).
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const ok = await bootstrapAuth();
+      if (ok && active) {
+        try {
+          const me = await getMe();
+          if (active) setPoints(me.loyalty_points || 0);
+        } catch {
+          /* not signed in */
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,6 +85,7 @@ function CheckoutPage() {
         fulfilment_type: fulfilment,
         display_currency: currency,
         payment_gateway: gateway,
+        redeem_points: redeem > 0 ? redeem : undefined,
         client_idempotency_key:
           (typeof crypto !== "undefined" && crypto.randomUUID?.()) ||
           `sf-${Date.now()}`,
@@ -150,6 +174,30 @@ function CheckoutPage() {
             ))}
           </div>
         </div>
+
+        {points > 0 ? (
+          <div>
+            <p className="text-caption">Loyalty</p>
+            <label className="mt-2 block text-body-sm text-muted-foreground">
+              Redeem points (you have {points})
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={points}
+              value={redeem}
+              onChange={(e) =>
+                setRedeem(
+                  Math.max(
+                    0,
+                    Math.min(points, parseInt(e.target.value, 10) || 0),
+                  ),
+                )
+              }
+              className={field}
+            />
+          </div>
+        ) : null}
 
         <button
           type="submit"

@@ -18,7 +18,7 @@ function Journal() {
       <p className="mt-2 text-body text-muted-foreground">Notes, edits and how-tos.</p>
       <div className="mt-10">
         {isLoading ? (
-          <p className="text-body text-muted-foreground">Loading…</p>
+          <p className="text-body text-muted-foreground">Loading...</p>
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : posts.length === 0 ? (

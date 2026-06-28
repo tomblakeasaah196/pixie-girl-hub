@@ -156,7 +156,7 @@ function ProductPage() {
       <div>
         <h1 className="text-h3 font-display">{product.name}</h1>
         <p className="mt-3 font-mono text-h5">
-          {price == null ? "—" : fmt(price, currency)}
+          {price == null ? "-" : fmt(price, currency)}
         </p>
         {product.short_description ? (
           <p className="mt-4 text-body text-muted-foreground">
@@ -236,7 +236,7 @@ function ProductPage() {
             disabled={busy}
             className="rounded-full bg-primary px-8 py-3 text-body text-primary-foreground disabled:opacity-60"
           >
-            {busy ? "Adding…" : "Add to bag"}
+            {busy ? "Adding..." : "Add to bag"}
           </button>
           <button
             onClick={() => navigate({ to: "/cart" })}

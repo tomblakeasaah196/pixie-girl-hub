@@ -134,6 +134,10 @@ const publicStorefrontGeoRouter = require("../modules/storefront/geo.routes");
 const publicStorefrontCartRouter = require("../modules/storefront/cart.public.routes");
 const publicStorefrontCheckoutRouter = require("../modules/storefront/checkout.public.routes");
 const publicStorefrontSitemapRouter = require("../modules/storefront/sitemap.routes");
+const customerAuthRouter = require("../modules/customer_auth/customer-auth.routes");
+const {
+  customerAuthOptional,
+} = require("../middleware/customer-auth");
 const publicAnalyticsRouter = require("../modules/storefront/analytics.public.routes");
 const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.routes");
 const publicReferralRouter = require("../modules/retention/referral.routes");
@@ -184,16 +188,22 @@ function mountRoutes(app) {
   // (products/shades/collections/bundles/content). Geo's paths above don't
   // overlap, so both routers coexist. Legacy /catalogue mount kept below.
   publicRouter.use("/storefront", publicCatalogueRouter);
+  // Customer accounts (register/login/refresh/logout/me/orders).
+  publicRouter.use("/auth", publicWriteLimiter, customerAuthRouter);
   // Persistent guest cart (shared.carts) — public writes throttled per IP.
+  // customerAuthOptional resolves a logged-in shopper to their contact cart;
+  // guests fall through to the sf_cart cookie.
   publicRouter.use(
     "/storefront/cart",
     publicWriteLimiter,
+    customerAuthOptional,
     publicStorefrontCartRouter,
   );
   // Storefront checkout (creates a sales_order via createOrder → outbox).
   publicRouter.use(
     "/storefront/checkout",
     publicWriteLimiter,
+    customerAuthOptional,
     publicStorefrontCheckoutRouter,
   );
   // Storefront analytics ingestion at the canonical /api/public/analytics path.

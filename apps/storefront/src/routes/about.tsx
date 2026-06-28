@@ -20,8 +20,8 @@ function About() {
           and made to move with you.
         </p>
         <p>
-          From our atelier to your doorstep, we obsess over the details — the lace,
-          the density, the fall — so you can simply wear it and go.
+          From our atelier to your doorstep, we obsess over the details - the lace,
+          the density, the fall - so you can simply wear it and go.
         </p>
       </div>
     </Section>

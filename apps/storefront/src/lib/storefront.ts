@@ -1,8 +1,8 @@
 import { api, type ApiContext } from "./api";
 
-/**
- * Storefront data layer — typed Hub calls + types. Replaces every Supabase
- * `*.functions.ts`. All pricing comes from the server (effective_price_*); the
+/*
+ * Storefront data layer - typed Hub calls + types. Replaces every Supabase
+ * *.functions.ts. All pricing comes from the server (effective_price_*); the
  * UI only displays. Cart writes carry the sf_cart cookie automatically
  * (api uses credentials:"include").
  */
@@ -42,7 +42,11 @@ export interface ProductDetail {
   retail_price_ngn?: string | number | null;
   retail_price_usd?: string | number | null;
   cover_image_url?: string | null;
-  gallery: { url: string; alt_text?: string | null; styled_colour_id?: string | null }[];
+  gallery: {
+    url: string;
+    alt_text?: string | null;
+    styled_colour_id?: string | null;
+  }[];
   colours: {
     colour_id: string;
     name: string;
@@ -51,9 +55,22 @@ export interface ProductDetail {
     images?: { url: string }[];
   }[];
   variants: VariantOption[];
-  size_tiers: { size_code: string; label: string; circumference_in?: string | null; guidance_text?: string | null }[];
-  lace_sizes: { lace_code: string; label: string; description?: string | null }[];
-  size_guide?: { title: string; guide_md?: string | null; video_url?: string | null } | null;
+  size_tiers: {
+    size_code: string;
+    label: string;
+    circumference_in?: string | null;
+    guidance_text?: string | null;
+  }[];
+  lace_sizes: {
+    lace_code: string;
+    label: string;
+    description?: string | null;
+  }[];
+  size_guide?: {
+    title: string;
+    guide_md?: string | null;
+    video_url?: string | null;
+  } | null;
 }
 
 export interface CartItem {
@@ -99,21 +116,53 @@ export interface Quote {
 
 const SF = "/api/public/storefront";
 
-// ── Catalogue ──────────────────────────────────────────────
+// --- Catalogue ---
 export const getProducts = (qs = "", ctx?: ApiContext) =>
   api.get<ProductCard[] | { data: ProductCard[] }>(`${SF}/products${qs}`, ctx);
 export const getProduct = (slug: string, ctx?: ApiContext) =>
   api.get<ProductDetail>(`${SF}/products/${slug}`, ctx);
 export const getShades = (ctx?: ApiContext) =>
-  api.get<{ shade_id: string; name: string; slug: string; short_description?: string; cover_image_url?: string; product_count?: number }[]>(`${SF}/shades`, ctx);
+  api.get<
+    {
+      shade_id: string;
+      name: string;
+      slug: string;
+      short_description?: string;
+      cover_image_url?: string;
+      product_count?: number;
+    }[]
+  >(`${SF}/shades`, ctx);
 export const getShade = (slug: string, ctx?: ApiContext) =>
-  api.get<{ name: string; long_description?: string; products: ProductCard[] }>(`${SF}/shades/${slug}`, ctx);
+  api.get<{ name: string; long_description?: string; products: ProductCard[] }>(
+    `${SF}/shades/${slug}`,
+    ctx,
+  );
 export const getCollections = (ctx?: ApiContext) =>
-  api.get<{ collection_id: string; name: string; slug: string; description?: string; display_image_url?: string }[]>(`${SF}/collections`, ctx);
+  api.get<
+    {
+      collection_id: string;
+      name: string;
+      slug: string;
+      description?: string;
+      display_image_url?: string;
+    }[]
+  >(`${SF}/collections`, ctx);
 export const getCollection = (slug: string, ctx?: ApiContext) =>
-  api.get<{ name: string; description?: string; products: ProductCard[] }>(`${SF}/collections/${slug}`, ctx);
+  api.get<{ name: string; description?: string; products: ProductCard[] }>(
+    `${SF}/collections/${slug}`,
+    ctx,
+  );
 export const getBundles = (ctx?: ApiContext) =>
-  api.get<{ bundle_id: string; bundle_code: string; display_name: string; description?: string; bundle_price_ngn?: string; hero_image_url?: string }[]>(`${SF}/bundles`, ctx);
+  api.get<
+    {
+      bundle_id: string;
+      bundle_code: string;
+      display_name: string;
+      description?: string;
+      bundle_price_ngn?: string;
+      hero_image_url?: string;
+    }[]
+  >(`${SF}/bundles`, ctx);
 export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
   api.get<{
     bundle_id: string;
@@ -122,13 +171,34 @@ export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
     description?: string;
     bundle_price_ngn?: string;
     hero_image_url?: string;
-    components: { name?: string; slug?: string; image_url?: string; quantity?: number; role?: string; price_ngn?: string }[];
+    components: {
+      name?: string;
+      slug?: string;
+      image_url?: string;
+      quantity?: number;
+      role?: string;
+      price_ngn?: string;
+    }[];
   }>(`${SF}/bundles/${slug}`, ctx);
 
 export const getContentPost = (type: string, slug: string, ctx?: ApiContext) =>
-  api.get<{ title: string; body_md?: string; body_html?: string; cover_image_url?: string; published_at?: string }>(`${SF}/content/${type}/${slug}`, ctx);
+  api.get<{
+    title: string;
+    body_md?: string;
+    body_html?: string;
+    cover_image_url?: string;
+    published_at?: string;
+  }>(`${SF}/content/${type}/${slug}`, ctx);
 export const getContentList = (type: string, ctx?: ApiContext) =>
-  api.get<{ slug: string; title: string; excerpt?: string; cover_image_url?: string; published_at?: string }[]>(`${SF}/content/${type}`, ctx);
+  api.get<
+    {
+      slug: string;
+      title: string;
+      excerpt?: string;
+      cover_image_url?: string;
+      published_at?: string;
+    }[]
+  >(`${SF}/content/${type}`, ctx);
 
 export const getInstallHub = (token: string, ctx?: ApiContext) =>
   api.get<{
@@ -139,7 +209,7 @@ export const getInstallHub = (token: string, ctx?: ApiContext) =>
     delivery_city?: string | null;
   }>(`/api/public/install-hub/${token}`, ctx);
 
-// ── Cart ───────────────────────────────────────────────────
+// --- Cart ---
 export const getCart = () => api.get<Cart>(`${SF}/cart`);
 export const ensureCart = () => api.post<Cart>(`${SF}/cart`);
 export const addCartItem = (body: {
@@ -152,12 +222,14 @@ export const addCartItem = (body: {
 }) => api.post<CartItem>(`${SF}/cart/items`, body);
 export const updateCartItem = (id: string, quantity: number) =>
   api.patch<CartItem>(`${SF}/cart/items/${id}`, { quantity });
-export const removeCartItem = (id: string) => api.delete<{ removed: boolean }>(`${SF}/cart/items/${id}`);
-export const applyCoupon = (code: string) => api.post<Cart>(`${SF}/cart/coupon`, { code });
+export const removeCartItem = (id: string) =>
+  api.delete<{ removed: boolean }>(`${SF}/cart/items/${id}`);
+export const applyCoupon = (code: string) =>
+  api.post<Cart>(`${SF}/cart/coupon`, { code });
 export const quoteCart = (body: { address?: unknown; display_currency?: Currency }) =>
   api.post<Quote>(`${SF}/cart/quote`, body);
 
-// ── Checkout / tracking ────────────────────────────────────
+// --- Checkout / tracking ---
 export interface CheckoutInput {
   contact: {
     first_name?: string;
@@ -179,25 +251,72 @@ export interface CheckoutInput {
   display_currency?: Currency;
   payment_gateway?: string;
   coupon_code?: string;
+  redeem_points?: number;
   client_idempotency_key: string;
 }
 export const checkout = (body: CheckoutInput) =>
-  api.post<{ order_id: string; order_number: string; payment_url: string; public_tracking_token: string }>(`${SF}/checkout`, body);
+  api.post<{
+    order_id: string;
+    order_number: string;
+    payment_url: string;
+    public_tracking_token: string;
+  }>(`${SF}/checkout`, body);
 
 export const getDeliveryQuote = (params: string) =>
-  api.get<{ fee_ngn: number | null; fee_status?: string; zone_name?: string }>(`${SF}/delivery/quote${params}`);
+  api.get<{ fee_ngn: number | null; fee_status?: string; zone_name?: string }>(
+    `${SF}/delivery/quote${params}`,
+  );
 
 export const trackOrder = (token: string, ctx?: ApiContext) =>
   api.get<unknown>(`/api/public/order-timeline/${token}`, ctx);
 
-// ── Helpers ────────────────────────────────────────────────
+// --- Helpers ---
 export function unwrap<T>(r: T | { data: T }): T {
   return r && typeof r === "object" && "data" in (r as object)
     ? (r as { data: T }).data
     : (r as T);
 }
 
-const NGN = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 });
-const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const NGN = new Intl.NumberFormat("en-NG", {
+  style: "currency",
+  currency: "NGN",
+  maximumFractionDigits: 0,
+});
+const USD = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
 
-/** Format using the
+/**
+ * Format using the matching server-provided figure for the currency.
+ * Never converts NGN/USD on the client - pass the matching price_* field.
+ */
+export function priceFor(
+  card: {
+    effective_price_ngn?: string | number | null;
+    effective_price_usd?: string | number | null;
+    retail_price_ngn?: string | number | null;
+    retail_price_usd?: string | number | null;
+  },
+  currency: Currency,
+): string {
+  const raw =
+    currency === "USD"
+      ? (card.effective_price_usd ?? card.retail_price_usd)
+      : (card.effective_price_ngn ?? card.retail_price_ngn);
+  if (raw === null || raw === undefined) return "-";
+  const n = typeof raw === "string" ? Number(raw) : raw;
+  if (!Number.isFinite(n)) return "-";
+  return currency === "USD" ? USD.format(n) : NGN.format(n);
+}
+
+export function fmt(
+  amount: string | number | null | undefined,
+  currency: Currency,
+): string {
+  if (amount === null || amount === undefined) return "-";
+  const n = typeof amount === "string" ? Number(amount) : amount;
+  if (!Number.isFinite(n)) return "-";
+  return currency === "USD" ? USD.format(n) : NGN.format(n);
+}

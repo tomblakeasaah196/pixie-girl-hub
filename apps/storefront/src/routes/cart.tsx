@@ -48,7 +48,7 @@ function CartPage() {
   if (cartQ.isLoading)
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading your bag…</p>
+        <p className="text-body text-muted-foreground">Loading your bag...</p>
       </Section>
     );
   if (cartQ.isError)
@@ -98,7 +98,7 @@ function CartPage() {
                     onClick={() => mutate(() => updateCartItem(it.cart_item_id, Math.max(1, it.quantity - 1)))}
                     className="h-7 w-7 rounded border border-border"
                   >
-                    −
+                    -
                   </button>
                   <span className="w-8 text-center text-body-sm">{it.quantity}</span>
                   <button
@@ -133,14 +133,14 @@ function CartPage() {
           <div className="flex justify-between">
             <dt className="text-muted-foreground">Subtotal</dt>
             <dd className="font-mono">
-              {q ? (useUsd ? q.subtotal_display : q.subtotal_ngn) ?? "—" : "…"}
+              {q ? (useUsd ? q.subtotal_display : q.subtotal_ngn) ?? "-" : "..."}
             </dd>
           </div>
           {q && Number(q.discount_ngn || 0) > 0 ? (
             <div className="flex justify-between text-rose">
               <dt>Discount</dt>
               <dd className="font-mono">
-                −{useUsd ? q.discount_display : q.discount_ngn}
+                -{useUsd ? q.discount_display : q.discount_ngn}
               </dd>
             </div>
           ) : null}
@@ -150,7 +150,7 @@ function CartPage() {
           </div>
           <div className="flex justify-between border-t border-border pt-2 text-body">
             <dt>Total</dt>
-            <dd className="font-mono">{total ?? "—"}</dd>
+            <dd className="font-mono">{total ?? "-"}</dd>
           </div>
         </dl>
         <button

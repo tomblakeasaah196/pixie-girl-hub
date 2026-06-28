@@ -164,4 +164,32 @@ router.post("/coupon", async (req, res, next) => {
   }
 });
 
+// Merge the guest (sf_cart) cart into the logged-in customer's cart. Called by
+// the website right after login/register. Requires a resolved customer
+// (customerAuthOptional runs ahead of this router in routes/index.js).
+router.post("/merge", async (req, res, next) => {
+  try {
+    const business = brandHint(req);
+    const contact_id = req.customer ? req.customer.contact_id : null;
+    if (!contact_id)
+      return res
+        .status(401)
+        .json({ error: { code: "AUTH_REQUIRED", userMessage: "Please sign in." } });
+    const session_token = req.cookies ? req.cookies[COOKIE] : null;
+    if (!session_token) return res.json({ data: { merged: false } });
+    const guest = await cartService.getCart({ business, session_token });
+    if (!guest || !guest.cart_id) return res.json({ data: { merged: false } });
+    const merged = await cartService.mergeGuestCart({
+      business,
+      guest_cart_id: guest.cart_id,
+      contact_id,
+    });
+    // Guest cart consumed; drop the guest cookie so future calls use the contact.
+    res.clearCookie(COOKIE, { path: "/" });
+    res.json({ data: merged || { merged: true } });
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;

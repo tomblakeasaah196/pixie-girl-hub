@@ -3,10 +3,10 @@ import type { Currency, ProductCard } from "@/lib/storefront";
 import { ProductCardLink, Section } from "./parts";
 
 /**
- * Studio-driven page rendering (guide §8.4, B-lite). A published page carries a
+ * Studio-driven page rendering (guide section8.4, B-lite). A published page carries a
  * template_key + slots.sections[]; we render a fixed library of section types
  * from that slot data. Unknown/empty pages return null so the route can fall
- * back to its built-in layout. No free-form canvas — a guided, typed section set.
+ * back to its built-in layout. No free-form canvas - a guided, typed section set.
  */
 
 export interface PageSection {

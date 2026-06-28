@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { priceFor, type Currency, type ProductCard } from "@/lib/storefront";
 
-/** Product card — links to the detail page, shows the display-currency price. */
+/** Product card - links to the detail page, shows the display-currency price. */
 export function ProductCardLink({
   p,
   currency,

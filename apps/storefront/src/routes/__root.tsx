@@ -15,15 +15,13 @@ import { clientBrand, type BrandKey } from "@/lib/brand";
 import { ssrSite } from "@/lib/server";
 import { useCurrency, useCartCount } from "@/lib/useStore";
 
-/**
+/*
  * SSR shell for the Storefront Website.
- *
- *   1. Resolve brand from the request host (apps/landing pattern).
- *   2. Fetch the PUBLISHED Studio config for that brand (theme tokens, nav,
- *      popups) from the Hub. Studio is the source of truth for appearance.
- *   3. Inject the theme tokens as CSS variables + set <html data-brand>, then
- *      render. The header/footer/popups host are TODO (port from the reference;
- *      see PORTING.md) — this scaffold proves the brand + theme wiring only.
+ * 1. Resolve brand from the request host (apps/landing pattern).
+ * 2. Fetch the published Studio config (theme tokens, nav, popups) from the Hub.
+ * 3. Inject the theme tokens as CSS variables + set <html data-brand>, then
+ *    render the header/footer/preloader. Falls back to baked tokens if /site
+ *    is not published yet.
  */
 
 interface SiteConfig {
@@ -71,7 +69,9 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en" data-brand={brand}>
       <head>
         <HeadContent />
-        {themeCss ? <style dangerouslySetInnerHTML={{ __html: themeCss }} /> : null}
+        {themeCss ? (
+          <style dangerouslySetInnerHTML={{ __html: themeCss }} />
+        ) : null}
       </head>
       <body>
         {children}
@@ -129,7 +129,11 @@ function Header() {
               </button>
             ))}
           </div>
-          <button onClick={toggleDark} aria-label="Toggle theme" className="text-muted-foreground hover:text-foreground">
+          <button
+            onClick={toggleDark}
+            aria-label="Toggle theme"
+            className="text-muted-foreground hover:text-foreground"
+          >
             {dark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         </div>
@@ -141,10 +145,18 @@ function Header() {
 
         {/* Right: account + cart */}
         <div className="flex items-center gap-4">
-          <Link to="/auth" className="text-muted-foreground hover:text-foreground" aria-label="Account">
+          <Link
+            to="/account"
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Account"
+          >
             <User size={18} />
           </Link>
-          <Link to="/cart" className="relative text-muted-foreground hover:text-foreground" aria-label="Cart">
+          <Link
+            to="/cart"
+            className="relative text-muted-foreground hover:text-foreground"
+            aria-label="Cart"
+          >
             <ShoppingBag size={18} />
             {count > 0 ? (
               <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose px-1 text-[10px] text-cream">
@@ -155,9 +167,15 @@ function Header() {
         </div>
       </div>
       <nav className="mx-auto flex max-w-6xl items-center gap-6 px-4 pb-2 text-caption md:px-6">
-        <Link to="/shop" className="hover:text-foreground">Shop</Link>
-        <Link to="/shades" className="hover:text-foreground">Shades</Link>
-        <Link to="/bundles" className="hover:text-foreground">Bundles</Link>
+        <Link to="/shop" className="hover:text-foreground">
+          Shop
+        </Link>
+        <Link to="/shades" className="hover:text-foreground">
+          Shades
+        </Link>
+        <Link to="/bundles" className="hover:text-foreground">
+          Bundles
+        </Link>
       </nav>
     </header>
   );
@@ -191,4 +209,43 @@ function Preloader() {
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-background transition-opacity duration-300"
-      style
+      style={{ opacity: leaving ? 0 : 1 }}
+      aria-hidden="true"
+    >
+      <span className="gold-shimmer text-h2 font-display">{brandName}</span>
+    </div>
+  );
+}
+
+function Footer() {
+  const brandName =
+    typeof document !== "undefined" && clientBrand() === "faitlynhair"
+      ? "Faitlyn Hair"
+      : "Pixie Girl";
+  return (
+    <footer className="mt-24 border-t border-border">
+      <div className="mx-auto max-w-6xl px-4 py-10 text-body-sm text-muted-foreground md:px-6">
+        <p className="font-display text-foreground">{brandName}</p>
+        <p className="mt-2">
+          Luxury wigs, delivered. (c) {new Date().getFullYear()}
+        </p>
+      </div>
+    </footer>
+  );
+}
+
+function NotFound() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
+      <div className="text-center">
+        <h1 className="text-6xl font-bold">404</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          This page does not exist.
+        </p>
+        <Link to="/" className="mt-6 inline-block underline">
+          Go home
+        </Link>
+      </div>
+    </div>
+  );
+}

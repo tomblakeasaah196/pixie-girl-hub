@@ -249,26 +249,28 @@ async function getActiveChain({ brand, currency = "NGN" }) {
     rows = [];
   }
   const allowed = enabledProviders();
-  // Owner directive: for foreign-currency settlement, ONLY Nomba is used.
-  // Filter any other provider out of both the DB-configured and the env
-  // fallback paths so a stray Stripe row can't be picked accidentally.
+  // Owner-directed routing (June 2026, rev.): Stripe is the UNIVERSAL last-resort
+  // fallback so a Nomba (and Paystack) outage never blocks a sale.
+  //   • NGN → Nomba primary, Paystack fallback, Stripe last-resort.
+  //   • non-NGN (USD etc.) → Nomba primary, Stripe fallback.
+  // Stripe is only ever used if it's enabled AND has credentials, and only after
+  // the local rails are tried (it sorts last via `preference`).
   const allowedForCurrency = ngn
     ? allowed
-    : allowed.filter((p) => p === "nomba");
-  // Stable preference order — wins over the DB ordering when both Nomba and
-  // Paystack are configured on the NGN rail (owner: Nomba first, Paystack
-  // second, Stripe never).
-  const ngnPreference = ["nomba", "paystack"];
-  const sortNgn = (a, b) => {
-    const ai = ngnPreference.indexOf(a.provider);
-    const bi = ngnPreference.indexOf(b.provider);
+    : allowed.filter((p) => p === "nomba" || p === "stripe");
+  // Stable preference order — Nomba first, then the local fallback, Stripe last.
+  // Wins over DB ordering so the fallback sequence is deterministic.
+  const preference = ngn ? ["nomba", "paystack", "stripe"] : ["nomba", "stripe"];
+  const sortPref = (a, b) => {
+    const ai = preference.indexOf(a.provider);
+    const bi = preference.indexOf(b.provider);
     const an = ai === -1 ? 99 : ai;
     const bn = bi === -1 ? 99 : bi;
     return an - bn;
   };
   const chain = [];
   if (rows.length) {
-    const ordered = ngn ? [...rows].sort(sortNgn) : rows;
+    const ordered = [...rows].sort(sortPref);
     for (const r of ordered) {
       if (!allowedForCurrency.includes(r.provider)) continue;
       const creds = await resolveCredentials({ brand, provider: r.provider });
@@ -277,7 +279,7 @@ async function getActiveChain({ brand, currency = "NGN" }) {
   } else {
     // No DB config → env fallback (single-tenant), restricted to the gateways
     // enabled for this deployment, in owner preference order.
-    const candidates = (ngn ? ngnPreference : ["nomba"]).filter((p) =>
+    const candidates = preference.filter((p) =>
       allowedForCurrency.includes(p),
     );
     for (const p of candidates) {

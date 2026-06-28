@@ -131,6 +131,9 @@ const publicPayLinkRouter = require("../modules/sales/payment-link.public.routes
 const publicOrderFormRouter = require("../modules/storefront/order-form.routes");
 const publicInstallHubRouter = require("../modules/storefront/install-hub.routes");
 const publicStorefrontGeoRouter = require("../modules/storefront/geo.routes");
+const publicStorefrontCartRouter = require("../modules/storefront/cart.public.routes");
+const publicStorefrontCheckoutRouter = require("../modules/storefront/checkout.public.routes");
+const publicAnalyticsRouter = require("../modules/storefront/analytics.public.routes");
 const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.routes");
 const publicReferralRouter = require("../modules/retention/referral.routes");
 const publicHairQuizRouter = require("../modules/retention/hair-quiz.routes");
@@ -168,6 +171,24 @@ function mountRoutes(app) {
   // Storefront geo: currency/FX + geofenced delivery quote (the website calls
   // these to localise prices and resolve the delivery fee from the address).
   publicRouter.use("/storefront", publicStorefrontGeoRouter);
+  // Storefront catalogue under the SAME /storefront prefix the website calls
+  // (products/shades/collections/bundles/content). Geo's paths above don't
+  // overlap, so both routers coexist. Legacy /catalogue mount kept below.
+  publicRouter.use("/storefront", publicCatalogueRouter);
+  // Persistent guest cart (shared.carts) — public writes throttled per IP.
+  publicRouter.use(
+    "/storefront/cart",
+    publicWriteLimiter,
+    publicStorefrontCartRouter,
+  );
+  // Storefront checkout (creates a sales_order via createOrder → outbox).
+  publicRouter.use(
+    "/storefront/checkout",
+    publicWriteLimiter,
+    publicStorefrontCheckoutRouter,
+  );
+  // Storefront analytics ingestion at the canonical /api/public/analytics path.
+  publicRouter.use("/analytics", publicWriteLimiter, publicAnalyticsRouter);
   publicRouter.use("/stylist-verify", publicStylistVerifyRouter);
   publicRouter.use("/referral", publicWriteLimiter, publicReferralRouter);
   publicRouter.use("/hair-quiz", publicWriteLimiter, publicHairQuizRouter);

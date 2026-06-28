@@ -46,6 +46,22 @@ npm run dev
 npm test
 ```
 
+### Storefront Website (`apps/storefront`)
+
+The customer-facing Storefront Website (TanStack Start / Nitro SSR) serves **both brands
+from one process**, resolving brand per request from the Host header. Deploy details:
+**`docs/STOREFRONT_DEPLOYMENT.md`**.
+
+```bash
+npm run storefront:install   # install storefront deps (apps/storefront)
+npm run storefront:dev       # local dev (Vite, :3000, proxies /api → :7000)
+npm run storefront:build     # production build → apps/storefront/.output
+npm run storefront:start     # run the SSR server (PORT from env, prod default 3002)
+```
+
+In production it runs under PM2 as `pixie-girl-storefront` (see `ecosystem.config.js`).
+It is **not** the Sales Campaign Landing (`apps/landing`, `sale.<brand>`).
+
 ---
 
 ## Project structure

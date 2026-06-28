@@ -6,12 +6,14 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { getWebRequest } from "@tanstack/react-start/server";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { ShoppingBag, User, Moon, Sun } from "lucide-react";
+import { Toaster } from "sonner";
 
 import appCss from "../styles.css?url";
-import { api } from "@/lib/api";
-import { brandFromHost, type BrandKey } from "@/lib/brand";
+import { clientBrand, type BrandKey } from "@/lib/brand";
+import { ssrSite } from "@/lib/server";
+import { useCurrency, useCartCount } from "@/lib/useStore";
 
 /**
  * SSR shell for the Storefront Website.
@@ -32,30 +34,9 @@ interface SiteConfig {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  loader: async (): Promise<SiteConfig> => {
-    // Server-side: read host (brand) + cookie (auth) from the live request.
-    let brand: BrandKey = "pixiegirl";
-    let cookie: string | undefined;
-    try {
-      const req = getWebRequest();
-      brand = brandFromHost(req?.headers.get("host"));
-      cookie = req?.headers.get("cookie") ?? undefined;
-    } catch {
-      // Non-request context (build/prerender) — fall back to env default.
-      brand = brandFromHost(null);
-    }
-
-    try {
-      const site = await api.get<SiteConfig>("/api/public/storefront/site", {
-        brand,
-        cookie,
-      });
-      return { ...site, brand };
-    } catch {
-      // Studio endpoint not live yet (Phase 4) — render with reference tokens.
-      return { brand };
-    }
-  },
+  // Resolve brand + published Studio theme via a server fn (the only place the
+  // server-only request is read). Falls back to baked tokens if /site is empty.
+  loader: async (): Promise<SiteConfig> => ssrSite(),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -104,8 +85,95 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
+      <Header />
       <Outlet />
+      <Footer />
+      <Toaster position="bottom-center" theme="dark" />
     </QueryClientProvider>
+  );
+}
+
+function Header() {
+  const [currency, setCurrency] = useCurrency();
+  const count = useCartCount();
+  const [dark, setDark] = useState(true);
+
+  useEffect(() => {
+    const isDark = !document.documentElement.classList.contains("light");
+    setDark(isDark);
+  }, []);
+  const toggleDark = () => {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    document.documentElement.classList.toggle("light", !next);
+  };
+
+  const brandName =
+    clientBrand() === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl";
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
+        {/* Left: currency + theme */}
+        <div className="flex items-center gap-3">
+          <div className="flex overflow-hidden rounded-full border border-border text-xs">
+            {(["NGN", "USD"] as const).map((c) => (
+              <button
+                key={c}
+                onClick={() => setCurrency(c)}
+                className={`px-2.5 py-1 ${currency === c ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <button onClick={toggleDark} aria-label="Toggle theme" className="text-muted-foreground hover:text-foreground">
+            {dark ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+        </div>
+
+        {/* Center: logo */}
+        <Link to="/" className="text-h5 md:text-h4 font-display tracking-tight">
+          {brandName}
+        </Link>
+
+        {/* Right: account + cart */}
+        <div className="flex items-center gap-4">
+          <Link to="/auth" className="text-muted-foreground hover:text-foreground" aria-label="Account">
+            <User size={18} />
+          </Link>
+          <Link to="/cart" className="relative text-muted-foreground hover:text-foreground" aria-label="Cart">
+            <ShoppingBag size={18} />
+            {count > 0 ? (
+              <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose px-1 text-[10px] text-cream">
+                {count}
+              </span>
+            ) : null}
+          </Link>
+        </div>
+      </div>
+      <nav className="mx-auto flex max-w-6xl items-center gap-6 px-4 pb-2 text-caption md:px-6">
+        <Link to="/shop" className="hover:text-foreground">Shop</Link>
+        <Link to="/shades" className="hover:text-foreground">Shades</Link>
+        <Link to="/bundles" className="hover:text-foreground">Bundles</Link>
+      </nav>
+    </header>
+  );
+}
+
+function Footer() {
+  const brandName =
+    typeof document !== "undefined" && clientBrand() === "faitlynhair"
+      ? "Faitlyn Hair"
+      : "Pixie Girl";
+  return (
+    <footer className="mt-24 border-t border-border">
+      <div className="mx-auto max-w-6xl px-4 py-10 text-body-sm text-muted-foreground md:px-6">
+        <p className="font-display text-foreground">{brandName}</p>
+        <p className="mt-2">Luxury wigs, delivered. © {new Date().getFullYear()}</p>
+      </div>
+    </footer>
   );
 }
 

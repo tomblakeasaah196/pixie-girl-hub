@@ -170,4 +170,44 @@ jobs:
               exit 1
             fi
 
+            # ── Storefront (TanStack Start / Nitro SSR) ────────────
+            # One process serves BOTH brands; brand resolves from the Host
+            # header (see docs/STOREFRONT_DEPLOYMENT.md). Build output is the
+            # Nitro server in apps/storefront/.output (gitignored, so rebuild
+            # from clean every deploy like the landing .next above).
+            echo "--- Installing storefront dependencies"
+            cd apps/storefront
+            npm install
+
+            echo "--- Building storefront app (.output)"
+            rm -rf .output
+            npm run build
+
+            cd ../..
+
+            echo "--- Zero-downtime reload storefront"
+            pm2 reload pixie-girl-storefront || pm2 start ecosystem.config.js --only pixie-girl-storefront --env production
+
+            echo "--- Saving PM2 process list"
+            pm2 save
+
+            echo "--- Health check storefront"
+            HEALTHY=0
+            for i in $(seq 1 10); do
+              if curl -sf "http://localhost:3002" > /dev/null; then
+                echo "Storefront health check passed on attempt $i ✓"
+                HEALTHY=1
+                break
+              fi
+              echo "  attempt $i/10 — not ready, waiting 3s..."
+              sleep 3
+            done
+
+            if [ "$HEALTHY" -ne 1 ]; then
+              echo "Storefront health check FAILED"
+              pm2 list || true
+              pm2 logs pixie-girl-storefront --lines 40 --nostream || true
+              exit 1
+            fi
+
             echo "Production deploy complete ✓"

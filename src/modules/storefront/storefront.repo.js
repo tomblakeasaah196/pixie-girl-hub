@@ -17,6 +17,61 @@ const t = (brand, tbl) => {
   return `${brand}.${tbl}`;
 };
 
+// SINGLE SOURCE for the storefront "from" price (lowest variant price) in BOTH
+// currencies. The expression MIRRORS catalogue/styled_variants.repo.listVariants
+// (effective_price_ngn/usd) so list cards and the detail page never diverge — we
+// keep it in one place rather than re-deriving pricing per query. Used as a
+// LATERAL correlated on the outer `s` (a styled_products row aliased `s`).
+function fromPriceLateral(brand) {
+  return `LEFT JOIN LATERAL (
+    SELECT min(COALESCE(v.price_override_ngn,
+                 s.retail_price_ngn + c.premium_ngn + stt.premium_ngn
+                   + COALESCE(ls.premium_ngn, 0))) AS from_price_ngn,
+           min(CASE WHEN s.retail_price_usd IS NULL AND v.price_override_usd IS NULL
+                    THEN NULL
+                    ELSE COALESCE(v.price_override_usd,
+                           s.retail_price_usd + COALESCE(c.premium_usd, 0)
+                             + COALESCE(stt.premium_usd, 0)
+                             + COALESCE(ls.premium_usd, 0))
+               END) AS from_price_usd
+      FROM ${t(brand, "styled_product_variants")} v
+      JOIN ${t(brand, "styled_product_colours")} c ON c.colour_id = v.colour_id
+      JOIN ${t(brand, "styled_size_tiers")} stt ON stt.size_code = v.size_code
+      LEFT JOIN ${t(brand, "styled_lace_sizes")} ls ON ls.lace_code = v.lace_code
+     WHERE v.styled_id = s.styled_id AND v.is_deleted = false AND v.is_active = true
+       AND c.is_active = true
+  ) fp ON true`;
+}
+
+// Resolve a live, storefront-visible styled product id from its slug. Pricing
+// and the rest of the detail are then composed from the catalogue repos
+// (styled_variants.listVariants etc.) so there's no duplicated price math here.
+async function getLiveStyledIdBySlug({ brand, slug }) {
+  const { rows } = await query(
+    `SELECT styled_id FROM ${t(brand, "styled_products")}
+      WHERE slug = $1 AND status = 'live'
+        AND is_visible_storefront = true AND is_deleted = false`,
+    [slug],
+  );
+  return rows[0]?.styled_id || null;
+}
+
+// Styled-ONLY gallery (never base/factory shots), incl. per-colour shots so the
+// product page can swap images on swatch select. Mirrors the rule the campaign
+// detail enforces. Display data only — no pricing.
+async function listStyledGallery({ brand, styled_id }) {
+  const { rows } = await query(
+    `SELECT image_id, styled_colour_id,
+            COALESCE(cdn_url, file_path) AS url,
+            alt_text, is_primary, display_order
+       FROM ${t(brand, "product_images")}
+      WHERE styled_id = $1
+      ORDER BY is_primary DESC, display_order ASC NULLS LAST`,
+    [styled_id],
+  );
+  return rows;
+}
+
 // ── Public catalogue ───────────────────────────────────────
 // The website only ever shows STYLED products (storefront skins over a base),
 // never base products themselves — a base is the China-origin, stock-bearing
@@ -50,21 +105,17 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
   const offset = (page - 1) * page_size;
   const { rows } = await query(
     `SELECT s.styled_id, s.styled_code, s.name, s.slug, s.short_description,
-            s.retail_price_ngn, s.compare_at_price_ngn, s.published_at,
-            COALESCE(
-              (SELECT min(COALESCE(v.price_override_ngn,
-                          s.retail_price_ngn + c.premium_ngn + st.premium_ngn))
-                 FROM ${t(brand, "styled_product_variants")} v
-                 JOIN ${t(brand, "styled_product_colours")} c ON c.colour_id = v.colour_id
-                 JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = v.size_code
-                WHERE v.styled_id = s.styled_id AND v.is_active = true),
-              s.retail_price_ngn
-            ) AS from_price_ngn,
+            s.retail_price_ngn, s.retail_price_usd, s.compare_at_price_ngn,
+            s.published_at,
+            COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+            COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
             (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
               WHERE img.styled_id = s.styled_id
-              ORDER BY img.is_primary DESC, img.display_order LIMIT 1) AS primary_image_url
+              ORDER BY img.is_primary DESC, img.display_order LIMIT 1)
+              AS cover_image_url
        FROM ${t(brand, "styled_products")} s
        LEFT JOIN ${t(brand, "product_categories")} cat ON cat.category_id = s.category_id
+       ${fromPriceLateral(brand)}
       ${whereSql}
       ORDER BY s.published_at DESC NULLS LAST, s.name
       LIMIT $${i++} OFFSET $${i}`,
@@ -73,75 +124,28 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
   return { data: rows, page, page_size, total: countRows[0].total };
 }
 
-async function getProductBySlug({ brand, slug }) {
+// Per-colour image galleries for the detail page (swatch → swap images).
+// Display data only; pricing comes from listVariants (catalogue). Returns one
+// row per active colour with its ordered images.
+async function listColourGalleries({ brand, styled_id }) {
   const { rows } = await query(
-    `SELECT s.* FROM ${t(brand, "styled_products")} s
-      WHERE s.slug = $1 AND s.status = 'live'
-        AND s.is_visible_storefront = true AND s.is_deleted = false`,
-    [slug],
+    `SELECT c.colour_id, c.name, c.hex, c.video_url, c.external_video_url,
+            c.display_order, c.is_default,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                        'image_id', pi.image_id,
+                        'url', COALESCE(pi.cdn_url, pi.file_path),
+                        'alt_text', pi.alt_text, 'display_order', pi.display_order)
+                        ORDER BY pi.is_primary DESC, pi.display_order)
+                 FROM ${t(brand, "product_images")} pi
+                WHERE pi.styled_colour_id = c.colour_id),
+              '[]'::json) AS images
+       FROM ${t(brand, "styled_product_colours")} c
+      WHERE c.styled_id = $1 AND c.is_active = true
+      ORDER BY c.display_order, c.name`,
+    [styled_id],
   );
-  if (!rows[0]) return null;
-  const product = rows[0];
-
-  // Colours each carry their own gallery (many pictures) + optional video.
-  const [colours, variants, images] = await Promise.all([
-    query(
-      `SELECT c.colour_id, c.name, c.hex, c.premium_ngn, c.video_url,
-              c.external_video_url, c.display_order, c.is_default,
-              COALESCE(
-                (SELECT json_agg(json_build_object(
-                          'image_id', pi.image_id, 'cdn_url', pi.cdn_url,
-                          'alt_text', pi.alt_text, 'display_order', pi.display_order)
-                          ORDER BY pi.is_primary DESC, pi.display_order)
-                   FROM ${t(brand, "product_images")} pi
-                  WHERE pi.styled_colour_id = c.colour_id),
-                '[]'::json) AS images
-         FROM ${t(brand, "styled_product_colours")} c
-        WHERE c.styled_id = $1 AND c.is_active = true
-        ORDER BY c.display_order, c.name`,
-      [product.styled_id],
-    ),
-    query(
-      `SELECT v.styled_variant_id, v.colour_id, v.size_code, v.lace_code, v.sku,
-              v.compare_at_price_ngn, v.is_default,
-              c.name AS colour_name, c.hex AS colour_hex,
-              st.label AS size_label, st.display_order AS size_order,
-              ls.label AS lace_label, ls.display_order AS lace_order,
-              COALESCE(v.price_override_ngn,
-                       sp.retail_price_ngn + c.premium_ngn + st.premium_ngn
-                         + COALESCE(ls.premium_ngn, 0)) AS price_ngn
-         FROM ${t(brand, "styled_product_variants")} v
-         JOIN ${t(brand, "styled_product_colours")} c ON c.colour_id = v.colour_id
-         JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = v.size_code
-         LEFT JOIN ${t(brand, "styled_lace_sizes")} ls ON ls.lace_code = v.lace_code
-         JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = v.styled_id
-        WHERE v.styled_id = $1 AND v.is_active = true AND c.is_active = true
-        ORDER BY c.display_order, st.display_order, ls.display_order`,
-      [product.styled_id],
-    ),
-    query(
-      `SELECT image_id, styled_colour_id, cdn_url, alt_text, is_primary, display_order
-         FROM ${t(brand, "product_images")}
-        WHERE styled_id = $1 ORDER BY is_primary DESC, display_order`,
-      [product.styled_id],
-    ),
-  ]);
-
-  const prices = variants.rows
-    .map((v) => Number(v.price_ngn))
-    .filter((n) => !Number.isNaN(n));
-  const price_range = prices.length
-    ? { min: Math.min(...prices), max: Math.max(...prices) }
-    : null;
-
-  return {
-    ...product,
-    colours: colours.rows,
-    variants: variants.rows,
-    images: images.rows,
-    price_range,
-    from_price_ngn: price_range ? price_range.min : product.retail_price_ngn,
-  };
+  return rows;
 }
 
 async function listCategories({ brand }) {
@@ -166,12 +170,16 @@ async function getCollectionBySlug({ brand, slug }) {
   // web). DISTINCT ON keeps one row per styled product.
   const { rows: products } = await query(
     `SELECT DISTINCT ON (s.styled_id)
-            s.styled_id, s.name, s.slug, s.short_description, s.retail_price_ngn,
+            s.styled_id, s.name, s.slug, s.short_description,
+            s.retail_price_ngn, s.retail_price_usd,
+            COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+            COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
             (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
               WHERE img.styled_id = s.styled_id
-              ORDER BY img.is_primary DESC, img.display_order LIMIT 1) AS primary_image_url
+              ORDER BY img.is_primary DESC, img.display_order LIMIT 1) AS cover_image_url
        FROM ${t(brand, "product_collection_members")} m
        JOIN ${t(brand, "styled_products")} s ON s.styled_id = m.styled_id
+       ${fromPriceLateral(brand)}
       WHERE m.collection_id = $1 AND m.styled_id IS NOT NULL
         AND s.status = 'live' AND s.is_visible_storefront = true
         AND s.is_deleted = false
@@ -213,6 +221,151 @@ async function listBundles({ brand }) {
       ORDER BY b.display_order, b.display_name`,
   );
   return rows;
+}
+
+// Browse-by-shade: list active shades (000062) with a live-product count so the
+// shades index can show "N styles" per shade. Soft-deleted shades excluded.
+async function listShades({ brand }) {
+  const { rows } = await query(
+    `SELECT sh.shade_id, sh.shade_code, sh.name, sh.slug, sh.short_description,
+            sh.cover_image_url, sh.display_order,
+            (SELECT count(*)::int FROM ${t(brand, "styled_products")} s
+              WHERE s.shade_id = sh.shade_id AND s.status = 'live'
+                AND s.is_visible_storefront = true AND s.is_deleted = false)
+              AS product_count
+       FROM ${t(brand, "styled_shades")} sh
+      WHERE sh.is_active = true AND sh.deleted_at IS NULL
+      ORDER BY sh.display_order, sh.name`,
+  );
+  return rows;
+}
+
+// A shade page: the shade itself + every LIVE styled product carrying its
+// shade_id (one shade per styled product, per 000062).
+async function getShadeBySlug({ brand, slug }) {
+  const { rows } = await query(
+    `SELECT * FROM ${t(brand, "styled_shades")}
+      WHERE slug = $1 AND is_active = true AND deleted_at IS NULL`,
+    [slug],
+  );
+  if (!rows[0]) return null;
+  const shade = rows[0];
+  const { rows: products } = await query(
+    `SELECT s.styled_id, s.name, s.slug, s.short_description,
+            s.retail_price_ngn, s.retail_price_usd,
+            COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+            COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
+            (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
+              WHERE img.styled_id = s.styled_id
+              ORDER BY img.is_primary DESC, img.display_order LIMIT 1)
+              AS cover_image_url
+       FROM ${t(brand, "styled_products")} s
+       ${fromPriceLateral(brand)}
+      WHERE s.shade_id = $1 AND s.status = 'live'
+        AND s.is_visible_storefront = true AND s.is_deleted = false
+      ORDER BY s.published_at DESC NULLS LAST, s.name`,
+    [shade.shade_id],
+  );
+  return { ...shade, products };
+}
+
+// Browse-by-collection index (the detail-by-slug lives in getCollectionBySlug).
+async function listCollections({ brand }) {
+  const { rows } = await query(
+    `SELECT collection_id, name, slug, description, hero_image_url,
+            display_image_url, display_order
+       FROM ${t(brand, "product_collections")}
+      WHERE is_active = true AND is_visible_storefront = true
+      ORDER BY display_order, name`,
+  );
+  return rows;
+}
+
+// Single live bundle by its code (bundle_offers has no slug — bundle_code is the
+// stable, human-readable identifier used in the URL). Same shape as listBundles.
+async function getBundleByCode({ brand, code }) {
+  const { rows } = await query(
+    `SELECT b.bundle_id, b.bundle_code, b.display_name, b.description,
+            b.pricing_model, b.bundle_price_ngn, b.discount_value,
+            b.hero_image_url, b.display_order,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                        'product_id', bp.product_id, 'variant_id', bp.variant_id,
+                        'styled_id', bp.styled_id,
+                        'name', sp.name, 'slug', sp.slug,
+                        'price_ngn', sp.retail_price_ngn,
+                        'image_url', (SELECT img.cdn_url
+                                        FROM ${t(brand, "product_images")} img
+                                       WHERE img.styled_id = sp.styled_id
+                                       ORDER BY img.is_primary DESC, img.display_order
+                                       LIMIT 1),
+                        'quantity', bp.quantity, 'role', bp.role)
+                        ORDER BY bp.display_order)
+                 FROM ${t(brand, "bundle_offer_products")} bp
+                 LEFT JOIN ${t(brand, "styled_products")} sp
+                        ON sp.styled_id = bp.styled_id
+                WHERE bp.bundle_id = b.bundle_id),
+              '[]'::json) AS components
+       FROM ${t(brand, "bundle_offers")} b
+      WHERE b.bundle_code = $1
+        AND b.is_visible_storefront = true AND b.is_active = true
+        AND (b.valid_from IS NULL OR b.valid_from <= now())
+        AND (b.valid_to IS NULL OR b.valid_to >= now())`,
+    [code],
+  );
+  return rows[0] || null;
+}
+
+// Published Storefront Studio config the website renders at SSR (theme tokens,
+// navigation, pages, active popups). PUBLISHED rows only, public-safe columns
+// only — drafts/internal fields never leave the building. Studio admin (which
+// edits drafts) is untouched; this is the read side the storefront consumes.
+// Shared tables keyed by business=brand. Optional `path` narrows to one page.
+async function getPublishedSite({ brand, path }) {
+  const [theme, nav, pages, popups] = await Promise.all([
+    query(
+      `SELECT tokens FROM shared.storefront_themes
+        WHERE business = $1 AND status = 'published' LIMIT 1`,
+      [brand],
+    ),
+    query(
+      `SELECT header_items, footer_columns, socials
+         FROM shared.storefront_navigation
+        WHERE business = $1 AND status = 'published' LIMIT 1`,
+      [brand],
+    ),
+    path
+      ? query(
+          `SELECT page_key, template_key, url_path, meta_title,
+                  meta_description, og_image_url, slots
+             FROM shared.storefront_pages
+            WHERE business = $1 AND status = 'published' AND url_path = $2`,
+          [brand, path],
+        )
+      : query(
+          `SELECT page_key, template_key, url_path, meta_title,
+                  meta_description, og_image_url, slots
+             FROM shared.storefront_pages
+            WHERE business = $1 AND status = 'published'
+            ORDER BY page_key`,
+          [brand],
+        ),
+    query(
+      `SELECT popup_key, trigger_type, trigger_value, audience, content,
+              display_rules, display_order
+         FROM shared.storefront_popups
+        WHERE business = $1 AND status = 'published' AND is_active = true
+        ORDER BY display_order`,
+      [brand],
+    ),
+  ]);
+
+  return {
+    theme: theme.rows[0] || null, // { tokens } | null → website falls back to baked tokens
+    navigation: nav.rows[0] || null,
+    pages: pages.rows,
+    popups: popups.rows,
+  };
 }
 
 async function getContentPost({ brand, type, slug }) {
@@ -378,10 +531,17 @@ async function nearbyStylists({ city, limit = 3 }) {
 
 module.exports = {
   listProducts,
-  getProductBySlug,
+  getLiveStyledIdBySlug,
+  listStyledGallery,
+  listColourGalleries,
   listCategories,
   getCollectionBySlug,
+  listShades,
+  getShadeBySlug,
+  listCollections,
   listBundles,
+  getBundleByCode,
+  getPublishedSite,
   getContentPost,
   findContactByEmailOrPhone,
   createContact,

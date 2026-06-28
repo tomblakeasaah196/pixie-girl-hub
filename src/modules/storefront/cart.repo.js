@@ -83,11 +83,46 @@ async function findCartItemByVariant({ client, cart_id, variant_id }) {
   return rows[0] || null;
 }
 
+// Match an existing line by its SELLABLE TARGET so re-adding the same thing
+// bumps quantity instead of creating a duplicate row. A storefront line is one
+// of: a bundle, a styled variant (distinguished by the unstyled flag), or a
+// base product variant (legacy/auth cart).
+async function findCartItemByTarget({ client, cart_id, target = {} }) {
+  if (target.bundle_id) {
+    const { rows } = await ex(client)(
+      `SELECT * FROM shared.cart_items WHERE cart_id = $1 AND bundle_id = $2`,
+      [cart_id, target.bundle_id],
+    );
+    return rows[0] || null;
+  }
+  if (target.styled_variant_id) {
+    const { rows } = await ex(client)(
+      `SELECT * FROM shared.cart_items
+        WHERE cart_id = $1 AND styled_variant_id = $2 AND unstyled = $3`,
+      [cart_id, target.styled_variant_id, !!target.unstyled],
+    );
+    return rows[0] || null;
+  }
+  if (target.variant_id) {
+    return findCartItemByVariant({
+      client,
+      cart_id,
+      variant_id: target.variant_id,
+    });
+  }
+  return null;
+}
+
 async function upsertCartItem({ client, item }) {
-  const existing = await findCartItemByVariant({
+  const existing = await findCartItemByTarget({
     client,
     cart_id: item.cart_id,
-    variant_id: item.variant_id,
+    target: {
+      styled_variant_id: item.styled_variant_id,
+      bundle_id: item.bundle_id,
+      variant_id: item.variant_id,
+      unstyled: item.unstyled,
+    },
   });
   if (existing) {
     const { rows } = await ex(client)(
@@ -99,15 +134,19 @@ async function upsertCartItem({ client, item }) {
   }
   const { rows } = await ex(client)(
     `INSERT INTO shared.cart_items
-       (cart_id, business, product_id, variant_id, quantity,
-        product_name_snapshot, variant_label_snapshot, thumbnail_url_snapshot,
-        unit_price_ngn, unit_display_price, display_currency, custom_spec)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+       (cart_id, business, product_id, variant_id, styled_variant_id, bundle_id,
+        unstyled, quantity, product_name_snapshot, variant_label_snapshot,
+        thumbnail_url_snapshot, unit_price_ngn, unit_display_price,
+        display_currency, custom_spec)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
     [
       item.cart_id,
       item.business,
-      item.product_id,
+      item.product_id || null,
       item.variant_id || null,
+      item.styled_variant_id || null,
+      item.bundle_id || null,
+      item.unstyled || false,
       item.quantity,
       item.product_name_snapshot,
       item.variant_label_snapshot || null,
@@ -251,6 +290,7 @@ module.exports = {
   listCartItems,
   findCartItem,
   findCartItemByVariant,
+  findCartItemByTarget,
   upsertCartItem,
   updateCartItemQuantity,
   removeCartItem,

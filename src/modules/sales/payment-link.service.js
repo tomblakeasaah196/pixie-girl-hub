@@ -76,6 +76,30 @@ async function campaignFxRate({ brand, order }) {
   }
 }
 
+// Storefront orders aren't tied to a campaign, so they have no ngn_per_usd_rate.
+// They settle foreign currency at the brand's catalogue rate — the SAME rate the
+// website displayed and recorded on the order (sales_orders.fx_rate_used). This
+// is the storefront analogue of campaignFxRate.
+async function catalogueFxRate({ brand }) {
+  try {
+    const { rows } = await query(
+      `SELECT usd_fx_rate FROM ${brand}.catalogue_config WHERE singleton = true`,
+    );
+    const rate = rows[0] && rows[0].usd_fx_rate;
+    return rate ? Number(rate) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Resolve the NGN→foreign settlement rate: a campaign order uses the campaign's
+// static rate; a storefront (non-campaign) order uses the brand catalogue rate.
+async function settlementFxRate({ brand, order }) {
+  const campaignRate = await campaignFxRate({ brand, order });
+  if (campaignRate && campaignRate > 0) return campaignRate;
+  return catalogueFxRate({ brand });
+}
+
 async function initOnGateway({
   provider,
   credentials,
@@ -212,7 +236,8 @@ async function createPaymentLink({
   const settleCurrency = String(currency || "NGN").toUpperCase();
   let chargeAmount = amountStr;
   if (settleCurrency !== "NGN") {
-    const rate = await campaignFxRate({ brand, order });
+    // Campaign order → campaign rate; storefront order → catalogue rate.
+    const rate = await settlementFxRate({ brand, order });
     if (!rate || rate <= 0)
       throw new AppError(
         "NO_FX_RATE",

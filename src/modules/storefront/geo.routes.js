@@ -18,6 +18,7 @@
 const express = require("express");
 const { VALID } = require("../../config/brands");
 const service = require("./geo.service");
+const zonesService = require("../logistics/zones.service");
 const { AppError } = require("../../utils/errors");
 
 const router = express.Router();
@@ -64,6 +65,32 @@ router.get("/pickup-address", async (req, res, next) => {
   try {
     const brand = resolveBrand(req);
     res.json({ data: await service.pickupAddress({ brand }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delivery fee preview before checkout (§5.5): thin wrapper over the logistics
+// zone quote. Resolves by zone_code (NG state/LGA) or ISO-2 country_code + qty —
+// no geocoding. Used by the cart/checkout to show the fee live as the buyer
+// fills Country/State/City.
+router.get("/delivery/quote", async (req, res, next) => {
+  try {
+    const brand = resolveBrand(req);
+    const zoneCode = req.query.zone_code || req.query.country_code || null;
+    if (!zoneCode)
+      throw new AppError(
+        "ZONE_REQUIRED",
+        "zone_code or country_code is required",
+        400,
+      );
+    const qty = Math.max(1, parseInt(req.query.qty || "1", 10));
+    const quote = await zonesService.quote({
+      brand,
+      country_code: zoneCode,
+      qty,
+    });
+    res.json({ data: quote });
   } catch (err) {
     next(err);
   }

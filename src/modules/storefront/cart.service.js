@@ -13,9 +13,14 @@
 "use strict";
 
 const repo = require("./cart.repo");
-const { transaction } = require("../../config/database");
+const { transaction, query } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { VALID } = require("../../config/brands");
+// Reuse the catalogue composers for the styled snapshot price — never re-derive
+// pricing here. (Snapshots are display-only; checkout re-prices server-side.)
+const styledRepo = require("../catalogue/styled.repo");
+const styledVariantsRepo = require("../catalogue/styled_variants.repo");
+const bundleService = require("../retention/bundle.service");
 
 function assertBrand(business) {
   if (!VALID.has(business))
@@ -69,7 +74,7 @@ async function addItem({ business, cart_id, item }) {
     throw new NotFoundError("Cart");
 
   // Validate product/variant exists in this brand's catalogue.
-  const { query } = require("../../config/database");
+  //const { query } = require("../../config/database");
   const { rows: variants } = await query(
     `SELECT pv.variant_id, pv.price_ngn, p.product_name, pv.variant_label, pv.thumbnail_url
        FROM ${business}.product_variants pv
@@ -103,6 +108,134 @@ async function addItem({ business, cart_id, item }) {
       custom_spec: item.custom_spec || null,
     },
   });
+  await repo.updateCart({
+    cart_id,
+    patch: { last_interaction_at: new Date().toISOString() },
+  });
+  return cartItem;
+}
+
+/**
+ * Storefront add-to-cart: accepts a STYLED variant, a BUNDLE, or a base product.
+ * Snapshots name/label/thumbnail/price at add time (re-priced at checkout). The
+ * styled price comes from the catalogue composer (listVariants), not re-derived.
+ */
+async function addStorefrontItem({
+  business,
+  cart_id,
+  item,
+  display_currency = "NGN",
+}) {
+  assertBrand(business);
+  const cart = await repo.findCartById({ id: cart_id });
+  if (!cart || cart.business !== business || cart.status !== "active")
+    throw new NotFoundError("Cart");
+  const cur = String(display_currency || "NGN").toUpperCase();
+  const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+
+  let line;
+  if (item.bundle_id) {
+    const { rows } = await query(
+      `SELECT bundle_id, display_name, bundle_price_ngn, hero_image_url
+         FROM ${business}.bundle_offers
+        WHERE bundle_id = $1 AND is_active = true AND is_visible_storefront = true
+          AND (valid_from IS NULL OR valid_from <= now())
+          AND (valid_to IS NULL OR valid_to >= now())`,
+      [item.bundle_id],
+    );
+    const b = rows[0];
+    if (!b)
+      throw new AppError(
+        "BUNDLE_NOT_FOUND",
+        "This bundle is no longer available",
+        404,
+      );
+    // Snapshot the DECORATED effective price (correct for every pricing model,
+    // not just fixed_bundle_price). Re-priced at checkout regardless.
+    const decorated = await bundleService
+      .getBundle({ brand: business, id: b.bundle_id })
+      .catch(() => null);
+    line = {
+      cart_id,
+      business,
+      bundle_id: b.bundle_id,
+      quantity: qty,
+      product_name_snapshot: b.display_name,
+      thumbnail_url_snapshot: b.hero_image_url || null,
+      unit_price_ngn:
+        decorated && decorated.effective_price_ngn != null
+          ? decorated.effective_price_ngn
+          : b.bundle_price_ngn || 0,
+      unit_display_price: null,
+      display_currency: cur,
+    };
+  } else if (item.styled_variant_id) {
+    const { rows: r0 } = await query(
+      `SELECT styled_id FROM ${business}.styled_product_variants
+        WHERE styled_variant_id = $1 AND is_active = true AND is_deleted = false`,
+      [item.styled_variant_id],
+    );
+    if (!r0[0])
+      throw new AppError(
+        "VARIANT_NOT_FOUND",
+        "This item is no longer available",
+        404,
+      );
+    const styled_id = r0[0].styled_id;
+    const [variants, styled] = await Promise.all([
+      styledVariantsRepo.listVariants({ brand: business, styled_id }),
+      styledRepo.getById({ brand: business, id: styled_id }),
+    ]);
+    const v = variants.find(
+      (x) => x.styled_variant_id === item.styled_variant_id,
+    );
+    if (!v || !styled || styled.is_deleted || styled.status !== "live")
+      throw new AppError(
+        "VARIANT_NOT_FOUND",
+        "This item is no longer available",
+        404,
+      );
+    const unstyled = !!item.unstyled;
+    const ngn = unstyled
+      ? Number(styled.retail_price_ngn || 0)
+      : Number(v.effective_price_ngn || 0);
+    const usd = unstyled
+      ? styled.retail_price_usd === null
+        ? styled.retail_price_usd === undefined
+          ? null
+          : Number(styled.retail_price_usd)
+        : Number(styled.retail_price_usd)
+      : v.effective_price_usd === null
+        ? v.effective_price_usd === undefined
+          ? null
+          : Number(v.effective_price_usd)
+        : Number(v.effective_price_usd);
+    const label = unstyled
+      ? [v.colour_name, v.size_label, "Unstyled"].filter(Boolean).join(" · ")
+      : [v.colour_name, v.size_label, v.lace_label || v.lace_code]
+          .filter(Boolean)
+          .join(" · ");
+    line = {
+      cart_id,
+      business,
+      styled_variant_id: item.styled_variant_id,
+      unstyled,
+      quantity: qty,
+      product_name_snapshot: styled.name,
+      variant_label_snapshot: label || null,
+      thumbnail_url_snapshot: styled.primary_image_url || null,
+      unit_price_ngn: ngn,
+      unit_display_price: cur === "USD" ? usd : null,
+      display_currency: cur,
+    };
+  } else if (item.product_id || item.variant_id) {
+    // Base product line — reuse the existing variant-validated path.
+    return addItem({ business, cart_id, item });
+  } else {
+    throw new AppError("CART_ITEM_INVALID", "Nothing to add to the cart", 422);
+  }
+
+  const cartItem = await repo.upsertCartItem({ item: line });
   await repo.updateCart({
     cart_id,
     patch: { last_interaction_at: new Date().toISOString() },
@@ -233,7 +366,7 @@ async function listWishlist({ business, contact_id }) {
 async function addToWishlist({ business, contact_id, item }) {
   assertBrand(business);
   // Confirm variant exists
-  const { query } = require("../../config/database");
+  //const { query } = require("../../config/database");
   const { rows } = await query(
     `SELECT pv.variant_id, pv.price_ngn, p.product_name, pv.variant_label, pv.thumbnail_url
        FROM ${business}.product_variants pv
@@ -277,6 +410,7 @@ module.exports = {
   getCart,
   getOrCreateCart,
   addItem,
+  addStorefrontItem,
   updateItem,
   removeItem,
   clearCart,

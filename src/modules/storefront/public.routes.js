@@ -1,6 +1,8 @@
 /**
  * Public catalogue + storefront-analytics endpoints (no auth).
- * Mounted at /api/public/catalogue. Brand from X-Brand-Context / ?brand.
+ * Mounted at BOTH /api/public/catalogue (legacy) and /api/public/storefront
+ * (the path the Storefront Website calls — alongside the geo router, whose
+ * paths don't overlap). Brand from X-Brand-Context / ?brand.
  */
 
 "use strict";
@@ -15,8 +17,17 @@ const router = express.Router();
 router.get("/products", controller.listProducts);
 router.get("/products/:slug", controller.getProduct);
 router.get("/categories", controller.listCategories);
-router.get("/bundles", controller.listBundles);
+// Browse-by-shade (000062) — index + shade page with its styled products.
+router.get("/shades", controller.listShades);
+router.get("/shades/:slug", controller.getShade);
+// Collections — index + collection page (detail keeps its existing path).
+router.get("/collections", controller.listCollections);
 router.get("/collections/:slug", controller.getCollection);
+// Bundles — index + bundle detail (":slug" === bundle_code).
+router.get("/bundles", controller.listBundles);
+router.get("/bundles/:slug", controller.getBundle);
+// Published Studio config for the SSR shell (theme/nav/pages/popups).
+router.get("/site", controller.getSite);
 router.get("/content/:type/:slug", controller.getContent);
 
 // Analytics ingestion (B-7)

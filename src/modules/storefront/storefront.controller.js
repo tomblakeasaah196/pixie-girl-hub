@@ -50,8 +50,45 @@ async function getCollection(req, res) {
   });
 }
 
+async function listShades(req, res) {
+  res.json({ data: await service.listShades({ brand: brandHint(req) }) });
+}
+
+async function getShade(req, res) {
+  res.json({
+    data: await service.getShade({
+      brand: brandHint(req),
+      slug: req.params.slug,
+    }),
+  });
+}
+
+async function listCollections(req, res) {
+  res.json({ data: await service.listCollections({ brand: brandHint(req) }) });
+}
+
 async function listBundles(req, res) {
   res.json({ data: await service.listBundles({ brand: brandHint(req) }) });
+}
+
+async function getBundle(req, res) {
+  res.json({
+    data: await service.getBundle({
+      brand: brandHint(req),
+      slug: req.params.slug,
+    }),
+  });
+}
+
+// Published Studio config for the SSR shell (theme tokens, nav, pages, popups).
+// Optional ?path narrows to one page. The website hydrates the shell from this.
+async function getSite(req, res) {
+  res.json({
+    data: await service.getSite({
+      brand: brandHint(req),
+      path: req.query.path || null,
+    }),
+  });
 }
 
 async function getContent(req, res) {
@@ -114,7 +151,12 @@ module.exports = {
   getProduct,
   listCategories,
   getCollection,
+  listShades,
+  getShade,
+  listCollections,
   listBundles,
+  getBundle,
+  getSite,
   getContent,
   submitOrderForm,
   startSession,

@@ -162,6 +162,15 @@ function BundleCard({
   const openCart = useCart((s) => s.openCart);
   const [opened, setOpened] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  // Head-size choice. The first option is the S anchor (premium 0). Selecting a
+  // size drives the price for the card, the modal and the cart line together.
+  const sizeOptions = bundle.size_options ?? [];
+  const [sizeCode, setSizeCode] = useState<string | undefined>(
+    sizeOptions[0]?.size_code,
+  );
+  const selectedSize =
+    sizeOptions.find((o) => o.size_code === sizeCode) ?? sizeOptions[0];
+  const hasSizes = sizeOptions.length > 1;
   const tease = state !== "live";
   const stockOut = (bundle.current_stock_snapshot ?? 1) <= 0;
   const showPrice = !tease;
@@ -173,22 +182,36 @@ function BundleCard({
   // In-stock delivery weeks set in the builder (undefined hides the line).
   const inStockDeliveryWeeks =
     deliveryWeeks != null && deliveryWeeks > 0 ? deliveryWeeks : undefined;
+  // Price at the chosen size = discounted-at-S bundle price + the size premium
+  // on every wig (S → 0). The "sum of parts" comparison is lifted by the same
+  // delta so the saving stays constant across sizes (the discount is on S).
+  const sizedBase =
+    selectedSize?.price_ngn ?? bundle.campaign_bundle_price_ngn ?? 0;
+  const sizeDelta =
+    (selectedSize?.premium_ngn ?? 0) * (bundle.total_units ?? 0);
   const finalPrice =
     stockOut && bundle.preorder_enabled
-      ? (bundle.preorder_price_ngn ?? bundle.campaign_bundle_price_ngn ?? 0)
-      : (bundle.campaign_bundle_price_ngn ?? 0);
-  const retailTotal = bundle.total_retail_ngn ?? null;
+      ? (bundle.preorder_price_ngn ?? sizedBase)
+      : sizedBase;
+  const baseRetail = bundle.total_retail_ngn ?? null;
+  const retailTotal = baseRetail != null ? baseRetail + sizeDelta : null;
   const savings =
-    bundle.total_savings_ngn ??
-    (retailTotal ? Math.max(0, retailTotal - finalPrice) : 0);
+    retailTotal != null
+      ? Math.max(0, retailTotal - finalPrice)
+      : (bundle.total_savings_ngn ?? 0);
 
   function addToCart() {
     if (stockOut && !bundle.preorder_enabled) return;
     add({
-      id: bundle.bundle_id,
+      id: hasSizes
+        ? `${bundle.bundle_id}:${selectedSize?.size_code}`
+        : bundle.bundle_id,
       type: "bundle",
       bundle_id: bundle.bundle_id,
+      size_code: selectedSize?.size_code,
       name: bundle.bundle_name,
+      variant_label:
+        hasSizes && selectedSize ? `Size ${selectedSize.label}` : undefined,
       image_url: bundle.bundle_hero_image_url || undefined,
       unit_price_ngn: finalPrice,
       retail_price_ngn: retailTotal || undefined,
@@ -330,6 +353,15 @@ function BundleCard({
                 You save {money(savings)}
               </div>
             )}
+            {hasSizes && (
+              <button
+                type="button"
+                onClick={() => setDetailOpen(true)}
+                className="mt-2 inline-flex items-center gap-1 text-[12px] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--accent-readable))] transition-colors"
+              >
+                Size: {selectedSize?.label} · choose
+              </button>
+            )}
           </div>
         ) : (
           <div className="mt-4 micro">Prices reveal at launch</div>
@@ -405,6 +437,9 @@ function BundleCard({
         state={state}
         stockOut={stockOut}
         preorderLeadWeeks={preorderLeadWeeks}
+        sizeOptions={sizeOptions}
+        sizeCode={selectedSize?.size_code}
+        onSizeChange={setSizeCode}
       />
     </motion.article>
   );

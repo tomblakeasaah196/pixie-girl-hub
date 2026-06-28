@@ -12,6 +12,9 @@ export interface CartItem {
   /** Styled product/colour/size SKU. Set for styled items; the server prices
    *  the line from the styled tables (styled_product_variants). */
   styled_variant_id?: string;
+  /** Head size for a BUNDLE line (S/M/L/XL). The server prices the bundle at
+   *  this size (discounted-at-S price + the size premium per wig). */
+  size_code?: string;
   name: string;
   /** Human-readable summary of the chosen options (e.g. "Small · HD Lace
    *  13x6"). Shown under the line name in the cart + checkout so the buyer

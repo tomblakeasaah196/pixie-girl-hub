@@ -26,7 +26,9 @@ const imageUpload = multer({
   limits: { fileSize: (config.MEDIA_MAX_FILE_SIZE_MB || 10) * 1024 * 1024 },
 });
 
-// ── v2: Bundles (catalogue-level) ──────────────────────────
+// ── v2: Bundles (READ-ONLY — single source of truth is Catalogue) ──
+// Bundles are authored in Catalogue → Bundles (retention). Campaigns only read
+// the Catalogue bundles and attach them by reference (see /:id/bundles/import).
 router.get(
   "/catalogue-bundles",
   requirePermission("sales_campaigns", "view"),
@@ -37,49 +39,10 @@ router.get(
   requirePermission("sales_campaigns", "view"),
   v2.listBundles,
 );
-router.post(
-  "/bundles",
-  requirePermission("sales_campaigns", "create"),
-  validator.validateBundleCreate,
-  v2.createBundle,
-);
 router.get(
   "/bundles/:id",
   requirePermission("sales_campaigns", "view"),
   v2.getBundle,
-);
-router.patch(
-  "/bundles/:id",
-  requirePermission("sales_campaigns", "edit"),
-  validator.validateBundleUpdate,
-  v2.updateBundle,
-);
-router.delete(
-  "/bundles/:id",
-  requirePermission("sales_campaigns", "delete"),
-  v2.archiveBundle,
-);
-router.post(
-  "/bundles/:id/duplicate",
-  requirePermission("sales_campaigns", "create"),
-  validator.validateDuplicateBundle,
-  v2.duplicateBundleHandler,
-);
-router.post(
-  "/bundles/:id/items",
-  requirePermission("sales_campaigns", "edit"),
-  validator.validateBundleItem,
-  v2.addBundleItem,
-);
-router.delete(
-  "/bundles/:id/items/:itemId",
-  requirePermission("sales_campaigns", "edit"),
-  v2.removeBundleItem,
-);
-router.patch(
-  "/bundles/:id/reorder",
-  requirePermission("sales_campaigns", "edit"),
-  v2.reorderBundleItems,
 );
 
 // ── v2: Ambassadors (CRM-level) ─────────────────────────────
@@ -271,12 +234,6 @@ router.post(
   requirePermission("sales_campaigns", "edit"),
   validator.validateAttachBundle,
   v2.attachCampaignBundle,
-);
-router.post(
-  "/:id/bundles/clone",
-  requirePermission("sales_campaigns", "edit"),
-  validator.validateCloneBundles,
-  v2.cloneBundles,
 );
 router.post(
   "/:id/bundles/import",

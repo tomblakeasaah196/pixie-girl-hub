@@ -91,6 +91,7 @@ export async function postCheckout(args: {
     bundle_id?: string;
     product_id?: string;
     styled_variant_id?: string;
+    size_code?: string;
     quantity: number;
     unit_price_ngn: number;
   }>;
@@ -184,6 +185,7 @@ export async function postQuote(args: {
     product_id?: string;
     styled_variant_id?: string;
     unstyled?: boolean;
+    size_code?: string;
     quantity: number;
   }>;
 }): Promise<CartQuote | null> {

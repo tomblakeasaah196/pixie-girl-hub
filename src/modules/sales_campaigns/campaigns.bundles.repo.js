@@ -1,10 +1,15 @@
 /**
  * Sales Campaigns v2 — Bundles repository.
  *
- * Bundles are first-class catalogue entities (per Faith: "Bundles live
- * in Catalogue, reusable across campaigns" + "one-off escape hatch").
- * Reads / writes are parameter-bound; the brand is whitelisted exactly
- * like campaigns.repo. No business logic here.
+ * SINGLE SOURCE OF TRUTH: bundles live ONLY in the Catalogue (retention
+ * `bundle_offers` + `bundle_offer_products`). A campaign merely REFERENCES a
+ * Catalogue bundle via `sales_campaign_bundles.bundle_id → bundle_offers`.
+ * There is no campaign-side mirror table anymore — every read below resolves
+ * components, prices, images and stock LIVE from the Catalogue, so an edit in
+ * Catalogue → Bundles reflects on the live campaign immediately, no re-import.
+ *
+ * Reads are parameter-bound; the brand is whitelisted exactly like
+ * campaigns.repo. No business logic here.
  */
 
 "use strict";
@@ -20,269 +25,113 @@ function ex(client) {
   return client ? client.query.bind(client) : query;
 }
 
-// ── product_bundles ──────────────────────────────────────
-const BUNDLE_COLS = [
-  "slug",
-  "name",
-  "description",
-  "hero_image_url",
-  "category_id",
-  "is_fixed_composition",
-  "default_per_item_discount_ngn",
-  "default_preorder_loss_pct",
-  "status",
-  "display_order",
-];
-
-async function listBundles({
-  client,
-  brand,
-  filters = {},
-  limit = 100,
-  offset = 0,
-}) {
-  const where = [];
-  const params = [];
-  let i = 1;
-  if (filters.status) {
-    where.push(`status = $${i++}`);
-    params.push(filters.status);
-  } else {
-    where.push(`status <> 'archived'`);
-  }
-  if (filters.q) {
-    where.push(`(name ILIKE $${i} OR slug ILIKE $${i})`);
-    params.push(`%${filters.q}%`);
-    i++;
-  }
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const run = ex(client);
-  const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "product_bundles")} ${whereSql}`,
-    params,
-  );
-  const { rows } = await run(
-    `SELECT * FROM ${t(brand, "product_bundles")} ${whereSql}
-      ORDER BY display_order ASC, created_at DESC
-      LIMIT $${i++} OFFSET $${i++}`,
-    [...params, limit, offset],
-  );
-  return {
-    data: rows,
-    meta: { total: c[0].total, has_more: offset + rows.length < c[0].total },
-  };
-}
-
-async function findBundle({ client, brand, id }) {
-  const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "product_bundles")} WHERE bundle_id = $1`,
-    [id],
-  );
-  return rows[0] || null;
-}
-
-async function findBundleBySlug({ client, brand, slug }) {
-  const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "product_bundles")} WHERE slug = $1`,
-    [slug],
-  );
-  return rows[0] || null;
-}
-
-async function createBundle({ client, brand, input, user_id }) {
-  const cols = [];
-  const placeholders = [];
-  const params = [];
-  let i = 1;
-  for (const col of BUNDLE_COLS) {
-    if (input[col] === undefined) continue;
-    cols.push(col);
-    placeholders.push(`$${i++}`);
-    params.push(input[col]);
-  }
-  cols.push("created_by");
-  placeholders.push(`$${i++}`);
-  params.push(user_id);
-  const { rows } = await ex(client)(
-    `INSERT INTO ${t(brand, "product_bundles")} (${cols.join(", ")})
-     VALUES (${placeholders.join(", ")}) RETURNING *`,
-    params,
-  );
-  return rows[0];
-}
-
-async function updateBundle({ client, brand, id, patch }) {
-  const sets = [];
-  const params = [];
-  let i = 1;
-  for (const col of BUNDLE_COLS) {
-    if (patch[col] === undefined) continue;
-    sets.push(`${col} = $${i++}`);
-    params.push(patch[col]);
-  }
-  if (sets.length === 0) return findBundle({ client, brand, id });
-  params.push(id);
-  const { rows } = await ex(client)(
-    `UPDATE ${t(brand, "product_bundles")} SET ${sets.join(", ")}
-      WHERE bundle_id = $${i} RETURNING *`,
-    params,
-  );
-  return rows[0] || null;
-}
-
-async function deleteBundle({ client, brand, id }) {
-  const { rowCount } = await ex(client)(
-    `UPDATE ${t(brand, "product_bundles")} SET status='archived' WHERE bundle_id = $1`,
-    [id],
-  );
-  return rowCount > 0;
-}
-
-// ── bundle_items ─────────────────────────────────────────
+// ── bundle components (read LIVE from the Catalogue SSOT) ─────────────────
+// Resolve a Catalogue bundle's components (bundle_offer_products) to the row
+// shape the public checkout/quote + the admin detail modal already consume.
+// Mirrors retention `bundle.repo.listComponents`, adding the base
+// variant/product the checkout needs to turn a styled component into a
+// sellable order line. The column names are kept identical to the previous
+// product_bundle_items query so callers (campaigns.public.service) are
+// unchanged: bundle_item_id, styled_id/styled_slug/styled_name/styled_base_*,
+// product_id, variant_id, quantity, unit_price_ngn, display_name, hero_image_url.
 async function listBundleItems({ client, brand, bundle_id }) {
-  // Image lookup follows the storefront fallback chain: styled gallery first
-  // (the styled product is what the buyer is shopping for), then the pinned
-  // variant, then the base product's main image. Each LATERAL keeps the join
-  // single-row so the bundle item never duplicates.
   const { rows } = await ex(client)(
-    `SELECT bi.*,
-            COALESCE(sp.name, p.name) AS display_name,
-            p.name                    AS product_name,
-            sp.name                   AS styled_name,
-            sp.slug                   AS styled_slug,
-            sp.base_variant_id        AS styled_base_variant_id,
-            sp.base_product_id        AS styled_base_product_id,
-            pv.sku                    AS variant_sku,
+    `SELECT bop.bundle_product_id      AS bundle_item_id,
+            bop.bundle_id,
+            bop.product_id,
+            bop.variant_id,
+            bop.styled_id,
+            bop.quantity,
+            bop.display_order           AS display_position,
+            COALESCE(sp.name, p.name)   AS display_name,
+            p.name                      AS product_name,
+            sp.name                     AS styled_name,
+            sp.slug                     AS styled_slug,
+            sp.base_variant_id          AS styled_base_variant_id,
+            sp.base_product_id          AS styled_base_product_id,
+            pv.sku                      AS variant_sku,
             COALESCE(
               sp.retail_price_ngn,
               pv.price_storefront_ngn,
               (SELECT dv.price_storefront_ngn
                  FROM ${t(brand, "product_variants")} dv
-                WHERE dv.product_id = bi.product_id
+                WHERE dv.product_id = bop.product_id
                 ORDER BY dv.is_default DESC, dv.display_order
                 LIMIT 1)
-            )                         AS unit_price_ngn,
+            )                           AS unit_price_ngn,
             COALESCE(
               pi_styled.image_url,
               pi_variant.image_url,
               pi_product.image_url
-            )                         AS hero_image_url
-       FROM ${t(brand, "product_bundle_items")} bi
-       LEFT JOIN ${t(brand, "products")} p          ON p.product_id  = bi.product_id
-       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = bi.variant_id
-       LEFT JOIN ${t(brand, "styled_products")} sp  ON sp.styled_id  = bi.styled_id
+            )                           AS hero_image_url
+       FROM ${t(brand, "bundle_offer_products")} bop
+       LEFT JOIN ${t(brand, "products")} p          ON p.product_id  = bop.product_id
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = bop.variant_id
+       LEFT JOIN ${t(brand, "styled_products")} sp  ON sp.styled_id  = bop.styled_id
        LEFT JOIN LATERAL (
          SELECT COALESCE(cdn_url, file_path) AS image_url
            FROM ${t(brand, "product_images")}
-          WHERE styled_id = bi.styled_id AND bi.styled_id IS NOT NULL
+          WHERE styled_id = bop.styled_id AND bop.styled_id IS NOT NULL
           ORDER BY is_primary DESC, display_order ASC NULLS LAST LIMIT 1
        ) pi_styled ON true
        LEFT JOIN LATERAL (
          SELECT COALESCE(cdn_url, file_path) AS image_url
            FROM ${t(brand, "product_images")}
-          WHERE variant_id = bi.variant_id AND bi.variant_id IS NOT NULL
+          WHERE variant_id = bop.variant_id AND bop.variant_id IS NOT NULL
           ORDER BY is_primary DESC, display_order ASC NULLS LAST LIMIT 1
        ) pi_variant ON true
        LEFT JOIN LATERAL (
          SELECT COALESCE(cdn_url, file_path) AS image_url
            FROM ${t(brand, "product_images")}
-          WHERE product_id = bi.product_id AND bi.product_id IS NOT NULL
+          WHERE product_id = bop.product_id AND bop.product_id IS NOT NULL
             AND styled_id IS NULL AND variant_id IS NULL
           ORDER BY is_primary DESC, display_order ASC NULLS LAST LIMIT 1
        ) pi_product ON true
-      WHERE bi.bundle_id = $1
-      ORDER BY bi.display_position ASC`,
+      WHERE bop.bundle_id = $1
+      ORDER BY bop.display_order ASC`,
     [bundle_id],
   );
   return rows;
 }
 
-async function addBundleItem({ client, brand, bundle_id, input }) {
-  const { rows } = await ex(client)(
-    `INSERT INTO ${t(brand, "product_bundle_items")}
-       (bundle_id, product_id, variant_id, styled_id, quantity, per_item_discount_ngn, display_position)
-     VALUES ($1,$2,$3,$4, COALESCE($5,1), $6, COALESCE($7,0))
-     RETURNING *`,
-    [
-      bundle_id,
-      input.product_id || null,
-      input.variant_id || null,
-      input.styled_id || null,
-      input.quantity ?? null,
-      input.per_item_discount_ngn ?? null,
-      input.display_position ?? null,
-    ],
-  );
-  return rows[0];
-}
-
-async function removeBundleItem({ client, brand, bundle_item_id }) {
-  const { rowCount } = await ex(client)(
-    `DELETE FROM ${t(brand, "product_bundle_items")} WHERE bundle_item_id = $1`,
-    [bundle_item_id],
-  );
-  return rowCount > 0;
-}
-
-async function reorderBundleItems({ client, brand, bundle_id, ordered_ids }) {
-  for (let i = 0; i < ordered_ids.length; i++) {
-    await ex(client)(
-      `UPDATE ${t(brand, "product_bundle_items")} SET display_position = $1
-        WHERE bundle_item_id = $2 AND bundle_id = $3`,
-      [i, ordered_ids[i], bundle_id],
-    );
-  }
-}
-
 // ── sales_campaign_bundles (attachment) ──────────────────
+// The link now joins straight to bundle_offers, so the offer's pricing is read
+// directly (src_*) — no fragile display-name reconciliation. Components, hero
+// fallback and live stock all resolve from bundle_offer_products.
 async function listCampaignBundles({ client, brand, campaign_id }) {
   const { rows } = await ex(client)(
     `SELECT scb.*,
-            pb.slug AS bundle_slug, pb.name AS bundle_name,
-            pb.description AS bundle_description,
-            COALESCE(pb.hero_image_url, fallback_img.image_url) AS bundle_hero_image_url,
-            pb.default_per_item_discount_ngn,
-            pb.default_preorder_loss_pct,
-            live_stk.live_stock AS live_bundle_stock,
-            src.src_pricing_model,
-            src.src_discount_value,
-            src.src_bundle_price_ngn
+            bo.bundle_code   AS bundle_slug,
+            bo.display_name  AS bundle_name,
+            bo.description   AS bundle_description,
+            COALESCE(bo.hero_image_url, fallback_img.image_url) AS bundle_hero_image_url,
+            bo.pricing_model    AS src_pricing_model,
+            bo.discount_value   AS src_discount_value,
+            bo.bundle_price_ngn AS src_bundle_price_ngn,
+            live_stk.live_stock AS live_bundle_stock
        FROM ${t(brand, "sales_campaign_bundles")} scb
-       JOIN ${t(brand, "product_bundles")} pb ON pb.bundle_id = scb.bundle_id
-       LEFT JOIN LATERAL (
-         -- The Catalogue (retention) bundle_offer this campaign bundle mirrors,
-         -- matched by display name (the mirror copies offer.display_name → name).
-         -- Lets the storefront resolve the discount LIVE from Catalogue so an
-         -- edit there shows immediately, no re-import. NULL for one-off bundles.
-         SELECT bo.pricing_model   AS src_pricing_model,
-                bo.discount_value  AS src_discount_value,
-                bo.bundle_price_ngn AS src_bundle_price_ngn
-           FROM ${t(brand, "bundle_offers")} bo
-          WHERE bo.display_name = pb.name AND bo.is_active = true
-          ORDER BY bo.created_at DESC NULLS LAST
-          LIMIT 1
-       ) src ON true
+       JOIN ${t(brand, "bundle_offers")} bo ON bo.bundle_id = scb.bundle_id
        LEFT JOIN LATERAL (
          SELECT COALESCE(
            (SELECT COALESCE(pi.cdn_url, pi.file_path)
               FROM ${t(brand, "product_images")} pi
-             WHERE pi.styled_id = bi0.styled_id AND bi0.styled_id IS NOT NULL
+             WHERE pi.styled_id = bop0.styled_id AND bop0.styled_id IS NOT NULL
              ORDER BY pi.is_primary DESC, pi.display_order ASC NULLS LAST LIMIT 1),
            (SELECT COALESCE(pi.cdn_url, pi.file_path)
               FROM ${t(brand, "product_images")} pi
-             WHERE pi.variant_id = bi0.variant_id AND bi0.variant_id IS NOT NULL
+             WHERE pi.variant_id = bop0.variant_id AND bop0.variant_id IS NOT NULL
              ORDER BY pi.is_primary DESC, pi.display_order ASC NULLS LAST LIMIT 1),
            (SELECT COALESCE(pi.cdn_url, pi.file_path)
               FROM ${t(brand, "product_images")} pi
-             WHERE pi.product_id = bi0.product_id AND bi0.product_id IS NOT NULL
+             WHERE pi.product_id = bop0.product_id AND bop0.product_id IS NOT NULL
                AND pi.styled_id IS NULL AND pi.variant_id IS NULL
              ORDER BY pi.is_primary DESC, pi.display_order ASC NULLS LAST LIMIT 1)
          ) AS image_url
-           FROM ${t(brand, "product_bundle_items")} bi0
-          WHERE bi0.bundle_id = pb.bundle_id
-          ORDER BY bi0.display_position ASC
+           FROM ${t(brand, "bundle_offer_products")} bop0
+          WHERE bop0.bundle_id = bo.bundle_id
+          ORDER BY bop0.display_order ASC
           LIMIT 1
-       ) fallback_img ON pb.hero_image_url IS NULL
+       ) fallback_img ON bo.hero_image_url IS NULL
        LEFT JOIN LATERAL (
          SELECT MIN(
            COALESCE(
@@ -290,23 +139,23 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
                 FROM ${t(brand, "stock_levels")} sl
                 JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
                WHERE sl.variant_id = COALESCE(
-                       bi.variant_id,
+                       bop.variant_id,
                        sp.base_variant_id,
                        (SELECT pv.variant_id
                           FROM ${t(brand, "product_variants")} pv
-                         WHERE pv.product_id = COALESCE(sp.base_product_id, bi.product_id)
+                         WHERE pv.product_id = COALESCE(sp.base_product_id, bop.product_id)
                            AND pv.is_active = true
                          ORDER BY pv.is_default DESC, pv.display_order ASC
                          LIMIT 1)
                      )
                  AND loc.available_for_storefront = true),
              0
-           ) / GREATEST(bi.quantity, 1)
+           ) / GREATEST(bop.quantity, 1)
          )::INTEGER AS live_stock
-           FROM ${t(brand, "product_bundle_items")} bi
-           LEFT JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = bi.styled_id
-          WHERE bi.bundle_id = scb.bundle_id
-            AND (bi.variant_id IS NOT NULL OR bi.styled_id IS NOT NULL OR bi.product_id IS NOT NULL)
+           FROM ${t(brand, "bundle_offer_products")} bop
+           LEFT JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = bop.styled_id
+          WHERE bop.bundle_id = scb.bundle_id
+            AND (bop.variant_id IS NOT NULL OR bop.styled_id IS NOT NULL OR bop.product_id IS NOT NULL)
        ) live_stk ON true
       WHERE scb.campaign_id = $1
       ORDER BY scb.display_order ASC, scb.created_at ASC`,
@@ -316,29 +165,19 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
 }
 
 // Fetch a single campaign↔bundle link so the public checkout/quote can price a
-// bundle. Returns the link PLUS the source Catalogue offer's LIVE pricing
-// (matched by name, same as listCampaignBundles), so checkout charges the same
-// discount the storefront shows the moment it is edited in Catalogue — without
-// a re-import. `src_*` are null for one-off bundles with no Catalogue source.
+// bundle. Returns the link PLUS the Catalogue offer's pricing (read directly
+// from bundle_offers — the link IS the offer now), so checkout charges the same
+// discount the storefront shows the instant it is edited in Catalogue.
 // Returns null when the bundle isn't attached to the campaign.
 async function getCampaignBundle({ client, brand, campaign_id, bundle_id }) {
   const { rows } = await ex(client)(
     `SELECT scb.*,
-            pb.name AS bundle_name,
-            src.src_pricing_model,
-            src.src_discount_value,
-            src.src_bundle_price_ngn
+            bo.display_name     AS bundle_name,
+            bo.pricing_model    AS src_pricing_model,
+            bo.discount_value   AS src_discount_value,
+            bo.bundle_price_ngn AS src_bundle_price_ngn
        FROM ${t(brand, "sales_campaign_bundles")} scb
-       JOIN ${t(brand, "product_bundles")} pb ON pb.bundle_id = scb.bundle_id
-       LEFT JOIN LATERAL (
-         SELECT bo.pricing_model   AS src_pricing_model,
-                bo.discount_value  AS src_discount_value,
-                bo.bundle_price_ngn AS src_bundle_price_ngn
-           FROM ${t(brand, "bundle_offers")} bo
-          WHERE bo.display_name = pb.name AND bo.is_active = true
-          ORDER BY bo.created_at DESC NULLS LAST
-          LIMIT 1
-       ) src ON true
+       JOIN ${t(brand, "bundle_offers")} bo ON bo.bundle_id = scb.bundle_id
       WHERE scb.campaign_id = $1 AND scb.bundle_id = $2
       LIMIT 1`,
     [campaign_id, bundle_id],
@@ -376,11 +215,8 @@ async function attachCampaignBundle({ client, brand, campaign_id, input }) {
       input.display_order ?? null,
     ],
   );
-  // refresh stock snapshot from the variant inventory
-  await ex(client)(
-    `SELECT ${brand}.fn_refresh_campaign_bundle_stock($1::uuid)`,
-    [rows[0].link_id],
-  );
+  // Stock is computed live in listCampaignBundles from bundle_offer_products;
+  // no snapshot to refresh (the old fn_refresh_campaign_bundle_stock is gone).
   return rows[0];
 }
 
@@ -590,17 +426,8 @@ async function demoteAmbassador({ client, brand, contact_id }) {
 }
 
 module.exports = {
-  // bundles
-  listBundles,
-  findBundle,
-  findBundleBySlug,
-  createBundle,
-  updateBundle,
-  deleteBundle,
+  // bundle components (read from the Catalogue SSOT)
   listBundleItems,
-  addBundleItem,
-  removeBundleItem,
-  reorderBundleItems,
   // campaign attachment
   listCampaignBundles,
   getCampaignBundle,

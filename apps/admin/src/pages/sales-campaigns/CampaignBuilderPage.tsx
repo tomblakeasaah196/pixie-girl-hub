@@ -419,7 +419,7 @@ function PraxisSidebar({
           {step === "products" &&
             "Pick styled products to feature individually on the landing page. Each product shows with its campaign price + delivery timeline."}
           {step === "bundles" &&
-            "Create bundles inside this campaign, clone from your catalogue, or duplicate & swap. Each bundle is a curated set of styled products."}
+            "Import bundles from Catalogue → Bundles. Each is a curated set of styled products; pricing, composition and images come straight from the Catalogue and update live."}
           {step === "pricing" &&
             "Goal-seek margin, charm round, configure the tier ladder + cart upsell escalator. Floors are enforced — Praxis refuses any breach."}
           {step === "landing" &&
@@ -1361,8 +1361,8 @@ function BundlesStep({
   campaign: Campaign;
   canEdit: boolean;
 }) {
-  // Bundles in the builder are IMPORT-ONLY. Creation lives in
-  // Catalogue → Bundles; this step picks from those rows and mirrors them
+  // Bundles in the builder are IMPORT-ONLY. Authoring lives in
+  // Catalogue → Bundles; this step attaches those bundles by reference
   // into the campaign with all inherited pricing + components + images.
   const linksQ = useCampaignBundles(campaign.campaign_id);
   const sourcesQ = useCatalogueBundleSources();
@@ -1523,7 +1523,7 @@ function BundlesStep({
         ))}
       </div>
 
-      {/* Import from catalogue: pick a bundle_offer to mirror into the campaign */}
+      {/* Import from catalogue: attach a bundle_offer to the campaign by reference */}
       <Modal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -1596,28 +1596,15 @@ function CatalogueBundlePicker({
       />
     );
   }
-  // Already-imported lookup uses the source bundle_code as a fingerprint —
-  // the import service derives the mirror slug from `${campaign-slug}-${code}`
-  // so a previously imported source ends with that suffix in the link list.
-  const importedCodes = new Set(
-    links
-      .map((l) => l.bundle_slug.split("-").slice(-1)[0] || "")
-      .filter(Boolean),
-  );
+  // A campaign now references the Catalogue bundle directly, so an "imported"
+  // source is simply one whose bundle_offer_id is already attached (the link's
+  // bundle_id IS the bundle_offer_id) — no slug fingerprinting needed.
   return (
     <div className="space-y-2 max-h-[60vh] overflow-y-auto">
       {sources.map((s) => {
-        const isImported =
-          importedCodes.has(
-            (s.bundle_code || "").toLowerCase().replace(/[^a-z0-9]/g, ""),
-          ) ||
-          links.some(
-            (l) =>
-              l.bundle_name === s.display_name ||
-              l.bundle_slug.endsWith(
-                (s.bundle_code || "").toLowerCase().replace(/[^a-z0-9]/g, "-"),
-              ),
-          );
+        const isImported = links.some(
+          (l) => l.bundle_id === s.bundle_offer_id,
+        );
         const isBusy = importingId === s.bundle_offer_id;
         return (
           <button

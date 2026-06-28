@@ -89,6 +89,15 @@ export interface BundleComponent {
   line_total_ngn: number;
 }
 
+/** A head-size choice for a bundle. `price_ngn` is the whole-bundle price at
+ *  that size = discounted-at-S price + the size premium on every wig (S → 0). */
+export interface BundleSizeOption {
+  size_code: string;
+  label: string;
+  premium_ngn: number;
+  price_ngn: number;
+}
+
 export interface LandingBundle {
   link_id: string;
   bundle_id: string;
@@ -102,6 +111,10 @@ export interface LandingBundle {
   total_savings_ngn?: number | null;
   components?: BundleComponent[];
   component_count?: number;
+  /** Head sizes the buyer can pick, each with its whole-bundle price. The first
+   *  entry is the S anchor (premium 0 → equals campaign_bundle_price_ngn). */
+  size_options?: BundleSizeOption[];
+  total_units?: number;
   preorder_enabled?: boolean;
   preorder_price_ngn?: number | null;
   preorder_lead_weeks?: number | null;

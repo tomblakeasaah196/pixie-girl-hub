@@ -35,11 +35,34 @@ const {
 } = require("../../../src/modules/sales_campaigns/campaigns.public.service");
 const {
   liveBundlePriceFromSource,
+  bundleSizePrice,
 } = require("../../../src/modules/sales_campaigns/campaigns.bundles.service");
 
 const fmt = (m) => toCurrencyString(m);
 
 afterEach(() => jest.clearAllMocks());
+
+describe("bundleSizePrice (per-size bundle pricing, pure)", () => {
+  it("S anchor (premium 0) == the bundle price", () => {
+    expect(
+      bundleSizePrice({ bundlePrice: 2092000, premium_ngn: 0, units: 6 }),
+    ).toBe(2092000);
+  });
+
+  it("adds the size premium to EVERY wig, on top of the discount", () => {
+    // ₦20k/wig × 6 wigs = ₦120k on top of the discounted-at-S price.
+    expect(
+      bundleSizePrice({ bundlePrice: 2092000, premium_ngn: 20000, units: 6 }),
+    ).toBe(2212000);
+  });
+
+  it("treats missing inputs as zero", () => {
+    expect(bundleSizePrice({})).toBe(0);
+    expect(
+      bundleSizePrice({ bundlePrice: "500000", premium_ngn: "0", units: 3 }),
+    ).toBe(500000);
+  });
+});
 
 describe("liveBundlePriceFromSource (live Catalogue pricing)", () => {
   it("pct_off: subtotal × (1 − discount_value) (unit count irrelevant)", () => {
@@ -223,6 +246,58 @@ describe("resolveBundleForCheckout (styled components → sellable lines)", () =
     expect(fmt(res.discountNgn)).toBe("100000.00");
     // base_variant_id was present → no default-variant DB lookup needed.
     expect(query).not.toHaveBeenCalled();
+  });
+
+  it("adds the chosen head-size premium per wig AFTER the S-based discount", async () => {
+    bundleRepo.listBundleItems.mockResolvedValue([
+      {
+        styled_id: "sty-1",
+        variant_id: null,
+        product_id: null,
+        styled_base_variant_id: "var-base-1",
+        styled_name: "Pixie Bob — Honey",
+        display_name: "Pixie Bob — Honey",
+        quantity: 1,
+        unit_price_ngn: "250000",
+      },
+      {
+        styled_id: "sty-2",
+        variant_id: null,
+        product_id: null,
+        styled_base_variant_id: "var-base-2",
+        styled_name: "Pixie Bob — Black",
+        display_name: "Pixie Bob — Black",
+        quantity: 1,
+        unit_price_ngn: "250000",
+      },
+    ]);
+    bundleRepo.getCampaignBundle.mockResolvedValue({
+      campaign_bundle_price_ngn: "400000",
+    });
+    // styled_size_tiers lookup for the chosen size (Medium → +₦20k/wig).
+    query.mockResolvedValue({
+      rows: [{ label: "Medium", premium_ngn: "20000" }],
+    });
+
+    const res = await resolveBundleForCheckout({
+      brand: "pixiegirl",
+      campaign_id: "camp-1",
+      bundle_id: "bun-1",
+      units: 1,
+      size_code: "M",
+    });
+
+    // Each wig's line carries the +premium price and a size-labelled snapshot.
+    expect(res.orderLines[0]).toMatchObject({
+      variant_id: "var-base-1",
+      unit_price_ngn: "270000.00",
+      product_name_snapshot: "Pixie Bob — Honey · Size Medium",
+    });
+    expect(res.orderLines[1].unit_price_ngn).toBe("270000.00");
+    // The discount is unchanged — it's still computed on the bare S components.
+    expect(fmt(res.effectivePrice)).toBe("400000.00");
+    expect(fmt(res.discountNgn)).toBe("100000.00");
+    // Net charged = Σ(270k×2) − 100k discount = 440k = 400k + (20k × 2 wigs).
   });
 
   it("falls back to the base product's default variant when base_variant_id is unset", async () => {

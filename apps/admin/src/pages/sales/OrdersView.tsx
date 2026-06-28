@@ -8,9 +8,10 @@ import {
   ORDER_STATUS,
   ORDER_STATUS_OPTIONS,
   SALES_CHANNELS,
+  FULFILMENT_LABELS,
 } from "./constants";
 import { OrderDetail } from "./OrderDetail";
-import type { SalesOrder, OrderStatus } from "./types";
+import type { SalesOrder, OrderStatus, FulfilmentType } from "./types";
 
 const columns: Column<SalesOrder>[] = [
   {
@@ -59,6 +60,18 @@ const columns: Column<SalesOrder>[] = [
             o.sales_channel)}
       </span>
     ),
+  },
+  {
+    key: "fulfilment",
+    header: "Fulfilment",
+    render: (o) => {
+      const f = FULFILMENT_LABELS[o.order_type as FulfilmentType];
+      return f ? (
+        <Pill tone={f.tone}>{f.label}</Pill>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      );
+    },
   },
   {
     key: "status",

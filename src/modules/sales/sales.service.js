@@ -1386,7 +1386,7 @@ async function recordSubscriptionCharge({
   });
 }
 
-async function cancelOrder({ brand, user, request_id, id }) {
+async function cancelOrder({ brand, user, request_id, id, reason }) {
   return transaction(async (client) => {
     const order = await repo.findById({ client, brand, id });
     if (!order) throw new NotFoundError("Order");
@@ -1423,6 +1423,11 @@ async function cancelOrder({ brand, user, request_id, id }) {
       }
     }
     const o = await repo.setStatus({ client, brand, id, status: "cancelled" });
+    // Persist why/when when a reason is supplied (e.g. system auto-cancel of a
+    // superseded duplicate) so the order detail explains the cancellation.
+    if (reason) {
+      await repo.setCancellationReason({ client, brand, id, reason });
+    }
     await audit({
       business: brand,
       user_id: user.user_id,
@@ -1430,8 +1435,9 @@ async function cancelOrder({ brand, user, request_id, id }) {
       target_type: "sales_order",
       target_id: id,
       request_id,
+      metadata: reason ? { reason } : undefined,
     });
-    events.emit("order.cancelled", { brand, order_id: id });
+    events.emit("order.cancelled", { brand, order_id: id, reason: reason || null });
     return o;
   });
 }

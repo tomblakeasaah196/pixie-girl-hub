@@ -841,6 +841,71 @@ async function findNearDuplicates({ brand, contact_id, campaign_id, minutes }) {
   return rows;
 }
 
+/**
+ * Pending-payment "twins" of an order that was just paid: same contact, same
+ * total, an identical line signature (variant × quantity), created within
+ * `hours`. The near-duplicate guard above blocks an accidental second checkout,
+ * but when a buyer's first payment genuinely fails and they retry as a fresh
+ * order (new session → new idempotency key, possibly past the 15-min window),
+ * the abandoned first order is left in pending_payment and keeps drawing dunning
+ * reminders. The order.paid duplicate-resolver uses this to find and cancel that
+ * orphan. Matching exact total + line signature on the same contact makes a
+ * false match against a genuinely different pending order effectively
+ * impossible.
+ */
+async function findPendingTwins({
+  client,
+  brand,
+  paid_order_id,
+  contact_id,
+  total_ngn,
+  hours,
+}) {
+  const { rows } = await ex(client)(
+    `WITH target AS (
+       SELECT string_agg(
+                COALESCE(variant_id::text, '_') || 'x' || quantity, ','
+                ORDER BY variant_id, quantity) AS sig
+         FROM ${t(brand, "sales_order_lines")}
+        WHERE order_id = $1
+     )
+     SELECT so.order_id, so.order_number
+       FROM ${t(brand, "sales_orders")} so
+       JOIN LATERAL (
+         SELECT string_agg(
+                  COALESCE(l.variant_id::text, '_') || 'x' || l.quantity, ','
+                  ORDER BY l.variant_id, l.quantity) AS sig
+           FROM ${t(brand, "sales_order_lines")} l
+          WHERE l.order_id = so.order_id
+       ) cand ON true
+      WHERE so.contact_id  = $2
+        AND so.status      = 'pending_payment'
+        AND so.total_ngn   = $3
+        AND so.order_id   <> $1
+        AND so.created_at >= now() - make_interval(hours => $4)
+        AND cand.sig IS NOT DISTINCT FROM (SELECT sig FROM target)
+      ORDER BY so.created_at ASC`,
+    [paid_order_id, contact_id, total_ngn, Number(hours) || 24],
+  );
+  return rows;
+}
+
+/**
+ * Stamp why/when an order was cancelled. Used by the auto-cancel paths so the
+ * order list/detail can show that a pending duplicate was retired by the system
+ * (rather than silently vanishing). abandonment_reason is the existing TEXT
+ * column for auto-cancellation rationale.
+ */
+async function setCancellationReason({ client, brand, id, reason }) {
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET abandonment_reason = $2,
+            cancelled_at       = COALESCE(cancelled_at, now())
+      WHERE order_id = $1`,
+    [id, reason],
+  );
+}
+
 // ── Reporting / export ───────────────────────────────────
 // Period-scoped reads for the Sales Report export. The period filter uses
 // COALESCE(placed_at, created_at) — the same business-date basis the dashboard
@@ -989,6 +1054,8 @@ module.exports = {
   hasPaidOrder,
   sumCampaignDiscount,
   findNearDuplicates,
+  findPendingTwins,
+  setCancellationReason,
   setDeliveryFee,
   reportOrders,
   reportLines,

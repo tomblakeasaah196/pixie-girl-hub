@@ -15,7 +15,7 @@ import {
 import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { saveFileFromUrl } from "@/lib/api";
-import { ORDER_STATUS, SALES_CHANNELS } from "./constants";
+import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
 import type { OrderPayment } from "./types";
 
 export function OrderDetail({
@@ -237,8 +237,8 @@ export function OrderDetail({
                 </div>
                 <div>
                   <div className="micro">Fulfilment</div>
-                  <div className="text-[13px] mt-1 capitalize">
-                    {order.order_type?.replace(/_/g, " ")}
+                  <div className="text-[13px] mt-1">
+                    {fulfilmentLabel(order.order_type)}
                   </div>
                 </div>
                 <div>
@@ -370,7 +370,7 @@ export function OrderDetail({
                       <div>
                         <div className="font-semibold">{ev.label}</div>
                         <div className="text-text-faint">
-                          {new Date(ev.created_at).toLocaleString()}
+                          {new Date(ev.occurred_at).toLocaleString()}
                         </div>
                       </div>
                     </div>

@@ -1,4 +1,9 @@
-import type { OrderStatus, QuoteStatus, SalesChannel } from "./types";
+import type {
+  OrderStatus,
+  QuoteStatus,
+  SalesChannel,
+  FulfilmentType,
+} from "./types";
 
 type Tone = "success" | "warn" | "danger" | "info" | "accent" | "neutral";
 
@@ -52,6 +57,30 @@ export const FULFILMENT_OPTIONS = [
   { value: "walk_in", label: "Walk-in (Pickup)" },
   { value: "dispatch", label: "Delivery" },
 ] as const;
+
+// How each order_type reads to staff. `collection` = customer picks up later,
+// `walk_in` = took it in person at POS, `dispatch` = courier delivery, `digital`
+// = nothing to ship. Used by the orders list column + order detail so "did they
+// pick Pick-up?" is answerable at a glance (no logistics fee + Pick-up = correct;
+// no fee + Delivery = fee still pending).
+export const FULFILMENT_LABELS: Record<
+  FulfilmentType,
+  { label: string; tone: Tone }
+> = {
+  dispatch: { label: "Delivery", tone: "info" },
+  collection: { label: "Pick-up", tone: "accent" },
+  walk_in: { label: "Walk-in", tone: "neutral" },
+  digital: { label: "Digital", tone: "neutral" },
+};
+
+/** Friendly fulfilment label for a raw order_type, with a safe fallback. */
+export function fulfilmentLabel(orderType?: string | null): string {
+  if (!orderType) return "—";
+  return (
+    (FULFILMENT_LABELS as Record<string, { label: string }>)[orderType]?.label ??
+    orderType.replace(/_/g, " ")
+  );
+}
 
 export const SEND_VIA_OPTIONS = [
   { value: "email", label: "Email" },

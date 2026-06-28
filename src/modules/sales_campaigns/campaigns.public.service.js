@@ -550,6 +550,23 @@ function effectiveCampaignBundlePrice(link, components) {
   return live !== null ? live : (link.campaign_bundle_price_ngn ?? null);
 }
 
+// Brand head-size premium (absolute ₦, S = 0) for a chosen bundle size. The
+// premium is added to each wig AFTER the S-based bundle discount, matching the
+// per-size price the storefront shows (campaigns.bundles.service size_options).
+async function sizePremiumFor({ brand, size_code }) {
+  if (!size_code) return { premium: 0, label: null };
+  const { rows } = await query(
+    `SELECT label, premium_ngn FROM ${brand}.styled_size_tiers
+      WHERE size_code = $1 LIMIT 1`,
+    [size_code],
+  );
+  if (!rows[0]) return { premium: 0, label: null };
+  return {
+    premium: Number(rows[0].premium_ngn) || 0,
+    label: rows[0].label || size_code,
+  };
+}
+
 // The active default variant for a base product (stock/fulfilment anchor).
 async function defaultVariantId({ brand, product_id }) {
   if (!product_id) return null;
@@ -579,12 +596,23 @@ async function resolveBundleForCheckout({
   campaign_id,
   bundle_id,
   units,
+  size_code,
 }) {
   const copies = Number(units) || 1;
   const items = await bundleRepo.listBundleItems({ brand, bundle_id });
   if (!items.length) {
     throw new AppError("BUNDLE_EMPTY", `Bundle ${bundle_id} has no items`, 409);
   }
+  // Head-size premium (₦ per wig, S = 0). Added to each line AFTER the S-based
+  // discount; the discount math below still uses the bare S `components`.
+  const { premium: sizePremium, label: sizeLabel } = await sizePremiumFor({
+    brand,
+    size_code,
+  });
+  const lineUnit = (p) =>
+    toCurrencyString(money(p).plus(money(sizePremium)));
+  const nameWithSize = (n) =>
+    sizeLabel ? `${n || "Item"} · Size ${sizeLabel}` : n || null;
   const orderLines = [];
   const components = []; // per single bundle, drives the discount math
   for (const bi of items) {
@@ -610,14 +638,17 @@ async function resolveBundleForCheckout({
       orderLines.push({
         variant_id: baseVariantId,
         quantity: compQty * copies,
-        unit_price_ngn: toCurrencyString(money(unitPrice)),
-        product_name_snapshot: bi.styled_name || bi.display_name || null,
+        unit_price_ngn: lineUnit(unitPrice),
+        product_name_snapshot: nameWithSize(bi.styled_name || bi.display_name),
       });
     } else if (bi.variant_id) {
       orderLines.push({
         variant_id: bi.variant_id,
         quantity: compQty * copies,
-        unit_price_ngn: toCurrencyString(money(unitPrice)),
+        unit_price_ngn: lineUnit(unitPrice),
+        ...(sizeLabel
+          ? { product_name_snapshot: nameWithSize(bi.display_name) }
+          : {}),
       });
     } else if (bi.product_id) {
       const variantId = await defaultVariantId({
@@ -634,7 +665,10 @@ async function resolveBundleForCheckout({
       orderLines.push({
         variant_id: variantId,
         quantity: compQty * copies,
-        unit_price_ngn: toCurrencyString(money(unitPrice)),
+        unit_price_ngn: lineUnit(unitPrice),
+        ...(sizeLabel
+          ? { product_name_snapshot: nameWithSize(bi.display_name) }
+          : {}),
       });
     }
   }
@@ -693,10 +727,19 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
       components,
       campaignBundlePrice: effectiveCampaignBundlePrice(link, components),
     });
+    // Head-size premium rides on top of the discounted-at-S price, once per wig
+    // — the same figure listCampaignBundles' size_options and checkout produce.
+    const { premium: sizePremium } = await sizePremiumFor({
+      brand,
+      size_code: item.size_code,
+    });
+    const sizedPrice = effectivePrice.plus(
+      money(sizePremium).times(wigUnits || 1),
+    );
     return {
       kind: "bundle",
       bundle_id: item.bundle_id,
-      unit_price_ngn: toCurrencyString(effectivePrice),
+      unit_price_ngn: toCurrencyString(sizedPrice),
       wig_units: wigUnits || 1,
       floor_ngn: null,
       name: null,
@@ -948,6 +991,7 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         campaign_id: campaign.campaign_id,
         bundle_id: cartItem.bundle_id,
         units: cartItem.quantity,
+        size_code: cartItem.size_code,
       });
       orderLines.push(...resolved.orderLines);
       bundlePriceDiscount = bundlePriceDiscount.plus(resolved.discountNgn);

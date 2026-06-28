@@ -19,6 +19,9 @@ const repo = require("./campaigns.bundles.repo");
 // The Catalogue the user manages bundles in is the Retention engine's
 // bundle_offers (Catalogue → Bundles tab) — the single source of truth.
 const retentionBundleRepo = require("../retention/bundle.repo");
+// Brand-wide head-size ladder (S/M/L/XL + absolute premium) — drives the
+// customer-facing per-size bundle price on the live campaign.
+const styledVariantsRepo = require("../catalogue/styled_variants.repo");
 const events = require("./campaigns.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -68,6 +71,22 @@ function liveBundlePriceFromSource(src, componentSubtotal, totalUnits) {
       // buy_x_get_y / tiered_qty need per-line context — no single price here.
       return null;
   }
+}
+
+/**
+ * Whole-bundle price at a chosen head size (PURE): the discounted-at-S bundle
+ * price plus the size premium on EVERY wig (units = Σ component qty). S premium
+ * is 0, so the S option equals the bundle price. This is the single formula the
+ * storefront displays and checkout charges, so they can never disagree.
+ *
+ * @param {{ bundlePrice:number|string, premium_ngn:number|string, units:number }} a
+ * @returns {number}
+ */
+function bundleSizePrice({ bundlePrice, premium_ngn, units }) {
+  const base = Number(bundlePrice) || 0;
+  const premium = Number(premium_ngn) || 0;
+  const n = Number(units) || 0;
+  return Math.round((base + premium * n) * 100) / 100;
 }
 
 /**
@@ -212,6 +231,13 @@ async function importCatalogueBundle({
  */
 async function listCampaignBundles({ brand, campaign_id }) {
   const rows = await repo.listCampaignBundles({ brand, campaign_id });
+  // Brand head-size ladder (S=0 premium). Fetched once; each bundle exposes a
+  // per-size price so the storefront can let the buyer pick a size. The price
+  // is computed the SAME way checkout charges it (discounted-at-S + premium ×
+  // units), so the displayed figure always equals the till.
+  const sizeTiers = await styledVariantsRepo
+    .listSizeTiers({ brand, activeOnly: true })
+    .catch(() => []);
   return Promise.all(
     rows.map(async (b) => {
       const items = await repo.listBundleItems({
@@ -257,6 +283,23 @@ async function listCampaignBundles({ brand, campaign_id }) {
       // A campaign price may only ever DISCOUNT, never inflate above the parts.
       bundlePrice = Math.min(bundlePrice, totalRetail);
       const savings = Math.max(0, totalRetail - bundlePrice);
+      // Per-size prices: the discounted-at-S bundle price plus each size's
+      // brand premium applied to every wig in the bundle (S premium = 0, so the
+      // S option equals the bundle price). The buyer picks a size; the premium
+      // rides on top of the discount, exactly as checkout charges it.
+      const sizeOptions = (sizeTiers || []).map((t) => {
+        const premium = Number(t.premium_ngn) || 0;
+        return {
+          size_code: t.size_code,
+          label: t.label || t.size_code,
+          premium_ngn: premium,
+          price_ngn: bundleSizePrice({
+            bundlePrice,
+            premium_ngn: premium,
+            units: totalQty,
+          }),
+        };
+      });
       // Live stock from the SSOT (the snapshot column is no longer maintained).
       const liveStock = b.live_bundle_stock !== null && b.live_bundle_stock !== undefined
         ? Number(b.live_bundle_stock)
@@ -270,6 +313,8 @@ async function listCampaignBundles({ brand, campaign_id }) {
         total_retail_ngn: totalRetail,
         campaign_bundle_price_ngn: bundlePrice,
         total_savings_ngn: savings,
+        total_units: totalQty,
+        size_options: sizeOptions,
       };
     }),
   );
@@ -535,4 +580,5 @@ module.exports = {
   promoteContactToAmbassador,
   demoteAmbassador,
   liveBundlePriceFromSource,
+  bundleSizePrice,
 };

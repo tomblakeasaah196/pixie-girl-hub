@@ -598,6 +598,9 @@ const checkoutSchema = z.object({
         // Priced at the styled product's anchor (retail_price_ngn) and counted
         // as a raw wig for the reseller/bulk tier. Server re-prices regardless.
         unstyled: z.boolean().optional(),
+        // Head size for a bundle line (S/M/L/XL). The server prices the bundle
+        // at the chosen size: discounted-at-S price + the size premium per unit.
+        size_code: z.string().max(8).optional(),
         quantity: z.coerce.number().int().min(1).max(50),
         // Optional — the server re-prices; never trusted from the client.
         unit_price_ngn: z.coerce.number().nonnegative().optional(),
@@ -638,6 +641,7 @@ const quoteSchema = z.object({
         product_id: z.string().uuid().optional(),
         styled_variant_id: z.string().uuid().optional(),
         unstyled: z.boolean().optional(),
+        size_code: z.string().max(8).optional(),
         quantity: z.coerce.number().int().min(1).max(50),
       }),
     )

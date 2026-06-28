@@ -28,7 +28,13 @@ const DEFAULTS = Object.freeze({
       note_label: "Payment",
       note:
         "Please settle within the agreed terms and quote your invoice number on any transfer so we can match it the moment it lands.",
-      message: "Prepared with care for you, {first_name}.",
+      // Shown instead of `note` once the invoice is fully paid — a settled
+      // acknowledgement, never a request for payment.
+      note_label_paid: "Payment received",
+      note_paid:
+        "Paid in full — thank you. This invoice has been settled and there's nothing more to do. We've kept a receipt on file for your records, and we're always a message away if you need anything.",
+      message:
+        "Prepared with care for you, {first_name} — thank you for choosing {brand_name}. It is a genuine pleasure to have you with us, and we look forward to delighting you again very soon.",
     },
     email: {
       subject: "Your {brand_name} invoice {invoice_number}",

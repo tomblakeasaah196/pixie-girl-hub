@@ -2,40 +2,38 @@
 
 import Script from "next/script";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fbTrack } from "@/lib/fbpixel";
+import { useConsentStore } from "@/lib/consent-store";
 
-/**
- * Meta (Facebook) Pixel — base install for the public sales site.
- *
- * Mounted once in the root layout, so it covers the whole funnel in one place:
- * every sale state (before / live / after / landing) plus checkout and
- * thank-you. The pixel id is resolved per-brand from the published landing
- * config (Landing Studio → seo.metaPixelId), so Pixie Girl and Faitlyn each
- * report to their own pixel — never a shared one.
- *
- * Two things this handles that a raw pasted <script> snippet cannot:
- *   1. It loads through next/script (afterInteractive) instead of a hand-rolled
- *      tag, matching how the rest of the app injects third-party scripts.
- *   2. The site is a client-side-routed SPA, so fbevents only auto-fires
- *      PageView on the very first load. The effect below re-fires PageView on
- *      every client navigation (e.g. before → checkout), while skipping the
- *      first run so the initial view from the inline init isn't double-counted.
- *
- * `pixelId` is the bare numeric id (validated/sanitised upstream), so it is
- * safe to interpolate into the init below.
- */
-export function MetaPixel({ pixelId }: { pixelId: string }) {
+export function MetaPixel({
+  pixelId,
+  isEu,
+}: {
+  pixelId: string;
+  isEu: boolean;
+}) {
+  const consent = useConsentStore((s) => s.status);
   const pathname = usePathname();
   const firstLoad = useRef(true);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const allowed = !isEu || consent === "accepted";
+
+  useEffect(() => {
+    if (!allowed) return;
     if (firstLoad.current) {
       firstLoad.current = false;
       return;
     }
     fbTrack("PageView");
-  }, [pathname]);
+  }, [pathname, allowed]);
+
+  if (isEu && (!mounted || consent !== "accepted")) return null;
 
   return (
     <>

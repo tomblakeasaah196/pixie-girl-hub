@@ -14,6 +14,7 @@ import {
 } from "./hooks";
 import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { saveFileFromUrl } from "@/lib/api";
 import { ORDER_STATUS, SALES_CHANNELS } from "./constants";
 import type { OrderPayment } from "./types";
 
@@ -98,9 +99,14 @@ export function OrderDetail({
     setReceiptLoading(true);
     try {
       const res = await generateReceipt(orderId);
-      window.open(res.url, "_blank");
-    } catch {
-      fireToast("Receipt Failed", "Failed to generate receipt.", "order", "high");
+      await saveFileFromUrl(res.url, `${order?.order_number ?? "receipt"}.pdf`);
+    } catch (err) {
+      fireToast(
+        "Receipt Failed",
+        err instanceof Error ? err.message : "Failed to generate receipt.",
+        "order",
+        "high",
+      );
     } finally {
       setReceiptLoading(false);
     }

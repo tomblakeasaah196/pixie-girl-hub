@@ -218,6 +218,40 @@ async function download(path: string, fallbackName = "download"): Promise<void> 
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Save a file the backend has already generated and stored (e.g. an invoice or
+ * receipt PDF served from /media). Fetches the bytes same-origin and saves them
+ * via an <a download>, which reliably triggers a download.
+ *
+ * Why not window.open(): a window.open() called *after* an `await` is no longer
+ * tied to the user's click, so HTTPS popup blockers silently eat it — which is
+ * exactly why "Download PDF" appeared to do nothing on the live server while
+ * working in local dev. We fall back to opening the URL only when the bytes
+ * can't be fetched (e.g. a cross-origin CDN without CORS).
+ */
+export async function saveFileFromUrl(
+  url: string,
+  filename: string,
+): Promise<void> {
+  try {
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) throw new ApiError(res.status, null, `HTTP ${res.status}`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    // Couldn't fetch the bytes (cross-origin CDN, transient network) — best
+    // effort: open the file directly so the user still gets it.
+    window.open(url, "_blank", "noopener");
+  }
+}
+
 export const api = {
   get: <T>(path: string, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "GET", scope }),

@@ -76,6 +76,39 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            # ── Headless Chrome for PDF rendering ──────────────────
+            # PDFs (invoices, receipts, payslips, reports) render via Puppeteer,
+            # which needs a real Chrome/Chromium binary. This VPS deploy installs
+            # backend deps with PUPPETEER_SKIP_DOWNLOAD=true (see env above), so
+            # Puppeteer does NOT bring its own browser — and the Dockerfile that
+            # installs chromium is not used on this host. Without this step the
+            # VPS has no Chrome at all and every render fails with "Could not
+            # launch Chromium" (API → PDF_UNAVAILABLE, UI → "PDF failed").
+            # Install Google Chrome stable once; it lands at
+            # /usr/bin/google-chrome-stable (which pdf.service auto-detects) and
+            # the .deb pulls in every shared library Chrome needs. Best-effort:
+            # a sudo/network hiccup must not fail the whole site deploy.
+            echo "--- Ensuring headless Chrome is installed (PDF rendering)"
+            if command -v google-chrome-stable >/dev/null 2>&1 \
+               || command -v chromium >/dev/null 2>&1 \
+               || command -v chromium-browser >/dev/null 2>&1; then
+              echo "Chrome/Chromium already present ✓"
+            else
+              echo "No Chrome found — installing google-chrome-stable"
+              CHROME_DEB="$(mktemp --suffix=.deb)"
+              if curl -fsSL -o "$CHROME_DEB" \
+                   https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+                 && sudo apt-get update -y \
+                 && sudo apt-get install -y "$CHROME_DEB"; then
+                echo "Installed $(google-chrome-stable --version 2>/dev/null) ✓"
+              else
+                echo "WARNING: could not install Chrome automatically — PDF"
+                echo "rendering stays disabled until a Chrome/Chromium binary is"
+                echo "installed on this host. Continuing with the rest of deploy."
+              fi
+              rm -f "$CHROME_DEB"
+            fi
+
             # ── Backend ────────────────────────────────────────────
             echo "--- Installing backend dependencies"
             npm install --omit=dev

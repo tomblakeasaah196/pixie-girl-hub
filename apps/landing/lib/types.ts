@@ -137,6 +137,7 @@ export interface BrandPublic {
   storefront_domain?: string | null;
   sales_subdomain?: string | null;
   support_email?: string | null;
+  support_whatsapp?: string | null;
   /** Brand voice surfaced for footer microcopy. */
   praxis_voice_profile?: Record<string, unknown> | null;
   /** Smart-viewer policy defaults; per-campaign overrides land on the campaign. */

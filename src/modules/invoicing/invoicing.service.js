@@ -16,6 +16,9 @@ const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const pdf = require("../../services/pdf.service");
+const brandDocs = require("../../services/pdf.brand-docs");
+const docCopy = require("../../services/document-copy");
+const emailRender = require("../email_campaigns/email-render");
 
 const A = (
   brand,
@@ -127,6 +130,16 @@ async function createFromOrder({ client, brand, order, user_id }) {
         applied_by: user_id,
         notes: "Auto-applied from paid order",
       },
+    });
+    // The invoice is born fully paid → issue its receipt automatically so the
+    // Receipts section is populated without a manual step.
+    await issueReceiptInternal({
+      client: c,
+      brand,
+      invoice: inv,
+      amount_ngn: order.total_ngn,
+      payment_method: "gateway",
+      user_id,
     });
     await A(
       brand,
@@ -282,20 +295,148 @@ async function send({ brand, user, request_id, id, input = {} }) {
   return updated;
 }
 
-/** Render the invoice to PDF and register it in shared.documents. */
-async function archiveInvoicePdf({ brand, user, id }) {
+/** First word of a display name, for personalised copy tokens. */
+function firstName(name) {
+  return String(name || "").trim().split(/\s+/)[0] || "";
+}
+const dayISO = (v) => (v ? String(v).slice(0, 10) : "");
+
+const INVOICE_STATUS_LABEL = {
+  draft: "Draft",
+  sent: "Sent",
+  partially_paid: "Part-paid",
+  paid: "Paid",
+  overdue: "Overdue",
+  void: "Void",
+  refunded: "Refunded",
+};
+
+/**
+ * Map an invoice (header + lines + contact_name) → the normalised document the
+ * brand-doc renderer expects, with personalised, Settings-driven copy. A paid
+ * invoice carries the PAID stamp; every money line (discount/delivery/VAT) is
+ * passed through with the real column names so none are dropped.
+ */
+function buildInvoiceDoc({ invoice, brandObj, copy }) {
+  const subtotal = Number(invoice.subtotal_ngn || 0);
+  const discount = Number(invoice.discount_amount_ngn || 0);
+  const tax = Number(invoice.tax_amount_ngn || 0);
+  const base = subtotal - discount;
+  const taxRate = tax > 0 && base > 0 ? tax / base : null;
+  const total = Number(invoice.total_ngn || 0);
+  const paid =
+    invoice.status === "paid" ||
+    (total > 0 && Number(invoice.amount_paid_ngn || 0) >= total);
+
+  const tokens = {
+    first_name: firstName(invoice.contact_name),
+    brand_name: brandObj.brand_name,
+    invoice_number: invoice.invoice_number || "",
+    order_number: "",
+    total: invoice.total_ngn,
+  };
+  const c = (copy.invoice && copy.invoice.pdf) || {};
+
+  // A paid invoice must never nag for payment. Swap the "please settle within
+  // terms" note for a settled-in-full acknowledgement (both operator-editable
+  // via the Invoicing → Settings tab; defaults live in services/document-copy).
+  const noteLabel = paid
+    ? c.note_label_paid || "Payment received"
+    : c.note_label;
+  const noteText = paid ? c.note_paid : c.note;
+
+  // The logo carries the brand name in the header, so the "From" block is where
+  // the name lives on the page: lead with the brand name, then the legal entity
+  // (only when it differs), then the contact lines.
+  const brandName = brandObj.brand_name;
+  const legalName = brandObj.brand_legal_name;
+
+  return {
+    status_label: INVOICE_STATUS_LABEL[invoice.status] || invoice.status,
+    status_tone: paid ? "paid" : "due",
+    watermark: paid ? "Paid" : null,
+    watermark_tone: "paid",
+    from: {
+      name: brandName || legalName,
+      company: legalName && legalName !== brandName ? legalName : null,
+      address: brandObj.brand_address,
+      phone: brandObj.brand_phone,
+      email: brandObj.support_email,
+    },
+    bill_to: {
+      name: invoice.contact_name,
+      address:
+        [invoice.cust_line1, invoice.cust_line2].filter(Boolean).join(", ") ||
+        null,
+      cityline:
+        [invoice.cust_area, invoice.cust_city, invoice.cust_state]
+          .filter(Boolean)
+          .join(", ") || null,
+      phone: invoice.contact_phone,
+      email: invoice.contact_email,
+    },
+    meta: [
+      ["Invoice #", invoice.invoice_number],
+      ["Issue date", dayISO(invoice.issue_date || invoice.created_at)],
+      [
+        "Due date",
+        invoice.due_date
+          ? dayISO(invoice.due_date)
+          : invoice.payment_terms || "Due on receipt",
+      ],
+    ],
+    lines: (invoice.lines || []).map((l) => ({
+      description:
+        l.description ||
+        [l.product_name_snapshot, l.variant_label_snapshot]
+          .filter(Boolean)
+          .join(" — "),
+      quantity: l.quantity,
+      unit_price_ngn: l.unit_price_ngn,
+      line_total_ngn: l.line_total_ngn,
+    })),
+    subtotal_ngn: invoice.subtotal_ngn,
+    discount_amount_ngn: invoice.discount_amount_ngn,
+    shipping_fee_ngn: invoice.shipping_fee_ngn,
+    tax_amount_ngn: invoice.tax_amount_ngn,
+    tax_rate: taxRate,
+    total_ngn: invoice.total_ngn,
+    amount_paid_ngn: invoice.amount_paid_ngn,
+    balance_due_ngn: invoice.balance_due_ngn,
+    notes_label: noteLabel,
+    notes: docCopy.fillTokens(noteText, tokens),
+    thanks: docCopy.fillTokens(c.message, tokens),
+  };
+}
+
+/** Resolve brand identity + copy and render the invoice PDF into Documents. */
+async function _renderInvoicePdf({ brand, user, id }) {
   const full = await getById({ brand, id });
-  if (!full) return;
-  const { invoiceHtml } = require("../../services/pdf.templates");
-  await pdf.renderAndStore({
+  if (!full) return null;
+  const [tokens, copy] = await Promise.all([
+    emailRender.resolveBrandTokens(brand),
+    docCopy.resolveCopy(brand),
+  ]);
+  const brandObj = brandDocs.brandFromTokens(tokens);
+  const html = brandDocs.invoiceHtml(
+    brandObj,
+    buildInvoiceDoc({ invoice: full, brandObj, copy }),
+  );
+  return pdf.renderAndStore({
     brand,
     user_id: user ? user.user_id : null,
-    html: invoiceHtml({ brand, invoice: full }),
+    html,
     title: `Invoice ${full.invoice_number || id}`,
     document_type: "invoice",
     reference_type: "invoice",
     reference_id: id,
+    pdfOptions: brandDocs.PDF_OPTIONS,
   });
+}
+
+/** Render the invoice to PDF and register it in shared.documents. */
+async function archiveInvoicePdf({ brand, user, id }) {
+  await _renderInvoicePdf({ brand, user, id });
 }
 async function recordPayment({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
@@ -332,6 +473,28 @@ async function recordPayment({ brand, user, request_id, id, input }) {
     const balance = money(updated.balance_due_ngn);
     const status = balance.lte(money("0.00")) ? "paid" : "partially_paid";
     await repo.setStatus({ client, brand, id, status });
+
+    // Fully paid → stop chasing it and give the customer a receipt.
+    if (status === "paid") {
+      await repo.cancelScheduledReminders({ client, brand, invoice_id: id });
+      const existingReceipts = await repo.listReceipts({
+        client,
+        brand,
+        invoice_id: id,
+      });
+      if (!existingReceipts.length) {
+        await issueReceiptInternal({
+          client,
+          brand,
+          invoice: updated,
+          amount_ngn: updated.total_ngn,
+          payment_method: input.payment_method || "manual",
+          payment_id: input.sales_order_payment_id || null,
+          user_id: user.user_id,
+        });
+      }
+    }
+
     await A(
       brand,
       user.user_id,
@@ -540,6 +703,9 @@ function addDays(dateStr, days) {
 
 async function scheduleRemindersForInvoice({ client, brand, invoice }) {
   if (!invoice.due_date || !invoice.contact_id) return;
+  // Never schedule reminders for a non-collectible invoice — a paid/void/
+  // refunded invoice owes nothing, so chasing it would be a wrong reminder.
+  if (["paid", "void", "refunded"].includes(invoice.status)) return;
   // Resolve recipient contact address
   const { query } = require("../../config/database");
   const { rows: contacts } = await (client ? client.query.bind(client) : query)(
@@ -646,6 +812,57 @@ async function sendDueReminders({ brand }) {
 function listReceipts({ brand, invoice_id }) {
   return repo.listReceipts({ brand, invoice_id });
 }
+/**
+ * Issue a receipt record for a fully-paid invoice. Used by the automatic paths
+ * (auto-invoice on order.paid + manual full payment) so the Receipts section is
+ * never empty for a paid invoice and no one has to issue it by hand. Runs inside
+ * the caller's transaction; idempotent guarding is the caller's responsibility.
+ */
+async function issueReceiptInternal({
+  client,
+  brand,
+  invoice,
+  amount_ngn,
+  payment_method = "gateway",
+  payment_id = null,
+  user_id = null,
+}) {
+  const receipt_number = await repo.nextNumber({
+    client,
+    brand,
+    type: "receipt",
+  });
+  const receipt = await repo.createReceipt({
+    client,
+    brand,
+    receipt: {
+      receipt_number,
+      invoice_id: invoice.invoice_id,
+      payment_id,
+      contact_id: invoice.contact_id,
+      amount_ngn,
+      payment_method,
+      issued_by: user_id,
+      notes: "Auto-issued on payment",
+    },
+  });
+  await A(
+    brand,
+    user_id,
+    "invoicing.receipt.auto_issue",
+    "receipt",
+    receipt.receipt_id,
+    { receipt_number, invoice_id: invoice.invoice_id },
+    null,
+  );
+  events.emit("receipt.issued", {
+    brand,
+    receipt_id: receipt.receipt_id,
+    invoice_id: invoice.invoice_id,
+  });
+  return receipt;
+}
+
 async function issueReceipt({ brand, user, request_id, input }) {
   const receipt_number = await repo.nextNumber({ brand, type: "receipt" });
   const receipt = await repo.createReceipt({
@@ -670,18 +887,40 @@ async function issueReceipt({ brand, user, request_id, input }) {
  * by the route; degrades to a 503 if PDF rendering is disabled.
  */
 async function invoicePdf({ brand, user, id }) {
-  const invoice = await getById({ brand, id });
-  if (!invoice) throw new NotFoundError("Invoice");
-  const { invoiceHtml } = require("../../services/pdf.templates");
-  return pdf.renderAndStore({
+  const stored = await _renderInvoicePdf({ brand, user, id });
+  if (!stored) throw new NotFoundError("Invoice");
+  return stored;
+}
+
+// ── Document settings (Invoicing → Settings tab) ─────────────
+// Editable copy for invoice/receipt PDFs + their mail, per brand. Reads return
+// the curated defaults merged with the brand's overrides so the editor always
+// shows the effective wording; writes persist only the overridden fields.
+async function getDocumentSettings({ brand }) {
+  const [effective, overrides] = await Promise.all([
+    docCopy.resolveCopy(brand),
+    docCopy.getStored(brand),
+  ]);
+  return { effective, overrides, defaults: docCopy.DEFAULTS };
+}
+
+async function updateDocumentSettings({ brand, user, request_id, input }) {
+  const overrides = await docCopy.saveCopy({
     brand,
+    patch: input,
     user_id: user ? user.user_id : null,
-    html: invoiceHtml({ brand, invoice }),
-    title: `Invoice ${invoice.invoice_number || invoice.invoice_id || id}`,
-    document_type: "invoice",
-    reference_type: "invoice",
-    reference_id: invoice.invoice_id || id,
   });
+  await A(
+    brand,
+    user ? user.user_id : null,
+    "invoicing.document_settings.update",
+    "document_settings",
+    brand,
+    { fields: Object.keys(input || {}) },
+    request_id,
+  );
+  events.emit("document_settings.updated", { brand });
+  return { effective: docCopy.deepMerge(docCopy.DEFAULTS, overrides), overrides };
 }
 
 module.exports = {
@@ -703,4 +942,6 @@ module.exports = {
   cancelReminder,
   sendDueReminders,
   invoicePdf,
+  getDocumentSettings,
+  updateDocumentSettings,
 };

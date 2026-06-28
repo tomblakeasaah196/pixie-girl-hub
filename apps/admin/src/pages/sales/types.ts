@@ -122,6 +122,9 @@ export interface SalesOrder {
   order_number: string;
   contact_id: string;
   contact_name?: string;
+  contact_phone?: string | null;
+  contact_whatsapp?: string | null;
+  contact_email?: string | null;
   sales_channel: SalesChannel;
   order_type: FulfilmentType;
   is_custom_order: boolean;
@@ -200,10 +203,15 @@ export interface TimelineEvent {
   event_id: string;
   event_code: string;
   label: string;
-  payload: Record<string, unknown> | null;
-  customer_visible: boolean;
+  // shared.order_timeline_events stores the customer/internal payloads and the
+  // event time as `occurred_at` (NOT `created_at`). Reading the wrong field is
+  // what rendered "Invalid Date" in the order timeline.
+  customer_payload: Record<string, unknown> | null;
+  internal_payload: Record<string, unknown> | null;
+  is_customer_visible: boolean;
   recorded_by: string | null;
-  created_at: string;
+  occurred_at: string;
+  recorded_at?: string;
 }
 
 export interface SalesKpis {

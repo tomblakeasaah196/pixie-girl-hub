@@ -96,10 +96,24 @@ async function insertLine({ client, brand, line }) {
   return rows[0];
 }
 async function findById({ client, brand, id }) {
+  // Pull the customer's contact details + their best billing address so the
+  // invoice "Bill to" block is fully populated (name was all we had before).
+  // The LATERAL picks one address, preferring a billing address, then the
+  // default, then the oldest; contacts without an address simply yield NULLs.
   const { rows } = await ex(client)(
-    `SELECT i.*, c.display_name AS contact_name
+    `SELECT i.*, c.display_name AS contact_name, c.email AS contact_email,
+            c.primary_phone AS contact_phone,
+            addr.line1 AS cust_line1, addr.line2 AS cust_line2,
+            addr.area AS cust_area, addr.city AS cust_city, addr.state AS cust_state
        FROM ${t(brand, "invoices")} i
        LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+       LEFT JOIN LATERAL (
+         SELECT line1, line2, area, city, state
+           FROM shared.contact_addresses a
+          WHERE a.contact_id = i.contact_id
+          ORDER BY (a.address_type = 'billing') DESC, a.is_default DESC, a.created_at
+          LIMIT 1
+       ) addr ON true
       WHERE i.invoice_id = $1`,
     [id],
   );
@@ -370,6 +384,18 @@ async function listReminders({ client, brand, invoice_id }) {
   return rows;
 }
 
+/** Cancel every still-scheduled reminder for an invoice (e.g. once it's paid),
+ *  so none linger in the UI or ever fire. Returns the number cancelled. */
+async function cancelScheduledReminders({ client, brand, invoice_id }) {
+  const { rowCount } = await ex(client)(
+    `UPDATE ${t(brand, "invoice_reminders")}
+        SET status = 'cancelled'
+      WHERE invoice_id = $1 AND status = 'scheduled'`,
+    [invoice_id],
+  );
+  return rowCount;
+}
+
 async function findDueReminders({ client, brand, limit = 50 }) {
   const { rows } = await ex(client)(
     `SELECT ir.*, i.contact_id, i.invoice_number, i.due_date, i.balance_due_ngn
@@ -440,6 +466,7 @@ module.exports = {
   listReceipts,
   insertReminder,
   listReminders,
+  cancelScheduledReminders,
   findDueReminders,
   updateReminderStatus,
   bumpReminderCount,

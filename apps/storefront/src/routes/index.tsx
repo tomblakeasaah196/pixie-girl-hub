@@ -2,13 +2,18 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { clientBrand } from "@/lib/brand";
 import { getProducts, unwrap, type ProductCard } from "@/lib/storefront";
-import { ssrProducts } from "@/lib/server";
+import { ssrHome } from "@/lib/server";
 import { useCurrency } from "@/lib/useStore";
 import { ProductCardLink, Section } from "@/components/parts";
+import { PageTemplate, hasSections, type StudioPage } from "@/components/templates";
 
-/** Home — hero + a preview of the live catalogue. Brand + prices from the Hub. */
+/**
+ * Home. Renders the published Studio 'home' page (template_key + slots) when one
+ * exists; otherwise falls back to the built-in hero + new-in grid. Brand + prices
+ * from the Hub.
+ */
 export const Route = createFileRoute("/")({
-  loader: async () => ssrProducts({ data: { pageSize: 8 } }),
+  loader: async () => ssrHome(),
   component: Home,
 });
 
@@ -22,9 +27,16 @@ function Home() {
     initialData: initial.products,
   });
   const products = data ?? [];
+  const page = initial.page as StudioPage | null;
+
+  // Studio-published home → render from its template/sections.
+  if (hasSections(page)) {
+    return <PageTemplate page={page!} products={products} currency={currency} />;
+  }
+
+  // Default built-in home.
   const brandName =
     clientBrand() === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl";
-
   return (
     <main>
       <section className="mx-auto max-w-6xl px-4 py-20 md:px-6 md:py-28">
@@ -51,7 +63,7 @@ function Home() {
           <div className="flex items-end justify-between">
             <h2 className="text-h3 font-display">New in</h2>
             <Link to="/shop" className="text-body-sm text-muted-foreground hover:text-foreground">
-              View all →
+              View all
             </Link>
           </div>
           <div className="mt-8 grid grid-cols-2 gap-6 md:grid-cols-4">

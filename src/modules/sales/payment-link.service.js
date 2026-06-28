@@ -2,10 +2,11 @@
  * Payment initiation + automatic gateway fallback (C / PD §6.2, §6.21).
  *
  * The "pay now / pay any amount" link per order. Walks the active gateway chain
- * for the currency (payment-gateways.getActiveChain — NGN: primary then
- * fallback; non-NGN: Stripe) and initialises a checkout on the first that
- * succeeds. If the primary errors at this moment, it silently falls over to the
- * secondary so the customer never sees a failure (§6.21 redundancy).
+ * for the currency (payment-gateways.getActiveChain — NGN: Nomba → Paystack →
+ * Stripe; non-NGN: Nomba → Stripe, where Stripe is the last-resort fallback) and
+ * initialises a checkout on the first that succeeds. If a gateway errors at this
+ * moment, it silently falls over to the next so the customer never sees a
+ * failure (§6.21 redundancy).
  *
  * Every checkout carries metadata { brand, order_id, amount_ngn } so the
  * inbound webhook confirm resolves + records the payment (with per-gateway fee
@@ -78,8 +79,7 @@ async function campaignFxRate({ brand, order }) {
 
 // Storefront orders aren't tied to a campaign, so they have no ngn_per_usd_rate.
 // They settle foreign currency at the brand's catalogue rate — the SAME rate the
-// website displayed and recorded on the order (sales_orders.fx_rate_used). This
-// is the storefront analogue of campaignFxRate.
+// website displayed and recorded on the order (sales_orders.fx_rate_used).
 async function catalogueFxRate({ brand }) {
   try {
     const { rows } = await query(
@@ -92,9 +92,18 @@ async function catalogueFxRate({ brand }) {
   }
 }
 
-// Resolve the NGN→foreign settlement rate: a campaign order uses the campaign's
-// static rate; a storefront (non-campaign) order uses the brand catalogue rate.
+/**
+ * The NGN→foreign rate to settle THIS order at. Precedence:
+ *   1. The rate LOCKED on the order at placement (fx_rate_used) — the exact rate
+ *      the buyer was quoted (re-reading a live rate is unsafe: the owner can edit
+ *      it after placement). Only called for foreign settlement, where 1.0 is the
+ *      "never captured" default, so we ignore 1.0 and fall through.
+ *   2. The campaign's static rate (campaign orders).
+ *   3. The brand catalogue rate (storefront / non-campaign orders).
+ */
 async function settlementFxRate({ brand, order }) {
+  const locked = order && Number(order.fx_rate_used);
+  if (locked && locked > 0 && locked !== 1) return locked;
   const campaignRate = await campaignFxRate({ brand, order });
   if (campaignRate && campaignRate > 0) return campaignRate;
   return catalogueFxRate({ brand });
@@ -204,7 +213,7 @@ async function createPaymentLink({
   brand,
   order_id,
   amount_ngn,
-  currency = "NGN",
+  currency,
   return_url_base,
   preferred_provider,
 }) {
@@ -229,14 +238,27 @@ async function createPaymentLink({
   const amountStr = toCurrencyString(amt);
 
   // Settlement currency + the amount actually charged at the gateway.
+  // When the caller doesn't pass a currency, fall back to the currency the
+  // ORDER was sold in (display_currency) — NOT a blanket "NGN".
+  //
+  // This was the FLH-SO-0059 bug: the admin "Send Pay Link" button sends only
+  // amount_ngn (no currency), so a USD order — sold at the campaign's locked
+  // ₦/$ rate — got an NGN-denominated Nomba checkout for the full Naira total.
+  // The buyer then paid by international card and Nomba converted that Naira
+  // figure at ITS OWN live rate (~₦1,401/$), charging $708.25 instead of the
+  // quoted $764 (₦992,400 ÷ 1,300). Honouring the order's settlement currency
+  // keeps the dollar figure at the rate the buyer agreed to, on every pay-link
+  // path (admin button, public tokenised link), not just the campaign checkout.
+  //
   // NGN: charge the Naira figure as-is. USD: convert the NGN outstanding with
-  // the CAMPAIGN's static rate (ngn_per_usd_rate) and ceil to a whole dollar —
-  // the exact figure the landing page showed the buyer (owner: 10.29 → $11).
-  // We never hardcode a rate; whatever the campaign carries is what we charge.
-  const settleCurrency = String(currency || "NGN").toUpperCase();
+  // the order's locked rate (settlementFxRate) and ceil to a whole dollar — the
+  // exact figure the landing page showed the buyer (owner: 10.29 → $11). We
+  // never hardcode a rate; whatever the order locked in is what we charge.
+  const settleCurrency = String(
+    currency || order.display_currency || "NGN",
+  ).toUpperCase();
   let chargeAmount = amountStr;
   if (settleCurrency !== "NGN") {
-    // Campaign order → campaign rate; storefront order → catalogue rate.
     const rate = await settlementFxRate({ brand, order });
     if (!rate || rate <= 0)
       throw new AppError(
@@ -248,7 +270,12 @@ async function createPaymentLink({
   }
 
   const email = await contactEmail(order.contact_id);
-  const chain = await gateways.getActiveChain({ brand, currency });
+  // Route the gateway chain by the resolved settlement currency — a USD order
+  // must hit the foreign-currency (Nomba-only) rail, never the NGN chain.
+  const chain = await gateways.getActiveChain({
+    brand,
+    currency: settleCurrency,
+  });
   if (!chain.length)
     throw new AppError(
       "NO_GATEWAY",
@@ -326,13 +353,13 @@ async function previewByToken({ token }) {
 }
 
 /** Public, no-auth: generate a checkout link for a tokenised order. */
-async function createPublicPaymentLink({
-  token,
-  amount_ngn,
-  currency = "NGN",
-}) {
+async function createPublicPaymentLink({ token, amount_ngn, currency }) {
   const found = await resolveByToken(token);
   if (!found) throw new NotFoundError("Order");
+  // Pass currency through as-is — when the caller omits it, createPaymentLink
+  // settles in the order's own display_currency. Defaulting to "NGN" here would
+  // force a USD order's public "pay any amount" link back into Naira, the same
+  // way the admin "Send Pay Link" button did (FLH-SO-0059).
   return createPaymentLink({
     brand: found.brand,
     order_id: found.order.order_id,

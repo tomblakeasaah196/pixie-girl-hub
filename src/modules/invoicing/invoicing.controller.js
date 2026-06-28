@@ -124,6 +124,19 @@ const cancelReminder = async (req, res) =>
     }),
   });
 
+// ── Document settings (Invoicing → Settings tab) ─────────────
+const getDocumentSettings = async (req, res) =>
+  res.json({
+    data: await service.getDocumentSettings({ brand: req.brand }),
+  });
+const updateDocumentSettings = async (req, res) =>
+  res.json({
+    data: await service.updateDocumentSettings({
+      ...base(req),
+      input: req.body,
+    }),
+  });
+
 module.exports = {
   listInvoices,
   getById,
@@ -132,6 +145,8 @@ module.exports = {
   recordPayment,
   voidInvoice,
   invoicePdf,
+  getDocumentSettings,
+  updateDocumentSettings,
   listCreditNotes,
   getCreditNote,
   createCreditNote,

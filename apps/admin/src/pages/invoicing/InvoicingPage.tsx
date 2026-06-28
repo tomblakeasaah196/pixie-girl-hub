@@ -1,19 +1,24 @@
 import { useSearchParams } from "react-router-dom";
-import { FileBarChart, FileText, Undo2 } from "lucide-react";
+import { FileBarChart, FileText, Undo2, Settings2 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useAuthStore } from "@/stores/auth";
 import { ArAgeingView } from "./ArAgeingView";
 import { InvoicesView } from "./InvoicesView";
 import { CreditNotesView } from "./CreditNotesView";
+import { DocumentSettingsTab } from "./DocumentSettingsTab";
 
-type InvoicingTab = "ar-ageing" | "invoices" | "credit-notes";
+type InvoicingTab = "ar-ageing" | "invoices" | "credit-notes" | "settings";
 const TABS: { key: InvoicingTab; label: string; icon: typeof FileText }[] = [
   { key: "ar-ageing", label: "AR Ageing", icon: FileBarChart },
   { key: "invoices", label: "Invoices", icon: FileText },
   { key: "credit-notes", label: "Credit Notes", icon: Undo2 },
+  { key: "settings", label: "Settings", icon: Settings2 },
 ];
 
 export function InvoicingPage() {
   const [sp, setSp] = useSearchParams();
+  const can = useAuthStore((s) => s.can);
+  const canEdit = can("invoicing", "edit");
   const tab = (sp.get("tab") as InvoicingTab) ?? "ar-ageing";
   const setTab = (t: InvoicingTab) => setSp({ tab: t });
 
@@ -50,6 +55,7 @@ export function InvoicingPage() {
       {tab === "ar-ageing" && <ArAgeingView />}
       {tab === "invoices" && <InvoicesView />}
       {tab === "credit-notes" && <CreditNotesView />}
+      {tab === "settings" && <DocumentSettingsTab canEdit={canEdit} />}
     </div>
   );
 }

@@ -181,6 +181,10 @@ function getSite({ brand, path }) {
   return repo.getPublishedSite({ brand, path });
 }
 
+function listContent({ brand, type }) {
+  return repo.listContentPosts({ brand, type });
+}
+
 async function getContent({ brand, type, slug }) {
   const post = await repo.getContentPost({ brand, type, slug });
   if (!post) throw new NotFoundError("Content");
@@ -967,6 +971,7 @@ module.exports = {
   listBundles,
   getBundle,
   getSite,
+  listContent,
   getContent,
   submitOrderForm,
   checkout,

@@ -368,6 +368,19 @@ async function getPublishedSite({ brand, path }) {
   };
 }
 
+// List published content posts of a type (journal, guide, policy, …) for index
+// pages. SELECT * so callers can pick fields without coupling to the schema.
+async function listContentPosts({ brand, type, limit = 50 }) {
+  const { rows } = await query(
+    `SELECT * FROM ${t(brand, "storefront_content_posts")}
+      WHERE post_type = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [type, limit],
+  );
+  return rows;
+}
+
 async function getContentPost({ brand, type, slug }) {
   const { rows } = await query(
     `SELECT * FROM ${t(brand, "storefront_content_posts")}
@@ -542,6 +555,7 @@ module.exports = {
   listBundles,
   getBundleByCode,
   getPublishedSite,
+  listContentPosts,
   getContentPost,
   findContactByEmailOrPhone,
   createContact,

@@ -133,6 +133,7 @@ const publicInstallHubRouter = require("../modules/storefront/install-hub.routes
 const publicStorefrontGeoRouter = require("../modules/storefront/geo.routes");
 const publicStorefrontCartRouter = require("../modules/storefront/cart.public.routes");
 const publicStorefrontCheckoutRouter = require("../modules/storefront/checkout.public.routes");
+const publicStorefrontSitemapRouter = require("../modules/storefront/sitemap.routes");
 const publicAnalyticsRouter = require("../modules/storefront/analytics.public.routes");
 const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.routes");
 const publicReferralRouter = require("../modules/retention/referral.routes");
@@ -156,6 +157,14 @@ function mountRoutes(app) {
       version: require("../../package.json").version,
       node: process.version,
     }),
+  );
+
+  // Storefront sitemap.xml — brand resolved from the host. nginx routes
+  // `location = /sitemap.xml` on each brand domain to the backend.
+  app.use(
+    "/sitemap.xml",
+    hostBrandResolverMiddleware,
+    publicStorefrontSitemapRouter,
   );
 
   // ── Public endpoints (no auth) ─────────────────────────

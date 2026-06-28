@@ -15,51 +15,94 @@
 
 "use strict";
 
+const fs = require("fs");
 const { config } = require("../config/env");
 const { logger } = require("../config/logger");
 const { AppError } = require("../utils/errors");
 
 let browserPromise = null;
 
+/**
+ * Resolve a Chromium/Chrome binary that actually exists on this host. The
+ * configured PUPPETEER_EXECUTABLE_PATH wins, but we fall back to the common
+ * distro locations so a path mismatch doesn't break PDF rendering — notably,
+ * current Alpine ships the binary at /usr/bin/chromium (NOT the legacy
+ * /usr/bin/chromium-browser the Dockerfile pins), which makes launch fail with
+ * a bare ENOENT → "Could not launch Chromium". Returns null when none is found,
+ * letting Puppeteer try its own bundled browser (and surface a clear error).
+ */
+function resolveChromeExecutable() {
+  const candidates = [
+    config.PUPPETEER_EXECUTABLE_PATH,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/lib/chromium/chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+    "/snap/bin/chromium",
+  ].filter(Boolean);
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      /* ignore and try the next candidate */
+    }
+  }
+  return null;
+}
+
+async function launchBrowser() {
+  let puppeteer;
+  try {
+    puppeteer = require("puppeteer");
+  } catch (err) {
+    throw new AppError(
+      "PDF_UNAVAILABLE",
+      "puppeteer is not installed — run `npm install` to enable PDF rendering",
+      503,
+      { metadata: { cause: err.message } },
+    );
+  }
+  const executablePath = resolveChromeExecutable();
+  const launchOpts = {
+    headless: "new",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+    ],
+  };
+  if (executablePath) launchOpts.executablePath = executablePath;
+  try {
+    return await puppeteer.launch(launchOpts);
+  } catch (err) {
+    const cause = String((err && err.message) || err).split("\n")[0];
+    logger.error(
+      { err: err.message, executablePath: executablePath || "(puppeteer default)" },
+      "chromium launch failed",
+    );
+    // Put the underlying reason in the message so it's visible in the API
+    // response (PDF_UNAVAILABLE), not just the server logs.
+    throw new AppError(
+      "PDF_UNAVAILABLE",
+      `Could not launch Chromium for PDF rendering: ${cause}`,
+      503,
+      { metadata: { cause: err.message, executablePath: executablePath || null } },
+    );
+  }
+}
+
 async function getBrowser() {
   if (!config.PDF_ENABLED)
     throw new AppError("PDF_UNAVAILABLE", "PDF rendering is disabled", 503);
 
   if (!browserPromise) {
-    browserPromise = (async () => {
-      let puppeteer;
-      try {
-        puppeteer = require("puppeteer");
-      } catch (err) {
-        throw new AppError(
-          "PDF_UNAVAILABLE",
-          "puppeteer is not installed — run `npm install` to enable PDF rendering",
-          503,
-          { metadata: { cause: err.message } },
-        );
-      }
-      const launchOpts = {
-        headless: "new",
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-        ],
-      };
-      if (config.PUPPETEER_EXECUTABLE_PATH)
-        launchOpts.executablePath = config.PUPPETEER_EXECUTABLE_PATH;
-      return puppeteer.launch(launchOpts);
-    })().catch((err) => {
+    browserPromise = launchBrowser().catch((err) => {
       browserPromise = null; // allow a later retry
-      if (err instanceof AppError) throw err;
-      logger.error({ err: err.message }, "chromium launch failed");
-      throw new AppError(
-        "PDF_UNAVAILABLE",
-        "Could not launch Chromium for PDF rendering",
-        503,
-        { metadata: { cause: err.message } },
-      );
+      throw err; // already an AppError from launchBrowser
     });
   }
   return browserPromise;
@@ -86,10 +129,42 @@ async function renderHtmlToPdf(html, opts = {}) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
+    // Wait for the DOM only — NOT network idle. The document templates are
+    // self-contained (inline CSS, system fonts), but a brand may carry a
+    // logo_url pointing at a remote/slow host. Under the old
+    // waitUntil:"networkidle0", a logo on an unreachable host (common on a
+    // locked-down live server with restricted egress) kept the network from
+    // ever going idle and hung setContent for the full PDF_RENDER_TIMEOUT_MS,
+    // failing the whole render with an opaque "PDF failed" — even though the
+    // document needs no network at all. domcontentloaded returns as soon as the
+    // markup is parsed; we then give images a short, BOUNDED chance to load.
     await page.setContent(html, {
-      waitUntil: "networkidle0",
+      waitUntil: "domcontentloaded",
       timeout: config.PDF_RENDER_TIMEOUT_MS,
     });
+    // Best-effort: let any <img> (e.g. the brand logo) finish loading so it
+    // appears in the PDF, but never block more than 2s on a resource that will
+    // never arrive — a missing/slow logo must not fail the document.
+    await page
+      .evaluate(
+        () =>
+          new Promise((resolve) => {
+            const pending = Array.from(document.images).filter(
+              (img) => !img.complete,
+            );
+            if (pending.length === 0) return resolve();
+            let settled = 0;
+            const done = () => {
+              if (++settled >= pending.length) resolve();
+            };
+            pending.forEach((img) => {
+              img.addEventListener("load", done);
+              img.addEventListener("error", done);
+            });
+            setTimeout(resolve, 2000);
+          }),
+      )
+      .catch(() => {});
     const displayHeaderFooter = Boolean(
       opts.headerTemplate || opts.footerTemplate,
     );

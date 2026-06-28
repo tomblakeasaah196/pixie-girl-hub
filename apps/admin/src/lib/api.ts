@@ -114,14 +114,14 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
   });
 
   // Silent-refresh-and-retry on a 401 — but never for the auth routes
-  // themselves (login/refresh failing 401 is a real auth failure).
-  if (
-    res.status === 401 &&
-    scope === "v1" &&
-    !isAuthRoute &&
-    !_retried &&
-    accessToken !== null
-  ) {
+  // themselves (login/refresh failing 401 is a real auth failure). We attempt
+  // the refresh even when there is NO in-memory access token: the access token
+  // lives in memory only, so a hard reload (or a single earlier transient
+  // refresh failure) leaves it null while the httpOnly refresh cookie is still
+  // valid. Previously this was gated on `accessToken !== null`, which stranded
+  // every subsequent request with a header-less "Authorization header missing"
+  // 401 and no recovery until a full page reload.
+  if (res.status === 401 && scope === "v1" && !isAuthRoute && !_retried) {
     const ok = await refreshAccessToken();
     if (ok) return request<T>(path, { ...opts, _retried: true });
     accessToken = null;
@@ -216,6 +216,40 @@ async function download(path: string, fallbackName = "download"): Promise<void> 
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Save a file the backend has already generated and stored (e.g. an invoice or
+ * receipt PDF served from /media). Fetches the bytes same-origin and saves them
+ * via an <a download>, which reliably triggers a download.
+ *
+ * Why not window.open(): a window.open() called *after* an `await` is no longer
+ * tied to the user's click, so HTTPS popup blockers silently eat it — which is
+ * exactly why "Download PDF" appeared to do nothing on the live server while
+ * working in local dev. We fall back to opening the URL only when the bytes
+ * can't be fetched (e.g. a cross-origin CDN without CORS).
+ */
+export async function saveFileFromUrl(
+  url: string,
+  filename: string,
+): Promise<void> {
+  try {
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) throw new ApiError(res.status, null, `HTTP ${res.status}`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    // Couldn't fetch the bytes (cross-origin CDN, transient network) — best
+    // effort: open the file directly so the user still gets it.
+    window.open(url, "_blank", "noopener");
+  }
 }
 
 export const api = {

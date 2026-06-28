@@ -259,8 +259,17 @@ async function findByOrderNumber({ client, brand, order_number }) {
   return rows[0] || null;
 }
 async function findById({ client, brand, id }) {
+  // Enrich the order header with the customer's contact details so the order
+  // detail view can show name / phone / email instead of a bare contact_id.
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_orders")} WHERE order_id = $1`,
+    `SELECT so.*,
+            c.display_name    AS contact_name,
+            c.primary_phone   AS contact_phone,
+            c.whatsapp_number AS contact_whatsapp,
+            c.email           AS contact_email
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+      WHERE so.order_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
@@ -298,24 +307,33 @@ async function listOrders({
     params.push(filters.sales_campaign_id);
   }
   if (filters.q) {
-    where.push(`so.order_number ILIKE $${i++}`);
+    // Match the order number OR the customer's name / phone / email so staff
+    // can find an order by who placed it, not just by document number.
+    const ph = `$${i++}`;
+    where.push(
+      `(so.order_number ILIKE ${ph} OR c.display_name ILIKE ${ph} OR c.primary_phone ILIKE ${ph} OR c.email ILIKE ${ph})`,
+    );
     params.push(`%${filters.q}%`);
   }
   if (filters.fee_pending) {
-    // jsonb containment, NOT a ::boolean cast on ->>. The cast is evaluated for
-    // every row the filter scans, and any order whose internal_notes.delivery
-    // node holds a non-boolean / malformed value makes `'<x>'::boolean` throw
-    // (invalid input syntax for type boolean) → the whole list 500s. `@>`
-    // matches only delivery.fee_pending === true and is null-safe on every other
-    // shape (null, non-object, missing key all → no match, no error).
-    where.push(
-      `so.internal_notes @> '{"delivery":{"fee_pending":true}}'::jsonb`,
-    );
+    // internal_notes is a TEXT column that stores a JSON-stringified object
+    // (written by the public checkout in campaigns.public.service), so jsonb
+    // operators cannot be applied to it directly: `text @> jsonb` raises
+    // "operator does not exist: text @> jsonb" and 500s the entire list. The
+    // delivery flag is emitted by JSON.stringify as the compact, deterministic
+    // token `"fee_pending":true`, so a substring match selects exactly the
+    // unconfirmed-fee orders and never casts — NULL / non-JSON / missing-key
+    // rows simply don't match, with no error.
+    where.push(`so.internal_notes LIKE $${i++}`);
+    params.push('%"fee_pending":true%');
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "sales_orders")} so ${w}`,
+    `SELECT COUNT(*)::int AS total
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+       ${w}`,
     params,
   );
   const { rows } = await run(
@@ -823,6 +841,71 @@ async function findNearDuplicates({ brand, contact_id, campaign_id, minutes }) {
   return rows;
 }
 
+/**
+ * Pending-payment "twins" of an order that was just paid: same contact, same
+ * total, an identical line signature (variant × quantity), created within
+ * `hours`. The near-duplicate guard above blocks an accidental second checkout,
+ * but when a buyer's first payment genuinely fails and they retry as a fresh
+ * order (new session → new idempotency key, possibly past the 15-min window),
+ * the abandoned first order is left in pending_payment and keeps drawing dunning
+ * reminders. The order.paid duplicate-resolver uses this to find and cancel that
+ * orphan. Matching exact total + line signature on the same contact makes a
+ * false match against a genuinely different pending order effectively
+ * impossible.
+ */
+async function findPendingTwins({
+  client,
+  brand,
+  paid_order_id,
+  contact_id,
+  total_ngn,
+  hours,
+}) {
+  const { rows } = await ex(client)(
+    `WITH target AS (
+       SELECT string_agg(
+                COALESCE(variant_id::text, '_') || 'x' || quantity, ','
+                ORDER BY variant_id, quantity) AS sig
+         FROM ${t(brand, "sales_order_lines")}
+        WHERE order_id = $1
+     )
+     SELECT so.order_id, so.order_number
+       FROM ${t(brand, "sales_orders")} so
+       JOIN LATERAL (
+         SELECT string_agg(
+                  COALESCE(l.variant_id::text, '_') || 'x' || l.quantity, ','
+                  ORDER BY l.variant_id, l.quantity) AS sig
+           FROM ${t(brand, "sales_order_lines")} l
+          WHERE l.order_id = so.order_id
+       ) cand ON true
+      WHERE so.contact_id  = $2
+        AND so.status      = 'pending_payment'
+        AND so.total_ngn   = $3
+        AND so.order_id   <> $1
+        AND so.created_at >= now() - make_interval(hours => $4)
+        AND cand.sig IS NOT DISTINCT FROM (SELECT sig FROM target)
+      ORDER BY so.created_at ASC`,
+    [paid_order_id, contact_id, total_ngn, Number(hours) || 24],
+  );
+  return rows;
+}
+
+/**
+ * Stamp why/when an order was cancelled. Used by the auto-cancel paths so the
+ * order list/detail can show that a pending duplicate was retired by the system
+ * (rather than silently vanishing). abandonment_reason is the existing TEXT
+ * column for auto-cancellation rationale.
+ */
+async function setCancellationReason({ client, brand, id, reason }) {
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET abandonment_reason = $2,
+            cancelled_at       = COALESCE(cancelled_at, now())
+      WHERE order_id = $1`,
+    [id, reason],
+  );
+}
+
 // ── Reporting / export ───────────────────────────────────
 // Period-scoped reads for the Sales Report export. The period filter uses
 // COALESCE(placed_at, created_at) — the same business-date basis the dashboard
@@ -908,18 +991,25 @@ async function reportPayments({ brand, filters = {} }) {
 }
 
 async function setDeliveryFee({ client, brand, id, fee_ngn }) {
+  // internal_notes is TEXT holding a JSON-stringified object — the same column
+  // the fee_pending filter reads. Now that the rate is confirmed we clear the
+  // delivery.fee_pending flag. The jsonb cast is guarded: a NULL or non-JSON
+  // note is left untouched (so `text -> 'key'` / jsonb_set never run against a
+  // bare string and raise); orders that reach this path were written by the
+  // checkout JSON writer, so the cast is safe for them. The result is cast back
+  // to text to match the column type.
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
         SET shipping_fee_ngn = $2,
             total_ngn        = subtotal_ngn - discount_amount_ngn + tax_amount_ngn + $2,
             internal_notes   = CASE
-              WHEN internal_notes IS NULL THEN NULL
-              WHEN internal_notes->'delivery' IS NULL THEN internal_notes
+              WHEN internal_notes IS NULL OR left(btrim(internal_notes), 1) <> '{' THEN internal_notes
+              WHEN (internal_notes::jsonb) -> 'delivery' IS NULL THEN internal_notes
               ELSE jsonb_set(
-                internal_notes,
+                internal_notes::jsonb,
                 '{delivery}',
-                (internal_notes->'delivery') - 'fee_pending'
-              )
+                ((internal_notes::jsonb) -> 'delivery') - 'fee_pending'
+              )::text
             END,
             updated_at = now()
       WHERE order_id = $1
@@ -964,6 +1054,8 @@ module.exports = {
   hasPaidOrder,
   sumCampaignDiscount,
   findNearDuplicates,
+  findPendingTwins,
+  setCancellationReason,
   setDeliveryFee,
   reportOrders,
   reportLines,

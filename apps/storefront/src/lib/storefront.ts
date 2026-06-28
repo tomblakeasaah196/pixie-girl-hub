@@ -114,6 +114,30 @@ export const getCollection = (slug: string, ctx?: ApiContext) =>
   api.get<{ name: string; description?: string; products: ProductCard[] }>(`${SF}/collections/${slug}`, ctx);
 export const getBundles = (ctx?: ApiContext) =>
   api.get<{ bundle_id: string; bundle_code: string; display_name: string; description?: string; bundle_price_ngn?: string; hero_image_url?: string }[]>(`${SF}/bundles`, ctx);
+export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
+  api.get<{
+    bundle_id: string;
+    bundle_code: string;
+    display_name: string;
+    description?: string;
+    bundle_price_ngn?: string;
+    hero_image_url?: string;
+    components: { name?: string; slug?: string; image_url?: string; quantity?: number; role?: string; price_ngn?: string }[];
+  }>(`${SF}/bundles/${slug}`, ctx);
+
+export const getContentPost = (type: string, slug: string, ctx?: ApiContext) =>
+  api.get<{ title: string; body_md?: string; body_html?: string; cover_image_url?: string; published_at?: string }>(`${SF}/content/${type}/${slug}`, ctx);
+export const getContentList = (type: string, ctx?: ApiContext) =>
+  api.get<{ slug: string; title: string; excerpt?: string; cover_image_url?: string; published_at?: string }[]>(`${SF}/content/${type}`, ctx);
+
+export const getInstallHub = (token: string, ctx?: ApiContext) =>
+  api.get<{
+    order_number: string;
+    items: { name: string }[];
+    care_guides: { slug: string; title: string }[];
+    whatsapp_help_url?: string;
+    delivery_city?: string | null;
+  }>(`/api/public/install-hub/${token}`, ctx);
 
 // ── Cart ───────────────────────────────────────────────────
 export const getCart = () => api.get<Cart>(`${SF}/cart`);
@@ -176,24 +200,4 @@ export function unwrap<T>(r: T | { data: T }): T {
 const NGN = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 });
 const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-/** Format using the matching server-provided figure for the currency. Never converts. */
-export function priceFor(
-  card: { effective_price_ngn?: string | number | null; effective_price_usd?: string | number | null; retail_price_ngn?: string | number | null; retail_price_usd?: string | number | null },
-  currency: Currency,
-): string {
-  const raw =
-    currency === "USD"
-      ? card.effective_price_usd ?? card.retail_price_usd
-      : card.effective_price_ngn ?? card.retail_price_ngn;
-  if (raw === null || raw === undefined) return currency === "USD" ? "$—" : "₦—";
-  const n = typeof raw === "string" ? Number(raw) : raw;
-  if (!Number.isFinite(n)) return currency === "USD" ? "$—" : "₦—";
-  return currency === "USD" ? USD.format(n) : NGN.format(n);
-}
-
-export function fmt(amount: string | number | null | undefined, currency: Currency): string {
-  if (amount === null || amount === undefined) return currency === "USD" ? "$—" : "₦—";
-  const n = typeof amount === "string" ? Number(amount) : amount;
-  if (!Number.isFinite(n)) return currency === "USD" ? "$—" : "₦—";
-  return currency === "USD" ? USD.format(n) : NGN.format(n);
-}
+/** Format using the

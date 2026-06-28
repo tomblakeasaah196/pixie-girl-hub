@@ -28,6 +28,8 @@ router.get("/bundles", controller.listBundles);
 router.get("/bundles/:slug", controller.getBundle);
 // Published Studio config for the SSR shell (theme/nav/pages/popups).
 router.get("/site", controller.getSite);
+// Content posts: list (journal/policies index) + single post.
+router.get("/content/:type", controller.listContent);
 router.get("/content/:type/:slug", controller.getContent);
 
 // Analytics ingestion (B-7)

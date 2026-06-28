@@ -170,6 +170,8 @@ server {
 
   location /api/   { proxy_pass http://127.0.0.1:7000; include /etc/nginx/proxy_params; }
   location /media/ { proxy_pass http://127.0.0.1:7000; include /etc/nginx/proxy_params; }
+  # sitemap.xml is generated per-brand by the backend (host → brand).
+  location = /sitemap.xml { proxy_pass http://127.0.0.1:7000/sitemap.xml; include /etc/nginx/proxy_params; }
 
   location / {
     proxy_pass http://storefront;

@@ -67,7 +67,6 @@ function CheckoutPage() {
           `sf-${Date.now()}`,
       };
       const res = await checkout(input);
-      // Hand off to the gateway hosted page.
       window.location.href = res.payment_url;
     } catch (err) {
       const m =
@@ -78,14 +77,17 @@ function CheckoutPage() {
     }
   }
 
-  const field =
-    "input-line text-body placeholder:text-muted-foreground";
+  const field = "input-line text-body placeholder:text-muted-foreground";
+  const rails = currency === "USD" ? ["nomba"] : ["nomba", "paystack"];
 
   return (
     <Section className="max-w-2xl">
       <h1 className="text-h3 font-display">Checkout</h1>
-      <Link to="/cart" className="mt-1 inline-block text-body-sm text-muted-foreground hover:text-foreground">
-        ← Back to bag
+      <Link
+        to="/cart"
+        className="mt-1 inline-block text-body-sm text-muted-foreground hover:text-foreground"
+      >
+        Back to bag
       </Link>
 
       <form onSubmit={submit} className="mt-8 space-y-6">
@@ -136,7 +138,7 @@ function CheckoutPage() {
         <div>
           <p className="text-caption">Payment</p>
           <div className="mt-3 flex gap-2">
-            {(currency === "USD" ? ["nomba", "stripe"] : ["nomba", "paystack"]).map((g) => (
+            {rails.map((g) => (
               <button
                 type="button"
                 key={g}
@@ -154,10 +156,10 @@ function CheckoutPage() {
           disabled={busy}
           className="w-full rounded-full bg-primary py-3.5 text-body text-primary-foreground disabled:opacity-60"
         >
-          {busy ? "Starting secure payment…" : `Pay in ${currency}`}
+          {busy ? "Starting secure payment" : `Pay in ${currency}`}
         </button>
         <p className="text-center text-body-sm text-muted-foreground">
-          You'll be taken to a secure payment page. You won't be charged twice on retry.
+          You will be taken to a secure payment page. Retries are safe; you are not charged twice.
         </p>
       </form>
     </Section>

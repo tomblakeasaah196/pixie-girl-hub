@@ -91,6 +91,15 @@ async function getSite(req, res) {
   });
 }
 
+async function listContent(req, res) {
+  res.json({
+    data: await service.listContent({
+      brand: brandHint(req),
+      type: req.params.type,
+    }),
+  });
+}
+
 async function getContent(req, res) {
   res.json({
     data: await service.getContent({
@@ -157,6 +166,7 @@ module.exports = {
   listBundles,
   getBundle,
   getSite,
+  listContent,
   getContent,
   submitOrderForm,
   startSession,

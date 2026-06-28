@@ -25,6 +25,15 @@ function TrackPage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["track", token],
     queryFn: async () => unwrap(await trackOrder(token)) as Tracking,
+    // Near-real-time: poll every 20s while the order is still in flight; stop
+    // once it reaches a terminal state. (Socket.io can replace this later.)
+    refetchInterval: (q) => {
+      const s = String((q.state.data as Tracking | undefined)?.status || "");
+      return ["delivered", "cancelled", "refunded", "completed"].includes(s)
+        ? false
+        : 20000;
+    },
+    refetchOnWindowFocus: true,
   });
 
   if (isLoading)

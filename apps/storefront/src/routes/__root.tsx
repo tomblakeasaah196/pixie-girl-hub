@@ -85,6 +85,7 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
+      <Preloader />
       <Header />
       <Outlet />
       <Footer />
@@ -162,31 +163,32 @@ function Header() {
   );
 }
 
-function Footer() {
-  const brandName =
-    typeof document !== "undefined" && clientBrand() === "faitlynhair"
-      ? "Faitlyn Hair"
-      : "Pixie Girl";
-  return (
-    <footer className="mt-24 border-t border-border">
-      <div className="mx-auto max-w-6xl px-4 py-10 text-body-sm text-muted-foreground md:px-6">
-        <p className="font-display text-foreground">{brandName}</p>
-        <p className="mt-2">Luxury wigs, delivered. © {new Date().getFullYear()}</p>
-      </div>
-    </footer>
-  );
-}
+function Preloader() {
+  // 2s logo shimmer on first visit of the session; respects reduced motion.
+  const [show, setShow] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
-function NotFound() {
+  useEffect(() => {
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (reduced || sessionStorage.getItem("sf_preloaded")) return;
+    setShow(true);
+    const t1 = setTimeout(() => setLeaving(true), 1700);
+    const t2 = setTimeout(() => {
+      setShow(false);
+      sessionStorage.setItem("sf_preloaded", "1");
+    }, 2100);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
+
+  if (!show) return null;
+  const brandName =
+    clientBrand() === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl";
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
-      <div className="text-center">
-        <h1 className="text-6xl font-bold">404</h1>
-        <p className="mt-2 text-sm text-muted-foreground">This page doesn't exist.</p>
-        <Link to="/" className="mt-6 inline-block underline">
-          Go home
-        </Link>
-      </div>
-    </div>
-  );
-}
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-background transition-opacity duration-300"
+      style

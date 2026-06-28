@@ -14,7 +14,8 @@ import {
 } from "./hooks";
 import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
-import { ORDER_STATUS, SALES_CHANNELS } from "./constants";
+import { saveFileFromUrl } from "@/lib/api";
+import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
 import type { OrderPayment } from "./types";
 
 export function OrderDetail({
@@ -62,6 +63,12 @@ export function OrderDetail({
     try {
       const res = await createLink.mutateAsync({
         amount_ngn: Number(order.balance_due_ngn),
+        // Settle in the currency the order was sold in. Omitting this billed a
+        // USD order in Naira, letting Nomba reconvert at its own rate (the buyer
+        // saw $708.25 instead of the quoted $764). NGN orders pass undefined.
+        ...(order.display_currency && order.display_currency !== "NGN"
+          ? { currency: order.display_currency }
+          : {}),
       });
       await navigator.clipboard.writeText(res.checkout_url);
       fireToast("Link Copied", "Payment link copied to clipboard.");
@@ -92,9 +99,14 @@ export function OrderDetail({
     setReceiptLoading(true);
     try {
       const res = await generateReceipt(orderId);
-      window.open(res.url, "_blank");
-    } catch {
-      fireToast("Receipt Failed", "Failed to generate receipt.", "order", "high");
+      await saveFileFromUrl(res.url, `${order?.order_number ?? "receipt"}.pdf`);
+    } catch (err) {
+      fireToast(
+        "Receipt Failed",
+        err instanceof Error ? err.message : "Failed to generate receipt.",
+        "order",
+        "high",
+      );
     } finally {
       setReceiptLoading(false);
     }
@@ -167,7 +179,11 @@ export function OrderDetail({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate(`/invoicing?tab=invoices`)}
+                  onClick={() =>
+                    navigate(
+                      `/invoicing?tab=invoices&invoice=${invoice.invoice_id}`,
+                    )
+                  }
                 >
                   View Invoice
                 </Button>
@@ -182,6 +198,26 @@ export function OrderDetail({
                   <div className="text-[14px] font-semibold mt-1">
                     {order.contact_name ?? order.contact_id.slice(0, 8)}
                   </div>
+                  {(order.contact_phone || order.contact_email) && (
+                    <div className="mt-1 space-y-0.5">
+                      {order.contact_phone && (
+                        <a
+                          href={`tel:${order.contact_phone}`}
+                          className="block text-[12px] text-text-muted hover:text-accent"
+                        >
+                          {order.contact_phone}
+                        </a>
+                      )}
+                      {order.contact_email && (
+                        <a
+                          href={`mailto:${order.contact_email}`}
+                          className="block text-[12px] text-text-muted hover:text-accent truncate"
+                        >
+                          {order.contact_email}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="micro">Channel</div>
@@ -201,8 +237,8 @@ export function OrderDetail({
                 </div>
                 <div>
                   <div className="micro">Fulfilment</div>
-                  <div className="text-[13px] mt-1 capitalize">
-                    {order.order_type?.replace(/_/g, " ")}
+                  <div className="text-[13px] mt-1">
+                    {fulfilmentLabel(order.order_type)}
                   </div>
                 </div>
                 <div>
@@ -334,7 +370,7 @@ export function OrderDetail({
                       <div>
                         <div className="font-semibold">{ev.label}</div>
                         <div className="text-text-faint">
-                          {new Date(ev.created_at).toLocaleString()}
+                          {new Date(ev.occurred_at).toLocaleString()}
                         </div>
                       </div>
                     </div>

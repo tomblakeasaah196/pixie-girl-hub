@@ -60,6 +60,7 @@ router.post(
   c.createQuotation,
 );
 router.get("/quotations/:quoId", can("view"), c.getQuotation);
+router.post("/quotations/:quoId/pdf", can("view"), c.quotationPdf);
 router.post(
   "/quotations/:quoId/send",
   can("edit"),

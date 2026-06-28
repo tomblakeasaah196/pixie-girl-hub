@@ -30,10 +30,18 @@ function reqBrandCookie(): { brand: BrandKey; cookie?: string } {
   }
 }
 
+interface StudioPage {
+  page_key?: string;
+  template_key?: string;
+  url_path?: string;
+  slots?: { sections?: unknown[] } & Record<string, unknown>;
+}
+
 interface SiteConfig {
   brand: BrandKey;
   theme?: { tokens?: Record<string, string> };
   navigation?: unknown;
+  pages?: StudioPage[];
   popups?: unknown[];
 }
 
@@ -70,6 +78,39 @@ export const ssrProducts = createServerFn({ method: "GET" })
       }
     },
   );
+
+// Home: the published 'home' page (template_key + slots, if Studio published one)
+// plus a product preview for the default layout / product_grid sections.
+export const ssrHome = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{
+    brand: BrandKey;
+    page: StudioPage | null;
+    products: ProductCard[];
+  }> => {
+    const { brand, cookie } = reqBrandCookie();
+    let page: StudioPage | null = null;
+    let products: ProductCard[] = [];
+    try {
+      const site = await api.get<SiteConfig>(
+        "/api/public/storefront/site?path=/",
+        { brand, cookie },
+      );
+      page =
+        (site.pages || []).find(
+          (p) => p.page_key === "home" || p.url_path === "/",
+        ) || null;
+    } catch {
+      /* /site not live yet */
+    }
+    try {
+      const r = await getProducts("?page=1&page_size=8", { brand, cookie });
+      products = (unwrap(r) as ProductCard[]) ?? [];
+    } catch {
+      /* catalogue offline */
+    }
+    return { brand, page, products };
+  },
+);
 
 export const ssrProduct = createServerFn({ method: "GET" })
   .validator((d: { slug: string }) => ({ slug: d.slug }))

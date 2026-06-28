@@ -21,13 +21,18 @@ const couponRepo = require("../retention/coupon.repo");
 const retentionRepo = require("../retention/retention.repo");
 const bundleRepo = require("../retention/bundle.repo");
 const bundleService = require("../retention/bundle.service");
+const campaignsRepo = require("../sales_campaigns/campaigns.repo");
+const campaignsService = require("../sales_campaigns/campaigns.service");
 const pdf = require("../../services/pdf.service");
+const brandDocs = require("../../services/pdf.brand-docs");
+const docCopy = require("../../services/document-copy");
+const emailRender = require("../email_campaigns/email-render");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const businessConfig = require("../business_setup/business-config.repo");
 const salesReportExport = require("./sales-report.export");
 const { audit } = require("../../middleware/audit");
-const { transaction } = require("../../config/database");
+const { transaction, query } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { toUtc, formatTz } = require("../../utils/dates");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -202,6 +207,12 @@ async function createOrderTx({ brand, user, request_id, input }) {
     let pointsLineTotal = money(0);
     let pointsUsed = 0;
     let couponMeta = null;
+    // Exit-intent "stay" promo (§6.22): the campaign's exit_intent_code is a
+    // flat ₦-off shown in the exit modal and typed into the SAME promo field as
+    // a coupon — but it is NOT a retention coupon, so it is resolved against the
+    // live campaign here (below) rather than via couponService.
+    let exitIntentMeta = null;
+    let exitIntentLineTotal = money(0);
     // Soft, buyer-facing notices (e.g. "we applied the bigger saving") and
     // pre-order lines — threaded onto the returned order so the public checkout
     // can show them without ever blocking the sale.
@@ -251,8 +262,62 @@ async function createOrderTx({ brand, user, request_id, input }) {
       return amt;
     };
 
-    // Coupon (F-3)
-    if (input.coupon_code) {
+    // Exit-intent code (§6.22). When the entered code matches the LIVE
+    // campaign's exit_intent_code, apply exit_intent_discount_ngn as a flat,
+    // floor-respecting order-level discount and skip the coupon path entirely
+    // (the same code would otherwise be rejected as COUPON_INVALID, which is
+    // exactly why "the amount off was never added" — the exit-intent fields
+    // were never wired into pricing). The discount stacks on top of the live
+    // sale; applyOrderDiscount only ever consumes remaining margin-floor
+    // headroom, so it can never sell below the variant floor.
+    if (input.coupon_code && campaignRef) {
+      const campRow = campaignRef.campaign_id
+        ? await campaignsRepo.findById({
+            client,
+            brand,
+            id: campaignRef.campaign_id,
+          })
+        : await campaignsRepo.findBySlug({
+            client,
+            brand,
+            slug: campaignRef.slug,
+          });
+      const entered = String(input.coupon_code).trim().toUpperCase();
+      if (
+        campRow &&
+        campRow.exit_intent_enabled &&
+        campRow.exit_intent_code &&
+        String(campRow.exit_intent_code).trim().toUpperCase() === entered &&
+        campRow.exit_intent_discount_ngn !== null &&
+        campRow.exit_intent_discount_ngn !== undefined &&
+        money(campRow.exit_intent_discount_ngn).gt(money(0)) &&
+        campaignsService.resolveState(campRow) === "live"
+      ) {
+        // The code is recognised as this campaign's exit-intent promo — claim
+        // it so it never falls through to the coupon validator (which would
+        // reject it as COUPON_INVALID). The applied amount may be 0 if the live
+        // sale already consumed all margin-floor headroom.
+        exitIntentMeta = {
+          campaign_id: campRow.campaign_id,
+          code: campRow.exit_intent_code,
+        };
+        let want = money(campRow.exit_intent_discount_ngn);
+        if (want.gt(preNet)) want = preNet;
+        exitIntentLineTotal = applyOrderDiscount(want);
+        if (exitIntentLineTotal.gt(money(0))) {
+          notices.push({
+            code: "EXIT_INTENT_APPLIED",
+            message: `Code ${campRow.exit_intent_code} applied — ${toCurrencyString(
+              exitIntentLineTotal,
+            )} off.`,
+          });
+        }
+      }
+    }
+
+    // Coupon (F-3) — skipped when the code was already consumed as the
+    // campaign's exit-intent promo above.
+    if (input.coupon_code && !exitIntentMeta) {
       const cr = await couponService.validateCoupon({
         brand,
         code: input.coupon_code,
@@ -663,6 +728,24 @@ async function createOrderTx({ brand, user, request_id, input }) {
           discount_ngn: toCurrencyString(couponAmt),
         });
       }
+    }
+
+    // 5a-i. Record the exit-intent promo as an order-level campaign discount
+    // (source 'campaign', referenced by the entered code so it is distinct from
+    // the per-line sale rows, which reference the campaign slug).
+    if (exitIntentMeta && exitIntentLineTotal.gt(money(0))) {
+      await repo.insertDiscount({
+        client,
+        brand,
+        disc: {
+          order_id: order.order_id,
+          source: "campaign",
+          source_reference: exitIntentMeta.code,
+          sales_campaign_id: exitIntentMeta.campaign_id,
+          amount_ngn: toCurrencyString(exitIntentLineTotal),
+          discount_type: "fixed",
+        },
+      });
     }
 
     // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): a
@@ -1303,7 +1386,7 @@ async function recordSubscriptionCharge({
   });
 }
 
-async function cancelOrder({ brand, user, request_id, id }) {
+async function cancelOrder({ brand, user, request_id, id, reason }) {
   return transaction(async (client) => {
     const order = await repo.findById({ client, brand, id });
     if (!order) throw new NotFoundError("Order");
@@ -1340,6 +1423,11 @@ async function cancelOrder({ brand, user, request_id, id }) {
       }
     }
     const o = await repo.setStatus({ client, brand, id, status: "cancelled" });
+    // Persist why/when when a reason is supplied (e.g. system auto-cancel of a
+    // superseded duplicate) so the order detail explains the cancellation.
+    if (reason) {
+      await repo.setCancellationReason({ client, brand, id, reason });
+    }
     await audit({
       business: brand,
       user_id: user.user_id,
@@ -1347,8 +1435,9 @@ async function cancelOrder({ brand, user, request_id, id }) {
       target_type: "sales_order",
       target_id: id,
       request_id,
+      metadata: reason ? { reason } : undefined,
     });
-    events.emit("order.cancelled", { brand, order_id: id });
+    events.emit("order.cancelled", { brand, order_id: id, reason: reason || null });
     return o;
   });
 }
@@ -1522,20 +1611,117 @@ async function sendQuotation({ brand, user, request_id, id, input = {} }) {
   return updated;
 }
 
-/** Render the quotation to PDF and register it in shared.documents. */
-async function archiveQuotationPdf({ brand, user, id }) {
+const QUOTATION_STATUS_LABEL = {
+  draft: "Draft",
+  sent: "Sent",
+  viewed: "Viewed",
+  accepted: "Accepted",
+  rejected: "Declined",
+  expired: "Expired",
+  converted: "Converted",
+  cancelled: "Cancelled",
+};
+
+/** Map a quotation (+ lines + contact) → the brand-doc renderer shape. */
+function buildQuotationDoc({ quotation, brandObj, copy, contact }) {
+  const subtotal = Number(quotation.subtotal_ngn || 0);
+  const discount = Number(quotation.discount_amount_ngn || 0);
+  const tax = Number(quotation.tax_amount_ngn || 0);
+  const base = subtotal - discount;
+  const taxRate = tax > 0 && base > 0 ? tax / base : null;
+  const first = String((contact && contact.display_name) || "").trim().split(/\s+/)[0] || "";
+  const tokens = {
+    first_name: first,
+    brand_name: brandObj.brand_name,
+    quotation_number: quotation.quotation_number || "",
+    order_number: "",
+    total: quotation.total_ngn,
+  };
+  const c = (copy.quotation && copy.quotation.pdf) || {};
+  // Prefer the operator's own customer-facing terms/notes; fall back to copy.
+  const noteText =
+    [quotation.payment_terms, quotation.notes].filter(Boolean).join("\n\n") ||
+    docCopy.fillTokens(c.note, tokens);
+
+  return {
+    status_label: QUOTATION_STATUS_LABEL[quotation.status] || quotation.status,
+    status_tone: "due",
+    from: {
+      name: brandObj.brand_legal_name || brandObj.brand_name,
+      address: brandObj.brand_address,
+      phone: brandObj.brand_phone,
+      email: brandObj.support_email,
+    },
+    bill_to: contact
+      ? { name: contact.display_name, phone: contact.primary_phone, email: contact.email }
+      : null,
+    meta: [
+      ["Quote #", quotation.quotation_number],
+      ["Issue date", _dayISO(quotation.created_at)],
+      ["Valid until", quotation.valid_until ? _dayISO(quotation.valid_until) : "—"],
+    ],
+    lines: (quotation.lines || []).map((l) => ({
+      description:
+        l.description ||
+        [l.product_name_snapshot, l.variant_label_snapshot].filter(Boolean).join(" — "),
+      quantity: l.quantity,
+      unit_price_ngn: l.unit_price_ngn,
+      line_total_ngn: l.line_total_ngn,
+    })),
+    subtotal_ngn: quotation.subtotal_ngn,
+    discount_amount_ngn: quotation.discount_amount_ngn,
+    shipping_fee_ngn: quotation.shipping_fee_ngn,
+    tax_amount_ngn: quotation.tax_amount_ngn,
+    tax_rate: taxRate,
+    total_ngn: quotation.total_ngn,
+    notes_label: c.note_label,
+    notes: noteText,
+    thanks: docCopy.fillTokens(c.message, tokens),
+  };
+}
+
+/** Resolve brand identity + copy and render the quotation PDF into Documents. */
+async function _renderQuotationPdf({ brand, user, id }) {
   const full = await repo.findQuotationById({ brand, id });
-  if (!full) return;
-  const { quotationHtml } = require("../../services/pdf.templates");
-  await pdf.renderAndStore({
+  if (!full) return null;
+  const [tokens, copy, contactRows] = await Promise.all([
+    emailRender.resolveBrandTokens(brand),
+    docCopy.resolveCopy(brand),
+    full.contact_id
+      ? query(
+          `SELECT display_name, primary_phone, email FROM shared.contacts WHERE contact_id = $1`,
+          [full.contact_id],
+        )
+      : Promise.resolve({ rows: [] }),
+  ]);
+  const contact = contactRows.rows[0] || null;
+  const brandObj = brandDocs.brandFromTokens(tokens);
+  const html = brandDocs.quotationHtml(
+    brandObj,
+    buildQuotationDoc({ quotation: full, brandObj, copy, contact }),
+  );
+  return pdf.renderAndStore({
     brand,
     user_id: user ? user.user_id : null,
-    html: quotationHtml({ brand, quotation: full }),
+    html,
     title: `Quotation ${full.quotation_number || id}`,
     document_type: "quotation",
     reference_type: "quotation",
     reference_id: id,
+    pdfOptions: brandDocs.PDF_OPTIONS,
   });
+}
+
+/** Render the quotation to PDF and register it in shared.documents. */
+async function archiveQuotationPdf({ brand, user, id }) {
+  await _renderQuotationPdf({ brand, user, id });
+}
+
+/** On-demand quotation PDF (route POST /quotations/:id/pdf). */
+async function quotationPdf({ brand, user, id }) {
+  const stored = await _renderQuotationPdf({ brand, user, id });
+  if (!stored) throw new NotFoundError("Quotation");
+  return stored;
 }
 async function decideQuotation({
   brand,
@@ -1821,26 +2007,157 @@ async function exportSalesReport({ brand, user, request_id, filters = {} }) {
   };
 }
 
-/** Render a paid order to a receipt PDF and persist it via Documents (4.2). */
+const PROVIDER_LABEL = {
+  paystack: "Paystack",
+  opay: "OPay",
+  nomba: "Nomba",
+  stripe: "Stripe",
+  manual: "Manual",
+};
+
+/** Human "Paystack — card" style label from a payment row. */
+function paymentMethodLabel(p) {
+  if (!p) return null;
+  const provider = PROVIDER_LABEL[p.provider] || (p.provider ? String(p.provider) : null);
+  const m = String(p.method || "").toLowerCase();
+  let kind = null;
+  if (m.includes("card")) kind = "card";
+  else if (m.includes("transfer")) kind = "transfer";
+  else if (m.includes("ussd")) kind = "USSD";
+  else if (m.includes("terminal")) kind = "terminal";
+  else if (m.includes("online")) kind = "online";
+  return [provider, kind].filter(Boolean).join(" — ") || provider || "Card";
+}
+
+const _dayISO = (v) => (v ? String(v).slice(0, 10) : "");
+
+/**
+ * Map a paid sales order (header + lines + payments + contact) → the normalised
+ * document the brand-doc renderer expects. Receipts always carry the PAID stamp
+ * and every money line (discount/delivery/VAT) prints with the real columns.
+ */
+function buildReceiptDoc({ order, brandObj, copy }) {
+  const payments = Array.isArray(order.payments) ? order.payments : [];
+  const lastPayment = payments[payments.length - 1] || null;
+  const subtotal = Number(order.subtotal_ngn || 0);
+  const discount = Number(order.discount_amount_ngn || 0);
+  const tax = Number(order.tax_amount_ngn || 0);
+  const base = subtotal - discount;
+  const taxRate = tax > 0 && base > 0 ? tax / base : null;
+
+  const first = String(order.contact_name || "").trim().split(/\s+/)[0] || "";
+  const tokens = {
+    first_name: first,
+    brand_name: brandObj.brand_name,
+    receipt_number: "",
+    order_number: order.order_number || "",
+    total: order.total_ngn,
+  };
+  const c = (copy.receipt && copy.receipt.pdf) || {};
+
+  return {
+    status_label: "Paid",
+    status_tone: "paid",
+    watermark: "Paid",
+    watermark_tone: "paid",
+    from: {
+      name: brandObj.brand_legal_name || brandObj.brand_name,
+      address: brandObj.brand_address,
+      phone: brandObj.brand_phone,
+      email: brandObj.support_email,
+    },
+    bill_to: {
+      name: order.contact_name,
+      phone: order.contact_phone,
+      email: order.contact_email,
+    },
+    meta: [
+      ["Order #", order.order_number],
+      [
+        "Paid on",
+        _dayISO(
+          order.paid_at ||
+            (lastPayment && (lastPayment.captured_at || lastPayment.recorded_at)) ||
+            order.created_at,
+        ),
+      ],
+      ["Method", paymentMethodLabel(lastPayment) || "—"],
+    ],
+    lines: (order.lines || []).map((l) => ({
+      description:
+        [l.product_name_snapshot, l.variant_label_snapshot]
+          .filter(Boolean)
+          .join(" — ") || l.product_name_snapshot,
+      quantity: l.quantity,
+      unit_price_ngn: l.unit_price_ngn,
+      line_total_ngn: l.line_total_ngn,
+    })),
+    subtotal_ngn: order.subtotal_ngn,
+    discount_amount_ngn: order.discount_amount_ngn,
+    shipping_fee_ngn: order.shipping_fee_ngn,
+    tax_amount_ngn: order.tax_amount_ngn,
+    tax_rate: taxRate,
+    total_ngn: order.total_ngn,
+    notes_label: c.note_label,
+    notes: docCopy.fillTokens(c.note, tokens),
+    thanks: docCopy.fillTokens(c.message, tokens),
+  };
+}
+
+/** Render a paid order to a receipt PDF and persist it via Documents (4.2).
+ *  Brand-driven (logo/accent/copy from each brand's config + Settings). */
 async function receiptPdf({ brand, user, id }) {
   const order = await getById({ brand, id });
   if (!order) throw new NotFoundError("Order");
-  const { receiptHtml } = require("../../services/pdf.templates");
+  const [tokens, copy] = await Promise.all([
+    emailRender.resolveBrandTokens(brand),
+    docCopy.resolveCopy(brand),
+  ]);
+  const brandObj = brandDocs.brandFromTokens(tokens);
+  const html = brandDocs.receiptHtml(
+    brandObj,
+    buildReceiptDoc({ order, brandObj, copy }),
+  );
   return pdf.renderAndStore({
     brand,
     user_id: user ? user.user_id : null,
-    html: receiptHtml({ brand, order }),
+    html,
     title: `Receipt ${order.order_number || order.order_id || id}`,
     document_type: "receipt",
     reference_type: "sales_order",
     reference_id: order.order_id || id,
+    pdfOptions: brandDocs.PDF_OPTIONS,
   });
+}
+
+/**
+ * Auto-archive the receipt PDF for a paid order (order.paid subscriber).
+ * Idempotent — skips if a receipt document already exists for this order.
+ * Best-effort: never throws (a render hiccup must not fail the order.paid row).
+ */
+async function archiveReceiptPdf({ brand, order_id }) {
+  try {
+    const documents = require("../../shared/documents/documents.service");
+    const existing = await documents.listForReference({
+      brand,
+      reference_type: "sales_order",
+      reference_id: order_id,
+    });
+    if ((existing || []).some((d) => d.document_type === "receipt")) return;
+    await receiptPdf({ brand, user: null, id: order_id });
+  } catch (err) {
+    logger.warn(
+      { err: err.message, brand, order_id },
+      "auto receipt archive failed — check PDF rendering (PDF_ENABLED / Chromium)",
+    );
+  }
 }
 
 module.exports = {
   listOrders,
   getById,
   receiptPdf,
+  archiveReceiptPdf,
   exportSalesReport,
   createOrder,
   updateOrder,
@@ -1849,6 +2166,7 @@ module.exports = {
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
   listQuotations,
   getQuotation,
+  quotationPdf,
   createQuotation,
   sendQuotation,
   decideQuotation,

@@ -120,6 +120,29 @@ function applyGlobalMiddleware(app) {
       },
     }),
   );
+
+  app.use(
+    "/api/",
+    rateLimit({
+      windowMs: 60_000,
+      max: 300,
+      standardHeaders: true,
+      legacyHeaders: false,
+      // Skip rate limiting for internal SSR requests from the storefront
+      // (127.0.0.1 / ::1). Real client IP limiting still applies for all
+      // external traffic via the cf-connecting-ip / x-real-ip override above.
+      skip: (req) => {
+        const ip = req.ip || req.socket?.remoteAddress || "";
+        return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+      },
+      message: {
+        error: {
+          code: "TOO_MANY_REQUESTS",
+          message: "Slow down — try again in a minute.",
+        },
+      },
+    }),
+  );
 }
 
 /**

@@ -30,7 +30,7 @@ import {
   ShoppingBag,
   X,
 } from "lucide-react";
-import type { LandingBundle } from "@/lib/types";
+import type { LandingBundle, BundleSizeOption } from "@/lib/types";
 import { money } from "@/lib/format";
 import { fbTrack } from "@/lib/fbpixel";
 
@@ -45,6 +45,9 @@ export function BundleDetailModal({
   state,
   stockOut,
   preorderLeadWeeks,
+  sizeOptions = [],
+  sizeCode,
+  onSizeChange,
 }: {
   bundle: LandingBundle;
   open: boolean;
@@ -56,6 +59,9 @@ export function BundleDetailModal({
   state: "before" | "live" | "ended";
   stockOut: boolean;
   preorderLeadWeeks: number;
+  sizeOptions?: BundleSizeOption[];
+  sizeCode?: string;
+  onSizeChange?: (code: string) => void;
 }) {
   const [slide, setSlide] = useState(0);
   // Portal target — only available on the client. Rendering the modal into
@@ -317,6 +323,47 @@ export function BundleDetailModal({
                     </div>
                   )}
                 </div>
+
+                {/* Head size — every wig in the bundle is made to this size.
+                    Picking one updates the price (premium per wig, added on top
+                    of the bundle discount). */}
+                {state === "live" && sizeOptions.length > 1 && (
+                  <div className="mt-6">
+                    <div className="text-[11px] tracking-[0.2em] uppercase opacity-60 mb-3">
+                      Head size
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {sizeOptions.map((o) => {
+                        const active =
+                          (sizeCode ?? sizeOptions[0]?.size_code) ===
+                          o.size_code;
+                        return (
+                          <button
+                            key={o.size_code}
+                            type="button"
+                            onClick={() => onSizeChange?.(o.size_code)}
+                            aria-pressed={active}
+                            className={
+                              "flex flex-col items-start gap-0.5 rounded-[12px] border px-3.5 py-2 transition-colors " +
+                              (active
+                                ? "border-[rgb(var(--accent-deep))] bg-[rgb(var(--accent-deep)/0.12)]"
+                                : "border-[rgb(var(--border-c)/0.16)] hover:border-[rgb(var(--accent-deep)/0.5)]")
+                            }
+                          >
+                            <span className="text-[13px] font-semibold leading-none">
+                              {o.label}
+                            </span>
+                            <span className="text-[11px] tabular-nums text-[rgb(var(--text-faint))]">
+                              {o.premium_ngn > 0
+                                ? `+${money(o.premium_ngn)}/wig`
+                                : "Included"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Components */}
                 <div className="mt-6">

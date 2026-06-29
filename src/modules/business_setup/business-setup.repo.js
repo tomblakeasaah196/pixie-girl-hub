@@ -32,6 +32,7 @@ const CONFIG_COLS = [
   "support_email",
   "support_email_display_name",
   "website",
+  "instagram_handle",
   "tin",
   "cac_number",
   "vat_number",

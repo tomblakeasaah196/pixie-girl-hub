@@ -365,43 +365,9 @@ const duplicateSchema = z
   .strict();
 
 // ── Sales Campaigns v2 — Bundles, tiers, upsells, ambassadors ──
-
-const bundleCreateSchema = z
-  .object({
-    slug,
-    name: z.string().min(1).max(200),
-    description: z.string().max(2000).optional(),
-    hero_image_url: safeUrl.optional(),
-    category_id: z.string().uuid().optional(),
-    is_fixed_composition: z.boolean().optional(),
-    default_per_item_discount_ngn: moneyNgn.optional(),
-    default_preorder_loss_pct: z.coerce.number().min(0).max(1).optional(),
-    status: z.enum(["active", "archived", "draft"]).optional(),
-    display_order: z.coerce.number().int().min(0).optional(),
-  })
-  .strict();
-
-const bundleUpdateSchema = bundleCreateSchema.partial().strict();
-
-const bundleItemSchema = z
-  .object({
-    product_id: z.string().uuid().nullable().optional(),
-    variant_id: z.string().uuid().nullable().optional(),
-    styled_id: z.string().uuid().nullable().optional(),
-    quantity: z.coerce.number().int().min(1).optional(),
-    per_item_discount_ngn: moneyNgn.nullable().optional(),
-    display_position: z.coerce.number().int().min(0).optional(),
-  })
-  .strict()
-  .superRefine((val, ctx) => {
-    if (!val.styled_id && !val.product_id && !val.variant_id) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["product_id"],
-        message: "styled_id, product_id, or variant_id is required",
-      });
-    }
-  });
+// Bundle authoring lives in Catalogue → Bundles (retention). Campaigns only
+// attach a Catalogue bundle by reference, so the only bundle schema here is the
+// attach/import contract — there is no create/update/item schema anymore.
 
 const attachBundleSchema = z
   .object({
@@ -632,6 +598,9 @@ const checkoutSchema = z.object({
         // Priced at the styled product's anchor (retail_price_ngn) and counted
         // as a raw wig for the reseller/bulk tier. Server re-prices regardless.
         unstyled: z.boolean().optional(),
+        // Head size for a bundle line (S/M/L/XL). The server prices the bundle
+        // at the chosen size: discounted-at-S price + the size premium per unit.
+        size_code: z.string().max(8).optional(),
         quantity: z.coerce.number().int().min(1).max(50),
         // Optional — the server re-prices; never trusted from the client.
         unit_price_ngn: z.coerce.number().nonnegative().optional(),
@@ -672,6 +641,7 @@ const quoteSchema = z.object({
         product_id: z.string().uuid().optional(),
         styled_variant_id: z.string().uuid().optional(),
         unstyled: z.boolean().optional(),
+        size_code: z.string().max(8).optional(),
         quantity: z.coerce.number().int().min(1).max(50),
       }),
     )
@@ -686,22 +656,10 @@ const batchAddProductsSchema = z
   })
   .strict();
 
-const cloneBundlesSchema = z
-  .object({
-    campaign_slug: z.string().max(120).optional(),
-  })
-  .strict();
-
 const importCatalogueBundleSchema = z
   .object({
     source_bundle_offer_id: z.string().uuid(),
     campaign_slug: z.string().max(120).optional(),
-  })
-  .strict();
-
-const duplicateBundleSchema = z
-  .object({
-    campaign_id: z.string().uuid().optional(),
   })
   .strict();
 
@@ -722,9 +680,6 @@ module.exports = {
   validateTransition: mw(transitionSchema),
   validateDuplicate: mw(duplicateSchema),
   // v2
-  validateBundleCreate: mw(bundleCreateSchema),
-  validateBundleUpdate: mw(bundleUpdateSchema),
-  validateBundleItem: mw(bundleItemSchema),
   validateAttachBundle: mw(attachBundleSchema),
   validateTier: mw(tierSchema),
   validateUpsell: mw(upsellSchema),
@@ -741,17 +696,13 @@ module.exports = {
   validateQuote: mw(quoteSchema),
   // v3 (migration 000048)
   validateBatchAddProducts: mw(batchAddProductsSchema),
-  validateCloneBundles: mw(cloneBundlesSchema),
   validateImportCatalogueBundle: mw(importCatalogueBundleSchema),
-  validateDuplicateBundle: mw(duplicateBundleSchema),
   // schemas
   createSchema,
   updateSchema,
   addProductSchema,
   signupSchema,
   checkoutSchema,
-  bundleCreateSchema,
-  bundleItemSchema,
   attachBundleSchema,
   tierSchema,
   upsellSchema,

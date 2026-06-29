@@ -37,6 +37,7 @@ async function findByKey(businessKey) {
             address,
             phone,
             email,
+            instagram_handle,
             loyalty_settings,
             cancellation_settings,
             payment_methods,

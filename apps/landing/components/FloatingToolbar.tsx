@@ -1,28 +1,5 @@
 "use client";
 
-/**
- * FloatingToolbar — unified draggable currency + help toolbar.
- *
- * Replaces the separate CurrencyFloater and HowToShop, which overlapped at the
- * bottom-right (the help button hid behind the currency pill). This merges them
- * into ONE pill the visitor can drag anywhere on the viewport so it never hides
- * content (price, CTA, etc.).
- *
- * Position: defaults to LEFT-MIDDLE (clear of the bottom cart bar and the
- * right-side price / checkout). Fully draggable — the whole pill is the drag
- * handle, with a small movement threshold so a tap still toggles currency /
- * opens help but a drag relocates it.
- *
- * Colour: the BRAND palette. The component renders inside <BrandThemeProvider>,
- * so `--accent` / `--accent-deep` resolve to the brand's published Atelier
- * colours — Faitlyn dark brown (#3A2418 → #281D15), Pixie oxblood
- * (#5C0A14 → #36060D). No hard-coded hexes.
- *
- * Currency logic is unchanged from the original CurrencyFloater (static
- * ngn_per_usd_rate from the payload, MutationObserver rewrite, GeoIP default,
- * ceil-rounded USD).
- */
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -99,23 +76,50 @@ const STEPS = [
   { icon: CreditCard,  title: "Checkout & pay",   body: "Open your cart, tap Checkout, fill in delivery, and pay securely with Paystack or Nomba." },
 ];
 
-// ── Pill styling (brand palette via CSS vars from BrandThemeProvider) ─────────
+// ── Glass circle styling ────────────────────────────────────────────────────
 
-const PILL_BG =
-  "linear-gradient(165deg, rgb(var(--accent)) 0%, rgb(var(--accent-deep)) 100%)";
-const PILL_SHADOW =
-  "0 10px 34px rgb(var(--accent-deep) / 0.55), 0 2px 8px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.16)";
-const PILL_BORDER = "1px solid rgb(255 255 255 / 0.12)";
+const CIRCLE_STYLE: React.CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(var(--panel), var(--panel-alpha))",
+  border: "1px solid rgba(var(--border-c), 0.10)",
+  backdropFilter: "blur(22px) saturate(150%)",
+  WebkitBackdropFilter: "blur(22px) saturate(150%)",
+  boxShadow:
+    "inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 28px rgba(0,0,0,0.45)",
+  cursor: "pointer",
+  color: "#fff",
+  transition: "transform 0.15s ease, box-shadow 0.15s ease",
+};
 
-// Movement past this many px (from pointer-down) counts as a drag, not a tap.
 const DRAG_THRESHOLD = 5;
-const EDGE_GAP = 12; // viewport inset for the default position + clamp
+const EDGE_GAP = 12;
+
+// ── WhatsApp SVG icon ───────────────────────────────────────────────────────
+
+function WhatsAppIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  );
+}
 
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
   const fxRate  = payload.ngn_per_usd_rate ?? null;
   const hasRate = typeof fxRate === "number" && fxRate > 0;
+  const waNumber = payload.brand?.support_whatsapp ?? null;
 
   // Currency
   const [usd, setUsd]           = useState(false);
@@ -127,25 +131,18 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
   // Help modal
   const [helpOpen, setHelpOpen] = useState(false);
 
-  // Drag — the whole pill is the handle. A pointer-down that moves past
-  // DRAG_THRESHOLD relocates the pill; a stationary press is treated as a tap
-  // so the buttons still fire. `movedRef` carries the tap/drag verdict into the
-  // button onClick (which fires right after pointerup).
+  // Drag
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [dragPos, setDragPos]   = useState<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const movedRef = useRef(false);
 
-  // Default position: left-middle, once we can measure the viewport + pill.
-  // Kept null until mounted to avoid an SSR/hydration mismatch; the pill is
-  // hidden for that first frame so it doesn't flash at the wrong spot.
   useEffect(() => {
     const place = () => {
-      const h = toolbarRef.current?.offsetHeight ?? 96;
+      const h = toolbarRef.current?.offsetHeight ?? 130;
       setDragPos((prev) => {
         if (prev) {
-          // Re-clamp an existing position on resize.
-          const w = toolbarRef.current?.offsetWidth ?? 52;
+          const w = toolbarRef.current?.offsetWidth ?? 38;
           return {
             x: Math.max(EDGE_GAP, Math.min(window.innerWidth - w - EDGE_GAP, prev.x)),
             y: Math.max(EDGE_GAP, Math.min(window.innerHeight - h - EDGE_GAP, prev.y)),
@@ -161,7 +158,6 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
 
   useEffect(() => { rateRef.current = fxRate || 1; }, [fxRate]);
 
-  // Initial currency pick: persisted choice > GeoIP
   useEffect(() => {
     if (!hasRate) { setResolved(true); return; }
     const stored = readStoredCurrency();
@@ -181,7 +177,6 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
         const cc = String(json?.data?.country || "").toUpperCase();
         const resolvedCurrency = cc && cc !== "NG" ? "USD" : "NGN";
         if (resolvedCurrency === "USD") setUsd(true);
-        // Persist so cart/checkout starts in same currency as the page
         writeStoredCurrency(resolvedCurrency);
       } catch { /* stay NGN */ }
       finally { if (!cancelled) setResolved(true); }
@@ -208,7 +203,6 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
     originals.current.clear();
   }, []);
 
-  // MutationObserver-driven conversion
   useEffect(() => {
     if (!resolved || !hasRate) return;
     if (!usd) {
@@ -234,7 +228,6 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
     return () => { obs.disconnect(); observer.current = null; };
   }, [usd, resolved, hasRate, convertAll, restoreAll]);
 
-  // Auto-open for first-time visitors
   useEffect(() => {
     let seen = true;
     try { seen = Boolean(localStorage.getItem(STORAGE_KEY)); } catch { /* private mode */ }
@@ -244,13 +237,6 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
   }, []);
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
-  //
-  // We listen on `window` (not via React handlers + pointer capture) for the
-  // duration of a press. This is the most reliable cross-browser pattern on
-  // MOBILE: we keep receiving move/up even when the finger outruns the small
-  // pill, and we avoid the iOS Safari quirk where setPointerCapture can swallow
-  // the follow-up `click`. `touch-action: none` (set in CSS on the pill + its
-  // buttons) stops the browser from scrolling instead of dragging.
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = toolbarRef.current;
@@ -262,13 +248,12 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - origin.px;
       const dy = ev.clientY - origin.py;
-      // Only commit to a drag past the threshold — keeps taps tappable.
       if (!movedRef.current && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
       movedRef.current = true;
       setDragging(true);
       if (ev.cancelable) ev.preventDefault();
-      const w = el.offsetWidth || 52;
-      const h = el.offsetHeight || 96;
+      const w = el.offsetWidth || 38;
+      const h = el.offsetHeight || 130;
       setDragPos({
         x: Math.max(EDGE_GAP, Math.min(window.innerWidth  - w - EDGE_GAP, origin.ex + dx)),
         y: Math.max(EDGE_GAP, Math.min(window.innerHeight - h - EDGE_GAP, origin.ey + dy)),
@@ -279,8 +264,6 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       setDragging(false);
-      // Keep movedRef truthy through the `click` that fires right after a
-      // drag-release (so it's suppressed), then clear it on the next tick.
       window.setTimeout(() => { movedRef.current = false; }, 0);
     };
     window.addEventListener("pointermove", onMove, { passive: false });
@@ -288,11 +271,11 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
     window.addEventListener("pointercancel", onUp);
   };
 
-  // ── Currency flip ──────────────────────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────────────────────────
 
   const flip = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (movedRef.current) return; // was a drag, not a tap
+    if (movedRef.current) return;
     const next = usd ? "NGN" : "USD";
     writeStoredCurrency(next);
     setUsd(!usd);
@@ -300,23 +283,25 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
 
   const openHelp = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (movedRef.current) return; // was a drag, not a tap
+    if (movedRef.current) return;
     setHelpOpen(true);
   };
-
-  // ── Help modal ─────────────────────────────────────────────────────────────
 
   function markSeen() {
     try { localStorage.setItem(STORAGE_KEY, "1"); } catch { /* ignore */ }
   }
   function closeHelp() { setHelpOpen(false); markSeen(); }
 
-  const activeGlyph = usd ? "$" : "₦";
+  // Show the ALTERNATIVE currency so visitors know they can switch.
+  const switchGlyph = usd ? "₦" : "$";
   const showCurrency = hasRate && resolved;
+  const waHref = waNumber
+    ? `https://wa.me/${waNumber.replace(/[^0-9]/g, "")}`
+    : null;
 
   return (
     <>
-      {/* ── Floating pill ── */}
+      {/* ── Glass circles toolbar ── */}
       <div
         ref={toolbarRef}
         data-no-convert
@@ -326,21 +311,13 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
           top: dragPos ? dragPos.y : "50%",
           left: dragPos ? dragPos.x : EDGE_GAP,
           zIndex: 55,
-          // Hidden until the left-middle default is measured, so it never
-          // flashes at the wrong spot on first paint.
           visibility: dragPos ? "visible" : "hidden",
-          background: PILL_BG,
-          boxShadow: PILL_SHADOW,
-          border: PILL_BORDER,
-          borderRadius: "1.25rem",
-          padding: "6px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: "2px",
+          gap: "6px",
           touchAction: "none",
           userSelect: "none",
-          animation: dragging ? "none" : "pgh-heartbeat 3.4s ease-in-out infinite",
           cursor: dragging ? "grabbing" : "grab",
           willChange: dragging ? "top, left" : "auto",
         }}
@@ -348,63 +325,57 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
       >
         {/* Currency toggle */}
         {showCurrency && (
-          <>
-            <button
-              type="button"
-              onClick={flip}
-              aria-label={`Switch to ${usd ? "Naira" : "US dollars"}`}
-              title={`${activeGlyph} — tap to switch`}
+          <button
+            type="button"
+            onClick={flip}
+            aria-label={`Switch to ${usd ? "Naira" : "US dollars"}`}
+            title={`Tap for ${usd ? "₦" : "$"}`}
+            className="pgh-glass-circle"
+            style={CIRCLE_STYLE}
+          >
+            <span
+              key={switchGlyph}
               style={{
-                width: 40, height: 40,
-                borderRadius: "0.75rem",
-                display: "grid", placeItems: "center",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                color: "#fff",
+                display: "block",
                 fontFamily: "var(--font-display, Georgia, serif)",
-                fontSize: 18,
+                fontSize: 17,
                 fontWeight: 700,
                 lineHeight: 1,
-                transition: "background 150ms",
+                animation: "pgh-currency-pop 320ms ease-out",
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.14)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             >
-              <span
-                key={activeGlyph}
-                style={{ display: "block", animation: "pgh-currency-pop 320ms ease-out" }}
-              >
-                {activeGlyph}
-              </span>
-            </button>
-
-            {/* Divider */}
-            <div style={{ width: 24, height: 1, background: "rgba(255,255,255,0.20)", margin: "2px 0" }} />
-          </>
+              {switchGlyph}
+            </span>
+          </button>
         )}
 
-        {/* Help button */}
+        {/* Help */}
         <button
           type="button"
           onClick={openHelp}
           aria-label="How to shop"
           title="How to shop"
-          style={{
-            width: 40, height: 40,
-            borderRadius: "0.75rem",
-            display: "grid", placeItems: "center",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            color: "#fff",
-            transition: "background 150ms",
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.14)")}
-          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+          className="pgh-glass-circle"
+          style={{ ...CIRCLE_STYLE, border: "none" } as React.CSSProperties}
         >
-          <HelpCircle style={{ width: 20, height: 20 }} />
+          <HelpCircle style={{ width: 18, height: 18 }} />
         </button>
+
+        {/* WhatsApp */}
+        {waHref && (
+          <a
+            href={waHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Chat on WhatsApp"
+            title="Chat on WhatsApp"
+            onClick={(e) => { if (movedRef.current) e.preventDefault(); }}
+            className="pgh-glass-circle"
+            style={{ ...CIRCLE_STYLE, textDecoration: "none" } as React.CSSProperties}
+          >
+            <WhatsAppIcon size={18} />
+          </a>
+        )}
       </div>
 
       {/* ── How-to-shop modal ── */}
@@ -486,17 +457,9 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
       </AnimatePresence>
 
       <style>{`
-        /* Touch must not pan/scroll the page when it starts on the pill OR any
-           of its buttons — otherwise the browser claims the gesture and the
-           drag never starts on mobile. Scoped to the pill so the help modal's
-           own controls keep normal touch behaviour. */
         .pgh-toolbar, .pgh-toolbar * { touch-action: none; -webkit-user-select: none; }
-        @keyframes pgh-heartbeat {
-          0%,  56%, 100% { transform: scale(1); }
-          14%             { transform: scale(1.07); }
-          28%             { transform: scale(1.01); }
-          42%             { transform: scale(1.05); }
-        }
+        .pgh-glass-circle:hover { transform: scale(1.1); }
+        .pgh-glass-circle:active { transform: scale(0.95); }
         @keyframes pgh-currency-pop {
           0%   { transform: scale(0.55) rotate(-18deg); opacity: 0; }
           60%  { transform: scale(1.08) rotate(2deg);   opacity: 1; }

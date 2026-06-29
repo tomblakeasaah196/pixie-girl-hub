@@ -13,7 +13,9 @@ import { fetchPublishedLanding } from "@/lib/api";
 import { withDefaults, type LandingConfig } from "@landing-kit";
 import { PwaCleanup } from "@/components/PwaCleanup";
 import { MetaPixel } from "@/components/MetaPixel";
+import { CookieConsentBanner } from "@/components/CookieConsentBanner";
 import { CartGlitchModal } from "@/components/cart/CartGlitchModal";
+import { EU_EEA_UK } from "@/lib/eu-countries";
 import "@/styles/globals.css";
 
 const playfair = Playfair_Display({
@@ -103,6 +105,9 @@ export default async function RootLayout({
     ""
   ).replace(/[^0-9]/g, "");
 
+  const country = (headers().get("x-visitor-country") || "").toUpperCase();
+  const isEu = EU_EEA_UK.has(country);
+
   return (
     <html
       lang="en"
@@ -110,7 +115,8 @@ export default async function RootLayout({
       className={`${playfair.variable} ${montserrat.variable} ${jetbrains.variable} ${italiana.variable} ${fraunces.variable} ${interTight.variable}`}
     >
       <body>
-        {pixelId ? <MetaPixel pixelId={pixelId} /> : null}
+        {pixelId ? <MetaPixel pixelId={pixelId} isEu={isEu} /> : null}
+        {pixelId ? <CookieConsentBanner isEu={isEu} /> : null}
         <PwaCleanup />
         {/* One-time apology + free-gift modal. Self-gating: only shows for buyers
             whose broken cart was cleared by the checkout-glitch migration. */}

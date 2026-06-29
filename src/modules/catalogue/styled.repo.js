@@ -147,6 +147,7 @@ async function list({
   const { rows } = await run(
     `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
             b.preorder_enabled, b.expected_ready_date, b.production_lead_days,
+            b.lace_size_codes AS base_lace_size_codes,
             COALESCE(av.available, 0) AS base_available,
             pr.price_storefront_ngn AS base_price_storefront_ngn,
             ${primaryImageSql(brand, "s")} AS primary_image_url

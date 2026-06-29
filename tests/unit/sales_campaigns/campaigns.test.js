@@ -16,7 +16,6 @@ const {
   updateSchema,
   signupSchema,
   addProductSchema,
-  bundleItemSchema,
   checkoutSchema,
 } = require("../../../src/modules/sales_campaigns/campaigns.validator");
 
@@ -186,21 +185,6 @@ describe("addProductSchema (campaign builder 'Add products')", () => {
     expect(() =>
       addProductSchema.parse({ include_exclude: "include" }),
     ).toThrow();
-  });
-});
-
-describe("bundleItemSchema (campaign builder bundle picker)", () => {
-  test("accepts styled_id + base product_id", () => {
-    expect(() =>
-      bundleItemSchema.parse({
-        styled_id: "44444444-4444-4444-4444-444444444444",
-        product_id: "55555555-5555-5555-5555-555555555555",
-        quantity: 1,
-      }),
-    ).not.toThrow();
-  });
-  test("requires styled_id / product_id / variant_id", () => {
-    expect(() => bundleItemSchema.parse({ quantity: 1 })).toThrow();
   });
 });
 

@@ -67,6 +67,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
           product_id: i.product_id,
           styled_variant_id: i.styled_variant_id,
           unstyled: i.unstyled,
+          size_code: i.size_code,
           quantity: i.quantity,
         })),
       });

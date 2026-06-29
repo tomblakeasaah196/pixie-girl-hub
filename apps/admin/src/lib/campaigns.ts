@@ -234,8 +234,8 @@ export interface BundleItem {
 
 /**
  * One row in the Catalogue → Bundles tab — the importable source list for the
- * campaign builder. Comes from retention.bundle_offers; the import endpoint
- * mirrors the chosen row into the campaign's own product_bundles + items.
+ * campaign builder. Comes from retention.bundle_offers (the single source of
+ * truth); importing attaches the campaign to this bundle by reference.
  */
 export interface CatalogueBundleSource {
   bundle_offer_id: string;
@@ -514,55 +514,9 @@ export function useBundle(id: string | undefined) {
   });
 }
 
-export function useCreateBundle() {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (body: Partial<Bundle> & { slug: string; name: string }) =>
-      api.post<Bundle>("/sales-campaigns/bundles", body),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] }),
-  });
-}
-
-export function useUpdateBundle(id: string | undefined) {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (patch: Partial<Bundle>) =>
-      api.patch<Bundle>(`/sales-campaigns/bundles/${id}`, patch),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["campaigns", "bundle", brand, id] });
-      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
-    },
-  });
-}
-
-export function useAddBundleItem(bundleId: string | undefined) {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (body: Partial<BundleItem>) =>
-      api.post<BundleItem>(`/sales-campaigns/bundles/${bundleId}/items`, body),
-    onSuccess: () =>
-      qc.invalidateQueries({
-        queryKey: ["campaigns", "bundle", brand, bundleId],
-      }),
-  });
-}
-
-export function useRemoveBundleItem(bundleId: string | undefined) {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (itemId: string) =>
-      api.delete<void>(`/sales-campaigns/bundles/${bundleId}/items/${itemId}`),
-    onSuccess: () =>
-      qc.invalidateQueries({
-        queryKey: ["campaigns", "bundle", brand, bundleId],
-      }),
-  });
-}
+// NOTE: bundle authoring (create / update / add-item / remove-item) lives in
+// Catalogue → Bundles (the retention SSOT) — there are intentionally no
+// campaign-side write hooks for bundles. Campaigns only read + attach.
 
 export function useCampaignBundles(campaignId: string | undefined) {
   const brand = useBrand();
@@ -734,8 +688,9 @@ export function useCatalogueBundleSources() {
 }
 
 /**
- * Import a single catalogue bundle into a campaign — mirrors retention's
- * bundle_offer into product_bundles and attaches the link in one transaction.
+ * Import a single catalogue bundle into a campaign — attaches the campaign to
+ * the Catalogue bundle_offer by reference (no copy). Later edits to the bundle
+ * in Catalogue → Bundles reflect on the campaign live.
  */
 export function useImportCatalogueBundle(
   campaignId: string | undefined,
@@ -757,42 +712,6 @@ export function useImportCatalogueBundle(
         queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
       });
       qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
-    },
-  });
-}
-
-export function useCloneBundlesToCampaign(campaignId: string | undefined) {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (body: { campaign_slug?: string }) =>
-      // Resolves to the cloned-bundle array (the API's { data } is unwrapped by
-      // lib/api). May be empty when the catalogue has no active bundles.
-      api.post<unknown[]>(
-        `/sales-campaigns/${campaignId}/bundles/clone`,
-        body,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ["campaigns", "campaign-bundles", brand, campaignId],
-      });
-      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
-    },
-  });
-}
-
-export function useDuplicateBundle() {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (args: { bundleId: string; campaign_id?: string }) =>
-      api.post<Bundle>(
-        `/sales-campaigns/bundles/${args.bundleId}/duplicate`,
-        { campaign_id: args.campaign_id },
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["campaigns", "bundles", brand] });
-      qc.invalidateQueries({ queryKey: ["campaigns", "campaign-bundles", brand] });
     },
   });
 }

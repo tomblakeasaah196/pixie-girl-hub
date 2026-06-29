@@ -107,6 +107,25 @@ async function setActive({ brand, id, is_active }) {
   return rows[0] || null;
 }
 
+/** Total redemptions recorded against a coupon (delete safety: the FK from
+ *  coupon_redemptions is ON DELETE RESTRICT, so a used code can't be removed). */
+async function countRedemptions({ brand, coupon_id }) {
+  const { rows } = await query(
+    `SELECT count(*)::int AS c FROM shared.coupon_redemptions
+      WHERE business = $1 AND coupon_id = $2`,
+    [brand, coupon_id],
+  );
+  return rows[0].c;
+}
+
+async function remove({ brand, id }) {
+  const { rowCount } = await query(
+    `DELETE FROM shared.coupons WHERE business = $1 AND coupon_id = $2`,
+    [brand, id],
+  );
+  return rowCount > 0;
+}
+
 async function countCustomerRedemptions({ client, coupon_id, contact_id }) {
   if (!contact_id) return 0;
   const { rows } = await ex(client)(
@@ -171,6 +190,8 @@ module.exports = {
   getById,
   update,
   setActive,
+  countRedemptions,
+  remove,
   countCustomerRedemptions,
   redemptionExists,
   recordRedemption,

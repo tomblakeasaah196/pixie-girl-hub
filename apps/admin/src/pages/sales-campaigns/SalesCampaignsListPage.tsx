@@ -210,7 +210,13 @@ export function SalesCampaignsListPage() {
               options={STATUS_OPTIONS}
             />
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-4">
+            <Link
+              to="/sales-campaigns/codes"
+              className="text-[12px] font-semibold text-accent-glow hover:underline"
+            >
+              Special codes →
+            </Link>
             <Link
               to="/sales-campaigns/bundles"
               className="text-[12px] font-semibold text-accent-glow hover:underline"

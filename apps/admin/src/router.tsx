@@ -177,6 +177,11 @@ const CampaignBundlesPage = lazyWithRetry(() =>
     default: m.CampaignBundlesPage,
   })),
 );
+const SpecialCodesPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/SpecialCodesPage").then((m) => ({
+    default: m.SpecialCodesPage,
+  })),
+);
 const LandingStudioPage = lazyWithRetry(() =>
   import("@/pages/sales-campaigns/landing/LandingStudioPage").then((m) => ({
     default: m.LandingStudioPage,
@@ -428,6 +433,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <CampaignBundlesPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "sales-campaigns/codes",
+              element: (
+                <Suspense fallback={null}>
+                  <SpecialCodesPage />
                 </Suspense>
               ),
             },

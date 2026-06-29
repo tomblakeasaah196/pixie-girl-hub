@@ -130,7 +130,7 @@ export function CreatorModal({
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 28, opacity: 0, scale: 0.97 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="creator-glass relative w-full max-w-[460px] rounded-2xl overflow-hidden"
+            className="dropglass relative w-full max-w-[460px] rounded-2xl overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Creator Collective"

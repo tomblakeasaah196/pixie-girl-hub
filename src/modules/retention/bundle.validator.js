@@ -78,6 +78,15 @@ const hexColour = z
   .string()
   .regex(/^#?[0-9a-fA-F]{6}$/, "expected a #rrggbb colour")
   .optional();
+// Per-component manual framing: focal centre (x/y as a 0..1 fraction of the
+// source image) + an optional zoom. Keyed by the component's bundle_product_id.
+const collageCropSchema = z
+  .object({
+    x: z.coerce.number().min(0).max(1),
+    y: z.coerce.number().min(0).max(1),
+    zoom: z.coerce.number().min(1).max(4).optional(),
+  })
+  .strict();
 const collageSettingsSchema = z
   .object({
     title: z.string().max(80).optional(),
@@ -85,6 +94,7 @@ const collageSettingsSchema = z
     font_family: z.string().max(60).optional(),
     bg: hexColour,
     accent: hexColour,
+    crops: z.record(z.string().uuid(), collageCropSchema).optional(),
   })
   .strict();
 const collageGenerateSchema = z

@@ -95,6 +95,17 @@ router.post(
   controller.quote,
 );
 
+// Coupon preview: the checkout summary asks for a code's flat ₦ value so it can
+// show (and currency-convert) the saving before the buyer pays. Read-only — no
+// redemption; the Hub re-validates + floor-clamps at checkout. Cheap landing
+// limiter; never reveals more than {valid, discount_ngn}.
+router.post(
+  "/:slug/coupon-preview",
+  landingReadLimiter,
+  validator.validateCouponPreview,
+  controller.couponPreview,
+);
+
 // Checkout: the live sale "Pay now" flow. Uses its own roomier limiter so a
 // retrying buyer is never mistaken for a bot and 429'd mid-purchase.
 router.post(

@@ -610,7 +610,10 @@ const checkoutSchema = z.object({
     .max(30),
   // "delivery" (ship to the address) or "pickup" (collect in store — no
   // delivery address, zero delivery fee). Defaults to delivery.
-  fulfilment_type: z.enum(["delivery", "pickup"]).optional().default("delivery"),
+  fulfilment_type: z
+    .enum(["delivery", "pickup"])
+    .optional()
+    .default("delivery"),
   utm: z.record(z.string()).optional(),
   // Optional — currency picks the rail; an explicit hint is honoured for NGN.
   payment_gateway: z.enum(["paystack", "nomba"]).optional(),
@@ -648,6 +651,18 @@ const quoteSchema = z.object({
     .max(30)
     .default([]),
 });
+
+// ── Public coupon preview (read-only) ────────────────────
+// The checkout summary calls this to learn a promo/VIP code's flat ₦ value so
+// it can SHOW the saving (and currency-convert it through the campaign's
+// display rate) before the buyer pays. No redemption happens here — the Hub
+// re-validates + floor-clamps authoritatively at checkout.
+const couponPreviewSchema = z
+  .object({
+    code: z.string().trim().min(2).max(60),
+    subtotal_ngn: moneyNgn.optional(),
+  })
+  .strict();
 
 // ── Batch / clone / duplicate (migration 000048) ─────────
 const batchAddProductsSchema = z
@@ -694,6 +709,7 @@ module.exports = {
   validateVipGiftStatus: mw(vipGiftStatusSchema),
   validateCheckout: mw(checkoutSchema),
   validateQuote: mw(quoteSchema),
+  validateCouponPreview: mw(couponPreviewSchema),
   // v3 (migration 000048)
   validateBatchAddProducts: mw(batchAddProductsSchema),
   validateImportCatalogueBundle: mw(importCatalogueBundleSchema),

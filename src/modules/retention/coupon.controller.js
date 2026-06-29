@@ -69,4 +69,15 @@ async function check(req, res) {
   });
 }
 
-module.exports = { create, list, getOne, update, setActive, check };
+async function remove(req, res) {
+  res.json({
+    data: await service.deleteCoupon({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      id: req.params.id,
+    }),
+  });
+}
+
+module.exports = { create, list, getOne, update, setActive, check, remove };

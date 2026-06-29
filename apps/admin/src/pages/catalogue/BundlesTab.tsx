@@ -89,6 +89,9 @@ const PRICING_HELP: Record<string, string> = {
 const inputCls =
   "w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50";
 
+const textareaCls =
+  "w-full min-h-[88px] px-[13px] py-[10px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] leading-[1.5] outline-none focus:border-accent/50 resize-y";
+
 function code(name: string) {
   return name
     .toUpperCase()
@@ -336,6 +339,7 @@ function BundleEditorModal({
   const addToCampaign = useAddBundleToCampaign();
 
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [model, setModel] = useState("fixed_bundle_price");
   const [priceNgn, setPriceNgn] = useState("");
   const [priceUsd, setPriceUsd] = useState("");
@@ -370,6 +374,7 @@ function BundleEditorModal({
   useEffect(() => {
     if (bundle) {
       setName(bundle.display_name);
+      setDescription(bundle.description ?? "");
       setModel(bundle.pricing_model);
       setPriceNgn(
         bundle.bundle_price_ngn != null ? String(bundle.bundle_price_ngn) : "",
@@ -437,6 +442,7 @@ function BundleEditorModal({
     const num = amount ? Number(amount) : undefined;
     const patch: Partial<Bundle> = {
       display_name: name.trim(),
+      description: description.trim() || null,
       pricing_model: model,
     };
     if (model === "fixed_bundle_price") {
@@ -506,6 +512,16 @@ function BundleEditorModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             className={inputCls}
+          />
+        </Field>
+        <Field label="Description" hint="shown on the storefront — optional">
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={1000}
+            rows={3}
+            placeholder="Tell the story of this bundle…"
+            className={textareaCls}
           />
         </Field>
         <Field label="Pricing model">
@@ -679,6 +695,7 @@ function CreateBundleModal({
   const upload = useUploadCoverImage();
   const update = useUpdateBundle();
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [model, setModel] = useState("fixed_bundle_price");
   const [amount, setAmount] = useState("");
   const [amountUsd, setAmountUsd] = useState("");
@@ -691,6 +708,7 @@ function CreateBundleModal({
 
   const reset = () => {
     setName("");
+    setDescription("");
     setAmount("");
     setAmountUsd("");
     setModel("fixed_bundle_price");
@@ -732,6 +750,7 @@ function CreateBundleModal({
     const payload: BundleCreateInput = {
       bundle_code: code(name),
       display_name: name.trim(),
+      description: description.trim() || undefined,
       pricing_model: model,
       components: payloadComponents,
     };
@@ -796,6 +815,17 @@ function CreateBundleModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             className={inputCls}
+          />
+        </Field>
+
+        <Field label="Description" hint="shown on the storefront — optional">
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={1000}
+            rows={3}
+            placeholder="Tell the story of this bundle…"
+            className={textareaCls}
           />
         </Field>
 

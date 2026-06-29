@@ -418,6 +418,17 @@ export interface CollageSettings {
   font_family?: string;
   bg?: string;
   accent?: string;
+  /** Per-component manual framing keyed by bundle_product_id — set in the
+   *  "Reframe photos" modal so a tile can favour the hair over the face. */
+  crops?: Record<string, CollageCrop>;
+}
+
+/** A manual focal crop for one collage tile. x/y are the focal CENTRE as a
+ *  fraction of the source image (0..1); zoom ≥ 1 tightens the frame. */
+export interface CollageCrop {
+  x: number;
+  y: number;
+  zoom?: number;
 }
 
 /** A component inside a bundle. Going forward this is a STYLED product

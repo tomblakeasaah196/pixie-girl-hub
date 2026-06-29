@@ -85,4 +85,36 @@ async function orders(req, res) {
   });
 }
 
-module.exports = { register, login, refresh, logout, me, orders };
+async function verifyEmail(req, res) {
+  res.json({ data: await service.verifyEmail({ token: req.body.token }) });
+}
+
+async function forgot(req, res) {
+  res.json({
+    data: await service.forgotPassword({
+      brand: brandHint(req),
+      email: req.body.email,
+    }),
+  });
+}
+
+async function reset(req, res) {
+  res.json({
+    data: await service.resetPassword({
+      token: req.body.token,
+      password: req.body.password,
+    }),
+  });
+}
+
+module.exports = {
+  register,
+  login,
+  refresh,
+  logout,
+  me,
+  orders,
+  verifyEmail,
+  forgot,
+  reset,
+};

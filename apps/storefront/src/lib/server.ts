@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
+import { getWebRequest } from "@tanstack/react-start/server";
 import { api } from "./api";
 import { brandFromHost, type BrandKey } from "./brand";
 import {
@@ -24,7 +24,7 @@ function reqBrandCookie(): {
   preview?: string;
 } {
   try {
-    const req = getRequest();
+    const req = getWebRequest();
     let preview: string | undefined;
     try {
       preview = new URL(req.url).searchParams.get("preview") || undefined;
@@ -57,7 +57,7 @@ interface SiteConfig {
   preview?: boolean;
 }
 
-export const ssrSite = createServerFn({ method: "GET", strict: false }).handler(
+export const ssrSite = createServerFn({ method: "GET" }).handler(
   async (): Promise<SiteConfig> => {
     const { brand, cookie, preview } = reqBrandCookie();
     const qs = preview ? `?preview=${encodeURIComponent(preview)}` : "";
@@ -73,12 +73,10 @@ export const ssrSite = createServerFn({ method: "GET", strict: false }).handler(
   },
 );
 
-export const ssrProducts = createServerFn({ method: "GET", strict: false })
+export const ssrProducts = createServerFn({ method: "GET" })
   .validator((d: { pageSize?: number }) => ({ pageSize: d?.pageSize ?? 24 }))
   .handler(
-    async ({
-      data,
-    }): Promise<{ brand: BrandKey; products: ProductCard[] }> => {
+    async ({ data }): Promise<{ brand: BrandKey; products: ProductCard[] }> => {
       const { brand, cookie } = reqBrandCookie();
       try {
         const r = await getProducts(`?page=1&page_size=${data.pageSize}`, {
@@ -94,7 +92,7 @@ export const ssrProducts = createServerFn({ method: "GET", strict: false })
 
 // Home: the published 'home' page (template_key + slots, if Studio published one)
 // plus a product preview for the default layout / product_grid sections.
-export const ssrHome = createServerFn({ method: "GET", strict: false }).handler(
+export const ssrHome = createServerFn({ method: "GET" }).handler(
   async (): Promise<{
     brand: BrandKey;
     page: StudioPage | null;
@@ -125,7 +123,7 @@ export const ssrHome = createServerFn({ method: "GET", strict: false }).handler(
   },
 );
 
-export const ssrProduct = createServerFn({ method: "GET", strict: false })
+export const ssrProduct = createServerFn({ method: "GET" })
   .validator((d: { slug: string }) => ({ slug: d.slug }))
   .handler(async ({ data }): Promise<{ product: ProductDetail | null }> => {
     const { brand, cookie } = reqBrandCookie();

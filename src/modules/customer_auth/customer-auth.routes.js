@@ -19,6 +19,11 @@ router.post("/login", controller.login);
 router.post("/refresh", controller.refresh);
 router.post("/logout", controller.logout);
 
+// Email verification + password reset (token delivered by email).
+router.post("/verify-email", controller.verifyEmail);
+router.post("/forgot", controller.forgot);
+router.post("/reset", controller.reset);
+
 // Account reads (access token required).
 router.get("/me", customerAuthOptional, requireCustomer, controller.me);
 router.get("/orders", customerAuthOptional, requireCustomer, controller.orders);

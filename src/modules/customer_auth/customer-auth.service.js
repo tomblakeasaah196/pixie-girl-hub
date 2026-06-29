@@ -13,6 +13,51 @@ const jwt = require("jsonwebtoken");
 const repo = require("./customer-auth.repo");
 const { config } = require("../../config/env");
 const { AppError } = require("../../utils/errors");
+// Required as `emailService` (the register/login params are named `email`).
+const emailService = require("../../services/email.service");
+
+const VERIFY_TTL_MIN = 24 * 60; // 24h
+const RESET_TTL_MIN = 60; // 1h
+
+function newEmailToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+async function storefrontLink(brand, path) {
+  const domain = await repo.storefrontDomain(brand);
+  if (!domain) return null;
+  const base = /^https?:\/\//.test(domain) ? domain : `https://${domain}`;
+  return `${base.replace(/\/$/, "")}${path}`;
+}
+
+/** Best-effort: issue + email a verification link. Never throws to the caller. */
+async function sendVerifyEmail({ brand, contact }) {
+  try {
+    if (!contact || !contact.email) return;
+    const raw = newEmailToken();
+    await repo.createEmailToken({
+      contact_id: contact.contact_id,
+      raw_token: raw,
+      purpose: "verify_email",
+      ttlMinutes: VERIFY_TTL_MIN,
+    });
+    const link = await storefrontLink(
+      brand,
+      `/auth?mode=verify&token=${encodeURIComponent(raw)}`,
+    );
+    if (!link) return;
+    const name = contact.first_name || "there";
+    await emailService.send({
+      brand,
+      to: contact.email,
+      subject: "Confirm your email",
+      text: `Hi ${name}, confirm your email: ${link}`,
+      html: `<p>Hi ${name},</p><p>Please confirm your email address to finish setting up your account.</p><p><a href="${link}">Confirm my email</a></p><p>This link expires in 24 hours.</p>`,
+    });
+  } catch {
+    // Email failures must never block registration.
+  }
+}
 
 function accessToken(contact_id) {
   return jwt.sign({ sub: contact_id, typ: "customer" }, config.JWT_SECRET, {
@@ -79,6 +124,7 @@ async function register({
     user_agent,
     ip,
   });
+  await sendVerifyEmail({ brand, contact });
   return {
     contact,
     access_token: accessToken(contact.contact_id),
@@ -157,4 +203,93 @@ function listOrders({ brand, contact_id }) {
   return repo.listOrders({ brand, contact_id });
 }
 
-module.exports = { register, login, refresh, logout, me, listOrders };
+// ── Email verification ─────────────────────────────────────
+async function verifyEmail({ token }) {
+  if (!token) throw new AppError("MISSING_TOKEN", "Verification link is invalid.", 422);
+  const row = await repo.findLiveEmailToken({
+    raw_token: token,
+    purpose: "verify_email",
+  });
+  if (!row)
+    throw new AppError(
+      "INVALID_TOKEN",
+      "This verification link is invalid or has expired.",
+      400,
+    );
+  await repo.markEmailVerified(row.contact_id);
+  await repo.consumeEmailToken(row.token_hash);
+  return { ok: true };
+}
+
+// ── Password reset ─────────────────────────────────────────
+// Always returns ok (don't reveal whether an email exists). When the email
+// maps to a real account, we issue + send a reset link.
+async function forgotPassword({ brand, email }) {
+  try {
+    const c = await repo.findContactByEmail(email);
+    if (c) {
+      const raw = newEmailToken();
+      await repo.createEmailToken({
+        contact_id: c.contact_id,
+        raw_token: raw,
+        purpose: "reset_password",
+        ttlMinutes: RESET_TTL_MIN,
+      });
+      const link = await storefrontLink(
+        brand,
+        `/auth?mode=reset&token=${encodeURIComponent(raw)}`,
+      );
+      if (link) {
+        const name = c.first_name || "there";
+        await emailService.send({
+          brand,
+          to: c.email,
+          subject: "Reset your password",
+          text: `Hi ${name}, reset your password: ${link}`,
+          html: `<p>Hi ${name},</p><p>We received a request to reset your password.</p><p><a href="${link}">Choose a new password</a></p><p>This link expires in 1 hour. If you didn't ask for this, you can ignore this email.</p>`,
+        });
+      }
+    }
+  } catch {
+    // Never leak failures on the forgot path.
+  }
+  return { ok: true };
+}
+
+async function resetPassword({ token, password }) {
+  if (!token) throw new AppError("MISSING_TOKEN", "Reset link is invalid.", 422);
+  if (!password || String(password).length < 8)
+    throw new AppError(
+      "WEAK_PASSWORD",
+      "Please use a password of at least 8 characters.",
+      422,
+    );
+  const row = await repo.findLiveEmailToken({
+    raw_token: token,
+    purpose: "reset_password",
+  });
+  if (!row)
+    throw new AppError(
+      "INVALID_TOKEN",
+      "This reset link is invalid or has expired.",
+      400,
+    );
+  const hash = await argon2.hash(password);
+  await repo.setPasswordHash(row.contact_id, hash);
+  await repo.consumeEmailToken(row.token_hash);
+  // Security: a password reset revokes all existing sessions for that contact.
+  await repo.revokeAllSessions(row.contact_id);
+  return { ok: true };
+}
+
+module.exports = {
+  register,
+  login,
+  refresh,
+  logout,
+  me,
+  listOrders,
+  verifyEmail,
+  forgotPassword,
+  resetPassword,
+};

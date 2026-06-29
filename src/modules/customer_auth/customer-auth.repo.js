@@ -109,6 +109,15 @@ async function revokeSession(refresh_token) {
   );
 }
 
+/** Revoke every live session for a contact (used after a password reset). */
+async function revokeAllSessions(contact_id) {
+  await query(
+    `UPDATE shared.customer_sessions SET revoked_at = now()
+      WHERE contact_id = $1 AND revoked_at IS NULL`,
+    [contact_id],
+  );
+}
+
 // Best-effort loyalty balance for the account page. Table may not exist on every
 // deploy; never let it break the profile read.
 async function loyaltyPoints(contact_id) {
@@ -120,6 +129,57 @@ async function loyaltyPoints(contact_id) {
     return rows[0] ? Number(rows[0].points_balance) || 0 : 0;
   } catch {
     return 0;
+  }
+}
+
+// ── Email tokens (verify-email + reset-password) ───────────
+// We store only the sha256 of the emailed token; the raw value lives only in
+// the email link. Single-use: consumed_at is set on redeem.
+async function createEmailToken({ contact_id, raw_token, purpose, ttlMinutes }) {
+  await query(
+    `INSERT INTO shared.customer_email_tokens
+       (token_hash, contact_id, purpose, expires_at)
+     VALUES ($1, $2, $3, now() + ($4 || ' minutes')::interval)`,
+    [sha256(raw_token), contact_id, purpose, String(ttlMinutes)],
+  );
+}
+
+async function findLiveEmailToken({ raw_token, purpose }) {
+  const { rows } = await query(
+    `SELECT token_hash, contact_id, purpose
+       FROM shared.customer_email_tokens
+      WHERE token_hash = $1 AND purpose = $2
+        AND consumed_at IS NULL AND expires_at > now()`,
+    [sha256(raw_token), purpose],
+  );
+  return rows[0] || null;
+}
+
+async function consumeEmailToken(token_hash) {
+  await query(
+    `UPDATE shared.customer_email_tokens SET consumed_at = now()
+      WHERE token_hash = $1 AND consumed_at IS NULL`,
+    [token_hash],
+  );
+}
+
+async function markEmailVerified(contact_id) {
+  await query(
+    `UPDATE shared.contacts SET storefront_email_verified = true WHERE contact_id = $1`,
+    [contact_id],
+  );
+}
+
+/** Published storefront domain for a brand (for building email links). */
+async function storefrontDomain(brand) {
+  try {
+    const { rows } = await query(
+      `SELECT storefront_domain FROM shared.business_config WHERE business_key = $1`,
+      [brand],
+    );
+    return rows[0] ? rows[0].storefront_domain : null;
+  } catch {
+    return null;
   }
 }
 
@@ -145,6 +205,12 @@ module.exports = {
   createSession,
   findLiveSession,
   revokeSession,
+  revokeAllSessions,
   loyaltyPoints,
   listOrders,
+  createEmailToken,
+  findLiveEmailToken,
+  consumeEmailToken,
+  markEmailVerified,
+  storefrontDomain,
 };

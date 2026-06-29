@@ -181,6 +181,77 @@ export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
     }[];
   }>(`${SF}/bundles/${slug}`, ctx);
 
+// --- Services (bookable offerings) ---
+export interface ServiceCard {
+  service_id: string;
+  name: string;
+  slug: string;
+  short_description?: string | null;
+  base_price_ngn?: string | number | null;
+  base_price_usd?: string | number | null;
+  compare_at_price_ngn?: string | number | null;
+  price_is_from?: boolean;
+  duration_minutes?: number | null;
+  tags?: string[] | null;
+  cover_image_url?: string | null;
+  deposit_required?: boolean;
+  deposit_pct?: number | null;
+}
+export interface ServiceDetail extends ServiceCard {
+  long_description?: string | null;
+  sale_mode?: "book" | "buy" | "enquire";
+  location_type?: string | null;
+  buffer_minutes?: number | null;
+  cancellation_policy?: string | null;
+  whats_included?: string[] | null;
+  faqs?: { q: string; a: string }[] | null;
+}
+export interface BookingInput {
+  full_name: string;
+  phone?: string;
+  email?: string;
+  preferred_date?: string;
+  preferred_time?: string;
+  notes?: string;
+  source?: string;
+}
+export const getServices = (ctx?: ApiContext) =>
+  api.get<ServiceCard[]>(`/api/public/services`, ctx);
+export const getService = (slug: string, ctx?: ApiContext) =>
+  api.get<ServiceDetail>(`/api/public/services/${slug}`, ctx);
+export const requestBooking = (slug: string, body: BookingInput) =>
+  api.post<{ booking_request_id?: string; message?: string }>(
+    `/api/public/services/${slug}/book`,
+    { ...body, source: body.source || "storefront" },
+  );
+
+// --- Reviews ---
+export interface Review {
+  review_id: string;
+  rating: number;
+  title?: string | null;
+  body?: string | null;
+  photo_urls: string[];
+  is_verified_purchase: boolean;
+  created_at: string;
+  author: string;
+}
+export const getReviews = (slug: string, ctx?: ApiContext) =>
+  api.get<{ summary: { count: number; average: number }; reviews: Review[] }>(
+    `${SF}/products/${slug}/reviews`,
+    ctx,
+  );
+export const submitReview = (body: {
+  product_slug: string;
+  rating: number;
+  title?: string;
+  body?: string;
+  photo_urls?: string[];
+}) => api.post<{ review_id: string; status: string; message: string }>(
+  `${SF}/reviews`,
+  body,
+);
+
 export const getContentPost = (type: string, slug: string, ctx?: ApiContext) =>
   api.get<{
     title: string;

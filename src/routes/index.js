@@ -133,6 +133,7 @@ const publicInstallHubRouter = require("../modules/storefront/install-hub.routes
 const publicStorefrontGeoRouter = require("../modules/storefront/geo.routes");
 const publicStorefrontCartRouter = require("../modules/storefront/cart.public.routes");
 const publicStorefrontCheckoutRouter = require("../modules/storefront/checkout.public.routes");
+const publicStorefrontReviewsRouter = require("../modules/storefront/reviews.public.routes");
 const publicStorefrontSitemapRouter = require("../modules/storefront/sitemap.routes");
 const customerAuthRouter = require("../modules/customer_auth/customer-auth.routes");
 const {
@@ -205,6 +206,13 @@ function mountRoutes(app) {
     publicWriteLimiter,
     customerAuthOptional,
     publicStorefrontCheckoutRouter,
+  );
+  // Storefront product reviews (GET approved + POST by a signed-in customer).
+  // customerAuthOptional resolves req.customer for the POST guard; GET is open.
+  publicRouter.use(
+    "/storefront",
+    customerAuthOptional,
+    publicStorefrontReviewsRouter,
   );
   // Storefront analytics ingestion at the canonical /api/public/analytics path.
   publicRouter.use("/analytics", publicWriteLimiter, publicAnalyticsRouter);

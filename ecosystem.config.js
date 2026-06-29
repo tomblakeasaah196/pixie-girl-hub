@@ -41,6 +41,7 @@ module.exports = {
       script: ".output/server/index.mjs",
       cwd: "/var/www/pixie-girl-hub/apps/storefront",
       instances: 1,
+      exec_mode: "fork",
       autorestart: true,
       watch: false,
       max_memory_restart: "1G",

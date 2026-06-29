@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { LandingPayload } from "@/lib/types";
 import { readStoredCurrency, writeStoredCurrency } from "@/lib/currency";
+import { WhatsAppAdvisorModal } from "./WhatsAppAdvisorModal";
 
 // ── Currency helpers ─────────────────────────────────────────────────────────
 
@@ -130,6 +131,11 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
 
   // Help modal
   const [helpOpen, setHelpOpen] = useState(false);
+
+  // WhatsApp advisor modal — opens when the customer taps the WA glass circle
+  // so they can pick the bundles / featured products they want guidance on,
+  // then send a pre-crafted message to the sales rep on WhatsApp.
+  const [waOpen, setWaOpen] = useState(false);
 
   // Drag
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -295,9 +301,6 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
   // Show the ALTERNATIVE currency so visitors know they can switch.
   const switchGlyph = usd ? "₦" : "$";
   const showCurrency = hasRate && resolved;
-  const waHref = waNumber
-    ? `https://wa.me/${waNumber.replace(/[^0-9]/g, "")}`
-    : null;
 
   return (
     <>
@@ -361,22 +364,35 @@ export function FloatingToolbar({ payload }: { payload: LandingPayload }) {
           <HelpCircle style={{ width: 18, height: 18 }} />
         </button>
 
-        {/* WhatsApp */}
-        {waHref && (
-          <a
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Chat on WhatsApp"
-            title="Chat on WhatsApp"
-            onClick={(e) => { if (movedRef.current) e.preventDefault(); }}
+        {/* WhatsApp — opens the advisor modal so the customer can pick the
+            bundles / featured products they want guidance on; the modal then
+            launches WhatsApp with a pre-crafted message. */}
+        {waNumber && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (movedRef.current) return;
+              setWaOpen(true);
+            }}
+            aria-label="Ask for advice on WhatsApp"
+            title="Ask for advice on WhatsApp"
             className="pgh-glass-circle"
-            style={{ ...CIRCLE_STYLE, textDecoration: "none" } as React.CSSProperties}
+            style={CIRCLE_STYLE}
           >
             <WhatsAppIcon size={18} />
-          </a>
+          </button>
         )}
       </div>
+
+      {waNumber && (
+        <WhatsAppAdvisorModal
+          open={waOpen}
+          onClose={() => setWaOpen(false)}
+          payload={payload}
+          waNumber={waNumber}
+        />
+      )}
 
       {/* ── How-to-shop modal ── */}
       <AnimatePresence>

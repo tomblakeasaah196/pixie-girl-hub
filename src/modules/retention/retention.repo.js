@@ -48,6 +48,55 @@ async function tierForLifetime({ client, brand, lifetime }) {
   return rows[0] || null;
 }
 
+const TIER_COLS = [
+  "tier_key",
+  "tier_name",
+  "min_lifetime_points",
+  "max_lifetime_points",
+  "earning_multiplier",
+  "benefits",
+  "colour",
+  "display_order",
+  "is_active",
+];
+const TIER_JSON = new Set(["benefits"]);
+
+async function createLoyaltyTier({ brand, input, user_id }) {
+  const f = ["business"];
+  const ph = ["$1"];
+  const p = [brand];
+  let i = 2;
+  for (const c of TIER_COLS) {
+    if (input[c] === undefined) continue;
+    f.push(c);
+    ph.push(TIER_JSON.has(c) ? `$${i++}::jsonb` : `$${i++}`);
+    p.push(TIER_JSON.has(c) ? JSON.stringify(input[c]) : input[c]);
+  }
+  f.push("updated_by");
+  ph.push(`$${i}`);
+  p.push(user_id || null);
+  const { rows } = await query(
+    `INSERT INTO shared.loyalty_tiers (${f.join(",")}) VALUES (${ph.join(",")}) RETURNING *`,
+    p,
+  );
+  return rows[0];
+}
+
+async function updateLoyaltyTier({ brand, id, patch, user_id }) {
+  const keys = Object.keys(patch).filter((k) => TIER_COLS.includes(k));
+  if (keys.length === 0) return null;
+  const sets = keys.map((k, idx) =>
+    TIER_JSON.has(k) ? `${k} = $${idx + 4}::jsonb` : `${k} = $${idx + 4}`,
+  );
+  const vals = keys.map((k) => (TIER_JSON.has(k) ? JSON.stringify(patch[k]) : patch[k]));
+  const { rows } = await query(
+    `UPDATE shared.loyalty_tiers SET ${sets.join(", ")}, updated_by = $3, updated_at = now()
+      WHERE tier_id = $1 AND business = $2 RETURNING *`,
+    [id, brand, user_id || null, ...vals],
+  );
+  return rows[0] || null;
+}
+
 async function insertLoyaltyLedger({ client, brand, entry }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.loyalty_ledger
@@ -367,6 +416,8 @@ module.exports = {
   // loyalty
   listLoyaltyTiers,
   tierForLifetime,
+  createLoyaltyTier,
+  updateLoyaltyTier,
   insertLoyaltyLedger,
   getLoyaltyState,
   setLoyaltyTier,

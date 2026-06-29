@@ -213,6 +213,7 @@ export interface LoyaltyTier {
   benefits: Record<string, unknown>;
   colour: string;
   display_order: number;
+  is_active: boolean;
 }
 
 export interface Coupon {
@@ -243,6 +244,29 @@ export interface BundleOffer {
   pricing_model: string;
   is_active: boolean;
   is_visible_storefront: boolean;
+}
+
+export interface MaintenancePlan {
+  plan_id: string;
+  plan_key: string;
+  display_name: string;
+  description: string | null;
+  billing_cycle: "monthly" | "quarterly" | "semi_annual" | "annual";
+  price_ngn: number;
+  extra_service_discount_pct: number | null;
+  is_active: boolean;
+  display_order: number;
+}
+
+export interface MaintenanceSubscription {
+  subscription_id: string;
+  subscription_number: string;
+  plan_name: string;
+  contact_name: string | null;
+  first_name: string | null;
+  status: string;
+  total_visits: number;
+  next_billing_at: string | null;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -484,6 +508,50 @@ export function useLoyaltyTiers() {
     queryKey: ["retention", "loyalty-tiers", brand],
     queryFn: () => api.get<LoyaltyTier[]>("/retention/loyalty/tiers"),
     staleTime: 60_000,
+  });
+}
+
+export function useSaveLoyaltyTier() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (args: { id?: string; body: Partial<LoyaltyTier> }) =>
+      args.id
+        ? api.patch<LoyaltyTier>(`/retention/loyalty/tiers/${args.id}`, args.body)
+        : api.post<LoyaltyTier>("/retention/loyalty/tiers", args.body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["retention", "loyalty-tiers", brand] }),
+  });
+}
+
+export function useMaintenancePlans() {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["retention", "maintenance-plans", brand],
+    queryFn: () => api.get<MaintenancePlan[]>("/retention/maintenance/plans"),
+    staleTime: 60_000,
+  });
+}
+
+export function useMaintenanceSubscriptions() {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["retention", "maintenance-subs", brand],
+    queryFn: () => api.get<MaintenanceSubscription[]>("/retention/maintenance/subscriptions"),
+    staleTime: 60_000,
+  });
+}
+
+export function useSaveMaintenancePlan() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (args: { id?: string; body: Partial<MaintenancePlan> }) =>
+      args.id
+        ? api.patch<MaintenancePlan>(`/retention/maintenance/plans/${args.id}`, args.body)
+        : api.post<MaintenancePlan>("/retention/maintenance/plans", args.body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["retention", "maintenance-plans", brand] }),
   });
 }
 

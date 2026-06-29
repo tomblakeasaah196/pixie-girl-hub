@@ -79,6 +79,16 @@ async function quote(req, res) {
   res.json({ data });
 }
 
+async function couponPreview(req, res) {
+  const data = await publicService.previewCoupon({
+    slug: req.params.slug,
+    brand: req.brand,
+    brandHint: brandHint(req),
+    input: req.body,
+  });
+  res.json({ data });
+}
+
 async function orderStatus(req, res) {
   const data = await publicService.getOrderStatus({
     slug: req.params.slug,
@@ -109,6 +119,7 @@ module.exports = {
   signup,
   checkout,
   quote,
+  couponPreview,
   orderStatus,
   productDetail,
 };

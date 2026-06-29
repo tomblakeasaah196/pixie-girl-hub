@@ -20,12 +20,18 @@ import {
   Store,
   Tag,
   Truck,
+  X,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { fbTrack } from "@/lib/fbpixel";
 import { displayMoney } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
-import { postCheckout, postQuote, type CartQuote } from "@/lib/api-client";
+import {
+  postCheckout,
+  postQuote,
+  postCouponPreview,
+  type CartQuote,
+} from "@/lib/api-client";
 import {
   fetchGeoOptions,
   fetchPickupAddress,
@@ -34,7 +40,6 @@ import {
   type GeoOption,
   type GeoOptions,
   type PickupAddress,
-  type DeliveryFeeStatus,
 } from "@/lib/geo";
 import type { LandingPayload } from "@/lib/types";
 
@@ -127,9 +132,6 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [pickupAddr, setPickupAddr] = useState<PickupAddress | null>(null);
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [deliveryZoneName, setDeliveryZoneName] = useState<string | null>(null);
-  // 'free' → intentional ₦0 (promo); 'pending' → ₦0 we'll confirm before
-  // dispatch; 'priced' → real fee; 'unserviceable' → no zone (blocks checkout).
-  const [deliveryStatus, setDeliveryStatus] = useState<DeliveryFeeStatus | null>(null);
   const [quoting, setQuoting] = useState(false);
   // Use useTransition to defer geo/pickup updates so they don't block renders.
   const [, startTransition] = useTransition();
@@ -142,12 +144,23 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
+  // A retention / VIP coupon's flat ₦ value, fetched from the Hub when the buyer
+  // applies a code that ISN'T the campaign's exit-intent code. Stored raw and
+  // clamped on render (like exit-intent) so it survives cart changes; shown +
+  // currency-converted via fmt, so a buyer in USD sees it at the campaign rate.
+  const [couponAmtRaw, setCouponAmtRaw] = useState(0);
+  const [couponChecking, setCouponChecking] = useState(false);
   const [waOpt, setWaOpt] = useState(false);
   const [mktOpt, setMktOpt] = useState(false);
   const [terms, setTerms] = useState(false);
   const [honey, setHoney] = useState(""); // honeypot
   const [gateway, setGateway] = useState<Gateway>(allowedGateways[0]);
   const [busy, setBusy] = useState(false);
+  // Warm "we need an address we can ship to" modal. It opens when the buyer
+  // taps Pay on a delivery order that hasn't resolved a real, positive fee. The
+  // modal only INFORMS — submit() (below) and the server are what actually
+  // block the ₦0-delivery payment.
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [err, setErr] = useState<{
     message: string;
     retryable: boolean;
@@ -160,9 +173,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // Near-duplicate guard: when the server returns POTENTIAL_DUPLICATE, hold
   // the pending checkout payload here so the user can confirm before we retry
   // with force_new_order = true.
-  type DupOrder = { order_id: string; order_number: string; total_ngn: string; created_at: string };
+  type DupOrder = {
+    order_id: string;
+    order_number: string;
+    total_ngn: string;
+    created_at: string;
+  };
   const [dupOrders, setDupOrders] = useState<DupOrder[] | null>(null);
-  const [pendingCheckoutPayload, setPendingCheckoutPayload] = useState<Parameters<typeof postCheckout>[0] | null>(null);
+  const [pendingCheckoutPayload, setPendingCheckoutPayload] = useState<
+    Parameters<typeof postCheckout>[0] | null
+  >(null);
 
   // Never let a failure be silent — pull the error into view next to the
   // Pay button the moment it is set.
@@ -262,6 +282,13 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const exitIntentDiscount = exitIntentApplied
     ? Math.min(exitAmtRaw, discountedGoods)
     : 0;
+  // VIP / retention coupon saving — a code that isn't the exit-intent code.
+  // Mutually exclusive with exit-intent (a code is one or the other). Clamped to
+  // the goods total here; the Hub re-clamps at the §6.25 margin floor at payment.
+  const couponApplied = promoApplied && !exitIntentApplied && couponAmtRaw > 0;
+  const couponDiscount = couponApplied
+    ? Math.min(couponAmtRaw, discountedGoods)
+    : 0;
   const comps = quote?.components;
   const dealRows: Array<{ label: string; amount: number }> = [];
   if (comps) {
@@ -336,18 +363,20 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     if (fulfilment !== "delivery" || !effectiveZone) {
       setDeliveryFee(null);
       setDeliveryZoneName(null);
-      setDeliveryStatus(null);
       setQuoting(false);
       return;
     }
     let cancelled = false;
     setQuoting(true);
-    fetchDeliveryQuote({ brand: brandKey, zoneCode: effectiveZone, qty: wigQty })
+    fetchDeliveryQuote({
+      brand: brandKey,
+      zoneCode: effectiveZone,
+      qty: wigQty,
+    })
       .then((q) => {
         if (cancelled) return;
         setDeliveryFee(q?.fee_ngn ?? null);
         setDeliveryZoneName(q?.zone_name ?? null);
-        setDeliveryStatus(q?.fee_status ?? null);
       })
       .finally(() => {
         if (!cancelled) setQuoting(false);
@@ -357,44 +386,85 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     };
   }, [fulfilment, effectiveZone, wigQty, brandKey]);
 
-  // Delivery due now (pickup is free; an uncovered zone falls back to 0 and the
-  // copy reads "calculated at fulfilment").
+  // Delivery due now (pickup is free; a delivery order only ever carries a real,
+  // positive fee — a ₦0/unpriced zone is blocked, never charged at ₦0).
   const deliveryDue =
     fulfilment === "delivery" && deliveryFee != null ? deliveryFee : 0;
+  // ZERO EXCEPTIONS: a delivery order may proceed to payment ONLY when a real,
+  // positive fee has resolved. Pickup is the sole ₦0 fulfilment. "free" and
+  // "pending" (both ₦0) no longer qualify — they gate the Pay button shut, just
+  // like an unpriced/unserviceable location. This mirrors the server, which
+  // refuses any delivery order whose fee is not > ₦0.
+  const deliveryFeeOk =
+    fulfilment === "pickup" ||
+    (!quoting && deliveryFee != null && deliveryFee > 0);
   // Total = discounted goods (server quote) + delivery. This is the figure the
   // gateway actually charges, so the "Pay" button and the order it creates now
   // agree to the naira.
-  const total = discountedGoods + deliveryDue - exitIntentDiscount;
+  const total =
+    discountedGoods + deliveryDue - exitIntentDiscount - couponDiscount;
 
-  // Right-hand summary label for the delivery line. A resolved zone can be a
-  // real fee, an intentional ₦0 (promo → "Free delivery") or a ₦0 we'll confirm
-  // before dispatch ("Confirmed before dispatch"). Only an unresolved location
-  // shows the prompt to pick one.
+  // Right-hand summary label for the delivery line. A delivery order must show a
+  // real, positive fee. A ₦0 outcome of any kind — "free" promo, "pending"
+  // config gap, or an unpriced/unserviceable location — reads as "not
+  // deliverable" so the buyer fixes the address or switches to pickup; it is
+  // never presented as something payable at ₦0.
   const deliveryLabel =
     fulfilment === "pickup"
       ? "Free"
       : quoting
         ? "Calculating…"
-        : deliveryStatus === "free"
-          ? "Free delivery"
-          : deliveryStatus === "pending"
-            ? "Confirmed before dispatch"
-            : deliveryFee != null
-              ? fmt(deliveryFee)
-              : effectiveZone
-                ? "Check location"
-                : "Select location";
+        : deliveryFee != null && deliveryFee > 0
+          ? fmt(deliveryFee)
+          : effectiveZone
+            ? "No delivery to this address"
+            : "Select location";
+
+  // Apply a promo code. The exit-intent code is matched + shown locally (its ₦
+  // amount rides in the landing payload). Any other code is checked against the
+  // Hub so a VIP / retention coupon's saving can be shown — and currency-
+  // converted through the campaign rate — before the buyer pays.
+  async function applyPromo() {
+    const code = promoCode.trim();
+    if (!code) return;
+    setPromoApplied(true);
+    setCouponAmtRaw(0);
+    if (code.toUpperCase() === exitCode) return; // exit-intent: shown locally
+    setCouponChecking(true);
+    try {
+      const res = await postCouponPreview({
+        slug: payload.slug,
+        code,
+        subtotal_ngn: Math.round(discountedGoods),
+      });
+      setCouponAmtRaw(
+        res?.valid && Number(res.discount_ngn) > 0
+          ? Number(res.discount_ngn)
+          : 0,
+      );
+    } catch {
+      setCouponAmtRaw(0);
+    } finally {
+      setCouponChecking(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     if (honey) return; // bot
     if (!terms) {
-      setErr({ message: "Please accept the terms to continue.", retryable: false });
+      setErr({
+        message: "Please accept the terms to continue.",
+        retryable: false,
+      });
       return;
     }
     if (!first || !email || !phone) {
-      setErr({ message: "Please fill in all required fields.", retryable: false });
+      setErr({
+        message: "Please fill in all required fields.",
+        retryable: false,
+      });
       return;
     }
     if (fulfilment === "delivery") {
@@ -429,20 +499,20 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       // Quote still in flight — wait for the fee rather than submitting blind.
       if (quoting) {
         setErr({
-          message: "Calculating delivery… give it a second, then tap Pay again.",
+          message:
+            "Calculating delivery… give it a second, then tap Pay again.",
           retryable: true,
         });
         return;
       }
-      // Zone resolved but priced to nothing (uncovered / unseeded). The server
-      // also blocks this, but stop it here so the buyer gets a clear prompt
-      // instead of a rejected payment.
-      if (deliveryFee == null) {
-        setErr({
-          message:
-            "We couldn't calculate delivery for that location. Please re-check your country, state and city.",
-          retryable: false,
-        });
+      // ZERO EXCEPTIONS: a delivery order must carry a real, positive fee. A ₦0
+      // fee of ANY kind — unpriced zone (null), a "free" promo, or a "pending"
+      // config gap — is never allowed to pay. Pickup is the only free
+      // fulfilment. The server enforces this too. Rather than a terse error, we
+      // greet the buyer with the warm modal that walks them to a fix (add a
+      // deliverable address, or switch to pickup); we never proceed to pay.
+      if (deliveryFee == null || !(deliveryFee > 0)) {
+        setShowDeliveryModal(true);
         return;
       }
     }
@@ -511,8 +581,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       };
 
       const res = await postCheckout(checkoutPayload);
-      const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
-      const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
+      const data = (
+        res as { data?: { payment_url?: string; order_id?: string } }
+      )?.data;
+      const payUrl =
+        data?.payment_url ?? (res as { payment_url?: string }).payment_url;
       const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
 
       if (orderId) {
@@ -521,7 +594,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       if (payUrl) {
         window.location.href = payUrl;
       } else {
-        router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
+        router.push(
+          `/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`,
+        );
       }
     } catch (e) {
       const ex = e as Error & {
@@ -529,10 +604,18 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         retryable?: boolean;
         reference?: string;
         order_id?: string;
-        support?: { whatsapp?: string; email?: string; message?: string } | null;
+        support?: {
+          whatsapp?: string;
+          email?: string;
+          message?: string;
+        } | null;
         existing_orders?: DupOrder[] | null;
       };
-      if (ex?.code === "POTENTIAL_DUPLICATE" && ex.existing_orders?.length && checkoutPayload) {
+      if (
+        ex?.code === "POTENTIAL_DUPLICATE" &&
+        ex.existing_orders?.length &&
+        checkoutPayload
+      ) {
         // Hold the exact payload so "Place new order" can resend it verbatim.
         setPendingCheckoutPayload(checkoutPayload);
         setDupOrders(ex.existing_orders);
@@ -641,8 +724,18 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               <div className="grid grid-cols-2 gap-2">
                 {(
                   [
-                    { v: "delivery", label: "Deliver to me", desc: "Ship to your address", icon: Truck },
-                    { v: "pickup", label: "Pick up", desc: "Collect from our store", icon: Store },
+                    {
+                      v: "delivery",
+                      label: "Deliver to me",
+                      desc: "Ship to your address",
+                      icon: Truck,
+                    },
+                    {
+                      v: "pickup",
+                      label: "Pick up",
+                      desc: "Collect from our store",
+                      icon: Store,
+                    },
                   ] as const
                 ).map((opt) => (
                   <button
@@ -848,7 +941,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                         e.preventDefault();
                         document
                           .getElementById("delivery-address")
-                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          ?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
                       }}
                     >
                       Want to change the address?
@@ -1025,6 +1121,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     </span>
                   </div>
                 )}
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-[rgb(var(--success))] font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      <Gift className="w-3 h-3" /> Code {promoCode}
+                    </span>
+                    <span className="tabular-nums font-mono">
+                      −{fmt(couponDiscount)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-[rgb(var(--text-muted))] inline-flex items-center gap-1">
                     {fulfilment === "pickup" ? (
@@ -1034,25 +1140,29 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     )}
                     Delivery
                   </span>
-                  <span className="tabular-nums font-mono">{deliveryLabel}</span>
+                  <span className="tabular-nums font-mono">
+                    {deliveryLabel}
+                  </span>
                 </div>
-                {/* White-glove notice when the zone resolved but couldn't be
-                    priced (₦0, no free-delivery marker). The order is taken;
-                    the rate is confirmed before dispatch. Framed as premium
-                    service, not a system error. */}
-                {fulfilment === "delivery" && deliveryStatus === "pending" && (
-                  <div className="mt-1 rounded-lg border border-[rgb(var(--accent)/0.25)] bg-[rgb(var(--accent)/0.06)] px-3 py-2">
-                    <p className="text-[12px] leading-snug text-[rgb(var(--text-muted))]">
-                      <span className="font-semibold text-[rgb(var(--text))]">
-                        Delivery confirmed before dispatch.
-                      </span>{" "}
-                      Your order is secured. Because you&apos;re in a special
-                      delivery area, our team will confirm the exact delivery
-                      rate and share your final total before we ship — nothing
-                      else to do right now.
-                    </p>
-                  </div>
-                )}
+                {/* A delivery address that didn't resolve to a real, positive
+                    fee blocks checkout outright — no ₦0 delivery, no "confirm
+                    later". Tell the buyer plainly so they fix the address or
+                    switch to pickup. */}
+                {fulfilment === "delivery" &&
+                  !quoting &&
+                  effectiveZone &&
+                  !(deliveryFee != null && deliveryFee > 0) && (
+                    <div className="mt-1 rounded-lg border border-[rgb(var(--danger)/0.3)] bg-[rgb(var(--danger)/0.06)] px-3 py-2">
+                      <p className="text-[12px] leading-snug text-[rgb(var(--text-muted))]">
+                        <span className="font-semibold text-[rgb(var(--danger))]">
+                          We can&apos;t deliver to this address yet.
+                        </span>{" "}
+                        Double-check your country, state and city, or choose
+                        store pickup. We can&apos;t take a delivery order
+                        without a delivery fee.
+                      </p>
+                    </div>
+                  )}
               </div>
               {/* Promo code */}
               <div className="border-t hairline pt-3">
@@ -1073,29 +1183,44 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       onChange={(e) => {
                         setPromoCode(e.target.value.toUpperCase());
                         setPromoApplied(false);
+                        setCouponAmtRaw(0);
                       }}
                       placeholder="Enter code"
                       className="flex-1 h-9 px-3 rounded-lg bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.5)] text-[13px] font-mono"
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        if (promoCode.trim()) setPromoApplied(true);
-                      }}
-                      disabled={!promoCode.trim()}
+                      onClick={() => void applyPromo()}
+                      disabled={!promoCode.trim() || couponChecking}
                       className="h-9 px-3 rounded-lg bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] text-[12px] font-semibold disabled:opacity-40"
                     >
-                      Apply
+                      {couponChecking ? "…" : "Apply"}
                     </button>
                   </div>
                 )}
                 {promoApplied && (
                   <div className="mt-1.5 flex items-center gap-1 text-[12px] text-[rgb(var(--success))]">
-                    <Check className="w-3 h-3" /> Code{" "}
-                    <span className="font-mono font-semibold">{promoCode}</span>{" "}
-                    {exitIntentApplied
-                      ? `— ${fmt(exitIntentDiscount)} off`
-                      : "will be applied"}
+                    {couponChecking ? (
+                      <span className="text-[rgb(var(--text-muted))]">
+                        Checking{" "}
+                        <span className="font-mono font-semibold">
+                          {promoCode}
+                        </span>
+                        …
+                      </span>
+                    ) : (
+                      <>
+                        <Check className="w-3 h-3" /> Code{" "}
+                        <span className="font-mono font-semibold">
+                          {promoCode}
+                        </span>{" "}
+                        {exitIntentApplied
+                          ? `— ${fmt(exitIntentDiscount)} off`
+                          : couponDiscount > 0
+                            ? `— ${fmt(couponDiscount)} off`
+                            : "will be applied at checkout"}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1116,10 +1241,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     You have a recent pending order
                   </p>
                   {dupOrders.map((o) => (
-                    <p key={o.order_id} className="text-[12px] text-[rgb(var(--text-muted))]">
+                    <p
+                      key={o.order_id}
+                      className="text-[12px] text-[rgb(var(--text-muted))]"
+                    >
                       {o.order_number} &middot;{" "}
                       {displayMoney(Number(o.total_ngn))} &middot;{" "}
-                      {new Date(o.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(o.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </p>
                   ))}
                   <p className="text-[12px] text-[rgb(var(--text-faint))]">
@@ -1145,15 +1276,37 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                             ...pendingCheckoutPayload,
                             force_new_order: true,
                           });
-                          const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
-                          const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
-                          const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
-                          if (orderId) sessionStorage.setItem("pgh-last-order-id", orderId);
+                          const data = (
+                            res as {
+                              data?: {
+                                payment_url?: string;
+                                order_id?: string;
+                              };
+                            }
+                          )?.data;
+                          const payUrl =
+                            data?.payment_url ??
+                            (res as { payment_url?: string }).payment_url;
+                          const orderId =
+                            data?.order_id ??
+                            (res as { order_id?: string }).order_id;
+                          if (orderId)
+                            sessionStorage.setItem(
+                              "pgh-last-order-id",
+                              orderId,
+                            );
                           if (payUrl) window.location.href = payUrl;
-                          else router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
+                          else
+                            router.push(
+                              `/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`,
+                            );
                         } catch (e2) {
                           const ex2 = e2 as Error & { retryable?: boolean };
-                          setErr({ message: (ex2 as Error).message || "Checkout failed.", retryable: ex2?.retryable !== false });
+                          setErr({
+                            message:
+                              (ex2 as Error).message || "Checkout failed.",
+                            retryable: ex2?.retryable !== false,
+                          });
                         } finally {
                           setBusy(false);
                         }
@@ -1217,11 +1370,23 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               <motion.button
                 type="submit"
                 whileTap={{ scale: 0.99 }}
-                disabled={busy}
+                // Disabled only while busy or mid-quote. When delivery isn't
+                // billable the button stays tappable BUT submit() intercepts and
+                // opens the warm modal instead of paying — so it can never pay a
+                // ₦0 delivery, yet still guides the buyer to fix it.
+                disabled={busy || quoting}
                 className="btn-cta w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl font-semibold cta-sheen disabled:opacity-60"
               >
                 {busy ? (
                   "Securing your order…"
+                ) : quoting ? (
+                  <>
+                    <Truck className="w-4 h-4" /> Calculating delivery…
+                  </>
+                ) : !deliveryFeeOk ? (
+                  <>
+                    <Truck className="w-4 h-4" /> Add delivery details
+                  </>
                 ) : (
                   <>
                     <Lock className="w-4 h-4" /> Pay {fmt(total)}
@@ -1232,9 +1397,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                 <ShieldCheck className="w-3 h-3 text-[rgb(var(--success))]" />{" "}
                 {fulfilment === "pickup"
                   ? "Secure checkout · Collect in store"
-                  : deliveryFee != null
+                  : deliveryFee != null && deliveryFee > 0
                     ? "Secure checkout · Delivery included"
-                    : "Secure checkout · Shipping calculated at fulfilment"}
+                    : "Secure checkout · Enter a deliverable address"}
               </div>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 <CreditCard className="inline w-3 h-3 mr-1" />
@@ -1244,6 +1409,79 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           </aside>
         </form>
       </div>
+
+      {/* Warm "we need a deliverable address" modal. Opens when the buyer taps
+          Pay on a delivery order with no real, positive fee. It only guides —
+          submit() never proceeds to pay, and the server refuses ₦0 delivery
+          too. Glassmorphic per the design canon. */}
+      {showDeliveryModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delivery-modal-title"
+          className="fixed inset-0 z-[100] grid place-items-center p-4"
+        >
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setShowDeliveryModal(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="glass relative z-10 w-full max-w-sm rounded-[var(--radius)] p-6 text-center"
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowDeliveryModal(false)}
+              className="absolute right-3 top-3 text-[rgb(var(--text-faint))] hover:text-[rgb(var(--text))]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-[rgb(var(--accent)/0.12)]">
+              <Truck className="w-5 h-5 text-[rgb(var(--accent-readable))]" />
+            </div>
+            <h3
+              id="delivery-modal-title"
+              className="font-display text-[20px] leading-tight"
+            >
+              Almost there — where are we sending it?
+            </h3>
+            <p className="mt-2 text-[13px] leading-snug text-[rgb(var(--text-muted))]">
+              We just need a delivery address we can actually ship to, so we can
+              add your delivery fee. Pop in your country, state and city — or
+              collect from our store instead.
+            </p>
+            <div className="mt-5 grid gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeliveryModal(false);
+                  const el = document.getElementById("delivery-address");
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  el?.querySelector("input")?.focus();
+                }}
+                className="h-11 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen"
+              >
+                Add my delivery address
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFulfilment("pickup");
+                  setShowDeliveryModal(false);
+                  setErr(null);
+                }}
+                className="h-11 rounded-xl border border-[rgb(var(--border-c)/0.15)] text-[13px] font-semibold text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))] inline-flex items-center justify-center gap-1.5"
+              >
+                <Store className="w-3.5 h-3.5" /> Collect from store instead
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </main>
   );
 }
@@ -1282,7 +1520,9 @@ function Field({
     <label className="block">
       <span className="micro mb-1.5 block">
         {label}{" "}
-        {required && <span className="text-[rgb(var(--accent-readable))]">*</span>}
+        {required && (
+          <span className="text-[rgb(var(--accent-readable))]">*</span>
+        )}
       </span>
       {children}
     </label>
@@ -1359,7 +1599,9 @@ function Toggle({
       />
       <span>
         {label}{" "}
-        {required && <span className="text-[rgb(var(--accent-readable))]">*</span>}
+        {required && (
+          <span className="text-[rgb(var(--accent-readable))]">*</span>
+        )}
         {checked && (
           <Check className="inline w-3 h-3 text-[rgb(var(--success))] ml-1" />
         )}

@@ -1308,6 +1308,9 @@ async function markPaid({ client, brand, user, _request_id, order }) {
       total_ngn: order.total_ngn,
       tax_amount_ngn: order.tax_amount_ngn,
       sales_campaign_id: order.sales_campaign_id,
+      // Referral code captured at checkout (sales_orders.referral_code_used).
+      // The retention subscriber auto-redeems it on full settlement (§6.23).
+      referral_code: order.referral_code_used || null,
     },
     dedup_key: `order.paid:${order.order_id}`,
   });

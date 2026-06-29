@@ -19,6 +19,7 @@ const main = require("./campaigns.service");
 const events = require("./campaigns.events");
 const salesService = require("../sales/sales.service");
 const salesRepo = require("../sales/sales.repo");
+const couponService = require("../retention/coupon.service");
 const zonesService = require("../logistics/zones.service");
 const paymentLink = require("../sales/payment-link.service");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
@@ -609,8 +610,7 @@ async function resolveBundleForCheckout({
     brand,
     size_code,
   });
-  const lineUnit = (p) =>
-    toCurrencyString(money(p).plus(money(sizePremium)));
+  const lineUnit = (p) => toCurrencyString(money(p).plus(money(sizePremium)));
   const nameWithSize = (n) =>
     sizeLabel ? `${n || "Item"} · Size ${sizeLabel}` : n || null;
   const orderLines = [];
@@ -1142,10 +1142,6 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // loudly instead of silently absorbing the freight.
   let shippingFeeNgn = 0;
   let deliveryQuote = null;
-  // Set when a zone resolves but prices to ₦0 WITHOUT being marked free — a
-  // config gap that "should never happen". Per owner decision we still take the
-  // order (don't lose the sale), flag it, and confirm the rate before dispatch.
-  let deliveryFeePending = false;
   if (!isPickup) {
     const addr = input.contact.address || {};
     const zoneCode = addr.zone_code || addr.country_code || null;
@@ -1202,75 +1198,33 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       );
     }
 
-    // (3) Zone resolved. fee_status tells the three valid outcomes apart:
-    //     'priced' → charge the fee; 'free' → intentional ₦0 (a promo), charge
-    //     ₦0 confidently; 'pending' → ₦0 with no free marker (config gap) →
-    //     take the order at ₦0 now but flag it so the rate is confirmed before
-    //     dispatch (owner decision: never lose the sale, never silently eat it).
+    // (3) Zone resolved → take the computed fee.
     shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
-    if (deliveryQuote.fee_status === "pending") {
-      deliveryFeePending = true;
-      logger.warn(
-        { zoneCode, zone: deliveryQuote.zone_name, slug: campaign.slug },
-        "delivery fee pending — zone resolved to ₦0 without a free-delivery marker; order flagged for rate confirmation before dispatch",
-      );
-    }
 
-    // ── Free-shipping threshold override ──────────────────
-    // If the campaign has a threshold and the cart goods subtotal meets it,
-    // delivery is intentionally free — overrides the zone fee entirely.
-    if (
-      campaign.free_shipping_threshold_ngn !== null &&
-      campaign.free_shipping_threshold_ngn !== undefined
-    ) {
-      const goodsSubtotal = orderLines.reduce(
-        (s, l) => s + Number(l.unit_price_ngn || 0) * (Number(l.quantity) || 0),
-        0,
-      );
-      if (goodsSubtotal >= Number(campaign.free_shipping_threshold_ngn)) {
-        shippingFeeNgn = 0;
-        deliveryFeePending = false;
-        deliveryQuote = {
-          ...deliveryQuote,
-          fee_ngn: 0,
-          fee_status: "free",
-          is_free_delivery: true,
-        };
-        logger.info(
-          {
-            slug: campaign.slug,
-            goodsSubtotal,
-            threshold: campaign.free_shipping_threshold_ngn,
-          },
-          "free-shipping threshold met — delivery zeroed",
-        );
-      }
-    }
-
-    // ── FAIL CLOSED: a delivery order MUST carry a real logistics fee ──
-    // Owner mandate (never ever): if the address didn't resolve to a billable
-    // shipping fee (zone priced to ₦0 without being a genuine free-delivery
-    // promo — i.e. the old 'pending' config-gap case), reject the checkout and
-    // make the buyer enter a valid address. Genuine free shipping (fee_status
-    // 'free' — a zone promo or the threshold override above) is still allowed.
-    if (
-      shippingFeeNgn <= 0 &&
-      !(deliveryQuote && deliveryQuote.fee_status === "free")
-    ) {
+    // ── FAIL CLOSED — ZERO EXCEPTIONS (owner mandate) ──────
+    // A delivery order MUST carry a real, positive shipping fee. There is no
+    // longer ANY escape hatch — not a "free"-marked zone, not a "pending"
+    // config-gap, not a campaign free-shipping threshold. If the resolved fee
+    // is not strictly greater than ₦0, the checkout is refused outright.
+    // Pickup is the only fulfilment that ships at ₦0. If someone picks
+    // delivery, they do not leave this point without a delivery fee that has an
+    // amount — ever, for any reason.
+    if (!(shippingFeeNgn > 0)) {
       logger.error(
         {
           zoneCode: addr.zone_code || addr.country_code || null,
+          feeStatus: deliveryQuote.fee_status,
           slug: campaign.slug,
         },
-        "checkout blocked — delivery order has no resolved logistics fee",
+        "checkout blocked — delivery order has no billable (>₦0) logistics fee",
       );
       throw new AppError(
         "DELIVERY_FEE_REQUIRED",
-        "Delivery order has no resolved logistics fee",
+        `Delivery order resolved to a non-billable shipping fee (status='${deliveryQuote.fee_status}')`,
         422,
         {
           user_message:
-            "We couldn't calculate a delivery fee for your address. Please enter a valid delivery address so we can charge shipping before you pay.",
+            "We couldn't charge a delivery fee for that address. Please double-check your country, state and city — or choose store pickup. We can't take a delivery order without a delivery fee.",
         },
       );
     }
@@ -1418,10 +1372,6 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         country_code: deliveryQuote.country_code,
         fee_ngn: shippingFeeNgn,
         fee_status: deliveryQuote.fee_status || null,
-        // Back-office flag: the delivery rate could not be priced (₦0 with no
-        // free-delivery marker). Confirm the rate with the buyer and bill it
-        // before dispatch. Surfaced as a badge/filter in the sales dashboard.
-        ...(deliveryFeePending ? { fee_pending: true } : {}),
       };
     }
     if (order._preorder && order._preorder.is_preorder) {
@@ -1441,11 +1391,6 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       customerParts.push(
         `Delivery zone: ${internal.delivery.zone_name} (${internal.delivery.courier_key}).`,
       );
-      if (deliveryFeePending) {
-        customerParts.push(
-          "⚠ DELIVERY FEE PENDING — this zone resolved to ₦0 with no free-delivery rate set. Confirm the delivery rate with the customer and bill it BEFORE dispatch.",
-        );
-      }
     }
     if (order._preorder && order._preorder.is_preorder) {
       customerParts.push("Contains pre-order item(s).");
@@ -1824,6 +1769,58 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
   };
 }
 
+/**
+ * Read-only preview of a promo / VIP code's flat ₦ value, so the checkout
+ * summary can SHOW the saving (and currency-convert it through the campaign's
+ * display rate) the moment the buyer applies it — the way the exit-intent code
+ * already does. No redemption, no contact: per-customer limits and the §6.25
+ * margin floor are enforced authoritatively at checkout. Never throws on a bad
+ * code — returns { valid:false } so the UI stays quiet and lets the Hub decide.
+ */
+async function previewCoupon({ slug, brand, brandHint, input }) {
+  const found = await resolveCampaign({ slug, brand, brandHint });
+  if (!found || !PUBLIC_STATUSES.has(found.campaign.status))
+    throw new NotFoundError("Campaign");
+  const { campaign, brand: resolvedBrand } = found;
+  const entered = String(input.code || "").trim();
+  if (entered.length < 2) return { valid: false, reason: "EMPTY" };
+  const subtotal = input.subtotal_ngn ?? 0;
+
+  // The campaign's own exit-intent code is a flat ₦-off that isn't a retention
+  // coupon — match it first so this endpoint is consistent for it too.
+  if (
+    campaign.exit_intent_enabled &&
+    campaign.exit_intent_code &&
+    String(campaign.exit_intent_code).trim().toUpperCase() ===
+      entered.toUpperCase() &&
+    campaign.exit_intent_discount_ngn !== null &&
+    campaign.exit_intent_discount_ngn !== undefined &&
+    money(campaign.exit_intent_discount_ngn).gt(money(0)) &&
+    main.resolveState(campaign) === "live"
+  ) {
+    return {
+      valid: true,
+      source: "exit_intent",
+      discount_type: "fixed_amount",
+      discount_ngn: toCurrencyString(money(campaign.exit_intent_discount_ngn)),
+    };
+  }
+
+  // Otherwise it may be a retention / VIP coupon. Read-only validation.
+  const cr = await couponService.validateCoupon({
+    brand: resolvedBrand,
+    code: entered,
+    order_subtotal_ngn: subtotal,
+  });
+  if (!cr.valid) return { valid: false, reason: cr.reason };
+  return {
+    valid: true,
+    source: "coupon",
+    discount_type: cr.discount_type,
+    discount_ngn: cr.discount_ngn,
+  };
+}
+
 module.exports = {
   getIndex,
   getLanding,
@@ -1831,6 +1828,7 @@ module.exports = {
   signup,
   checkout,
   quoteCart,
+  previewCoupon,
   getOrderStatus,
   getProductDetail,
   // Exported for unit tests / reuse.

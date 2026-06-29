@@ -83,6 +83,34 @@ async function setCouponActive({ brand, user, request_id, id, is_active }) {
   return c;
 }
 
+/**
+ * Delete a coupon. A code that has already been redeemed is preserved for its
+ * audit/redemption history (the FK is ON DELETE RESTRICT) — the caller is told
+ * to deactivate it instead, which stops further use without losing the ledger.
+ */
+async function deleteCoupon({ brand, user, request_id, id }) {
+  const existing = await repo.getById({ brand, id });
+  if (!existing) throw new NotFoundError("Coupon");
+  const redeemed = await repo.countRedemptions({ brand, coupon_id: id });
+  if (redeemed > 0)
+    throw new AppError(
+      "COUPON_HAS_REDEMPTIONS",
+      `Code ${existing.coupon_code} has already been used ${redeemed} time(s), so it can't be deleted — deactivate it to stop further use.`,
+      409,
+    );
+  await repo.remove({ brand, id });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.coupon.delete",
+    target_type: "coupon",
+    target_id: id,
+    before: { coupon_code: existing.coupon_code },
+    request_id,
+  });
+  return { deleted: true };
+}
+
 // ── Validation + discount computation ─────────────────────
 /**
  * Compute the NGN discount a coupon yields for a subtotal. Returns a Decimal.
@@ -247,6 +275,7 @@ module.exports = {
   getCoupon,
   updateCoupon,
   setCouponActive,
+  deleteCoupon,
   validateCoupon,
   redeemCoupon,
 };

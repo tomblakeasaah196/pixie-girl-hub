@@ -18,9 +18,9 @@ const pool = new Pool({
 });
 
 const EXPECTED = {
-  shared: 107,
-  "valid-brand-key-1": 159,
-  "valid-brand-key-2": 159,
+  shared: 112,
+  "valid-brand-key-1": 163,
+  "valid-brand-key-2": 163,
 };
 
 async function main() {

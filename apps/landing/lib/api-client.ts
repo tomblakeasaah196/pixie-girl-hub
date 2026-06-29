@@ -118,8 +118,22 @@ export async function postCheckout(args: {
   );
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    let parsed: { error?: { code?: string; message?: string; user_message?: string; retryable?: boolean; reference?: string; order_id?: string; support?: { whatsapp?: string; email?: string; message?: string } } } = {};
-    try { parsed = JSON.parse(body); } catch { /* raw text fallback */ }
+    let parsed: {
+      error?: {
+        code?: string;
+        message?: string;
+        user_message?: string;
+        retryable?: boolean;
+        reference?: string;
+        order_id?: string;
+        support?: { whatsapp?: string; email?: string; message?: string };
+      };
+    } = {};
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      /* raw text fallback */
+    }
     const e = parsed?.error;
     // Attach structured fields so the checkout UI can render a proper error card.
     const msg = e?.user_message || e?.message || body || `HTTP ${res.status}`;
@@ -129,7 +143,9 @@ export async function postCheckout(args: {
       reference: e?.reference,
       order_id: e?.order_id,
       support: e?.support ?? null,
-      existing_orders: (parsed as { error?: { existing_orders?: unknown } })?.error?.existing_orders ?? null,
+      existing_orders:
+        (parsed as { error?: { existing_orders?: unknown } })?.error
+          ?.existing_orders ?? null,
     });
     throw err;
   }
@@ -203,6 +219,45 @@ export async function postQuote(args: {
     );
     if (!res.ok) return null;
     const json = (await res.json()) as { data?: CartQuote };
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Preview of a promo / VIP code's flat ₦ value (read-only). Lets the checkout
+ *  summary show + currency-convert the saving the moment it's applied, exactly
+ *  like the exit-intent code. The Hub re-validates + floor-clamps at checkout. */
+export interface CouponPreview {
+  valid: boolean;
+  source?: "coupon" | "exit_intent";
+  discount_type?: string;
+  discount_ngn?: string;
+  reason?: string;
+}
+
+export async function postCouponPreview(args: {
+  slug: string;
+  code: string;
+  subtotal_ngn?: number;
+}): Promise<CouponPreview | null> {
+  try {
+    const res = await fetch(
+      `/api/public/sale/${encodeURIComponent(args.slug)}/coupon-preview`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          code: args.code,
+          subtotal_ngn: args.subtotal_ngn,
+        }),
+      },
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: CouponPreview };
     return json?.data ?? null;
   } catch {
     return null;

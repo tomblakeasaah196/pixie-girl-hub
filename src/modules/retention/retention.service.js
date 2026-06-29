@@ -13,6 +13,8 @@
 "use strict";
 
 const repo = require("./retention.repo");
+const earnRepo = require("./earn.repo");
+const referralConfig = require("./referral-config.repo");
 const events = require("./retention.events");
 const businessConfig = require("../business_setup/business-config.repo");
 const { audit } = require("../../middleware/audit");
@@ -25,6 +27,35 @@ const DEFAULT_POINTS_PER_NAIRA = 100; // ₦100 = 1 base point
 // ── Loyalty ────────────────────────────────────────────────
 function listTiers({ brand }) {
   return repo.listLoyaltyTiers({ brand });
+}
+
+async function createTier({ brand, user, request_id, input }) {
+  const tier = await repo.createLoyaltyTier({ brand, input, user_id: user.user_id });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.loyalty.tier_create",
+    target_type: "loyalty_tier",
+    target_id: tier.tier_id,
+    after: { tier_key: tier.tier_key },
+    request_id,
+  });
+  return tier;
+}
+
+async function updateTier({ brand, user, request_id, id, patch }) {
+  const tier = await repo.updateLoyaltyTier({ brand, id, patch, user_id: user.user_id });
+  if (!tier) throw new NotFoundError("Loyalty tier");
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.loyalty.tier_update",
+    target_type: "loyalty_tier",
+    target_id: id,
+    after: patch,
+    request_id,
+  });
+  return tier;
 }
 
 async function getLoyaltyState({ brand, contact_id }) {
@@ -57,8 +88,17 @@ async function recomputeTier({ client, brand, contact_id }) {
   return tier;
 }
 
+function expiryFromDays(days) {
+  if (!days || days <= 0) return null;
+  return new Date(Date.now() + days * 86_400_000).toISOString();
+}
+
 /**
- * Award purchase points for a paid order. Idempotent on (order → earn).
+ * Award purchase points for a paid order. Config-driven: resolves the active
+ * `earned_purchase` rules in shared.loyalty_earn_rules (flat or per-currency,
+ * with optional tier multiplier + expiry) and writes a single ledger entry.
+ * Falls back to the legacy ₦/point rate if no rule is configured. Idempotent
+ * on (order → earned_purchase).
  */
 async function earnForOrder({
   client,
@@ -78,15 +118,41 @@ async function earnForOrder({
     });
     if (existing) return existing;
 
-    const cfg = await businessConfig.findByKey(brand);
-    const perNaira =
-      (cfg && cfg.loyalty_settings && cfg.loyalty_settings.points_per_naira) ||
-      DEFAULT_POINTS_PER_NAIRA;
     const state = await repo.getLoyaltyState({ client: c, brand, contact_id });
     const multiplier =
       state && state.earning_multiplier ? Number(state.earning_multiplier) : 1;
-    const base = Math.floor(Number(money(total_ngn).toFixed(2)) / perNaira);
-    const points = Math.floor(base * multiplier);
+    const orderValue = Number(money(total_ngn).toFixed(2));
+
+    const rules = await earnRepo.listActiveEarnRules({
+      client: c,
+      brand,
+      action_type: "earned_purchase",
+    });
+
+    let points = 0;
+    let expireDays = 0;
+    if (rules.length > 0) {
+      for (const rule of rules) {
+        if (rule.min_order_value && orderValue < Number(rule.min_order_value)) continue;
+        let base;
+        if (rule.points_mode === "per_currency") {
+          base = Math.floor(orderValue / Number(rule.currency_per_point));
+        } else {
+          base = Number(rule.points_value || 0);
+        }
+        const mult = rule.apply_tier_multiplier ? multiplier : 1;
+        points += Math.floor(base * mult);
+        if (rule.points_expire_days)
+          expireDays = Math.max(expireDays, Number(rule.points_expire_days));
+      }
+    } else {
+      // Legacy fallback (no earn rule configured for this brand yet).
+      const cfg = await businessConfig.findByKey(brand);
+      const perNaira =
+        (cfg && cfg.loyalty_settings && cfg.loyalty_settings.points_per_naira) ||
+        DEFAULT_POINTS_PER_NAIRA;
+      points = Math.floor(Math.floor(orderValue / perNaira) * multiplier);
+    }
     if (points <= 0) return null;
 
     const entry = await repo.insertLoyaltyLedger({
@@ -100,11 +166,88 @@ async function earnForOrder({
         reference_type: "sales_order",
         reference_id: order_id,
         notes: `Purchase points for order`,
+        expires_at: expiryFromDays(expireDays),
         created_by,
       },
     });
     await recomputeTier({ client: c, brand, contact_id });
     events.emit("loyalty.earned", { brand, contact_id, points, order_id });
+    return entry;
+  };
+  return client ? run(client) : transaction(run);
+}
+
+/**
+ * Award points for a non-purchase earn action (review, social-share,
+ * milestone, bonus) using the config-driven earn rules. Idempotent per
+ * (reference, action) and honours per-customer lifetime caps. Returns the
+ * ledger entry, or null if no rule / cap reached / zero points.
+ */
+async function earnForAction({
+  client,
+  brand,
+  contact_id,
+  action_type,
+  reference_type,
+  reference_id,
+  amount_ngn,
+  notes,
+  created_by,
+}) {
+  const run = async (c) => {
+    const rules = await earnRepo.listActiveEarnRules({ client: c, brand, action_type });
+    const rule = rules[0];
+    if (!rule) return null;
+
+    if (reference_id) {
+      const existing = await repo.ledgerEntryForReference({
+        client: c,
+        brand,
+        reference_type,
+        reference_id,
+        transaction_type: action_type,
+      });
+      if (existing) return existing;
+    }
+    if (rule.max_awards_per_customer_lifetime) {
+      const count = await earnRepo.countEarnsByType({
+        client: c,
+        brand,
+        contact_id,
+        transaction_type: action_type,
+      });
+      if (count >= rule.max_awards_per_customer_lifetime) return null;
+    }
+
+    const state = await repo.getLoyaltyState({ client: c, brand, contact_id });
+    const multiplier =
+      state && state.earning_multiplier ? Number(state.earning_multiplier) : 1;
+    let base;
+    if (rule.points_mode === "per_currency" && amount_ngn) {
+      base = Math.floor(Number(money(amount_ngn).toFixed(2)) / Number(rule.currency_per_point));
+    } else {
+      base = Number(rule.points_value || 0);
+    }
+    const points = Math.floor(base * (rule.apply_tier_multiplier ? multiplier : 1));
+    if (points <= 0) return null;
+
+    const entry = await repo.insertLoyaltyLedger({
+      client: c,
+      brand,
+      entry: {
+        contact_id,
+        transaction_type: action_type,
+        points,
+        multiplier_used: rule.apply_tier_multiplier ? multiplier : null,
+        reference_type,
+        reference_id,
+        notes: notes || rule.display_name,
+        expires_at: expiryFromDays(rule.points_expire_days),
+        created_by,
+      },
+    });
+    await recomputeTier({ client: c, brand, contact_id });
+    events.emit("loyalty.earned", { brand, contact_id, points, action_type });
     return entry;
   };
   return client ? run(client) : transaction(run);
@@ -249,8 +392,21 @@ async function redeemReferral({
   return transaction(async (client) => {
     const ref = await repo.findReferralByCode({ client, code });
     if (!ref) throw new NotFoundError("Referral code");
-    if (ref.contact_id === referred_contact_id)
+
+    const settings = await referralConfig.getSettings({ client, brand });
+    if (settings && settings.is_active === false)
+      throw new AppError("REFERRALS_OFF", "Referral programme is not active", 409);
+
+    // Anti-fraud: block self-referral (config-gated, on by default).
+    const af = (settings && settings.anti_fraud) || {};
+    if (af.block_self_referral !== false && ref.contact_id === referred_contact_id)
       throw new AppError("SELF_REFERRAL", "Cannot redeem your own code", 409);
+
+    // Minimum qualifying order value.
+    const minQualifying = settings ? Number(settings.min_qualifying_order_ngn || 0) : 0;
+    if (minQualifying > 0 && Number(order_value || 0) < minQualifying)
+      throw new AppError("ORDER_TOO_SMALL", "Order does not qualify for referral reward", 409);
+
     const dup = await repo.findRedemption({
       client,
       referral_id: ref.referral_id,
@@ -258,8 +414,29 @@ async function redeemReferral({
     });
     if (dup) return dup;
 
-    const rewardPoints =
-      (ref.reward_rules && ref.reward_rules.referrer_points) || 500;
+    // Tiered ladder: reward scales with the referrer's successful count.
+    const newCount = (ref.successful_count || 0) + 1;
+    const tier = await referralConfig.tierForCount({ client, brand, count: newCount });
+    const rewardPoints = tier
+      ? tier.referrer_points
+      : settings
+        ? settings.default_referrer_points
+        : (ref.reward_rules && ref.reward_rules.referrer_points) || 500;
+    const rewardCredit = tier
+      ? Number(tier.referrer_credit_ngn || 0)
+      : settings
+        ? Number(settings.default_referrer_credit_ngn || 0)
+        : 0;
+
+    // Friend (referred) discount value, for the record.
+    let friendDiscount = 0;
+    if (settings && settings.friend_discount_type && settings.friend_discount_value) {
+      friendDiscount =
+        settings.friend_discount_type === "percentage"
+          ? Math.round(Number(order_value || 0) * Number(settings.friend_discount_value))
+          : Number(settings.friend_discount_value);
+    }
+
     const redemption = await repo.insertRedemption({
       client,
       brand,
@@ -269,13 +446,14 @@ async function redeemReferral({
         triggering_order_id: order_id,
         triggering_order_value: order_value,
         referrer_reward_points: rewardPoints,
+        referred_discount_value: friendDiscount,
         status: "rewarded",
       },
     });
     await repo.bumpReferralCounters({
       client,
       referral_id: ref.referral_id,
-      reward_value: 0,
+      reward_value: rewardCredit,
     });
     // Credit the referrer's loyalty balance.
     await repo.insertLoyaltyLedger({
@@ -294,6 +472,7 @@ async function redeemReferral({
     events.emit("referral.redeemed", {
       brand,
       referral_id: ref.referral_id,
+      referrer_contact_id: ref.contact_id,
       referred_contact_id,
     });
     return redemption;
@@ -477,8 +656,11 @@ async function submitQuiz({ brand, input, ip, user_agent }) {
 module.exports = {
   // loyalty
   listTiers,
+  createTier,
+  updateTier,
   getLoyaltyState,
   earnForOrder,
+  earnForAction,
   redeemPoints,
   adjustPoints,
   recomputeTier,

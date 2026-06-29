@@ -29,5 +29,6 @@ router.patch(
   validator.validateActive,
   controller.setActive,
 );
+router.delete("/:id", can("delete"), controller.remove);
 
 module.exports = router;

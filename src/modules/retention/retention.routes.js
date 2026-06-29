@@ -14,9 +14,15 @@ const couponRouter = require("./coupon.routes");
 const bundleRouter = require("./bundle.routes");
 const subscriptionRouter = require("./subscription.routes");
 const workflowRouter = require("./workflow.routes");
+const strategyRouter = require("./strategy.routes");
+const rewardsRouter = require("./rewards.routes");
+const earnRouter = require("./earn.routes");
+const referralAdminRouter = require("./referral-admin.routes");
+const analyticsRouter = require("./analytics.routes");
+const maintenanceRouter = require("./maintenance.routes");
 const { requirePermission } = require("../../middleware/rbac");
 
-// Side-effect: register order.paid → loyalty + streak earners.
+// Side-effect: register order.paid → loyalty + streak earners + strategy spine.
 require("./retention.subscribers");
 
 const router = express.Router();
@@ -28,11 +34,30 @@ router.use("/coupons", couponRouter);
 router.use("/bundles", bundleRouter);
 // Wig subscriptions (F-1 / §6.23.5)
 router.use("/subscriptions", subscriptionRouter);
-// Automated retention workflows (F-4 / §6.23)
+// Automated retention workflows (F-4 / §6.23) — legacy single-action engine
 router.use("/workflows", workflowRouter);
+// Retention strategy engine (multi-step journeys; the no-code evolution)
+router.use("/strategies", strategyRouter);
+// Loyalty rewards catalogue + redemption (§6.23 economy)
+router.use("/rewards", rewardsRouter);
+// Loyalty earn-rules admin (§6.23 economy)
+router.use("/earn-rules", earnRouter);
+// Referral programme admin: settings + ladder + dashboard (§6.23)
+router.use("/referral-program", referralAdminRouter);
+// Retention analytics dashboard (§6.23.7)
+router.use("/analytics", analyticsRouter);
+// Maintenance plans (Faitlyn salon subscriptions, §6.23)
+router.use("/maintenance", maintenanceRouter);
 
 // Loyalty
 router.get("/loyalty/tiers", can("view"), controller.listTiers);
+router.post("/loyalty/tiers", can("create"), validator.validateTierCreate, controller.createTier);
+router.patch(
+  "/loyalty/tiers/:id",
+  can("edit"),
+  validator.validateTierUpdate,
+  controller.updateTier,
+);
 router.get("/customers/:contactId/loyalty", can("view"), controller.getLoyalty);
 router.post(
   "/customers/:contactId/loyalty/redeem",

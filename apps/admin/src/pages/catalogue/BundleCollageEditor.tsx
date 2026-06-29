@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Sparkles, Wand2, Image as ImageIcon, Info } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Sparkles, Wand2, Image as ImageIcon, Info, Crop } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
@@ -8,7 +8,9 @@ import {
   useCollageFonts,
   useGenerateBundleCollage,
   useApplyCollageToAll,
+  type CollageCrop,
 } from "@/lib/catalogue";
+import { BundleCollageCropModal } from "./BundleCollageCropModal";
 
 const inputCls =
   "w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50";
@@ -36,6 +38,8 @@ export function BundleCollageEditor({ bundleId }: { bundleId: string }) {
   const [title, setTitle] = useState("");
   const [eyebrow, setEyebrow] = useState("");
   const [applyMsg, setApplyMsg] = useState<string | null>(null);
+  const [crops, setCrops] = useState<Record<string, CollageCrop>>({});
+  const [cropOpen, setCropOpen] = useState(false);
 
   // Hydrate the controls from the bundle's saved collage settings.
   useEffect(() => {
@@ -44,8 +48,11 @@ export function BundleCollageEditor({ bundleId }: { bundleId: string }) {
     setFont(s.font_family ?? "Cormorant Garamond");
     setTitle(s.title ?? "");
     setEyebrow(s.eyebrow ?? "");
+    setCrops(s.crops ?? {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bundle?.bundle_id]);
+
+  const reframedCount = useMemo(() => Object.keys(crops).length, [crops]);
 
   const fontOptions = (fonts.data ?? ["Cormorant Garamond"]).map((f) => ({
     value: f,
@@ -57,6 +64,9 @@ export function BundleCollageEditor({ bundleId }: { bundleId: string }) {
       font_family: font,
       title: title.trim() || undefined,
       eyebrow: eyebrow.trim() || undefined,
+      // Always send the map (even {}) so "Reset to auto" actually clears any
+      // previously-saved framing rather than the server-side merge keeping it.
+      crops,
     });
 
   const restyleAll = () =>
@@ -145,6 +155,16 @@ export function BundleCollageEditor({ bundleId }: { bundleId: string }) {
               ? "Regenerate cover"
               : "Generate cover"}
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Crop className="w-3.5 h-3.5" />}
+          disabled={!canGenerate}
+          onClick={() => setCropOpen(true)}
+          title="Drag/zoom each photo to frame the hair before generating"
+        >
+          {reframedCount ? `Reframe photos · ${reframedCount}` : "Reframe photos"}
+        </Button>
         {bundle?.cover_is_generated && (
           <Button
             variant="ghost"
@@ -159,6 +179,13 @@ export function BundleCollageEditor({ bundleId }: { bundleId: string }) {
         )}
       </div>
 
+      {reframedCount > 0 && !gen.isPending && (
+        <p className="text-[11.5px] text-text-faint">
+          {reframedCount} photo{reframedCount === 1 ? "" : "s"} reframed —
+          regenerate to apply.
+        </p>
+      )}
+
       {applyMsg && <p className="text-[11.5px] text-success">{applyMsg}</p>}
       {gen.isError && (
         <p className="text-[11.5px] text-danger">
@@ -166,6 +193,18 @@ export function BundleCollageEditor({ bundleId }: { bundleId: string }) {
             ? gen.error.message
             : "Could not generate the cover."}
         </p>
+      )}
+
+      {cropOpen && (
+        <BundleCollageCropModal
+          components={components}
+          value={crops}
+          onApply={(next) => {
+            setCrops(next);
+            setCropOpen(false);
+          }}
+          onCancel={() => setCropOpen(false)}
+        />
       )}
     </div>
   );

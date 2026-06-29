@@ -237,13 +237,69 @@ async function resolveImageBuffer(url) {
   }
 }
 
-/** A rounded, cover-cropped tile (crop focuses on the subject/face). */
-async function roundedTile(buffer, w, h) {
+/**
+ * Resolve the source rectangle to extract for a manual focal crop.
+ *
+ * `crop` is { x, y, zoom } where x/y are the focal CENTRE as a fraction of the
+ * source (0..1) and zoom ≥ 1 tightens the frame. We start from the largest
+ * rectangle of the tile's aspect that fits the source ("cover"), shrink it by
+ * zoom, then centre it on the focal point — clamped so it never leaves the
+ * image. Returns null when the source is too small to extract from.
+ */
+function focalExtract({ sw, sh, w, h, crop }) {
+  if (!sw || !sh) return null;
+  const ar = w / h;
+  const zoom = Math.max(1, Math.min(4, Number(crop.zoom) || 1));
+  // Largest aspect-correct rect that fits the source (cover), then zoom in.
+  let cw = sw;
+  let ch = sw / ar;
+  if (ch > sh) {
+    ch = sh;
+    cw = sh * ar;
+  }
+  cw = Math.min(sw, cw / zoom);
+  ch = Math.min(sh, ch / zoom);
+  const width = Math.max(1, Math.round(cw));
+  const height = Math.max(1, Math.round(ch));
+  const fx = Math.min(1, Math.max(0, Number(crop.x)));
+  const fy = Math.min(1, Math.max(0, Number(crop.y)));
+  let left = Math.round(fx * sw - width / 2);
+  let top = Math.round(fy * sh - height / 2);
+  left = Math.max(0, Math.min(sw - width, left));
+  top = Math.max(0, Math.min(sh - height, top));
+  return { left, top, width, height };
+}
+
+/**
+ * A rounded tile. By default the crop auto-focuses on the subject (face/eyes)
+ * via sharp's attention strategy; when a manual `crop` focal point is supplied
+ * (from the catalogue's "Reframe photos" modal) we honour it instead so the
+ * owner can frame the hair rather than the model's face.
+ */
+async function roundedTile(buffer, w, h, crop) {
   const mask = Buffer.from(
     `<svg width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${RADIUS}" ry="${RADIUS}" fill="#fff"/></svg>`,
   );
-  return sharp(buffer)
-    .resize(w, h, { fit: "cover", position: sharp.strategy.attention })
+  let tile;
+  if (crop && Number.isFinite(Number(crop.x)) && Number.isFinite(Number(crop.y))) {
+    // Normalise EXIF orientation up front so the focal coordinates line up
+    // with the pixels we extract.
+    const oriented = await sharp(buffer).rotate().toBuffer();
+    const meta = await sharp(oriented).metadata();
+    const rect = focalExtract({ sw: meta.width, sh: meta.height, w, h, crop });
+    tile = rect
+      ? sharp(oriented).extract(rect).resize(w, h, { fit: "cover" })
+      : sharp(oriented).resize(w, h, {
+          fit: "cover",
+          position: sharp.strategy.attention,
+        });
+  } else {
+    tile = sharp(buffer).resize(w, h, {
+      fit: "cover",
+      position: sharp.strategy.attention,
+    });
+  }
+  return tile
     .composite([{ input: mask, blend: "dest-in" }])
     .png()
     .toBuffer();
@@ -357,13 +413,18 @@ async function buildBundleCollage({ brand, components, settings = {}, brandRow, 
       ? settings.eyebrow
       : `${brandName || "The Pixie Hub"} · Bundle`;
 
+  // Per-component manual framing (focal point + zoom), keyed by the component's
+  // bundle_product_id — set in the catalogue "Reframe photos" modal so a tile
+  // can favour the hair over the model's face.
+  const crops = (settings && settings.crops) || {};
+
   // Resolve + render each tile (fall back to a monogram when an image is gone).
   const tiles = await Promise.all(
     usable.map(async (c, i) => {
       const buf = await resolveImageBuffer(c.image_url);
       const r = rects[i];
       const input = buf
-        ? await roundedTile(buf, r.w, r.h)
+        ? await roundedTile(buf, r.w, r.h, crops[c.bundle_product_id])
         : await monogramTile(r.w, r.h, c.name || c.styled_name, palette);
       return { input, left: r.x, top: r.y };
     }),

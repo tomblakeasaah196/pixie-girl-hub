@@ -177,6 +177,11 @@ const CampaignBundlesPage = lazyWithRetry(() =>
     default: m.CampaignBundlesPage,
   })),
 );
+const SpecialCodesPage = lazyWithRetry(() =>
+  import("@/pages/sales-campaigns/SpecialCodesPage").then((m) => ({
+    default: m.SpecialCodesPage,
+  })),
+);
 const LandingStudioPage = lazyWithRetry(() =>
   import("@/pages/sales-campaigns/landing/LandingStudioPage").then((m) => ({
     default: m.LandingStudioPage,
@@ -225,6 +230,16 @@ const SocialPage = lazyWithRetry(() =>
 const MarketingPage = lazyWithRetry(() =>
   import("@/pages/marketing/MarketingPage").then((m) => ({
     default: m.MarketingPage,
+  })),
+);
+const RetentionPage = lazyWithRetry(() =>
+  import("@/pages/retention/RetentionPage").then((m) => ({
+    default: m.RetentionPage,
+  })),
+);
+const StrategyBuilderPage = lazyWithRetry(() =>
+  import("@/pages/retention/StrategyBuilderPage").then((m) => ({
+    default: m.StrategyBuilderPage,
   })),
 );
 const DocumentsPage = lazyWithRetry(() =>
@@ -422,6 +437,14 @@ export const router = createBrowserRouter(
               ),
             },
             {
+              path: "sales-campaigns/codes",
+              element: (
+                <Suspense fallback={null}>
+                  <SpecialCodesPage />
+                </Suspense>
+              ),
+            },
+            {
               path: "sales-campaigns/:id",
               element: (
                 <Suspense fallback={null}>
@@ -452,6 +475,32 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <MarketingPage />
+                </Suspense>
+              ),
+            },
+
+            // Customer Retention & Loyalty (V2.2 §6.23).
+            {
+              path: "retention",
+              element: (
+                <Suspense fallback={null}>
+                  <RetentionPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "retention/strategies/new",
+              element: (
+                <Suspense fallback={null}>
+                  <StrategyBuilderPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "retention/strategies/:id/edit",
+              element: (
+                <Suspense fallback={null}>
+                  <StrategyBuilderPage />
                 </Suspense>
               ),
             },

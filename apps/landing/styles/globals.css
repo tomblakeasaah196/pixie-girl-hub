@@ -208,42 +208,29 @@ body::before {
     inset 0 1px 0 rgb(var(--border-c) / 0.06),
     0 8px 24px rgb(var(--panel) / 0.06);
 }
-[data-atelier-commerce] .dropglass {
-  box-shadow:
-    inset 0 1px 0 rgb(var(--border-c) / 0.06),
-    0 8px 24px rgb(var(--panel) / 0.06);
-}
+/* ── Dropglass overlay — caramel-glass treatment ───────────────────────
+   `.dropglass` is the shared dark-glass surface for every modal/drawer
+   overlay (cart drawer + floating bar, product detail, exit-intent, the
+   glitch-recovery modal, the deal explainer, how-to-shop, the WhatsApp
+   advisor picker, and the Creator Collective modal).
 
-/* WCAG fix (June 2026): `.dropglass` paints a near-opaque panel surface
-   (rgb(var(--panel) / 0.92) — primaryDeep, dark brown in the Atelier
-   palette). Without an override the default text token (`--text` = ink,
-   also dark brown) and the muted/faint family inherited from the same
-   palette produced unreadable dark-on-dark surfaces in the cart drawer
-   and the STAY10 exit-intent modal.
-   Redefining the text family inside the dropglass scope flips every
-   `rgb(var(--text…))` reference to the paper colour without us having
-   to chase every individual class. The body sits OUTSIDE
-   [data-atelier-commerce] so the page reads as before — only the dark
-   overlays change. */
+   The previous version painted a near-opaque (0.92) slab and patched
+   contrast by flattening all three text tiers to one cream value — it
+   passed WCAG but destroyed hierarchy and didn't read as "glass". This
+   rule (proven first as a Creator-modal-only pilot) replaces that with:
+     • a genuinely translucent 0.66 panel over the modal's own dark
+       scrim, with a caramel radial highlight;
+     • a real 3-tier warm text hierarchy (primary cream / secondary warm
+       taupe / tertiary brand-muted) — all AA on the dark surface;
+     • a remap of the legacy accent family (--accent / --accent-deep /
+       --accent-glow / --border-c) to --brand-accent. Those four tokens
+       are derived by BrandThemeProvider from primary/primaryDeep/glow,
+       tuned for the LIGHT commerce body — on dark glass they read as mud
+       or vanish outright. --brand-accent is the one swatch built to pop
+       in both contexts. Because custom properties cascade, this remap
+       fixes every existing `rgb(var(--accent…))` / `rgb(var(--border-c))`
+       usage inside any .dropglass subtree with no JSX changes required. */
 [data-atelier-commerce] .dropglass {
-  --text: var(--bg);
-  --text-muted: var(--bg);
-  --text-faint: var(--bg);
-  color: rgb(var(--bg));
-}
-
-/* ── Creator Collective glass (caramel-led refresh) ─────────────────────
-   A genuinely translucent dark-glass surface — unlike the blanket
-   `.dropglass` (a 0.92 near-opaque slab whose WCAG patch flattens all
-   three text tiers to one cream). This scope:
-     • drops the panel to 0.66 over the modal's own dark ink scrim, so it
-       reads as glass without losing contrast;
-     • restores a 3-tier WARM text hierarchy (primary cream / secondary
-       warm taupe / tertiary brand-muted) — all AA on the dark surface;
-     • leans on the brand's caramel accent for the hairline + inner sheen.
-   Scoped to its own class so it can be previewed on the Creator modal
-   before rolling out to the other overlays. */
-[data-atelier-commerce] .creator-glass {
   background:
     radial-gradient(
       120% 100% at 50% 0%,
@@ -257,7 +244,10 @@ body::before {
   box-shadow:
     inset 0 1px 0 rgb(var(--brand-accent) / 0.14),
     0 28px 70px rgb(0 0 0 / 0.55);
-  /* Warm 3-tier text hierarchy on the dark glass (all WCAG-AA). */
+  --accent: var(--brand-accent);
+  --accent-deep: var(--brand-accent);
+  --accent-glow: var(--brand-accent);
+  --border-c: var(--brand-accent);
   --text: var(--brand-paper);
   --text-muted: 219 206 193;
   --text-faint: var(--brand-muted);

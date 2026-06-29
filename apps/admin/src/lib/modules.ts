@@ -277,7 +277,7 @@ export const MODULES: AppModule[] = [
   {
     key: "retention",
     label: "Retention",
-    description: "Loyalty & referrals",
+    description: "Loyalty, referrals & strategies",
     group: "people",
     route: "/retention",
     icon: Heart,

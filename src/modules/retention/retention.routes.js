@@ -16,6 +16,9 @@ const subscriptionRouter = require("./subscription.routes");
 const workflowRouter = require("./workflow.routes");
 const strategyRouter = require("./strategy.routes");
 const rewardsRouter = require("./rewards.routes");
+const earnRouter = require("./earn.routes");
+const referralAdminRouter = require("./referral-admin.routes");
+const analyticsRouter = require("./analytics.routes");
 const { requirePermission } = require("../../middleware/rbac");
 
 // Side-effect: register order.paid → loyalty + streak earners + strategy spine.
@@ -36,6 +39,12 @@ router.use("/workflows", workflowRouter);
 router.use("/strategies", strategyRouter);
 // Loyalty rewards catalogue + redemption (§6.23 economy)
 router.use("/rewards", rewardsRouter);
+// Loyalty earn-rules admin (§6.23 economy)
+router.use("/earn-rules", earnRouter);
+// Referral programme admin: settings + ladder + dashboard (§6.23)
+router.use("/referral-program", referralAdminRouter);
+// Retention analytics dashboard (§6.23.7)
+router.use("/analytics", analyticsRouter);
 
 // Loyalty
 router.get("/loyalty/tiers", can("view"), controller.listTiers);

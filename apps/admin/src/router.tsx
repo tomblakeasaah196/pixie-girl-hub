@@ -227,6 +227,16 @@ const MarketingPage = lazyWithRetry(() =>
     default: m.MarketingPage,
   })),
 );
+const RetentionPage = lazyWithRetry(() =>
+  import("@/pages/retention/RetentionPage").then((m) => ({
+    default: m.RetentionPage,
+  })),
+);
+const StrategyBuilderPage = lazyWithRetry(() =>
+  import("@/pages/retention/StrategyBuilderPage").then((m) => ({
+    default: m.StrategyBuilderPage,
+  })),
+);
 const DocumentsPage = lazyWithRetry(() =>
   import("@/pages/documents/DocumentsPage").then((m) => ({
     default: m.DocumentsPage,
@@ -452,6 +462,32 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <MarketingPage />
+                </Suspense>
+              ),
+            },
+
+            // Customer Retention & Loyalty (V2.2 §6.23).
+            {
+              path: "retention",
+              element: (
+                <Suspense fallback={null}>
+                  <RetentionPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "retention/strategies/new",
+              element: (
+                <Suspense fallback={null}>
+                  <StrategyBuilderPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "retention/strategies/:id/edit",
+              element: (
+                <Suspense fallback={null}>
+                  <StrategyBuilderPage />
                 </Suspense>
               ),
             },

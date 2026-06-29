@@ -72,6 +72,13 @@ router.post(
   validator.validateReceiptIssue,
   controller.issueReceipt,
 );
+router.post(
+  "/receipts/:id/send",
+  can("edit"),
+  validator.validateReceiptSend,
+  controller.sendReceipt,
+);
+router.get("/receipts/:id/delivery", can("view"), controller.getReceiptDelivery);
 
 // Reminders (F-10)
 router.get("/invoices/:id/reminders", can("view"), controller.listReminders);

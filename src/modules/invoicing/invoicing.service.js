@@ -20,6 +20,7 @@ const brandDocs = require("../../services/pdf.brand-docs");
 const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
 const delivery = require("./invoice-delivery.service");
+const receiptDelivery = require("./receipt-delivery.service");
 const commsLog = require("../../services/comms-log.service");
 
 const A = (
@@ -885,6 +886,103 @@ async function issueReceiptInternal({
   return receipt;
 }
 
+/**
+ * Send (or resend) a receipt to the customer over email / WhatsApp. Stamps the
+ * receipt's send columns and dispatches via receipt-delivery (best-effort).
+ */
+async function sendReceipt({ brand, user, request_id, id, input = {} }) {
+  const receipt = await repo.findReceiptById({ brand, id });
+  if (!receipt) throw new NotFoundError("Receipt");
+  const channel = input.sent_via || "email";
+  const recipient =
+    channel === "whatsapp" ? receipt.contact_phone : receipt.contact_email;
+  const updated = await repo.markReceiptSent({
+    brand,
+    id,
+    channel,
+    recipient,
+  });
+  await A(
+    brand,
+    user.user_id,
+    "invoicing.receipt.send",
+    "receipt",
+    id,
+    { sent_via: channel },
+    request_id,
+  );
+  events.emit("receipt.sent", { brand, receipt_id: id });
+  receiptDelivery
+    .dispatchReceipt({ brand, receipt, channel })
+    .catch((err) =>
+      logger.warn(
+        { err: err.message, receipt_id: id, brand },
+        "receipt dispatch failed",
+      ),
+    );
+  return updated;
+}
+
+/** Per-receipt send history + sent stamps (the receipt's Delivery panel). */
+async function getReceiptDelivery({ brand, id }) {
+  const receipt = await repo.findReceiptById({ brand, id });
+  if (!receipt) throw new NotFoundError("Receipt");
+  const history = await commsLog.listForReference({
+    reference_type: receiptDelivery.REFERENCE_TYPE,
+    reference_id: id,
+  });
+  return {
+    receipt_id: id,
+    receipt_number: receipt.receipt_number,
+    sent_at: receipt.sent_at,
+    // No "viewed" column on receipts — surface it from the comms log instead.
+    first_viewed_at:
+      history.find((h) => h.status === "opened")?.created_at || null,
+    history,
+  };
+}
+
+/**
+ * Public, no-auth view of a receipt via its (unguessable UUID) link. The first
+ * open records an `opened` comms-log row (guarded once, since receipts carry no
+ * viewed column). Returns a minimal, customer-safe projection.
+ */
+async function getReceiptPublicView({ brand, id }) {
+  const receipt = await repo.findReceiptById({ brand, id });
+  if (!receipt) throw new NotFoundError("Receipt");
+
+  const alreadyOpened = await commsLog.hasStatus({
+    reference_type: receiptDelivery.REFERENCE_TYPE,
+    reference_id: id,
+    status: "opened",
+  });
+  if (!alreadyOpened) {
+    commsLog
+      .record({
+        business: brand,
+        contact_id: receipt.contact_id,
+        channel: receipt.sent_to_whatsapp ? "whatsapp" : "email",
+        event_key: "receipt.opened",
+        recipient: receipt.sent_to_email || receipt.sent_to_whatsapp || null,
+        subject: `Receipt ${receipt.receipt_number || ""} opened`,
+        status: "opened",
+        reference_type: receiptDelivery.REFERENCE_TYPE,
+        reference_id: id,
+      })
+      .catch(() => {});
+  }
+
+  return {
+    receipt_number: receipt.receipt_number,
+    invoice_number: receipt.invoice_number,
+    issued_at: receipt.issued_at,
+    currency: "NGN",
+    contact_name: receipt.contact_name,
+    amount_ngn: receipt.amount_ngn,
+    payment_method: receipt.payment_method,
+  };
+}
+
 async function issueReceipt({ brand, user, request_id, input }) {
   const receipt_number = await repo.nextNumber({ brand, type: "receipt" });
   const receipt = await repo.createReceipt({
@@ -1032,6 +1130,9 @@ module.exports = {
   issueCreditNote,
   listReceipts,
   issueReceipt,
+  sendReceipt,
+  getReceiptDelivery,
+  getReceiptPublicView,
   scheduleRemindersForInvoice,
   listReminders,
   cancelReminder,

@@ -135,6 +135,30 @@ export function useCancelReminder(invoiceId: string) {
   });
 }
 
+export function useReceiptDelivery(receiptId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["invoices", biz, "receipt-delivery", receiptId],
+    queryFn: () => invoicingApi.getReceiptDelivery(receiptId!),
+    enabled: !!receiptId,
+  });
+}
+
+export function useSendReceipt(invoiceId: string | null) {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ receiptId, sent_via }: { receiptId: string; sent_via?: string }) =>
+      invoicingApi.sendReceipt(receiptId, { sent_via }),
+    onSuccess: (_data, { receiptId }) => {
+      qc.invalidateQueries({ queryKey: ["invoices", biz, "receipts", invoiceId] });
+      qc.invalidateQueries({
+        queryKey: ["invoices", biz, "receipt-delivery", receiptId],
+      });
+    },
+  });
+}
+
 // ── Credit notes ────────────────────────────────────────────
 
 export function useCreditNotes(

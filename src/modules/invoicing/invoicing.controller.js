@@ -123,6 +123,28 @@ const issueReceipt = async (req, res) =>
   res.status(201).json({
     data: await service.issueReceipt({ ...base(req), input: req.body }),
   });
+const sendReceipt = async (req, res) =>
+  res.json({
+    data: await service.sendReceipt({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+const getReceiptDelivery = async (req, res) =>
+  res.json({
+    data: await service.getReceiptDelivery({
+      brand: req.brand,
+      id: req.params.id,
+    }),
+  });
+const viewPublicReceipt = async (req, res) => {
+  const { brand, id } = req.params;
+  if (!PUBLIC_BRANDS.has(brand)) {
+    return res.status(404).json({ error: { code: "NOT_FOUND" } });
+  }
+  res.json({ data: await service.getReceiptPublicView({ brand, id }) });
+};
 
 // Reminders (F-10)
 const listReminders = async (req, res) =>
@@ -172,6 +194,9 @@ module.exports = {
   issueCreditNote,
   listReceipts,
   issueReceipt,
+  sendReceipt,
+  getReceiptDelivery,
+  viewPublicReceipt,
   listReminders,
   cancelReminder,
 };

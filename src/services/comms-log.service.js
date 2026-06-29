@@ -92,4 +92,19 @@ async function listForReference({ reference_type, reference_id, limit = 20 }) {
   return rows;
 }
 
-module.exports = { record, listForContact, listForReference };
+/**
+ * Has a document already logged a row with this status? Lets a document without
+ * its own "viewed" column (e.g. receipts) record an `opened` event exactly once.
+ */
+async function hasStatus({ reference_type, reference_id, status }) {
+  if (!reference_type || !reference_id) return false;
+  const { rows } = await query(
+    `SELECT 1 FROM shared.outbound_comms_log
+      WHERE reference_type = $1 AND reference_id = $2 AND status = $3
+      LIMIT 1`,
+    [reference_type, reference_id, status],
+  );
+  return rows.length > 0;
+}
+
+module.exports = { record, listForContact, listForReference, hasStatus };

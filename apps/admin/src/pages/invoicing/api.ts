@@ -10,6 +10,7 @@ import type {
   ReceiptIssueInput,
   InvoiceReminder,
   InvoiceDelivery,
+  ReceiptDelivery,
   ArAgeingReport,
   PaginatedResponse,
 } from "./types";
@@ -90,6 +91,14 @@ export const issueCreditNote = (id: string) =>
 
 export const issueReceipt = (input: ReceiptIssueInput) =>
   api.post<Receipt>(`${S}/receipts`, input);
+
+export const sendReceipt = (
+  id: string,
+  input: { sent_via?: string } = {},
+) => api.post<Receipt>(`${S}/receipts/${id}/send`, input);
+
+export const getReceiptDelivery = (id: string) =>
+  api.get<ReceiptDelivery>(`${S}/receipts/${id}/delivery`);
 
 // ── Reminders ───────────────────────────────────────────────
 

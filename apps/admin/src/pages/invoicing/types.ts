@@ -223,14 +223,24 @@ export interface CommsLogEntry {
   created_at: string;
 }
 
-export interface InvoiceDelivery {
+/** The subset the Delivery panel renders — shared by invoices and receipts. */
+export interface DeliveryView {
+  sent_at: string | null;
+  sent_via?: SentVia;
+  first_viewed_at: string | null;
+  history: CommsLogEntry[];
+}
+
+export interface InvoiceDelivery extends DeliveryView {
   invoice_id: string;
   invoice_number: string;
   status: InvoiceStatus;
-  sent_at: string | null;
   sent_via: SentVia;
-  first_viewed_at: string | null;
-  history: CommsLogEntry[];
+}
+
+export interface ReceiptDelivery extends DeliveryView {
+  receipt_id: string;
+  receipt_number: string;
 }
 
 export interface ArAgeingParty {

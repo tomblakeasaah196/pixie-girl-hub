@@ -178,6 +178,7 @@ function mountRoutes(app) {
   publicRouter.use("/services", publicServicesRouter);
   publicRouter.use("/tracking", publicTrackingRouter);
   publicRouter.use("/invoices", publicInvoiceRouter);
+  publicRouter.use("/receipts", publicInvoiceRouter.receiptRouter);
   publicRouter.use("/order-timeline", publicOrderTimelineRouter);
   // Public WRITE endpoints (H-10): stricter per-IP throttle to blunt abuse on
   // unauthenticated record-creating routes.

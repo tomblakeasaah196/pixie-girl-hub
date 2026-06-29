@@ -12,7 +12,7 @@
 import { Send, MailCheck, Eye, AlertCircle, Clock } from "lucide-react";
 import { Card, Pill } from "@/components/ui/primitives";
 import { COMMS_STATUS } from "./constants";
-import type { InvoiceDelivery, CommsLogEntry } from "./types";
+import type { DeliveryView, CommsLogEntry } from "./types";
 
 function fmt(ts: string | null | undefined) {
   if (!ts) return "";
@@ -30,7 +30,7 @@ function channelLabel(c: string | null | undefined) {
 }
 
 /** Reduce the send stamps + history into the three stepper stages. */
-function deriveStages(delivery: InvoiceDelivery | undefined) {
+function deriveStages(delivery: DeliveryView | undefined) {
   const history = delivery?.history ?? [];
   const has = (...s: string[]) => history.some((h) => s.includes(h.status));
   const latestFailed =
@@ -115,7 +115,7 @@ export function DeliveryPanel({
   isLoading,
   resendSlot,
 }: {
-  delivery: InvoiceDelivery | undefined;
+  delivery: DeliveryView | undefined;
   isLoading?: boolean;
   resendSlot?: React.ReactNode;
 }) {
@@ -134,8 +134,8 @@ export function DeliveryPanel({
       ) : !sent && !latestFailed ? (
         <div className="text-[12px] text-text-faint">
           Not sent to the customer yet. Use{" "}
-          <span className="text-text-muted">Send Invoice</span> above to deliver
-          it by email or WhatsApp.
+          <span className="text-text-muted">Send</span> to deliver it by email or
+          WhatsApp.
         </div>
       ) : (
         <>

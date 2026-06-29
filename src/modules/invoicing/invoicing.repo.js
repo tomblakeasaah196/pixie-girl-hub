@@ -371,6 +371,31 @@ async function listReceipts({ client, brand, invoice_id }) {
   );
   return rows;
 }
+/** One receipt + its customer's contact details (for addressing a send). */
+async function findReceiptById({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT r.*, c.display_name AS contact_name, c.email AS contact_email,
+            c.primary_phone AS contact_phone, i.invoice_number
+       FROM ${t(brand, "receipts")} r
+       LEFT JOIN shared.contacts c ON c.contact_id = r.contact_id
+       LEFT JOIN ${t(brand, "invoices")} i ON i.invoice_id = r.invoice_id
+      WHERE r.receipt_id = $1`,
+    [id],
+  );
+  return rows[0] || null;
+}
+/** Stamp the send columns when a receipt is delivered (or re-delivered). */
+async function markReceiptSent({ client, brand, id, channel, recipient }) {
+  const col = channel === "whatsapp" ? "sent_to_whatsapp" : "sent_to_email";
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "receipts")}
+        SET sent_at = now(), ${col} = $2
+      WHERE receipt_id = $1
+      RETURNING *`,
+    [id, recipient || null],
+  );
+  return rows[0] || null;
+}
 
 // ── Invoice Reminders (F-10) ─────────────────────────────
 async function insertReminder({ client, brand, reminder }) {
@@ -480,6 +505,8 @@ module.exports = {
   setCreditNoteStatus,
   createReceipt,
   listReceipts,
+  findReceiptById,
+  markReceiptSent,
   insertReminder,
   listReminders,
   cancelScheduledReminders,

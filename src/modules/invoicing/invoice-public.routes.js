@@ -14,4 +14,8 @@ const router = express.Router();
 
 router.get("/:brand/:id/view", controller.viewPublicInvoice);
 
+const receiptRouter = express.Router();
+receiptRouter.get("/:brand/:id/view", controller.viewPublicReceipt);
+
 module.exports = router;
+module.exports.receiptRouter = receiptRouter;

@@ -21,6 +21,7 @@ import {
 import { INVOICE_STATUS, REMINDER_STATUS, SEND_VIA_OPTIONS } from "./constants";
 import { CreditNoteCreateDrawer } from "./CreditNoteCreateDrawer";
 import { DeliveryPanel } from "./DeliveryPanel";
+import { ReceiptRow } from "./ReceiptRow";
 import type { InvoiceSendInput } from "./types";
 
 const RECEIPT_PAYMENT_METHODS = [
@@ -363,16 +364,12 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
               {receipts && receipts.length > 0 ? (
                 <div className="space-y-2">
                   {receipts.map((r) => (
-                    <div key={r.receipt_id} className="flex items-center justify-between text-[13px] p-2 rounded-lg bg-text-primary/[0.02]">
-                      <div>
-                        <div className="font-semibold">{r.receipt_number}</div>
-                        <div className="text-[11px] text-text-faint capitalize">{r.payment_method.replace(/_/g, " ")}</div>
-                      </div>
-                      <div className="text-right">
-                        <MoneyText ngn={Number(r.amount_ngn)} />
-                        <div className="text-[10px] text-text-faint">{new Date(r.issued_at).toLocaleDateString()}</div>
-                      </div>
-                    </div>
+                    <ReceiptRow
+                      key={r.receipt_id}
+                      receipt={r}
+                      invoiceId={invoiceId}
+                      fireToast={fireToast}
+                    />
                   ))}
                 </div>
               ) : (

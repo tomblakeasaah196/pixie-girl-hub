@@ -30,6 +30,27 @@ const pageDraftSchema = z
   })
   .strict();
 
+const popupDraftSchema = z
+  .object({
+    popup_key: z.string().min(1).max(60),
+    trigger_type: z.enum([
+      "time_delay",
+      "scroll_depth",
+      "exit_intent",
+      "page_load",
+      "add_to_cart",
+    ]),
+    trigger_value: z.number().int().nullable().optional(),
+    audience: z
+      .enum(["all", "new", "returning", "guest", "member"])
+      .default("all"),
+    content: z.record(z.any()).default({}),
+    display_rules: z.record(z.any()).default({}),
+    display_order: z.number().int().default(0),
+    is_active: z.boolean().default(true),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -39,7 +60,9 @@ module.exports = {
   validateThemeDraft: mk(themeDraftSchema),
   validateNavDraft: mk(navDraftSchema),
   validatePageDraft: mk(pageDraftSchema),
+  validatePopupDraft: mk(popupDraftSchema),
   themeDraftSchema,
   navDraftSchema,
   pageDraftSchema,
+  popupDraftSchema,
 };

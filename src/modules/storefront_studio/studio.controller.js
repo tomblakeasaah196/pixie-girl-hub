@@ -77,6 +77,62 @@ async function publishPage(req, res) {
   });
 }
 
+async function listPopups(req, res) {
+  res.json({ data: await service.listPopups({ brand: req.brand }) });
+}
+async function savePopupDraft(req, res) {
+  res.json({
+    data: await service.savePopupDraft({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      popup: req.body,
+    }),
+  });
+}
+async function publishPopup(req, res) {
+  res.json({
+    data: await service.publishPopup({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      popup_key: req.params.popupKey,
+    }),
+  });
+}
+async function deletePopup(req, res) {
+  res.json({
+    data: await service.deletePopup({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      popup_key: req.params.popupKey,
+    }),
+  });
+}
+async function listSectionTemplates(_req, res) {
+  res.json({ data: await service.listSectionTemplates() });
+}
+async function uploadImage(req, res) {
+  res.json({ data: await service.uploadImage({ brand: req.brand, file: req.file }) });
+}
+async function previewInfo(req, res) {
+  res.json({ data: await service.previewInfo({ brand: req.brand }) });
+}
+async function listRevisions(req, res) {
+  res.json({ data: await service.listRevisions({ brand: req.brand }) });
+}
+async function rollbackRevision(req, res) {
+  res.json({
+    data: await service.rollbackRevision({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      revision_id: req.params.revisionId,
+    }),
+  });
+}
+
 module.exports = {
   getThemes,
   saveThemeDraft,
@@ -87,4 +143,13 @@ module.exports = {
   listPages,
   savePageDraft,
   publishPage,
+  listPopups,
+  savePopupDraft,
+  publishPopup,
+  deletePopup,
+  listSectionTemplates,
+  uploadImage,
+  previewInfo,
+  listRevisions,
+  rollbackRevision,
 };

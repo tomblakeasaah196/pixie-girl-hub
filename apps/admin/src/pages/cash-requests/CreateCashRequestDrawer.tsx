@@ -1,12 +1,24 @@
 import { useState } from "react";
-import { Plus, Send, Save } from "lucide-react";
+import { Plus, Send, Save, X, Loader2 } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/primitives";
 import { FormSection, Field, TextInput } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
 import { useCashRequestMutations } from "./hooks";
+// Cash Requests share the expense category set (V2.2 6.32:
+// "Same category set as expense_categories").
+import { useExpenseCategories, useExpenseMutations } from "../expenses/hooks";
+
+/** Turn a free-text category name into a stable key. */
+function slugifyKey(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60);
+}
 import {
-  CR_CATEGORY_OPTIONS,
   URGENCY_OPTIONS,
   RECIPIENT_TYPE_OPTIONS,
   SETTLEMENT_REQUIRES_TYPES,
@@ -48,14 +60,36 @@ export default function CreateCashRequestDrawer({ onClose }: Props) {
   const [errors, setErrors] = useState<
     Partial<Record<keyof FormState, string>>
   >({});
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const mutations = useCashRequestMutations();
+
+  const categoriesQ = useExpenseCategories();
+  const categories = (categoriesQ.data ?? []).filter((c) => c.is_active);
+  const { createCategory } = useExpenseMutations();
 
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
     setForm((p) => ({ ...p, [key]: val }));
 
   const categoryLabel =
-    CR_CATEGORY_OPTIONS.find((c) => c.value === form.category_key)?.label ??
-    form.category_key;
+    categories.find((c) => c.category_key === form.category_key)
+      ?.category_display ?? form.category_key;
+
+  function addCategory() {
+    const name = newCategoryName.trim();
+    const key = slugifyKey(name);
+    if (!name || !key) return;
+    createCategory.mutate(
+      { category_key: key, display_name: name },
+      {
+        onSuccess: (cat) => {
+          set("category_key", cat.category_key);
+          setNewCategoryName("");
+          setAddingCategory(false);
+        },
+      },
+    );
+  }
   const showBankFields = [
     "self_bank",
     "third_party_bank",
@@ -140,13 +174,75 @@ export default function CreateCashRequestDrawer({ onClose }: Props) {
     >
       <div className="space-y-1">
         <FormSection title="Category & Purpose">
-          <Field label="Category" hint="required">
-            <Select
-              value={form.category_key}
-              onChange={(v) => set("category_key", v)}
-              options={CR_CATEGORY_OPTIONS}
-            />
+          <Field
+            label="Category"
+            hint={addingCategory ? "new category" : "required"}
+          >
+            {addingCategory ? (
+              <div className="flex items-center gap-2">
+                <TextInput
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="e.g. Studio Rent, Courier Fees"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!newCategoryName.trim() || createCategory.isPending}
+                  onClick={addCategory}
+                  icon={
+                    createCategory.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )
+                  }
+                >
+                  Add
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAddingCategory(false);
+                    setNewCategoryName("");
+                  }}
+                  icon={<X className="w-3.5 h-3.5" />}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Select
+                  value={form.category_key}
+                  onChange={(v) => set("category_key", v)}
+                  options={[
+                    {
+                      value: "",
+                      label: categories.length
+                        ? "Choose a category..."
+                        : "No categories",
+                    },
+                    ...categories.map((c) => ({
+                      value: c.category_key,
+                      label: c.category_display,
+                    })),
+                  ]}
+                />
+                <button
+                  type="button"
+                  onClick={() => setAddingCategory(true)}
+                  className="flex items-center gap-1 text-[11px] text-accent-glow hover:text-accent transition-colors"
+                >
+                  <Plus className="w-3 h-3" /> New category
+                </button>
+              </div>
+            )}
             {errors.category_key && <ErrText>{errors.category_key}</ErrText>}
+            {createCategory.isError && (
+              <ErrText>Couldn&rsquo;t create the category.</ErrText>
+            )}
           </Field>
           <Field label="Purpose" hint="what is this money for?">
             <textarea

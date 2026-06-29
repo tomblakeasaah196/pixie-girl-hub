@@ -47,6 +47,8 @@ async function listExpenses(req, res) {
     }),
   );
 }
+const kpis = async (req, res) =>
+  res.json({ data: await service.kpis({ brand: req.brand }) });
 const getById = async (req, res) =>
   res.json({
     data: await service.getById({ brand: req.brand, id: req.params.id }),
@@ -170,6 +172,7 @@ module.exports = {
   createCategory,
   updateCategory,
   listExpenses,
+  kpis,
   getById,
   createExpense,
   submit,

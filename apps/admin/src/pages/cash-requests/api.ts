@@ -7,12 +7,7 @@ import type {
   PaginatedResponse,
   Decision,
   DocumentRole,
-  Expense,
-  ExpenseCategory,
-  ExpenseKpis,
 } from "./types";
-
-// ── Cash Requests ────────────────────────────────────────
 
 const CR = "/cash-request";
 
@@ -114,66 +109,4 @@ export function addCashRequestDocument(
 
 export function getCashRequestHistory(id: string) {
   return api.get<StateHistoryEntry[]>(`${CR}/${id}/history`);
-}
-
-// ── Expenses ─────────────────────────────────────────────
-
-const EX = "/expenses";
-
-export function listExpenses(params: {
-  status?: string;
-  page?: number;
-  page_size?: number;
-}) {
-  const qs = new URLSearchParams();
-  if (params.status) qs.set("status", params.status);
-  if (params.page) qs.set("page", String(params.page));
-  if (params.page_size) qs.set("page_size", String(params.page_size));
-  const q = qs.toString();
-  return api.get<PaginatedResponse<Expense>>(`${EX}${q ? `?${q}` : ""}`);
-}
-
-export function getExpense(id: string) {
-  return api.get<Expense>(`${EX}/${id}`);
-}
-
-export function getExpenseKpis() {
-  return api.get<ExpenseKpis>(`${EX}/kpis`);
-}
-
-export function listExpenseCategories() {
-  return api.get<ExpenseCategory[]>(`${EX}/categories`);
-}
-
-export interface ExpenseLineInput {
-  category_id: string;
-  description: string;
-  amount_ngn: number;
-  vat_amount_ngn?: number;
-  vendor_name?: string;
-  receipt_date?: string;
-}
-export interface CreateExpenseInput {
-  title: string;
-  expense_date: string;
-  expense_type?: string;
-  description?: string;
-  lines: ExpenseLineInput[];
-}
-
-// Matches the backend expenseCreate schema (title + dated line items).
-export function createExpense(input: CreateExpenseInput) {
-  return api.post<Expense>(EX, input);
-}
-
-export function submitExpense(id: string) {
-  return api.post<Expense>(`${EX}/${id}/submit`);
-}
-
-export function approveExpense(id: string) {
-  return api.post<Expense>(`${EX}/${id}/approve`);
-}
-
-export function rejectExpense(id: string, reason: string) {
-  return api.post<Expense>(`${EX}/${id}/reject`, { reason });
 }

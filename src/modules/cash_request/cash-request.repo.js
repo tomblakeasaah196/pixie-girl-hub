@@ -125,7 +125,18 @@ async function findAll({
       LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],
   );
-  return { data: rows, page, page_size, total: countRows[0].total };
+  const total = countRows[0].total;
+  // Match the paginated envelope every other admin list uses ({ data, meta });
+  // the admin api client keeps this shape intact for PaginatedResponse<T>.
+  return {
+    data: rows,
+    meta: {
+      page,
+      page_size,
+      total,
+      has_more: offset + rows.length < total,
+    },
+  };
 }
 
 /**

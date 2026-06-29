@@ -381,6 +381,59 @@ async function listContentPosts({ brand, type, limit = 50 }) {
   return rows;
 }
 
+// Draft-preferred site config for STUDIO PREVIEW (not public). For each entity
+// returns the draft row if present, else the published one - so the operator
+// sees exactly what publishing would produce. Same shape as getPublishedSite.
+async function getDraftSite({ brand, path }) {
+  const [theme, nav, pages, popups] = await Promise.all([
+    query(
+      `SELECT tokens FROM shared.storefront_themes
+        WHERE business = $1 AND status IN ('draft','published')
+        ORDER BY (status = 'draft') DESC LIMIT 1`,
+      [brand],
+    ),
+    query(
+      `SELECT header_items, footer_columns, socials
+         FROM shared.storefront_navigation
+        WHERE business = $1 AND status IN ('draft','published')
+        ORDER BY (status = 'draft') DESC LIMIT 1`,
+      [brand],
+    ),
+    path
+      ? query(
+          `SELECT DISTINCT ON (page_key) page_key, template_key, url_path,
+                  meta_title, meta_description, og_image_url, slots
+             FROM shared.storefront_pages
+            WHERE business = $1 AND status IN ('draft','published')
+              AND url_path = $2
+            ORDER BY page_key, (status = 'draft') DESC`,
+          [brand, path],
+        )
+      : query(
+          `SELECT DISTINCT ON (page_key) page_key, template_key, url_path,
+                  meta_title, meta_description, og_image_url, slots
+             FROM shared.storefront_pages
+            WHERE business = $1 AND status IN ('draft','published')
+            ORDER BY page_key, (status = 'draft') DESC`,
+          [brand],
+        ),
+    query(
+      `SELECT DISTINCT ON (popup_key) popup_key, trigger_type, trigger_value,
+              audience, content, display_rules, display_order
+         FROM shared.storefront_popups
+        WHERE business = $1 AND status IN ('draft','published') AND is_active = true
+        ORDER BY popup_key, (status = 'draft') DESC`,
+      [brand],
+    ),
+  ]);
+  return {
+    theme: theme.rows[0] || null,
+    navigation: nav.rows[0] || null,
+    pages: pages.rows,
+    popups: popups.rows,
+  };
+}
+
 async function getContentPost({ brand, type, slug }) {
   const { rows } = await query(
     `SELECT * FROM ${t(brand, "storefront_content_posts")}
@@ -555,6 +608,7 @@ module.exports = {
   listBundles,
   getBundleByCode,
   getPublishedSite,
+  getDraftSite,
   listContentPosts,
   getContentPost,
   findContactByEmailOrPhone,

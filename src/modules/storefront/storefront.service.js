@@ -27,6 +27,8 @@ const { transaction, query } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
+const jwt = require("jsonwebtoken");
+const { config } = require("../../config/env");
 
 const SYSTEM_USER = { user_id: null };
 
@@ -177,7 +179,22 @@ async function getBundle({ brand, slug }) {
 // Published Studio config for the SSR shell. Always resolves (empty/null
 // sections until themes are seeded/published) so the website renders the baked
 // Aura fallback tokens rather than erroring.
-function getSite({ brand, path }) {
+// A valid Studio preview token (minted by storefront_studio for an authed
+// operator) flips /site to the DRAFT config so they can preview before publish.
+function previewValid(token, brand) {
+  try {
+    const p = jwt.verify(token, config.JWT_SECRET);
+    return !!p && p.typ === "sf_preview" && p.brand === brand;
+  } catch {
+    return false;
+  }
+}
+
+async function getSite({ brand, path, previewToken }) {
+  if (previewToken && previewValid(previewToken, brand)) {
+    const site = await repo.getDraftSite({ brand, path });
+    return { ...site, preview: true };
+  }
   return repo.getPublishedSite({ brand, path });
 }
 

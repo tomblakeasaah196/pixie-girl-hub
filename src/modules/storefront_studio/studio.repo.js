@@ -166,14 +166,18 @@ async function updatePageDraft({ client, brand, page_key, page }) {
 
 // ── Publish (generic): archive current published, promote draft ────
 async function publish({ client, entity, brand, page_key, published_by }) {
-  const table =
-    entity === "theme"
-      ? "shared.storefront_themes"
-      : entity === "navigation"
-        ? "shared.storefront_navigation"
-        : "shared.storefront_pages";
-  const keyClause = entity === "page" ? "AND page_key = $2" : "";
-  const params = entity === "page" ? [brand, page_key] : [brand];
+  // page_key carries the per-row key for entities that have one (page_key for
+  // pages, popup_key for popups). Singleton entities (theme/navigation) ignore it.
+  const table = {
+    theme: "shared.storefront_themes",
+    navigation: "shared.storefront_navigation",
+    page: "shared.storefront_pages",
+    popup: "shared.storefront_popups",
+  }[entity];
+  const keyCol =
+    entity === "page" ? "page_key" : entity === "popup" ? "popup_key" : null;
+  const keyClause = keyCol ? `AND ${keyCol} = $2` : "";
+  const params = keyCol ? [brand, page_key] : [brand];
 
   await ex(client)(
     `UPDATE ${table} SET status = 'archived'
@@ -191,6 +195,125 @@ async function publish({ client, entity, brand, page_key, published_by }) {
   return rows[0] || null;
 }
 
+// ── Popups (keyed by popup_key, draft/published like pages) ────────
+async function listPopups({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.storefront_popups
+      WHERE business = $1 AND status IN ('draft','published')
+      ORDER BY popup_key, status`,
+    [brand],
+  );
+  return rows;
+}
+
+async function getPopupDraft({ client, brand, popup_key }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.storefront_popups
+      WHERE business = $1 AND popup_key = $2 AND status = 'draft'`,
+    [brand, popup_key],
+  );
+  return rows[0] || null;
+}
+
+async function insertPopupDraft({ client, brand, popup, created_by }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.storefront_popups
+       (business, status, popup_key, trigger_type, trigger_value, audience,
+        content, display_rules, display_order, is_active, created_by)
+     VALUES ($1, 'draft', $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    [
+      brand,
+      popup.popup_key,
+      popup.trigger_type,
+      popup.trigger_value ?? null,
+      popup.audience || "all",
+      popup.content || {},
+      popup.display_rules || {},
+      popup.display_order ?? 0,
+      popup.is_active ?? true,
+      created_by || null,
+    ],
+  );
+  return rows[0];
+}
+
+async function updatePopupDraft({ client, brand, popup_key, popup }) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.storefront_popups
+        SET trigger_type = COALESCE($3, trigger_type),
+            trigger_value = $4,
+            audience = COALESCE($5, audience),
+            content = $6, display_rules = $7,
+            display_order = COALESCE($8, display_order),
+            is_active = COALESCE($9, is_active),
+            updated_at = now()
+      WHERE business = $1 AND popup_key = $2 AND status = 'draft' RETURNING *`,
+    [
+      brand,
+      popup_key,
+      popup.trigger_type || null,
+      popup.trigger_value ?? null,
+      popup.audience || null,
+      popup.content || {},
+      popup.display_rules || {},
+      popup.display_order ?? null,
+      popup.is_active ?? null,
+    ],
+  );
+  return rows[0] || null;
+}
+
+async function deletePopup({ client, brand, popup_key }) {
+  await ex(client)(
+    `DELETE FROM shared.storefront_popups WHERE business = $1 AND popup_key = $2`,
+    [brand, popup_key],
+  );
+}
+
+// ── Section templates (global library for the page composer) ───────
+async function listSectionTemplates({ client }) {
+  const { rows } = await ex(client)(
+    `SELECT template_key, category, display_name, description,
+            preview_image_url, default_slots, display_order
+       FROM shared.storefront_section_templates
+      WHERE is_active = true
+      ORDER BY category, display_order`,
+  );
+  return rows;
+}
+
+// Brand storefront domain (for building the preview URL).
+async function getStorefrontDomain({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT storefront_domain FROM shared.business_config WHERE business_key = $1`,
+    [brand],
+  );
+  return rows[0] ? rows[0].storefront_domain : null;
+}
+
+// ── Revisions (append-only publish history; written by a DB trigger) ──
+async function listRevisions({ client, brand, limit = 50 }) {
+  const { rows } = await ex(client)(
+    `SELECT revision_id, entity_type, entity_id, published_by, published_at,
+            change_summary
+       FROM shared.storefront_revisions
+      WHERE business = $1
+      ORDER BY published_at DESC
+      LIMIT $2`,
+    [brand, limit],
+  );
+  return rows;
+}
+
+async function getRevision({ client, brand, revision_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.storefront_revisions
+      WHERE business = $1 AND revision_id = $2`,
+    [brand, revision_id],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   getThemes,
   getThemeDraft,
@@ -204,5 +327,14 @@ module.exports = {
   getPageDraft,
   insertPageDraft,
   updatePageDraft,
+  listPopups,
+  getPopupDraft,
+  insertPopupDraft,
+  updatePopupDraft,
+  deletePopup,
+  listSectionTemplates,
+  getStorefrontDomain,
+  listRevisions,
+  getRevision,
   publish,
 };

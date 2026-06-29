@@ -73,6 +73,8 @@ router.post(
 
 // Expenses
 router.get("/", can("view"), controller.listExpenses);
+// KPIs before /:id so the literal isn't captured as an id.
+router.get("/kpis", can("view"), controller.kpis);
 router.post(
   "/",
   can("create"),

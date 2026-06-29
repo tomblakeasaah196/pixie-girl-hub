@@ -63,6 +63,10 @@ async function getById({ brand, id }) {
   return e;
 }
 
+function kpis({ brand }) {
+  return repo.kpis({ brand });
+}
+
 async function createExpense({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     let total = money(0),
@@ -660,6 +664,7 @@ module.exports = {
   updateCategory,
   listExpenses,
   getById,
+  kpis,
   createExpense,
   submit,
   approve,

@@ -88,8 +88,11 @@ function lazyWithRetry<T extends ComponentType<any>>( // eslint-disable-line @ty
   });
 }
 
-const CashExpensesHome = lazyWithRetry(
-  () => import("@/pages/cash-expenses/CashExpensesHome"),
+const CashRequestsPage = lazyWithRetry(
+  () => import("@/pages/cash-requests/CashRequestsPage"),
+);
+const ExpensesPage = lazyWithRetry(
+  () => import("@/pages/expenses/ExpensesPage"),
 );
 const ProductionPage = lazyWithRetry(() =>
   import("@/pages/production/ProductionPage").then((m) => ({
@@ -182,6 +185,11 @@ const LandingStudioPage = lazyWithRetry(() =>
 const LandingPreviewPage = lazyWithRetry(() =>
   import("@/pages/sales-campaigns/landing/LandingPreviewPage").then((m) => ({
     default: m.LandingPreviewPage,
+  })),
+);
+const StorefrontStudioPage = lazyWithRetry(() =>
+  import("@/pages/storefront-studio/StorefrontStudioPage").then((m) => ({
+    default: m.StorefrontStudioPage,
   })),
 );
 const ModelsAndVendorsPage = lazyWithRetry(() =>
@@ -306,6 +314,15 @@ export const router = createBrowserRouter(
           children: [
             { index: true, element: <CommandCenter /> },
             { path: "sales", element: <SalesPage /> },
+            // Storefront Studio - renders inside the app shell like other modules.
+            {
+              path: "storefront-studio",
+              element: (
+                <Suspense fallback={null}>
+                  <StorefrontStudioPage />
+                </Suspense>
+              ),
+            },
             { path: "contacts", element: <ContactsPage /> },
             { path: "contacts/milestones", element: <MilestonesPage /> },
             { path: "contacts/staff/new", element: <EmployeeOnboardingPage /> },
@@ -348,7 +365,7 @@ export const router = createBrowserRouter(
               path: "expenses",
               element: (
                 <Suspense fallback={null}>
-                  <CashExpensesHome mode="expenses" />
+                  <ExpensesPage />
                 </Suspense>
               ),
             },
@@ -356,7 +373,7 @@ export const router = createBrowserRouter(
               path: "cash-requests",
               element: (
                 <Suspense fallback={null}>
-                  <CashExpensesHome mode="cash" />
+                  <CashRequestsPage />
                 </Suspense>
               ),
             },

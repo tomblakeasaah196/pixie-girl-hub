@@ -9,7 +9,11 @@ const repo = require("./studio.repo");
 const events = require("./studio.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { NotFoundError } = require("../../utils/errors");
+const { NotFoundError, AppError } = require("../../utils/errors");
+const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
+const { config } = require("../../config/env");
+const storage = require("../../services/storage.service");
 
 const A = (
   brand,
@@ -199,6 +203,215 @@ async function publishPage({ brand, user, request_id, page_key }) {
   });
 }
 
+// ── Popups ─────────────────────────────────────────────────
+function listPopups({ brand }) {
+  return repo.listPopups({ brand });
+}
+
+async function savePopupDraft({ brand, user, request_id, popup }) {
+  return transaction(async (client) => {
+    const existing = await repo.getPopupDraft({
+      client,
+      brand,
+      popup_key: popup.popup_key,
+    });
+    const draft = existing
+      ? await repo.updatePopupDraft({
+          client,
+          brand,
+          popup_key: popup.popup_key,
+          popup,
+        })
+      : await repo.insertPopupDraft({
+          client,
+          brand,
+          popup,
+          created_by: user.user_id,
+        });
+    await A(
+      brand,
+      user,
+      "studio.popup.save_draft",
+      "storefront_popup",
+      draft.popup_id,
+      { popup_key: popup.popup_key },
+      request_id,
+    );
+    events.emit("popup.draft_saved", { brand, popup_id: draft.popup_id });
+    return draft;
+  });
+}
+
+async function publishPopup({ brand, user, request_id, popup_key }) {
+  return transaction(async (client) => {
+    const published = await repo.publish({
+      client,
+      entity: "popup",
+      brand,
+      page_key: popup_key,
+      published_by: user.user_id,
+    });
+    if (!published) throw new NotFoundError("Popup draft");
+    await A(
+      brand,
+      user,
+      "studio.popup.publish",
+      "storefront_popup",
+      published.popup_id,
+      { popup_key },
+      request_id,
+    );
+    events.emit("popup.published", { brand, popup_id: published.popup_id });
+    return published;
+  });
+}
+
+async function deletePopup({ brand, user, request_id, popup_key }) {
+  return transaction(async (client) => {
+    await repo.deletePopup({ client, brand, popup_key });
+    await A(
+      brand,
+      user,
+      "studio.popup.delete",
+      "storefront_popup",
+      null,
+      { popup_key },
+      request_id,
+    );
+    return { deleted: true, popup_key };
+  });
+}
+
+// ── Section template library ───────────────────────────────
+function listSectionTemplates() {
+  return repo.listSectionTemplates({});
+}
+
+// ── Branding image upload (logo / favicon / OG) ────────────
+// Stored via the shared storage service; the returned URL is written into the
+// theme tokens (--logo-url / --favicon-url / --og-image) by the Branding tab.
+async function uploadImage({ brand, file }) {
+  if (!file || !file.buffer || !file.buffer.length)
+    throw new AppError("NO_FILE", "No image was uploaded", 400);
+  if (!/^image\//.test(file.mimetype || ""))
+    throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
+  const ext =
+    String(file.originalname || "")
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 5) || "jpg";
+  const key = `storefront/${brand}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
+  const stored = await storage.put(file.buffer, {
+    key,
+    contentType: file.mimetype,
+  });
+  return { url: stored.public_url };
+}
+
+// ── Preview (draft preview token + storefront URL) ─────────
+// Mints a short-lived signed token the storefront accepts on ?preview= to
+// render the DRAFT site for this brand. Also returns the brand's storefront
+// origin so the admin can build the embedded + live preview URLs.
+async function previewInfo({ brand }) {
+  const token = jwt.sign({ typ: "sf_preview", brand }, config.JWT_SECRET, {
+    expiresIn: "30m",
+  });
+  let base = await repo.getStorefrontDomain({ brand });
+  if (base && !/^https?:\/\//i.test(base)) base = `https://${base}`;
+  return { token, base_url: base || null };
+}
+
+// ── Revisions (history + one-click rollback) ───────────────
+function listRevisions({ brand }) {
+  return repo.listRevisions({ brand });
+}
+
+// Rollback restores the revision's snapshot as the entity's DRAFT, so an
+// operator reviews it and re-publishes - safer than silently flipping live.
+async function rollbackRevision({ brand, user, request_id, revision_id }) {
+  return transaction(async (client) => {
+    const rev = await repo.getRevision({ client, brand, revision_id });
+    if (!rev) throw new NotFoundError("Revision");
+    const snap = rev.snapshot || {};
+
+    if (rev.entity_type === "theme") {
+      const existing = await repo.getThemeDraft({ client, brand });
+      if (existing)
+        await repo.updateThemeDraft({ client, brand, tokens: snap.tokens || {} });
+      else
+        await repo.insertThemeDraft({
+          client,
+          brand,
+          tokens: snap.tokens || {},
+          created_by: user.user_id,
+        });
+    } else if (rev.entity_type === "navigation") {
+      const nav = {
+        header_items: snap.header_items || [],
+        footer_columns: snap.footer_columns || [],
+        socials: snap.socials || {},
+      };
+      const existing = await repo.getNavDraft({ client, brand });
+      if (existing) await repo.updateNavDraft({ client, brand, nav });
+      else
+        await repo.insertNavDraft({
+          client,
+          brand,
+          nav,
+          created_by: user.user_id,
+        });
+    } else if (rev.entity_type === "page") {
+      const page = {
+        page_key: snap.page_key,
+        template_key: snap.template_key,
+        url_path: snap.url_path,
+        meta_title: snap.meta_title,
+        meta_description: snap.meta_description,
+        og_image_url: snap.og_image_url,
+        slots: snap.slots || {},
+      };
+      const existing = await repo.getPageDraft({
+        client,
+        brand,
+        page_key: page.page_key,
+      });
+      if (existing)
+        await repo.updatePageDraft({
+          client,
+          brand,
+          page_key: page.page_key,
+          page,
+        });
+      else
+        await repo.insertPageDraft({
+          client,
+          brand,
+          page,
+          created_by: user.user_id,
+        });
+    } else {
+      throw new AppError(
+        "UNSUPPORTED_ENTITY",
+        "This revision type can't be rolled back.",
+        422,
+      );
+    }
+
+    await A(
+      brand,
+      user,
+      "studio.revision.rollback",
+      "storefront_revision",
+      revision_id,
+      { entity_type: rev.entity_type },
+      request_id,
+    );
+    return { restored_to_draft: true, entity_type: rev.entity_type };
+  });
+}
+
 module.exports = {
   getThemes,
   saveThemeDraft,
@@ -209,4 +422,13 @@ module.exports = {
   listPages,
   savePageDraft,
   publishPage,
+  listPopups,
+  savePopupDraft,
+  publishPopup,
+  deletePopup,
+  listSectionTemplates,
+  uploadImage,
+  previewInfo,
+  listRevisions,
+  rollbackRevision,
 };

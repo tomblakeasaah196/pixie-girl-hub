@@ -346,7 +346,39 @@ async function listReceipts({ client, brand, expense_id }) {
   return rows;
 }
 
+// Dashboard KPIs for the Expenses module (its own stats, distinct from cash
+// requests). Single aggregate over the brand's expenses header table.
+async function kpis({ brand }) {
+  const { rows } = await query(
+    `SELECT
+       COALESCE(SUM(total_amount_ngn) FILTER (
+         WHERE status IN ('paid','reimbursed')
+           AND date_trunc('month', expense_date) = date_trunc('month', CURRENT_DATE)
+       ), 0) AS paid_this_month,
+       COALESCE(SUM(total_amount_ngn) FILTER (
+         WHERE status IN ('pending','partially_paid')
+       ), 0) AS pending_amount,
+       COUNT(*) FILTER (WHERE status IN ('pending','partially_paid'))::int
+         AS pending_count,
+       COALESCE(SUM(total_amount_ngn) FILTER (
+         WHERE expense_type = 'reimbursement'
+           AND status NOT IN ('paid','reimbursed','rejected','cancelled')
+       ), 0) AS reimbursements_outstanding
+       FROM ${t(brand, "expenses")}`,
+  );
+  const r = rows[0] || {};
+  return {
+    paid_this_month: Number(r.paid_this_month) || 0,
+    pending_amount: Number(r.pending_amount) || 0,
+    pending_count: Number(r.pending_count) || 0,
+    reimbursements_outstanding: Number(r.reimbursements_outstanding) || 0,
+    top_category_this_month: null,
+    spend_by_category: [],
+  };
+}
+
 module.exports = {
+  kpis,
   listCategories,
   getCategory,
   createCategory,

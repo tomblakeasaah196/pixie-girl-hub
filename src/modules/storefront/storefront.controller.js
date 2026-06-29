@@ -87,6 +87,8 @@ async function getSite(req, res) {
     data: await service.getSite({
       brand: brandHint(req),
       path: req.query.path || null,
+      // Studio preview: a signed token flips this to the draft config.
+      previewToken: req.query.preview || req.headers["x-sf-preview"] || null,
     }),
   });
 }

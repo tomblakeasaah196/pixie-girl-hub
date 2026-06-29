@@ -18,12 +18,23 @@ import {
  * and fetches brand-correct, authenticated data from the Hub.
  */
 
-function reqBrandCookie(): { brand: BrandKey; cookie?: string } {
+function reqBrandCookie(): {
+  brand: BrandKey;
+  cookie?: string;
+  preview?: string;
+} {
   try {
     const req = getRequest();
+    let preview: string | undefined;
+    try {
+      preview = new URL(req.url).searchParams.get("preview") || undefined;
+    } catch {
+      /* non-absolute url */
+    }
     return {
       brand: brandFromHost(req?.headers?.get("host")),
       cookie: req?.headers?.get("cookie") ?? undefined,
+      preview,
     };
   } catch {
     return { brand: brandFromHost(null) };
@@ -43,16 +54,18 @@ interface SiteConfig {
   navigation?: unknown;
   pages?: StudioPage[];
   popups?: unknown[];
+  preview?: boolean;
 }
 
 export const ssrSite = createServerFn({ method: "GET", strict: false }).handler(
   async (): Promise<SiteConfig> => {
-    const { brand, cookie } = reqBrandCookie();
+    const { brand, cookie, preview } = reqBrandCookie();
+    const qs = preview ? `?preview=${encodeURIComponent(preview)}` : "";
     try {
-      const site = await api.get<SiteConfig>("/api/public/storefront/site", {
-        brand,
-        cookie,
-      });
+      const site = await api.get<SiteConfig>(
+        `/api/public/storefront/site${qs}`,
+        { brand, cookie },
+      );
       return { ...site, brand };
     } catch {
       return { brand };

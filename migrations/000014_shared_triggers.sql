@@ -225,10 +225,19 @@ RETURNS TRIGGER
 LANGUAGE plpgsql AS $$
 DECLARE
   v_entity_type TEXT;
+  v_snapshot    JSONB;
+  v_entity_id   UUID;
 BEGIN
   IF NEW.status <> 'published' OR (OLD IS NOT NULL AND OLD.status = 'published') THEN
     RETURN NEW;
   END IF;
+
+  -- Snapshot once. We read the id from the JSON rather than NEW.<col>
+  -- directly: a CASE over NEW.theme_id/NEW.page_id/NEW.nav_id forces
+  -- Postgres to resolve every branch's column at plan time, which throws
+  -- "record new has no field page_id" when the trigger fires on a table
+  -- that lacks that column. JSON field access is null-safe per branch.
+  v_snapshot := row_to_json(NEW)::jsonb;
 
   -- TG_TABLE_NAME drives the entity_type label
   v_entity_type := CASE TG_TABLE_NAME
@@ -237,18 +246,17 @@ BEGIN
                      WHEN 'storefront_navigation' THEN 'navigation'
                    END;
 
+  v_entity_id := COALESCE(
+                   v_snapshot ->> 'theme_id',
+                   v_snapshot ->> 'page_id',
+                   v_snapshot ->> 'nav_id'
+                 )::uuid;
+
   INSERT INTO shared.storefront_revisions
     (business, entity_type, entity_id, snapshot, published_by, published_at)
   VALUES
-    (NEW.business, v_entity_type,
-     CASE TG_TABLE_NAME
-       WHEN 'storefront_themes'     THEN NEW.theme_id
-       WHEN 'storefront_pages'      THEN NEW.page_id
-       WHEN 'storefront_navigation' THEN NEW.nav_id
-     END,
-     row_to_json(NEW)::jsonb,
-     NEW.published_by,
-     COALESCE(NEW.published_at, now()));
+    (NEW.business, v_entity_type, v_entity_id, v_snapshot,
+     NEW.published_by, COALESCE(NEW.published_at, now()));
 
   RETURN NEW;
 END;

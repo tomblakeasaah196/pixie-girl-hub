@@ -1,6 +1,5 @@
 import type {
   CashRequestStatus,
-  ExpenseStatus,
   Urgency,
   RecipientType,
   DocumentRole,
@@ -22,15 +21,6 @@ export const CR_STATUS_META: Record<CashRequestStatus, StatusMeta> = {
   disbursed: { label: "Disbursed", tone: "success" },
   settled: { label: "Settled", tone: "success" },
   cancelled: { label: "Cancelled", tone: "neutral" },
-};
-
-export const EXPENSE_STATUS_META: Record<ExpenseStatus, StatusMeta> = {
-  draft: { label: "Draft", tone: "neutral" },
-  pending: { label: "Pending", tone: "warn" },
-  approved: { label: "Approved", tone: "info" },
-  rejected: { label: "Rejected", tone: "danger" },
-  partially_paid: { label: "Partially Paid", tone: "warn" },
-  paid: { label: "Paid", tone: "success" },
 };
 
 export const URGENCY_META: Record<Urgency, StatusMeta> = {
@@ -100,14 +90,6 @@ export const CR_STATUS_TABS = [
   { value: "approved", label: "Approved" },
   { value: "disbursed", label: "Disbursed" },
   { value: "settled", label: "Settled" },
-] as const;
-
-export const EXPENSE_STATUS_TABS = [
-  { value: "", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "approved", label: "Approved" },
-  { value: "paid", label: "Paid" },
-  { value: "rejected", label: "Rejected" },
 ] as const;
 
 export const SETTLEMENT_REQUIRES_TYPES = new Set(["self_cash", "petty_cash"]);

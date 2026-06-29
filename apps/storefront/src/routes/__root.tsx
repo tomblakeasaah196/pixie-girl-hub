@@ -29,6 +29,7 @@ interface SiteConfig {
   theme?: { tokens?: Record<string, string> };
   navigation?: unknown;
   popups?: unknown[];
+  preview?: boolean;
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -83,8 +84,14 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const { preview } = Route.useLoaderData();
   return (
     <QueryClientProvider client={queryClient}>
+      {preview ? (
+        <div className="bg-burgundy py-1.5 text-center text-body-sm text-cream">
+          Preview - showing draft changes (not published)
+        </div>
+      ) : null}
       <Preloader />
       <Header />
       <Outlet />

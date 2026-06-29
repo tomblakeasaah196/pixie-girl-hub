@@ -463,6 +463,29 @@ async function settle({ brand, user, request_id, id, input }) {
       });
     }
 
+    // Realise the settled spend as an Expense so a settled advance lists under
+    // Expenses exactly like a direct disbursement does (§6.7). Only once, and
+    // only for the portion actually spent (receipts).
+    let linkedExpenseId = cr.linked_expense_id || null;
+    if (receipts.gt(0) && !linkedExpenseId) {
+      const expenseNumber = await expensesRepo.nextNumber({ client, brand });
+      const expense = await expensesRepo.createExpense({
+        client,
+        brand,
+        header: {
+          expense_number: expenseNumber,
+          expense_type: "direct_invoice",
+          submitted_by: cr.submitted_by,
+          title: `Cash Request ${cr.request_number}: ${cr.purpose}`,
+          expense_date: new Date().toISOString().slice(0, 10),
+          description: cr.purpose,
+          total_amount_ngn: toCurrencyString(receipts),
+          status: "paid",
+        },
+      });
+      linkedExpenseId = expense.expense_id;
+    }
+
     return transition({
       client,
       brand,
@@ -474,6 +497,7 @@ async function settle({ brand, user, request_id, id, input }) {
         settled_at: new Date().toISOString(),
         settled_total_receipts_ngn: toCurrencyString(receipts),
         unsettled_balance_ngn: toCurrencyString(unsettled),
+        linked_expense_id: linkedExpenseId,
       },
       notes: input.notes,
       action_key: "cash_request.settle",

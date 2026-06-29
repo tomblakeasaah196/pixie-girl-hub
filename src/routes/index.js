@@ -126,6 +126,7 @@ const helpCenterRouter = require("../modules/help_center/help-center.routes");
 const publicCatalogueRouter = require("../modules/storefront/public.routes");
 const publicServicesRouter = require("../modules/service_catalogue/service-catalogue.public.routes");
 const publicTrackingRouter = require("../modules/logistics/tracking.routes");
+const publicInvoiceRouter = require("../modules/invoicing/invoice-public.routes");
 const publicOrderTimelineRouter = require("../modules/sales/order-timeline.routes");
 const publicPayLinkRouter = require("../modules/sales/payment-link.public.routes");
 const publicOrderFormRouter = require("../modules/storefront/order-form.routes");
@@ -176,6 +177,7 @@ function mountRoutes(app) {
   publicRouter.use("/catalogue", publicCatalogueRouter);
   publicRouter.use("/services", publicServicesRouter);
   publicRouter.use("/tracking", publicTrackingRouter);
+  publicRouter.use("/invoices", publicInvoiceRouter);
   publicRouter.use("/order-timeline", publicOrderTimelineRouter);
   // Public WRITE endpoints (H-10): stricter per-IP throttle to blunt abuse on
   // unauthenticated record-creating routes.

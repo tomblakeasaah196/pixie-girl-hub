@@ -9,6 +9,7 @@ import type {
   Receipt,
   ReceiptIssueInput,
   InvoiceReminder,
+  InvoiceDelivery,
   ArAgeingReport,
   PaginatedResponse,
 } from "./types";
@@ -60,6 +61,9 @@ export const voidInvoice = (id: string) =>
 
 export const listInvoiceReceipts = (id: string) =>
   api.get<Receipt[]>(`${S}/invoices/${id}/receipts`);
+
+export const getInvoiceDelivery = (id: string) =>
+  api.get<InvoiceDelivery>(`${S}/invoices/${id}/delivery`);
 
 // ── Credit notes ────────────────────────────────────────────
 

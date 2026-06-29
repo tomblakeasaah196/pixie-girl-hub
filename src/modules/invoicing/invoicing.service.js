@@ -19,6 +19,8 @@ const pdf = require("../../services/pdf.service");
 const brandDocs = require("../../services/pdf.brand-docs");
 const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
+const delivery = require("./invoice-delivery.service");
+const commsLog = require("../../services/comms-log.service");
 
 const A = (
   brand,
@@ -277,6 +279,26 @@ async function send({ brand, user, request_id, id, input = {} }) {
     request_id,
   );
   events.emit("invoice.sent", { brand, invoice_id: id });
+  // Actually put the invoice in front of the customer (email / WhatsApp) and
+  // log the attempt on the comms ledger. Best-effort: a delivery hiccup must
+  // not fail the send — it surfaces on the invoice's Delivery panel instead.
+  delivery
+    .dispatchInvoice({
+      brand,
+      invoice: {
+        ...updated,
+        contact_name: inv.contact_name,
+        contact_email: inv.contact_email,
+        contact_phone: inv.contact_phone,
+      },
+      channel: input.sent_via || "email",
+    })
+    .catch((err) =>
+      logger.warn(
+        { err: err.message, invoice_id: id, brand },
+        "invoice dispatch failed",
+      ),
+    );
   // Schedule payment reminders now that the invoice is live.
   scheduleRemindersForInvoice({
     brand,
@@ -892,6 +914,79 @@ async function invoicePdf({ brand, user, id }) {
   return stored;
 }
 
+// ── Delivery tracking ────────────────────────────────────────
+/**
+ * "Was it sent, did it land, did she open it?" for one invoice: the send stamps
+ * (sent_at / sent_via / first_viewed_at) plus the per-document comms history.
+ */
+async function getDelivery({ brand, id }) {
+  const inv = await repo.findById({ brand, id });
+  if (!inv) throw new NotFoundError("Invoice");
+  const history = await commsLog.listForReference({
+    reference_type: delivery.REFERENCE_TYPE,
+    reference_id: id,
+  });
+  return {
+    invoice_id: id,
+    invoice_number: inv.invoice_number,
+    status: inv.status,
+    sent_at: inv.sent_at,
+    sent_via: inv.sent_via,
+    first_viewed_at: inv.first_viewed_at,
+    history,
+  };
+}
+
+/**
+ * Public, no-auth view of an invoice via its (unguessable UUID) link. The first
+ * open stamps `first_viewed_at` — the honest "customer received it" signal —
+ * and records an `opened` row on the comms log exactly once. Returns a minimal,
+ * customer-safe projection (no internal columns, no cost/margin fields).
+ */
+async function getPublicView({ brand, id }) {
+  const inv = await repo.findById({ brand, id });
+  if (!inv) throw new NotFoundError("Invoice");
+
+  const firstView = await repo.markFirstViewed({ brand, id });
+  if (firstView) {
+    commsLog
+      .record({
+        business: brand,
+        contact_id: inv.contact_id,
+        channel: inv.sent_via === "whatsapp" ? "whatsapp" : "email",
+        event_key: "invoice.opened",
+        recipient: inv.contact_email || inv.contact_phone || null,
+        subject: `Invoice ${inv.invoice_number || ""} opened`,
+        status: "opened",
+        reference_type: delivery.REFERENCE_TYPE,
+        reference_id: id,
+      })
+      .catch(() => {});
+  }
+
+  return {
+    invoice_number: inv.invoice_number,
+    status: inv.status,
+    issue_date: inv.issue_date,
+    due_date: inv.due_date,
+    currency: "NGN",
+    contact_name: inv.contact_name,
+    subtotal_ngn: inv.subtotal_ngn,
+    discount_amount_ngn: inv.discount_amount_ngn,
+    shipping_fee_ngn: inv.shipping_fee_ngn,
+    tax_amount_ngn: inv.tax_amount_ngn,
+    total_ngn: inv.total_ngn,
+    amount_paid_ngn: inv.amount_paid_ngn,
+    balance_due_ngn: inv.balance_due_ngn,
+    lines: (inv.lines || []).map((l) => ({
+      description: l.description,
+      quantity: l.quantity,
+      unit_price_ngn: l.unit_price_ngn,
+      line_total_ngn: l.line_total_ngn,
+    })),
+  };
+}
+
 // ── Document settings (Invoicing → Settings tab) ─────────────
 // Editable copy for invoice/receipt PDFs + their mail, per brand. Reads return
 // the curated defaults merged with the brand's overrides so the editor always
@@ -942,6 +1037,8 @@ module.exports = {
   cancelReminder,
   sendDueReminders,
   invoicePdf,
+  getDelivery,
+  getPublicView,
   getDocumentSettings,
   updateDocumentSettings,
 };

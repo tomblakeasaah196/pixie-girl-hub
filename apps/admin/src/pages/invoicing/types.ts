@@ -115,6 +115,7 @@ export interface Invoice {
   payment_terms: string | null;
   sent_at: string | null;
   sent_via: SentVia;
+  first_viewed_at: string | null;
   viewed_at: string | null;
   public_tracking_token: string | null;
   reminders_sent: number;
@@ -197,6 +198,39 @@ export interface InvoiceReminder {
   failure_reason: string | null;
   provider: string | null;
   provider_reference: string | null;
+}
+
+export type CommsChannel = "email" | "whatsapp" | "instagram" | "sms";
+
+export type CommsStatus =
+  | "queued"
+  | "sent"
+  | "delivered"
+  | "opened"
+  | "failed"
+  | "bounced";
+
+export interface CommsLogEntry {
+  log_id: string;
+  business: string | null;
+  channel: CommsChannel;
+  event_key: string | null;
+  recipient: string | null;
+  subject: string | null;
+  status: CommsStatus;
+  provider_ref: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface InvoiceDelivery {
+  invoice_id: string;
+  invoice_number: string;
+  status: InvoiceStatus;
+  sent_at: string | null;
+  sent_via: SentVia;
+  first_viewed_at: string | null;
+  history: CommsLogEntry[];
 }
 
 export interface ArAgeingParty {

@@ -48,6 +48,7 @@ router.post(
 );
 router.post("/invoices/:id/void", can("delete"), controller.voidInvoice);
 router.get("/invoices/:id/receipts", can("view"), controller.listReceipts);
+router.get("/invoices/:id/delivery", can("view"), controller.getDelivery);
 
 // Credit notes
 router.get("/credit-notes", can("view"), controller.listCreditNotes);

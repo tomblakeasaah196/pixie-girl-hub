@@ -201,6 +201,21 @@ async function setStatus({ client, brand, id, status, extra = {} }) {
   );
   return rows[0] || null;
 }
+/**
+ * Stamp first_viewed_at the first time the customer opens the public invoice
+ * link. The `IS NULL` guard makes it idempotent — only the genuine first view
+ * returns a row (so the caller logs the "opened" event exactly once).
+ */
+async function markFirstViewed({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "invoices")}
+        SET first_viewed_at = now()
+      WHERE invoice_id = $1 AND first_viewed_at IS NULL
+      RETURNING first_viewed_at`,
+    [id],
+  );
+  return rows[0] || null;
+}
 async function applyPayment({ client, brand, payment }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "invoice_payments")} (invoice_id, sales_order_payment_id, amount_applied_ngn, applied_by, notes)
@@ -456,6 +471,7 @@ module.exports = {
   findByOrderId,
   listInvoices,
   setStatus,
+  markFirstViewed,
   applyPayment,
   createCreditNote,
   insertCreditNoteLine,

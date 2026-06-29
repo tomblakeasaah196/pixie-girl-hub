@@ -65,6 +65,23 @@ const invoicePdf = async (req, res) =>
       id: req.params.id,
     }),
   });
+const getDelivery = async (req, res) =>
+  res.json({
+    data: await service.getDelivery({ brand: req.brand, id: req.params.id }),
+  });
+
+// Public (no auth): customer-facing invoice view. Brand comes from the path,
+// not a header — the link is opened straight from an email/WhatsApp.
+const PUBLIC_BRANDS = new Set(["pixiegirl", "faitlynhair"]);
+const viewPublicInvoice = async (req, res) => {
+  const { brand, id } = req.params;
+  if (!PUBLIC_BRANDS.has(brand)) {
+    return res.status(404).json({ error: { code: "NOT_FOUND" } });
+  }
+  res.json({
+    data: await service.getPublicView({ brand, id }),
+  });
+};
 
 // Credit notes
 async function listCreditNotes(req, res) {
@@ -145,6 +162,8 @@ module.exports = {
   recordPayment,
   voidInvoice,
   invoicePdf,
+  getDelivery,
+  viewPublicInvoice,
   getDocumentSettings,
   updateDocumentSettings,
   listCreditNotes,

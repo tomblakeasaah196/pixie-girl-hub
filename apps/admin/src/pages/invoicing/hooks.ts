@@ -62,8 +62,18 @@ export function useSendInvoice(id: string) {
       invoicingApi.sendInvoice(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["invoices", biz, "detail", id] });
+      qc.invalidateQueries({ queryKey: ["invoices", biz, "delivery", id] });
       qc.invalidateQueries({ queryKey: ["invoices", biz] });
     },
+  });
+}
+
+export function useInvoiceDelivery(invoiceId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["invoices", biz, "delivery", invoiceId],
+    queryFn: () => invoicingApi.getInvoiceDelivery(invoiceId!),
+    enabled: !!invoiceId,
   });
 }
 

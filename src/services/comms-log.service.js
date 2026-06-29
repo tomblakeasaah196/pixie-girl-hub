@@ -23,6 +23,8 @@ async function record({
   status = "sent",
   provider_ref,
   error,
+  reference_type,
+  reference_id,
 }) {
   try {
     let cid = contact_id || null;
@@ -37,8 +39,8 @@ async function record({
     await query(
       `INSERT INTO shared.outbound_comms_log
          (business, contact_id, channel, event_key, recipient, subject,
-          status, provider_ref, error)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          status, provider_ref, error, reference_type, reference_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         business || null,
         cid,
@@ -49,6 +51,8 @@ async function record({
         status,
         provider_ref ? String(provider_ref) : null,
         error || null,
+        reference_type || null,
+        reference_id || null,
       ],
     );
   } catch (e) {
@@ -69,4 +73,23 @@ async function listForContact({ contact_id, limit = 10 }) {
   return rows;
 }
 
-module.exports = { record, listForContact };
+/**
+ * Per-document send history — every outbound attempt tied to one document
+ * (invoice/receipt/quote/delivery note), newest first. Powers the "was it
+ * sent, did it land?" panel on a document's own detail screen.
+ */
+async function listForReference({ reference_type, reference_id, limit = 20 }) {
+  if (!reference_type || !reference_id) return [];
+  const { rows } = await query(
+    `SELECT log_id, business, channel, event_key, recipient, subject,
+            status, provider_ref, error, created_at
+       FROM shared.outbound_comms_log
+      WHERE reference_type = $1 AND reference_id = $2
+      ORDER BY created_at DESC
+      LIMIT $3`,
+    [reference_type, reference_id, limit],
+  );
+  return rows;
+}
+
+module.exports = { record, listForContact, listForReference };

@@ -29,6 +29,35 @@ function listTiers({ brand }) {
   return repo.listLoyaltyTiers({ brand });
 }
 
+async function createTier({ brand, user, request_id, input }) {
+  const tier = await repo.createLoyaltyTier({ brand, input, user_id: user.user_id });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.loyalty.tier_create",
+    target_type: "loyalty_tier",
+    target_id: tier.tier_id,
+    after: { tier_key: tier.tier_key },
+    request_id,
+  });
+  return tier;
+}
+
+async function updateTier({ brand, user, request_id, id, patch }) {
+  const tier = await repo.updateLoyaltyTier({ brand, id, patch, user_id: user.user_id });
+  if (!tier) throw new NotFoundError("Loyalty tier");
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.loyalty.tier_update",
+    target_type: "loyalty_tier",
+    target_id: id,
+    after: patch,
+    request_id,
+  });
+  return tier;
+}
+
 async function getLoyaltyState({ brand, contact_id }) {
   const state = await repo.getLoyaltyState({ brand, contact_id });
   const ledger = await repo.listLoyaltyLedger({ brand, contact_id });
@@ -627,6 +656,8 @@ async function submitQuiz({ brand, input, ip, user_agent }) {
 module.exports = {
   // loyalty
   listTiers,
+  createTier,
+  updateTier,
   getLoyaltyState,
   earnForOrder,
   earnForAction,

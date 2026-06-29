@@ -90,6 +90,16 @@ async function scanBrand(brand) {
     });
   }
 
+  // Abandoned carts (no activity for 1h+). Flagged once, then enrolled.
+  if ((await byTrigger("cart_abandoned")).length) {
+    await fireAll({
+      brand,
+      trigger_type: "cart_abandoned",
+      contactIds: await scan.abandonedCarts({ brand, hours: 1 }),
+      source: "carts",
+    });
+  }
+
   // Points expiring (7 days before by default).
   if ((await byTrigger("points_expiring")).length) {
     await fireAll({

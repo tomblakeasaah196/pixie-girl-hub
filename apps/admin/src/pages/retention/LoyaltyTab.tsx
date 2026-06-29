@@ -13,9 +13,11 @@ import { Drawer } from "@/components/ui/Drawer";
 import { INPUT, L } from "./_ui";
 import {
   useLoyaltyTiers,
+  useSaveLoyaltyTier,
   useEarnRules,
   useSaveEarnRule,
   type EarnRule,
+  type LoyaltyTier,
 } from "@/lib/retention-api";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -31,9 +33,11 @@ export function LoyaltyTab() {
   const { can } = useAuthStore();
   const canEdit = can("retention", "edit");
   const tiersQ = useLoyaltyTiers();
+  const saveTier = useSaveLoyaltyTier();
   const rulesQ = useEarnRules();
   const save = useSaveEarnRule();
   const [editing, setEditing] = useState<Partial<EarnRule> | null>(null);
+  const [tierEdit, setTierEdit] = useState<Partial<LoyaltyTier> | null>(null);
 
   const tiers = tiersQ.data ?? [];
   const rules = rulesQ.data ?? [];
@@ -42,7 +46,18 @@ export function LoyaltyTab() {
     <div className="space-y-6">
       {/* Tiers */}
       <section className="space-y-3">
-        <h2 className="font-display text-lg">Loyalty tiers</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-lg">Loyalty tiers</h2>
+          {canEdit && (
+            <Button
+              variant="secondary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setTierEdit({ earning_multiplier: 1, min_lifetime_points: 0, is_active: true, colour: "#690909" })}
+            >
+              New tier
+            </Button>
+          )}
+        </div>
         {tiersQ.isLoading ? (
           <Skeleton style={{ height: 90 }} />
         ) : tiersQ.isError ? (
@@ -52,10 +67,12 @@ export function LoyaltyTab() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {tiers.map((t) => (
-              <div
+              <button
                 key={t.tier_id}
-                className="glass rounded-[var(--radius)] shadow-glass p-4 border-l-[3px]"
+                onClick={() => canEdit && setTierEdit(t)}
+                className="glass rounded-[var(--radius)] shadow-glass p-4 border-l-[3px] text-left transition-all hover:bg-text-primary/[0.03] disabled:cursor-default"
                 style={{ borderLeftColor: t.colour }}
+                disabled={!canEdit}
               >
                 <div className="font-medium text-[14px]">{t.tier_name}</div>
                 <div className="text-[11.5px] text-text-muted mt-0.5">
@@ -65,12 +82,12 @@ export function LoyaltyTab() {
                 <div className="text-[11px] text-accent-glow mt-1.5 font-semibold">
                   ×{Number(t.earning_multiplier).toFixed(2)} earn
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
         <p className="text-[11.5px] text-text-faint">
-          Tier thresholds are read-only here (edited via Settings / DB). Values render from config, never hard-coded.
+          Thresholds + multipliers render from config (never hard-coded). {canEdit ? "Tap a tier to edit." : ""}
         </p>
       </section>
 
@@ -134,7 +151,71 @@ export function LoyaltyTab() {
         }}
         saving={save.isPending}
       />
+
+      <TierDrawer
+        tier={tierEdit}
+        onClose={() => setTierEdit(null)}
+        onSave={async (body) => {
+          await saveTier.mutateAsync({ id: (tierEdit as LoyaltyTier)?.tier_id, body });
+          setTierEdit(null);
+        }}
+        saving={saveTier.isPending}
+      />
     </div>
+  );
+}
+
+function TierDrawer({
+  tier,
+  onClose,
+  onSave,
+  saving,
+}: {
+  tier: Partial<LoyaltyTier> | null;
+  onClose: () => void;
+  onSave: (body: Partial<LoyaltyTier>) => void;
+  saving: boolean;
+}) {
+  const open = tier !== null;
+  const isNew = !(tier as LoyaltyTier)?.tier_id;
+  const [form, setForm] = useState<Partial<LoyaltyTier>>({});
+  const tierId = (tier as LoyaltyTier)?.tier_id ?? "new";
+  const [syncedFor, setSyncedFor] = useState<string | null>(null);
+  if (open && syncedFor !== tierId) {
+    setForm(tier ?? {});
+    setSyncedFor(tierId);
+  }
+  if (!open && syncedFor !== null) setSyncedFor(null);
+  const set = <K extends keyof LoyaltyTier>(k: K, v: LoyaltyTier[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={isNew ? "New loyalty tier" : "Edit loyalty tier"}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={() => onSave(form)} disabled={saving || !form.tier_name || form.min_lifetime_points == null}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3.5">
+        {isNew && (
+          <L label="Key (no spaces)"><input value={form.tier_key ?? ""} onChange={(e) => set("tier_key", e.target.value)} placeholder="gold" className={INPUT} /></L>
+        )}
+        <L label="Name"><input value={form.tier_name ?? ""} onChange={(e) => set("tier_name", e.target.value)} className={INPUT} /></L>
+        <div className="grid grid-cols-2 gap-3">
+          <L label="Min lifetime points"><NumberField value={String(form.min_lifetime_points ?? "")} onChange={(v) => set("min_lifetime_points", Number(v) as LoyaltyTier["min_lifetime_points"])} allowDecimal={false} /></L>
+          <L label="Max (blank = top)"><NumberField value={form.max_lifetime_points != null ? String(form.max_lifetime_points) : ""} onChange={(v) => set("max_lifetime_points", (v ? Number(v) : null) as LoyaltyTier["max_lifetime_points"])} allowDecimal={false} /></L>
+        </div>
+        <L label="Earning multiplier"><NumberField value={String(form.earning_multiplier ?? "")} onChange={(v) => set("earning_multiplier", Number(v) as LoyaltyTier["earning_multiplier"])} /></L>
+        <L label="Colour (hex)"><input value={form.colour ?? ""} onChange={(e) => set("colour", e.target.value)} placeholder="#690909" className={INPUT} /></L>
+        <Toggle checked={form.is_active ?? true} onChange={(v) => set("is_active", v)} label="Active" />
+      </div>
+    </Drawer>
   );
 }
 

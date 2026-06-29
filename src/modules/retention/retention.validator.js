@@ -46,6 +46,22 @@ const quizSubmitSchema = z
   })
   .strict();
 
+const tierCreateSchema = z
+  .object({
+    tier_key: z.string().min(2).max(40),
+    tier_name: z.string().min(1).max(80),
+    min_lifetime_points: z.coerce.number().int().nonnegative(),
+    max_lifetime_points: z.coerce.number().int().positive().nullable().optional(),
+    earning_multiplier: z.coerce.number().min(0).max(99).optional(),
+    benefits: z.record(z.any()).optional(),
+    colour: z.string().max(20).optional(),
+    display_order: z.coerce.number().int().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
+
+const tierUpdateSchema = tierCreateSchema.partial().omit({ tier_key: true });
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -56,6 +72,8 @@ module.exports = {
   validateAdjust: mk(adjustSchema),
   validateAwardStreak: mk(awardStreakSchema),
   validateQuizSubmit: mk(quizSubmitSchema),
+  validateTierCreate: mk(tierCreateSchema),
+  validateTierUpdate: mk(tierUpdateSchema),
   pointsSchema,
   adjustSchema,
   awardStreakSchema,

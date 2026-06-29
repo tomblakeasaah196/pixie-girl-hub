@@ -73,6 +73,29 @@ async function subscriptionsRenewingInDays({ brand, days, limit = 1000 }) {
   return rows.map((r) => r.contact_id);
 }
 
+/**
+ * Carts abandoned by a known customer (active, no activity for `hours`, not
+ * already flagged). Marks abandoned_at in the same statement so each cart
+ * fires the trigger at most once, and returns the contacts to enrol.
+ */
+async function abandonedCarts({ brand, hours = 1, limit = 500 }) {
+  const { rows } = await query(
+    `WITH due AS (
+        SELECT cart_id FROM shared.carts
+         WHERE business = $1 AND status = 'active' AND contact_id IS NOT NULL
+           AND abandoned_at IS NULL
+           AND last_interaction_at < now() - ($2 || ' hours')::interval
+         ORDER BY last_interaction_at
+         LIMIT $3
+     )
+     UPDATE shared.carts c SET abandoned_at = now()
+       FROM due WHERE c.cart_id = due.cart_id
+     RETURNING c.contact_id`,
+    [brand, String(hours), limit],
+  );
+  return rows.map((r) => r.contact_id).filter(Boolean);
+}
+
 /** Contacts with earned points expiring in `days` days. */
 async function pointsExpiringInDays({ brand, days, limit = 1000 }) {
   const { rows } = await query(
@@ -143,5 +166,6 @@ module.exports = {
   lapsedExactlyNDaysAgo,
   subscriptionsRenewingInDays,
   pointsExpiringInDays,
+  abandonedCarts,
   expireDuePoints,
 };

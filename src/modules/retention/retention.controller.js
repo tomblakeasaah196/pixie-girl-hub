@@ -19,6 +19,29 @@ async function listTiers(req, res) {
   res.json({ data: await service.listTiers({ brand: req.brand }) });
 }
 
+async function createTier(req, res) {
+  res.status(201).json({
+    data: await service.createTier({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
+    }),
+  });
+}
+
+async function updateTier(req, res) {
+  res.json({
+    data: await service.updateTier({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      id: req.params.id,
+      patch: req.body,
+    }),
+  });
+}
+
 async function getLoyalty(req, res) {
   res.json({
     data: await service.getLoyaltyState({
@@ -124,6 +147,8 @@ async function submitQuizPublic(req, res) {
 
 module.exports = {
   listTiers,
+  createTier,
+  updateTier,
   getLoyalty,
   redeemLoyalty,
   adjustLoyalty,

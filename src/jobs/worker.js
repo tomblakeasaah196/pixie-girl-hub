@@ -142,6 +142,12 @@ async function startWorkers() {
   const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
   const { runRetentionWorkflows } = require("./schedulers/retention-workflows");
   const {
+    runRetentionStrategyTick,
+  } = require("./schedulers/retention-strategy-tick");
+  const {
+    runRetentionStrategyScan,
+  } = require("./schedulers/retention-strategy-scan");
+  const {
     runSubscriptionBilling,
   } = require("./schedulers/subscription-billing");
   const { runInvoiceReminderSweep } = require("./schedulers/invoice-reminders");
@@ -204,6 +210,10 @@ async function startWorkers() {
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
+  // Retention strategy engine: advance due enrolments every minute; scan for
+  // time-based triggers + expire stale points nightly (02:30 Lagos).
+  scheduleCron("retention-strategy-tick", "* * * * *", runRetentionStrategyTick);
+  scheduleCron("retention-strategy-scan", "30 2 * * *", runRetentionStrategyScan);
   // nightly ad-spend sync (pull metrics from ad networks)
   scheduleCron("ad-spend-sync", "0 2 * * *", runAdSpendSync);
   scheduleCron("subscription-billing", "0 3 * * *", runSubscriptionBilling);

@@ -114,10 +114,10 @@ async function revokeSession(refresh_token) {
 async function loyaltyPoints(contact_id) {
   try {
     const { rows } = await query(
-      `SELECT points_balance FROM shared.customer_loyalty_state WHERE contact_id = $1`,
+      `SELECT current_balance FROM shared.customer_loyalty_state WHERE contact_id = $1`,
       [contact_id],
     );
-    return rows[0] ? Number(rows[0].points_balance) || 0 : 0;
+    return rows[0] ? Number(rows[0].current_balance) || 0 : 0;
   } catch {
     return 0;
   }

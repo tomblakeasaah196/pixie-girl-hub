@@ -1,0 +1,273 @@
+-- ============================================================
+-- TEMPLATE 000066 — Retention strategy engine (Module 6.23)
+-- Pixie Girl Hub · JBS Praxis
+--
+-- The declarative, multi-step evolution of the single-action
+-- retention_workflow_rules (000031). A "strategy" is a playbook the
+-- owner builds entirely from data — no code:
+--
+--   retention_strategies        — the playbook: a trigger + audience +
+--                                 conditions, with a status lifecycle.
+--   retention_strategy_steps     — the ordered ladder of actions, each with
+--                                 its own wait + conditions (day 0 email →
+--                                 day 3 coupon → day 7 email…).
+--   retention_enrollments        — a customer's run through a strategy:
+--                                 where they are, when the next step is due.
+--   retention_strategy_step_runs — append-only log of every step executed.
+--
+-- The legacy retention_workflow_rules/_executions engine (000031) is left
+-- intact for backward compatibility; new automations use strategies.
+-- Brand-scoped because enrollment + step state is per-brand, exactly like
+-- the legacy executions table.
+-- ============================================================
+
+-- ── retention_strategies ─────────────────────────────────
+CREATE TABLE {{BUSINESS}}.retention_strategies (
+  strategy_id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  strategy_key          TEXT        NOT NULL UNIQUE,            -- 'win_back_60d'
+  display_name          TEXT        NOT NULL,
+  description           TEXT,
+  -- Which library template it was created from (NULL = built from scratch).
+  template_key          TEXT,
+  -- What enrols a customer. Superset of the legacy trigger enum + scheduled triggers.
+  trigger_type          TEXT        NOT NULL
+                        CHECK (trigger_type IN ('order_placed','order_delivered','order_cancelled',
+                                                'review_left','first_purchase','high_value_purchase',
+                                                'tier_upgrade','tier_downgrade','birthday','anniversary',
+                                                'referral_completed','points_milestone','cart_abandoned',
+                                                'inactivity','win_back','reorder_reminder',
+                                                'subscription_renewal_reminder','points_expiring','custom_event')),
+  -- Declarative predicate evaluated at enrolment time (strategy.conditions).
+  trigger_conditions    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  -- Audience restriction (shared segment — soft reference).
+  audience_segment_id   UUID        REFERENCES shared.contact_segments (segment_id) ON DELETE SET NULL,
+  -- Conversion goal for analytics (e.g. 'order_placed' within N days of enrol).
+  goal_event            TEXT,
+  goal_window_days      SMALLINT,
+  -- Lifecycle. Seeds ship as 'draft' so nothing sends until the owner activates.
+  status                TEXT        NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft','active','paused','archived')),
+  -- Per-customer enrolment guards.
+  max_enrollments_per_customer SMALLINT,
+  reenroll_cooldown_days SMALLINT,
+  -- Human-readable summary, maintained by the service (plain-language UX).
+  summary               TEXT,
+  -- Counters.
+  total_enrolled        INTEGER     NOT NULL DEFAULT 0,
+  total_completed       INTEGER     NOT NULL DEFAULT 0,
+  -- Audit.
+  is_active             BOOLEAN     GENERATED ALWAYS AS (status = 'active') STORED,
+  created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_retention_strategies_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.retention_strategies
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX idx_{{BUSINESS}}_retention_strategies_trigger
+  ON {{BUSINESS}}.retention_strategies (trigger_type) WHERE status = 'active';
+
+-- ── retention_strategy_steps ─────────────────────────────
+CREATE TABLE {{BUSINESS}}.retention_strategy_steps (
+  step_id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  strategy_id           UUID        NOT NULL REFERENCES {{BUSINESS}}.retention_strategies (strategy_id) ON DELETE CASCADE,
+  step_order            SMALLINT    NOT NULL,
+  -- Delay from the previous step (or from enrolment for the first step).
+  wait_minutes          INTEGER     NOT NULL DEFAULT 0,
+  -- Optional predicate; if false at run time the step is skipped (status 'suppressed').
+  step_conditions       JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  action_type           TEXT        NOT NULL
+                        CHECK (action_type IN ('send_email','issue_coupon','award_points',
+                                               'add_to_segment','assign_to_user','create_task','notify_team')),
+  action_config         JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  -- Optional brand email template (else action_config.subject/html is used).
+  email_template_id     UUID        REFERENCES {{BUSINESS}}.email_templates (template_id) ON DELETE SET NULL,
+  -- Coupon issuance template (shared.coupons shape).
+  coupon_template       JSONB,
+  -- Plain-language description for the builder UI.
+  description           TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (strategy_id, step_order)
+);
+CREATE TRIGGER trg_{{BUSINESS}}_retention_strategy_steps_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.retention_strategy_steps
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX idx_{{BUSINESS}}_retention_steps_strategy
+  ON {{BUSINESS}}.retention_strategy_steps (strategy_id, step_order);
+
+-- ── retention_enrollments ────────────────────────────────
+CREATE TABLE {{BUSINESS}}.retention_enrollments (
+  enrollment_id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  strategy_id           UUID        NOT NULL REFERENCES {{BUSINESS}}.retention_strategies (strategy_id) ON DELETE CASCADE,
+  contact_id            UUID        REFERENCES shared.contacts (contact_id) ON DELETE SET NULL,
+  status                TEXT        NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active','completed','exited','suppressed','failed')),
+  current_step_order    SMALLINT    NOT NULL DEFAULT 0,        -- last step run; 0 = none yet
+  next_run_at           TIMESTAMPTZ,                            -- when the next step is due
+  -- Originating event.
+  trigger_event_type    TEXT        NOT NULL,
+  trigger_source_table  TEXT,
+  trigger_source_id     UUID,
+  -- Facts + event snapshot captured at enrolment, used for conditions + templating.
+  context               JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  goal_met_at           TIMESTAMPTZ,
+  enrolled_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at          TIMESTAMPTZ,
+  exit_reason           TEXT,
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TRIGGER trg_{{BUSINESS}}_retention_enrollments_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.retention_enrollments
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+CREATE INDEX idx_{{BUSINESS}}_retention_enrollments_due
+  ON {{BUSINESS}}.retention_enrollments (next_run_at)
+  WHERE status = 'active' AND next_run_at IS NOT NULL;
+CREATE INDEX idx_{{BUSINESS}}_retention_enrollments_contact
+  ON {{BUSINESS}}.retention_enrollments (contact_id, strategy_id, enrolled_at DESC);
+
+-- ── retention_strategy_step_runs ─────────────────────────
+CREATE TABLE {{BUSINESS}}.retention_strategy_step_runs (
+  run_id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  enrollment_id         UUID        NOT NULL REFERENCES {{BUSINESS}}.retention_enrollments (enrollment_id) ON DELETE CASCADE,
+  step_id               UUID        REFERENCES {{BUSINESS}}.retention_strategy_steps (step_id) ON DELETE SET NULL,
+  step_order            SMALLINT,
+  status                TEXT        NOT NULL DEFAULT 'completed'
+                        CHECK (status IN ('completed','failed','suppressed','cancelled')),
+  result_summary        JSONB,
+  generated_records     JSONB,
+  failure_reason        TEXT,
+  ran_at                TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_{{BUSINESS}}_retention_step_runs_enrollment
+  ON {{BUSINESS}}.retention_strategy_step_runs (enrollment_id, ran_at DESC);
+
+-- ============================================================
+-- Seed starter strategies (status='draft' — nothing sends until activated).
+-- Each is self-contained: send_email steps carry subject/html in action_config
+-- with {{first_name}} / {{brand_name}} tokens resolved at send time.
+-- ============================================================
+WITH seeded AS (
+  INSERT INTO {{BUSINESS}}.retention_strategies
+    (strategy_key, display_name, description, template_key, trigger_type, trigger_conditions,
+     status, max_enrollments_per_customer, reenroll_cooldown_days, summary)
+  VALUES
+    ('welcome_series', 'Welcome new customers',
+     'Greets a customer after their first purchase and nudges a second order.',
+     'welcome_series', 'first_purchase', '{}'::jsonb, 'draft', 1, NULL,
+     'When a customer makes their first purchase, send a welcome email; 3 days later, send a thank-you with a returning-customer coupon.'),
+    ('win_back_60d', 'Win back quiet customers',
+     'Re-engages customers who have not ordered in 60 days.',
+     'win_back', '{"all":[{"field":"days_since_last_order","op":"gte","value":60}]}'::jsonb,
+     'draft', NULL, 90,
+     'When a customer has not ordered in 60 days, send a "we miss you" email; 4 days later, send a comeback coupon.'),
+    ('birthday', 'Birthday treat',
+     'Sends a birthday wish with a treat on the customer''s birthday.',
+     'birthday', '{}'::jsonb, 'draft', NULL, 300,
+     'On a customer''s birthday, send a birthday email with a gift coupon.'),
+    ('vip_upgrade', 'Celebrate a tier upgrade',
+     'Congratulates a customer when they reach a new loyalty tier.',
+     'tier_upgrade', '{}'::jsonb, 'draft', NULL, NULL,
+     'When a customer moves up a loyalty tier, send a congratulations email.'),
+    ('abandoned_cart', 'Recover abandoned carts',
+     'Reminds a customer who left items in their cart.',
+     'cart_abandoned', '{}'::jsonb, 'draft', NULL, 7,
+     'When a cart is abandoned, send a reminder email after a short wait.'),
+    ('reorder_reminder', 'Reorder reminder',
+     'Reminds a customer it may be time to reorder.',
+     'reorder_reminder', '{}'::jsonb, 'draft', NULL, 30,
+     'When it has been a while since a customer''s last order, send a reorder reminder email.')
+  RETURNING strategy_id, strategy_key
+)
+INSERT INTO {{BUSINESS}}.retention_strategy_steps
+  (strategy_id, step_order, wait_minutes, action_type, action_config, description)
+SELECT s.strategy_id, v.step_order, v.wait_minutes, v.action_type, v.action_config::jsonb, v.description
+FROM seeded s
+JOIN (VALUES
+  ('welcome_series', 1, 0,
+     'send_email',
+     '{"subject":"Welcome to {{brand_name}}, {{first_name}}!","html":"<p>Hi {{first_name}}, thank you for your first order. We are so glad you are here.</p>"}',
+     'Welcome email, immediately'),
+  ('welcome_series', 2, 4320,
+     'send_email',
+     '{"subject":"A little something for your next visit","html":"<p>Hi {{first_name}}, here is a treat for your next order with {{brand_name}}.</p>"}',
+     'Thank-you email, 3 days later'),
+  ('win_back_60d', 1, 0,
+     'send_email',
+     '{"subject":"We miss you, {{first_name}}","html":"<p>It has been a while! Come see what is new at {{brand_name}}.</p>"}',
+     'We-miss-you email, immediately'),
+  ('win_back_60d', 2, 5760,
+     'send_email',
+     '{"subject":"A gift to welcome you back","html":"<p>Hi {{first_name}}, here is a little something to welcome you back to {{brand_name}}.</p>"}',
+     'Comeback coupon email, 4 days later'),
+  ('birthday', 1, 0,
+     'send_email',
+     '{"subject":"Happy birthday, {{first_name}}! 🎉","html":"<p>Happy birthday from all of us at {{brand_name}} — enjoy a birthday treat on us.</p>"}',
+     'Birthday email, on the day'),
+  ('vip_upgrade', 1, 0,
+     'send_email',
+     '{"subject":"You have levelled up, {{first_name}}!","html":"<p>Congratulations — you have unlocked a new tier at {{brand_name}} with even better rewards.</p>"}',
+     'Congratulations email, immediately'),
+  ('abandoned_cart', 1, 60,
+     'send_email',
+     '{"subject":"You left something behind","html":"<p>Hi {{first_name}}, your cart is waiting for you at {{brand_name}}.</p>"}',
+     'Cart reminder email, 1 hour later'),
+  ('reorder_reminder', 1, 0,
+     'send_email',
+     '{"subject":"Time for a top-up, {{first_name}}?","html":"<p>It might be time to reorder your favourites from {{brand_name}}.</p>"}',
+     'Reorder reminder email, immediately')
+) AS v(strategy_key, step_order, wait_minutes, action_type, action_config, description)
+  ON v.strategy_key = s.strategy_key;
+
+-- ============================================================
+-- Per-business economy defaults (shared tables, keyed to this brand).
+-- Seeded here because bootstrap inserts the business_config row in the same
+-- transaction before applying templates, so '{{BUSINESS}}' is a valid FK now.
+-- ============================================================
+
+-- Loyalty earn rules: canonical purchase rule (replaces the old hardcode),
+-- plus review + social-share rules shipped inactive for the owner to enable.
+INSERT INTO shared.loyalty_earn_rules
+  (business, rule_key, display_name, description, action_type, points_mode,
+   currency_per_point, points_value, apply_tier_multiplier, points_expire_days, is_active, display_order)
+VALUES
+  ('{{BUSINESS}}', 'purchase_points', 'Purchase points',
+     'Earn 1 point for every ₦100 spent, scaled by loyalty tier.',
+     'earned_purchase', 'per_currency', 100, NULL, true, 365, true, 0),
+  ('{{BUSINESS}}', 'review_points', 'Review reward',
+     'Earn points for leaving a verified product review.',
+     'earned_review', 'flat', NULL, 50, false, 365, false, 1),
+  ('{{BUSINESS}}', 'social_share_points', 'Social share',
+     'Earn points for sharing on social media.',
+     'earned_social_share', 'flat', NULL, 20, false, 365, false, 2)
+ON CONFLICT (business, rule_key) DO NOTHING;
+
+-- Loyalty rewards: two starter catalogue items, active.
+INSERT INTO shared.loyalty_rewards
+  (business, reward_key, display_name, description, reward_type, points_cost,
+   discount_type, discount_value, is_active, display_order)
+VALUES
+  ('{{BUSINESS}}', 'discount_2000', '₦2,000 off your order',
+     'Redeem points for ₦2,000 off any order.', 'order_discount', 2000, 'fixed_amount', 2000, true, 0),
+  ('{{BUSINESS}}', 'free_shipping', 'Free shipping',
+     'Redeem points for free delivery on your next order.', 'free_shipping', 1000, NULL, NULL, true, 1)
+ON CONFLICT (business, reward_key) DO NOTHING;
+
+-- Referral programme defaults: settings row + tiered ladder.
+INSERT INTO shared.referral_program_settings
+  (business, friend_discount_type, friend_discount_value, default_referrer_points)
+VALUES ('{{BUSINESS}}', 'percentage', 0.10, 500)
+ON CONFLICT (business) DO NOTHING;
+
+INSERT INTO shared.referral_reward_tiers
+  (business, display_name, min_successful_referrals, referrer_points)
+VALUES
+  ('{{BUSINESS}}', 'Starter', 1, 500),
+  ('{{BUSINESS}}', 'Advocate', 5, 1500),
+  ('{{BUSINESS}}', 'Champion', 10, 4000)
+ON CONFLICT (business, min_successful_referrals) DO NOTHING;
+
+-- ============================================================
+-- After 000065 (+4 strategy-engine tables). db:verify count updated in
+-- scripts/verify-schema.js.
+-- ============================================================

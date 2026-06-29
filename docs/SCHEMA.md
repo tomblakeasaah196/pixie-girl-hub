@@ -1,12 +1,18 @@
 # Database Schema
 
-**425 tables** across 3 schemas:
+**438 tables** across 3 schemas:
 
 ```
-shared       107 tables   cross-brand reference, identity, contacts, intercompany, audit, AI
-pixiegirl    159 tables   PXG brand data
-faitlynhair  159 tables   FLH brand data
+shared       112 tables   cross-brand reference, identity, contacts, intercompany, audit, AI
+pixiegirl    163 tables   PXG brand data
+faitlynhair  163 tables   FLH brand data
 ```
+
+> Retention engine additions (migration 000246 + template 000066): shared gains
+> `loyalty_earn_rules`, `loyalty_rewards`, `loyalty_reward_redemptions`,
+> `referral_program_settings`, `referral_reward_tiers` (+5). Each brand gains
+> `retention_strategies`, `retention_strategy_steps`, `retention_enrollments`,
+> `retention_strategy_step_runs` (+4 each).
 
 ## Schema-per-business isolation
 
@@ -31,7 +37,7 @@ To apply:
 npm run db:migrate:shared              # 15 shared migrations
 npm run db:bootstrap:pixiegirl         # creates pixiegirl.* (substitutes templates)
 npm run db:bootstrap:faitlynhair       # creates faitlynhair.* (substitutes templates)
-npm run db:verify                      # confirms 107 + 159 + 159 = 425 tables
+npm run db:verify                      # confirms 112 + 163 + 163 = 438 tables
 ```
 
 See `migrations/CHANGELOG.md` for the full evolution history.

@@ -19,6 +19,7 @@ const main = require("./campaigns.service");
 const events = require("./campaigns.events");
 const salesService = require("../sales/sales.service");
 const salesRepo = require("../sales/sales.repo");
+const couponService = require("../retention/coupon.service");
 const zonesService = require("../logistics/zones.service");
 const paymentLink = require("../sales/payment-link.service");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
@@ -609,8 +610,7 @@ async function resolveBundleForCheckout({
     brand,
     size_code,
   });
-  const lineUnit = (p) =>
-    toCurrencyString(money(p).plus(money(sizePremium)));
+  const lineUnit = (p) => toCurrencyString(money(p).plus(money(sizePremium)));
   const nameWithSize = (n) =>
     sizeLabel ? `${n || "Item"} · Size ${sizeLabel}` : n || null;
   const orderLines = [];
@@ -1769,6 +1769,58 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
   };
 }
 
+/**
+ * Read-only preview of a promo / VIP code's flat ₦ value, so the checkout
+ * summary can SHOW the saving (and currency-convert it through the campaign's
+ * display rate) the moment the buyer applies it — the way the exit-intent code
+ * already does. No redemption, no contact: per-customer limits and the §6.25
+ * margin floor are enforced authoritatively at checkout. Never throws on a bad
+ * code — returns { valid:false } so the UI stays quiet and lets the Hub decide.
+ */
+async function previewCoupon({ slug, brand, brandHint, input }) {
+  const found = await resolveCampaign({ slug, brand, brandHint });
+  if (!found || !PUBLIC_STATUSES.has(found.campaign.status))
+    throw new NotFoundError("Campaign");
+  const { campaign, brand: resolvedBrand } = found;
+  const entered = String(input.code || "").trim();
+  if (entered.length < 2) return { valid: false, reason: "EMPTY" };
+  const subtotal = input.subtotal_ngn ?? 0;
+
+  // The campaign's own exit-intent code is a flat ₦-off that isn't a retention
+  // coupon — match it first so this endpoint is consistent for it too.
+  if (
+    campaign.exit_intent_enabled &&
+    campaign.exit_intent_code &&
+    String(campaign.exit_intent_code).trim().toUpperCase() ===
+      entered.toUpperCase() &&
+    campaign.exit_intent_discount_ngn !== null &&
+    campaign.exit_intent_discount_ngn !== undefined &&
+    money(campaign.exit_intent_discount_ngn).gt(money(0)) &&
+    main.resolveState(campaign) === "live"
+  ) {
+    return {
+      valid: true,
+      source: "exit_intent",
+      discount_type: "fixed_amount",
+      discount_ngn: toCurrencyString(money(campaign.exit_intent_discount_ngn)),
+    };
+  }
+
+  // Otherwise it may be a retention / VIP coupon. Read-only validation.
+  const cr = await couponService.validateCoupon({
+    brand: resolvedBrand,
+    code: entered,
+    order_subtotal_ngn: subtotal,
+  });
+  if (!cr.valid) return { valid: false, reason: cr.reason };
+  return {
+    valid: true,
+    source: "coupon",
+    discount_type: cr.discount_type,
+    discount_ngn: cr.discount_ngn,
+  };
+}
+
 module.exports = {
   getIndex,
   getLanding,
@@ -1776,6 +1828,7 @@ module.exports = {
   signup,
   checkout,
   quoteCart,
+  previewCoupon,
   getOrderStatus,
   getProductDetail,
   // Exported for unit tests / reuse.

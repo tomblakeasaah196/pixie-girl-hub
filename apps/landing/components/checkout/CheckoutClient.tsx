@@ -26,7 +26,12 @@ import { useCart } from "@/lib/cart-store";
 import { fbTrack } from "@/lib/fbpixel";
 import { displayMoney } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
-import { postCheckout, postQuote, type CartQuote } from "@/lib/api-client";
+import {
+  postCheckout,
+  postQuote,
+  postCouponPreview,
+  type CartQuote,
+} from "@/lib/api-client";
 import {
   fetchGeoOptions,
   fetchPickupAddress,
@@ -139,6 +144,12 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
+  // A retention / VIP coupon's flat ₦ value, fetched from the Hub when the buyer
+  // applies a code that ISN'T the campaign's exit-intent code. Stored raw and
+  // clamped on render (like exit-intent) so it survives cart changes; shown +
+  // currency-converted via fmt, so a buyer in USD sees it at the campaign rate.
+  const [couponAmtRaw, setCouponAmtRaw] = useState(0);
+  const [couponChecking, setCouponChecking] = useState(false);
   const [waOpt, setWaOpt] = useState(false);
   const [mktOpt, setMktOpt] = useState(false);
   const [terms, setTerms] = useState(false);
@@ -162,9 +173,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // Near-duplicate guard: when the server returns POTENTIAL_DUPLICATE, hold
   // the pending checkout payload here so the user can confirm before we retry
   // with force_new_order = true.
-  type DupOrder = { order_id: string; order_number: string; total_ngn: string; created_at: string };
+  type DupOrder = {
+    order_id: string;
+    order_number: string;
+    total_ngn: string;
+    created_at: string;
+  };
   const [dupOrders, setDupOrders] = useState<DupOrder[] | null>(null);
-  const [pendingCheckoutPayload, setPendingCheckoutPayload] = useState<Parameters<typeof postCheckout>[0] | null>(null);
+  const [pendingCheckoutPayload, setPendingCheckoutPayload] = useState<
+    Parameters<typeof postCheckout>[0] | null
+  >(null);
 
   // Never let a failure be silent — pull the error into view next to the
   // Pay button the moment it is set.
@@ -264,6 +282,13 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const exitIntentDiscount = exitIntentApplied
     ? Math.min(exitAmtRaw, discountedGoods)
     : 0;
+  // VIP / retention coupon saving — a code that isn't the exit-intent code.
+  // Mutually exclusive with exit-intent (a code is one or the other). Clamped to
+  // the goods total here; the Hub re-clamps at the §6.25 margin floor at payment.
+  const couponApplied = promoApplied && !exitIntentApplied && couponAmtRaw > 0;
+  const couponDiscount = couponApplied
+    ? Math.min(couponAmtRaw, discountedGoods)
+    : 0;
   const comps = quote?.components;
   const dealRows: Array<{ label: string; amount: number }> = [];
   if (comps) {
@@ -343,7 +368,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
     }
     let cancelled = false;
     setQuoting(true);
-    fetchDeliveryQuote({ brand: brandKey, zoneCode: effectiveZone, qty: wigQty })
+    fetchDeliveryQuote({
+      brand: brandKey,
+      zoneCode: effectiveZone,
+      qty: wigQty,
+    })
       .then((q) => {
         if (cancelled) return;
         setDeliveryFee(q?.fee_ngn ?? null);
@@ -372,7 +401,8 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // Total = discounted goods (server quote) + delivery. This is the figure the
   // gateway actually charges, so the "Pay" button and the order it creates now
   // agree to the naira.
-  const total = discountedGoods + deliveryDue - exitIntentDiscount;
+  const total =
+    discountedGoods + deliveryDue - exitIntentDiscount - couponDiscount;
 
   // Right-hand summary label for the delivery line. A delivery order must show a
   // real, positive fee. A ₦0 outcome of any kind — "free" promo, "pending"
@@ -390,16 +420,51 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             ? "No delivery to this address"
             : "Select location";
 
+  // Apply a promo code. The exit-intent code is matched + shown locally (its ₦
+  // amount rides in the landing payload). Any other code is checked against the
+  // Hub so a VIP / retention coupon's saving can be shown — and currency-
+  // converted through the campaign rate — before the buyer pays.
+  async function applyPromo() {
+    const code = promoCode.trim();
+    if (!code) return;
+    setPromoApplied(true);
+    setCouponAmtRaw(0);
+    if (code.toUpperCase() === exitCode) return; // exit-intent: shown locally
+    setCouponChecking(true);
+    try {
+      const res = await postCouponPreview({
+        slug: payload.slug,
+        code,
+        subtotal_ngn: Math.round(discountedGoods),
+      });
+      setCouponAmtRaw(
+        res?.valid && Number(res.discount_ngn) > 0
+          ? Number(res.discount_ngn)
+          : 0,
+      );
+    } catch {
+      setCouponAmtRaw(0);
+    } finally {
+      setCouponChecking(false);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     if (honey) return; // bot
     if (!terms) {
-      setErr({ message: "Please accept the terms to continue.", retryable: false });
+      setErr({
+        message: "Please accept the terms to continue.",
+        retryable: false,
+      });
       return;
     }
     if (!first || !email || !phone) {
-      setErr({ message: "Please fill in all required fields.", retryable: false });
+      setErr({
+        message: "Please fill in all required fields.",
+        retryable: false,
+      });
       return;
     }
     if (fulfilment === "delivery") {
@@ -434,7 +499,8 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       // Quote still in flight — wait for the fee rather than submitting blind.
       if (quoting) {
         setErr({
-          message: "Calculating delivery… give it a second, then tap Pay again.",
+          message:
+            "Calculating delivery… give it a second, then tap Pay again.",
           retryable: true,
         });
         return;
@@ -515,8 +581,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       };
 
       const res = await postCheckout(checkoutPayload);
-      const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
-      const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
+      const data = (
+        res as { data?: { payment_url?: string; order_id?: string } }
+      )?.data;
+      const payUrl =
+        data?.payment_url ?? (res as { payment_url?: string }).payment_url;
       const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
 
       if (orderId) {
@@ -525,7 +594,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       if (payUrl) {
         window.location.href = payUrl;
       } else {
-        router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
+        router.push(
+          `/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`,
+        );
       }
     } catch (e) {
       const ex = e as Error & {
@@ -533,10 +604,18 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         retryable?: boolean;
         reference?: string;
         order_id?: string;
-        support?: { whatsapp?: string; email?: string; message?: string } | null;
+        support?: {
+          whatsapp?: string;
+          email?: string;
+          message?: string;
+        } | null;
         existing_orders?: DupOrder[] | null;
       };
-      if (ex?.code === "POTENTIAL_DUPLICATE" && ex.existing_orders?.length && checkoutPayload) {
+      if (
+        ex?.code === "POTENTIAL_DUPLICATE" &&
+        ex.existing_orders?.length &&
+        checkoutPayload
+      ) {
         // Hold the exact payload so "Place new order" can resend it verbatim.
         setPendingCheckoutPayload(checkoutPayload);
         setDupOrders(ex.existing_orders);
@@ -645,8 +724,18 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               <div className="grid grid-cols-2 gap-2">
                 {(
                   [
-                    { v: "delivery", label: "Deliver to me", desc: "Ship to your address", icon: Truck },
-                    { v: "pickup", label: "Pick up", desc: "Collect from our store", icon: Store },
+                    {
+                      v: "delivery",
+                      label: "Deliver to me",
+                      desc: "Ship to your address",
+                      icon: Truck,
+                    },
+                    {
+                      v: "pickup",
+                      label: "Pick up",
+                      desc: "Collect from our store",
+                      icon: Store,
+                    },
                   ] as const
                 ).map((opt) => (
                   <button
@@ -852,7 +941,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                         e.preventDefault();
                         document
                           .getElementById("delivery-address")
-                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          ?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
                       }}
                     >
                       Want to change the address?
@@ -1029,6 +1121,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     </span>
                   </div>
                 )}
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-[rgb(var(--success))] font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      <Gift className="w-3 h-3" /> Code {promoCode}
+                    </span>
+                    <span className="tabular-nums font-mono">
+                      −{fmt(couponDiscount)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-[rgb(var(--text-muted))] inline-flex items-center gap-1">
                     {fulfilment === "pickup" ? (
@@ -1038,7 +1140,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     )}
                     Delivery
                   </span>
-                  <span className="tabular-nums font-mono">{deliveryLabel}</span>
+                  <span className="tabular-nums font-mono">
+                    {deliveryLabel}
+                  </span>
                 </div>
                 {/* A delivery address that didn't resolve to a real, positive
                     fee blocks checkout outright — no ₦0 delivery, no "confirm
@@ -1079,29 +1183,44 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       onChange={(e) => {
                         setPromoCode(e.target.value.toUpperCase());
                         setPromoApplied(false);
+                        setCouponAmtRaw(0);
                       }}
                       placeholder="Enter code"
                       className="flex-1 h-9 px-3 rounded-lg bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.5)] text-[13px] font-mono"
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        if (promoCode.trim()) setPromoApplied(true);
-                      }}
-                      disabled={!promoCode.trim()}
+                      onClick={() => void applyPromo()}
+                      disabled={!promoCode.trim() || couponChecking}
                       className="h-9 px-3 rounded-lg bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] text-[12px] font-semibold disabled:opacity-40"
                     >
-                      Apply
+                      {couponChecking ? "…" : "Apply"}
                     </button>
                   </div>
                 )}
                 {promoApplied && (
                   <div className="mt-1.5 flex items-center gap-1 text-[12px] text-[rgb(var(--success))]">
-                    <Check className="w-3 h-3" /> Code{" "}
-                    <span className="font-mono font-semibold">{promoCode}</span>{" "}
-                    {exitIntentApplied
-                      ? `— ${fmt(exitIntentDiscount)} off`
-                      : "will be applied"}
+                    {couponChecking ? (
+                      <span className="text-[rgb(var(--text-muted))]">
+                        Checking{" "}
+                        <span className="font-mono font-semibold">
+                          {promoCode}
+                        </span>
+                        …
+                      </span>
+                    ) : (
+                      <>
+                        <Check className="w-3 h-3" /> Code{" "}
+                        <span className="font-mono font-semibold">
+                          {promoCode}
+                        </span>{" "}
+                        {exitIntentApplied
+                          ? `— ${fmt(exitIntentDiscount)} off`
+                          : couponDiscount > 0
+                            ? `— ${fmt(couponDiscount)} off`
+                            : "will be applied at checkout"}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1122,10 +1241,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     You have a recent pending order
                   </p>
                   {dupOrders.map((o) => (
-                    <p key={o.order_id} className="text-[12px] text-[rgb(var(--text-muted))]">
+                    <p
+                      key={o.order_id}
+                      className="text-[12px] text-[rgb(var(--text-muted))]"
+                    >
                       {o.order_number} &middot;{" "}
                       {displayMoney(Number(o.total_ngn))} &middot;{" "}
-                      {new Date(o.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(o.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </p>
                   ))}
                   <p className="text-[12px] text-[rgb(var(--text-faint))]">
@@ -1151,15 +1276,37 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                             ...pendingCheckoutPayload,
                             force_new_order: true,
                           });
-                          const data = (res as { data?: { payment_url?: string; order_id?: string } })?.data;
-                          const payUrl = data?.payment_url ?? (res as { payment_url?: string }).payment_url;
-                          const orderId = data?.order_id ?? (res as { order_id?: string }).order_id;
-                          if (orderId) sessionStorage.setItem("pgh-last-order-id", orderId);
+                          const data = (
+                            res as {
+                              data?: {
+                                payment_url?: string;
+                                order_id?: string;
+                              };
+                            }
+                          )?.data;
+                          const payUrl =
+                            data?.payment_url ??
+                            (res as { payment_url?: string }).payment_url;
+                          const orderId =
+                            data?.order_id ??
+                            (res as { order_id?: string }).order_id;
+                          if (orderId)
+                            sessionStorage.setItem(
+                              "pgh-last-order-id",
+                              orderId,
+                            );
                           if (payUrl) window.location.href = payUrl;
-                          else router.push(`/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`);
+                          else
+                            router.push(
+                              `/checkout/${payload.slug}/thank-you${orderId ? `?order_id=${orderId}` : ""}`,
+                            );
                         } catch (e2) {
                           const ex2 = e2 as Error & { retryable?: boolean };
-                          setErr({ message: (ex2 as Error).message || "Checkout failed.", retryable: ex2?.retryable !== false });
+                          setErr({
+                            message:
+                              (ex2 as Error).message || "Checkout failed.",
+                            retryable: ex2?.retryable !== false,
+                          });
                         } finally {
                           setBusy(false);
                         }
@@ -1373,7 +1520,9 @@ function Field({
     <label className="block">
       <span className="micro mb-1.5 block">
         {label}{" "}
-        {required && <span className="text-[rgb(var(--accent-readable))]">*</span>}
+        {required && (
+          <span className="text-[rgb(var(--accent-readable))]">*</span>
+        )}
       </span>
       {children}
     </label>
@@ -1450,7 +1599,9 @@ function Toggle({
       />
       <span>
         {label}{" "}
-        {required && <span className="text-[rgb(var(--accent-readable))]">*</span>}
+        {required && (
+          <span className="text-[rgb(var(--accent-readable))]">*</span>
+        )}
         {checked && (
           <Check className="inline w-3 h-3 text-[rgb(var(--success))] ml-1" />
         )}

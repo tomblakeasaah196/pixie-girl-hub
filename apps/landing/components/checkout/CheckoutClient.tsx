@@ -20,6 +20,7 @@ import {
   Store,
   Tag,
   Truck,
+  X,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { fbTrack } from "@/lib/fbpixel";
@@ -144,6 +145,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [honey, setHoney] = useState(""); // honeypot
   const [gateway, setGateway] = useState<Gateway>(allowedGateways[0]);
   const [busy, setBusy] = useState(false);
+  // Warm "we need an address we can ship to" modal. It opens when the buyer
+  // taps Pay on a delivery order that hasn't resolved a real, positive fee. The
+  // modal only INFORMS — submit() (below) and the server are what actually
+  // block the ₦0-delivery payment.
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [err, setErr] = useState<{
     message: string;
     retryable: boolean;
@@ -436,14 +442,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       // ZERO EXCEPTIONS: a delivery order must carry a real, positive fee. A ₦0
       // fee of ANY kind — unpriced zone (null), a "free" promo, or a "pending"
       // config gap — is never allowed to pay. Pickup is the only free
-      // fulfilment. The server enforces this too; we stop it here so the buyer
-      // gets a clear prompt instead of a rejected payment.
+      // fulfilment. The server enforces this too. Rather than a terse error, we
+      // greet the buyer with the warm modal that walks them to a fix (add a
+      // deliverable address, or switch to pickup); we never proceed to pay.
       if (deliveryFee == null || !(deliveryFee > 0)) {
-        setErr({
-          message:
-            "We can't take a delivery order without a delivery fee for this address. Please re-check your country, state and city — or choose store pickup.",
-          retryable: false,
-        });
+        setShowDeliveryModal(true);
         return;
       }
     }
@@ -1220,22 +1223,22 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               <motion.button
                 type="submit"
                 whileTap={{ scale: 0.99 }}
-                disabled={busy || !deliveryFeeOk}
+                // Disabled only while busy or mid-quote. When delivery isn't
+                // billable the button stays tappable BUT submit() intercepts and
+                // opens the warm modal instead of paying — so it can never pay a
+                // ₦0 delivery, yet still guides the buyer to fix it.
+                disabled={busy || quoting}
                 className="btn-cta w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl font-semibold cta-sheen disabled:opacity-60"
               >
                 {busy ? (
                   "Securing your order…"
-                ) : !deliveryFeeOk ? (
-                  // Delivery selected but no billable fee yet — the button is
-                  // dead until a real, positive fee resolves (or pickup). There
-                  // is no path to pay a delivery order at ₦0.
+                ) : quoting ? (
                   <>
-                    <Lock className="w-4 h-4" />{" "}
-                    {quoting
-                      ? "Calculating delivery…"
-                      : effectiveZone
-                        ? "Delivery unavailable here"
-                        : "Select a delivery location"}
+                    <Truck className="w-4 h-4" /> Calculating delivery…
+                  </>
+                ) : !deliveryFeeOk ? (
+                  <>
+                    <Truck className="w-4 h-4" /> Add delivery details
                   </>
                 ) : (
                   <>
@@ -1259,6 +1262,79 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
           </aside>
         </form>
       </div>
+
+      {/* Warm "we need a deliverable address" modal. Opens when the buyer taps
+          Pay on a delivery order with no real, positive fee. It only guides —
+          submit() never proceeds to pay, and the server refuses ₦0 delivery
+          too. Glassmorphic per the design canon. */}
+      {showDeliveryModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delivery-modal-title"
+          className="fixed inset-0 z-[100] grid place-items-center p-4"
+        >
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setShowDeliveryModal(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="glass relative z-10 w-full max-w-sm rounded-[var(--radius)] p-6 text-center"
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowDeliveryModal(false)}
+              className="absolute right-3 top-3 text-[rgb(var(--text-faint))] hover:text-[rgb(var(--text))]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-[rgb(var(--accent)/0.12)]">
+              <Truck className="w-5 h-5 text-[rgb(var(--accent-readable))]" />
+            </div>
+            <h3
+              id="delivery-modal-title"
+              className="font-display text-[20px] leading-tight"
+            >
+              Almost there — where are we sending it?
+            </h3>
+            <p className="mt-2 text-[13px] leading-snug text-[rgb(var(--text-muted))]">
+              We just need a delivery address we can actually ship to, so we can
+              add your delivery fee. Pop in your country, state and city — or
+              collect from our store instead.
+            </p>
+            <div className="mt-5 grid gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeliveryModal(false);
+                  const el = document.getElementById("delivery-address");
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  el?.querySelector("input")?.focus();
+                }}
+                className="h-11 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold cta-sheen"
+              >
+                Add my delivery address
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFulfilment("pickup");
+                  setShowDeliveryModal(false);
+                  setErr(null);
+                }}
+                className="h-11 rounded-xl border border-[rgb(var(--border-c)/0.15)] text-[13px] font-semibold text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))] inline-flex items-center justify-center gap-1.5"
+              >
+                <Store className="w-3.5 h-3.5" /> Collect from store instead
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </main>
   );
 }

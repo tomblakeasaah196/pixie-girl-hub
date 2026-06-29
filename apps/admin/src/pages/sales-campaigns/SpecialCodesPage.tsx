@@ -26,13 +26,14 @@ import {
   Button,
   Card,
   EmptyState,
+  KpiTile,
   Pill,
   Skeleton,
 } from "@/components/ui/primitives";
 import { DeniedState, ErrorState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
-import { money } from "@/lib/format";
+import { money, moneyCompact } from "@/lib/format";
 import {
   useCouponList,
   useCreateCoupon,
@@ -69,6 +70,20 @@ export function SpecialCodesPage() {
   // shared "fixed ₦ off" VIP codes, so surface those (plus any % codes a
   // manager made here). Engine-generated/segment coupons stay in Retention.
   const coupons = useMemo(() => list.data ?? [], [list.data]);
+
+  // Redemption roll-ups across all codes — how many have been used and how much
+  // ₦ has been handed out, so a manager can see the programme at a glance.
+  const rollups = useMemo(() => {
+    let active = 0;
+    let redemptions = 0;
+    let given = 0;
+    for (const c of coupons) {
+      if (c.is_active) active++;
+      redemptions += Number(c.total_redeemed) || 0;
+      given += Number(c.total_discount_given) || 0;
+    }
+    return { active, redemptions, given };
+  }, [coupons]);
 
   // Permission gate after hooks (Rules of Hooks).
   if (!can("retention", "view")) {
@@ -143,6 +158,28 @@ export function SpecialCodesPage() {
         </div>
       </Card>
 
+      {/* Redemption roll-up */}
+      {coupons.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiTile label="Codes" value={String(coupons.length)} tone="accent" />
+          <KpiTile
+            label="Active"
+            value={String(rollups.active)}
+            tone="accent"
+          />
+          <KpiTile
+            label="Redemptions"
+            value={String(rollups.redemptions)}
+            tone="accent"
+          />
+          <KpiTile
+            label="Given away"
+            value={moneyCompact(rollups.given)}
+            tone="accent"
+          />
+        </div>
+      )}
+
       {/* List */}
       {list.isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -207,22 +244,36 @@ export function SpecialCodesPage() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-3 text-[11px] text-text-faint">
-                <span>
-                  Used{" "}
-                  <span className="tabular-nums text-text-muted">
-                    {c.total_redeemed}
-                  </span>
-                  {c.total_usage_limit
-                    ? ` / ${c.total_usage_limit}`
-                    : " time(s)"}
-                </span>
-                {c.valid_to && (
-                  <span>
-                    · Expires {new Date(c.valid_to).toLocaleDateString()}
-                  </span>
-                )}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-[10px] bg-text-primary/[0.04] px-3 py-2">
+                  <div className="font-display text-[16px] tabular-nums">
+                    {Number(c.total_redeemed).toLocaleString()}
+                    {c.total_usage_limit ? (
+                      <span className="text-text-faint text-[12px]">
+                        {" "}
+                        / {c.total_usage_limit}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="micro" style={{ fontSize: 8.5 }}>
+                    Redemptions
+                  </div>
+                </div>
+                <div className="rounded-[10px] bg-text-primary/[0.04] px-3 py-2">
+                  <div className="font-display text-[16px] tabular-nums">
+                    {moneyCompact(Number(c.total_discount_given) || 0)}
+                  </div>
+                  <div className="micro" style={{ fontSize: 8.5 }}>
+                    Given away
+                  </div>
+                </div>
               </div>
+
+              {c.valid_to && (
+                <div className="text-[11px] text-text-faint">
+                  Expires {new Date(c.valid_to).toLocaleDateString()}
+                </div>
+              )}
 
               <div className="flex items-center gap-2 pt-1">
                 <Button

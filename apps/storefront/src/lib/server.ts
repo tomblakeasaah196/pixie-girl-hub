@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getWebRequest } from "@tanstack/react-start/server";
+import { getRequest } from "@tanstack/react-start/server";
 import { api } from "./api";
 import { brandFromHost, type BrandKey } from "./brand";
 import {
@@ -24,7 +24,7 @@ function reqBrandCookie(): {
   preview?: string;
 } {
   try {
-    const req = getWebRequest();
+    const req = getRequest();
     let preview: string | undefined;
     try {
       preview = new URL(req.url).searchParams.get("preview") || undefined;
@@ -57,7 +57,7 @@ interface SiteConfig {
   preview?: boolean;
 }
 
-export const ssrSite = createServerFn({ method: "GET" }).handler(
+export const ssrSite = createServerFn({ method: "GET", strict: false }).handler(
   async (): Promise<SiteConfig> => {
     const { brand, cookie, preview } = reqBrandCookie();
     const qs = preview ? `?preview=${encodeURIComponent(preview)}` : "";
@@ -73,7 +73,7 @@ export const ssrSite = createServerFn({ method: "GET" }).handler(
   },
 );
 
-export const ssrProducts = createServerFn({ method: "GET" })
+export const ssrProducts = createServerFn({ method: "GET", strict: false })
   .validator((d: { pageSize?: number }) => ({ pageSize: d?.pageSize ?? 24 }))
   .handler(
     async ({ data }): Promise<{ brand: BrandKey; products: ProductCard[] }> => {
@@ -92,7 +92,7 @@ export const ssrProducts = createServerFn({ method: "GET" })
 
 // Home: the published 'home' page (template_key + slots, if Studio published one)
 // plus a product preview for the default layout / product_grid sections.
-export const ssrHome = createServerFn({ method: "GET" }).handler(
+export const ssrHome = createServerFn({ method: "GET", strict: false }).handler(
   async (): Promise<{
     brand: BrandKey;
     page: StudioPage | null;
@@ -123,7 +123,7 @@ export const ssrHome = createServerFn({ method: "GET" }).handler(
   },
 );
 
-export const ssrProduct = createServerFn({ method: "GET" })
+export const ssrProduct = createServerFn({ method: "GET", strict: false })
   .validator((d: { slug: string }) => ({ slug: d.slug }))
   .handler(async ({ data }): Promise<{ product: ProductDetail | null }> => {
     const { brand, cookie } = reqBrandCookie();

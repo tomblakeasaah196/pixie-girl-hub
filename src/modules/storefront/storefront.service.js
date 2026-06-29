@@ -581,10 +581,10 @@ async function checkout({ brand, cart_id, input = {} }) {
   if (!orderLines.length)
     throw new AppError("EMPTY_ORDER", "No valid items in the cart", 400);
 
-  // 3. Delivery fee (fail closed: a delivery order must resolve a real zone).
+  // 3. Delivery fee (fail closed: a delivery order must resolve a real zone
+  //    AND a real, positive fee — zero exceptions, see the guard below).
   let shippingFeeNgn = 0;
   let deliveryQuote = null;
-  let deliveryFeePending = false;
   if (!isPickup) {
     const addr = c.address || {};
     const zoneCode = addr.zone_code || addr.country_code || null;
@@ -626,15 +626,21 @@ async function checkout({ brand, cart_id, input = {} }) {
         },
       );
     shippingFeeNgn = Number(deliveryQuote.fee_ngn) || 0;
-    if (deliveryQuote.fee_status === "pending") deliveryFeePending = true;
-    if (shippingFeeNgn <= 0 && deliveryQuote.fee_status !== "free")
+    // ── FAIL CLOSED — ZERO EXCEPTIONS (owner mandate) ──────
+    // A delivery order MUST carry a real, positive shipping fee. There is no
+    // longer any escape hatch: not a "free"-marked zone, not a "pending"
+    // config-gap, not a campaign threshold — if the resolved fee is not
+    // strictly greater than ₦0, the checkout is refused outright. Pickup is the
+    // only fulfilment that ships at ₦0. If someone picks delivery, they do not
+    // leave this point without a delivery fee that has an amount.
+    if (!(shippingFeeNgn > 0))
       throw new AppError(
         "DELIVERY_FEE_REQUIRED",
-        "Delivery order has no resolved logistics fee",
+        `Delivery order resolved to a non-billable shipping fee (zone='${zoneCode}', status='${deliveryQuote.fee_status}')`,
         422,
         {
           user_message:
-            "We couldn't calculate a delivery fee for your address. Please enter a valid delivery address so we can charge shipping before you pay.",
+            "We couldn't charge a delivery fee for that address. Please double-check your country, state and city — or choose store pickup. We can't take a delivery order without a delivery fee.",
         },
       );
   }
@@ -692,7 +698,6 @@ async function checkout({ brand, cart_id, input = {} }) {
       country_code: deliveryQuote.country_code,
       fee_ngn: shippingFeeNgn,
       fee_status: deliveryQuote.fee_status || null,
-      ...(deliveryFeePending ? { fee_pending: true } : {}),
     };
   }
   const addressSnapshot = deliveryAddress
@@ -714,10 +719,6 @@ async function checkout({ brand, cart_id, input = {} }) {
     customerParts.push(
       `Delivery zone: ${internal.delivery.zone_name} (${internal.delivery.courier_key}).`,
     );
-    if (deliveryFeePending)
-      customerParts.push(
-        "⚠ DELIVERY FEE PENDING — confirm the delivery rate with the customer and bill it BEFORE dispatch.",
-      );
   }
   try {
     await query(

@@ -1,4 +1,9 @@
-import type { InvoiceStatus, CreditNoteStatus, ReminderStatus } from "./types";
+import type {
+  InvoiceStatus,
+  CreditNoteStatus,
+  ReminderStatus,
+  CommsStatus,
+} from "./types";
 
 type Tone = "success" | "warn" | "danger" | "info" | "accent" | "neutral";
 
@@ -36,6 +41,17 @@ export const REMINDER_STATUS: Record<ReminderStatus, StatusMeta> = {
   failed: { label: "Failed", tone: "danger" },
   bounced: { label: "Bounced", tone: "danger" },
   cancelled: { label: "Cancelled", tone: "neutral" },
+};
+
+// Outbound comms log states — what an invoice send/open looks like on the
+// Delivery panel. "opened" is the honest "she received it" signal.
+export const COMMS_STATUS: Record<CommsStatus, StatusMeta> = {
+  queued: { label: "Queued", tone: "neutral" },
+  sent: { label: "Sent", tone: "info" },
+  delivered: { label: "Delivered", tone: "success" },
+  opened: { label: "Opened", tone: "success" },
+  failed: { label: "Failed", tone: "danger" },
+  bounced: { label: "Bounced", tone: "danger" },
 };
 
 export const CREDIT_NOTE_REASON_OPTIONS = [

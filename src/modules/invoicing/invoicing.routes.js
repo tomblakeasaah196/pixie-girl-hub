@@ -48,6 +48,7 @@ router.post(
 );
 router.post("/invoices/:id/void", can("delete"), controller.voidInvoice);
 router.get("/invoices/:id/receipts", can("view"), controller.listReceipts);
+router.get("/invoices/:id/delivery", can("view"), controller.getDelivery);
 
 // Credit notes
 router.get("/credit-notes", can("view"), controller.listCreditNotes);
@@ -71,6 +72,13 @@ router.post(
   validator.validateReceiptIssue,
   controller.issueReceipt,
 );
+router.post(
+  "/receipts/:id/send",
+  can("edit"),
+  validator.validateReceiptSend,
+  controller.sendReceipt,
+);
+router.get("/receipts/:id/delivery", can("view"), controller.getReceiptDelivery);
 
 // Reminders (F-10)
 router.get("/invoices/:id/reminders", can("view"), controller.listReminders);

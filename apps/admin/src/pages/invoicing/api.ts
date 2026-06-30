@@ -9,6 +9,8 @@ import type {
   Receipt,
   ReceiptIssueInput,
   InvoiceReminder,
+  InvoiceDelivery,
+  ReceiptDelivery,
   ArAgeingReport,
   PaginatedResponse,
 } from "./types";
@@ -61,6 +63,9 @@ export const voidInvoice = (id: string) =>
 export const listInvoiceReceipts = (id: string) =>
   api.get<Receipt[]>(`${S}/invoices/${id}/receipts`);
 
+export const getInvoiceDelivery = (id: string) =>
+  api.get<InvoiceDelivery>(`${S}/invoices/${id}/delivery`);
+
 // ── Credit notes ────────────────────────────────────────────
 
 export interface CreditNoteListParams {
@@ -86,6 +91,14 @@ export const issueCreditNote = (id: string) =>
 
 export const issueReceipt = (input: ReceiptIssueInput) =>
   api.post<Receipt>(`${S}/receipts`, input);
+
+export const sendReceipt = (
+  id: string,
+  input: { sent_via?: string } = {},
+) => api.post<Receipt>(`${S}/receipts/${id}/send`, input);
+
+export const getReceiptDelivery = (id: string) =>
+  api.get<ReceiptDelivery>(`${S}/receipts/${id}/delivery`);
 
 // ── Reminders ───────────────────────────────────────────────
 

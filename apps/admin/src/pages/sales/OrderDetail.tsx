@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Link2, XCircle, FileText, Download } from "lucide-react";
+import { Link2, XCircle, FileText, Download, Send, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
-import { ErrorState, ConfirmDialog } from "@/components/ui/controls";
+import { ErrorState, ConfirmDialog, Select } from "@/components/ui/controls";
 import { FormGrid } from "@/components/ui/Form";
 import {
   useOrder,
@@ -11,6 +11,7 @@ import {
   useCreatePaymentLink,
   useCancelOrder,
   useOrderInvoice,
+  useSendOrderInvoice,
 } from "./hooks";
 import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
@@ -28,12 +29,15 @@ export function OrderDetail({
   const { data: order, isLoading, isError, refetch } = useOrder(orderId);
   const { data: timeline } = useOrderTimeline(orderId);
   const { data: invoice } = useOrderInvoice(orderId);
+  const sendInvoice = useSendOrderInvoice(orderId);
   const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
   const navigate = useNavigate();
 
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
+  const [showInvoiceSend, setShowInvoiceSend] = useState(false);
+  const [invoiceSentVia, setInvoiceSentVia] = useState("email");
   const toast = useToastStore();
   const fireToast = (
     title: string,
@@ -112,6 +116,37 @@ export function OrderDetail({
     }
   };
 
+  const handleSendInvoice = async () => {
+    if (!invoice) return;
+    try {
+      await sendInvoice.mutateAsync({
+        invoiceId: invoice.invoice_id,
+        sent_via: invoiceSentVia,
+      });
+      setShowInvoiceSend(false);
+      fireToast(
+        "Invoice Sent",
+        `Sent to the customer via ${invoiceSentVia.replace(/_/g, " ")}.`,
+      );
+    } catch (err) {
+      fireToast(
+        "Send Failed",
+        err instanceof Error ? err.message : "Failed to send the invoice.",
+        "order",
+        "high",
+      );
+    }
+  };
+
+  // Delivery status for the order's invoice: Opened beats Sent beats Not sent.
+  const invoiceDelivery = invoice
+    ? invoice.first_viewed_at
+      ? { label: "Opened", tone: "success" as const }
+      : invoice.sent_at
+        ? { label: "Sent", tone: "info" as const }
+        : { label: "Not sent", tone: "neutral" as const }
+    : null;
+
   const statusMeta = order ? ORDER_STATUS[order.status] : null;
 
   return (
@@ -162,31 +197,90 @@ export function OrderDetail({
               </div>
             )}
 
-            {/* Invoice link */}
+            {/* Invoice link + delivery status */}
             {invoice && (
-              <div className="flex items-center justify-between p-3 rounded-[11px] bg-success/[0.06] border border-success/20">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-success" />
-                  <div>
-                    <div className="text-[13px] font-semibold">
-                      Invoice {invoice.invoice_number}
-                    </div>
-                    <div className="text-[11px] text-text-faint capitalize">
-                      {invoice.status}
+              <div className="p-3 rounded-[11px] bg-success/[0.06] border border-success/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-success shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold flex items-center gap-2">
+                        Invoice {invoice.invoice_number}
+                        {invoiceDelivery && (
+                          <Pill tone={invoiceDelivery.tone}>
+                            {invoiceDelivery.label}
+                          </Pill>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-text-faint capitalize">
+                        {invoice.status}
+                        {invoice.first_viewed_at ? (
+                          <span className="inline-flex items-center gap-1 ml-1 text-success normal-case">
+                            <Eye className="w-3 h-3" />
+                            opened {new Date(invoice.first_viewed_at).toLocaleDateString()}
+                          </span>
+                        ) : invoice.sent_at ? (
+                          <span className="ml-1 normal-case">
+                            · sent {new Date(invoice.sent_at).toLocaleDateString()}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      navigate(
+                        `/invoicing?tab=invoices&invoice=${invoice.invoice_id}`,
+                      )
+                    }
+                  >
+                    View Invoice
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    navigate(
-                      `/invoicing?tab=invoices&invoice=${invoice.invoice_id}`,
-                    )
-                  }
-                >
-                  View Invoice
-                </Button>
+                {/* Send / resend the invoice straight from the order. */}
+                {!["void", "refunded"].includes(invoice.status) && (
+                  showInvoiceSend ? (
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={invoiceSentVia}
+                        onChange={setInvoiceSentVia}
+                        options={[
+                          { value: "email", label: "Email" },
+                          { value: "whatsapp", label: "WhatsApp" },
+                          { value: "sms", label: "SMS" },
+                        ]}
+                        className="w-[130px]"
+                      />
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        icon={<Send className="w-3.5 h-3.5" />}
+                        onClick={handleSendInvoice}
+                        disabled={sendInvoice.isPending}
+                      >
+                        {sendInvoice.isPending ? "Sending…" : "Confirm"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowInvoiceSend(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Send className="w-3.5 h-3.5" />}
+                      onClick={() => setShowInvoiceSend(true)}
+                    >
+                      {invoice.sent_at ? "Resend Invoice" : "Send Invoice"}
+                    </Button>
+                  )
+                )}
               </div>
             )}
 

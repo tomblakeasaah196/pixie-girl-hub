@@ -78,8 +78,16 @@ export const getOrderInvoice = (orderId: string) =>
       invoice_id: string;
       invoice_number: string;
       status: string;
+      sent_at: string | null;
+      sent_via: string | null;
+      first_viewed_at: string | null;
     }>
   >(`/invoicing/invoices${qs({ order_id: orderId, page_size: 1 })}`);
+
+export const sendOrderInvoice = (
+  invoiceId: string,
+  input: { sent_via?: string } = {},
+) => api.post(`/invoicing/invoices/${invoiceId}/send`, input);
 
 // ── Quotations ──────────────────────────────────────────────
 

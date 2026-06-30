@@ -1,0 +1,52 @@
+-- ============================================================
+-- TEMPLATE 000070 — Stylist Studio: sell services/styled on an order line
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio) + §6.3 (Sales)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000069) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose, so the file
+-- re-applies every repair — safe because the ADD COLUMNs are IF NOT EXISTS and
+-- the CHECK swap is DROP-then-ADD.
+--
+-- WHY (owner directive, June 2026 — "Stylist Studio" strategy):
+--   Services (a walk-in revamp, an install, a re-wig) and styled products must
+--   be sellable through the SAME order → payment-link → checkout machinery as
+--   plain products — one counter flow, no parallel commerce stack. An order line
+--   now declares WHAT it is (line_kind) and can point at the service offering or
+--   styled product it represents. The studied-job auto-open (PR2) keys off
+--   line_kind so a plain wig sale never opens a styling job.
+--
+-- Altered:  sales_order_lines (+ line_kind, service_offering_id, styled_id)
+-- ============================================================
+
+-- What this line is. Defaults to 'product' so every historic row is correct.
+ALTER TABLE {{BUSINESS}}.sales_order_lines
+  ADD COLUMN IF NOT EXISTS line_kind TEXT NOT NULL DEFAULT 'product';
+ALTER TABLE {{BUSINESS}}.sales_order_lines DROP CONSTRAINT IF EXISTS sales_order_lines_line_kind_check;
+ALTER TABLE {{BUSINESS}}.sales_order_lines
+  ADD CONSTRAINT sales_order_lines_line_kind_check
+  CHECK (line_kind IN ('product','styled','bundle','service'));
+
+-- The service offering this line sells (shared catalogue). Soft-but-real FK:
+-- shared.service_offerings lives in the shared schema and is brand-scoped by its
+-- own `business` column.
+ALTER TABLE {{BUSINESS}}.sales_order_lines
+  ADD COLUMN IF NOT EXISTS service_offering_id UUID
+    REFERENCES shared.service_offerings (service_id) ON DELETE SET NULL;
+
+-- The styled product this line sells (styling already priced into the line).
+ALTER TABLE {{BUSINESS}}.sales_order_lines
+  ADD COLUMN IF NOT EXISTS styled_id UUID
+    REFERENCES {{BUSINESS}}.styled_products (styled_id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_order_lines_service_offering
+  ON {{BUSINESS}}.sales_order_lines (service_offering_id) WHERE service_offering_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_order_lines_styled
+  ON {{BUSINESS}}.sales_order_lines (styled_id) WHERE styled_id IS NOT NULL;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema='{{BUSINESS}}' AND table_name='sales_order_lines'
+--       AND column_name IN ('line_kind','service_offering_id','styled_id'); -- 3
+-- ============================================================

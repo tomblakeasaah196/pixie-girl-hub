@@ -1,0 +1,86 @@
+-- ============================================================
+-- TEMPLATE 000067 — Stylist Studio: styled-product "production DNA"
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000066) and to EXISTING brands by
+-- repair-business-schema.js. The first CREATE TABLE (styled_product_bom) is the
+-- skip-sentinel: once it exists, the repair runner skips this whole file, so the
+-- ADD COLUMNs above it only run on first apply (they are IF NOT EXISTS anyway).
+--
+-- WHY (owner directive, June 2026 — "Stylist Studio" strategy):
+--   A styled product (e.g. "Teyena Taylor Dark Grey") was a pure commerce object:
+--   base + price + photos. It carried NOTHING about HOW it is made, so a styling
+--   job opened from an order could not inherit the method. We give the styled
+--   product its "production DNA" — a default service type, a shared recipe, a
+--   standard turnaround, an SOP checklist, and a default bill-of-materials — so
+--   every job opened for that style is pre-filled and consistent. A recipe is
+--   referenced (not copied): many styled products can point at ONE recipe, so it
+--   is edited once in the library and every style using it updates.
+--
+-- Altered:  styled_products  (+ default_service_type_id, default_recipe_id,
+--                              standard_turnaround_days, sop_steps)
+-- Created:  styled_product_bom  (default materials list per style)
+-- ============================================================
+
+-- ── 1. Production DNA on the styled product ──────────────
+-- The default service this style maps to (e.g. "Revamping & Styling — Teyena").
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS default_service_type_id UUID
+    REFERENCES {{BUSINESS}}.service_types (service_type_id) ON DELETE SET NULL;
+
+-- The default chemical recipe — REFERENCED from the shared recipe library so one
+-- recipe serves many styles. Per-job deviations live on service_jobs.recipe_override.
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS default_recipe_id UUID
+    REFERENCES {{BUSINESS}}.chemical_recipes (recipe_id) ON DELETE SET NULL;
+
+-- Standard turnaround in business days — seeds the job's expected_completion_at.
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS standard_turnaround_days SMALLINT;
+
+-- Ordered SOP / step checklist the stylist works through:
+--   [{ "step": 1, "text": "Wash & condition" }, …]
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS sop_steps JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- ── 2. Default bill-of-materials (SENTINEL — first CREATE TABLE) ──
+-- The materials a style normally consumes. Two kinds:
+--   • 'discrete' → a real stock variant counted in whole units (lace, nets,
+--     clips). default_quantity is how many (usually 1). These auto-deduct stock
+--     when the stylist confirms them on the job (handled in PR2).
+--   • 'chemical' → a named chemical from the recipe world. NOT measured per wig;
+--     it is a checklist item only, with stock trued-up by the existing monthly
+--     chemical reconciliation. default_quantity is therefore NULL for chemicals.
+-- A row is exactly one kind — the CHECK enforces the right column is filled.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.styled_product_bom (
+  bom_id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  styled_id             UUID        NOT NULL
+                        REFERENCES {{BUSINESS}}.styled_products (styled_id) ON DELETE CASCADE,
+  kind                  TEXT        NOT NULL CHECK (kind IN ('discrete','chemical')),
+  -- discrete only
+  variant_id            UUID        REFERENCES {{BUSINESS}}.product_variants (variant_id) ON DELETE SET NULL,
+  default_quantity      NUMERIC(12,2) DEFAULT 1 CHECK (default_quantity IS NULL OR default_quantity > 0),
+  -- chemical only
+  chemical_name         TEXT,
+  display_order         SMALLINT    NOT NULL DEFAULT 0,
+  is_active             BOOLEAN     NOT NULL DEFAULT true,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT styled_product_bom_shape CHECK (
+    (kind = 'discrete' AND variant_id IS NOT NULL) OR
+    (kind = 'chemical' AND chemical_name IS NOT NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_bom_styled
+  ON {{BUSINESS}}.styled_product_bom (styled_id);
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}' AND table_name = 'styled_products'
+--       AND column_name IN ('default_service_type_id','default_recipe_id',
+--                           'standard_turnaround_days','sop_steps');   -- 4 rows
+--   SELECT to_regclass('{{BUSINESS}}.styled_product_bom');             -- not null
+-- ============================================================

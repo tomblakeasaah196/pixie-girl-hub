@@ -11,6 +11,56 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-30 — Stylist Studio: schema foundation (PR1)
+
+**Source:** Stylist Studio strategy (V2.2 §6.24) — in-house Faitlyn styling
+operations: sell services, assign wigs to stylists, track time/materials/
+references, QC, dispatch, and a quantity-based wig-accountability ledger so no
+wig is ever lost. This PR is schema-only; logic lands in PR2–PR4. See
+`docs/STYLIST_STUDIO_IMPLEMENTATION_GUIDE.md`.
+
+Brand templates (apply to existing brands with `npm run db:repair`):
+
+- `000067_business_stylist_studio_styled_dna` — styled products gain "production
+  DNA": `default_service_type_id`, `default_recipe_id` (shared recipe reuse),
+  `standard_turnaround_days`, `sop_steps` (JSONB), and a new
+  `styled_product_bom` default-materials table (sentinel).
+- `000068_business_stylist_studio_jobs` — widens `service_jobs.status` to the
+  full lifecycle (`assigned → in_progress → returned_for_qc → qc_passed →
+  rework → ready_for_dispatch → handed_to_sales` + existing terminals) and adds
+  lifecycle timestamps, `qc_by`, `rework_count`, `reserved_variant_id`,
+  `sla_due_at`, `styled_id`, `shipment_id`, `customer_asset_id`. Pure-ALTER
+  (no sentinel) — idempotent CHECK swap + `ADD COLUMN IF NOT EXISTS`.
+- `000069_business_stylist_studio_children` — `service_job_time_logs` (sentinel),
+  `service_job_materials`, `service_job_references`, `wig_custody_ledger`,
+  `customer_assets`.
+- `000070_business_stylist_studio_sales_lines` — `sales_order_lines` gains
+  `line_kind` (`product|styled|bundle|service`), `service_offering_id`,
+  `styled_id`. Pure-ALTER.
+- `000071_business_stylist_studio_config` — `studio_config` singleton
+  (`missing_wig_threshold_days` default 7) + registers the `customer_asset`
+  document sequence (`<PFX>-CA`).
+- `000072_business_stylist_studio_services_seed` — seeds Faitlyn's 11-service
+  price list into `shared.service_offerings` (brand-key guarded to faitlynhair;
+  Pixie runs no in-house services). Idempotent via `ON CONFLICT (business,slug)`.
+
+Shared:
+
+- `000247_shared_stylist_studio_permissions` — ADDS the `stylist_studio`
+  permission key mirroring every role's `service_jobs` grant (non-destructive;
+  the old key is removed in PR2 once the backend flips to the new key, so the
+  live service-jobs routes never lose their permission mid-rename).
+
+Tooling:
+
+- `scripts/verify-schema.js` — expected per-brand table count 163 → 170 (the
+  seven new brand tables).
+
+Note: POS teardown (drop `pos_*`, remove the `pos` permission key + numbering
+rows) is intentionally deferred to PR3 so all POS removal lives in one PR.
+
+---
+
 ## 2026-06-24 — Fix: styled_products missing compare_at_price_usd (template 000046)
 
 **Source:** bug report — every Styled Product save (PATCH

@@ -19,8 +19,11 @@ const pool = new Pool({
 
 const EXPECTED = {
   shared: 112,
-  "valid-brand-key-1": 163,
-  "valid-brand-key-2": 163,
+  // +7 brand tables from Stylist Studio (migrations/template 000067–000072):
+  // styled_product_bom, service_job_time_logs, service_job_materials,
+  // service_job_references, wig_custody_ledger, customer_assets, studio_config.
+  "valid-brand-key-1": 170,
+  "valid-brand-key-2": 170,
 };
 
 async function main() {

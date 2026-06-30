@@ -183,6 +183,35 @@ async function listMembers({ client, brand, shade_id }) {
   return rows;
 }
 
+/** Every live styled product (id + name + code). Powers the import name→id
+ *  resolution AND the template's Reference sheet of pickable product names. */
+async function listStyledLookup({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT styled_id, name, styled_code
+       FROM ${t(brand, "styled_products")}
+      WHERE is_deleted = false
+      ORDER BY name`,
+  );
+  return rows;
+}
+
+/** Live styled-product names grouped by the shade they belong to — the export
+ *  "Products" cell for each shade (so a download re-imports its membership). */
+async function styledNamesByShade({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT shade_id, name
+       FROM ${t(brand, "styled_products")}
+      WHERE shade_id IS NOT NULL AND is_deleted = false
+      ORDER BY name`,
+  );
+  const map = new Map();
+  for (const r of rows) {
+    if (!map.has(r.shade_id)) map.set(r.shade_id, []);
+    map.get(r.shade_id).push(r.name);
+  }
+  return map;
+}
+
 /** Bulk-assign styled products to a shade (the Flow-2 "select all → add").
  *  Re-homes a product even if it was on another shade. Returns rows affected. */
 async function assignMembers({ client, brand, shade_id, styled_ids }) {
@@ -218,6 +247,8 @@ module.exports = {
   update,
   remove,
   listMembers,
+  listStyledLookup,
+  styledNamesByShade,
   assignMembers,
   unassignMember,
 };

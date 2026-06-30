@@ -11,6 +11,29 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-30 — Stylist Studio: backend logic + task-trigger fix (PR2)
+
+**Source:** Stylist Studio (V2.2 §6.24) — operational backend on the existing
+`service_jobs` module (kept that module/permission key; "Stylist Studio" is the
+product name — renaming would break ~17 files that reference the table/key).
+Adds the full lifecycle (assign → start → return → QC/rework → dispatch →
+hand-to-sales), time sessions, materials, the style-brief references, the
+quantity-based wig-accountability ledger, DNA-aware job auto-open, and
+in-app/push notifications. Logic-only except for one migration:
+
+- `000073_business_studio_task_trigger_fix` (brand template) — `CREATE OR
+  REPLACE` of `fn_service_job_create_task`. The trigger inserted the auto-raised
+  staff task with status `'today'`, but migration 000224 changed
+  `shared.tasks`' vocabulary to `('to_do','in_progress','in_review','done',
+  'cancelled')`, so `'today'` violated `tasks_status_check` and **every stylist
+  assignment failed**. Now inserts `'to_do'`. No `CREATE TABLE` (idempotent
+  function replace, re-applied every `db:repair`); per-brand table count
+  unchanged.
+
+Apply to existing brands with `npm run db:repair`.
+
+---
+
 ## 2026-06-30 — Stylist Studio: schema foundation (PR1)
 
 **Source:** Stylist Studio strategy (V2.2 §6.24) — in-house Faitlyn styling

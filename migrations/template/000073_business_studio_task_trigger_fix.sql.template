@@ -1,0 +1,56 @@
+-- ============================================================
+-- TEMPLATE 000073 — Stylist Studio: fix the service-job task trigger
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000072) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here — CREATE OR REPLACE FUNCTION
+-- is idempotent, so the repair runner re-applies it every pass harmlessly.
+--
+-- WHY (bug found wiring Stylist Studio assignment, June 2026):
+--   `fn_service_job_create_task` (template 000034) inserts the auto-raised
+--   staff task with status 'today'. Migration 000224 (workspace enhancements)
+--   later changed shared.tasks' status vocabulary to
+--   ('to_do','in_progress','in_review','done','cancelled') — so 'today' now
+--   violates tasks_status_check and EVERY attempt to assign a stylist to a
+--   service job fails. This restores the trigger using the current vocabulary
+--   ('to_do'). Behaviour is otherwise unchanged.
+--
+-- Replaces: {{BUSINESS}}.fn_service_job_create_task()
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_service_job_create_task()
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_task_id UUID;
+BEGIN
+  -- Only when newly assigned to a staff member (in-house stylists ARE staff).
+  IF NEW.assigned_staff_user_id IS NOT NULL
+     AND (OLD IS NULL OR OLD.assigned_staff_user_id IS DISTINCT FROM NEW.assigned_staff_user_id)
+     AND NEW.task_id IS NULL THEN
+    INSERT INTO shared.tasks
+      (business, title, description, status, priority, assigned_to, due_at,
+       reference_type, reference_id, created_by)
+    VALUES
+      ('{{BUSINESS}}',
+       'Service Job ' || NEW.job_number,
+       'Complete service job. Status: ' || NEW.status,
+       'to_do',
+       'normal',
+       NEW.assigned_staff_user_id,
+       NEW.expected_completion_at,
+       'service_job',
+       NEW.job_id,
+       NEW.created_by)
+    RETURNING task_id INTO v_task_id;
+    NEW.task_id := v_task_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- ============================================================
+-- Verify (after substitution): assigning a stylist to a job inserts a
+-- 'to_do' task without violating tasks_status_check.
+-- ============================================================

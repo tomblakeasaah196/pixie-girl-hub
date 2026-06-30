@@ -54,6 +54,11 @@ const LINE = [
   "line_total_ngn",
   "display_order",
   "notes",
+  // Stylist Studio (PR3): what the line sells + its provenance, so the
+  // deposit-met auto-open can tell styled/service work from a plain wig.
+  "line_kind",
+  "service_offering_id",
+  "styled_id",
 ];
 const DISC = [
   "order_id",
@@ -203,6 +208,38 @@ async function variantContext({ client, brand, variant_id }) {
     [variant_id],
   );
   return rows[0] || null;
+}
+
+// Pricing/snapshot context for a SERVICE line (Stylist Studio PR3). Services
+// live in the shared catalogue, brand-scoped by `business`. Shaped like a
+// variant context so the line-builder treats it uniformly; product_id /
+// min_price / cost are null so campaign, floor, stock and COGS all skip it.
+async function serviceOfferingContext({ client, brand, service_id }) {
+  const { rows } = await ex(client)(
+    `SELECT service_id, name, base_price_ngn
+       FROM shared.service_offerings
+      WHERE service_id = $1 AND business = $2 AND is_active = true`,
+    [service_id, brand],
+  );
+  if (!rows[0]) return null;
+  const o = rows[0];
+  return {
+    product_id: null,
+    variant_id: null,
+    product_name: o.name,
+    variant_name: null,
+    sku: null,
+    price_storefront_ngn: o.base_price_ngn,
+    price_pos_ngn: o.base_price_ngn,
+    price_wholesale_ngn: o.base_price_ngn,
+    price_partner_ngn: o.base_price_ngn,
+    cost_price_ngn: null,
+    min_price_ngn: null,
+    category_id: null,
+    taxable: false,
+    product_vat: null,
+    service_id: o.service_id,
+  };
 }
 
 async function createOrder({ client, brand, order }) {
@@ -1024,6 +1061,7 @@ module.exports = {
   listDiscounts,
   nextNumber,
   variantContext,
+  serviceOfferingContext,
   createOrder,
   findByIdempotencyKey,
   findByPublicToken,

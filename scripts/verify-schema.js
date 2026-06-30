@@ -19,11 +19,12 @@ const pool = new Pool({
 
 const EXPECTED = {
   shared: 112,
-  // +7 brand tables from Stylist Studio (migrations/template 000067–000072):
-  // styled_product_bom, service_job_time_logs, service_job_materials,
-  // service_job_references, wig_custody_ledger, customer_assets, studio_config.
-  "valid-brand-key-1": 170,
-  "valid-brand-key-2": 170,
+  // +7 brand tables from Stylist Studio (PR1, template 000067–000072):
+  //   styled_product_bom, service_job_time_logs, service_job_materials,
+  //   service_job_references, wig_custody_ledger, customer_assets, studio_config.
+  // −8 from the POS teardown (PR3, template 000074): pos_* tables removed.
+  "valid-brand-key-1": 162,
+  "valid-brand-key-2": 162,
 };
 
 async function main() {

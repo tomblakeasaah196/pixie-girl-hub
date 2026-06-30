@@ -11,6 +11,28 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-30 — Stylist Studio: sell-a-service rail + POS teardown (PR3)
+
+**Source:** Stylist Studio (V2.2 §6.24) — sell services through the same order →
+payment-link → checkout machinery as products, take in a customer's own wig, and
+retire the POS terminal module in favour of the Quick Sale Form. Mostly code
+(sales order lines now carry `line_kind`/`service_offering_id`/`styled_id`; a
+service line prices from `shared.service_offerings` and skips stock/COGS; new
+`customer_assets` module for own-wig check-in/out). Migrations:
+
+- `000074_business_pos_teardown` (brand template) — drops every `{{BUSINESS}}.pos_*`
+  table (DO-block, idempotent) and the POS document-number sequences. KEEPS the
+  `pos` price tier / `sales_channel` / payroll commission channel — that is the
+  "in-store price" concept, not the terminal app, and is woven into pricing +
+  payroll; retiring it is a separate deliberate refactor.
+- `000248_shared_pos_permission_teardown` — removes the `pos` module permission
+  grants (`DELETE FROM shared.permissions WHERE module='pos'`).
+
+Tooling: `verify-schema.js` expected per-brand table count 170 → 162 (−8 pos).
+Apply to existing brands with `npm run db:repair`.
+
+---
+
 ## 2026-06-30 — Stylist Studio: backend logic + task-trigger fix (PR2)
 
 **Source:** Stylist Studio (V2.2 §6.24) — operational backend on the existing
@@ -22,10 +44,10 @@ quantity-based wig-accountability ledger, DNA-aware job auto-open, and
 in-app/push notifications. Logic-only except for one migration:
 
 - `000073_business_studio_task_trigger_fix` (brand template) — `CREATE OR
-  REPLACE` of `fn_service_job_create_task`. The trigger inserted the auto-raised
+REPLACE` of `fn_service_job_create_task`. The trigger inserted the auto-raised
   staff task with status `'today'`, but migration 000224 changed
   `shared.tasks`' vocabulary to `('to_do','in_progress','in_review','done',
-  'cancelled')`, so `'today'` violated `tasks_status_check` and **every stylist
+'cancelled')`, so `'today'` violated `tasks_status_check` and **every stylist
   assignment failed**. Now inserts `'to_do'`. No `CREATE TABLE` (idempotent
   function replace, re-applied every `db:repair`); per-brand table count
   unchanged.
@@ -50,7 +72,7 @@ Brand templates (apply to existing brands with `npm run db:repair`):
   `styled_product_bom` default-materials table (sentinel).
 - `000068_business_stylist_studio_jobs` — widens `service_jobs.status` to the
   full lifecycle (`assigned → in_progress → returned_for_qc → qc_passed →
-  rework → ready_for_dispatch → handed_to_sales` + existing terminals) and adds
+rework → ready_for_dispatch → handed_to_sales` + existing terminals) and adds
   lifecycle timestamps, `qc_by`, `rework_count`, `reserved_variant_id`,
   `sla_due_at`, `styled_id`, `shipment_id`, `customer_asset_id`. Pure-ALTER
   (no sentinel) — idempotent CHECK swap + `ADD COLUMN IF NOT EXISTS`.
@@ -137,7 +159,8 @@ from Sales/Service-Jobs, KPI scoring-entry UI, and Praxis HR read actions.
 ## 2026-06-22 — HR system Phase 1 (000233_shared_hr_phase1)
 
 **Source:** `docs/PixieGirl_Hub_Meeting_Notes_Transcript.docx` §3 (HR design)
-+ HR build decisions (chat answers #1–#15).
+
+- HR build decisions (chat answers #1–#15).
 
 Adds the operational HR tables the meeting required that the existing
 Pass-1/Pass-2 HR schema (template 000027) did not cover:

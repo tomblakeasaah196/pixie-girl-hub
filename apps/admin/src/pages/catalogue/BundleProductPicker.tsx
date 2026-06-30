@@ -60,14 +60,19 @@ export function BundleProductPicker({
   existingStyledIds,
   onAdd,
   busy = false,
+  initialQuery = "",
 }: {
   existingStyledIds: Set<string>;
   onAdd: (items: { styled_id: string; name: string }[]) => void | Promise<void>;
   busy?: boolean;
+  // Optional seed for the search box (the Shades tab pre-fills the shade name so
+  // the colour's products surface first). Defaults to empty — the bundle path is
+  // unchanged. Re-seeding on reuse is the caller's job via a `key` remount.
+  initialQuery?: string;
 }) {
   const styled = useStyledProducts();
   const sizeConfig = useSizeConfig();
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const [lace, setLace] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 

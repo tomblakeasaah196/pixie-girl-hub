@@ -6,8 +6,6 @@ import {
   Pencil,
   Trash2,
   X,
-  Search,
-  Check,
   Link2,
 } from "lucide-react";
 import { Button, Card, EmptyState, Pill } from "@/components/ui/primitives";
@@ -23,10 +21,10 @@ import {
   useDeleteShade,
   useAssignShadeMembers,
   useRemoveShadeMember,
-  useStyledProducts,
   type Shade,
 } from "@/lib/catalogue";
 import { CoverImageEditor } from "./CoverImageEditor";
+import { BundleProductPicker } from "./BundleProductPicker";
 import { ImportExportControls } from "@/components/catalogue/ImportExportControls";
 
 /**
@@ -450,9 +448,13 @@ function ShadeEditorModal({
 }
 
 /**
- * Flow-2 bulk-assign: the search box is seeded with the shade name so every
- * styled product whose name carries that colour appears at once. Tick "select
- * all", hit Add — the whole batch joins the shade in a single call.
+ * Shade product picker — the very same picker the Bundles tab uses
+ * (BundleProductPicker), imported here so a shade is curated exactly like a
+ * bundle: lace filters, a thumbnail grid, "select all" and one batch Add. The
+ * search is seeded with the shade name (the colour) so the matching styled
+ * products surface first — the <2s path. Adding bulk-assigns the whole
+ * selection to the shade in a single call; the assigned list below removes one
+ * at a time. This is what powers "shop by shade" on the storefront.
  */
 function ShadeProductPicker({
   shadeId,
@@ -468,50 +470,10 @@ function ShadeProductPicker({
   onRemoveMember: (styledId: string) => void;
 }) {
   const assign = useAssignShadeMembers();
-  // Seed search with the shade name (the colour) — the <2s path.
-  const [q, setQ] = useState(shadeName);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-
-  // Re-seed the query whenever the editor opens on a different shade.
-  useEffect(() => {
-    setQ(shadeName);
-    setChecked(new Set());
-  }, [shadeName, shadeId]);
-
-  const results = useStyledProducts(q.trim().length >= 1 ? { q: q.trim() } : {});
   const memberIds = useMemo(
     () => new Set(members.map((m) => m.styled_id)),
     [members],
   );
-
-  // Candidates = search hits not already in this shade.
-  const candidates = (results.data ?? []).filter(
-    (s) => !memberIds.has(s.styled_id),
-  );
-
-  const toggle = (id: string) =>
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const allChecked =
-    candidates.length > 0 && candidates.every((s) => checked.has(s.styled_id));
-  const selectAll = () =>
-    setChecked(
-      allChecked ? new Set() : new Set(candidates.map((s) => s.styled_id)),
-    );
-
-  const add = () => {
-    const ids = [...checked];
-    if (ids.length === 0) return;
-    assign.mutate(
-      { shadeId, styledIds: ids },
-      { onSuccess: () => setChecked(new Set()) },
-    );
-  };
 
   return (
     <div className="rounded-[12px] border border-line p-3.5 space-y-3">
@@ -522,89 +484,21 @@ function ShadeProductPicker({
         </span>
       </div>
 
-      {/* Search + bulk add */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search styled products by name…"
-          className="w-full h-[40px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
-        />
-      </div>
-
-      {candidates.length > 0 && (
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={selectAll}
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-accent-glow"
-          >
-            <Check className="w-3.5 h-3.5" />
-            {allChecked ? "Clear all" : `Select all (${candidates.length})`}
-          </button>
-          <Button
-            size="sm"
-            variant="primary"
-            icon={<Plus className="w-3.5 h-3.5" />}
-            disabled={checked.size === 0 || assign.isPending}
-            onClick={add}
-          >
-            {assign.isPending ? "Adding…" : `Add ${checked.size || ""}`}
-          </Button>
-        </div>
-      )}
-
-      {/* Candidate list */}
-      <div className="max-h-[240px] overflow-y-auto space-y-1.5">
-        {results.isLoading ? (
-          <div className="h-10 rounded-[10px] bg-text-primary/[0.05] animate-pulse" />
-        ) : candidates.length === 0 ? (
-          <p className="text-[11.5px] text-text-faint py-1">
-            {q.trim()
-              ? "No more styled products match — every hit is already in this shade."
-              : "Type a colour name to find products."}
-          </p>
-        ) : (
-          candidates.map((s) => {
-            const on = checked.has(s.styled_id);
-            return (
-              <label
-                key={s.styled_id}
-                className={`flex items-center gap-2.5 rounded-[10px] border px-3 py-2 cursor-pointer transition-colors ${
-                  on ? "border-accent/50 bg-accent/[0.05]" : "border-line"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={() => toggle(s.styled_id)}
-                  className="accent-[var(--accent)] w-4 h-4"
-                />
-                <div className="w-7 h-7 rounded-[6px] overflow-hidden bg-text-primary/[0.06] grid place-items-center shrink-0">
-                  {s.primary_image_url ? (
-                    <img
-                      src={s.primary_image_url}
-                      alt={s.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <ImageIcon className="w-3.5 h-3.5 text-text-faint" />
-                  )}
-                </div>
-                <span className="flex-1 min-w-0 truncate text-[13px]">
-                  {s.name}
-                </span>
-                {s.shade_id && s.shade_id !== shadeId && (
-                  <Pill tone="warn" dot={false}>
-                    re-home
-                  </Pill>
-                )}
-              </label>
-            );
-          })
-        )}
-      </div>
+      {/* The Bundles-tab picker, reused verbatim. `key` remounts it per shade so
+          the search re-seeds with the new shade name; the batch Add drops the
+          whole selection into the shade in one call. */}
+      <BundleProductPicker
+        key={shadeId}
+        initialQuery={shadeName}
+        existingStyledIds={memberIds}
+        busy={assign.isPending}
+        onAdd={async (items) => {
+          await assign.mutateAsync({
+            shadeId,
+            styledIds: items.map((i) => i.styled_id),
+          });
+        }}
+      />
 
       {/* Current members */}
       {members.length > 0 && (

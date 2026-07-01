@@ -83,8 +83,12 @@ const removeMember = async (req, res) => {
 };
 
 // ── Import / Export ──────────────────────────────────────
-async function template(_req, res) {
-  sendXlsx(res, await io.shadesTemplate(), "shades-import-template.xlsx");
+async function template(req, res) {
+  sendXlsx(
+    res,
+    await io.shadesTemplate({ brand: req.brand }),
+    "shades-import-template.xlsx",
+  );
 }
 async function exportShades(req, res) {
   sendXlsx(

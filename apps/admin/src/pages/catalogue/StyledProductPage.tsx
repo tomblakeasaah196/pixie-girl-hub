@@ -35,6 +35,7 @@ import { StyledVariantsManager } from "./StyledVariantsManager";
 import { StyledProductionManager } from "./StyledProductionManager";
 import { AddToCollection } from "./AddToCollection";
 import { AddToBundle } from "./AddToBundle";
+import { AddToShade } from "./AddToShade";
 
 function slugify(s: string) {
   return s
@@ -604,6 +605,11 @@ function StyledEditor({
           {canEdit && (
             <Card className="p-4">
               <AddToBundle styledId={s.styled_id} />
+            </Card>
+          )}
+          {canEdit && (
+            <Card className="p-4">
+              <AddToShade styledId={s.styled_id} currentShadeId={s.shade_id} />
             </Card>
           )}
         </div>

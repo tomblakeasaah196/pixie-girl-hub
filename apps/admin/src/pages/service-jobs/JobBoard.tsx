@@ -28,6 +28,8 @@ import {
   SERVICE_KEY_ICON,
   RATING_LABELS,
   CHEMICAL_UNITS,
+  CUSTOMER_HAPPINESS_FACES,
+  HAPPINESS_EMOJI,
 } from "./constants";
 
 // ── Star rating display ────────────────────────────────────
@@ -70,6 +72,46 @@ function StarPicker({
           ★
         </button>
       ))}
+    </div>
+  );
+}
+
+// ── Customer happiness (tap-a-face) ────────────────────────
+
+/**
+ * The friendliest possible capture: staff just tap the face that matches how
+ * the customer looked at collection. No stars, no reading required — meant for
+ * fast, low-stress use at the front desk.
+ */
+function FacePicker({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {CUSTOMER_HAPPINESS_FACES.map((f) => {
+        const active = f.value === value;
+        return (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => onChange(f.value)}
+            aria-label={f.label}
+            aria-pressed={active}
+            className={`flex flex-col items-center gap-1 rounded-xl border px-3 py-2 transition-all ${
+              active
+                ? "border-accent bg-accent/10 scale-105"
+                : "border-white/10 opacity-70 hover:opacity-100"
+            }`}
+          >
+            <span className="text-2xl leading-none">{f.emoji}</span>
+            <span className="text-[11px] text-muted">{f.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -138,6 +180,12 @@ function JobCard({
         )}
       </div>
       {job.quality_rating !== null && <StarRating value={job.quality_rating} />}
+      {job.customer_rating !== null && (
+        <div className="text-sm" title={`Customer: ${RATING_LABELS[job.customer_rating]}`}>
+          <span className="mr-1">{HAPPINESS_EMOJI[job.customer_rating]}</span>
+          <span className="text-muted text-xs">customer</span>
+        </div>
+      )}
     </button>
   );
 }
@@ -318,6 +366,26 @@ function OutcomeTab({ job, jobId }: { job: ServiceJob; jobId: string }) {
 
   return (
     <div className="space-y-5">
+      {/* Customer happiness — the headline question, tap-a-face simple */}
+      <div className="glass p-4 rounded-lg space-y-3 border border-accent/30">
+        <div>
+          <p className="text-base font-semibold">
+            How happy was the customer? 💛
+          </p>
+          <p className="text-xs text-muted">
+            Tap the face that matches how they looked at collection.
+          </p>
+        </div>
+        <FacePicker value={cRating} onChange={setCRating} />
+        <textarea
+          className="input w-full h-20 text-sm"
+          placeholder="Anything they said? (optional)"
+          value={cFeedback}
+          onChange={(e) => setCFeedback(e.target.value)}
+        />
+      </div>
+
+      {/* Internal quality — for the team, kept secondary */}
       <div className="glass p-4 rounded-lg space-y-3">
         <p className="text-sm font-semibold">Internal Quality Rating</p>
         <StarPicker value={qRating} onChange={setQRating} />
@@ -329,20 +397,14 @@ function OutcomeTab({ job, jobId }: { job: ServiceJob; jobId: string }) {
         />
       </div>
 
-      <div className="glass p-4 rounded-lg space-y-3">
-        <p className="text-sm font-semibold">Customer Rating</p>
-        <StarPicker value={cRating} onChange={setCRating} />
-        <textarea
-          className="input w-full h-20 text-sm"
-          placeholder="Customer feedback…"
-          value={cFeedback}
-          onChange={(e) => setCFeedback(e.target.value)}
-        />
+      <div className="flex items-center gap-3">
+        <Button onClick={handleSave} disabled={outcome.isPending}>
+          {outcome.isPending ? "Saving…" : "Save Outcome"}
+        </Button>
+        {outcome.isSuccess && (
+          <span className="text-success text-sm">Saved ✓</span>
+        )}
       </div>
-
-      <Button onClick={handleSave} disabled={outcome.isPending}>
-        {outcome.isPending ? "Saving…" : "Save Outcome"}
-      </Button>
     </div>
   );
 }

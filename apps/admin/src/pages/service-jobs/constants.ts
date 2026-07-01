@@ -72,3 +72,24 @@ export const RATING_LABELS: Record<number, string> = {
   4: "Very Good",
   5: "Excellent",
 };
+
+/**
+ * Customer happiness scale — tap-a-face capture for the delivery moment.
+ * Deliberately emoji-first so staff who aren't tech-savvy can just tap the
+ * face that matches how the customer looked when they collected their wig.
+ */
+export const CUSTOMER_HAPPINESS_FACES: {
+  value: number;
+  emoji: string;
+  label: string;
+}[] = [
+  { value: 1, emoji: "😞", label: "Unhappy" },
+  { value: 2, emoji: "😐", label: "So-so" },
+  { value: 3, emoji: "🙂", label: "Okay" },
+  { value: 4, emoji: "😀", label: "Happy" },
+  { value: 5, emoji: "🤩", label: "Delighted" },
+];
+
+export const HAPPINESS_EMOJI: Record<number, string> = Object.fromEntries(
+  CUSTOMER_HAPPINESS_FACES.map((f) => [f.value, f.emoji]),
+);

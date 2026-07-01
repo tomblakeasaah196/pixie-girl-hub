@@ -17,6 +17,7 @@ import { SiteFooter } from "@/components/site/SiteFooter";
 import { PageTransition } from "@/components/site/PageTransition";
 import { NewsletterModal } from "@/components/site/NewsletterModal";
 import { CartDrawer } from "@/components/site/CartDrawer";
+import { SiteConfigProvider, type StudioPage } from "@/lib/site-config";
 
 /*
  * SSR shell for the Storefront Website (dark-first maison).
@@ -31,6 +32,7 @@ interface SiteConfig {
   brand: BrandKey;
   theme?: { tokens?: Record<string, string> };
   navigation?: unknown;
+  pages?: StudioPage[];
   popups?: unknown[];
   preview?: boolean;
 }
@@ -100,23 +102,25 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const { preview, theme } = Route.useLoaderData();
+  const { preview, theme, pages } = Route.useLoaderData();
   const logoUrl = logoFrom(theme?.tokens);
   return (
     <QueryClientProvider client={queryClient}>
-      {preview ? (
-        <div className="bg-primary py-1.5 text-center text-[0.62rem] tracking-[0.4em] uppercase text-primary-foreground">
-          Preview — showing draft changes (not published)
-        </div>
-      ) : null}
-      <SiteHeader logoUrl={logoUrl} />
-      <PageTransition>
-        <Outlet />
-      </PageTransition>
-      <SiteFooter logoUrl={logoUrl} />
-      <CartDrawer />
-      <NewsletterModal />
-      <Toaster position="bottom-center" theme="dark" />
+      <SiteConfigProvider pages={pages}>
+        {preview ? (
+          <div className="bg-primary py-1.5 text-center text-[0.62rem] tracking-[0.4em] uppercase text-primary-foreground">
+            Preview — showing draft changes (not published)
+          </div>
+        ) : null}
+        <SiteHeader logoUrl={logoUrl} />
+        <PageTransition>
+          <Outlet />
+        </PageTransition>
+        <SiteFooter logoUrl={logoUrl} />
+        <CartDrawer />
+        <NewsletterModal />
+        <Toaster position="bottom-center" theme="dark" />
+      </SiteConfigProvider>
     </QueryClientProvider>
   );
 }

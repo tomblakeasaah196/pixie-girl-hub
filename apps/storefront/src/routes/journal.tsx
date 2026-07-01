@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { getContentList } from "@/lib/storefront";
 import { SITE_IMAGES as I } from "@/lib/site-assets";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 
 export const Route = createFileRoute("/journal")({
   head: () => ({ meta: [{ title: "Journal — Notes from the Atelier · Faitlyn Hair" }] }),
@@ -28,18 +29,22 @@ function Journal() {
   const { data } = useQuery({ queryKey: ["journal"], queryFn: () => getContentList("journal") });
   const live = (data ?? []) as Post[];
   const posts = live.length ? live : DEMO;
+  const s = withSlots(
+    { eyebrow: "Journal", heading: "Notes from the ", headingAccent: "atelier", headingAfter: "." },
+    usePageSlots("journal"),
+  );
 
   return (
     <main className="bg-ink text-cream">
-      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-36 md:pt-44 pb-28">
+      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-32 md:pt-28 pb-28">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
         >
-          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">Journal</p>
+          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">{s.eyebrow}</p>
           <h1 className="mt-5 font-display text-5xl md:text-7xl leading-[0.95] tracking-tight">
-            Notes from the <em className="font-couture text-taupe">atelier</em>.
+            {s.heading}<em className="font-couture text-taupe">{s.headingAccent}</em>{s.headingAfter}
           </h1>
         </motion.div>
 

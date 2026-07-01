@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { getServices, fmt } from "@/lib/storefront";
 import { useCurrency } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 
 export const Route = createFileRoute("/services")({
   head: () => ({ meta: [{ title: "Services & Bookings — Faitlyn Hair" }] }),
@@ -13,24 +14,31 @@ function ServicesIndex() {
   const [currency] = useCurrency();
   const { data, isLoading } = useQuery({ queryKey: ["services"], queryFn: () => getServices() });
   const services = data ?? [];
+  const s = withSlots(
+    {
+      eyebrow: "Services · Prestations",
+      heading: "Book with the ",
+      headingAccent: "maison",
+      headingAfter: ".",
+      body: "Installs, in-home styling sessions and virtual consults — each booked with a senior Faitlyn stylist.",
+    },
+    usePageSlots("services"),
+  );
 
   return (
     <main className="bg-ink text-cream">
-      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-36 md:pt-44 pb-16">
+      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-32 md:pt-28 pb-16">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           className="max-w-2xl"
         >
-          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">Services · Prestations</p>
+          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">{s.eyebrow}</p>
           <h1 className="mt-5 font-display text-5xl md:text-7xl leading-[0.95] tracking-tight text-balance">
-            Book with the <em className="font-couture text-taupe">maison</em>.
+            {s.heading}<em className="font-couture text-taupe">{s.headingAccent}</em>{s.headingAfter}
           </h1>
-          <p className="mt-6 text-cream/70 leading-relaxed text-base md:text-lg">
-            Installs, in-home styling sessions and virtual consults — each booked
-            with a senior Faitlyn stylist.
-          </p>
+          <p className="mt-6 text-cream/70 leading-relaxed text-base md:text-lg">{s.body}</p>
         </motion.div>
       </section>
 

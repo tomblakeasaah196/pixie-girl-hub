@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { getBundles, addCartItem, fmt } from "@/lib/storefront";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 
 export const Route = createFileRoute("/bundles")({
   head: () => ({ meta: [{ title: "Bundles — Better Together · Faitlyn Hair" }] }),
@@ -18,6 +19,16 @@ function BundlesPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const { data, isLoading } = useQuery({ queryKey: ["bundles"], queryFn: () => getBundles() });
   const bundles = data ?? [];
+  const s = withSlots(
+    {
+      eyebrow: "Bundles · Ensembles",
+      heading: "Better ",
+      headingAccent: "together",
+      headingAfter: ".",
+      body: "Curated sets at a couture discount. Three pieces. Two pieces. One opportunity to save.",
+    },
+    usePageSlots("bundles"),
+  );
 
   async function add(bundle_id: string) {
     setBusy(bundle_id);
@@ -34,21 +45,18 @@ function BundlesPage() {
 
   return (
     <main className="bg-ink text-cream">
-      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-36 md:pt-44 pb-16">
+      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-32 md:pt-28 pb-16">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           className="max-w-2xl"
         >
-          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">Bundles · Ensembles</p>
+          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">{s.eyebrow}</p>
           <h1 className="mt-5 font-display text-5xl md:text-7xl leading-[0.95] tracking-tight text-balance">
-            Better <em className="gold-shimmer not-italic">together</em>.
+            {s.heading}<em className="gold-shimmer not-italic">{s.headingAccent}</em>{s.headingAfter}
           </h1>
-          <p className="mt-6 text-cream/70 leading-relaxed text-base md:text-lg">
-            Curated sets at a couture discount. Three pieces. Two pieces. One
-            opportunity to save.
-          </p>
+          <p className="mt-6 text-cream/70 leading-relaxed text-base md:text-lg">{s.body}</p>
         </motion.div>
       </section>
 

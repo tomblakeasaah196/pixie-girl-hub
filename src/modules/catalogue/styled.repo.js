@@ -380,6 +380,69 @@ async function basePrice({ client, brand, base_product_id, base_variant_id }) {
   return rows[0] ? rows[0].price_storefront_ngn : null;
 }
 
+// ── Stylist Studio: production DNA + default materials (BOM) ──
+async function setProduction({ brand, id, patch }) {
+  const sets = [];
+  const params = [id];
+  let i = 2;
+  for (const k of [
+    "default_service_type_id",
+    "default_recipe_id",
+    "standard_turnaround_days",
+  ]) {
+    if (patch[k] !== undefined) {
+      sets.push(`${k} = $${i++}`);
+      params.push(patch[k]);
+    }
+  }
+  if (patch.sop_steps !== undefined) {
+    sets.push(`sop_steps = $${i++}::jsonb`);
+    params.push(JSON.stringify(patch.sop_steps ?? []));
+  }
+  if (!sets.length) return getById({ brand, id });
+  const { rows } = await query(
+    `UPDATE ${t(brand, "styled_products")}
+        SET ${sets.join(", ")}, updated_at = now()
+      WHERE styled_id = $1
+      RETURNING styled_id, default_service_type_id, default_recipe_id,
+                standard_turnaround_days, sop_steps`,
+    params,
+  );
+  return rows[0] || null;
+}
+async function listBom({ brand, styled_id }) {
+  const { rows } = await query(
+    `SELECT * FROM ${t(brand, "styled_product_bom")}
+      WHERE styled_id = $1 ORDER BY display_order, created_at`,
+    [styled_id],
+  );
+  return rows;
+}
+async function addBom({ brand, styled_id, item }) {
+  const { rows } = await query(
+    `INSERT INTO ${t(brand, "styled_product_bom")}
+       (styled_id, kind, variant_id, default_quantity, chemical_name, display_order)
+     VALUES ($1,$2,$3,$4,$5,COALESCE($6,0)) RETURNING *`,
+    [
+      styled_id,
+      item.kind,
+      item.variant_id || null,
+      item.default_quantity ?? null,
+      item.chemical_name || null,
+      item.display_order ?? null,
+    ],
+  );
+  return rows[0];
+}
+async function deleteBom({ brand, styled_id, bom_id }) {
+  const { rowCount } = await query(
+    `DELETE FROM ${t(brand, "styled_product_bom")}
+      WHERE bom_id = $1 AND styled_id = $2`,
+    [bom_id, styled_id],
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   nextCode,
   list,
@@ -396,4 +459,8 @@ module.exports = {
   styledCodeTaken,
   restore,
   baseAvailability,
+  setProduction,
+  listBom,
+  addBom,
+  deleteBom,
 };

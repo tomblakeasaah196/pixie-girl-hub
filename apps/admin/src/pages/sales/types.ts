@@ -234,8 +234,12 @@ export interface OrderCreateInput {
   sales_channel: SalesChannel;
   order_type?: FulfilmentType;
   is_custom_order?: boolean;
+  // A line sells EITHER a product variant OR a service offering (Stylist Studio).
   lines: Array<{
-    variant_id: string;
+    variant_id?: string;
+    service_offering_id?: string;
+    styled_id?: string;
+    line_kind?: "product" | "styled" | "bundle" | "service";
     quantity: number;
     unit_price_ngn?: number;
     notes?: string;

@@ -68,10 +68,47 @@ const mw = (s) => (req, _res, next) => {
   next();
 };
 
+// ── Stylist Studio: production DNA + default materials (BOM) ──
+const productionSave = z
+  .object({
+    default_service_type_id: z.string().uuid().nullable().optional(),
+    default_recipe_id: z.string().uuid().nullable().optional(),
+    standard_turnaround_days: z.coerce
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .optional(),
+    sop_steps: z
+      .array(
+        z.object({
+          step: z.coerce.number().int().optional(),
+          text: z.string().min(1).max(500),
+        }),
+      )
+      .optional(),
+  })
+  .strict();
+
+const bomAdd = z
+  .object({
+    kind: z.enum(["discrete", "chemical"]),
+    variant_id: z.string().uuid().optional(),
+    default_quantity: z.coerce.number().positive().optional(),
+    chemical_name: z.string().min(1).max(160).optional(),
+    display_order: z.coerce.number().int().optional(),
+  })
+  .strict()
+  .refine((v) => (v.kind === "discrete" ? !!v.variant_id : !!v.chemical_name), {
+    message: "discrete needs variant_id; chemical needs chemical_name",
+  });
+
 module.exports = {
   validateStyledCreate: mw(styledCreate),
   validateStyledUpdate: mw(styledUpdate),
   validateUnpublish: mw(unpublish),
   validateAiDraft: mw(aiDraft),
+  validateProductionSave: mw(productionSave),
+  validateBomAdd: mw(bomAdd),
   styledCreate,
 };

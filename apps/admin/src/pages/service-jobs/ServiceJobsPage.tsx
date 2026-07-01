@@ -15,6 +15,7 @@ import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { JobBoard } from "./JobBoard";
 import { RecipesPanel } from "./RecipesPanel";
 import { AccountabilityPanel } from "./AccountabilityPanel";
+import { MyStudioJobs } from "./MyStudioJobs";
 import {
   useJobs,
   useServiceTypes,
@@ -466,7 +467,13 @@ function KpiStrip() {
 
 // ── Main page ──────────────────────────────────────────────
 
-type Tab = "board" | "accountability" | "types" | "recipes" | "reconciliation";
+type Tab =
+  | "my"
+  | "board"
+  | "accountability"
+  | "types"
+  | "recipes"
+  | "reconciliation";
 
 export function ServiceJobsPage() {
   useBreadcrumbs([{ label: "Stylist Studio" }]);
@@ -490,6 +497,7 @@ export function ServiceJobsPage() {
   const canEdit = can("service_jobs", "edit");
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: "my", label: "My Jobs" },
     { id: "board", label: "Job Board" },
     { id: "accountability", label: "Wig Accountability" },
     { id: "types", label: "Service Types" },
@@ -531,6 +539,7 @@ export function ServiceJobsPage() {
       </div>
 
       {/* Tab content */}
+      {tab === "my" && <MyStudioJobs />}
       {tab === "board" && <JobBoard canCreate={canCreate} />}
       {tab === "accountability" && <AccountabilityPanel />}
       {tab === "types" && <ServiceTypesTab canCreate={canEdit} />}

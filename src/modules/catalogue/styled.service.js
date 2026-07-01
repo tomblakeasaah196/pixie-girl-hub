@@ -404,6 +404,62 @@ async function restore({ brand, user, request_id, id }) {
   });
 }
 
+// ── Stylist Studio: production DNA + default materials (BOM) ──
+async function getProduction({ brand, id }) {
+  const s = await repo.getById({ brand, id });
+  if (!s) throw new NotFoundError("Styled product");
+  const bom = await repo.listBom({ brand, styled_id: id });
+  return {
+    styled_id: s.styled_id,
+    default_service_type_id: s.default_service_type_id ?? null,
+    default_recipe_id: s.default_recipe_id ?? null,
+    standard_turnaround_days: s.standard_turnaround_days ?? null,
+    sop_steps: s.sop_steps ?? [],
+    bom,
+  };
+}
+async function saveProduction({ brand, user, request_id, id, patch }) {
+  const before = await repo.getById({ brand, id });
+  if (!before) throw new NotFoundError("Styled product");
+  const row = await repo.setProduction({ brand, id, patch });
+  await A(
+    brand,
+    user ? user.user_id : null,
+    "catalogue.styled.production",
+    id,
+    patch,
+    request_id,
+  );
+  return row;
+}
+async function addBomItem({ brand, user, request_id, id, item }) {
+  const before = await repo.getById({ brand, id });
+  if (!before) throw new NotFoundError("Styled product");
+  await repo.addBom({ brand, styled_id: id, item });
+  await A(
+    brand,
+    user ? user.user_id : null,
+    "catalogue.styled.bom.add",
+    id,
+    { kind: item.kind },
+    request_id,
+  );
+  return repo.listBom({ brand, styled_id: id });
+}
+async function removeBomItem({ brand, user, request_id, id, bom_id }) {
+  const ok = await repo.deleteBom({ brand, styled_id: id, bom_id });
+  if (!ok) throw new NotFoundError("BOM item");
+  await A(
+    brand,
+    user ? user.user_id : null,
+    "catalogue.styled.bom.remove",
+    id,
+    { bom_id },
+    request_id,
+  );
+  return repo.listBom({ brand, styled_id: id });
+}
+
 module.exports = {
   availabilityState,
   enrich,
@@ -416,4 +472,8 @@ module.exports = {
   remove,
   listTrash,
   restore,
+  getProduction,
+  saveProduction,
+  addBomItem,
+  removeBomItem,
 };

@@ -92,6 +92,40 @@ async function aiDraft(req, res) {
   });
 }
 
+// ── Production DNA + default materials (Stylist Studio) ────
+async function getProduction(req, res) {
+  res.json({
+    data: await service.getProduction({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function saveProduction(req, res) {
+  res.json({
+    data: await service.saveProduction({
+      ...base(req),
+      id: req.params.id,
+      patch: req.body,
+    }),
+  });
+}
+async function addBom(req, res) {
+  res.status(201).json({
+    data: await service.addBomItem({
+      ...base(req),
+      id: req.params.id,
+      item: req.body,
+    }),
+  });
+}
+async function removeBom(req, res) {
+  res.json({
+    data: await service.removeBomItem({
+      ...base(req),
+      id: req.params.id,
+      bom_id: req.params.bomId,
+    }),
+  });
+}
+
 module.exports = {
   list,
   getOne,
@@ -103,4 +137,8 @@ module.exports = {
   listTrash,
   restore,
   aiDraft,
+  getProduction,
+  saveProduction,
+  addBom,
+  removeBom,
 };

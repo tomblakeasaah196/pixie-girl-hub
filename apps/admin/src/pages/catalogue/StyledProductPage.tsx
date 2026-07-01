@@ -32,6 +32,7 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { AvailabilityPill, StyledStatusBadge } from "./parts";
 import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
+import { StyledProductionManager } from "./StyledProductionManager";
 import { AddToCollection } from "./AddToCollection";
 import { AddToBundle } from "./AddToBundle";
 
@@ -615,6 +616,11 @@ function StyledEditor({
           anchorPrice={s.retail_price_ngn}
           canEdit={canEdit}
         />
+      </div>
+
+      {/* Production DNA — how this style is made (Stylist Studio) */}
+      <div className="mt-4">
+        <StyledProductionManager styledId={s.styled_id} canEdit={canEdit} />
       </div>
 
       <ConfirmDialog

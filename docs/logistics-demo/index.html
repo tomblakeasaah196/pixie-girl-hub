@@ -24,36 +24,37 @@
 
       /* ─────────────────────────  TOKENS  ───────────────────────── */
       :root {
-        /* Atlantic Ink — dark (default) */
-        --bg: 7 15 28;               /* deep marine ink   */
-        --panel: 14 24 40;
-        --panel-2: 22 36 57;
+        /* Smart Logistics — dark (default). Brand: orange + blue */
+        --bg: 6 22 43;               /* deep brand-blue ink #06162B */
+        --panel: 11 32 58;
+        --panel-2: 18 47 80;
         --panel-alpha: 0.55;
-        --text: 231 238 248;         /* cool white        */
-        --text-muted: 150 167 190;
-        --text-faint: 99 117 143;
-        --border-c: 231 238 248;
+        --text: 228 238 249;         /* cool white        */
+        --text-muted: 147 168 194;
+        --text-faint: 98 120 148;
+        --border-c: 228 238 249;
         --border-alpha: 0.09;
 
-        /* Accent — brass gold (used sparingly) */
-        --accent: 214 168 82;        /* #D6A852 */
-        --accent-deep: 176 128 46;   /* #B0802E filled btns */
-        --accent-glow: 236 200 130;
+        /* Accent — SMART ORANGE (primary, from the logo #F5821F) */
+        --accent: 245 130 31;        /* #F5821F */
+        --accent-deep: 208 100 16;   /* #D06410 filled btns */
+        --accent-glow: 250 168 96;
 
-        /* Maritime secondary — harbor teal */
-        --teal: 46 178 190;          /* #2EB2BE */
-        --teal-deep: 22 122 134;
+        /* Secondary — SMART BLUE (from the logo #1C9BD7).
+           token kept named --teal so every reference re-tints */
+        --teal: 34 160 218;          /* #22A0DA */
+        --teal-deep: 13 100 162;
 
-        /* Semantic (brand ≠ status) */
+        /* Semantic (brand ≠ status; warn is yellow, not orange) */
         --success: 96 176 128;
-        --warn: 224 150 66;
+        --warn: 232 186 60;          /* #E8BA3C golden, distinct from brand orange */
         --danger: 226 92 84;
-        --info: 70 150 210;
+        --info: 42 155 215;
 
-        /* Brand layer B (entity medallion / ambient mesh) */
-        --biz-1: #1c6f83;            /* harbor teal   */
-        --biz-2: #0d2a44;            /* deep marine   */
-        --biz-accent: #d6a852;       /* brass gold    */
+        /* Brand layer B (medallion / ambient mesh) — logo blues + orange */
+        --biz-1: #1c9bd7;            /* smart blue    */
+        --biz-2: #0c4a7a;            /* deep blue     */
+        --biz-accent: #f5821f;       /* smart orange  */
 
         --font-display: "Marcellus", Georgia, serif;
         --font-hero: "Cormorant Garamond", Georgia, serif;
@@ -71,24 +72,24 @@
         --side-c: 80px;
       }
       [data-theme="light"] {
-        --bg: 244 247 251;
+        --bg: 243 247 252;
         --panel: 255 255 255;
         --panel-alpha: 0.76;
-        --panel-2: 236 242 249;
-        --text: 16 30 52;
-        --text-muted: 84 104 132;
-        --text-faint: 128 146 172;
-        --border-c: 16 30 52;
+        --panel-2: 235 242 250;
+        --text: 14 30 54;
+        --text-muted: 82 104 134;
+        --text-faint: 126 146 174;
+        --border-c: 14 30 54;
         --border-alpha: 0.1;
-        --accent: 158 116 32;        /* readable gold-brass on white */
-        --accent-deep: 138 100 24;
-        --accent-glow: 176 128 46;
-        --teal: 20 128 142;
-        --teal-deep: 12 96 108;
-        --success: 58 140 96;
-        --warn: 186 118 40;
+        --accent: 193 88 16;         /* burnt orange — readable on white #C15810 */
+        --accent-deep: 156 68 10;
+        --accent-glow: 245 130 31;   /* full brand orange for fills/medallions */
+        --teal: 14 118 188;          /* smart blue, deeper for contrast */
+        --teal-deep: 10 88 142;
+        --success: 46 138 90;
+        --warn: 176 130 26;          /* golden, distinct from orange */
         --danger: 198 62 54;
-        --info: 30 118 186;
+        --info: 20 118 186;
         --mesh-op: 0.4;
         --glass-shadow: inset 0 1px 0 rgb(255 255 255/0.9), 0 16px 40px rgb(20 40 70/0.12);
       }
@@ -218,31 +219,24 @@
       .bizwrap { padding: 6px 14px 8px; flex: none; position: relative; }
       .bizwrap .lbl { margin: 0 2px 8px; }
       .collapsed .bizwrap .lbl { display: none; }
-      .bizbtn {
+      /* single business per tenant — static identity, no switcher */
+      .tenantid {
         width: 100%; display: flex; align-items: center; gap: 11px; padding: 10px 11px;
         border-radius: 13px; background: rgb(var(--text) / 0.04);
-        border: 1px solid rgb(var(--border-c) / var(--border-alpha)); transition: all var(--dur); text-align: left;
+        border: 1px solid rgb(var(--border-c) / var(--border-alpha));
       }
-      .bizbtn:hover { background: rgb(var(--text) / 0.07); border-color: rgb(var(--accent) / 0.35); }
-      .bizbtn .bm {
+      .tenantid .bm {
         width: 32px; height: 32px; border-radius: 9px; flex: none; display: grid; place-items: center; color: #eafcff;
         font-family: var(--font-display); font-size: 15px;
-        background: linear-gradient(140deg, var(--biz-1), var(--biz-2)); box-shadow: inset 0 1px 0 rgb(255 255 255/0.25);
+        background: linear-gradient(140deg, var(--biz-1), var(--biz-2));
+        box-shadow: inset 0 1px 0 rgb(255 255 255/0.25); border: 1px solid rgb(var(--accent) / 0.35);
       }
-      .bizbtn .bn { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .bizbtn .bn small { display: block; font-size: 9.5px; font-weight: 500; color: rgb(var(--text-faint)); letter-spacing: 0.04em; }
-      .bizbtn .chev { color: rgb(var(--text-faint)); transition: transform var(--dur); }
-      .bizbtn.open .chev { transform: rotate(180deg); }
-      .collapsed .bizbtn .bn, .collapsed .bizbtn .chev { display: none; }
-      .bizmenu {
-        position: absolute; left: 14px; right: 14px; top: calc(100% - 2px); z-index: 30;
-        border-radius: 14px; padding: 6px; display: none; flex-direction: column; gap: 2px;
-      }
-      .bizmenu.show { display: flex; animation: pop 0.2s var(--ease); }
-      .bizmenu button { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; text-align: left; transition: background var(--dur); }
-      .bizmenu button:hover { background: rgb(var(--text) / 0.07); }
-      .bizmenu .bm { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #eafcff; font-family: var(--font-display); font-size: 13px; }
-      @keyframes pop { from { opacity: 0; transform: translateY(-6px); } }
+      .tenantid .bn { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .tenantid .bn small { display: block; font-size: 9.5px; font-weight: 500; color: rgb(var(--text-faint)); letter-spacing: 0.04em; }
+      .tenantid .livedot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: rgb(var(--success)); box-shadow: 0 0 0 3px rgb(var(--success) / 0.18); }
+      [data-mode="test"] .tenantid .livedot { background: rgb(var(--warn)); box-shadow: 0 0 0 3px rgb(var(--warn) / 0.2); }
+      .collapsed .tenantid .bn, .collapsed .tenantid .livedot { display: none; }
+      .collapsed .tenantid { padding: 8px; justify-content: center; }
 
       .nav { flex: 1; overflow-y: auto; padding: 8px 12px 20px; }
       .nav::-webkit-scrollbar { width: 5px; }
@@ -617,20 +611,14 @@
       <aside class="side">
         <div class="brand" onclick="go('home')">
           <div class="mono-badge">S</div>
-          <div class="wm">Smart<span class="ac">LS</span><small>Logistics · Freight · Trade</small></div>
+          <div class="wm">Smart<span class="ac">LS</span><small>Logistics &amp; Services Ltd</small></div>
         </div>
 
         <div class="bizwrap">
-          <div class="micro lbl">Corporate Entity</div>
-          <button class="bizbtn" id="bizbtn" onclick="toggleBiz(event)">
+          <div class="tenantid">
             <span class="bm">SL</span>
-            <span class="bn">Smart Logistics SA<small>Douala · HQ books</small></span>
-            <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-          </button>
-          <div class="bizmenu dropglass" id="bizmenu">
-            <button onclick="pickBiz('Smart Logistics SA','Douala · HQ books','SL')"><span class="bm" style="background:linear-gradient(140deg,#1c6f83,#0d2a44)">SL</span><div><b style="font-size:13px">Smart Logistics SA</b><br><small style="font-size:10px;color:rgb(var(--text-faint))">Douala · HQ books</small></div></button>
-            <button onclick="pickBiz('SmartLS Freight Ltd','Kribi · Port ops','SF')"><span class="bm" style="background:linear-gradient(140deg,#2a8c72,#0d3a2c)">SF</span><div><b style="font-size:13px">SmartLS Freight Ltd</b><br><small style="font-size:10px;color:rgb(var(--text-faint))">Kribi · Port ops</small></div></button>
-            <button onclick="pickBiz('SmartLS Transit N&#39;Djamena','Chad · Hinterland','ST')"><span class="bm" style="background:linear-gradient(140deg,#8a6a2a,#3a2c0d)">ST</span><div><b style="font-size:13px">SmartLS Transit</b><br><small style="font-size:10px;color:rgb(var(--text-faint))">N'Djamena · Hinterland</small></div></button>
+            <span class="bn">Smart Logistics &amp; Services<small>Douala · Cameroon</small></span>
+            <span class="livedot" title="Live environment"></span>
           </div>
         </div>
 
@@ -714,7 +702,7 @@
               <div class="clockcard glass" style="padding:18px 22px;border-radius:var(--radius)">
                 <div class="t" id="clock">18:42</div>
                 <div class="d" id="dateline">Wednesday · 1 July 2026</div>
-                <div class="chip">Smart Logistics SA · Live</div>
+                <div class="chip">Smart Logistics &amp; Services · Live</div>
               </div>
             </div>
 
@@ -759,7 +747,7 @@
 
             <div class="praxis glass">
               <div class="h"><svg viewBox="0 0 24 24" style="color:rgb(var(--teal))"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span class="badge">Praxis AI</span><b>Morning Briefing</b></div>
-              <p><b>Smart Logistics SA</b> has 3 items needing you: dossier <b>SLAS-OPS-2026-0142</b> (Maersk · Douala→N'Djamena) is awaiting your costing approval; invoice <b>SLAS-INV-2026-0311</b> is <b>34 days overdue</b> (XAF 6.4M, Sonara); the <b>visite technique</b> on truck <b>LT-4471</b> expires in 6 days. Trial balance is in balance and TVA return for June is ready to file.</p>
+              <p><b>Smart Logistics &amp; Services</b> has 3 items needing you: dossier <b>SLAS-OPS-2026-0142</b> (Maersk · Douala→N'Djamena) is awaiting your costing approval; invoice <b>SLAS-INV-2026-0311</b> is <b>34 days overdue</b> (XAF 6.4M, Sonara); the <b>visite technique</b> on truck <b>LT-4471</b> expires in 6 days. Trial balance is in balance and TVA return for June is ready to file.</p>
               <a class="cta">Open in Praxis <svg viewBox="0 0 24 24" style="width:14px;height:14px;color:rgb(var(--teal))"><path d="M7 17L17 7M7 7h10v10"/></svg></a>
             </div>
 
@@ -1080,14 +1068,7 @@
       function toggleCollapse(){ document.getElementById("app").classList.toggle("collapsed"); }
       function openDrawer(){ document.getElementById("app").classList.add("drawer-open"); }
       function closeDrawer(){ document.getElementById("app").classList.remove("drawer-open"); }
-      function toggleBiz(e){ e.stopPropagation(); document.getElementById("bizbtn").classList.toggle("open"); document.getElementById("bizmenu").classList.toggle("show"); }
-      function pickBiz(name,sub,badge){
-        document.querySelector("#bizbtn .bn").innerHTML = name+"<small>"+sub+"</small>";
-        document.querySelector("#bizbtn .bm").textContent = badge;
-        toggleBiz({stopPropagation(){}});
-      }
       function toggleMore(){ document.getElementById("moreT").classList.toggle("open"); document.getElementById("moreP").classList.toggle("show"); }
-      document.addEventListener("click",e=>{ if(!e.target.closest(".bizwrap")){ document.getElementById("bizbtn").classList.remove("open"); document.getElementById("bizmenu").classList.remove("show"); } });
 
       /* ───── theme / lang / mode ───── */
       function toggleTheme(){

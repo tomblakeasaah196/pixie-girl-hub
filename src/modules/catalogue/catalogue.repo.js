@@ -7,15 +7,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID } = require("../../config/brands");
-const t = (b, tbl) => {
-  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
-  return `${b}.${tbl}`;
-};
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { ex } = require("../../config/database");
+const { t } = require("../../config/brands");
 const JSONB = new Set(["channel_external_ids", "channel_sync_state"]);
 
 const CAT_COLS = [

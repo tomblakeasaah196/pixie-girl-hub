@@ -5,10 +5,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { ex } = require("../../config/database");
 const { t } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 // ── Factory accounts ──────────────────────────────────────
 

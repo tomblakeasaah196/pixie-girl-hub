@@ -5,10 +5,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
 const PLAN_COLS = [
   "plan_key",
   "display_name",

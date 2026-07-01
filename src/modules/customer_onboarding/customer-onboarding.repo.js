@@ -4,10 +4,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
 async function createLink({ client, link }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.customer_onboarding_submissions

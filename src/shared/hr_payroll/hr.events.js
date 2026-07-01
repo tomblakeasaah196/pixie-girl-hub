@@ -14,24 +14,6 @@
 
 "use strict";
 
-const { EventEmitter } = require("events");
-const { logger } = require("../../config/logger");
+const { createModuleEvents } = require("../events/module-events");
 
-const emitter = new EventEmitter();
-emitter.setMaxListeners(50);
-
-function emit(eventType, payload) {
-  const fullType = `hr_payroll.${eventType}`;
-  try {
-    emitter.emit(fullType, payload);
-    emitter.emit("*", { type: fullType, payload });
-  } catch (err) {
-    logger.error({ err, eventType: fullType }, "hr_payroll event emit failed");
-  }
-}
-
-function on(eventType, handler) {
-  emitter.on(`hr_payroll.${eventType}`, handler);
-}
-
-module.exports = { emit, on, emitter };
+module.exports = createModuleEvents("hr_payroll");

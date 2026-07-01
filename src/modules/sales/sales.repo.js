@@ -7,15 +7,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID } = require("../../config/brands");
-const t = (b, tbl) => {
-  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
-  return `${b}.${tbl}`;
-};
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
+const { t } = require("../../config/brands");
 const ORDER = [
   "order_number",
   "contact_id",

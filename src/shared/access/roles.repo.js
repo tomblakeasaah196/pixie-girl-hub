@@ -9,12 +9,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
-
+const { ex: exec } = require("../../config/database");
 const ROLE_WRITE_COLS = ["role_name", "description", "business"];
 
 /** System roles (business IS NULL) plus roles scoped to this brand. */

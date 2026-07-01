@@ -9,12 +9,25 @@ const money = z.coerce.number().nonnegative();
 
 const lineInput = z
   .object({
-    variant_id: z.string().uuid(),
+    // A line sells EITHER a product variant OR a service (Stylist Studio PR3).
+    variant_id: z.string().uuid().optional(),
     quantity: z.coerce.number().int().positive(),
-    unit_price_ngn: money.optional(), // default: variant channel price
+    unit_price_ngn: money.optional(), // default: variant channel / service price
     notes: z.string().max(500).optional(),
+    // What this line is + provenance. Defaults to 'product' (or 'service' when
+    // a service_offering_id is given) in the service layer.
+    line_kind: z.enum(["product", "styled", "bundle", "service"]).optional(),
+    service_offering_id: z.string().uuid().optional(),
+    styled_id: z.string().uuid().optional(),
+    // Snapshot overrides (e.g. a styled-product checkout line).
+    product_name_snapshot: z.string().max(300).optional(),
+    variant_label_snapshot: z.string().max(300).optional(),
+    sku_snapshot: z.string().max(120).optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => !!v.variant_id || !!v.service_offering_id, {
+    message: "each line needs a variant_id or a service_offering_id",
+  });
 
 const orderCreate = z
   .object({

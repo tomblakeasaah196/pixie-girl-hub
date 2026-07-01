@@ -197,6 +197,26 @@ router.patch(
   styledV.validateStyledUpdate,
   styled.update,
 );
+// Production DNA + default materials (Stylist Studio) — how a styled product
+// is MADE, inherited by every job opened for it.
+router.get(
+  "/styled-products/:id/production",
+  can("view"),
+  styled.getProduction,
+);
+router.put(
+  "/styled-products/:id/production",
+  can("edit"),
+  styledV.validateProductionSave,
+  styled.saveProduction,
+);
+router.post(
+  "/styled-products/:id/bom",
+  can("edit"),
+  styledV.validateBomAdd,
+  styled.addBom,
+);
+router.delete("/styled-products/:id/bom/:bomId", can("edit"), styled.removeBom);
 // Restore a soft-deleted styled product.
 router.post("/styled-products/:id/restore", can("edit"), styled.restore);
 // Promote draft → live, and the reverse — both gated by catalogue.publish

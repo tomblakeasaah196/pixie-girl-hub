@@ -157,6 +157,7 @@ async function startWorkers() {
   const {
     runChemicalReconciliation,
   } = require("./schedulers/chemical-reconciliation");
+  const { runMissingWigCheck } = require("./schedulers/missing-wig-check");
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
   const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
   const { runGeoIpDatabaseUpdate } = require("./schedulers/geoip-updater");
@@ -212,8 +213,16 @@ async function startWorkers() {
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
   // Retention strategy engine: advance due enrolments every minute; scan for
   // time-based triggers + expire stale points nightly (02:30 Lagos).
-  scheduleCron("retention-strategy-tick", "* * * * *", runRetentionStrategyTick);
-  scheduleCron("retention-strategy-scan", "30 2 * * *", runRetentionStrategyScan);
+  scheduleCron(
+    "retention-strategy-tick",
+    "* * * * *",
+    runRetentionStrategyTick,
+  );
+  scheduleCron(
+    "retention-strategy-scan",
+    "30 2 * * *",
+    runRetentionStrategyScan,
+  );
   // nightly ad-spend sync (pull metrics from ad networks)
   scheduleCron("ad-spend-sync", "0 2 * * *", runAdSpendSync);
   scheduleCron("subscription-billing", "0 3 * * *", runSubscriptionBilling);
@@ -238,6 +247,8 @@ async function startWorkers() {
     "30 3 2 * *",
     runChemicalReconciliation,
   );
+  // Daily 08:00 — flag wigs sitting too long with a stylist (accountability).
+  scheduleCron("missing-wig-check", "0 8 * * *", runMissingWigCheck);
   scheduleCron(
     "geoip-db-update",
     config.CRON_GEOIP_DB_UPDATE,

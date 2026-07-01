@@ -16,9 +16,12 @@ import {
   useIssueReceipt,
   useInvoiceReminders,
   useCancelReminder,
+  useInvoiceDelivery,
 } from "./hooks";
 import { INVOICE_STATUS, REMINDER_STATUS, SEND_VIA_OPTIONS } from "./constants";
 import { CreditNoteCreateDrawer } from "./CreditNoteCreateDrawer";
+import { DeliveryPanel } from "./DeliveryPanel";
+import { ReceiptRow } from "./ReceiptRow";
 import type { InvoiceSendInput } from "./types";
 
 const RECEIPT_PAYMENT_METHODS = [
@@ -40,6 +43,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   const issueReceipt = useIssueReceipt();
   const { data: reminders } = useInvoiceReminders(invoiceId);
   const cancelReminder = useCancelReminder(invoiceId ?? "");
+  const { data: delivery, isLoading: deliveryLoading } = useInvoiceDelivery(invoiceId);
 
   const toast = useToastStore();
   const fireToast = (title: string, body: string, priority: "normal" | "high" = "normal") => {
@@ -190,26 +194,6 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
               <Button variant="secondary" size="sm" icon={<Download className="w-3.5 h-3.5" />} onClick={handleDownloadPdf} disabled={pdf.isPending}>
                 {pdf.isPending ? "Generating…" : "Download PDF"}
               </Button>
-              {canSend && (
-                showSendForm ? (
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={sentVia}
-                      onChange={setSentVia}
-                      options={SEND_VIA_OPTIONS as unknown as { value: NonNullable<InvoiceSendInput["sent_via"]>; label: string }[]}
-                      className="w-[150px]"
-                    />
-                    <Button variant="primary" size="sm" icon={<Send className="w-3.5 h-3.5" />} onClick={handleSend} disabled={sendInvoice.isPending}>
-                      {sendInvoice.isPending ? "Sending…" : "Confirm"}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setShowSendForm(false)}>Cancel</Button>
-                  </div>
-                ) : (
-                  <Button variant="secondary" size="sm" icon={<Send className="w-3.5 h-3.5" />} onClick={() => setShowSendForm(true)}>
-                    {invoice.sent_at ? "Resend Invoice" : "Send Invoice"}
-                  </Button>
-                )
-              )}
             </div>
 
             {/* Balance ribbon */}
@@ -270,21 +254,37 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                   <div className="micro">Payment Terms</div>
                   <div className="text-[13px] mt-1">{invoice.payment_terms || "—"}</div>
                 </div>
-                <div>
-                  <div className="micro">Sent to customer</div>
-                  <div className="text-[13px] mt-1">
-                    {invoice.sent_at ? (
-                      <span className="text-success">
-                        via {invoice.sent_via} ·{" "}
-                        {new Date(invoice.sent_at).toLocaleDateString()}
-                      </span>
-                    ) : (
-                      <span className="text-text-faint">Not sent yet</span>
-                    )}
-                  </div>
-                </div>
               </FormGrid>
             </Card>
+
+            {/* Delivery — sent / opened tracking + resend (the whole "did she
+                get it?" story lives here, not buried in a side field). */}
+            <DeliveryPanel
+              delivery={delivery}
+              isLoading={deliveryLoading}
+              resendSlot={
+                canSend ? (
+                  showSendForm ? (
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={sentVia}
+                        onChange={setSentVia}
+                        options={SEND_VIA_OPTIONS as unknown as { value: NonNullable<InvoiceSendInput["sent_via"]>; label: string }[]}
+                        className="w-[140px]"
+                      />
+                      <Button variant="primary" size="sm" icon={<Send className="w-3.5 h-3.5" />} onClick={handleSend} disabled={sendInvoice.isPending}>
+                        {sendInvoice.isPending ? "Sending…" : "Confirm"}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setShowSendForm(false)}>Cancel</Button>
+                    </div>
+                  ) : (
+                    <Button variant="secondary" size="sm" icon={<Send className="w-3.5 h-3.5" />} onClick={() => setShowSendForm(true)}>
+                      {invoice.sent_at ? "Resend" : "Send Invoice"}
+                    </Button>
+                  )
+                ) : null
+              }
+            />
 
             {/* Lines */}
             {invoice.lines && invoice.lines.length > 0 && (
@@ -364,16 +364,12 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
               {receipts && receipts.length > 0 ? (
                 <div className="space-y-2">
                   {receipts.map((r) => (
-                    <div key={r.receipt_id} className="flex items-center justify-between text-[13px] p-2 rounded-lg bg-text-primary/[0.02]">
-                      <div>
-                        <div className="font-semibold">{r.receipt_number}</div>
-                        <div className="text-[11px] text-text-faint capitalize">{r.payment_method.replace(/_/g, " ")}</div>
-                      </div>
-                      <div className="text-right">
-                        <MoneyText ngn={Number(r.amount_ngn)} />
-                        <div className="text-[10px] text-text-faint">{new Date(r.issued_at).toLocaleDateString()}</div>
-                      </div>
-                    </div>
+                    <ReceiptRow
+                      key={r.receipt_id}
+                      receipt={r}
+                      invoiceId={invoiceId}
+                      fireToast={fireToast}
+                    />
                   ))}
                 </div>
               ) : (

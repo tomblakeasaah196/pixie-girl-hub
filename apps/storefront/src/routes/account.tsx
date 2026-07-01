@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth";
 import { fmt } from "@/lib/storefront";
 import { Section, ErrorState } from "@/components/parts";
+import { RetentionPanel } from "@/components/retention";
 
 export const Route = createFileRoute("/account")({ component: AccountPage });
 
@@ -90,14 +91,8 @@ function AccountPage() {
         </button>
       </div>
 
-      {typeof profile?.loyalty_points === "number" ? (
-        <div className="mt-6 rounded-lg border border-border p-4">
-          <p className="text-caption">Loyalty</p>
-          <p className="mt-1 font-mono text-h5">
-            {profile.loyalty_points} points
-          </p>
-        </div>
-      ) : null}
+      {/* Loyalty · referral · rewards (§6.23) */}
+      <RetentionPanel />
 
       <h2 className="mt-10 text-h5 font-display">Orders</h2>
       {orders.length === 0 ? (

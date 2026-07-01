@@ -1,5 +1,14 @@
 import { useState, useCallback, useMemo, useRef } from "react";
-import { Search, User, X, Truck, Store, Send, QrCode, Copy } from "lucide-react";
+import {
+  Search,
+  User,
+  X,
+  Truck,
+  Store,
+  Send,
+  QrCode,
+  Copy,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Card, Button, MoneyText } from "@/components/ui/primitives";
 import { Toggle, Select, NumberField } from "@/components/ui/controls";
@@ -16,11 +25,15 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { onboardingApi } from "@/lib/smartcomm-api";
 import { useBusinessStore } from "@/stores/business";
 import * as salesApi from "./api";
+import { ServiceQuickAdd, type ServiceOffering } from "./ServiceQuickAdd";
+import { api } from "@/lib/api";
 import type { SalesChannel, FulfilmentType, OrderCreateInput } from "./types";
 
 interface CartLine {
   id: string;
   variant_id: string;
+  // Set when this line is a service (walk-in revamp/install) instead of a product.
+  service_offering_id?: string;
   label: string;
   sku: string;
   unit_price: number;
@@ -56,6 +69,9 @@ export function QuickSaleForm() {
 
   // Step 3: Products
   const [cart, setCart] = useState<CartLine[]>([]);
+  // Own-wig check-in (walk-in revamp): take the customer's wig into custody.
+  const [ownWig, setOwnWig] = useState(false);
+  const [wigCondition, setWigCondition] = useState("");
 
   // Step 4: Config
   const [currency, setCurrency] = useState("NGN");
@@ -170,6 +186,28 @@ export function QuickSaleForm() {
     }
   };
 
+  // ── Add a service (walk-in revamp/install) to the cart ──
+  const addService = (s: ServiceOffering) =>
+    setCart((prev) => {
+      const i = prev.findIndex((c) => c.service_offering_id === s.service_id);
+      if (i >= 0)
+        return prev.map((c, j) =>
+          j === i ? { ...c, quantity: c.quantity + 1 } : c,
+        );
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          variant_id: "",
+          service_offering_id: s.service_id,
+          label: s.name,
+          sku: "Service",
+          unit_price: Number(s.base_price_ngn) || 0,
+          quantity: 1,
+        },
+      ];
+    });
+
   const removeLine = (id: string) =>
     setCart((prev) => prev.filter((l) => l.id !== id));
 
@@ -187,16 +225,41 @@ export function QuickSaleForm() {
         contact_id: contactId,
         sales_channel: channel,
         order_type: fulfilment,
-        lines: cart.map((l) => ({
-          variant_id: l.variant_id,
-          quantity: l.quantity,
-          unit_price_ngn: l.unit_price || undefined,
-        })),
+        lines: cart.map((l) =>
+          l.service_offering_id
+            ? {
+                service_offering_id: l.service_offering_id,
+                line_kind: "service" as const,
+                quantity: l.quantity,
+                unit_price_ngn: l.unit_price || undefined,
+              }
+            : {
+                variant_id: l.variant_id,
+                quantity: l.quantity,
+                unit_price_ngn: l.unit_price || undefined,
+              },
+        ),
         bundle_id: bundleId || undefined,
         coupon_code: coupon || undefined,
         shipping_fee_ngn: shipping || undefined,
       };
       const order = await createOrder.mutateAsync(input);
+      // Take the customer's own wig into custody (chain of custody).
+      if (ownWig && contactId) {
+        try {
+          await api.post("/customer-assets", {
+            owner_contact_id: contactId,
+            condition_note: wigCondition || undefined,
+          });
+        } catch {
+          fireToast(
+            "Heads up",
+            "Sale went through, but the wig check-in didn't save. Add it in Stylist Studio.",
+            "order",
+            "high",
+          );
+        }
+      }
       const link = await salesApi.createPaymentLink(order.order_id, {
         amount_ngn: Number(order.balance_due_ngn),
         currency: currency !== "NGN" ? currency : undefined,
@@ -395,9 +458,33 @@ export function QuickSaleForm() {
         <Card className="p-5">
           <div className="micro mb-3">Products</div>
 
-          <div className="mb-4">
+          <div className="mb-3">
             <ProductPicker onPick={handlePick} />
           </div>
+
+          {/* Sell a service beside any retail item (Stylist Studio) */}
+          <div className="mb-4">
+            <ServiceQuickAdd onAdd={addService} />
+          </div>
+
+          {/* Own-wig check-in — only when a service is being sold */}
+          {cart.some((l) => l.service_offering_id) && (
+            <div className="mb-4 rounded-[11px] border border-line bg-text-primary/[0.02] p-3">
+              <Toggle
+                checked={ownWig}
+                onChange={setOwnWig}
+                label="Customer brought their own wig (check it in)"
+              />
+              {ownWig && (
+                <input
+                  className="mt-2 w-full rounded-lg border border-line bg-white/5 px-3 py-2 text-sm outline-none focus:border-accent"
+                  value={wigCondition}
+                  onChange={(e) => setWigCondition(e.target.value)}
+                  placeholder="Condition on arrival (e.g. lace intact, slight shedding)"
+                />
+              )}
+            </div>
+          )}
 
           {cart.length > 0 && (
             <div className="space-y-2">

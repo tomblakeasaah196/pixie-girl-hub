@@ -1,0 +1,41 @@
+-- ============================================================
+-- TEMPLATE 000074 — POS teardown (replaced by the Quick Sale Form)
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.3 → Stylist Studio / Quick Sale
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000073) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE — the DO-block + DELETE are
+-- idempotent, so the repair runner re-applies it every pass harmlessly.
+--
+-- WHY (owner directive, June 2026): the Point-of-Sale terminal module is
+-- retired in favour of the Quick Sale Form. The POS *code* module is deleted;
+-- this drops its per-brand data: every pos_* table and the POS document-number
+-- sequences. NOTE: 'pos' as an in-store PRICE TIER / sales_channel (variants'
+-- price_pos_ngn, the pricing tiers, payroll commission channel) is deliberately
+-- KEPT — it is the "in-store price" concept, not the terminal app, and is woven
+-- into pricing + payroll. Retiring that tier is a separate, deliberate refactor.
+--
+-- Drops:  {{BUSINESS}}.pos_*  +  shared.document_numbering POS rows (this brand)
+-- ============================================================
+
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT tablename FROM pg_tables
+     WHERE schemaname = '{{BUSINESS}}' AND tablename LIKE 'pos\_%'
+  LOOP
+    EXECUTE format('DROP TABLE IF EXISTS %I.%I CASCADE', '{{BUSINESS}}', r.tablename);
+  END LOOP;
+END $$;
+
+DELETE FROM shared.document_numbering
+ WHERE business = '{{BUSINESS}}'
+   AND document_type IN ('pos_transaction', 'pos_session', 'pos_cash_drop');
+
+-- ============================================================
+-- Verify (after substitution): no pos_* tables remain.
+--   SELECT count(*) FROM pg_tables
+--     WHERE schemaname = '{{BUSINESS}}' AND tablename LIKE 'pos\_%';   -- 0
+-- ============================================================

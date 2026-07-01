@@ -142,6 +142,61 @@ const chemicalRecord = z
   })
   .strict();
 
+// ── Stylist Studio (PR2) ───────────────────────────────────
+const materialLog = z
+  .object({
+    kind: z.enum(["discrete", "chemical"]),
+    variant_id: z.string().uuid().optional(),
+    quantity: z.coerce.number().positive().optional(),
+    chemical_name: z.string().min(1).max(160).optional(),
+    usage_note: z.string().max(200).optional(),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.kind === "discrete"
+        ? !!v.variant_id && v.quantity !== undefined
+        : !!v.chemical_name,
+    {
+      message:
+        "discrete materials need variant_id + quantity; chemicals need chemical_name",
+    },
+  );
+
+const referenceAdd = z
+  .object({
+    ref_type: z.enum([
+      "image",
+      "audio",
+      "video_link",
+      "text",
+      "creative_freedom",
+    ]),
+    doc_id: z.string().uuid().optional(),
+    url: z.string().url().max(2000).optional(),
+    body: z.string().max(5000).optional(),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.ref_type === "creative_freedom" || !!v.doc_id || !!v.url || !!v.body,
+    {
+      message:
+        "reference needs a doc_id, url or body (unless creative_freedom)",
+    },
+  );
+
+const qc = z
+  .object({
+    result: z.enum(["pass", "rework"]),
+    quality_rating: z.coerce.number().int().min(1).max(5).optional(),
+    quality_notes: z.string().max(2000).optional(),
+    reassign_to: z.string().uuid().optional(),
+  })
+  .strict();
+
+const writeOff = z.object({ reason: z.string().min(1).max(500) }).strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -158,4 +213,8 @@ module.exports = {
   validateRecipeCreate: mk(recipeCreate),
   validateRecipeUpdate: mk(recipeUpdate),
   validateChemicalRecord: mk(chemicalRecord),
+  validateMaterialLog: mk(materialLog),
+  validateReferenceAdd: mk(referenceAdd),
+  validateQc: mk(qc),
+  validateWriteOff: mk(writeOff),
 };

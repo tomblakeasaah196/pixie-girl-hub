@@ -42,6 +42,14 @@ const invoiceSend = z
   })
   .strict();
 
+const receiptSend = z
+  .object({
+    sent_via: z
+      .enum(["whatsapp", "email", "instagram_dm", "print", "sms"])
+      .optional(),
+  })
+  .strict();
+
 const paymentApply = z
   .object({
     amount_applied_ngn: z.coerce.number().positive(),
@@ -152,6 +160,7 @@ module.exports = {
   validatePaymentApply: mw(paymentApply),
   validateCreditNoteCreate: mw(creditNoteCreate),
   validateReceiptIssue: mw(receiptIssue),
+  validateReceiptSend: mw(receiptSend),
   validateDocumentSettings: mw(documentSettings),
   invoiceCreate,
   paymentApply,

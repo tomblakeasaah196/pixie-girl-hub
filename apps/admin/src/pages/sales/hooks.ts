@@ -109,6 +109,20 @@ export function useOrderInvoice(orderId: string | null) {
   });
 }
 
+/** Send / resend the order's invoice to the customer (email / WhatsApp). */
+export function useSendOrderInvoice(orderId: string | null) {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ invoiceId, sent_via }: { invoiceId: string; sent_via?: string }) =>
+      salesApi.sendOrderInvoice(invoiceId, { sent_via }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "invoice", orderId] });
+      qc.invalidateQueries({ queryKey: ["invoices", biz] });
+    },
+  });
+}
+
 // ── Quotations ──────────────────────────────────────────────
 
 export function useQuotations(params: salesApi.QuoteListParams = {}) {

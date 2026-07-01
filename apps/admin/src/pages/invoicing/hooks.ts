@@ -62,8 +62,18 @@ export function useSendInvoice(id: string) {
       invoicingApi.sendInvoice(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["invoices", biz, "detail", id] });
+      qc.invalidateQueries({ queryKey: ["invoices", biz, "delivery", id] });
       qc.invalidateQueries({ queryKey: ["invoices", biz] });
     },
+  });
+}
+
+export function useInvoiceDelivery(invoiceId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["invoices", biz, "delivery", invoiceId],
+    queryFn: () => invoicingApi.getInvoiceDelivery(invoiceId!),
+    enabled: !!invoiceId,
   });
 }
 
@@ -122,6 +132,30 @@ export function useCancelReminder(invoiceId: string) {
       qc.invalidateQueries({
         queryKey: ["invoices", biz, "reminders", invoiceId],
       }),
+  });
+}
+
+export function useReceiptDelivery(receiptId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["invoices", biz, "receipt-delivery", receiptId],
+    queryFn: () => invoicingApi.getReceiptDelivery(receiptId!),
+    enabled: !!receiptId,
+  });
+}
+
+export function useSendReceipt(invoiceId: string | null) {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ receiptId, sent_via }: { receiptId: string; sent_via?: string }) =>
+      invoicingApi.sendReceipt(receiptId, { sent_via }),
+    onSuccess: (_data, { receiptId }) => {
+      qc.invalidateQueries({ queryKey: ["invoices", biz, "receipts", invoiceId] });
+      qc.invalidateQueries({
+        queryKey: ["invoices", biz, "receipt-delivery", receiptId],
+      });
+    },
   });
 }
 

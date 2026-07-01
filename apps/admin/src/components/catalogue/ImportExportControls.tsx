@@ -2,7 +2,9 @@ import { useRef, useState } from "react";
 import { Download, Upload, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
+import { UploadProgress } from "@/components/ui/UploadProgress";
 import { api } from "@/lib/api";
+import { useUploadProgress } from "@/lib/use-upload";
 
 interface ImportRow {
   row?: number;
@@ -42,6 +44,7 @@ export function ImportExportControls({
   );
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { progress, run } = useUploadProgress();
 
   const dl = async (path: string, which: "template" | "export") => {
     setBusy(which);
@@ -64,7 +67,9 @@ export function ImportExportControls({
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await api.postForm<ImportResult>(importPath, form);
+      const res = await run((onProgress) =>
+        api.postForm<ImportResult>(importPath, form, { onProgress }),
+      );
       setResult(res);
       onImported?.();
     } catch (err) {
@@ -120,6 +125,9 @@ export function ImportExportControls({
         />
       </div>
 
+      {busy === "import" && (
+        <UploadProgress value={progress} label="Importing…" className="mt-2" />
+      )}
       {error && <p className="text-[11.5px] text-danger mt-1">{error}</p>}
 
       <Modal

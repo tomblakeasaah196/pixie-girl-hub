@@ -240,7 +240,7 @@ export function CreateExpenseDrawer({ onClose }: { onClose: () => void }) {
               <span>Attach a receipt</span>
               <input
                 type="file"
-                accept="image/*,application/pdf"
+                accept="image/*,.heic,.heif,application/pdf"
                 className="hidden"
                 onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
               />

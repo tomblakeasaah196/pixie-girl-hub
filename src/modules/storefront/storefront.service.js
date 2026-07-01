@@ -52,7 +52,7 @@ async function getProduct({ brand, slug }) {
     throw new NotFoundError("Product");
   }
 
-  const [variants, gallery, colours, tiers, laces, cfg] = await Promise.all([
+  const [allVariants, gallery, colours, tiers, laces, cfg] = await Promise.all([
     styledVariantsRepo.listVariants({ brand, styled_id }),
     repo.listStyledGallery({ brand, styled_id }),
     repo.listColourGalleries({ brand, styled_id }),
@@ -61,10 +61,19 @@ async function getProduct({ brand, slug }) {
     styledVariantsRepo.getConfig({ brand }),
   ]);
 
+  // Show ONLY variants a buyer can actually purchase — the same is_active +
+  // is_deleted gate add-to-cart applies (listVariants already drops is_deleted).
+  // Without dropping DEACTIVATED rows here, a colour/size/lace switched off in
+  // the catalogue kept showing on the storefront, then failed at add-to-cart.
+  const variants = allVariants.filter((v) => v.is_active);
+
   const num = (x) =>
     x === null ? (x === undefined ? null : Number(x)) : Number(x);
-  // Surface only lace types this product actually generated variants for.
+  // Surface only sizes/lace types this product actually has a live, ACTIVE
+  // variant for — so an option whose variants were all removed or deactivated
+  // stops appearing here (and can't be picked into a doomed add-to-cart).
   const usedLace = new Set(variants.map((v) => v.lace_code).filter(Boolean));
+  const usedSize = new Set(variants.map((v) => v.size_code).filter(Boolean));
 
   return {
     styled_id,
@@ -105,20 +114,22 @@ async function getProduct({ brand, slug }) {
       effective_price_usd: num(v.effective_price_usd),
       is_default: Boolean(v.colour_is_default),
     })),
-    size_tiers: tiers.map((r) => ({
-      size_code: r.size_code,
-      label: r.label,
-      premium_ngn: Number(r.premium_ngn || 0),
-      premium_usd: num(r.premium_usd),
-      circumference_in:
-        r.circumference_min_in !== null &&
-        r.circumference_min_in !== undefined &&
-        r.circumference_max_in !== null &&
-        r.circumference_max_in !== undefined
-          ? `${r.circumference_min_in}–${r.circumference_max_in}"`
-          : null,
-      guidance_text: r.guidance_text,
-    })),
+    size_tiers: tiers
+      .filter((r) => usedSize.has(r.size_code))
+      .map((r) => ({
+        size_code: r.size_code,
+        label: r.label,
+        premium_ngn: Number(r.premium_ngn || 0),
+        premium_usd: num(r.premium_usd),
+        circumference_in:
+          r.circumference_min_in !== null &&
+          r.circumference_min_in !== undefined &&
+          r.circumference_max_in !== null &&
+          r.circumference_max_in !== undefined
+            ? `${r.circumference_min_in}–${r.circumference_max_in}"`
+            : null,
+        guidance_text: r.guidance_text,
+      })),
     lace_sizes: laces
       .filter((l) => usedLace.has(l.lace_code))
       .map((l) => ({

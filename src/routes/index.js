@@ -31,7 +31,6 @@ const authRouter = require("../shared/hr_payroll/auth.routes");
 const crmRouter = require("../modules/crm/crm.routes");
 const catalogueRouter = require("../modules/catalogue/catalogue.routes");
 const salesRouter = require("../modules/sales/sales.routes");
-// const posRouter = require("../modules/pos/pos.routes");
 const storefrontRouter = require("../modules/storefront/storefront.routes");
 const invoicingRouter = require("../modules/invoicing/invoicing.routes");
 const accountingRouter = require("../modules/accounting/accounting.routes");
@@ -66,6 +65,7 @@ const landingStudioRouter = require("../modules/landing_studio/landing.routes");
 const retentionRouter = require("../modules/retention/retention.routes");
 const productionRouter = require("../modules/production/production.routes");
 const serviceJobsRouter = require("../modules/service_jobs/service-jobs.routes");
+const customerAssetsRouter = require("../modules/customer_assets/customer-assets.routes");
 const pricingRouter = require("../modules/pricing/pricing.routes");
 const factoryAccountRouter = require("../modules/factory_account/factory-account.routes");
 const factoryI18nRouter = require("../modules/factory_i18n/factory-i18n.routes");
@@ -126,6 +126,7 @@ const helpCenterRouter = require("../modules/help_center/help-center.routes");
 const publicCatalogueRouter = require("../modules/storefront/public.routes");
 const publicServicesRouter = require("../modules/service_catalogue/service-catalogue.public.routes");
 const publicTrackingRouter = require("../modules/logistics/tracking.routes");
+const publicInvoiceRouter = require("../modules/invoicing/invoice-public.routes");
 const publicOrderTimelineRouter = require("../modules/sales/order-timeline.routes");
 const publicPayLinkRouter = require("../modules/sales/payment-link.public.routes");
 const publicOrderFormRouter = require("../modules/storefront/order-form.routes");
@@ -177,6 +178,8 @@ function mountRoutes(app) {
   publicRouter.use("/catalogue", publicCatalogueRouter);
   publicRouter.use("/services", publicServicesRouter);
   publicRouter.use("/tracking", publicTrackingRouter);
+  publicRouter.use("/invoices", publicInvoiceRouter);
+  publicRouter.use("/receipts", publicInvoiceRouter.receiptRouter);
   publicRouter.use("/order-timeline", publicOrderTimelineRouter);
   // Public WRITE endpoints (H-10): stricter per-IP throttle to blunt abuse on
   // unauthenticated record-creating routes.
@@ -288,7 +291,6 @@ function mountRoutes(app) {
   api.use("/crm", crmRouter);
   api.use("/catalogue", catalogueRouter);
   api.use("/sales", salesRouter);
-  // api.use("/pos", posRouter);
   api.use("/storefront", storefrontRouter);
   api.use("/invoicing", invoicingRouter);
   api.use("/accounting", accountingRouter);
@@ -323,6 +325,7 @@ function mountRoutes(app) {
   api.use("/retention", retentionRouter);
   api.use("/production", productionRouter);
   api.use("/service-jobs", serviceJobsRouter);
+  api.use("/customer-assets", customerAssetsRouter);
   api.use("/pricing", pricingRouter);
   api.use("/factory-accounts", factoryAccountRouter);
   api.use("/factory-i18n", factoryI18nRouter);

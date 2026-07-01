@@ -11,6 +11,101 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-06-30 — Stylist Studio: sell-a-service rail + POS teardown (PR3)
+
+**Source:** Stylist Studio (V2.2 §6.24) — sell services through the same order →
+payment-link → checkout machinery as products, take in a customer's own wig, and
+retire the POS terminal module in favour of the Quick Sale Form. Mostly code
+(sales order lines now carry `line_kind`/`service_offering_id`/`styled_id`; a
+service line prices from `shared.service_offerings` and skips stock/COGS; new
+`customer_assets` module for own-wig check-in/out). Migrations:
+
+- `000074_business_pos_teardown` (brand template) — drops every `{{BUSINESS}}.pos_*`
+  table (DO-block, idempotent) and the POS document-number sequences. KEEPS the
+  `pos` price tier / `sales_channel` / payroll commission channel — that is the
+  "in-store price" concept, not the terminal app, and is woven into pricing +
+  payroll; retiring it is a separate deliberate refactor.
+- `000248_shared_pos_permission_teardown` — removes the `pos` module permission
+  grants (`DELETE FROM shared.permissions WHERE module='pos'`).
+
+Tooling: `verify-schema.js` expected per-brand table count 170 → 162 (−8 pos).
+Apply to existing brands with `npm run db:repair`.
+
+---
+
+## 2026-06-30 — Stylist Studio: backend logic + task-trigger fix (PR2)
+
+**Source:** Stylist Studio (V2.2 §6.24) — operational backend on the existing
+`service_jobs` module (kept that module/permission key; "Stylist Studio" is the
+product name — renaming would break ~17 files that reference the table/key).
+Adds the full lifecycle (assign → start → return → QC/rework → dispatch →
+hand-to-sales), time sessions, materials, the style-brief references, the
+quantity-based wig-accountability ledger, DNA-aware job auto-open, and
+in-app/push notifications. Logic-only except for one migration:
+
+- `000073_business_studio_task_trigger_fix` (brand template) — `CREATE OR
+REPLACE` of `fn_service_job_create_task`. The trigger inserted the auto-raised
+  staff task with status `'today'`, but migration 000224 changed
+  `shared.tasks`' vocabulary to `('to_do','in_progress','in_review','done',
+'cancelled')`, so `'today'` violated `tasks_status_check` and **every stylist
+  assignment failed**. Now inserts `'to_do'`. No `CREATE TABLE` (idempotent
+  function replace, re-applied every `db:repair`); per-brand table count
+  unchanged.
+
+Apply to existing brands with `npm run db:repair`.
+
+---
+
+## 2026-06-30 — Stylist Studio: schema foundation (PR1)
+
+**Source:** Stylist Studio strategy (V2.2 §6.24) — in-house Faitlyn styling
+operations: sell services, assign wigs to stylists, track time/materials/
+references, QC, dispatch, and a quantity-based wig-accountability ledger so no
+wig is ever lost. This PR is schema-only; logic lands in PR2–PR4. See
+`docs/STYLIST_STUDIO_IMPLEMENTATION_GUIDE.md`.
+
+Brand templates (apply to existing brands with `npm run db:repair`):
+
+- `000067_business_stylist_studio_styled_dna` — styled products gain "production
+  DNA": `default_service_type_id`, `default_recipe_id` (shared recipe reuse),
+  `standard_turnaround_days`, `sop_steps` (JSONB), and a new
+  `styled_product_bom` default-materials table (sentinel).
+- `000068_business_stylist_studio_jobs` — widens `service_jobs.status` to the
+  full lifecycle (`assigned → in_progress → returned_for_qc → qc_passed →
+rework → ready_for_dispatch → handed_to_sales` + existing terminals) and adds
+  lifecycle timestamps, `qc_by`, `rework_count`, `reserved_variant_id`,
+  `sla_due_at`, `styled_id`, `shipment_id`, `customer_asset_id`. Pure-ALTER
+  (no sentinel) — idempotent CHECK swap + `ADD COLUMN IF NOT EXISTS`.
+- `000069_business_stylist_studio_children` — `service_job_time_logs` (sentinel),
+  `service_job_materials`, `service_job_references`, `wig_custody_ledger`,
+  `customer_assets`.
+- `000070_business_stylist_studio_sales_lines` — `sales_order_lines` gains
+  `line_kind` (`product|styled|bundle|service`), `service_offering_id`,
+  `styled_id`. Pure-ALTER.
+- `000071_business_stylist_studio_config` — `studio_config` singleton
+  (`missing_wig_threshold_days` default 7) + registers the `customer_asset`
+  document sequence (`<PFX>-CA`).
+- `000072_business_stylist_studio_services_seed` — seeds Faitlyn's 11-service
+  price list into `shared.service_offerings` (brand-key guarded to faitlynhair;
+  Pixie runs no in-house services). Idempotent via `ON CONFLICT (business,slug)`.
+
+Shared:
+
+- `000247_shared_stylist_studio_permissions` — ADDS the `stylist_studio`
+  permission key mirroring every role's `service_jobs` grant (non-destructive;
+  the old key is removed in PR2 once the backend flips to the new key, so the
+  live service-jobs routes never lose their permission mid-rename).
+
+Tooling:
+
+- `scripts/verify-schema.js` — expected per-brand table count 163 → 170 (the
+  seven new brand tables).
+
+Note: POS teardown (drop `pos_*`, remove the `pos` permission key + numbering
+rows) is intentionally deferred to PR3 so all POS removal lives in one PR.
+
+---
+
 ## 2026-06-24 — Fix: styled_products missing compare_at_price_usd (template 000046)
 
 **Source:** bug report — every Styled Product save (PATCH
@@ -64,7 +159,8 @@ from Sales/Service-Jobs, KPI scoring-entry UI, and Praxis HR read actions.
 ## 2026-06-22 — HR system Phase 1 (000233_shared_hr_phase1)
 
 **Source:** `docs/PixieGirl_Hub_Meeting_Notes_Transcript.docx` §3 (HR design)
-+ HR build decisions (chat answers #1–#15).
+
+- HR build decisions (chat answers #1–#15).
 
 Adds the operational HR tables the meeting required that the existing
 Pass-1/Pass-2 HR schema (template 000027) did not cover:

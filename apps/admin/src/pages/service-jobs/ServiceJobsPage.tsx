@@ -14,6 +14,9 @@ import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { JobBoard } from "./JobBoard";
 import { RecipesPanel } from "./RecipesPanel";
+import { AccountabilityPanel } from "./AccountabilityPanel";
+import { MyStudioJobs } from "./MyStudioJobs";
+import { QcQueue } from "./QcQueue";
 import {
   useJobs,
   useServiceTypes,
@@ -21,7 +24,11 @@ import {
   useReconciliations,
   useRunReconciliation,
 } from "./hooks";
-import { VARIANCE_STATUS_META, SERVICE_KEY_ICON } from "./constants";
+import {
+  VARIANCE_STATUS_META,
+  SERVICE_KEY_ICON,
+  HAPPINESS_EMOJI,
+} from "./constants";
 import type { ServiceType } from "./types";
 
 // ── Service types management ───────────────────────────────
@@ -449,8 +456,15 @@ function KpiStrip() {
       !j.intercompany_transaction_id,
   ).length;
 
+  const rated = jobs.filter((j) => j.customer_rating != null);
+  const avgHappiness = rated.length
+    ? rated.reduce((s, j) => s + (j.customer_rating ?? 0), 0) / rated.length
+    : null;
+  const happinessFace =
+    avgHappiness != null ? HAPPINESS_EMOJI[Math.round(avgHappiness)] : "—";
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
       <KpiTile label="Pending" value={String(pending)} />
       <KpiTile label="In Progress" value={String(inProgress)} />
       <KpiTile label="Completed Today" value={String(completedToday)} />
@@ -459,16 +473,38 @@ function KpiStrip() {
         value={String(pocketing)}
         tone={pocketing > 0 ? "warn" : "neutral"}
       />
+      <KpiTile
+        label="Customer Happiness"
+        value={
+          avgHappiness != null
+            ? `${happinessFace} ${avgHappiness.toFixed(1)}`
+            : "—"
+        }
+        tone={
+          avgHappiness != null && avgHappiness < 3
+            ? "warn"
+            : avgHappiness != null && avgHappiness >= 4
+              ? "success"
+              : "neutral"
+        }
+      />
     </div>
   );
 }
 
 // ── Main page ──────────────────────────────────────────────
 
-type Tab = "board" | "types" | "recipes" | "reconciliation";
+type Tab =
+  | "my"
+  | "board"
+  | "qc"
+  | "accountability"
+  | "types"
+  | "recipes"
+  | "reconciliation";
 
 export function ServiceJobsPage() {
-  useBreadcrumbs([{ label: "Service Jobs" }]);
+  useBreadcrumbs([{ label: "Stylist Studio" }]);
   const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState<Tab>("board");
 
@@ -489,7 +525,10 @@ export function ServiceJobsPage() {
   const canEdit = can("service_jobs", "edit");
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: "my", label: "My Jobs" },
     { id: "board", label: "Job Board" },
+    { id: "qc", label: "QC Queue" },
+    { id: "accountability", label: "Wig Accountability" },
     { id: "types", label: "Service Types" },
     { id: "recipes", label: "Recipes" },
     { id: "reconciliation", label: "Chemical Reconciliation" },
@@ -500,10 +539,9 @@ export function ServiceJobsPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-2xl">Service Jobs</h1>
+          <h1 className="font-display text-2xl">Stylist Studio</h1>
           <p className="text-muted text-sm">
-            Faitlyn Hair Assignment Register — installation, revamping, colour,
-            customisation
+            In-house styling operations — assign, track, QC and never lose a wig
           </p>
         </div>
       </div>
@@ -530,7 +568,10 @@ export function ServiceJobsPage() {
       </div>
 
       {/* Tab content */}
+      {tab === "my" && <MyStudioJobs />}
       {tab === "board" && <JobBoard canCreate={canCreate} />}
+      {tab === "qc" && <QcQueue />}
+      {tab === "accountability" && <AccountabilityPanel />}
       {tab === "types" && <ServiceTypesTab canCreate={canEdit} />}
       {tab === "recipes" && <RecipesPanel canCreate={canEdit} />}
       {tab === "reconciliation" && <ReconciliationTab />}

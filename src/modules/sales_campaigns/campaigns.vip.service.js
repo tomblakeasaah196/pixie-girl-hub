@@ -24,7 +24,14 @@ function t(brand, table) {
   if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   return `${brand}.${table}`;
 }
-//  = (client) => (client ? client.query.bind(client) : query);
+
+// Order statuses that count as money the customer has actually spent. Mirrors
+// the "paid" convention used across the codebase (contacts timeline, weekly
+// reports) — sales_orders has no `payment_status` column; spend is derived from
+// the lifecycle `status`. Kept in one place so the campaign-spend rollup and the
+// lifetime-spend promotion check can never drift apart.
+const PAID_ORDER_STATUSES =
+  "('paid','awaiting_dispatch','dispatched','completed')";
 
 /**
  * Compute the top-N spenders for a campaign + their order info, ready
@@ -41,7 +48,7 @@ async function listTopSpenders({ brand, campaign_id, top_n = 10 }) {
        FROM ${t(brand, "sales_orders")} so
        LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
       WHERE so.sales_campaign_id = $1
-        AND so.status IN ('paid','awaiting_dispatch','dispatched','completed')
+        AND so.status IN ${PAID_ORDER_STATUSES}
         AND so.contact_id        IS NOT NULL
       GROUP BY so.contact_id, c.first_name, c.last_name, c.email, c.primary_phone,
             c.ambassador_profile
@@ -84,7 +91,7 @@ async function grantTopSpenders({
       const { rows: lifeRows } = await client.query(
         `SELECT COALESCE(SUM(total_ngn),0)::numeric AS lifetime
            FROM ${t(brand, "sales_orders")}
-          WHERE contact_id = $1 AND payment_status = 'paid'`,
+          WHERE contact_id = $1 AND status IN ${PAID_ORDER_STATUSES}`,
         [spender.contact_id],
       );
       const lifetime = Number(lifeRows[0].lifetime || 0);

@@ -78,6 +78,44 @@ export const getMyOrders = () =>
     }[]
   >("/api/public/auth/orders");
 
+// ── Retention surface (§6.23) — the shopper's own loyalty/referral/rewards ──
+
+export interface LoyaltyStatus {
+  balance: number;
+  lifetime_earned: number;
+  tier: { key: string; name: string } | null;
+  next_tier: { name: string; points_to_go: number } | null;
+  ledger: { transaction_type: string; points: number; notes: string | null; created_at: string }[];
+}
+
+export interface ReferralInfo {
+  referral_code: string;
+  successful_count: number;
+  total_rewards_value: number;
+}
+
+export interface RewardItem {
+  reward_id: string;
+  display_name: string;
+  description: string | null;
+  reward_type: "order_discount" | "free_shipping" | "free_product" | "gift";
+  points_cost: number;
+  discount_type: "percentage" | "fixed_amount" | null;
+  discount_value: number | null;
+}
+
+export interface RedeemResult {
+  points_spent: number;
+  fulfilment: Record<string, unknown>;
+  voucher_code: string | null;
+}
+
+export const getLoyalty = () => api.get<LoyaltyStatus>("/api/public/auth/loyalty");
+export const getReferral = () => api.get<ReferralInfo>("/api/public/auth/referral");
+export const getRewards = () => api.get<RewardItem[]>("/api/public/auth/rewards");
+export const redeemReward = (rewardId: string) =>
+  api.post<RedeemResult>(`/api/public/auth/rewards/${rewardId}/redeem`);
+
 /** Merge the guest cart into the customer cart (call right after login). */
 export async function mergeGuestCart(): Promise<void> {
   try {

@@ -1684,22 +1684,44 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
     if (gallery.length >= 24) break;
   }
 
-  const variants = await styledVariantsRepo.listVariants({
-    brand: resolvedBrand,
-    styled_id,
-  });
+  // The storefront must show ONLY variants a buyer can actually purchase, using
+  // the SAME gate the checkout applies (is_active = true AND is_deleted = false,
+  // see the STYLED_VARIANT_UNAVAILABLE branch above). listVariants already drops
+  // is_deleted rows; we additionally drop DEACTIVATED ones here. Without this a
+  // lace/size whose variants were switched off (not trashed) in the catalogue
+  // kept appearing on the campaign & landing page, then failed at checkout —
+  // "I took the lace type off but the website still shows it."
+  const variants = (
+    await styledVariantsRepo.listVariants({
+      brand: resolvedBrand,
+      styled_id,
+    })
+  ).filter((v) => v.is_active);
 
+  // Size tiers: surface only sizes that this styled product actually SELLS —
+  // i.e. that still have at least one active, non-deleted variant. The brand's
+  // styled_size_tiers ladder lists every size the brand offers, so (like the
+  // lace filter below) it must be narrowed to what styled_product_variants has
+  // live, or a size whose variants were all removed would keep showing.
   const { rows: tierRows } = await query(
-    `SELECT size_code, label, premium_ngn, circumference_min_in,
-            circumference_max_in, guidance_text, display_order
-       FROM ${resolvedBrand}.styled_size_tiers
-      WHERE is_active = true
-      ORDER BY display_order`,
+    `SELECT st.size_code, st.label, st.premium_ngn, st.circumference_min_in,
+            st.circumference_max_in, st.guidance_text, st.display_order
+       FROM ${resolvedBrand}.styled_size_tiers st
+      WHERE st.is_active = true
+        AND st.size_code IN (
+          SELECT DISTINCT size_code
+            FROM ${resolvedBrand}.styled_product_variants
+           WHERE styled_id = $1 AND is_deleted = false AND is_active = true
+        )
+      ORDER BY st.display_order`,
+    [styled_id],
   );
-  // Only surface lace types that actually have a generated SKU for this
+  // Only surface lace types that actually have a live, ACTIVE variant for this
   // styled product — the brand-wide styled_lace_sizes ladder includes every
-  // lace type the brand sells, not just the ones generated here, so it must
-  // be filtered down to what styled_product_variants actually has.
+  // lace type the brand sells, not just the ones generated here, so it must be
+  // filtered down to what styled_product_variants currently has sellable. The
+  // is_active clause mirrors the size filter above and the checkout gate: a lace
+  // whose variants were deactivated (or partially trashed away) drops off here.
   const { rows: laceRows } = await query(
     `SELECT ls.lace_code, ls.label, ls.premium_ngn, ls.display_order
        FROM ${resolvedBrand}.styled_lace_sizes ls
@@ -1707,7 +1729,8 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
         AND ls.lace_code IN (
           SELECT DISTINCT lace_code
             FROM ${resolvedBrand}.styled_product_variants
-           WHERE styled_id = $1 AND lace_code IS NOT NULL AND is_deleted = false
+           WHERE styled_id = $1 AND lace_code IS NOT NULL
+             AND is_deleted = false AND is_active = true
         )
       ORDER BY ls.display_order`,
     [styled_id],

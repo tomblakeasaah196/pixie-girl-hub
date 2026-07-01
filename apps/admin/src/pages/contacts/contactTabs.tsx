@@ -20,6 +20,8 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { api, getAccessToken } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { useUploadProgress } from "@/lib/use-upload";
 import {
   Button,
   Pill,
@@ -387,8 +389,15 @@ export function DocumentsTab({ contactId }: { contactId: string }) {
   });
   const docs = asArray<Doc>(data);
 
+  const { progress, run } = useUploadProgress();
   const upload = useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: ({
+      file,
+      onProgress,
+    }: {
+      file: File;
+      onProgress?: (percent: number) => void;
+    }) => {
       const form = new FormData();
       form.append("file", file);
       form.append("reference_type", "contact");
@@ -396,7 +405,7 @@ export function DocumentsTab({ contactId }: { contactId: string }) {
       form.append("title", file.name);
       form.append("document_type", "other");
       if (business) form.append("business", business);
-      return api.postForm("/documents", form);
+      return api.postForm("/documents", form, { onProgress });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
@@ -439,7 +448,11 @@ export function DocumentsTab({ contactId }: { contactId: string }) {
               hidden
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) upload.mutate(f);
+                if (f) {
+                  run((onProgress) =>
+                    upload.mutateAsync({ file: f, onProgress }),
+                  ).catch(() => {});
+                }
                 if (inputRef.current) inputRef.current.value = "";
               }}
             />
@@ -455,6 +468,7 @@ export function DocumentsTab({ contactId }: { contactId: string }) {
           </>
         }
       />
+      <UploadProgress value={progress} className="px-3 pt-2" />
       <Rows loading={isLoading}>
         {docs.length === 0 ? (
           <EmptyRow>No documents linked to this contact yet.</EmptyRow>

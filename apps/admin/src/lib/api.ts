@@ -158,32 +158,95 @@ function safeJson(s: string): Json {
   }
 }
 
-/** Multipart upload to an authed endpoint. Sends the in-memory access token
- *  + refresh cookie; unwraps the { data } envelope like the JSON helpers.
- *  (Kept separate so `request` stays JSON-only.) */
-async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const brand = brandContext();
-  if (brand) headers["X-Brand-Context"] = brand;
+export interface PostFormOptions {
+  /** Upload-progress callback, 0–100. Fires as the request body streams up
+   *  (and a final 100 once the body is fully sent — the server may still be
+   *  processing). Enables the upload progress bars across the app. */
+  onProgress?: (percent: number) => void;
+  /** Abort the in-flight upload (e.g. user cancels). */
+  signal?: AbortSignal;
+  /** Internal: set when this is a retry after a silent token refresh. */
+  _retried?: boolean;
+}
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers,
-    credentials: "include",
-    body: form,
+/**
+ * Multipart upload to an authed endpoint. Sends the in-memory access token +
+ * refresh cookie and unwraps the { data } envelope like the JSON helpers.
+ *
+ * Built on XMLHttpRequest rather than fetch() because only XHR exposes upload
+ * progress events — that's what drives the progress bars. Mirrors `request`'s
+ * silent-refresh-and-retry on a 401 so a long-idle session doesn't drop an
+ * upload.
+ */
+function postForm<T>(
+  path: string,
+  form: FormData,
+  opts: PostFormOptions = {},
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}${path}`);
+    xhr.withCredentials = true; // send the refresh cookie
+    xhr.setRequestHeader("Accept", "application/json");
+    if (accessToken) xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+    const brand = brandContext();
+    if (brand) xhr.setRequestHeader("X-Brand-Context", brand);
+    // NB: never set Content-Type — the browser adds the multipart boundary.
+
+    if (opts.onProgress && xhr.upload) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          opts.onProgress!(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      // Body fully sent — show complete while the server finishes processing.
+      xhr.upload.onload = () => opts.onProgress!(100);
+    }
+
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        xhr.abort();
+        reject(new DOMException("Upload cancelled", "AbortError"));
+        return;
+      }
+      opts.signal.addEventListener("abort", () => xhr.abort(), { once: true });
+    }
+
+    xhr.onload = () => {
+      const text = xhr.responseText;
+      const parsed = text ? safeJson(text) : null;
+
+      // Silent-refresh-and-retry once on a 401 (token expired mid-session).
+      if (xhr.status === 401 && !opts._retried && accessToken !== null) {
+        refreshAccessToken().then((ok) => {
+          if (ok) {
+            resolve(postForm<T>(path, form, { ...opts, _retried: true }));
+          } else {
+            accessToken = null;
+            reject(new ApiError(401, parsed, "Unauthorized"));
+          }
+        });
+        return;
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const message =
+          (parsed as { error?: { message?: string }; message?: string })?.error
+            ?.message ||
+          (parsed as { message?: string })?.message ||
+          `HTTP ${xhr.status}`;
+        reject(new ApiError(xhr.status, parsed, message));
+        return;
+      }
+      resolve(((parsed as { data?: T })?.data ?? parsed) as T);
+    };
+    xhr.onerror = () =>
+      reject(new ApiError(0, null, "Network error during upload"));
+    xhr.onabort = () =>
+      reject(new DOMException("Upload cancelled", "AbortError"));
+
+    xhr.send(form);
   });
-  const text = await res.text();
-  const parsed = text ? safeJson(text) : null;
-  if (!res.ok) {
-    const message =
-      (parsed as { error?: { message?: string }; message?: string })?.error
-        ?.message ||
-      (parsed as { message?: string })?.message ||
-      `HTTP ${res.status}`;
-    throw new ApiError(res.status, parsed, message);
-  }
-  return ((parsed as { data?: T })?.data ?? parsed) as T;
 }
 
 /**

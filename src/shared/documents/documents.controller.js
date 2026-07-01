@@ -7,18 +7,22 @@
 "use strict";
 
 const service = require("./documents.service");
+const { compressUpload } = require("../../services/media-compression.service");
 const { parsePagination } = require("../../utils/pagination");
 const { AppError } = require("../../utils/errors");
 
 async function upload(req, res) {
   if (!req.file)
     throw new AppError("NO_FILE", "Multipart field 'file' is required", 400);
+  // Image uploads are optimised (and HEIC → JPEG converted) before storage;
+  // non-image files (PDFs, CSVs, …) pass through untouched.
+  const shrunk = await compressUpload(req.file);
   const doc = await service.store({
     brand: req.brand,
     user_id: req.user.user_id,
-    buffer: req.file.buffer,
-    filename: req.file.originalname,
-    mime_type: req.file.mimetype,
+    buffer: shrunk.buffer,
+    filename: shrunk.filename,
+    mime_type: shrunk.mime_type,
     document_type: req.body.document_type || "document",
     title: req.body.title,
     reference_type: req.body.reference_type,

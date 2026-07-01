@@ -1040,10 +1040,12 @@ export function useUploadCoverImage() {
       file,
       reference_type,
       reference_id,
+      onProgress,
     }: {
       file: File;
       reference_type?: string;
       reference_id?: string;
+      onProgress?: (percent: number) => void;
     }) => {
       const form = new FormData();
       form.append("file", file);
@@ -1052,6 +1054,7 @@ export function useUploadCoverImage() {
       return api.postForm<{ cdn_url: string; document_id: string }>(
         "/catalogue/cover-image",
         form,
+        { onProgress },
       );
     },
   });
@@ -1696,12 +1699,19 @@ export function useAddColourImage(styledId: string, colourId: string) {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: ({
+      file,
+      onProgress,
+    }: {
+      file: File;
+      onProgress?: (percent: number) => void;
+    }) => {
       const form = new FormData();
       form.append("file", file);
       return api.postForm<ProductImage>(
         `/catalogue/styled-products/${styledId}/colours/${colourId}/images`,
         form,
+        { onProgress },
       );
     },
     onSuccess: () => {

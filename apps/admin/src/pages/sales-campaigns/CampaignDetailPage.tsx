@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/primitives";
 import { DeniedState, ErrorState } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
+import { useToastStore } from "@/components/notifications/NotificationToast";
+import type { AppNotification } from "@/lib/notifications-api";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import {
@@ -41,6 +43,30 @@ import {
   useUpdateGiftStatus,
   useVipGrants,
 } from "@/lib/campaigns";
+
+/** Build a transient in-app toast notification. */
+function toastNotif(
+  title: string,
+  body: string,
+  priority: "normal" | "high" = "normal",
+  type = "order",
+): AppNotification {
+  return {
+    notification_id: crypto.randomUUID(),
+    user_id: "",
+    business: null,
+    type,
+    priority,
+    title,
+    body,
+    reference_type: null,
+    reference_id: null,
+    action_url: null,
+    is_read: false,
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
 
 const TONE_FOR: Record<CampaignStatus, Tone> = {
   draft: "neutral",
@@ -335,6 +361,48 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
   const grant = useGrantVip(campaign.campaign_id);
   const update = useUpdateGiftStatus(campaign.campaign_id);
   const grants = (q.data?.data || []) as VipGrant[];
+  const toast = useToastStore();
+
+  function computeVipGifts() {
+    grant.mutate(
+      {},
+      {
+        onSuccess: (res) => {
+          const granted = res?.granted ?? 0;
+          const promoted = res?.lifetime_promoted ?? 0;
+          if (granted > 0) {
+            toast.add(
+              toastNotif(
+                "VIP gifts computed",
+                `Rewarded ${granted} top spender${granted === 1 ? "" : "s"}` +
+                  (promoted
+                    ? ` · ${promoted} promoted to Platinum VIP`
+                    : "") +
+                  ". A gift task was opened for each.",
+              ),
+            );
+          } else {
+            toast.add(
+              toastNotif(
+                "Nothing to compute yet",
+                "No paid orders on this campaign yet, so there are no top spenders to reward.",
+                "high",
+              ),
+            );
+          }
+        },
+        onError: () => {
+          toast.add(
+            toastNotif(
+              "Could not compute VIP gifts",
+              "Something went wrong while computing the top spenders. Please try again.",
+              "high",
+            ),
+          );
+        },
+      },
+    );
+  }
 
   return (
     <Card className="p-5 space-y-4">
@@ -352,7 +420,8 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
           <Button
             variant="primary"
             icon={<Trophy className="w-4 h-4" />}
-            onClick={() => grant.mutate({})}
+            onClick={computeVipGifts}
+            disabled={grant.isPending}
           >
             {grant.isPending ? "Computing…" : "Compute VIP gifts"}
           </Button>

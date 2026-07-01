@@ -38,6 +38,8 @@ module.exports = async function process(job) {
       subject,
       status: "failed",
       error: err.message,
+      reference_type: job.data.reference_type,
+      reference_id: job.data.reference_id,
     });
     throw err;
   }
@@ -64,6 +66,8 @@ module.exports = async function process(job) {
     subject,
     status: "sent",
     provider_ref: messageId,
+    reference_type: job.data.reference_type,
+    reference_id: job.data.reference_id,
   });
   logger.info({ jobId: job.id, to, messageId }, "email sent");
   return { messageId };

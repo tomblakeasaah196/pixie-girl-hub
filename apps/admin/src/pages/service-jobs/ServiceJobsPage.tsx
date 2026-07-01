@@ -23,7 +23,11 @@ import {
   useReconciliations,
   useRunReconciliation,
 } from "./hooks";
-import { VARIANCE_STATUS_META, SERVICE_KEY_ICON } from "./constants";
+import {
+  VARIANCE_STATUS_META,
+  SERVICE_KEY_ICON,
+  HAPPINESS_EMOJI,
+} from "./constants";
 import type { ServiceType } from "./types";
 
 // ── Service types management ───────────────────────────────
@@ -451,8 +455,15 @@ function KpiStrip() {
       !j.intercompany_transaction_id,
   ).length;
 
+  const rated = jobs.filter((j) => j.customer_rating != null);
+  const avgHappiness = rated.length
+    ? rated.reduce((s, j) => s + (j.customer_rating ?? 0), 0) / rated.length
+    : null;
+  const happinessFace =
+    avgHappiness != null ? HAPPINESS_EMOJI[Math.round(avgHappiness)] : "—";
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
       <KpiTile label="Pending" value={String(pending)} />
       <KpiTile label="In Progress" value={String(inProgress)} />
       <KpiTile label="Completed Today" value={String(completedToday)} />
@@ -460,6 +471,21 @@ function KpiStrip() {
         label="No Sale (risk)"
         value={String(pocketing)}
         tone={pocketing > 0 ? "warn" : "neutral"}
+      />
+      <KpiTile
+        label="Customer Happiness"
+        value={
+          avgHappiness != null
+            ? `${happinessFace} ${avgHappiness.toFixed(1)}`
+            : "—"
+        }
+        tone={
+          avgHappiness != null && avgHappiness < 3
+            ? "warn"
+            : avgHappiness != null && avgHappiness >= 4
+              ? "success"
+              : "neutral"
+        }
       />
     </div>
   );

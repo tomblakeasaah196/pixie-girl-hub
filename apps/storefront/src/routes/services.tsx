@@ -1,72 +1,88 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "motion/react";
 import { getServices, fmt } from "@/lib/storefront";
 import { useCurrency } from "@/lib/useStore";
-import { Section, LoadingGrid, EmptyState, ErrorState } from "@/components/parts";
 
 export const Route = createFileRoute("/services")({
+  head: () => ({ meta: [{ title: "Services & Bookings — Faitlyn Hair" }] }),
   component: ServicesIndex,
 });
 
 function ServicesIndex() {
   const [currency] = useCurrency();
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["services"],
-    queryFn: () => getServices(),
-  });
+  const { data, isLoading } = useQuery({ queryKey: ["services"], queryFn: () => getServices() });
   const services = data ?? [];
 
   return (
-    <Section>
-      <h1 className="text-h2 font-display">Services</h1>
-      <p className="mt-2 text-body text-muted-foreground">
-        Book a stylist for installs, styling and care.
-      </p>
-      <div className="mt-10">
+    <main className="bg-ink text-cream">
+      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-36 md:pt-44 pb-16">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          className="max-w-2xl"
+        >
+          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">Services · Prestations</p>
+          <h1 className="mt-5 font-display text-5xl md:text-7xl leading-[0.95] tracking-tight text-balance">
+            Book with the <em className="font-couture text-taupe">maison</em>.
+          </h1>
+          <p className="mt-6 text-cream/70 leading-relaxed text-base md:text-lg">
+            Installs, in-home styling sessions and virtual consults — each booked
+            with a senior Faitlyn stylist.
+          </p>
+        </motion.div>
+      </section>
+
+      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pb-32">
         {isLoading ? (
-          <LoadingGrid />
-        ) : isError ? (
-          <ErrorState onRetry={() => refetch()} />
+          <div className="grid gap-px bg-taupe/15 border border-taupe/15 md:grid-cols-3">
+            {[0, 1, 2].map((i) => <div key={i} className="bg-ink h-72 animate-pulse" />)}
+          </div>
         ) : services.length === 0 ? (
-          <EmptyState title="No services available yet." />
+          <p className="py-24 text-center text-cream/50">No services available yet.</p>
         ) : (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {services.map((s) => (
-              <Link
-                key={s.service_id}
-                to="/services/$slug"
-                params={{ slug: s.slug }}
-                className="group block overflow-hidden rounded-lg border border-border"
-              >
-                <div className="aspect-video overflow-hidden bg-secondary">
-                  {s.cover_image_url ? (
-                    <img
-                      src={s.cover_image_url}
-                      alt={s.name}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : null}
-                </div>
-                <div className="p-4">
-                  <h3 className="text-h6 font-display">{s.name}</h3>
-                  {s.short_description ? (
-                    <p className="mt-1 text-body-sm text-muted-foreground line-clamp-2">
-                      {s.short_description}
+          <div className="grid gap-px bg-taupe/15 border border-taupe/15 md:grid-cols-3">
+            {services.map((s, i) => {
+              const meta = [s.tags?.[0], s.duration_minutes ? `${s.duration_minutes} min` : null]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <motion.div
+                  key={s.service_id}
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-80px" }}
+                  transition={{ duration: 0.7, delay: (i % 3) * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                  className="bg-ink"
+                >
+                  <Link to="/services/$slug" params={{ slug: s.slug }} className="group flex h-full flex-col p-8 md:p-10 min-h-[300px] hover:bg-card transition-colors">
+                    <p className="text-[0.6rem] tracking-[0.4em] uppercase text-rose">
+                      {i === 0 ? "Featured" : "Prestation"}
                     </p>
-                  ) : null}
-                  <p className="mt-2 text-body-sm font-mono">
-                    {s.price_is_from ? "From " : ""}
-                    {fmt(
-                      currency === "USD" ? s.base_price_usd : s.base_price_ngn,
-                      currency,
-                    )}
-                  </p>
-                </div>
-              </Link>
-            ))}
+                    <h3 className="mt-4 font-display text-2xl md:text-3xl group-hover:text-taupe transition-colors">{s.name}</h3>
+                    {s.short_description ? (
+                      <p className="mt-3 text-cream/65 leading-relaxed text-body-sm">{s.short_description}</p>
+                    ) : null}
+                    <div className="mt-auto pt-8">
+                      <div className="flex items-baseline gap-2">
+                        {s.price_is_from ? <span className="text-[0.62rem] tracking-[0.3em] uppercase text-cream/50">From</span> : null}
+                        <span className="font-display text-2xl text-taupe">
+                          {fmt(currency === "USD" ? s.base_price_usd : s.base_price_ngn, currency)}
+                        </span>
+                        {s.compare_at_price_ngn && currency === "NGN" ? (
+                          <span className="text-sm text-cream/40 line-through">{fmt(s.compare_at_price_ngn, "NGN")}</span>
+                        ) : null}
+                      </div>
+                      {meta ? <p className="mt-3 text-[0.58rem] tracking-[0.3em] uppercase text-cream/45">{meta}</p> : null}
+                    </div>
+                  </Link>
+                </motion.div>
+              );
+            })}
           </div>
         )}
-      </div>
-    </Section>
+      </section>
+    </main>
   );
 }

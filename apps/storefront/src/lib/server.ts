@@ -5,6 +5,8 @@ import { brandFromHost, type BrandKey } from "./brand";
 import {
   getProducts,
   getProduct,
+  getShades,
+  getBundles,
   unwrap,
   type ProductCard,
   type ProductDetail,
@@ -90,36 +92,46 @@ export const ssrProducts = createServerFn({ method: "GET", strict: false })
     },
   );
 
-// Home: the published 'home' page (template_key + slots, if Studio published one)
-// plus a product preview for the default layout / product_grid sections.
+// Home: the published 'home' page slots (Studio template content) + the live
+// catalogue (products/shades/bundles + their images). Each read fails soft so
+// the website renders the ported maison defaults when a source is empty.
 export const ssrHome = createServerFn({ method: "GET", strict: false }).handler(
   async (): Promise<{
     brand: BrandKey;
-    page: StudioPage | null;
+    homeSlots: Record<string, unknown> | null;
     products: ProductCard[];
+    shades: unknown[];
+    bundles: unknown[];
   }> => {
     const { brand, cookie } = reqBrandCookie();
-    let page: StudioPage | null = null;
+    const ctx = { brand, cookie };
+    let homeSlots: Record<string, unknown> | null = null;
     let products: ProductCard[] = [];
-    try {
-      const site = await api.get<SiteConfig>(
-        "/api/public/storefront/site?path=/",
-        { brand, cookie },
-      );
-      page =
-        (site.pages || []).find(
+    let shades: unknown[] = [];
+    let bundles: unknown[] = [];
+
+    const [siteR, prodR, shadeR, bundleR] = await Promise.allSettled([
+      api.get<SiteConfig>("/api/public/storefront/site?path=/", ctx),
+      getProducts("?page=1&page_size=8", ctx),
+      getShades(ctx),
+      getBundles(ctx),
+    ]);
+
+    if (siteR.status === "fulfilled") {
+      const page =
+        (siteR.value.pages || []).find(
           (p) => p.page_key === "home" || p.url_path === "/",
         ) || null;
-    } catch {
-      /* /site not live yet */
+      homeSlots = (page?.slots as Record<string, unknown> | undefined) ?? null;
     }
-    try {
-      const r = await getProducts("?page=1&page_size=8", { brand, cookie });
-      products = (unwrap(r) as ProductCard[]) ?? [];
-    } catch {
-      /* catalogue offline */
-    }
-    return { brand, page, products };
+    if (prodR.status === "fulfilled")
+      products = (unwrap(prodR.value) as ProductCard[]) ?? [];
+    if (shadeR.status === "fulfilled")
+      shades = (unwrap(shadeR.value) as unknown[]) ?? [];
+    if (bundleR.status === "fulfilled")
+      bundles = (unwrap(bundleR.value) as unknown[]) ?? [];
+
+    return { brand, homeSlots, products, shades, bundles };
   },
 );
 

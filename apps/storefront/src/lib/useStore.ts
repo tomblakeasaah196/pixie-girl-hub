@@ -40,6 +40,27 @@ export function useCurrency(): [Currency, (c: Currency) => void] {
   return [currency, setCurrency];
 }
 
+const CART_OPEN_EVENT = "sf:cart-open";
+
+/** Open the bag slide-over from anywhere (e.g. the header Bag button). */
+export function openCart() {
+  if (typeof window !== "undefined")
+    window.dispatchEvent(new CustomEvent(CART_OPEN_EVENT, { detail: true }));
+}
+
+/** Shared open state for the cart drawer — event-backed so header + drawer sync. */
+export function useCartDrawer(): { open: boolean; setOpen: (o: boolean) => void } {
+  const [open, setOpenState] = useState(false);
+  useEffect(() => {
+    const h = (e: Event) => setOpenState(Boolean((e as CustomEvent).detail));
+    window.addEventListener(CART_OPEN_EVENT, h);
+    return () => window.removeEventListener(CART_OPEN_EVENT, h);
+  }, []);
+  const setOpen = (o: boolean) =>
+    window.dispatchEvent(new CustomEvent(CART_OPEN_EVENT, { detail: o }));
+  return { open, setOpen };
+}
+
 export function useCartCount(): number {
   const [count, setCount] = useState(0);
   const refresh = useCallback(() => {

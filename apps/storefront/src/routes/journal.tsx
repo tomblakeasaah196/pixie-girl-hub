@@ -1,46 +1,71 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "motion/react";
 import { getContentList } from "@/lib/storefront";
-import { Section, EmptyState, ErrorState } from "@/components/parts";
+import { SITE_IMAGES as I } from "@/lib/site-assets";
 
-export const Route = createFileRoute("/journal")({ component: Journal });
+export const Route = createFileRoute("/journal")({
+  head: () => ({ meta: [{ title: "Journal — Notes from the Atelier · Faitlyn Hair" }] }),
+  component: Journal,
+});
+
+interface Post {
+  slug: string;
+  title: string;
+  excerpt?: string;
+  cover_image_url?: string;
+  category?: string;
+}
+
+// Fallback so the journal reads like the reference before posts are published.
+const DEMO: Post[] = [
+  { slug: "eleven-hands", title: "Eleven hands, one wig: inside our Lagos workroom", category: "Atelier", cover_image_url: I.editorialAtelier, excerpt: "A day on the studio floor, from raw bundle to steam-set finish." },
+  { slug: "wash-raw-curl", title: "How to wash a raw curl without losing the pattern", category: "Care", cover_image_url: I.productCurls, excerpt: "The founder's exact routine for keeping coils defined, wash after wash." },
+  { slug: "blunt-bob-2026", title: "The case for the blunt bob, in 2026", category: "Edit", cover_image_url: I.productBob, excerpt: "Why the sharpest silhouette of the year is also the easiest to wear." },
+];
 
 function Journal() {
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["journal"],
-    queryFn: () => getContentList("journal"),
-  });
-  const posts = data ?? [];
+  const { data } = useQuery({ queryKey: ["journal"], queryFn: () => getContentList("journal") });
+  const live = (data ?? []) as Post[];
+  const posts = live.length ? live : DEMO;
 
   return (
-    <Section>
-      <h1 className="text-h2 font-display">Journal</h1>
-      <p className="mt-2 text-body text-muted-foreground">Notes, edits and how-tos.</p>
-      <div className="mt-10">
-        {isLoading ? (
-          <p className="text-body text-muted-foreground">Loading...</p>
-        ) : isError ? (
-          <ErrorState onRetry={() => refetch()} />
-        ) : posts.length === 0 ? (
-          <EmptyState title="No journal entries yet." />
-        ) : (
-          <div className="grid gap-8 md:grid-cols-2">
-            {posts.map((p) => (
-              <Link key={p.slug} to="/journal/$slug" params={{ slug: p.slug }} className="group block">
-                {p.cover_image_url ? (
-                  <div className="aspect-video overflow-hidden rounded-md bg-secondary">
-                    <img src={p.cover_image_url} alt={p.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                  </div>
-                ) : null}
-                <h3 className="mt-3 text-h5 font-display">{p.title}</h3>
-                {p.excerpt ? (
-                  <p className="mt-1 text-body-sm text-muted-foreground line-clamp-2">{p.excerpt}</p>
-                ) : null}
+    <main className="bg-ink text-cream">
+      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-36 md:pt-44 pb-28">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">Journal</p>
+          <h1 className="mt-5 font-display text-5xl md:text-7xl leading-[0.95] tracking-tight">
+            Notes from the <em className="font-couture text-taupe">atelier</em>.
+          </h1>
+        </motion.div>
+
+        <div className="mt-16 grid gap-x-8 gap-y-14 md:grid-cols-3">
+          {posts.map((p, i) => (
+            <motion.div
+              key={p.slug}
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ duration: 0.7, delay: (i % 3) * 0.08, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Link to="/journal/$slug" params={{ slug: p.slug }} className="group block">
+                <div className="aspect-[4/5] overflow-hidden bg-card">
+                  {p.cover_image_url ? (
+                    <img src={p.cover_image_url} alt={p.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-[1200ms] ease-out group-hover:scale-105" />
+                  ) : null}
+                </div>
+                {p.category ? <p className="mt-5 text-[0.6rem] tracking-[0.4em] uppercase text-rose">{p.category}</p> : null}
+                <h3 className="mt-3 font-display text-2xl md:text-3xl leading-tight group-hover:text-taupe transition-colors">{p.title}</h3>
+                {p.excerpt ? <p className="mt-2 text-cream/60 text-body-sm leading-relaxed">{p.excerpt}</p> : null}
               </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    </Section>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+    </main>
   );
 }

@@ -6,22 +6,25 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
-import { ShoppingBag, User, Moon, Sun } from "lucide-react";
+import type { ReactNode } from "react";
 import { Toaster } from "sonner";
 
 import appCss from "../styles.css?url";
-import { clientBrand, type BrandKey } from "@/lib/brand";
+import { type BrandKey } from "@/lib/brand";
 import { ssrSite } from "@/lib/server";
-import { useCurrency, useCartCount } from "@/lib/useStore";
+import { SiteHeader } from "@/components/site/SiteHeader";
+import { SiteFooter } from "@/components/site/SiteFooter";
+import { PageTransition } from "@/components/site/PageTransition";
+import { NewsletterModal } from "@/components/site/NewsletterModal";
+import { CartDrawer } from "@/components/site/CartDrawer";
 
 /*
- * SSR shell for the Storefront Website.
+ * SSR shell for the Storefront Website (dark-first maison).
  * 1. Resolve brand from the request host (apps/landing pattern).
- * 2. Fetch the published Studio config (theme tokens, nav, popups) from the Hub.
- * 3. Inject the theme tokens as CSS variables + set <html data-brand>, then
- *    render the header/footer/preloader. Falls back to baked tokens if /site
- *    is not published yet.
+ * 2. Fetch published Studio config (theme tokens) from the Hub.
+ * 3. Inject theme tokens as CSS variables + set <html data-brand class="dark">,
+ *    then render the ported SiteHeader / SiteFooter chrome. Falls back to the
+ *    baked maison tokens when /site is not published yet.
  */
 
 interface SiteConfig {
@@ -33,8 +36,6 @@ interface SiteConfig {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  // Resolve brand + published Studio theme via a server fn (the only place the
-  // server-only request is read). Falls back to baked tokens if /site is empty.
   loader: async (): Promise<SiteConfig> => ssrSite(),
   head: () => ({
     meta: [
@@ -44,6 +45,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
       { name: "robots", content: "index,follow,max-image-preview:large" },
+      { name: "theme-color", content: "#0c0a09" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -55,21 +57,35 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   notFoundComponent: NotFound,
 });
 
+// Colour/type tokens the Studio theme may override. Non-CSS-var keys like
+// `logo_url` are consumed separately (see logoFrom) and skipped here.
 function tokensToCss(tokens?: Record<string, string>): string | null {
   if (!tokens || Object.keys(tokens).length === 0) return null;
   const body = Object.entries(tokens)
+    .filter(([k]) => k.startsWith("--") || k.startsWith("color") || k.startsWith("font"))
     .map(([k, v]) => `${k.startsWith("--") ? k : `--${k}`}: ${v};`)
     .join("");
-  return `:root{${body}}`;
+  if (!body) return null;
+  // Dark-first maison: Studio tokens override the baked DARK palette only, so
+  // the light-mode inverse in :root is preserved.
+  return `.dark{${body}}`;
 }
+
+function logoFrom(tokens?: Record<string, string>): string | undefined {
+  return tokens?.logo_url || tokens?.["logo-url"] || undefined;
+}
+
+// Applied before paint so a stored light-mode choice doesn't flash dark.
+const THEME_BOOT = `try{var t=localStorage.getItem('sf_theme');var d=document.documentElement;if(t==='light'){d.classList.remove('dark');d.classList.add('light');}else{d.classList.add('dark');}}catch(e){document.documentElement.classList.add('dark');}`;
 
 function RootShell({ children }: { children: ReactNode }) {
   const { brand, theme } = Route.useLoaderData();
   const themeCss = tokensToCss(theme?.tokens);
   return (
-    <html lang="en" data-brand={brand}>
+    <html lang="en" data-brand={brand} className="dark">
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
         {themeCss ? (
           <style dangerouslySetInnerHTML={{ __html: themeCss }} />
         ) : null}
@@ -84,172 +100,37 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const { preview } = Route.useLoaderData();
+  const { preview, theme } = Route.useLoaderData();
+  const logoUrl = logoFrom(theme?.tokens);
   return (
     <QueryClientProvider client={queryClient}>
       {preview ? (
-        <div className="bg-burgundy py-1.5 text-center text-body-sm text-cream">
-          Preview - showing draft changes (not published)
+        <div className="bg-primary py-1.5 text-center text-[0.62rem] tracking-[0.4em] uppercase text-primary-foreground">
+          Preview — showing draft changes (not published)
         </div>
       ) : null}
-      <Preloader />
-      <Header />
-      <Outlet />
-      <Footer />
+      <SiteHeader logoUrl={logoUrl} />
+      <PageTransition>
+        <Outlet />
+      </PageTransition>
+      <SiteFooter logoUrl={logoUrl} />
+      <CartDrawer />
+      <NewsletterModal />
       <Toaster position="bottom-center" theme="dark" />
     </QueryClientProvider>
   );
 }
 
-function Header() {
-  const [currency, setCurrency] = useCurrency();
-  const count = useCartCount();
-  const [dark, setDark] = useState(true);
-
-  useEffect(() => {
-    const isDark = !document.documentElement.classList.contains("light");
-    setDark(isDark);
-  }, []);
-  const toggleDark = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    document.documentElement.classList.toggle("light", !next);
-  };
-
-  const brandName =
-    clientBrand() === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl";
-
-  return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
-        {/* Left: currency + theme */}
-        <div className="flex items-center gap-3">
-          <div className="flex overflow-hidden rounded-full border border-border text-xs">
-            {(["NGN", "USD"] as const).map((c) => (
-              <button
-                key={c}
-                onClick={() => setCurrency(c)}
-                className={`px-2.5 py-1 ${currency === c ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={toggleDark}
-            aria-label="Toggle theme"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            {dark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-        </div>
-
-        {/* Center: logo */}
-        <Link to="/" className="text-h5 md:text-h4 font-display tracking-tight">
-          {brandName}
-        </Link>
-
-        {/* Right: account + cart */}
-        <div className="flex items-center gap-4">
-          <Link
-            to="/account"
-            className="text-muted-foreground hover:text-foreground"
-            aria-label="Account"
-          >
-            <User size={18} />
-          </Link>
-          <Link
-            to="/cart"
-            className="relative text-muted-foreground hover:text-foreground"
-            aria-label="Cart"
-          >
-            <ShoppingBag size={18} />
-            {count > 0 ? (
-              <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose px-1 text-[10px] text-cream">
-                {count}
-              </span>
-            ) : null}
-          </Link>
-        </div>
-      </div>
-      <nav className="mx-auto flex max-w-6xl items-center gap-6 px-4 pb-2 text-caption md:px-6">
-        <Link to="/shop" className="hover:text-foreground">
-          Shop
-        </Link>
-        <Link to="/shades" className="hover:text-foreground">
-          Shades
-        </Link>
-        <Link to="/bundles" className="hover:text-foreground">
-          Bundles
-        </Link>
-      </nav>
-    </header>
-  );
-}
-
-function Preloader() {
-  // 2s logo shimmer on first visit of the session; respects reduced motion.
-  const [show, setShow] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-
-  useEffect(() => {
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    if (reduced || sessionStorage.getItem("sf_preloaded")) return;
-    setShow(true);
-    const t1 = setTimeout(() => setLeaving(true), 1700);
-    const t2 = setTimeout(() => {
-      setShow(false);
-      sessionStorage.setItem("sf_preloaded", "1");
-    }, 2100);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, []);
-
-  if (!show) return null;
-  const brandName =
-    clientBrand() === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl";
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-background transition-opacity duration-300"
-      style={{ opacity: leaving ? 0 : 1 }}
-      aria-hidden="true"
-    >
-      <span className="gold-shimmer text-h2 font-display">{brandName}</span>
-    </div>
-  );
-}
-
-function Footer() {
-  const brandName =
-    typeof document !== "undefined" && clientBrand() === "faitlynhair"
-      ? "Faitlyn Hair"
-      : "Pixie Girl";
-  return (
-    <footer className="mt-24 border-t border-border">
-      <div className="mx-auto max-w-6xl px-4 py-10 text-body-sm text-muted-foreground md:px-6">
-        <p className="font-display text-foreground">{brandName}</p>
-        <p className="mt-2">
-          Luxury wigs, delivered. (c) {new Date().getFullYear()}
-        </p>
-      </div>
-    </footer>
-  );
-}
-
 function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
+    <div className="flex min-h-screen items-center justify-center bg-ink px-4 text-cream">
       <div className="text-center">
-        <h1 className="text-6xl font-bold">404</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          This page does not exist.
-        </p>
-        <Link to="/" className="mt-6 inline-block underline">
+        <h1 className="font-display text-7xl">404</h1>
+        <p className="mt-3 text-sm text-taupe">This page does not exist.</p>
+        <Link
+          to="/"
+          className="mt-6 inline-block text-[0.65rem] tracking-[0.4em] uppercase text-taupe underline-offset-4 hover:underline"
+        >
           Go home
         </Link>
       </div>

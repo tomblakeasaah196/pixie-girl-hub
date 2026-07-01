@@ -1,78 +1,77 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { clientBrand } from "@/lib/brand";
-import { getProducts, unwrap, type ProductCard } from "@/lib/storefront";
+import { createFileRoute } from "@tanstack/react-router";
+import { CinematicPreloader } from "@/components/preloader/CinematicPreloader";
+import { Hero } from "@/components/site/Hero";
+import { Marquee } from "@/components/site/Marquee";
+import { BentoGrid } from "@/components/site/BentoGrid";
+import { ShopByShade } from "@/components/site/ShopByShade";
+import { SignatureCarousel } from "@/components/site/SignatureCarousel";
+import { WhyChooseFaitlyn } from "@/components/site/WhyChooseFaitlyn";
+import { EditorialSplit } from "@/components/site/EditorialSplit";
+import { PressStrip } from "@/components/site/PressStrip";
+import { Testimonials } from "@/components/site/Testimonials";
+import { Gallery } from "@/components/site/Gallery";
+import { FounderNote } from "@/components/site/FounderNote";
 import { ssrHome } from "@/lib/server";
-import { useCurrency } from "@/lib/useStore";
-import { ProductCardLink, Section } from "@/components/parts";
-import { PageTemplate, hasSections, type StudioPage } from "@/components/templates";
+import type { ProductCard } from "@/lib/storefront";
+import {
+  resolveHomeContent,
+  mapProducts,
+  mapShades,
+  mapBundles,
+} from "@/lib/home-content";
 
 /**
- * Home. Renders the published Studio 'home' page (template_key + slots) when one
- * exists; otherwise falls back to the built-in hero + new-in grid. Brand + prices
- * from the Hub.
+ * Home — the Faitlyn maison template.
+ * Marketing copy/images resolve from the Studio 'home' page slots (/site);
+ * catalogue sections (products/bundles/shades + images) resolve from the Hub.
+ * Both fall back to the ported defaults so the page is identical before Studio
+ * or the catalogue is populated. Header/footer are global chrome in __root.tsx.
  */
 export const Route = createFileRoute("/")({
   loader: async () => ssrHome(),
-  component: Home,
+  head: () => ({
+    meta: [
+      { title: "Faitlyn Hair — Luxury Natural Hair, Crafted in Lagos" },
+      {
+        name: "description",
+        content:
+          "Faitlyn Hair: a Lagos maison crafting the world's most coveted pixies, bobs and curls. Hand-finished, lace-perfect luxury — shipped worldwide.",
+      },
+    ],
+  }),
+  component: Index,
 });
 
-function Home() {
-  const initial = Route.useLoaderData();
-  const [currency] = useCurrency();
-  const { data } = useQuery({
-    queryKey: ["home-products", initial.brand],
-    queryFn: async () =>
-      (unwrap(await getProducts("?page=1&page_size=8")) as ProductCard[]) ?? [],
-    initialData: initial.products,
-  });
-  const products = data ?? [];
-  const page = initial.page as StudioPage | null;
+function Index() {
+  const { homeSlots, products, shades, bundles } = Route.useLoaderData();
+  const c = resolveHomeContent(homeSlots);
 
-  // Studio-published home -&gt; render from its template/sections.
-  if (hasSections(page)) {
-    return <PageTemplate page={page!} products={products} currency={currency} />;
-  }
+  const signatureItems = products.length
+    ? mapProducts(products as ProductCard[])
+    : undefined;
+  const shadeItems = shades.length
+    ? mapShades(shades as Parameters<typeof mapShades>[0])
+    : undefined;
+  const bundleItems = bundles.length
+    ? mapBundles(bundles as Parameters<typeof mapBundles>[0])
+    : undefined;
 
-  // Default built-in home.
-  const brandName =
-    clientBrand() === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl";
   return (
-    <main>
-      <section className="mx-auto max-w-6xl px-4 py-20 md:px-6 md:py-28">
-        <p className="text-caption">{brandName}</p>
-        <h1 className="mt-4 text-h1 font-display">
-          Luxury wigs, <span className="font-couture">deliberately</span> yours.
-        </h1>
-        <p className="mt-6 max-w-xl text-body-lg text-muted-foreground">
-          Hand-finished styles, shade-matched and shipped worldwide. Browse the
-          atelier and make it yours.
-        </p>
-        <div className="mt-8 flex gap-3">
-          <Link to="/shop" className="rounded-full bg-primary px-7 py-3 text-body text-primary-foreground">
-            Shop all
-          </Link>
-          <Link to="/shades" className="rounded-full border border-border px-7 py-3 text-body hover:bg-secondary">
-            Shop by shade
-          </Link>
-        </div>
-      </section>
-
-      {products.length > 0 ? (
-        <Section>
-          <div className="flex items-end justify-between">
-            <h2 className="text-h3 font-display">New in</h2>
-            <Link to="/shop" className="text-body-sm text-muted-foreground hover:text-foreground">
-              View all
-            </Link>
-          </div>
-          <div className="mt-8 grid grid-cols-2 gap-6 md:grid-cols-4">
-            {products.map((p) => (
-              <ProductCardLink key={p.styled_id} p={p} currency={currency} />
-            ))}
-          </div>
-        </Section>
-      ) : null}
-    </main>
+    <>
+      <CinematicPreloader />
+      <main>
+        <Hero content={c.hero} />
+        <Marquee items={c.marquee} />
+        <BentoGrid head={c.bundlesHead} items={bundleItems} />
+        <ShopByShade head={c.shadesHead} items={shadeItems} />
+        <SignatureCarousel head={c.signatureHead} items={signatureItems} />
+        <WhyChooseFaitlyn content={c.whyChoose} />
+        <EditorialSplit content={c.editorial} />
+        <PressStrip eyebrow={c.press.eyebrow} items={c.press.items} />
+        <Testimonials eyebrow={c.testimonials.eyebrow} items={c.testimonials.items} />
+        <Gallery eyebrow={c.gallery.eyebrow} heading={c.gallery.heading} images={c.gallery.images} />
+        <FounderNote content={c.founder} />
+      </main>
+    </>
   );
 }

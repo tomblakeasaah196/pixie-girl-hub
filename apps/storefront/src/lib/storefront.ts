@@ -161,6 +161,14 @@ export const getBundles = (ctx?: ApiContext) =>
       description?: string;
       bundle_price_ngn?: string;
       hero_image_url?: string;
+      components?: {
+        name?: string;
+        slug?: string;
+        image_url?: string;
+        quantity?: number;
+        role?: string;
+        price_ngn?: string;
+      }[];
     }[]
   >(`${SF}/bundles`, ctx);
 export const getBundleDetail = (slug: string, ctx?: ApiContext) =>

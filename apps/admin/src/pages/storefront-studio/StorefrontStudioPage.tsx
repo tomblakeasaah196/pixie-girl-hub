@@ -401,7 +401,7 @@ function ImageField({
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.heic,.heif"
         className="hidden"
         onChange={(e) => pick(e.target.files?.[0])}
       />

@@ -21,6 +21,11 @@ const storage = require("../../services/storage.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const {
+  isHeic,
+  compressImage,
+  filenameForMime,
+} = require("../../services/media-compression.service");
 
 const EXT_BY_MIME = {
   "application/pdf": ".pdf",
@@ -107,6 +112,19 @@ async function store({
 }) {
   if (!Buffer.isBuffer(buffer))
     throw new AppError("INVALID_FILE", "store() requires a Buffer", 400);
+
+  // Safety net for the whole documents gateway: a HEIC/HEIF buffer that
+  // reached store() without its caller converting it (a phone receipt, a
+  // message attachment, any future caller) would otherwise be persisted as an
+  // unrenderable file — browsers can't decode HEIC. Decode it to JPEG here so
+  // *every* documents.store() path lands a viewable image. Non-HEIC buffers
+  // (already-compressed images, PDFs, spreadsheets, video) are left untouched.
+  if (isHeic(mime_type, filename, buffer)) {
+    const converted = await compressImage(buffer, mime_type, filename);
+    buffer = converted.buffer;
+    mime_type = converted.mime_type;
+    filename = filenameForMime(filename, converted.mime_type);
+  }
 
   const run = async (c) => {
     const document_number = await repo.nextNumber({ client: c, brand });

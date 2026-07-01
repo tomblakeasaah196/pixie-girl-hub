@@ -1160,15 +1160,13 @@ function LookbookImagesEditor({
   onChange: (imgs: string[]) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  const { progress, uploading, run } = useUploadProgress();
   async function add(file?: File) {
     if (!file) return;
-    setBusy(true);
     try {
-      const url = await uploadLandingImage(file);
+      const url = await run((onProgress) => uploadLandingImage(file, onProgress));
       onChange([...images, url]);
     } finally {
-      setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
@@ -1189,13 +1187,14 @@ function LookbookImagesEditor({
         ))}
         <button
           onClick={() => fileRef.current?.click()}
-          disabled={busy}
+          disabled={uploading}
           className="aspect-[3/4] rounded-[8px] border border-dashed hairline grid place-items-center text-text-faint hover:text-accent-glow hover:border-accent/40"
         >
-          {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageUp className="w-5 h-5" />}
+          {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageUp className="w-5 h-5" />}
         </button>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => add(e.target.files?.[0])} />
+      {uploading && <UploadProgress value={progress} />}
+      <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => add(e.target.files?.[0])} />
     </div>
   );
 }

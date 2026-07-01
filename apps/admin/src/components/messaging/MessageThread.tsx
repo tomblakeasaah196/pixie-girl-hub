@@ -53,6 +53,7 @@ import { smartcommApi, onboardingApi } from "@/lib/smartcomm-api";
 import { emitTyping } from "@/lib/socket";
 import { cn } from "@/lib/cn";
 import { useUploadProgress } from "@/lib/use-upload";
+import { isHeicFile } from "@/lib/heic";
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import type { Channel, Message, QuickReply } from "@/lib/smartcomm-types";
 import { MessageBubble } from "./MessageBubble";
@@ -314,7 +315,10 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
             onProgress(Math.round(((i + p / 100) / list.length) * 100)),
           ),
         );
-        const type = file.type.startsWith("image/")
+        // HEIC often arrives with an empty mime on desktop; treat it as an
+        // image (the server converts it to JPEG) so it renders inline, not as
+        // a document link.
+        const type = file.type.startsWith("image/") || isHeicFile(file)
           ? "image"
           : file.type.startsWith("video/")
             ? "video"

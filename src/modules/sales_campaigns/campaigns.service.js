@@ -17,6 +17,7 @@ const events = require("./campaigns.events");
 const readiness = require("./campaigns.readiness.service");
 const wf = require("../../workflows/engine");
 const storage = require("../../services/storage.service");
+const { compressUpload } = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
@@ -888,23 +889,26 @@ async function uploadImage({ brand, id, file }) {
   if (!file || !file.buffer || !file.buffer.length) {
     throw new AppError("NO_FILE", "No image was uploaded", 400);
   }
-  if (!/^image\//.test(file.mimetype || "")) {
-    throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
-  }
   const campaign = await repo.findById({ brand, id });
   if (!campaign) throw new NotFoundError("Campaign");
 
+  // Compress + convert HEIC → JPEG before the image-type guard, so a phone
+  // photo is accepted and lands as an optimised, viewable image.
+  const shrunk = await compressUpload(file);
+  if (!/^image\//.test(shrunk.mime_type || "")) {
+    throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
+  }
   const ext =
-    String(file.originalname || "")
+    String(shrunk.filename || "")
       .split(".")
       .pop()
       ?.toLowerCase()
       .replace(/[^a-z0-9]/g, "")
       .slice(0, 5) || "jpg";
   const key = `campaigns/${brand}/${id}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
-  const stored = await storage.put(file.buffer, {
+  const stored = await storage.put(shrunk.buffer, {
     key,
-    contentType: file.mimetype,
+    contentType: shrunk.mime_type,
   });
   return { url: stored.public_url };
 }

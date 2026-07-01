@@ -12,7 +12,7 @@ const events = require("./catalogue.events");
 const outbox = require("../../shared/outbox/outbox");
 const documents = require("../../shared/documents/documents.service");
 const numbering = require("../../services/numbering.service");
-const { compressImage } = require("../../services/media-compression.service");
+const { compressUpload } = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -459,7 +459,11 @@ async function updateProduct({ brand, user, request_id, id, patch }) {
   const before = await repo.findProductById({ brand, id });
   if (!before) throw new NotFoundError("Product");
   // Never allow an update to publish a base product to the storefront.
-  const p = await repo.updateProduct({ brand, id, patch: denyBasePublish(patch) });
+  const p = await repo.updateProduct({
+    brand,
+    id,
+    patch: denyBasePublish(patch),
+  });
   await A(
     brand,
     user.user_id,
@@ -794,16 +798,17 @@ async function addImage({ brand, user, request_id, id, file, meta }) {
       },
     );
   }
-  // Re-encode oversized/heavy images to high-quality, smaller bytes before
-  // they hit storage — keeps galleries crisp without bloating the CDN.
-  const shrunk = await compressImage(file.buffer, file.mimetype);
+  // Re-encode oversized/heavy images to high-quality, smaller bytes (and
+  // convert HEIC → JPEG) before they hit storage — keeps galleries crisp
+  // without bloating the CDN.
+  const shrunk = await compressUpload(file);
   return transaction(async (client) => {
     const doc = await documents.store({
       client,
       brand,
       user_id: user.user_id,
       buffer: shrunk.buffer,
-      filename: file.originalname,
+      filename: shrunk.filename,
       mime_type: shrunk.mime_type,
       document_type: "product_image",
       title: meta.alt_text || file.originalname,
@@ -859,16 +864,21 @@ async function uploadCoverImage({
   reference_id,
 }) {
   if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
-    throw new AppError("IMAGE_TOO_LARGE", "Image exceeds the 10 MB limit", 413, {
-      user_message: "Images must be 10 MB or smaller.",
-    });
+    throw new AppError(
+      "IMAGE_TOO_LARGE",
+      "Image exceeds the 10 MB limit",
+      413,
+      {
+        user_message: "Images must be 10 MB or smaller.",
+      },
+    );
   }
-  const shrunk = await compressImage(file.buffer, file.mimetype);
+  const shrunk = await compressUpload(file);
   const doc = await documents.store({
     brand,
     user_id: user.user_id,
     buffer: shrunk.buffer,
-    filename: file.originalname,
+    filename: shrunk.filename,
     mime_type: shrunk.mime_type,
     document_type: "cover_image",
     title: file.originalname,

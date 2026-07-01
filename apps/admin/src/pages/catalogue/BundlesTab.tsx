@@ -46,6 +46,7 @@ import {
   type BundleComponentInput,
   type BundleCreateInput,
 } from "@/lib/catalogue";
+import { toViewableImage } from "@/lib/heic";
 import { CoverImageEditor } from "./CoverImageEditor";
 import { BundleCollageEditor } from "./BundleCollageEditor";
 import { BundleProductPicker } from "./BundleProductPicker";
@@ -863,14 +864,17 @@ function CreateBundleModal({
             <input
               ref={coverFileRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
+              onChange={async (e) => {
+                const picked = e.target.files?.[0];
+                e.target.value = "";
+                if (!picked) return;
+                // Convert HEIC → JPEG client-side so the preview renders on
+                // non-Safari browsers; the converted file is what we upload.
+                const file = await toViewableImage(picked);
                 setCoverFile(file);
                 setCoverPreview(URL.createObjectURL(file));
-                e.target.value = "";
               }}
             />
           </div>

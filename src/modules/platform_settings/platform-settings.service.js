@@ -14,6 +14,9 @@ const sharp = require("sharp");
 const repo = require("./platform-settings.repo");
 const storage = require("../../services/storage.service");
 const iconPipeline = require("../../services/icon-pipeline.service");
+const {
+  normalizeImageInput,
+} = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { logger } = require("../../config/logger");
@@ -604,17 +607,20 @@ async function compressBrandingImage(buffer, mimetype) {
 async function uploadBrandingImage({ file, user, purpose }) {
   if (!file || !file.buffer)
     throw new AppError("NO_FILE", "An image file is required", 422);
-  const ext = IMAGE_EXT[file.mimetype];
+  // iPhone HEIC → JPEG up front, so the raster allow-list below, the WEBP
+  // compressor and the icon pipeline all receive a decodable image.
+  const img = await normalizeImageInput(file);
+  const ext = IMAGE_EXT[img.mimetype];
   if (!ext)
     throw new AppError(
       "UNSUPPORTED_IMAGE",
-      "Image must be PNG, JPEG, WEBP or GIF",
+      "Image must be PNG, JPEG, WEBP, GIF or HEIC",
       422,
     );
 
-  if (purpose === "logo") return uploadBrandingLogo({ file, user });
+  if (purpose === "logo") return uploadBrandingLogo({ file: img, user });
 
-  const compressed = await compressBrandingImage(file.buffer, file.mimetype);
+  const compressed = await compressBrandingImage(img.buffer, img.mimetype);
   const key = `branding/${crypto.randomBytes(16).toString("hex")}.${compressed.ext}`;
   const stored = await storage.put(compressed.buffer, {
     key,
@@ -626,7 +632,7 @@ async function uploadBrandingImage({ file, user, purpose }) {
     action_key: "platform_settings.upload_image",
     target_type: "branding_image",
     target_id: stored.key,
-    metadata: { size: stored.size, content_type: file.mimetype },
+    metadata: { size: stored.size, content_type: img.mimetype },
   });
   return { url: stored.public_url };
 }

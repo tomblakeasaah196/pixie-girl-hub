@@ -285,12 +285,16 @@ export function useLoginConfig(): LoginConfig {
 // ── Branding image upload (logos, favicon, login background) ──
 // POSTs to /platform-settings/upload-image and returns the stored public
 // URL, which the caller then saves onto the relevant settings field.
-export async function uploadBrandingImage(file: File): Promise<string> {
+export async function uploadBrandingImage(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<string> {
   const form = new FormData();
   form.append("file", file);
   const { url } = await api.postForm<{ url: string }>(
     "/platform-settings/upload-image",
     form,
+    { onProgress },
   );
   return url;
 }
@@ -316,6 +320,7 @@ export interface LogoUploadResult {
 
 export async function uploadBrandingLogo(
   file: File,
+  onProgress?: (percent: number) => void,
 ): Promise<LogoUploadResult> {
   const form = new FormData();
   form.append("file", file);
@@ -323,6 +328,7 @@ export async function uploadBrandingLogo(
   return api.postForm<LogoUploadResult>(
     "/platform-settings/upload-image",
     form,
+    { onProgress },
   );
 }
 

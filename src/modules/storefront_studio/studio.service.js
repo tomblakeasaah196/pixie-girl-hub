@@ -14,6 +14,9 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { config } = require("../../config/env");
 const storage = require("../../services/storage.service");
+const {
+  normalizeImageInput,
+} = require("../../services/media-compression.service");
 
 const A = (
   brand,
@@ -293,19 +296,23 @@ function listSectionTemplates() {
 async function uploadImage({ brand, file }) {
   if (!file || !file.buffer || !file.buffer.length)
     throw new AppError("NO_FILE", "No image was uploaded", 400);
-  if (!/^image\//.test(file.mimetype || ""))
+  // iPhone HEIC → JPEG up front, so the image guard below accepts a phone
+  // photo (whose browser mime is often empty) and we never store an
+  // unrenderable .heic logo / OG banner. Non-HEIC images pass through.
+  const img = await normalizeImageInput(file);
+  if (!/^image\//.test(img.mimetype || ""))
     throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
   const ext =
-    String(file.originalname || "")
+    String(img.originalname || "")
       .split(".")
       .pop()
       ?.toLowerCase()
       .replace(/[^a-z0-9]/g, "")
       .slice(0, 5) || "jpg";
   const key = `storefront/${brand}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
-  const stored = await storage.put(file.buffer, {
+  const stored = await storage.put(img.buffer, {
     key,
-    contentType: file.mimetype,
+    contentType: img.mimetype,
   });
   return { url: stored.public_url };
 }

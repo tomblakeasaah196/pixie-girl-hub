@@ -25,6 +25,9 @@ import {
   uploadAvatar,
   type MyProfile,
 } from "@/lib/auth-api";
+import { toViewableImage } from "@/lib/heic";
+import { useUploadProgress } from "@/lib/use-upload";
+import { UploadProgress } from "@/components/ui/UploadProgress";
 import { PhotoCropModal } from "./PhotoCropModal";
 
 function Field({
@@ -357,6 +360,7 @@ export function ProfileDrawer({
   const [loading, setLoading] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const { progress: avatarProgress, run: runAvatar } = useUploadProgress();
   const [toast, setToast] = useState<{
     type: "ok" | "err";
     msg: string;
@@ -391,7 +395,9 @@ export function ProfileDrawer({
     setCropFile(null);
     setAvatarLoading(true);
     try {
-      const { avatar_url } = await uploadAvatar(blob);
+      const { avatar_url } = await runAvatar((onProgress) =>
+        uploadAvatar(blob, onProgress),
+      );
       setProfile((p) => (p ? { ...p, avatar_url } : p));
       patchUser({ avatarUrl: avatar_url });
       showToast("ok", "Photo updated.");
@@ -515,15 +521,21 @@ export function ProfileDrawer({
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.heic,.heif"
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const f = e.target.files?.[0];
-                      if (f) setCropFile(f);
                       e.target.value = "";
+                      if (f) setCropFile(await toViewableImage(f));
                     }}
                   />
                 </div>
+
+                <UploadProgress
+                  value={avatarProgress}
+                  className="w-40"
+                  label="Uploading photo…"
+                />
 
                 <div className="text-center">
                   <div className="font-display text-lg font-medium">

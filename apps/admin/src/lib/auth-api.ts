@@ -154,10 +154,13 @@ export async function updateMe(data: {
 
 export async function uploadAvatar(
   blob: Blob,
+  onProgress?: (percent: number) => void,
 ): Promise<{ avatar_url: string }> {
   const form = new FormData();
   form.append("avatar", blob, "avatar.jpg");
-  return api.postForm<{ avatar_url: string }>("/auth/me/avatar", form);
+  return api.postForm<{ avatar_url: string }>("/auth/me/avatar", form, {
+    onProgress,
+  });
 }
 
 export async function requestEmailChange(

@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { Upload, Image as ImageIcon, Search, Check } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { useUploadProgress } from "@/lib/use-upload";
 import { useStyledProducts, useUploadCoverImage } from "@/lib/catalogue";
 
 /**
@@ -21,6 +23,7 @@ export function CoverImageEditor({
   referenceId?: string;
 }) {
   const upload = useUploadCoverImage();
+  const { progress, run } = useUploadProgress();
   const fileRef = useRef<HTMLInputElement>(null);
   const [picking, setPicking] = useState(false);
   const [q, setQ] = useState("");
@@ -30,10 +33,16 @@ export function CoverImageEditor({
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    upload.mutate(
-      { file, reference_type: referenceType, reference_id: referenceId },
-      { onSuccess: (res) => onChange(res.cdn_url) },
-    );
+    run((onProgress) =>
+      upload.mutateAsync({
+        file,
+        reference_type: referenceType,
+        reference_id: referenceId,
+        onProgress,
+      }),
+    )
+      .then((res) => onChange(res.cdn_url))
+      .catch(() => {});
     e.target.value = "";
   };
 
@@ -75,11 +84,13 @@ export function CoverImageEditor({
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           hidden
           onChange={onFile}
         />
       </div>
+
+      <UploadProgress value={progress} />
 
       {picking && (
         <div className="rounded-[12px] border border-line p-3 space-y-3">

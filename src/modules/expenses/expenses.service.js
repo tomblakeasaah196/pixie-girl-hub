@@ -12,6 +12,9 @@ const events = require("./expenses.events");
 const wf = require("../../workflows/engine");
 const accounting = require("../accounting/accounting.service");
 const documents = require("../../shared/documents/documents.service");
+const {
+  compressUpload,
+} = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
@@ -619,16 +622,19 @@ async function listReceipts({ brand, id }) {
 async function addReceipt({ brand, user, request_id, id, file, meta }) {
   const exp = await repo.findById({ brand, id });
   if (!exp) throw new NotFoundError("Expense");
+  // Receipts are usually phone photos — compress and convert HEIC → JPEG so
+  // they render everywhere (PDF receipts pass straight through unchanged).
+  const shrunk = await compressUpload(file);
   return transaction(async (client) => {
     const doc = await documents.store({
       client,
       brand,
       user_id: user.user_id,
-      buffer: file.buffer,
-      filename: file.originalname,
-      mime_type: file.mimetype,
+      buffer: shrunk.buffer,
+      filename: shrunk.filename,
+      mime_type: shrunk.mime_type,
       document_type: "expense_receipt",
-      title: meta.vendor_name || file.originalname,
+      title: meta.vendor_name || shrunk.filename,
       reference_type: "expense",
       reference_id: id,
       request_id,

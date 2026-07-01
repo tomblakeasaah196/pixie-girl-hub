@@ -11,6 +11,7 @@
 const path = require("path");
 const crypto = require("crypto");
 const storage = require("./storage.service");
+const { normalizeImageInput } = require("./media-compression.service");
 const mediaRepo = require("../jobs/processors/media.repo");
 const { enqueue } = require("../jobs/queue");
 const { audit } = require("../middleware/audit");
@@ -38,6 +39,11 @@ function enqueueProcessing({ brand, asset_id }) {
 async function registerUpload({ brand, user, file, meta = {} }) {
   if (!file || !file.buffer)
     throw new AppError("NO_FILE", "A file upload is required", 422);
+
+  // The raw upload is what the media pipeline serves directly (only a thumb is
+  // derived). A HEIC would be stored unrenderable, so decode it to JPEG first;
+  // video and non-HEIC images pass through untouched.
+  file = await normalizeImageInput(file);
 
   const kind = assetKindFor(file.mimetype);
   const ext = path.extname(file.originalname || "").toLowerCase() || "";
@@ -88,6 +94,15 @@ async function registerUpload({ brand, user, file, meta = {} }) {
 async function registerRemoteAsset({ brand, buffer, mimetype, source }) {
   if (!buffer || !buffer.length)
     throw new AppError("NO_BYTES", "No media bytes to register", 422);
+  // A remotely-fetched HEIC (rare, but possible from UGC) would be unrenderable
+  // if stored as-is — decode it to JPEG; everything else passes through.
+  const normalized = await normalizeImageInput({
+    buffer,
+    mimetype,
+    originalname: (source && source.filename) || undefined,
+  });
+  buffer = normalized.buffer;
+  mimetype = normalized.mimetype;
   const kind = assetKindFor(mimetype);
   const key = path.posix.join(
     "media",

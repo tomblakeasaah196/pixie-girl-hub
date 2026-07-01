@@ -8,6 +8,12 @@ import type {
   ChemicalReconciliation,
   CreateJobInput,
   CreateRecipeInput,
+  JobMaterial,
+  JobReference,
+  JobTimeLog,
+  Accountability,
+  CustodyEntry,
+  QcInput,
 } from "./types";
 
 const BASE = "/service-jobs";
@@ -191,5 +197,96 @@ export function listReconciliations(params?: {
 export function runReconciliation(periodId: string) {
   return api.post<{ data: { reconciled: number; flagged: number } }>(
     `${BASE}/periods/${periodId}/chemical-reconciliation`,
+  );
+}
+
+// ── Stylist Studio lifecycle (PR4) ─────────────────────────
+
+export function startJob(id: string) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/start`, {});
+}
+export function pauseJob(id: string) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/pause`, {});
+}
+export function resumeJob(id: string) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/resume`, {});
+}
+export function returnJob(id: string) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/return`, {});
+}
+export function qcJob(id: string, input: QcInput) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/qc`, input);
+}
+export function dispatchJob(id: string) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/dispatch`, {});
+}
+export function handToSales(id: string) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/hand-to-sales`, {});
+}
+export function writeOffWig(id: string, reason: string) {
+  return api.post<{ data: CustodyEntry }>(`${BASE}/${id}/write-off`, {
+    reason,
+  });
+}
+
+// ── Materials / references / time logs ─────────────────────
+
+export function listMaterials(jobId: string) {
+  return api.get<{ data: JobMaterial[] }>(`${BASE}/${jobId}/materials`);
+}
+export function logMaterial(
+  jobId: string,
+  input: {
+    kind: "discrete" | "chemical";
+    variant_id?: string;
+    quantity?: number;
+    chemical_name?: string;
+    usage_note?: string;
+  },
+) {
+  return api.post<{ data: JobMaterial[] }>(`${BASE}/${jobId}/materials`, input);
+}
+export function listReferences(jobId: string) {
+  return api.get<{ data: JobReference[] }>(`${BASE}/${jobId}/references`);
+}
+export function addReference(
+  jobId: string,
+  input: {
+    ref_type: "image" | "audio" | "video_link" | "text" | "creative_freedom";
+    doc_id?: string;
+    url?: string;
+    body?: string;
+  },
+) {
+  return api.post<{ data: JobReference[] }>(
+    `${BASE}/${jobId}/references`,
+    input,
+  );
+}
+export function deleteReference(jobId: string, refId: string) {
+  return api.delete<{ data: JobReference[] }>(
+    `${BASE}/${jobId}/references/${refId}`,
+  );
+}
+export function listTimeLogs(jobId: string) {
+  return api.get<{ data: JobTimeLog[] }>(`${BASE}/${jobId}/time-logs`);
+}
+
+// ── Wig accountability ─────────────────────────────────────
+
+export function getAccountability() {
+  return api.get<{ data: Accountability }>(`${BASE}/accountability`);
+}
+export function listCustodyLedger(params?: {
+  job_id?: string;
+  stylist_user_id?: string;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.job_id) qs.set("job_id", params.job_id);
+  if (params?.stylist_user_id)
+    qs.set("stylist_user_id", params.stylist_user_id);
+  const q = qs.toString();
+  return api.get<{ data: CustodyEntry[] }>(
+    `${BASE}/accountability/ledger${q ? `?${q}` : ""}`,
   );
 }

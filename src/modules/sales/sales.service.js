@@ -64,6 +64,11 @@ function gatewayFeeAccount(provider, paid_currency) {
 }
 
 function channelPrice(ctx, channel) {
+  // NOTE: the POS *terminal app* was retired (replaced by the Quick Sale Form),
+  // but 'pos' survives here as the IN-STORE PRICE TIER (price_pos_ngn) and as a
+  // sales_channel/payroll-commission channel. That is a pricing concept, not the
+  // terminal, and is intentionally kept — a walk-in sale can still be priced at
+  // the in-store rate. Renaming the tier is a separate, deliberate migration.
   if (channel === "pos") return ctx.price_pos_ngn ?? ctx.price_storefront_ngn;
   if (channel === "wholesale" || channel === "intercompany")
     return ctx.price_wholesale_ngn ?? ctx.price_storefront_ngn;

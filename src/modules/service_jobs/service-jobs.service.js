@@ -1046,9 +1046,40 @@ async function dispatch({ brand, user, request_id, id }) {
       {},
       request_id,
     );
-    // Logistics shipment creation is wired in PR3 (commerce/logistics handoff);
-    // here we stamp readiness + emit so Sales/Logistics can pick it up.
     events.emit("ready_for_dispatch", { brand, job_id: id });
+    return job;
+  }).then(async (job) => {
+    // Post-commit, best-effort: hand the finished wig to Logistics. Reuses the
+    // idempotent order→delivery creator, which no-ops for non-dispatch orders
+    // (e.g. an own-wig pickup), so only real shipments are made. The returned
+    // delivery id is stamped on the job so the SLA (promised vs actual) tracks.
+    try {
+      if (job.sales_order_id) {
+        const salesRepo = require("../sales/sales.repo");
+        const logistics = require("../logistics/logistics.service");
+        const order = await salesRepo.findById({
+          brand,
+          id: job.sales_order_id,
+        });
+        const delivery = order
+          ? await logistics.createForOrder({ brand, order })
+          : null;
+        if (delivery && delivery.delivery_id) {
+          await repo.setServiceJobStatus({
+            brand,
+            id,
+            status: "ready_for_dispatch",
+            fields: { shipment_id: delivery.delivery_id },
+          });
+          job.shipment_id = delivery.delivery_id;
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        { err, job_id: id },
+        "studio dispatch → logistics handoff skipped",
+      );
+    }
     return job;
   });
 }

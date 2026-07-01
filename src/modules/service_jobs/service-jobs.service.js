@@ -1143,6 +1143,29 @@ async function runMissingWigCheck() {
     if (overdue.length) {
       flagged += overdue.length;
       events.emit("wigs_overdue", { brand, count: overdue.length, overdue });
+      // Push a person: notify each overdue job's owner (Ops) so the
+      // "go check on this wig" signal doesn't only live on the dashboard.
+      const byOwner = new Map();
+      for (const w of overdue) {
+        if (!w.created_by) continue;
+        if (!byOwner.has(w.created_by)) byOwner.set(w.created_by, []);
+        byOwner.get(w.created_by).push(w);
+      }
+      for (const [owner, wigs] of byOwner) {
+        const first = wigs[0];
+        await notifyUser({
+          brand,
+          user_id: owner,
+          type: "wig_overdue",
+          title: `${wigs.length} wig${wigs.length === 1 ? "" : "s"} overdue with a stylist`,
+          body:
+            wigs.length === 1
+              ? `Job ${first.job_number} has been with ${first.stylist_name || "a stylist"} ${first.days_out} days — please check.`
+              : `${wigs.length} wigs are past the check-in threshold. Open Wig Accountability to review.`,
+          job_id: first.job_id,
+          priority: "high",
+        });
+      }
     }
   }
   return { flagged };

@@ -639,6 +639,19 @@ async function hasCustodyEvent({ client, brand, job_id, event }) {
   );
   return rows.length > 0;
 }
+// Net wigs this job currently has OUT: Σ(out) − Σ(return|dispatched|write_off).
+// > 0 means the wig is physically with a stylist right now.
+async function jobCustodyBalance({ client, brand, job_id }) {
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(CASE
+              WHEN event = 'out' THEN quantity
+              WHEN event IN ('return','dispatched','write_off') THEN -quantity
+              ELSE 0 END), 0)::int AS net
+       FROM ${t(brand, "wig_custody_ledger")} WHERE job_id = $1`,
+    [job_id],
+  );
+  return rows[0].net;
+}
 async function listCustody({ brand, job_id, stylist_user_id, limit = 200 }) {
   const where = [];
   const params = [];
@@ -741,6 +754,7 @@ module.exports = {
   deleteReference,
   addCustody,
   hasCustodyEvent,
+  jobCustodyBalance,
   listCustody,
   custodyBalances,
   overdueOutWigs,

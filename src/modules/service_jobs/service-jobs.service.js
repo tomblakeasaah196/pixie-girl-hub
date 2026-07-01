@@ -662,33 +662,38 @@ async function assignStylist({
       status: "assigned",
       fields,
     });
-    const alreadyOut = await repo.hasCustodyEvent({
+    // Reservation hard-lock: a wig already OUT with a stylist (net balance > 0)
+    // cannot be re-released to someone else — it must be returned first. This
+    // also correctly re-releases a wig on re-assignment AFTER a return (net 0),
+    // where an "any out ever" check would have wrongly skipped the deduction.
+    const net = await repo.jobCustodyBalance({ client, brand, job_id: id });
+    if (net > 0) {
+      throw new AppError(
+        "WIG_ALREADY_OUT",
+        "This wig is already out with a stylist and must be returned before it can be re-assigned.",
+        409,
+        "This wig is already with a stylist — have it returned first.",
+      );
+    }
+    await deductBaseWig({
       client,
       brand,
-      job_id: id,
-      event: "out",
+      job,
+      user_id: user.user_id,
+      channel: "service_job",
     });
-    if (!alreadyOut) {
-      await deductBaseWig({
-        client,
-        brand,
-        job,
-        user_id: user.user_id,
-        channel: "service_job",
-      });
-      await repo.addCustody({
-        client,
-        brand,
-        c: {
-          job_id: id,
-          event: "out",
-          quantity: 1,
-          stylist_user_id: assigned_staff_user_id,
-          created_by: user.user_id,
-          reason: "assigned to stylist",
-        },
-      });
-    }
+    await repo.addCustody({
+      client,
+      brand,
+      c: {
+        job_id: id,
+        event: "out",
+        quantity: 1,
+        stylist_user_id: assigned_staff_user_id,
+        created_by: user.user_id,
+        reason: "assigned to stylist",
+      },
+    });
     await A(
       brand,
       user,

@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { Card, Button, Pill } from "@/components/ui/primitives";
 import { useBusinessStore } from "@/stores/business";
 import { useServiceTypes, useRecipes } from "@/pages/service-jobs/hooks";
+import { ProductPicker } from "@/components/catalogue/ProductPicker";
+import { resolvePick } from "@/lib/product-search";
 
 interface BomItem {
   bom_id: string;
@@ -101,6 +103,15 @@ export function StyledProductionManager({
       setNewMaterial("");
       invalidate();
     },
+  });
+  const addDiscrete = useMutation({
+    mutationFn: (variant_id: string) =>
+      api.post(`/catalogue/styled-products/${styledId}/bom`, {
+        kind: "discrete",
+        variant_id,
+        default_quantity: 1,
+      }),
+    onSuccess: invalidate,
   });
   const removeMaterial = useMutation({
     mutationFn: (bomId: string) =>
@@ -217,18 +228,23 @@ export function StyledProductionManager({
             )}
           </div>
 
-          {/* Default materials (chemicals checklist) */}
+          {/* Default materials — chemicals (checklist) + discrete stock items */}
           <div className="space-y-2">
-            <span className="text-xs text-muted">
-              Default materials (chemicals)
-            </span>
+            <span className="text-xs text-muted">Default materials</span>
             <div className="flex flex-wrap gap-2">
               {bom.length === 0 && (
                 <span className="text-muted text-sm">None yet.</span>
               )}
               {bom.map((b) => (
-                <Pill key={b.bom_id} tone="neutral">
-                  <span className="mr-1">{b.chemical_name ?? "item"}</span>
+                <Pill
+                  key={b.bom_id}
+                  tone={b.kind === "chemical" ? "info" : "accent"}
+                >
+                  <span className="mr-1">
+                    {b.kind === "chemical"
+                      ? (b.chemical_name ?? "chemical")
+                      : `🧷 stock item${b.default_quantity ? ` ×${b.default_quantity}` : ""}`}
+                  </span>
                   {canEdit && (
                     <button
                       type="button"
@@ -263,6 +279,26 @@ export function StyledProductionManager({
                 >
                   Add
                 </Button>
+              </div>
+            )}
+            {canEdit && (
+              <div className="pt-1">
+                <span className="text-xs text-muted">
+                  …or add a stock item (lace, net, clips) — deducts on use:
+                </span>
+                <div className="mt-1">
+                  <ProductPicker
+                    onPick={async (hit) => {
+                      try {
+                        const { lines } = await resolvePick(hit);
+                        if (lines[0]?.variant_id)
+                          addDiscrete.mutate(lines[0].variant_id);
+                      } catch {
+                        /* ignore unresolved pick */
+                      }
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>

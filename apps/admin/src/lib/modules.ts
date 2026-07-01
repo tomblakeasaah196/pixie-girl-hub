@@ -100,6 +100,14 @@ export const MODULES: AppModule[] = [
     route: "/crm",
     icon: Users,
   },
+  {
+    key: "service_jobs",
+    label: "Stylist Studio",
+    description: "In-house styling operations",
+    group: "run",
+    route: "/service-jobs",
+    icon: Scissors,
+  },
   // POS retired (owner directive) — replaced by the Quick Sale Form. The
   // module + backend routes are deleted; selling happens through Sales.
   {

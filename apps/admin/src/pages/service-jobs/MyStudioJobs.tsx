@@ -1,10 +1,4 @@
-import {
-  Play,
-  CheckCircle2,
-  RefreshCw,
-  Sparkles,
-  LinkIcon,
-} from "lucide-react";
+import { Play, CheckCircle2, RefreshCw, Sparkles } from "lucide-react";
 import {
   Card,
   Pill,
@@ -14,14 +8,14 @@ import {
 } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
-import { useJobs, useStudioLifecycle, useJobReferences } from "./hooks";
+import { useJobs, useStudioLifecycle } from "./hooks";
 import { JOB_STATUS_META } from "./constants";
-import type { ServiceJob, JobReference } from "./types";
+import { JobWorkPanel } from "./JobWorkPanel";
+import type { ServiceJob } from "./types";
 
 /**
- * "My Jobs" — the stylist's own cockpit. Deliberately dead-simple: the wigs
- * assigned to me, each with ONE obvious next action and the style brief right
- * there. No hunting, no menus.
+ * "My Jobs" — the stylist's own cockpit. The wigs assigned to me, each with the
+ * work panel (timer, materials, brief) right there and ONE obvious next action.
  */
 export function MyStudioJobs() {
   const userId = useAuthStore((s) => s.user?.id) ?? null;
@@ -46,7 +40,6 @@ export function MyStudioJobs() {
     );
   }
 
-  // The wigs that actually need me now (hide finished/handed-off).
   const active = (data?.data ?? []).filter(
     (j) =>
       !["completed", "handed_to_sales", "cancelled", "rejected"].includes(
@@ -75,8 +68,8 @@ export function MyStudioJobs() {
 
 function MyJobCard({ job }: { job: ServiceJob }) {
   const life = useStudioLifecycle(job.job_id);
-  const { data: refs } = useJobReferences(job.job_id);
   const meta = JOB_STATUS_META[job.status];
+  const working = ["in_progress", "assigned", "rework"].includes(job.status);
 
   return (
     <Card className="p-4 space-y-3">
@@ -93,8 +86,8 @@ function MyJobCard({ job }: { job: ServiceJob }) {
         <Pill tone={meta.tone}>{meta.label}</Pill>
       </div>
 
-      {/* Style brief — right where the work happens */}
-      <StyleBrief refs={refs} />
+      {/* The work: timer, materials, style brief. Stylist can log while working. */}
+      <JobWorkPanel job={job} canLog={working} />
 
       {/* One obvious next action */}
       <div className="pt-1">
@@ -140,49 +133,5 @@ function MyJobCard({ job }: { job: ServiceJob }) {
         )}
       </div>
     </Card>
-  );
-}
-
-function StyleBrief({ refs }: { refs: JobReference[] | undefined }) {
-  if (!refs || refs.length === 0) {
-    return (
-      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-muted text-sm">
-        No reference yet — check with the operations manager.
-      </div>
-    );
-  }
-  const creative = refs.some((r) => r.ref_type === "creative_freedom");
-  const images = refs.filter((r) => r.ref_type === "image");
-  const links = refs.filter((r) => r.ref_type === "video_link" && r.url);
-  const notes = refs.filter((r) => (r.ref_type === "text" || r.body) && r.body);
-
-  return (
-    <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
-      <div className="text-xs text-accent-glow font-semibold">Style brief</div>
-      {creative && (
-        <Pill tone="accent">🎨 Creative freedom — interpret freely</Pill>
-      )}
-      {images.length > 0 && (
-        <div className="text-sm">
-          {images.length} reference photo{images.length === 1 ? "" : "s"}
-        </div>
-      )}
-      {links.map((l) => (
-        <a
-          key={l.reference_id}
-          href={l.url ?? "#"}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-1 text-info text-sm hover:underline"
-        >
-          <LinkIcon size={13} /> {l.url}
-        </a>
-      ))}
-      {notes.map((n) => (
-        <p key={n.reference_id} className="text-sm text-text-primary">
-          “{n.body}”
-        </p>
-      ))}
-    </div>
   );
 }

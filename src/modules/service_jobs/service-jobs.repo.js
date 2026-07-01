@@ -697,7 +697,7 @@ async function overdueOutWigs({ brand, threshold_days }) {
         WHERE event IN ('return','dispatched','write_off')
      )
      SELECT o.job_id, o.stylist_user_id, o.out_at,
-            u.display_name AS stylist_name, j.job_number,
+            u.display_name AS stylist_name, j.job_number, j.created_by,
             EXTRACT(DAY FROM now() - o.out_at)::int AS days_out
        FROM outs o
        LEFT JOIN backs b ON b.job_id = o.job_id

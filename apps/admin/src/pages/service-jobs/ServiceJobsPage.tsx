@@ -16,6 +16,7 @@ import { JobBoard } from "./JobBoard";
 import { RecipesPanel } from "./RecipesPanel";
 import { AccountabilityPanel } from "./AccountabilityPanel";
 import { MyStudioJobs } from "./MyStudioJobs";
+import { QcQueue } from "./QcQueue";
 import {
   useJobs,
   useServiceTypes,
@@ -470,6 +471,7 @@ function KpiStrip() {
 type Tab =
   | "my"
   | "board"
+  | "qc"
   | "accountability"
   | "types"
   | "recipes"
@@ -499,6 +501,7 @@ export function ServiceJobsPage() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "my", label: "My Jobs" },
     { id: "board", label: "Job Board" },
+    { id: "qc", label: "QC Queue" },
     { id: "accountability", label: "Wig Accountability" },
     { id: "types", label: "Service Types" },
     { id: "recipes", label: "Recipes" },
@@ -541,6 +544,7 @@ export function ServiceJobsPage() {
       {/* Tab content */}
       {tab === "my" && <MyStudioJobs />}
       {tab === "board" && <JobBoard canCreate={canCreate} />}
+      {tab === "qc" && <QcQueue />}
       {tab === "accountability" && <AccountabilityPanel />}
       {tab === "types" && <ServiceTypesTab canCreate={canEdit} />}
       {tab === "recipes" && <RecipesPanel canCreate={canEdit} />}

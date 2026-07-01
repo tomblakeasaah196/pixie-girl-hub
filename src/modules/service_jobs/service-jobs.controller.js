@@ -86,10 +86,118 @@ async function advanceJob(req, res) {
 }
 async function assignStaff(req, res) {
   res.json({
-    data: await service.assignStaff({
+    data: await service.assignStylist({
       ...base(req),
       id: req.params.id,
       assigned_staff_user_id: req.body.assigned_staff_user_id,
+    }),
+  });
+}
+
+// ── Stylist Studio (PR2) lifecycle ─────────────────────────
+async function startWork(req, res) {
+  res.json({
+    data: await service.startWork({ ...base(req), id: req.params.id }),
+  });
+}
+async function pauseWork(req, res) {
+  res.json({
+    data: await service.pauseWork({ ...base(req), id: req.params.id }),
+  });
+}
+async function resumeWork(req, res) {
+  res.json({
+    data: await service.resumeWork({ ...base(req), id: req.params.id }),
+  });
+}
+async function returnForQc(req, res) {
+  res.json({
+    data: await service.returnForQc({ ...base(req), id: req.params.id }),
+  });
+}
+async function recordQc(req, res) {
+  res.json({
+    data: await service.recordQc({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function dispatch(req, res) {
+  res.json({
+    data: await service.dispatch({ ...base(req), id: req.params.id }),
+  });
+}
+async function handToSales(req, res) {
+  res.json({
+    data: await service.handToSales({ ...base(req), id: req.params.id }),
+  });
+}
+
+// ── Materials / references / time ──────────────────────────
+async function logMaterial(req, res) {
+  res.status(201).json({
+    data: await service.logMaterial({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function listMaterials(req, res) {
+  res.json({
+    data: await service.listMaterials({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function addReference(req, res) {
+  res.status(201).json({
+    data: await service.addReference({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function listReferences(req, res) {
+  res.json({
+    data: await service.listReferences({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function removeReference(req, res) {
+  res.json({
+    data: await service.removeReference({
+      ...base(req),
+      id: req.params.id,
+      reference_id: req.params.refId,
+    }),
+  });
+}
+async function listTimeLogs(req, res) {
+  res.json({
+    data: await service.listTimeLogs({ brand: req.brand, id: req.params.id }),
+  });
+}
+
+// ── Wig accountability ─────────────────────────────────────
+async function getAccountability(req, res) {
+  res.json({ data: await service.getAccountability({ brand: req.brand }) });
+}
+async function listCustodyLedger(req, res) {
+  res.json({
+    data: await service.listCustodyLedger({
+      brand: req.brand,
+      job_id: req.query.job_id,
+      stylist_user_id: req.query.stylist_user_id,
+    }),
+  });
+}
+async function writeOffWig(req, res) {
+  res.status(201).json({
+    data: await service.writeOffWig({
+      ...base(req),
+      id: req.params.id,
+      reason: req.body.reason,
     }),
   });
 }
@@ -183,6 +291,22 @@ module.exports = {
   updateJob,
   advanceJob,
   assignStaff,
+  startWork,
+  pauseWork,
+  resumeWork,
+  returnForQc,
+  recordQc,
+  dispatch,
+  handToSales,
+  logMaterial,
+  listMaterials,
+  addReference,
+  listReferences,
+  removeReference,
+  listTimeLogs,
+  getAccountability,
+  listCustodyLedger,
+  writeOffWig,
   recordOutcome,
   listRecipes,
   getRecipe,

@@ -1,7 +1,13 @@
 export type JobStatus =
   | "pending"
+  | "assigned"
   | "in_progress"
   | "on_hold"
+  | "returned_for_qc"
+  | "qc_passed"
+  | "rework"
+  | "ready_for_dispatch"
+  | "handed_to_sales"
   | "completed"
   | "rejected"
   | "cancelled";
@@ -83,6 +89,19 @@ export interface ServiceJob {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // ── Stylist Studio (PR2/PR4) ──────────────────────────────
+  assigned_at: string | null;
+  returned_at: string | null;
+  qc_at: string | null;
+  ready_at: string | null;
+  handed_at: string | null;
+  qc_by: string | null;
+  rework_count: number;
+  reserved_variant_id: string | null;
+  sla_due_at: string | null;
+  styled_id: string | null;
+  shipment_id: string | null;
+  customer_asset_id: string | null;
 }
 
 export interface JobPaginated {
@@ -148,4 +167,93 @@ export interface CreateRecipeInput {
   target_shade?: string;
   notes?: string;
   is_active?: boolean;
+}
+
+// ── Stylist Studio: materials / references / time / custody (PR4) ──
+
+export type MaterialKind = "discrete" | "chemical";
+
+export interface JobMaterial {
+  material_id: string;
+  job_id: string;
+  kind: MaterialKind;
+  variant_id: string | null;
+  quantity: string | null;
+  chemical_name: string | null;
+  usage_note: string | null;
+  stock_deducted: boolean;
+  stock_movement_id: string | null;
+  logged_by: string | null;
+  created_at: string;
+}
+
+export type ReferenceType =
+  | "image"
+  | "audio"
+  | "video_link"
+  | "text"
+  | "creative_freedom";
+
+export interface JobReference {
+  reference_id: string;
+  job_id: string;
+  ref_type: ReferenceType;
+  doc_id: string | null;
+  url: string | null;
+  body: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface JobTimeLog {
+  log_id: string;
+  job_id: string;
+  stylist_user_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  duration_minutes: number | null;
+  note: string | null;
+  created_at: string;
+}
+
+export type CustodyEvent = "out" | "return" | "dispatched" | "write_off";
+
+export interface CustodyEntry {
+  entry_id: string;
+  job_id: string | null;
+  event: CustodyEvent;
+  quantity: number;
+  stylist_user_id: string | null;
+  location: string | null;
+  reason: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface StylistBalance {
+  stylist_user_id: string;
+  stylist_name: string | null;
+  holding: number;
+}
+
+export interface OverdueWig {
+  job_id: string;
+  job_number: string | null;
+  stylist_user_id: string | null;
+  stylist_name: string | null;
+  out_at: string;
+  days_out: number;
+}
+
+export interface Accountability {
+  threshold_days: number;
+  balances: StylistBalance[];
+  overdue: OverdueWig[];
+}
+
+export interface QcInput {
+  result: "pass" | "rework";
+  quality_rating?: number;
+  quality_notes?: string;
+  reassign_to?: string;
 }

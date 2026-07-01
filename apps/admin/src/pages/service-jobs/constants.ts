@@ -6,24 +6,38 @@ export const JOB_STATUS_META: Record<
   { label: string; tone: Tone; column: boolean }
 > = {
   pending: { label: "Pending", tone: "neutral", column: true },
+  assigned: { label: "Assigned", tone: "info", column: true },
   in_progress: { label: "In Progress", tone: "accent", column: true },
-  on_hold: { label: "On Hold", tone: "warn", column: true },
+  on_hold: { label: "On Hold", tone: "warn", column: false },
+  returned_for_qc: { label: "Returned · QC", tone: "warn", column: true },
+  qc_passed: { label: "QC Passed", tone: "success", column: false },
+  rework: { label: "Rework", tone: "danger", column: false },
+  ready_for_dispatch: { label: "Ready to Ship", tone: "info", column: true },
+  handed_to_sales: { label: "With Sales", tone: "accent", column: false },
   completed: { label: "Completed", tone: "success", column: true },
   rejected: { label: "Rejected", tone: "danger", column: false },
   cancelled: { label: "Cancelled", tone: "neutral", column: false },
 };
 
-// Which status can each status advance to?
+// Which status can each status advance to? (Stylist Studio lifecycle)
 export const JOB_NEXT_STATES: Partial<Record<JobStatus, JobStatus[]>> = {
-  pending: ["in_progress", "cancelled"],
-  in_progress: ["on_hold", "completed", "rejected"],
+  pending: ["assigned", "cancelled"],
+  assigned: ["in_progress", "on_hold", "cancelled"],
+  in_progress: ["returned_for_qc", "on_hold"],
   on_hold: ["in_progress", "cancelled"],
+  returned_for_qc: ["qc_passed", "rework"],
+  qc_passed: ["ready_for_dispatch"],
+  rework: ["returned_for_qc"],
+  ready_for_dispatch: ["handed_to_sales"],
+  handed_to_sales: ["completed"],
 };
 
 export const BOARD_COLUMNS: JobStatus[] = [
   "pending",
+  "assigned",
   "in_progress",
-  "on_hold",
+  "returned_for_qc",
+  "ready_for_dispatch",
   "completed",
 ];
 

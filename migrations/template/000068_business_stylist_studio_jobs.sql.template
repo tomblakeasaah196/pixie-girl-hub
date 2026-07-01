@@ -1,0 +1,93 @@
+-- ============================================================
+-- TEMPLATE 000068 — Stylist Studio: service_jobs lifecycle expansion
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000067) and to EXISTING brands by
+-- repair-business-schema.js. There is intentionally NO CREATE TABLE here, so the
+-- repair runner re-applies the file every pass — safe because the constraint swap
+-- is DROP-then-ADD and every ADD COLUMN / CREATE INDEX is IF NOT EXISTS.
+--
+-- WHY (owner directive, June 2026 — "Stylist Studio" strategy):
+--   The job tracker only knew pending → in_progress → completed. The real shop
+--   flow has explicit hand-offs that must each be tracked so nothing falls
+--   through a gap and so a wig is always accounted for:
+--     assigned → (stylist) in_progress → returned_for_qc → qc_passed
+--             → ready_for_dispatch → handed_to_sales → completed
+--   plus rework (QC fail), on_hold, rejected, cancelled. We also pin the base
+--   wig reserved for the job, the promised-delivery SLA, the styled-product
+--   provenance, and the linked shipment / customer asset.
+--
+-- Altered:  service_jobs (status CHECK widened + lifecycle/linkage columns)
+-- ============================================================
+
+-- ── 1. Widen the status machine ──────────────────────────
+-- The original inline CHECK is auto-named '<table>_<column>_check'. Drop it (by
+-- that name and by ours, so the swap is idempotent on every repair pass) and
+-- re-add the full Stylist Studio lifecycle. Existing rows hold only the old
+-- statuses, which are a subset of the new set, so the ADD never fails.
+ALTER TABLE {{BUSINESS}}.service_jobs DROP CONSTRAINT IF EXISTS service_jobs_status_check;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD CONSTRAINT service_jobs_status_check CHECK (status IN (
+    'pending','assigned','in_progress','on_hold','returned_for_qc','qc_passed',
+    'rework','ready_for_dispatch','handed_to_sales','completed','rejected','cancelled'
+  ));
+
+-- ── 2. Lifecycle timestamps + QC + rework ────────────────
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS assigned_at   TIMESTAMPTZ;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS returned_at   TIMESTAMPTZ;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS qc_at         TIMESTAMPTZ;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS ready_at      TIMESTAMPTZ;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS handed_at     TIMESTAMPTZ;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS qc_by         UUID REFERENCES shared.users (user_id) ON DELETE SET NULL;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS rework_count  SMALLINT NOT NULL DEFAULT 0;
+
+-- ── 3. The base wig reserved for this job ────────────────
+-- The specific stockable variant locked to this job so two jobs can't claim the
+-- same wig. Deducted from stock on assignment (PR2).
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS reserved_variant_id UUID
+    REFERENCES {{BUSINESS}}.product_variants (variant_id) ON DELETE SET NULL;
+
+-- ── 4. Delivery SLA + provenance + linkage ───────────────
+-- Promised delivery moment — drives the "promised vs actual" report.
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS sla_due_at    TIMESTAMPTZ;
+-- The styled product this job realises (when opened from a styled order).
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS styled_id     UUID
+    REFERENCES {{BUSINESS}}.styled_products (styled_id) ON DELETE SET NULL;
+-- The logistics shipment created on dispatch. Soft reference (no FK) to avoid
+-- coupling Stylist Studio to the logistics table layout.
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS shipment_id   UUID;
+-- The customer's own wig (own-wig revamp). Soft reference: customer_assets also
+-- points back at the job, so a hard FK either way would be circular.
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS customer_asset_id UUID;
+
+-- ── 5. Helpful indexes ───────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_reserved_variant
+  ON {{BUSINESS}}.service_jobs (reserved_variant_id) WHERE reserved_variant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_styled
+  ON {{BUSINESS}}.service_jobs (styled_id) WHERE styled_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_sla
+  ON {{BUSINESS}}.service_jobs (sla_due_at) WHERE sla_due_at IS NOT NULL;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT conname FROM pg_constraint
+--     WHERE conname = 'service_jobs_status_check';                     -- one row
+--   SELECT count(*) FROM information_schema.columns
+--     WHERE table_schema='{{BUSINESS}}' AND table_name='service_jobs'
+--       AND column_name IN ('assigned_at','returned_at','qc_at','ready_at',
+--         'handed_at','qc_by','rework_count','reserved_variant_id','sla_due_at',
+--         'styled_id','shipment_id','customer_asset_id');              -- 12
+-- ============================================================

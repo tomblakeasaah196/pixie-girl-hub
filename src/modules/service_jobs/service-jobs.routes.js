@@ -51,6 +51,10 @@ router.post(
   c.reconcileChemicals,
 );
 
+// ── Wig accountability (literal segments before /:id) ──────
+router.get("/accountability", can("view"), c.getAccountability);
+router.get("/accountability/ledger", can("view"), c.listCustodyLedger);
+
 // ── Jobs ───────────────────────────────────────────────────
 router.get("/", can("view"), c.listJobs);
 router.post("/", can("create"), v.validateJobCreate, c.createJob);
@@ -59,6 +63,39 @@ router.patch("/:id", can("edit"), v.validateJobUpdate, c.updateJob);
 router.post("/:id/advance", can("edit"), v.validateJobAdvance, c.advanceJob);
 router.post("/:id/assign", can("edit"), v.validateAssignStaff, c.assignStaff);
 router.post("/:id/outcome", can("edit"), v.validateOutcome, c.recordOutcome);
+
+// ── Stylist Studio (PR2) lifecycle ─────────────────────────
+router.post("/:id/start", can("edit"), c.startWork);
+router.post("/:id/pause", can("edit"), c.pauseWork);
+router.post("/:id/resume", can("edit"), c.resumeWork);
+router.post("/:id/return", can("edit"), c.returnForQc);
+router.post("/:id/qc", can("edit"), v.validateQc, c.recordQc);
+router.post("/:id/dispatch", can("edit"), c.dispatch);
+router.post("/:id/hand-to-sales", can("edit"), c.handToSales);
+router.post(
+  "/:id/write-off",
+  can("approve"),
+  v.validateWriteOff,
+  c.writeOffWig,
+);
+
+// ── Materials / references / time logs ─────────────────────
+router.get("/:id/materials", can("view"), c.listMaterials);
+router.post(
+  "/:id/materials",
+  can("edit"),
+  v.validateMaterialLog,
+  c.logMaterial,
+);
+router.get("/:id/references", can("view"), c.listReferences);
+router.post(
+  "/:id/references",
+  can("edit"),
+  v.validateReferenceAdd,
+  c.addReference,
+);
+router.delete("/:id/references/:refId", can("edit"), c.removeReference);
+router.get("/:id/time-logs", can("view"), c.listTimeLogs);
 
 // ── Service-job chemical consumption (F-7d) ────────────────
 router.get("/:id/chemicals", can("view"), c.listChemicals);

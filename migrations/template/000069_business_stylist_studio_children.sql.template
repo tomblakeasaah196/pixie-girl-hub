@@ -1,0 +1,147 @@
+-- ============================================================
+-- TEMPLATE 000069 — Stylist Studio: job child tables + wig accountability
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000068) and to EXISTING brands by
+-- repair-business-schema.js. The first CREATE TABLE (service_job_time_logs) is
+-- the skip-sentinel: once it exists the repair runner skips this whole file.
+--
+-- WHY (owner directive, June 2026 — "Stylist Studio" strategy):
+--   A job needs to record HOW it went and WHERE the wig is at all times:
+--     • time_logs   — real effort (start/stop sessions, pauses, multi-day)
+--     • materials   — what was actually used (discrete deducts stock; chemicals
+--                     are a checklist trued-up by monthly reconciliation)
+--     • references  — the style brief: image / voice note / video link / text /
+--                     "creative freedom" so a less-technical stylist always has
+--                     a clear, friendly reference to work from
+--     • custody     — the quantity ledger that guarantees no wig is ever lost
+--     • customer_assets — chain of custody for a client's OWN wig in for service
+--
+-- Created:  service_job_time_logs (SENTINEL), service_job_materials,
+--           service_job_references, wig_custody_ledger, customer_assets
+-- ============================================================
+
+-- ── 1. Time sessions (SENTINEL — first CREATE TABLE) ─────
+-- One row per work session. ended_at NULL = the clock is running. duration is
+-- written by the app on stop (kept editable so Ops can correct an honest slip).
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.service_job_time_logs (
+  log_id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id                UUID        NOT NULL
+                        REFERENCES {{BUSINESS}}.service_jobs (job_id) ON DELETE CASCADE,
+  stylist_user_id       UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  started_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ended_at              TIMESTAMPTZ,
+  duration_minutes      INTEGER     CHECK (duration_minutes IS NULL OR duration_minutes >= 0),
+  note                  TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (ended_at IS NULL OR ended_at >= started_at)
+);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_job_time_logs_job
+  ON {{BUSINESS}}.service_job_time_logs (job_id);
+-- At most one open (running) session per job.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_job_time_logs_open
+  ON {{BUSINESS}}.service_job_time_logs (job_id) WHERE ended_at IS NULL;
+
+-- ── 2. Materials actually used on the job ────────────────
+-- Mirrors the BOM shape: 'discrete' = a counted stock variant (auto-deducts);
+-- 'chemical' = a checklist item (no per-wig measurement). usage_note lets the
+-- stylist tap a friendly "light / medium / heavy" for a chemical if they want.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.service_job_materials (
+  material_id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id                UUID        NOT NULL
+                        REFERENCES {{BUSINESS}}.service_jobs (job_id) ON DELETE CASCADE,
+  kind                  TEXT        NOT NULL CHECK (kind IN ('discrete','chemical')),
+  variant_id            UUID        REFERENCES {{BUSINESS}}.product_variants (variant_id) ON DELETE SET NULL,
+  quantity              NUMERIC(12,2) CHECK (quantity IS NULL OR quantity > 0),
+  chemical_name         TEXT,
+  usage_note            TEXT,
+  stock_deducted        BOOLEAN     NOT NULL DEFAULT false,
+  stock_movement_id     UUID        REFERENCES {{BUSINESS}}.stock_movements (movement_id) ON DELETE SET NULL,
+  logged_by             UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT service_job_materials_shape CHECK (
+    (kind = 'discrete' AND variant_id IS NOT NULL AND quantity IS NOT NULL) OR
+    (kind = 'chemical' AND chemical_name IS NOT NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_job_materials_job
+  ON {{BUSINESS}}.service_job_materials (job_id);
+
+-- ── 3. Style brief / references ──────────────────────────
+-- Typed reference rows. 'creative_freedom' needs none of the payload columns —
+-- it simply tells the stylist to interpret freely.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.service_job_references (
+  reference_id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id                UUID        NOT NULL
+                        REFERENCES {{BUSINESS}}.service_jobs (job_id) ON DELETE CASCADE,
+  ref_type              TEXT        NOT NULL
+                        CHECK (ref_type IN ('image','audio','video_link','text','creative_freedom')),
+  doc_id                UUID        REFERENCES shared.documents (document_id) ON DELETE SET NULL,
+  url                   TEXT,
+  body                  TEXT,
+  created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT service_job_references_payload CHECK (
+    ref_type = 'creative_freedom'
+    OR doc_id IS NOT NULL OR url IS NOT NULL OR body IS NOT NULL
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_job_references_job
+  ON {{BUSINESS}}.service_job_references (job_id);
+
+-- ── 4. Wig accountability ledger (quantity-based, no QR) ──
+-- Every physical hand-off writes one row. Per stylist:
+--   Σ(out) − Σ(return) − Σ(dispatched) = what they are still holding.
+-- A missing wig = an 'out' with no matching 'return' past the threshold in
+-- studio_config. job_id is SET NULL on job delete so the audit trail survives.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.wig_custody_ledger (
+  entry_id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id                UUID        REFERENCES {{BUSINESS}}.service_jobs (job_id) ON DELETE SET NULL,
+  event                 TEXT        NOT NULL
+                        CHECK (event IN ('out','return','dispatched','write_off')),
+  quantity              INTEGER     NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  stylist_user_id       UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  location              TEXT,
+  reason                TEXT,
+  created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_custody_stylist_event
+  ON {{BUSINESS}}.wig_custody_ledger (stylist_user_id, event);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_custody_job
+  ON {{BUSINESS}}.wig_custody_ledger (job_id);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_custody_created
+  ON {{BUSINESS}}.wig_custody_ledger (created_at);
+
+-- ── 5. Customer-owned wig (own-wig revamp) ───────────────
+-- A client's property we take possession of. asset_tag is allocated from the
+-- 'customer_asset' document sequence (e.g. FLH-CA-0001) by the app.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.customer_assets (
+  asset_id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  asset_tag             TEXT        NOT NULL UNIQUE,
+  owner_contact_id      UUID        NOT NULL REFERENCES shared.contacts (contact_id) ON DELETE RESTRICT,
+  intake_photo_doc_id   UUID        REFERENCES shared.documents (document_id) ON DELETE SET NULL,
+  condition_note        TEXT,
+  status                TEXT        NOT NULL DEFAULT 'in_our_possession'
+                        CHECK (status IN ('in_our_possession','in_service','returned_to_owner','lost')),
+  service_job_id        UUID        REFERENCES {{BUSINESS}}.service_jobs (job_id) ON DELETE SET NULL,
+  checked_in_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  checked_out_at        TIMESTAMPTZ,
+  created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_customer_assets_owner
+  ON {{BUSINESS}}.customer_assets (owner_contact_id);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_customer_assets_status
+  ON {{BUSINESS}}.customer_assets (status);
+
+-- ============================================================
+-- Verify (after substitution): all five present —
+--   SELECT to_regclass('{{BUSINESS}}.service_job_time_logs'),
+--          to_regclass('{{BUSINESS}}.service_job_materials'),
+--          to_regclass('{{BUSINESS}}.service_job_references'),
+--          to_regclass('{{BUSINESS}}.wig_custody_ledger'),
+--          to_regclass('{{BUSINESS}}.customer_assets');
+-- ============================================================

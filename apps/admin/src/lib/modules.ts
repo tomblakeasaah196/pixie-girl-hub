@@ -100,18 +100,8 @@ export const MODULES: AppModule[] = [
     route: "/crm",
     icon: Users,
   },
-  // POS removed from navigation (owner directive — fully automated, no cash/
-  // transfer). Kept here commented rather than deleted so it can be restored
-  // in one line if walk-in checkout is ever reinstated. Also pulled from
-  // DEFAULT_TOP below.
-  // {
-  //   key: "pos",
-  //   label: "Point of Sale",
-  //   description: "Walk-in checkout",
-  //   group: "run",
-  //   route: "/pos",
-  //   icon: CreditCard,
-  // },
+  // POS retired (owner directive) — replaced by the Quick Sale Form. The
+  // module + backend routes are deleted; selling happens through Sales.
   {
     key: "ecommerce",
     label: "E-Commerce",

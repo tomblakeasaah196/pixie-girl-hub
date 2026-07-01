@@ -1,0 +1,49 @@
+-- ============================================================
+-- TEMPLATE 000072 — Stylist Studio: seed Faitlyn's services price list
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio) + §6.17 (Catalogue)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000071) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here, so it re-applies every repair
+-- — safe because of ON CONFLICT (business, slug) DO NOTHING (owner edits to a
+-- price are never clobbered).
+--
+-- WHY (owner-supplied price list, June 2026):
+--   Faitlyn IS the stylist house — it sells services (a walk-in revamp, an
+--   install, a re-wig). Pixie Girl does not run in-house services, so this seed
+--   is scoped to faitlynhair only via the brand-key guard below. The rows go
+--   into the SHARED service catalogue (shared.service_offerings, brand-scoped by
+--   its own `business` column) so they show up in the Catalogue ▸ Services tab
+--   and, once an operator publishes them, on the storefront. Seeded as drafts
+--   (is_visible_storefront defaults false) so nothing goes live unreviewed.
+--
+-- Seeds:  shared.service_offerings (faitlynhair) — 11 services, 2 categories
+-- ============================================================
+
+INSERT INTO shared.service_offerings (business, name, slug, base_price_ngn, category, sort_order)
+SELECT '{{BUSINESS}}', v.name, v.slug, v.price::numeric, v.category, v.ord
+FROM (VALUES
+  -- Colour & Styling
+  ('Custom Colouring',                   'custom-colouring',                49000, 'colour_styling',  1),
+  ('Highlights on Pixie',                'highlights-on-pixie',             35000, 'colour_styling',  2),
+  ('Revamping & Styling — Normal Pixie', 'revamping-styling-normal-pixie',  15000, 'colour_styling',  3),
+  ('Revamping & Styling — Teyena Taylor','revamping-styling-teyena-taylor', 25000, 'colour_styling',  4),
+  ('Revamping & Styling — Long Hair',    'revamping-styling-long-hair',     18000, 'colour_styling',  5),
+  ('Pixie Styling Only',                 'pixie-styling-only',              10000, 'colour_styling',  6),
+  -- Installation
+  ('Install Already Cut & Styled Pixie', 'install-already-cut-styled-pixie',55000, 'installation',    7),
+  ('Custom Cut & Styled on the Head',    'custom-cut-styled-on-the-head',   69000, 'installation',    8),
+  ('Long Hair Installation',             'long-hair-installation',          69000, 'installation',    9),
+  ('Custom Fit / Styling on the Head',   'custom-fit-styling-on-the-head',  35000, 'installation',   10),
+  ('Glueless Fitting / Melt Spray',      'glueless-fitting-melt-spray',     45000, 'installation',   11)
+) AS v(name, slug, price, category, ord)
+WHERE '{{BUSINESS}}' = 'faitlynhair'    -- service house only; Pixie has no in-house services
+ON CONFLICT (business, slug) DO NOTHING;
+
+-- ============================================================
+-- Verify (faitlynhair only):
+--   SELECT category, count(*) FROM shared.service_offerings
+--     WHERE business = 'faitlynhair'
+--       AND slug IN ('custom-colouring','glueless-fitting-melt-spray')
+--     GROUP BY category;   -- rows present
+-- ============================================================

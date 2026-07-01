@@ -1,0 +1,46 @@
+-- ============================================================
+-- TEMPLATE 000071 — Stylist Studio: brand config + asset numbering
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000070) and to EXISTING brands by
+-- repair-business-schema.js. The first CREATE TABLE (studio_config) is the
+-- skip-sentinel.
+--
+-- WHY (owner directive, June 2026 — "Stylist Studio" strategy):
+--   One small, friendly knob: how many days a wig may sit with a stylist before
+--   the system raises a "go check on this" flag (the missing-wig guard). Kept in
+--   a singleton config row so Ops can change it without code. Also registers the
+--   customer-asset document sequence (FLH-CA-0001…) so own-wig check-ins get a
+--   clean human tag, editable in Settings → Document Numbering.
+--
+-- Created:  studio_config (SENTINEL, singleton)
+-- Seeded :  shared.document_numbering row for 'customer_asset'
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.studio_config (
+  singleton                  BOOLEAN     PRIMARY KEY DEFAULT true CHECK (singleton),
+  -- Days a wig may be 'out' with a stylist before the missing-wig flag fires.
+  missing_wig_threshold_days SMALLINT    NOT NULL DEFAULT 7
+                             CHECK (missing_wig_threshold_days BETWEEN 1 AND 90),
+  updated_by                 UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Seed the single row (defaults) — harmless if it already exists.
+INSERT INTO {{BUSINESS}}.studio_config (singleton) VALUES (true)
+  ON CONFLICT (singleton) DO NOTHING;
+
+-- Register the customer-asset numbering sequence for this brand.
+INSERT INTO shared.document_numbering (business, document_type, prefix, padding, next_number)
+SELECT '{{BUSINESS}}', 'customer_asset', bc.document_prefix || '-CA', 4, 1
+FROM shared.business_config bc
+WHERE bc.business_key = '{{BUSINESS}}'
+ON CONFLICT (business, document_type) DO NOTHING;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT missing_wig_threshold_days FROM {{BUSINESS}}.studio_config;   -- 7
+--   SELECT prefix FROM shared.document_numbering
+--     WHERE business='{{BUSINESS}}' AND document_type='customer_asset';  -- '<PFX>-CA'
+-- ============================================================

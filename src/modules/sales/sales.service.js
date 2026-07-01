@@ -117,15 +117,27 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // 1. Resolve line pricing context + base unit prices.
     const built = [];
     for (const li of input.lines) {
-      const ctx = await repo.variantContext({
-        client,
-        brand,
-        variant_id: li.variant_id,
-      });
+      // A line is EITHER a product variant or a service offering (PR3). A
+      // service ctx has null product_id/min_price/cost, so the campaign,
+      // margin-floor, stock and COGS steps below all skip it naturally.
+      const ctx =
+        !li.variant_id && li.service_offering_id
+          ? await repo.serviceOfferingContext({
+              client,
+              brand,
+              service_id: li.service_offering_id,
+            })
+          : await repo.variantContext({
+              client,
+              brand,
+              variant_id: li.variant_id,
+            });
       if (!ctx)
         throw new AppError(
           "REFERENCE_INVALID",
-          `Variant ${li.variant_id} not found`,
+          li.service_offering_id
+            ? `Service ${li.service_offering_id} not found`
+            : `Variant ${li.variant_id} not found`,
           409,
         );
       const unit = money(
@@ -589,6 +601,18 @@ async function createOrderTx({ brand, user, request_id, input }) {
         line_total_ngn: toCurrencyString(lineTotal),
         display_order: idx,
         notes: b.li.notes,
+        // Stylist Studio (PR3): what the line sells. Default 'product', but
+        // 'service' when it carries a service offering, so the deposit-met
+        // auto-open opens a job only for styling work.
+        line_kind:
+          b.li.line_kind ||
+          (b.li.service_offering_id
+            ? "service"
+            : b.li.styled_id
+              ? "styled"
+              : "product"),
+        service_offering_id: b.li.service_offering_id || null,
+        styled_id: b.li.styled_id || null,
       });
     });
     const shipping = shipping0.minus(couponShipping);
@@ -1440,7 +1464,11 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
       request_id,
       metadata: reason ? { reason } : undefined,
     });
-    events.emit("order.cancelled", { brand, order_id: id, reason: reason || null });
+    events.emit("order.cancelled", {
+      brand,
+      order_id: id,
+      reason: reason || null,
+    });
     return o;
   });
 }
@@ -1632,7 +1660,10 @@ function buildQuotationDoc({ quotation, brandObj, copy, contact }) {
   const tax = Number(quotation.tax_amount_ngn || 0);
   const base = subtotal - discount;
   const taxRate = tax > 0 && base > 0 ? tax / base : null;
-  const first = String((contact && contact.display_name) || "").trim().split(/\s+/)[0] || "";
+  const first =
+    String((contact && contact.display_name) || "")
+      .trim()
+      .split(/\s+/)[0] || "";
   const tokens = {
     first_name: first,
     brand_name: brandObj.brand_name,
@@ -1656,17 +1687,26 @@ function buildQuotationDoc({ quotation, brandObj, copy, contact }) {
       email: brandObj.support_email,
     },
     bill_to: contact
-      ? { name: contact.display_name, phone: contact.primary_phone, email: contact.email }
+      ? {
+          name: contact.display_name,
+          phone: contact.primary_phone,
+          email: contact.email,
+        }
       : null,
     meta: [
       ["Quote #", quotation.quotation_number],
       ["Issue date", _dayISO(quotation.created_at)],
-      ["Valid until", quotation.valid_until ? _dayISO(quotation.valid_until) : "—"],
+      [
+        "Valid until",
+        quotation.valid_until ? _dayISO(quotation.valid_until) : "—",
+      ],
     ],
     lines: (quotation.lines || []).map((l) => ({
       description:
         l.description ||
-        [l.product_name_snapshot, l.variant_label_snapshot].filter(Boolean).join(" — "),
+        [l.product_name_snapshot, l.variant_label_snapshot]
+          .filter(Boolean)
+          .join(" — "),
       quantity: l.quantity,
       unit_price_ngn: l.unit_price_ngn,
       line_total_ngn: l.line_total_ngn,
@@ -2021,7 +2061,8 @@ const PROVIDER_LABEL = {
 /** Human "Paystack — card" style label from a payment row. */
 function paymentMethodLabel(p) {
   if (!p) return null;
-  const provider = PROVIDER_LABEL[p.provider] || (p.provider ? String(p.provider) : null);
+  const provider =
+    PROVIDER_LABEL[p.provider] || (p.provider ? String(p.provider) : null);
   const m = String(p.method || "").toLowerCase();
   let kind = null;
   if (m.includes("card")) kind = "card";
@@ -2048,7 +2089,10 @@ function buildReceiptDoc({ order, brandObj, copy }) {
   const base = subtotal - discount;
   const taxRate = tax > 0 && base > 0 ? tax / base : null;
 
-  const first = String(order.contact_name || "").trim().split(/\s+/)[0] || "";
+  const first =
+    String(order.contact_name || "")
+      .trim()
+      .split(/\s+/)[0] || "";
   const tokens = {
     first_name: first,
     brand_name: brandObj.brand_name,
@@ -2080,7 +2124,8 @@ function buildReceiptDoc({ order, brandObj, copy }) {
         "Paid on",
         _dayISO(
           order.paid_at ||
-            (lastPayment && (lastPayment.captured_at || lastPayment.recorded_at)) ||
+            (lastPayment &&
+              (lastPayment.captured_at || lastPayment.recorded_at)) ||
             order.created_at,
         ),
       ],

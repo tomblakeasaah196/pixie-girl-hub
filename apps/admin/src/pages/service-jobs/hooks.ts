@@ -190,3 +190,123 @@ export function useRunReconciliation() {
       qc.invalidateQueries({ queryKey: ["chem-reconciliations", brand] }),
   });
 }
+
+// ── Stylist Studio lifecycle (PR4) ─────────────────────────
+
+export function useStudioLifecycle(jobId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["service-jobs"] });
+    qc.invalidateQueries({ queryKey: ["service-job", jobId, brand] });
+    qc.invalidateQueries({ queryKey: ["studio-accountability", brand] });
+  };
+  return {
+    start: useMutation({
+      mutationFn: () => api.startJob(jobId),
+      onSuccess: invalidate,
+    }),
+    pause: useMutation({
+      mutationFn: () => api.pauseJob(jobId),
+      onSuccess: invalidate,
+    }),
+    resume: useMutation({
+      mutationFn: () => api.resumeJob(jobId),
+      onSuccess: invalidate,
+    }),
+    returnForQc: useMutation({
+      mutationFn: () => api.returnJob(jobId),
+      onSuccess: invalidate,
+    }),
+    qc: useMutation({
+      mutationFn: (input: Parameters<typeof api.qcJob>[1]) =>
+        api.qcJob(jobId, input),
+      onSuccess: invalidate,
+    }),
+    dispatch: useMutation({
+      mutationFn: () => api.dispatchJob(jobId),
+      onSuccess: invalidate,
+    }),
+    handToSales: useMutation({
+      mutationFn: () => api.handToSales(jobId),
+      onSuccess: invalidate,
+    }),
+    writeOff: useMutation({
+      mutationFn: (reason: string) => api.writeOffWig(jobId, reason),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
+// ── Materials / references / time logs ─────────────────────
+
+export function useJobMaterials(jobId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["job-materials", jobId, brand],
+    queryFn: () => api.listMaterials(jobId!),
+    enabled: !!jobId,
+    select: (r) => r.data,
+  });
+}
+
+export function useLogMaterial(jobId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.logMaterial>[1]) =>
+      api.logMaterial(jobId, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["job-materials", jobId, brand] });
+    },
+  });
+}
+
+export function useJobReferences(jobId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["job-references", jobId, brand],
+    queryFn: () => api.listReferences(jobId!),
+    enabled: !!jobId,
+    select: (r) => r.data,
+  });
+}
+
+export function useReferenceMutations(jobId: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["job-references", jobId, brand] });
+  return {
+    add: useMutation({
+      mutationFn: (input: Parameters<typeof api.addReference>[1]) =>
+        api.addReference(jobId, input),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (refId: string) => api.deleteReference(jobId, refId),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
+export function useJobTimeLogs(jobId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["job-time-logs", jobId, brand],
+    queryFn: () => api.listTimeLogs(jobId!),
+    enabled: !!jobId,
+    select: (r) => r.data,
+  });
+}
+
+// ── Wig accountability ─────────────────────────────────────
+
+export function useAccountability() {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["studio-accountability", brand],
+    queryFn: () => api.getAccountability(),
+    select: (r) => r.data,
+  });
+}

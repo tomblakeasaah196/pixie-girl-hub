@@ -14,6 +14,8 @@ import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { JobBoard } from "./JobBoard";
 import { RecipesPanel } from "./RecipesPanel";
+import { AccountabilityPanel } from "./AccountabilityPanel";
+import { MyStudioJobs } from "./MyStudioJobs";
 import {
   useJobs,
   useServiceTypes,
@@ -465,10 +467,16 @@ function KpiStrip() {
 
 // ── Main page ──────────────────────────────────────────────
 
-type Tab = "board" | "types" | "recipes" | "reconciliation";
+type Tab =
+  | "my"
+  | "board"
+  | "accountability"
+  | "types"
+  | "recipes"
+  | "reconciliation";
 
 export function ServiceJobsPage() {
-  useBreadcrumbs([{ label: "Service Jobs" }]);
+  useBreadcrumbs([{ label: "Stylist Studio" }]);
   const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState<Tab>("board");
 
@@ -489,7 +497,9 @@ export function ServiceJobsPage() {
   const canEdit = can("service_jobs", "edit");
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: "my", label: "My Jobs" },
     { id: "board", label: "Job Board" },
+    { id: "accountability", label: "Wig Accountability" },
     { id: "types", label: "Service Types" },
     { id: "recipes", label: "Recipes" },
     { id: "reconciliation", label: "Chemical Reconciliation" },
@@ -500,10 +510,9 @@ export function ServiceJobsPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-2xl">Service Jobs</h1>
+          <h1 className="font-display text-2xl">Stylist Studio</h1>
           <p className="text-muted text-sm">
-            Faitlyn Hair Assignment Register — installation, revamping, colour,
-            customisation
+            In-house styling operations — assign, track, QC and never lose a wig
           </p>
         </div>
       </div>
@@ -530,7 +539,9 @@ export function ServiceJobsPage() {
       </div>
 
       {/* Tab content */}
+      {tab === "my" && <MyStudioJobs />}
       {tab === "board" && <JobBoard canCreate={canCreate} />}
+      {tab === "accountability" && <AccountabilityPanel />}
       {tab === "types" && <ServiceTypesTab canCreate={canEdit} />}
       {tab === "recipes" && <RecipesPanel canCreate={canEdit} />}
       {tab === "reconciliation" && <ReconciliationTab />}

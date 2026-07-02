@@ -296,6 +296,10 @@ async function closePeriod({ brand, user, request_id, id }) {
   });
   return p;
 }
+/** Source-record → journal lookup (e.g. invoice → its accrual entry). */
+function findEntryBySource({ brand, source_type, source_id }) {
+  return repo.findEntryBySource({ brand, source_type, source_id });
+}
 function listJournals({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
   return repo.listEntries({ brand, filters, page, page_size, offset });
@@ -891,6 +895,7 @@ module.exports = {
   closePeriod,
   listJournals,
   getJournal,
+  findEntryBySource,
   trialBalance,
   profitAndLoss,
   balanceSheet,

@@ -66,6 +66,8 @@ BEGIN
   INSERT INTO {{BUSINESS}}.chart_of_accounts
     (account_code, account_name, group_id, is_control_account, control_subledger, account_currency, description)
   VALUES
+    ('1420', 'WHT Receivable — Customers', g_assets, false, NULL, NULL,
+     'Withholding tax deducted by customers at source, recoverable as FIRS credit notes (policy Q1)'),
     ('1610', 'COD in Transit — Couriers', g_assets, false, NULL, NULL,
      'Cash collected on delivery, held by couriers until remitted (policy Q10)'),
     ('2020', 'Accounts Payable — Factory (CNY)', g_liabilities, false, NULL, cny,

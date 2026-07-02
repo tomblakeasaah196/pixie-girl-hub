@@ -673,7 +673,12 @@ async function assignStylist({
         "WIG_ALREADY_OUT",
         "This wig is already out with a stylist and must be returned before it can be re-assigned.",
         409,
-        "This wig is already with a stylist — have it returned first.",
+        // AppError's 4th arg is an options object; a bare string here was
+        // silently discarded and the internal message leaked to the client.
+        {
+          user_message:
+            "This wig is already with a stylist — have it returned first.",
+        },
       );
     }
     await deductBaseWig({

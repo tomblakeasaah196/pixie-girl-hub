@@ -22,7 +22,7 @@
     "nomba:live-100": "node scripts/nomba-live-100-charge.js",
     "icons:generate": "node scripts/generate-app-icons.mjs",
     "check:integrations": "node scripts/check-integrations.js",
-    "lint": "eslint src/ --ext .js",
+    "lint": "eslint src/ --ext .js && npm run lint:naming",
     "lint:fix": "eslint src/ --ext .js --fix",
     "format": "prettier --write 'src/**/*.js'",
     "db:create": "node scripts/db-create.js",
@@ -44,6 +44,7 @@
     "coverage:frontend": "node scripts/build-frontend-coverage.js",
     "build:action-catalogue": "node scripts/build-action-catalogue.js",
     "rag:reembed": "node scripts/rag-reembed.js",
+    "lint:naming": "node scripts/check-file-naming.js",
     "books:verify": "node scripts/verify-books.js"
   },
   "dependencies": {

@@ -30,6 +30,7 @@ const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const { getSupportContact, supportSentence } = require("../../config/support");
+const stages = require("./checkout.stages");
 
 const { BRANDS } = require("../../config/brands");
 
@@ -497,34 +498,9 @@ async function quoteCart({ slug, brand, brandHint, input }) {
   };
 }
 
-// PURE. Given a bundle's resolved component prices (per single bundle) and the
-// campaign's fixed bundle price (campaign_bundle_price_ngn, or null when the
-// operator didn't set one), return the sum-of-parts, the price the buyer pays
-// per bundle, and the discount per bundle that brings the component sum down to
-// the campaign price. The discount is applied ORDER-LEVEL (never per item) so it
-// can't double-count with the deal ladder, and is clamped ≥ 0 so a mis-set
-// campaign price can never INFLATE a bundle above its sum-of-parts.
-function computeBundleDiscount({ components, campaignBundlePrice }) {
-  const sumOfParts = (components || []).reduce(
-    (a, c) =>
-      a.plus(money(c.unit_price_ngn || 0).times(Number(c.quantity) || 1)),
-    money(0),
-  );
-  const hasCampaignPrice =
-    campaignBundlePrice !== null &&
-    campaignBundlePrice !== undefined &&
-    campaignBundlePrice !== "";
-  // The campaign price may only ever DISCOUNT the bundle, never mark it up: a
-  // price set above sum-of-parts is ignored (we keep sum-of-parts), so the quote
-  // and the till always agree and effectivePrice === sumOfParts − discount.
-  let effectivePrice = sumOfParts;
-  if (hasCampaignPrice) {
-    const cp = money(campaignBundlePrice);
-    if (cp.lt(sumOfParts)) effectivePrice = cp;
-  }
-  const discountPerBundle = sumOfParts.minus(effectivePrice);
-  return { sumOfParts, effectivePrice, discountPerBundle };
-}
+// Bundle price maths moved to checkout.stages.js (pure); re-exported below
+// so existing importers/tests keep working.
+const { computeBundleDiscount } = stages;
 
 // The campaign bundle price to charge for ONE bundle. Resolved LIVE from the
 // source Catalogue offer (so the till matches the storefront the instant a
@@ -823,49 +799,13 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     );
   }
 
-  // ── Wholesale minimum (cart-wide) ──────────────────────
-  // Raw / unstyled wigs are a wholesale-only SKU: they only sell at or above the
-  // lowest configured bulk tier. The minimum is enforced on the COMBINED raw-wig
-  // count across every style in the cart — not per product — so a buyer can mix
-  // styles to reach it. The cart drawer mirrors this; this is the authoritative
-  // guard so the client check can't be bypassed.
-  const bulkTiersForMin = Array.isArray(campaign.bulk_tiers)
-    ? campaign.bulk_tiers
-    : [];
-  const minBulkQty = bulkTiersForMin
-    .map((t) => Number(t && t.min_qty))
-    .filter((n) => Number.isFinite(n) && n > 0)
-    .sort((a, b) => a - b)[0];
-  if (minBulkQty) {
-    const rawWigQty = (input.cart || []).reduce(
-      (sum, it) => sum + (it && it.unstyled ? Number(it.quantity) || 0 : 0),
-      0,
-    );
-    if (rawWigQty > 0 && rawWigQty < minBulkQty) {
-      throw new AppError(
-        "WHOLESALE_MINIMUM_NOT_MET",
-        `Raw (unstyled) wigs are sold wholesale — a minimum of ${minBulkQty} across any style. You have ${rawWigQty}. Add ${minBulkQty - rawWigQty} more, or remove the raw wigs, to continue.`,
-        409,
-      );
-    }
-  }
+  // Pure cart guards (checkout.stages.js): wholesale minimum across the
+  // cart's raw wigs, and a usable delivery address unless pickup.
+  stages.assertWholesaleMinimum(campaign, input.cart);
+  stages.assertDeliveryAddress(input);
 
   // Pickup (collect-in-store) carries no delivery address and no delivery fee.
   const isPickup = input.fulfilment_type === "pickup";
-
-  // Delivery requires a usable address — guard here (the schema makes address
-  // optional so pickup can omit it) so a delivery checkout can never slip
-  // through addressless and look like a silent failure at fulfilment.
-  if (!isPickup) {
-    const a = input.contact.address;
-    if (!a || !a.line1 || !a.city) {
-      throw new AppError(
-        "ADDRESS_REQUIRED",
-        "Please enter your delivery address (or choose store pickup).",
-        422,
-      );
-    }
-  }
 
   // ── 1. Find or create CRM contact + address ────────────
   // Runs in its own transaction so it doesn't nest inside salesService's.
@@ -1034,14 +974,8 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       // price it at the styled product's anchor (retail_price_ngn) and drop the
       // colour/size/lace premiums. The line is flagged raw so it feeds the
       // reseller/bulk tier rather than the per-wig position ladder.
-      const unitPrice = cartItem.unstyled
-        ? money(sv.retail_price_ngn || 0)
-        : sv.price_override_ngn !== null && sv.price_override_ngn !== undefined
-          ? money(sv.price_override_ngn)
-          : money(sv.retail_price_ngn || 0)
-              .plus(money(sv.colour_premium || 0))
-              .plus(money(sv.size_premium || 0))
-              .plus(money(sv.lace_premium || 0));
+      // (Pure — checkout.stages.js.)
+      const unitPrice = stages.styledUnitPrice(sv, cartItem.unstyled);
       if (!unitPrice.gt(0)) {
         throw new AppError(
           "STYLED_NOT_PRICED",
@@ -1073,13 +1007,7 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         );
       }
 
-      const label = cartItem.unstyled
-        ? [sv.colour_name, sv.size_label, "Unstyled"]
-            .filter(Boolean)
-            .join(" · ")
-        : [sv.colour_name, sv.size_label, sv.lace_code]
-            .filter(Boolean)
-            .join(" · ");
+      const label = stages.styledLineLabel(sv, cartItem.unstyled);
       orderLines.push({
         variant_id: baseVariantId,
         quantity: cartItem.quantity,
@@ -1353,98 +1281,32 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   // transaction) so a hiccup here can never undo the order or poison anything.
   const c = input.contact;
   {
-    const internal = {};
-    if (c.gift) {
-      internal.gift = c.gift;
-      if (c.gift.ship_to_recipient && c.gift.recipient_address) {
-        internal.ship_to = "recipient";
-        internal.recipient_address = c.gift.recipient_address;
-      }
-    }
-    if (c.consent) internal.consent = c.consent;
-    // Fulfilment intent + the resolved delivery zone/fee, so the back office
-    // knows whether to ship or hold for pickup and which courier/tier applied.
-    internal.fulfilment_type = isPickup ? "pickup" : "delivery";
-    if (!isPickup && deliveryQuote && deliveryQuote.zone_id) {
-      internal.delivery = {
-        zone_name: deliveryQuote.zone_name,
-        courier_key: deliveryQuote.courier_key,
-        country_code: deliveryQuote.country_code,
-        fee_ngn: shippingFeeNgn,
-        fee_status: deliveryQuote.fee_status || null,
-      };
-    }
-    if (order._preorder && order._preorder.is_preorder) {
-      internal.preorder = {
-        line_count: order._preorder.line_count,
-        items: order._preorder.names,
-      };
-    }
-    internal.ip = ip;
-    internal.user_agent = user_agent;
-
-    const customerParts = [];
-    if (c.notes) customerParts.push(c.notes);
-    if (isPickup) {
-      customerParts.push("PICKUP / collect in store — no delivery.");
-    } else if (internal.delivery) {
-      customerParts.push(
-        `Delivery zone: ${internal.delivery.zone_name} (${internal.delivery.courier_key}).`,
-      );
-    }
-    if (order._preorder && order._preorder.is_preorder) {
-      customerParts.push("Contains pre-order item(s).");
-    }
-    if (c.gift) {
-      customerParts.push(`GIFT ORDER for ${c.gift.recipient_name}`);
-      if (c.gift.message) customerParts.push(`Gift message: ${c.gift.message}`);
-      if (c.gift.ship_to_recipient && c.gift.recipient_address) {
-        const ra = c.gift.recipient_address;
-        customerParts.push(
-          `Ship to recipient: ${ra.line1}${ra.line2 ? `, ${ra.line2}` : ""}, ${ra.city}${ra.state ? `, ${ra.state}` : ""}, ${ra.country || "Nigeria"}`,
-        );
-      }
-    }
-
-    const addressSnapshot = deliveryAddress
-      ? {
-          line1: deliveryAddress.line1,
-          line2: deliveryAddress.line2,
-          area: deliveryAddress.area,
-          city: deliveryAddress.city,
-          state: deliveryAddress.state,
-          country: deliveryAddress.country,
-          country_code: deliveryAddress.country_code,
-          postal_code: deliveryAddress.postal_code,
-          recipient_name: deliveryAddress.recipient_name,
-          recipient_phone: deliveryAddress.recipient_phone,
-        }
-      : null;
-
-    // Currency snapshot (admin clarity). USD checkouts settle in dollars at the
-    // gateway using the campaign's static rate (ngn_per_usd_rate, set in the
-    // builder); record the dollar total + that rate on the order so the Sales
-    // views can show "$X @ ₦rate → ₦total" instead of only Naira. NGN orders
-    // keep the defaults (display_currency 'NGN', fx_rate_used 1.0, display_total
-    // NULL → shown as "—"). Recording the real rate also fixes the realised-FX
-    // posting in addPayment, which books against order.fx_rate_used.
-    const displayCurrency = String(
-      input.display_currency || "NGN",
-    ).toUpperCase();
-    const campaignRate =
-      campaign.ngn_per_usd_rate !== null &&
-      campaign.ngn_per_usd_rate !== undefined
-        ? Number(campaign.ngn_per_usd_rate)
-        : null;
-    let displayTotal = null;
-    let fxRateUsed = null; // null → keep the existing NOT NULL default (1.0)
-    if (displayCurrency !== "NGN" && campaignRate && campaignRate > 0) {
-      // Same conversion the gateway charges: NGN total → whole units, ceil.
-      displayTotal = toCurrencyString(
-        money(order.total_ngn).dividedBy(money(campaignRate)).ceil(),
-      );
-      fxRateUsed = campaignRate;
-    }
+    // Notes / snapshot / currency assembly is pure — checkout.stages.js.
+    const internal = stages.buildInternalNotes({
+      contact: c,
+      isPickup,
+      deliveryQuote,
+      shippingFeeNgn,
+      order,
+      ip,
+      user_agent,
+    });
+    const customerNotes = stages.buildCustomerNotes({
+      contact: c,
+      isPickup,
+      internal,
+      order,
+    });
+    const addressSnapshot = stages.buildAddressSnapshot(deliveryAddress);
+    // USD checkouts record the dollar total + campaign rate so Sales views
+    // show "$X @ ₦rate → ₦total"; recording the real rate also fixes the
+    // realised-FX posting in addPayment (books against order.fx_rate_used).
+    const { displayCurrency, displayTotal, fxRateUsed } =
+      stages.resolveDisplayCurrency({
+        display_currency: input.display_currency,
+        campaign,
+        total_ngn: order.total_ngn,
+      });
 
     try {
       await query(
@@ -1458,7 +1320,7 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
                 fx_rate_used = COALESCE($8, fx_rate_used)
           WHERE order_id = $5`,
         [
-          customerParts.length ? customerParts.join("\n") : null,
+          customerNotes,
           Object.keys(internal).length ? JSON.stringify(internal) : null,
           deliveryAddress ? deliveryAddress.address_id : null,
           addressSnapshot ? JSON.stringify(addressSnapshot) : null,
@@ -1493,33 +1355,14 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     input.display_currency || "NGN",
   ).toUpperCase();
 
-  // Per-campaign gateway gate: the owner can disable a rail for this sale in
-  // the builder. Enforce it server-side — the public checkout only shows the
-  // allowed buttons, so a value outside this set is a stale/tampered client.
-  const allowedGateways =
-    Array.isArray(campaign.allowed_payment_gateways) &&
-    campaign.allowed_payment_gateways.length
-      ? campaign.allowed_payment_gateways
-      : ["paystack", "nomba"];
-  // USD has only the Nomba rail; NGN honours the buyer's pick, else the first
-  // gateway the campaign still has enabled.
-  const preferredProvider =
-    checkoutCurrency === "USD"
-      ? "nomba"
-      : input.payment_gateway && allowedGateways.includes(input.payment_gateway)
-        ? input.payment_gateway
-        : allowedGateways[0];
-  if (!allowedGateways.includes(preferredProvider)) {
-    // Either the buyer forced a disabled rail, or USD checkout hit a campaign
-    // that has turned Nomba off — there is no valid rail to settle on.
-    throw new AppError(
-      "GATEWAY_NOT_AVAILABLE",
-      checkoutCurrency === "USD"
-        ? "USD payment is not available for this sale."
-        : "That payment method is not available for this sale.",
-      422,
-    );
-  }
+  // Per-campaign gateway gate (pure — checkout.stages.js): USD forces the
+  // Nomba rail; NGN honours the buyer's pick within the campaign's enabled
+  // set; a disabled/empty rail throws GATEWAY_NOT_AVAILABLE.
+  const preferredProvider = stages.selectPaymentGateway({
+    checkoutCurrency,
+    requestedGateway: input.payment_gateway,
+    campaign,
+  });
 
   try {
     const payResult = await paymentLink.createPaymentLink({

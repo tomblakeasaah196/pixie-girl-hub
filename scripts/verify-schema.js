@@ -2,6 +2,9 @@
 /**
  * Schema verification — runs after migrate/bootstrap to confirm expected state.
  * Output is a quick health report; non-zero exit on any failure.
+ *
+ * Brand schemas are discovered from shared.business_config (the same source
+ * the app boots from), so this works for any brand keys, not hardcoded ones.
  */
 
 "use strict";
@@ -17,29 +20,30 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
-const EXPECTED = {
-  shared: 112,
-  // +7 brand tables from Stylist Studio (PR1, template 000067–000072):
-  //   styled_product_bom, service_job_time_logs, service_job_materials,
-  //   service_job_references, wig_custody_ledger, customer_assets, studio_config.
-  // −8 from the POS teardown (PR3, template 000074): pos_* tables removed.
-  "valid-brand-key-1": 162,
-  "valid-brand-key-2": 162,
-};
+// Baseline counts after shared 000250 + brand template 000075
+// (accounting foundation: +1 variant_costing per brand — policy Q9).
+const EXPECTED_SHARED = 170;
+const EXPECTED_PER_BRAND = 203;
+
+async function countTables(schema) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = $1`,
+    [schema],
+  );
+  return rows[0].n;
+}
 
 async function main() {
-  const out = {};
-  for (const schema of Object.keys(EXPECTED)) {
-    const { rows } = await pool.query(
-      `SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = $1`,
-      [schema],
-    );
-    out[schema] = rows[0].n;
-  }
-  process.stdout.write("Schema table counts:");
+  const { rows: brands } = await pool.query(
+    `SELECT business_key FROM shared.business_config WHERE is_active = true ORDER BY business_key`,
+  );
+  const checks = [["shared", EXPECTED_SHARED]];
+  for (const b of brands) checks.push([b.business_key, EXPECTED_PER_BRAND]);
+
+  process.stdout.write("Schema table counts:\n");
   let ok = true;
-  for (const [schema, expected] of Object.entries(EXPECTED)) {
-    const actual = out[schema];
+  for (const [schema, expected] of checks) {
+    const actual = await countTables(schema);
     const status = actual === expected ? "✓" : "✗";
     process.stdout.write(
       `  ${status} ${schema}: ${actual} (expected ${expected})\n`,

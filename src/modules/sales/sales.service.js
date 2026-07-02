@@ -40,28 +40,14 @@ const { logger } = require("../../config/logger");
 
 const PAID_STATES = new Set(["paid", "awaiting_dispatch", "completed"]);
 
-// Per-gateway Payment Processing Fees GL accounts (V2.2 §6.6 A-7 / seed 000035).
-// Stripe is split per settlement currency.
-const GATEWAY_FEE_ACCOUNT = {
-  paystack: "5511",
-  opay: "5512",
-  nomba: "5513",
-};
-const STRIPE_FEE_ACCOUNT_BY_CCY = {
-  USD: "5514",
-  GBP: "5515",
-  EUR: "5516",
-  CAD: "5517",
-  GHS: "5518",
-};
-function gatewayFeeAccount(provider, paid_currency) {
-  if (provider === "stripe")
-    return (
-      STRIPE_FEE_ACCOUNT_BY_CCY[(paid_currency || "USD").toUpperCase()] ||
-      "5514"
-    );
-  return GATEWAY_FEE_ACCOUNT[provider] || null;
-}
+// GL account codes resolved through the accounting posting map — the SSOT
+// for all journal account codes (V2.2 §6.6, ratified policy Q4/Q7/Q8).
+const {
+  ACCOUNTS,
+  gatewayFeeAccount,
+  settlementAccountForProvider,
+} = require("../accounting/posting-map");
+const salesPostings = require("./sales.postings");
 
 function channelPrice(ctx, channel) {
   // NOTE: the POS *terminal app* was retired (replaced by the Quick Sale Form),
@@ -1057,7 +1043,13 @@ async function addPayment({ brand, user, request_id, id, input }) {
     // gateway webhook (Paystack / Opay / Nomba / Stripe). Staff-recorded
     // and POS-originated payments are blocked at the service layer as
     // defense-in-depth (the validator also blocks them at the HTTP edge).
-    if (input.payment_path !== "gateway") {
+    // Sole exception: pay-on-delivery remittances — stock already left with
+    // the courier, and only logistics' remit flow (never HTTP input, the
+    // validator strips unknown fields) can set the internal flag.
+    const isPodRemit =
+      input._internal_pod_remit === true &&
+      input.method === "pay_on_delivery";
+    if (input.payment_path !== "gateway" && !isPodRemit) {
       throw new AppError(
         "PAYMENT_PATH_BLOCKED",
         "Payments may only be recorded through an authorized payment gateway. Manual payment entry is disabled.",
@@ -1104,13 +1096,40 @@ async function addPayment({ brand, user, request_id, id, input }) {
       return repo.findById({ client, brand, id });
     }
 
+    // Capture journal (policy Q4/Q7): DR the gateway's settlement float /
+    // CR Customer Deposits 2400. The sale journal draws 2400 down by the
+    // order total once fully paid, so partials/layaway/multi-gateway all
+    // reconcile. POD remittances are excluded — logistics posts the COD
+    // clearing journals (collect → 1610, remit → bank) itself.
+    const accounting = require("../accounting/accounting.service");
+    if (!isPodRemit) {
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "payment",
+          source_table: "sales_order_payments",
+          source_id: paymentRow.payment_id,
+          reference: order.order_number,
+          description: `Payment captured — ${order.order_number}`,
+          idempotency_key: `payment_capture:${paymentRow.payment_id}`,
+        },
+        lines: salesPostings.buildCaptureLines({
+          amount_ngn: input.amount_ngn,
+          provider: input.provider,
+          contact_id: order.contact_id,
+          reference: order.order_number,
+        }),
+      });
+    }
+
     // Per-gateway processing fee (§6.6/§6.21): book the fee to the gateway's
-    // dedicated 551x expense account, contra the same cash account the sale
-    // journal debits — so cash nets to the actual settlement (net_received).
+    // dedicated 551x expense account, contra the SAME settlement account the
+    // capture debited — so the float nets to the actual payout amount.
     const feeNgn = money(input.fee_ngn || 0);
     const feeAccount = gatewayFeeAccount(input.provider, input.paid_currency);
     if (feeNgn.gt(0) && feeAccount) {
-      const accounting = require("../accounting/accounting.service");
       const feeStr = toCurrencyString(feeNgn);
       await accounting.postEntry({
         client,
@@ -1131,9 +1150,9 @@ async function addPayment({ brand, user, request_id, id, input }) {
             description: `${input.provider} processing fee`,
           },
           {
-            account_code: "1100",
+            account_code: settlementAccountForProvider(input.provider),
             credit_ngn: feeStr,
-            description: `${input.provider} fee settled from cash`,
+            description: `${input.provider} fee netted from settlement`,
           },
         ],
       });
@@ -1149,11 +1168,13 @@ async function addPayment({ brand, user, request_id, id, input }) {
       input.paid_amount &&
       order.fx_rate_used
     ) {
-      const accounting = require("../accounting/accounting.service");
       const bookedNgn = money(input.paid_amount).times(
         money(order.fx_rate_used),
       );
       const deltaNgn = money(input.amount_ngn).minus(bookedNgn);
+      // The capture credited 2400 with the ACTUAL NGN; the sale journal
+      // draws down the BOOKED total — the variance lives in 2400, so the
+      // FX gain/loss clears against deposits, not the bank.
       await accounting.postFxGainLoss({
         client,
         brand,
@@ -1163,6 +1184,7 @@ async function addPayment({ brand, user, request_id, id, input }) {
         source_id: order.order_id,
         user_id: user.user_id,
         idempotency_key: `fx_revaluation:${paymentRow.payment_id}`,
+        cash_account_code: ACCOUNTS.CUSTOMER_DEPOSITS,
       });
     }
 
@@ -1461,6 +1483,35 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
     // superseded duplicate) so the order detail explains the cancellation.
     if (reason) {
       await repo.setCancellationReason({ client, brand, id, reason });
+    }
+    // Policy Q7: deposits held by a cancelled unpaid order (layaway
+    // abandonment sweep, manual cancel) are forfeited to Other Income —
+    // the 2400 liability cannot survive an order that no longer exists.
+    // A pending cancellation request owns the money instead (its approval
+    // posts the refund/fee split), so never forfeit under its feet.
+    if (
+      order.status !== "cancellation_requested" &&
+      money(order.amount_paid_ngn || 0).gt(0)
+    ) {
+      const accounting = require("../accounting/accounting.service");
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "refund",
+          source_table: "sales_orders",
+          source_id: id,
+          reference: order.order_number,
+          description: `Deposit forfeited on cancellation — ${order.order_number}`,
+          idempotency_key: `deposit_forfeit:${id}`,
+        },
+        lines: salesPostings.buildForfeitLines({
+          amount_paid_ngn: order.amount_paid_ngn,
+          contact_id: order.contact_id,
+          reference: order.order_number,
+        }),
+      });
     }
     await audit({
       business: brand,
@@ -1967,6 +2018,41 @@ async function reviewCancellation({
         id: cr.order_id,
         status: "cancelled",
       });
+      // Policy Q8: post the refund. Shape depends on whether the sale
+      // journal already recognised revenue (order reached paid) — then the
+      // refund is contra revenue + VAT reversal against bank; otherwise the
+      // money still sits in Customer Deposits 2400 and settles from there,
+      // splitting cash-back vs the retained cancellation fee.
+      const order = await repo.findById({ client, brand, id: cr.order_id });
+      const accounting = require("../accounting/accounting.service");
+      const saleJournal = await accounting.findEntryBySource({
+        brand,
+        source_type: "sales",
+        source_id: cr.order_id,
+      });
+      const refundLines = salesPostings.buildCancellationRefundLines({
+        order,
+        fee_amount_ngn: cr.fee_amount_ngn,
+        refund_amount_ngn: cr.refund_amount_ngn,
+        revenueRecognised: Boolean(saleJournal),
+        reference: order.order_number,
+      });
+      if (refundLines) {
+        await accounting.postEntry({
+          client,
+          brand,
+          user_id: user.user_id,
+          entry: {
+            source_type: "refund",
+            source_table: "cancellation_requests",
+            source_id: id,
+            reference: order.order_number,
+            description: `Cancellation refund — ${order.order_number}`,
+            idempotency_key: `cancellation_refund:${id}`,
+          },
+          lines: refundLines,
+        });
+      }
     } else {
       // Reverting: put the order back to pending_payment so it can proceed.
       await repo.setStatus({

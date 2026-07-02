@@ -197,16 +197,17 @@ function mountRoutes(app) {
   // Persistent guest cart (shared.carts) — public writes throttled per IP.
   // customerAuthOptional resolves a logged-in shopper to their contact cart;
   // guests fall through to the sf_cart cookie.
+  // NOTE: no publicWriteLimiter here — a normal shopper makes many cart writes
+  // (add/update/remove/quote) and checkout retries, so the per-IP write throttle
+  // was 429-ing legitimate shopping. Rate limiting stays on /auth (login) only.
   publicRouter.use(
     "/storefront/cart",
-    publicWriteLimiter,
     customerAuthOptional,
     publicStorefrontCartRouter,
   );
   // Storefront checkout (creates a sales_order via createOrder → outbox).
   publicRouter.use(
     "/storefront/checkout",
-    publicWriteLimiter,
     customerAuthOptional,
     publicStorefrontCheckoutRouter,
   );

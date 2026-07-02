@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { getProducts, unwrap, priceFor, type ProductCard } from "@/lib/storefront";
 import { ssrProducts } from "@/lib/server";
@@ -27,10 +27,18 @@ function Shop() {
   const products = data ?? [];
   const hasNext = products.length >= 24;
 
-  const goto = (p: number) => {
-    setPage(Math.max(1, p));
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  // Scroll to top on catalogue page change (after the new page renders; not on
+  // first mount). Runs in an effect so it fires regardless of async fetch timing.
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [page]);
+
+  const goto = (p: number) => setPage(Math.max(1, p));
   const s = withSlots(
     {
       eyebrow: "The Catalogue",

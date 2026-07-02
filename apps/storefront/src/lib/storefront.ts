@@ -281,6 +281,16 @@ export const getContentList = (type: string, ctx?: ApiContext) =>
     }[]
   >(`${SF}/content/${type}`, ctx);
 
+// Newsletter signup → becomes a CRM contact (source='website') on the Hub.
+export const subscribeNewsletter = (
+  email: string,
+  extra?: { phone?: string; first_name?: string; notify_via?: "email" | "whatsapp" | "both" },
+) =>
+  api.post<{ contact_id: string; created: boolean }>(`/api/public/newsletter`, {
+    email,
+    ...extra,
+  });
+
 export const getInstallHub = (token: string, ctx?: ApiContext) =>
   api.get<{
     order_number: string;

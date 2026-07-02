@@ -68,6 +68,10 @@ BEGIN
   VALUES
     ('1420', 'WHT Receivable — Customers', g_assets, false, NULL, NULL,
      'Withholding tax deducted by customers at source, recoverable as FIRS credit notes (policy Q1)'),
+    ('1150', 'Opay Settlement', g_assets, false, NULL, NULL,
+     'Opay gateway float pending payout to bank (policy Q4)'),
+    ('1160', 'Stripe Settlement', g_assets, false, NULL, NULL,
+     'Stripe gateway float pending payout to bank (policy Q4)'),
     ('1610', 'COD in Transit — Couriers', g_assets, false, NULL, NULL,
      'Cash collected on delivery, held by couriers until remitted (policy Q10)'),
     ('2020', 'Accounts Payable — Factory (CNY)', g_liabilities, false, NULL, cny,

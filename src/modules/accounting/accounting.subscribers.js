@@ -8,7 +8,7 @@
  * handler is **idempotent** — one ('sales', order_id) journal per order,
  * guarded by a pre-check + the partial UNIQUE index (migration 000204).
  *
- *   DR Bank/Cash            total
+ *   DR Customer Deposits    total                   (captures credited 2400, Q7)
  *   DR COGS                 cost of goods           (weighted average, Q9)
  *      CR Revenue (channel) net (subtotal - discount)
  *      CR Shipping Revenue  shipping                (if any)
@@ -59,9 +59,12 @@ function buildSaleJournalLines(order, costBasis) {
 
   const lines = [
     {
-      account_code: ACCOUNTS.BANK_MAIN,
+      // Policy Q7: every capture credited Customer Deposits 2400, so the
+      // sale draws the liability down — never debits cash directly. Any
+      // over-payment legitimately stays in 2400 as customer credit.
+      account_code: ACCOUNTS.CUSTOMER_DEPOSITS,
       debit_ngn: toCurrencyString(total),
-      description: "Cash received",
+      description: "Customer deposits applied",
     },
     {
       account_code: revenueAccountForChannel(order.sales_channel),

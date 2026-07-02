@@ -22,6 +22,8 @@ const ACCOUNTS = Object.freeze({
   SETTLEMENT_PAYSTACK: "1120",
   SETTLEMENT_STRIVE: "1130",
   SETTLEMENT_NOMBA: "1140",
+  SETTLEMENT_OPAY: "1150",
+  SETTLEMENT_STRIPE: "1160",
   AR_CUSTOMERS: "1200",
   IC_RECEIVABLE: "1210",
   INVENTORY_FG: "1300", // Finished goods
@@ -144,6 +146,22 @@ function gatewayFeeAccount(provider, paid_currency) {
   return GATEWAY_FEE_ACCOUNT[provider] || null;
 }
 
+// ── Gateway settlement accounts (policy Q4) ─────────────
+// A captured payment debits the gateway's own settlement asset, not the
+// bank — the money is float until the gateway pays out, and bank rec
+// clears settlement → 1100 when the statement line lands.
+const SETTLEMENT_BY_PROVIDER = Object.freeze({
+  paystack: ACCOUNTS.SETTLEMENT_PAYSTACK,
+  opay: ACCOUNTS.SETTLEMENT_OPAY,
+  nomba: ACCOUNTS.SETTLEMENT_NOMBA,
+  stripe: ACCOUNTS.SETTLEMENT_STRIPE,
+});
+
+/** Settlement account a captured payment debits (bank for direct/manual). */
+function settlementAccountForProvider(provider) {
+  return SETTLEMENT_BY_PROVIDER[provider] || ACCOUNTS.BANK_MAIN;
+}
+
 module.exports = {
   ACCOUNTS,
   REVENUE_BY_CHANNEL,
@@ -151,4 +169,6 @@ module.exports = {
   GATEWAY_FEE_ACCOUNT,
   STRIPE_FEE_ACCOUNT_BY_CCY,
   gatewayFeeAccount,
+  SETTLEMENT_BY_PROVIDER,
+  settlementAccountForProvider,
 };

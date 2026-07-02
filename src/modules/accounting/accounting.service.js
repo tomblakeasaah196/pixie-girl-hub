@@ -519,18 +519,21 @@ async function postFxGainLoss({
   source_id,
   user_id,
   idempotency_key,
+  // Account holding the variance — Bank by default; the sales capture flow
+  // passes Customer Deposits 2400 because that is where actual NGN lands.
+  cash_account_code = CASH_BANK_ACCOUNT,
 }) {
   const delta = money(delta_ngn);
   if (delta.abs().lte(money("0.01"))) return null;
   const amount = toCurrencyString(delta.abs());
   const lines = delta.gt(0)
     ? [
-        { account_code: CASH_BANK_ACCOUNT, debit_ngn: amount, description },
+        { account_code: cash_account_code, debit_ngn: amount, description },
         { account_code: FX_GAIN_ACCOUNT, credit_ngn: amount, description },
       ]
     : [
         { account_code: FX_LOSS_ACCOUNT, debit_ngn: amount, description },
-        { account_code: CASH_BANK_ACCOUNT, credit_ngn: amount, description },
+        { account_code: cash_account_code, credit_ngn: amount, description },
       ];
   return postEntry({
     client,

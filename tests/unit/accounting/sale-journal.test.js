@@ -68,8 +68,11 @@ describe("buildSaleJournalLines — trial-balance invariant", () => {
     const lines = buildSaleJournalLines(BASE_ORDER, new Map());
     const { dr, cr } = totals(lines);
     expect(dr).toBe(cr);
-    // Cash total, revenue net of discount, VAT, shipping, COGS 55,000.
+    // Deposits drawdown (Q7), revenue net of discount, VAT, shipping, COGS.
     expect(dr).toBe("159625.00");
+    expect(lines.find((l) => l.account_code === "2400").debit_ngn).toBe(
+      "104625.00",
+    );
     expect(lines.find((l) => l.account_code === "4000").credit_ngn).toBe(
       "95000.00",
     );

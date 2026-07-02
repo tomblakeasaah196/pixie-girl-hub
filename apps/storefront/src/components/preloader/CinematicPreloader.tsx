@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
-import { SITE_IMAGES } from "@/lib/site-assets";
+import { useBranding } from "@/lib/site-config";
 
 const SESSION_KEY = "faitlyn:preloaded";
 const TOTAL_MS = 2000;
@@ -42,7 +42,10 @@ export function CinematicPreloader() {
     setVisible(false);
   }
 
-  const logo = SITE_IMAGES.logoCream;
+  // The preloader always sits on a dark backdrop → use the dark-mode logo
+  // (falling back to the light one if only that was uploaded).
+  const { logoDark, logoLight } = useBranding();
+  const logo = logoDark || logoLight || "";
 
   return (
     <AnimatePresence>

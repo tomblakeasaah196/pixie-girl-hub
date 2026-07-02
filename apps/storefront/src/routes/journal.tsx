@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { getContentList } from "@/lib/storefront";
@@ -26,6 +26,7 @@ const DEMO: Post[] = [
 ];
 
 function Journal() {
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
   const { data } = useQuery({ queryKey: ["journal"], queryFn: () => getContentList("journal") });
   const live = (data ?? []) as Post[];
   const posts = live.length ? live : DEMO;
@@ -33,6 +34,8 @@ function Journal() {
     { eyebrow: "Journal", heading: "Notes from the ", headingAccent: "atelier", headingAfter: "." },
     usePageSlots("journal"),
   );
+
+  if (pathname !== "/journal" && pathname !== "/journal/") return <Outlet />;
 
   return (
     <main className="bg-ink text-cream">

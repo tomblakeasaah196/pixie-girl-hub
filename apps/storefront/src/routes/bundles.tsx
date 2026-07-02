@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { motion } from "motion/react";
@@ -16,6 +16,8 @@ export const Route = createFileRoute("/bundles")({
 const n = (x: unknown) => (x == null ? 0 : Number(x) || 0);
 
 function BundlesPage() {
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
+  const onIndex = pathname === "/bundles" || pathname === "/bundles/";
   const [currency] = useCurrency();
   const [busy, setBusy] = useState<string | null>(null);
   const { data, isLoading } = useQuery({ queryKey: ["bundles"], queryFn: () => getBundles() });
@@ -30,6 +32,8 @@ function BundlesPage() {
     },
     usePageSlots("bundles"),
   );
+
+  if (!onIndex) return <Outlet />;
 
   async function add(bundle_id: string) {
     setBusy(bundle_id);

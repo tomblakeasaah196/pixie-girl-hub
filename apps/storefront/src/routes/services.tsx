@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { getServices, fmt } from "@/lib/storefront";
@@ -11,9 +11,13 @@ export const Route = createFileRoute("/services")({
 });
 
 function ServicesIndex() {
+  // This route is the PARENT of /services/$slug, so it must yield to child
+  // routes via <Outlet/>; it only renders the index grid on the exact path.
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
   const [currency] = useCurrency();
   const { data, isLoading } = useQuery({ queryKey: ["services"], queryFn: () => getServices() });
   const services = data ?? [];
+  const onIndex = pathname === "/services" || pathname === "/services/";
   const s = withSlots(
     {
       eyebrow: "Services · Prestations",
@@ -24,6 +28,8 @@ function ServicesIndex() {
     },
     usePageSlots("services"),
   );
+
+  if (!onIndex) return <Outlet />;
 
   return (
     <main className="bg-ink text-cream">

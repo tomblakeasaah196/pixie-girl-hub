@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getCollections } from "@/lib/storefront";
 import { Section, LoadingGrid, EmptyState, ErrorState } from "@/components/parts";
@@ -8,11 +8,14 @@ export const Route = createFileRoute("/collections")({
 });
 
 function CollectionsIndex() {
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["collections"],
     queryFn: () => getCollections(),
   });
   const collections = data ?? [];
+
+  if (pathname !== "/collections" && pathname !== "/collections/") return <Outlet />;
 
   return (
     <Section>

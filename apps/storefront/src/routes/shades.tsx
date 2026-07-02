@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getShades } from "@/lib/storefront";
 import { Section, LoadingGrid, EmptyState, ErrorState } from "@/components/parts";
@@ -6,11 +6,14 @@ import { Section, LoadingGrid, EmptyState, ErrorState } from "@/components/parts
 export const Route = createFileRoute("/shades")({ component: ShadesPage });
 
 function ShadesPage() {
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["shades"],
     queryFn: () => getShades(),
   });
   const shades = data ?? [];
+
+  if (pathname !== "/shades" && pathname !== "/shades/") return <Outlet />;
 
   return (
     <Section>

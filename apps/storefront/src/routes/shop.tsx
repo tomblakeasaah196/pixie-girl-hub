@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
@@ -14,6 +14,7 @@ export const Route = createFileRoute("/shop")({
 });
 
 function Shop() {
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
   const initial = Route.useLoaderData();
   const [currency] = useCurrency();
   const [page, setPage] = useState(1);
@@ -49,6 +50,8 @@ function Shop() {
     },
     usePageSlots("shop"),
   );
+
+  if (pathname !== "/shop" && pathname !== "/shop/") return <Outlet />;
 
   return (
     <main className="bg-ink text-cream">

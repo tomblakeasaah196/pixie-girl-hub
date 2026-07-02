@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { checkout, type CheckoutInput } from "@/lib/storefront";
@@ -17,6 +17,7 @@ const COUNTRIES: { code: string; name: string }[] = [
 ];
 
 function CheckoutPage() {
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
   const [currency] = useCurrency();
   const [busy, setBusy] = useState(false);
   const [fulfilment, setFulfilment] = useState<"delivery" | "pickup">("delivery");
@@ -103,6 +104,8 @@ function CheckoutPage() {
 
   const field = "input-line text-body placeholder:text-muted-foreground";
   const rails = currency === "USD" ? ["nomba"] : ["nomba", "paystack"];
+
+  if (pathname !== "/checkout" && pathname !== "/checkout/") return <Outlet />;
 
   return (
     <Section className="max-w-2xl">

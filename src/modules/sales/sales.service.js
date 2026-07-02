@@ -104,24 +104,34 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // in settings that change takes effect here immediately.
     const defaultVat = money(cfg.vat_rate);
 
-    // 1. Resolve line pricing context + base unit prices.
+    // 1. Resolve line pricing context + base unit prices. Variant contexts
+    //    come from ONE batch query — the old per-line lookup cost an N-line
+    //    order N sequential round-trips inside the write transaction.
+    //    Service lines (rare) stay individual. Lines are still walked in
+    //    order, so a missing reference throws for the FIRST bad line exactly
+    //    as before.
+    const variantCtxById = await repo.variantContexts({
+      client,
+      brand,
+      variant_ids: input.lines.map((li) => li.variant_id),
+    });
     const built = [];
     for (const li of input.lines) {
       // A line is EITHER a product variant or a service offering (PR3). A
       // service ctx has null product_id/min_price/cost, so the campaign,
       // margin-floor, stock and COGS steps below all skip it naturally.
-      const ctx =
-        !li.variant_id && li.service_offering_id
-          ? await repo.serviceOfferingContext({
-              client,
-              brand,
-              service_id: li.service_offering_id,
-            })
-          : await repo.variantContext({
-              client,
-              brand,
-              variant_id: li.variant_id,
-            });
+      let ctx;
+      if (!li.variant_id && li.service_offering_id) {
+        ctx = await repo.serviceOfferingContext({
+          client,
+          brand,
+          service_id: li.service_offering_id,
+        });
+      } else {
+        // Shallow copy so duplicate-variant lines never share one ctx object.
+        const row = variantCtxById.get(li.variant_id);
+        ctx = row ? { ...row } : null;
+      }
       if (!ctx)
         throw new AppError(
           "REFERENCE_INVALID",

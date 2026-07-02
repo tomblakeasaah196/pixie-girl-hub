@@ -14,18 +14,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID_BRANDS } = require("../../config/brands");
-
-function assertBrand(brand) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-}
-
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
-
+const { ex: exec } = require("../../config/database");
+const { assertBrand } = require("../../config/brands");
 // Columns a caller may set/patch — anything else in the body is ignored.
 const UNIT_WRITE_COLS = [
   "parent_unit_id",

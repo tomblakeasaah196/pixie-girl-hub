@@ -10,13 +10,9 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { ex: exec } = require("../../config/database");
 const { encrypt, decrypt } = require("../../services/encryption.service");
 const { ENCRYPTED_FIELDS } = require("./hr.fields");
-
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
 
 const ENC = new Set(ENCRYPTED_FIELDS);
 

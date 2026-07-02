@@ -8,10 +8,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { ex } = require("../../config/database");
 async function getTemplate({ client, brand }) {
   const { rows } = await ex(client)(
     `SELECT email_signature_template, display_name

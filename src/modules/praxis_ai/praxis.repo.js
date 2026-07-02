@@ -9,10 +9,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
 // ── Conversations ──────────────────────────────────────────
 async function createConversation({ c }) {
   const { rows } = await query(

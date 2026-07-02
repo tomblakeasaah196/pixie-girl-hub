@@ -7,10 +7,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
 async function getSettings({ client, brand }) {
   const { rows } = await ex(client)(
     `SELECT * FROM shared.referral_program_settings WHERE business = $1`,

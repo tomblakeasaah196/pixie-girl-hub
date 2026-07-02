@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { motion } from "motion/react";
 import { MessageCircle, Mail, MapPin, Clock, Instagram } from "lucide-react";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({ meta: [{ title: "Contact — Faitlyn Hair" }] }),
@@ -17,13 +18,29 @@ function Contact() {
   const set =
     (k: keyof typeof f) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setF((s) => ({ ...s, [k]: e.target.value }));
+      setF((prev) => ({ ...prev, [k]: e.target.value }));
+
+  const c = withSlots(
+    {
+      eyebrow: "Concierge",
+      heading: "Let's talk ",
+      headingAccent: "hair",
+      headingAfter: ".",
+      body: "Sizing, shade-matching, bulk & trade orders, aftercare — our Lagos studio answers every message personally. ",
+      bodyAccent: "Fait avec soin.",
+      email: EMAIL,
+      whatsapp: WHATSAPP,
+      studio: STUDIO,
+      hours: "Mon – Sat · 9am – 6pm WAT",
+    },
+    usePageSlots("contact"),
+  );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const subject = f.subject ? `[${f.subject}] ` : "";
     const text = `Hi Faitlyn, I'm ${f.name || "a client"} (${f.email || "no email"}).%0A%0A${encodeURIComponent(subject + f.message)}`;
-    window.open(`https://wa.me/${WHATSAPP}?text=${text}`, "_blank", "noopener");
+    window.open(`https://wa.me/${c.whatsapp}?text=${text}`, "_blank", "noopener");
   }
 
   const field =
@@ -38,20 +55,19 @@ function Contact() {
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           className="max-w-2xl"
         >
-          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">Concierge</p>
+          <p className="text-[0.7rem] tracking-[0.5em] uppercase text-taupe">{c.eyebrow}</p>
           <h1 className="mt-5 font-display text-5xl md:text-7xl leading-[0.95] tracking-tight text-balance">
-            Let's talk <em className="font-couture text-taupe">hair</em>.
+            {c.heading}<em className="font-couture text-taupe">{c.headingAccent}</em>{c.headingAfter}
           </h1>
           <p className="mt-6 text-cream/70 leading-relaxed text-base md:text-lg max-w-xl">
-            Sizing, shade-matching, bulk & trade orders, aftercare — our Lagos
-            studio answers every message personally. <span className="font-couture italic text-taupe">Fait avec soin.</span>
+            {c.body}<span className="font-couture italic text-taupe">{c.bodyAccent}</span>
           </p>
         </motion.div>
 
         <div className="mt-16 grid gap-14 lg:grid-cols-[1fr_1.1fr]">
           {/* Details */}
           <div className="space-y-8">
-            <a href={`https://wa.me/${WHATSAPP}`} target="_blank" rel="noopener noreferrer" className="group flex items-start gap-4 border-t border-taupe/20 pt-6">
+            <a href={`https://wa.me/${c.whatsapp}`} target="_blank" rel="noopener noreferrer" className="group flex items-start gap-4 border-t border-taupe/20 pt-6">
               <MessageCircle size={20} className="mt-0.5 text-taupe" />
               <div>
                 <p className="text-[0.62rem] tracking-[0.4em] uppercase text-taupe">WhatsApp</p>
@@ -59,11 +75,11 @@ function Contact() {
                 <p className="text-body-sm text-cream/60">Fastest reply · within the hour</p>
               </div>
             </a>
-            <a href={`mailto:${EMAIL}`} className="group flex items-start gap-4 border-t border-taupe/20 pt-6">
+            <a href={`mailto:${c.email}`} className="group flex items-start gap-4 border-t border-taupe/20 pt-6">
               <Mail size={20} className="mt-0.5 text-taupe" />
               <div>
                 <p className="text-[0.62rem] tracking-[0.4em] uppercase text-taupe">Email</p>
-                <p className="mt-1 font-display text-xl group-hover:text-taupe transition-colors">{EMAIL}</p>
+                <p className="mt-1 font-display text-xl group-hover:text-taupe transition-colors">{c.email}</p>
                 <p className="text-body-sm text-cream/60">For orders, press & partnerships</p>
               </div>
             </a>
@@ -71,7 +87,7 @@ function Contact() {
               <MapPin size={20} className="mt-0.5 text-taupe" />
               <div>
                 <p className="text-[0.62rem] tracking-[0.4em] uppercase text-taupe">The Studio</p>
-                <p className="mt-1 font-display text-xl">{STUDIO}</p>
+                <p className="mt-1 font-display text-xl">{c.studio}</p>
                 <p className="text-body-sm text-cream/60">By appointment</p>
               </div>
             </div>
@@ -79,7 +95,7 @@ function Contact() {
               <Clock size={20} className="mt-0.5 text-taupe" />
               <div>
                 <p className="text-[0.62rem] tracking-[0.4em] uppercase text-taupe">Hours</p>
-                <p className="mt-1 font-display text-xl">Mon – Sat · 9am – 6pm WAT</p>
+                <p className="mt-1 font-display text-xl">{c.hours}</p>
               </div>
             </div>
             <a href="https://www.instagram.com/faitlynhair/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[0.62rem] tracking-[0.4em] uppercase text-taupe hover:text-cream transition-colors">

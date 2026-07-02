@@ -30,6 +30,10 @@ const ORDER = [
   "payment_model",
   "required_deposit_pct",
   "required_deposit_ngn",
+  // Stylist Programme (§6.26 Q17): validated partner referral code captured at
+  // checkout; the stylist_programme outbox consumer accrues the commission on
+  // order.paid. Distinct from the customer rail's referral_code_used.
+  "stylist_referral_code",
 ];
 const LINE = [
   "order_id",
@@ -186,6 +190,27 @@ async function nextNumber({ client, brand, type }) {
     const { rows } = await query(call, [type]);
     return rows[0].n;
   }
+}
+
+// Batch variant pricing/snapshot contexts for an order's lines — one query
+// instead of one per line (the old per-line lookup cost an N-line order N
+// sequential round-trips inside the write transaction). Same SELECT as
+// variantContext below; returns a Map keyed by variant_id (missing ids are
+// simply absent, the caller decides how to fail).
+async function variantContexts({ client, brand, variant_ids }) {
+  const ids = (variant_ids || []).filter(Boolean);
+  if (ids.length === 0) return new Map();
+  const { rows } = await ex(client)(
+    `SELECT pv.variant_id, pv.sku, pv.variant_name, pv.price_storefront_ngn, pv.price_pos_ngn,
+            pv.price_wholesale_ngn, pv.price_partner_ngn, pv.cost_price_ngn, pv.min_price_ngn,
+            p.product_id, p.name AS product_name, p.taxable, p.vat_rate AS product_vat,
+            p.category_id
+       FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE pv.variant_id = ANY($1::uuid[])`,
+    [ids],
+  );
+  return new Map(rows.map((r) => [r.variant_id, r]));
 }
 
 // Variant pricing/snapshot context for a line
@@ -1054,6 +1079,7 @@ module.exports = {
   listDiscounts,
   nextNumber,
   variantContext,
+  variantContexts,
   serviceOfferingContext,
   createOrder,
   findByIdempotencyKey,

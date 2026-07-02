@@ -249,6 +249,31 @@ const DEFINITIONS = {
       ],
     },
   },
+
+  // ── Stylist Programme (§6.26) — every payout routes to the CEO ──────────
+  "stylist_programme:payout": {
+    name: "Stylist Payout Approval",
+    description:
+      "Every stylist payout batch is authorised by the CEO, who holds the Finance role today; a future Finance hire inherits this route.",
+    trigger_module: "stylist_programme",
+    trigger_action: "payout",
+    definition: {
+      trigger: { module: "stylist_programme", action: "payout" },
+      stages: [
+        {
+          order: 1,
+          name: "CEO authorisation",
+          approvers: [
+            { type: "role", value: "finance" },
+            { type: "role", value: "ceo" },
+          ],
+          timeout_hours: 72,
+          on_timeout: "escalate",
+          fallback_to_deputy: true,
+        },
+      ],
+    },
+  },
 };
 
 function specKey(triggerModule, triggerAction) {

@@ -20,9 +20,18 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
-// Baseline counts after shared 000250 + brand template 000075
-// (accounting foundation: +1 variant_costing per brand — policy Q9).
-const EXPECTED_SHARED = 170;
+// Baseline counts after shared 000251 + brand template 000075. Brands are
+// discovered from shared.business_config (the same source the app boots from),
+// so this works for any brand keys — not hardcoded pixiegirl/faitlynhair.
+//   - Accounting foundation (main): brand template 000075 adds variant_costing
+//     per brand (policy Q9) → per-brand 203.
+//   - Stylist Programme v2 (000251): +8 shared tables (stylist_tiers,
+//     stylist_programme_config, stylist_questionnaire_questions,
+//     stylist_application_responses, stylist_vetting_reviews,
+//     stylist_referral_links, stylist_referral_attributions,
+//     stylist_notifications) → shared 170 + 8 = 178. Its brand template adds a
+//     column only (sales_orders.stylist_referral_code), no new table.
+const EXPECTED_SHARED = 178;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

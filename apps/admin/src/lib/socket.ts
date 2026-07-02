@@ -36,6 +36,15 @@ export function getSocket(): Socket {
   socket.on("notification:new", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:notification:new", { detail }));
   });
+  // Praxis pending-action pushes (user:{id}:ai_pending — §6.29 confirm gate).
+  socket.on("ai_pending:created", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:ai_pending:created", { detail }));
+  });
+  socket.on("ai_pending:resolved", (detail) => {
+    window.dispatchEvent(
+      new CustomEvent("pgh:ai_pending:resolved", { detail }),
+    );
+  });
 
   return socket;
 }
@@ -48,6 +57,7 @@ export const rooms = {
   channel: (channelId: string) => `channel:${channelId}`,
   channelTyping: (channelId: string) => `channel:${channelId}:typing`,
   brandSmartcomm: (brand: string) => `brand:${brand}:smartcomm`,
+  userAiPending: (userId: string) => `user:${userId}:ai_pending`,
 };
 
 /** Join a Socket.io room (idempotent on the server). */

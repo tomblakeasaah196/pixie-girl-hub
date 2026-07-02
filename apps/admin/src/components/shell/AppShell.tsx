@@ -17,6 +17,7 @@ import { BusinessSwitchOverlay } from "./BusinessSwitchOverlay";
 import { NotificationManager } from "@/components/notifications/NotificationManager";
 import { NotificationToastContainer } from "@/components/notifications/NotificationToast";
 import { ChatDock } from "@/components/messaging/ChatDock";
+import { PraxisDrawer } from "@/components/praxis/PraxisDrawer";
 import { IosInstallHint } from "./IosInstallHint";
 import { PwaInstallBanner } from "./PwaInstallBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
@@ -76,6 +77,7 @@ export function AppShell() {
       <AppMenuFab />
       <FloatingLauncher />
       <ChatDock />
+      <PraxisDrawer />
       <MobileBottomNav />
       {paletteOpen && <CommandPalette />}
       <BusinessSwitchOverlay />

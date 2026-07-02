@@ -61,7 +61,13 @@ async function getPendingAction(req, res) {
 }
 async function confirmAction(req, res) {
   res.json({
-    data: await service.confirmAction({ ...base(req), id: req.params.id }),
+    data: await service.confirmAction({
+      ...base(req),
+      id: req.params.id,
+      // The executor re-enters the API over loopback AS this user — full
+      // auth/RBAC/validation re-apply on the real endpoint (§6.29).
+      auth_header: req.headers.authorization,
+    }),
   });
 }
 async function rejectAction(req, res) {

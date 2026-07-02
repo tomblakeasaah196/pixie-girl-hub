@@ -142,6 +142,7 @@ const {
 } = require("../middleware/customer-auth");
 const publicAnalyticsRouter = require("../modules/storefront/analytics.public.routes");
 const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.routes");
+const publicStylistProgrammeRouter = require("../modules/stylist_programme/stylist.public.routes");
 const publicReferralRouter = require("../modules/retention/referral.routes");
 const publicHairQuizRouter = require("../modules/retention/hair-quiz.routes");
 const publicCampaignRouter = require("../modules/sales_campaigns/campaigns.public.routes");
@@ -221,6 +222,14 @@ function mountRoutes(app) {
   // Storefront analytics ingestion at the canonical /api/public/analytics path.
   publicRouter.use("/analytics", publicWriteLimiter, publicAnalyticsRouter);
   publicRouter.use("/stylist-verify", publicStylistVerifyRouter);
+  // Stylist programme public surface (§6.26): questionnaire + application
+  // intake, certified-partner directory, tokenised customer reviews, referral
+  // redirect. The write limiter blunts application/review spam.
+  publicRouter.use(
+    "/stylist-programme",
+    publicWriteLimiter,
+    publicStylistProgrammeRouter,
+  );
   publicRouter.use("/referral", publicWriteLimiter, publicReferralRouter);
   publicRouter.use("/hair-quiz", publicWriteLimiter, publicHairQuizRouter);
   // Public sales landing — host → brand resolver runs first so the
@@ -285,67 +294,85 @@ function mountRoutes(app) {
 
   // ── Protected API surface ──────────────────────────────
   // All routes below require an authenticated user and a brand context.
+  // Declarative registry: one row per module, mounted by the loop below.
+  // The guard rejects an accidental duplicate mount at boot — two routers
+  // may share a path only when listed together as [path, [routerA, routerB]]
+  // (e.g. /hr, where ops and payroll are deliberately split).
   const api = express.Router();
   api.use(authMiddleware);
   api.use(brandContextMiddleware);
 
-  api.use("/crm", crmRouter);
-  api.use("/catalogue", catalogueRouter);
-  api.use("/sales", salesRouter);
-  api.use("/storefront", storefrontRouter);
-  api.use("/invoicing", invoicingRouter);
-  api.use("/accounting", accountingRouter);
-  api.use("/expenses", expensesRouter);
-  api.use("/purchasing", purchasingRouter);
-  api.use("/stock", stockRouter);
-  api.use("/logistics", logisticsRouter);
-  api.use("/hr", hrOpsRouter);
-  api.use("/hr", hrPayrollRouter);
-  api.use("/staff-invitations", staffInvitationsAdminRouter);
-  api.use("/walk-in", walkinAdminRouter);
-  api.use("/attendance", attendanceRouter);
-  api.use("/contacts", contactsRouter);
-  api.use("/documents", documentsRouter);
-  api.use("/social", socialMediaRouter);
-  api.use("/marketing", marketingRouter);
-  api.use("/email-campaigns", emailCampaignsRouter);
-  api.use("/smartcomm", smartcommRouter);
-  api.use("/customer-onboarding", onboardingAdminRouter);
-  api.use("/service-catalogue", serviceCatalogueRouter);
-  api.use("/messaging-accounts", messagingAccountsRouter);
-  api.use("/outbound-policy", outboundPolicyRouter);
-  api.use("/help", helpCenterRouter);
-  api.use("/calendar", calendarRouter);
-  api.use("/tasks", tasksRouter);
-  api.use("/dashboards", dashboardsRouter);
-  api.use("/business-setup", businessSetupRouter);
-  api.use("/settings", settingsRouter);
-  api.use("/platform-settings", platformSettingsRouter);
-  api.use("/sales-campaigns", salesCampaignsRouter);
-  api.use("/landing-studio", landingStudioRouter);
-  api.use("/retention", retentionRouter);
-  api.use("/production", productionRouter);
-  api.use("/service-jobs", serviceJobsRouter);
-  api.use("/customer-assets", customerAssetsRouter);
-  api.use("/pricing", pricingRouter);
-  api.use("/factory-accounts", factoryAccountRouter);
-  api.use("/factory-i18n", factoryI18nRouter);
-  api.use("/stylists", stylistRouter);
-  api.use("/org", orgWorkflowRouter);
-  api.use("/storefront-studio", storefrontStudioRouter);
-  api.use("/intercompany", intercompanyRouter);
-  api.use("/praxis", praxisRouter);
-  api.use("/insights", aiInsightsRouter);
-  api.use("/ai-governance", aiGovernanceRouter);
-  api.use("/retail-partners", retailPartnersRouter);
-  api.use("/cash-request", cashRequestRouter);
-  api.use("/audit", auditRouter);
-  api.use("/access", accessRouter);
-  api.use("/iam", iamRouter);
-  api.use("/notifications", notificationsRouter);
-  api.use("/push", pushRouter);
-  api.use("/cart", cartRouter);
-  api.use("/wishlist", wishlistRouter);
+  const PROTECTED_MOUNTS = [
+    ["/crm", crmRouter],
+    ["/catalogue", catalogueRouter],
+    ["/sales", salesRouter],
+    ["/storefront", storefrontRouter],
+    ["/invoicing", invoicingRouter],
+    ["/accounting", accountingRouter],
+    ["/expenses", expensesRouter],
+    ["/purchasing", purchasingRouter],
+    ["/stock", stockRouter],
+    ["/logistics", logisticsRouter],
+    ["/hr", [hrOpsRouter, hrPayrollRouter]],
+    ["/staff-invitations", staffInvitationsAdminRouter],
+    ["/walk-in", walkinAdminRouter],
+    ["/attendance", attendanceRouter],
+    ["/contacts", contactsRouter],
+    ["/documents", documentsRouter],
+    ["/social", socialMediaRouter],
+    ["/marketing", marketingRouter],
+    ["/email-campaigns", emailCampaignsRouter],
+    ["/smartcomm", smartcommRouter],
+    ["/customer-onboarding", onboardingAdminRouter],
+    ["/service-catalogue", serviceCatalogueRouter],
+    ["/messaging-accounts", messagingAccountsRouter],
+    ["/outbound-policy", outboundPolicyRouter],
+    ["/help", helpCenterRouter],
+    ["/calendar", calendarRouter],
+    ["/tasks", tasksRouter],
+    ["/dashboards", dashboardsRouter],
+    ["/business-setup", businessSetupRouter],
+    ["/settings", settingsRouter],
+    ["/platform-settings", platformSettingsRouter],
+    ["/sales-campaigns", salesCampaignsRouter],
+    ["/landing-studio", landingStudioRouter],
+    ["/retention", retentionRouter],
+    ["/production", productionRouter],
+    ["/service-jobs", serviceJobsRouter],
+    ["/customer-assets", customerAssetsRouter],
+    ["/pricing", pricingRouter],
+    ["/factory-accounts", factoryAccountRouter],
+    ["/factory-i18n", factoryI18nRouter],
+    ["/stylists", stylistRouter],
+    ["/org", orgWorkflowRouter],
+    ["/storefront-studio", storefrontStudioRouter],
+    ["/intercompany", intercompanyRouter],
+    ["/praxis", praxisRouter],
+    ["/insights", aiInsightsRouter],
+    ["/ai-governance", aiGovernanceRouter],
+    ["/retail-partners", retailPartnersRouter],
+    ["/cash-request", cashRequestRouter],
+    ["/audit", auditRouter],
+    ["/access", accessRouter],
+    ["/iam", iamRouter],
+    ["/notifications", notificationsRouter],
+    ["/push", pushRouter],
+    ["/cart", cartRouter],
+    ["/wishlist", wishlistRouter],
+  ];
+
+  const seen = new Set();
+  for (const [path, routers] of PROTECTED_MOUNTS) {
+    if (seen.has(path)) {
+      // Fail fast at boot: a duplicate row is almost always a bad merge that
+      // would silently shadow one module's routes with another's.
+      throw new Error(`duplicate protected mount: ${path}`);
+    }
+    seen.add(path);
+    for (const r of Array.isArray(routers) ? routers : [routers]) {
+      api.use(path, r);
+    }
+  }
 
   app.use("/api/v1", api);
 }

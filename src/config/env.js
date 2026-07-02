@@ -283,10 +283,14 @@ const schema = z.object({
 
   // H-1 read-side RLS: when true, one-shot reads with an ambient brand context
   // run inside a minimal transaction so app.current_business is set and RLS
-  // filters them. Adds BEGIN/COMMIT round-trips per read — keep OFF until a
-  // staging perf check confirms acceptable latency. Write paths (transaction())
-  // already set the GUC regardless of this flag.
-  RLS_READ_ENFORCE: zBool(false),
+  // filters them — closing the read-side of SEC-2 (a mis-scoped repo read is
+  // filtered by the DB instead of leaking cross-brand). Costs BEGIN/COMMIT
+  // round-trips per read; set RLS_READ_ENFORCE=false in the environment to
+  // fall back without a deploy. Two prerequisites for it to actually filter:
+  // the DB connection must NOT be a superuser (initDatabase warns loudly at
+  // boot if it is), and write paths (transaction()) already set the GUC
+  // regardless of this flag.
+  RLS_READ_ENFORCE: zBool(true),
 
   // Password-reset link lifetime (minutes). Token is single-use and stored only
   // as a SHA-256 hash in redis.

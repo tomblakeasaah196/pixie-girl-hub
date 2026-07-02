@@ -17,6 +17,7 @@ const repo = require("./praxis.repo");
 const events = require("./praxis.events");
 const governance = require("../ai_governance/governance.service");
 const orchestrator = require("./praxis.orchestrator");
+const executor = require("./praxis.executor");
 const transcription = require("../../services/transcription.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -181,6 +182,16 @@ async function postMessage({ user, brand, request_id, id, input }) {
       target_id: id,
       request_id,
     });
+    // Realtime: let every open tab's Praxis surface show the new confirm
+    // card immediately (relay → user:{id}:ai_pending). Thin payload — the
+    // client re-queries for the full row.
+    if (pending_action) {
+      events.emit("pending.created", {
+        pending_id: pending_action.pending_id,
+        user_id: user.user_id,
+        conversation_id: id,
+      });
+    }
     return {
       user_message: userMsg,
       assistant_message: assistantMsg,
@@ -205,7 +216,7 @@ async function getPendingAction({ user, id }) {
  * the runtime then calls markExecuted/markFailed. Execution NEVER happens
  * without this explicit human confirmation (V2.2 §6.29 safety gate).
  */
-async function confirmAction({ user, request_id, id }) {
+async function confirmAction({ user, request_id, id, auth_header }) {
   const p = await repo.findPendingAction({ id });
   if (!p || p.proposed_by_user_id !== user.user_id)
     throw new NotFoundError("Pending action");
@@ -213,9 +224,14 @@ async function confirmAction({ user, request_id, id }) {
     throw new AppError("BAD_STATE", `Action is ${p.status}, not proposed`, 422);
   if (new Date(p.expires_at) < new Date()) {
     await repo.setPendingStatus({ id, status: "expired" });
+    events.emit("pending.resolved", {
+      pending_id: id,
+      user_id: user.user_id,
+      status: "expired",
+    });
     throw new AppError("EXPIRED", "This proposed action has expired", 410);
   }
-  const updated = await repo.setPendingStatus({
+  await repo.setPendingStatus({
     id,
     status: "confirmed",
     fields: {
@@ -236,6 +252,43 @@ async function confirmAction({ user, request_id, id }) {
     pending_id: id,
     action_key: p.action_key,
     business: p.business,
+  });
+
+  // ── Execute (the wiring the spec promises) ────────────────
+  // The confirmed action now RUNS: the executor calls the real catalogued
+  // endpoint over loopback with the confirming user's own Authorization
+  // header, so auth/brand/RBAC/validation/audit all re-apply. Success →
+  // 'executed' with the trimmed result; any failure → 'failed' with the
+  // endpoint's error, never a half-updated state.
+  let updated;
+  try {
+    const exec = await executor.executeAction({
+      pending: p,
+      authHeader: auth_header,
+      requestId: request_id,
+    });
+    if (exec.ok) {
+      updated = await markExecuted({ id, execution_result: exec.result });
+    } else {
+      updated = await markFailed({
+        id,
+        execution_error: JSON.stringify(exec.result).slice(0, 2000),
+      });
+    }
+  } catch (err) {
+    logger.error(
+      { err: err.message, pending_id: id, action_key: p.action_key },
+      "praxis action execution failed",
+    );
+    updated = await markFailed({
+      id,
+      execution_error: String(err.user_message || err.message).slice(0, 2000),
+    });
+  }
+  events.emit("pending.resolved", {
+    pending_id: id,
+    user_id: user.user_id,
+    status: updated.status,
   });
   return updated;
 }
@@ -260,6 +313,11 @@ async function rejectAction({ user, request_id, id, reason }) {
     target_type: "ai_pending_action",
     target_id: id,
     request_id,
+  });
+  events.emit("pending.resolved", {
+    pending_id: id,
+    user_id: user.user_id,
+    status: "rejected",
   });
   return updated;
 }

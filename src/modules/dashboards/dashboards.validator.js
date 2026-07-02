@@ -76,6 +76,33 @@ const reportTemplateCreateSchema = z
   })
   .passthrough();
 
+// ── Domain dashboards (§6.20 rebuild) ──────────────────────
+
+const isoDate = z
+  .string()
+  .max(40)
+  .refine((v) => !Number.isNaN(new Date(v).getTime()), {
+    message: "Invalid ISO date",
+  });
+
+const periodQuerySchema = z
+  .object({
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+  })
+  .passthrough();
+
+const detailQuerySchema = periodQuerySchema.extend({
+  page: z.coerce.number().int().min(1).optional(),
+  page_size: z.coerce.number().int().min(1).max(100).optional(),
+  status: z.string().max(60).optional(),
+  sales_channel: z.string().max(60).optional(),
+});
+
+const preferencesSchema = z.object({
+  hidden_tiles: z.array(z.string().min(1).max(120)).max(500),
+});
+
 /** Wrap a schema as body-validating middleware (PATCH uses .partial()). */
 const body = (schema) =>
   function validate(req, _res, next) {
@@ -83,7 +110,18 @@ const body = (schema) =>
     next();
   };
 
+/** Wrap a schema as query-validating middleware. */
+const queryMw = (schema) =>
+  function validateQuery(req, _res, next) {
+    req.query = schema.parse(req.query);
+    next();
+  };
+
 module.exports = {
+  // domain dashboards
+  validatePeriodQuery: queryMw(periodQuerySchema),
+  validateDetailQuery: queryMw(detailQuerySchema),
+  validatePreferences: body(preferencesSchema),
   // saved reports
   validateSavedReportCreate: body(savedReportCreateSchema),
   validateSavedReportUpdate: body(savedReportCreateSchema.partial()),
@@ -102,5 +140,8 @@ module.exports = {
     dashboardConfigCreateSchema,
     widgetCreateSchema,
     reportTemplateCreateSchema,
+    periodQuerySchema,
+    detailQuerySchema,
+    preferencesSchema,
   },
 };

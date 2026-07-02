@@ -7,10 +7,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
+const { ex } = require("../../config/database");
 const { VALID } = require("../../config/brands");
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 async function nextNumber({ client, brand }) {
   if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);

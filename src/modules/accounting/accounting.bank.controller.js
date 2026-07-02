@@ -126,7 +126,26 @@ const payFiling = async (req, res) =>
     }),
   });
 
+// ── Tax Center (policy Q14) ──────────────────────────────
+const computeTax = async (req, res) =>
+  res.json({
+    data: await service.computeTax({
+      brand: req.brand,
+      tax_type: String(req.query.tax_type || "VAT").toUpperCase(),
+      period_id: req.query.period_id,
+    }),
+  });
+const draftFilingFromPeriod = async (req, res) =>
+  res.status(201).json({
+    data: await service.draftFilingFromPeriod({
+      ...base(req),
+      input: req.body,
+    }),
+  });
+
 module.exports = {
+  computeTax,
+  draftFilingFromPeriod,
   importStatement,
   listStatements,
   getStatement,

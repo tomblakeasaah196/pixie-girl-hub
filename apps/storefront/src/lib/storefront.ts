@@ -159,6 +159,8 @@ export const getBundles = (ctx?: ApiContext) =>
       bundle_code: string;
       display_name: string;
       description?: string;
+      pricing_model?: string;
+      discount_value?: string | number | null;
       bundle_price_ngn?: string;
       hero_image_url?: string;
       components?: {
@@ -278,6 +280,16 @@ export const getContentList = (type: string, ctx?: ApiContext) =>
       published_at?: string;
     }[]
   >(`${SF}/content/${type}`, ctx);
+
+// Newsletter signup → becomes a CRM contact (source='website') on the Hub.
+export const subscribeNewsletter = (
+  email: string,
+  extra?: { phone?: string; first_name?: string; notify_via?: "email" | "whatsapp" | "both" },
+) =>
+  api.post<{ contact_id: string; created: boolean }>(`/api/public/newsletter`, {
+    email,
+    ...extra,
+  });
 
 export const getInstallHub = (token: string, ctx?: ApiContext) =>
   api.get<{

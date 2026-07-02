@@ -17,7 +17,7 @@
 const jwt = require("jsonwebtoken");
 const { config } = require("../config/env");
 const { AppError } = require("../utils/errors");
-const userRepo = require("../shared/hr_payroll/staff.repo");
+const identityCache = require("../shared/cache/identity-cache");
 
 async function authMiddleware(req, _res, next) {
   const header = req.headers.authorization;
@@ -36,7 +36,9 @@ async function authMiddleware(req, _res, next) {
     throw new AppError("INVALID_TOKEN", "Invalid access token", 401);
   }
 
-  const user = await userRepo.findById(payload.sub);
+  // Cached auth projection (30 s TTL + event invalidation on deactivate/
+  // role change/session revoke) — saves a DB round-trip on every request.
+  const user = await identityCache.getAuthUser(payload.sub);
   if (!user || user.status !== "active") {
     throw new AppError("USER_INACTIVE", "User not found or inactive", 401);
   }
@@ -48,6 +50,10 @@ async function authMiddleware(req, _res, next) {
     role_ids: user.role_ids || [],
     is_ceo: user.is_ceo === true,
     available_businesses: user.available_businesses || [],
+    // The brand-context middleware documents a fallback to the user's home
+    // brand; the column was loaded here but never attached, so that fallback
+    // could never fire. Attach it so the documented resolution order works.
+    default_business_key: user.default_business_key || null,
     jwt_iat: payload.iat,
     jwt_jti: payload.jti,
   };

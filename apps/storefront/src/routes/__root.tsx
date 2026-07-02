@@ -102,11 +102,11 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const { preview, theme, pages } = Route.useLoaderData();
+  const { preview, theme, pages, popups, navigation } = Route.useLoaderData();
   const logoUrl = logoFrom(theme?.tokens);
   return (
     <QueryClientProvider client={queryClient}>
-      <SiteConfigProvider pages={pages}>
+      <SiteConfigProvider pages={pages} popups={popups as never} navigation={navigation as never}>
         {preview ? (
           <div className="bg-primary py-1.5 text-center text-[0.62rem] tracking-[0.4em] uppercase text-primary-foreground">
             Preview — showing draft changes (not published)

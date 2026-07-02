@@ -213,6 +213,28 @@ async function reverseEntry({ brand, user, request_id, id, reason }) {
   });
 }
 
+/**
+ * Go-live opening balances (policy Q15). One balanced journal per brand at
+ * the cutover date carrying the agreed trial balance from outside records.
+ * Idempotency-keyed per (brand, posting_date) so re-submits can't double
+ * the opening position — a corrected TB goes in as a reversal + repost.
+ */
+async function postOpeningBalance({ brand, user, request_id, input }) {
+  void request_id;
+  return postEntry({
+    brand,
+    user_id: user.user_id,
+    entry: {
+      source_type: "opening_balance",
+      description: input.description || "Opening balances (go-live cutover)",
+      reference: input.reference || "OPENING",
+      posting_date: input.posting_date,
+      idempotency_key: `opening_balance:${brand}:${input.posting_date || "unset"}`,
+    },
+    lines: input.lines,
+  });
+}
+
 // Manual journal (controller-driven)
 async function createManualJournal({ brand, user, request_id, input }) {
   const entry = await postEntry({
@@ -295,6 +317,10 @@ async function closePeriod({ brand, user, request_id, id }) {
     request_id,
   });
   return p;
+}
+/** Source-record → journal lookup (e.g. invoice → its accrual entry). */
+function findEntryBySource({ brand, source_type, source_id }) {
+  return repo.findEntryBySource({ brand, source_type, source_id });
 }
 function listJournals({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
@@ -495,9 +521,10 @@ async function cashFlow({ brand, from, to }) {
   };
 }
 
-const FX_GAIN_ACCOUNT = "4910"; // FX Gain — Realised (revenue)
-const FX_LOSS_ACCOUNT = "5910"; // FX Loss — Realised (expense)
-const CASH_BANK_ACCOUNT = "1100"; // Bank — Operating Account (NGN)
+const { ACCOUNTS } = require("./posting-map");
+const FX_GAIN_ACCOUNT = ACCOUNTS.FX_GAIN_REALISED;
+const FX_LOSS_ACCOUNT = ACCOUNTS.FX_LOSS_REALISED;
+const CASH_BANK_ACCOUNT = ACCOUNTS.BANK_MAIN;
 
 /**
  * Post a realised FX gain/loss (V2.2 §6.6). `delta_ngn` is the NGN variance
@@ -514,18 +541,21 @@ async function postFxGainLoss({
   source_id,
   user_id,
   idempotency_key,
+  // Account holding the variance — Bank by default; the sales capture flow
+  // passes Customer Deposits 2400 because that is where actual NGN lands.
+  cash_account_code = CASH_BANK_ACCOUNT,
 }) {
   const delta = money(delta_ngn);
   if (delta.abs().lte(money("0.01"))) return null;
   const amount = toCurrencyString(delta.abs());
   const lines = delta.gt(0)
     ? [
-        { account_code: CASH_BANK_ACCOUNT, debit_ngn: amount, description },
+        { account_code: cash_account_code, debit_ngn: amount, description },
         { account_code: FX_GAIN_ACCOUNT, credit_ngn: amount, description },
       ]
     : [
         { account_code: FX_LOSS_ACCOUNT, debit_ngn: amount, description },
-        { account_code: CASH_BANK_ACCOUNT, credit_ngn: amount, description },
+        { account_code: cash_account_code, credit_ngn: amount, description },
       ];
   return postEntry({
     client,
@@ -597,8 +627,8 @@ async function payablesAgeing({ brand, as_of }) {
 }
 
 // ── FX Period-End Revaluation (F-9) ──────────────────────
-const UNREALISED_FX_GAIN = "4920"; // Unrealised FX Gain
-const UNREALISED_FX_LOSS = "5920"; // Unrealised FX Loss
+const UNREALISED_FX_GAIN = ACCOUNTS.FX_GAIN_UNREALISED;
+const UNREALISED_FX_LOSS = ACCOUNTS.FX_LOSS_UNREALISED;
 
 /**
  * Run a period-end FX revaluation. For every FX-denominated account with a
@@ -878,6 +908,7 @@ module.exports = {
   postEntry,
   reverseEntry,
   createManualJournal,
+  postOpeningBalance,
   statementPdf,
   listGroups,
   updateGroup,
@@ -890,6 +921,7 @@ module.exports = {
   closePeriod,
   listJournals,
   getJournal,
+  findEntryBySource,
   trialBalance,
   profitAndLoss,
   balanceSheet,

@@ -448,6 +448,83 @@ function RecipeCard({ recipeId }: { recipeId: string }) {
   );
 }
 
+// ── Intercompany Flow-1 panel ──────────────────────────────
+
+/**
+ * Flow-1 (Faitlyn styles Pixie's hair): make the cross-entity link explicit on
+ * the job side and show the matched FLH styling invoice. When the job crosses
+ * entities but isn't linked yet, it flags the books risk and lets finance
+ * attach the recorded inter-company transaction.
+ */
+function IntercompanyPanel({ job }: { job: ServiceJob }) {
+  const { linkIntercompany } = useJobActions(job.job_id);
+  const [icId, setIcId] = useState("");
+  const linked = !!job.intercompany_number;
+
+  return (
+    <div className="border-t border-white/10 pt-4 space-y-2">
+      <p className="text-xs text-muted uppercase tracking-wide font-semibold">
+        Inter-company · Flow 1
+      </p>
+      {linked ? (
+        <div className="glass p-3 rounded-lg space-y-1.5 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted">Styling invoice</span>
+            <span className="font-mono">
+              {job.intercompany_seller_doc ?? job.intercompany_number}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted">
+              {job.intercompany_seller_brand} → {job.intercompany_buyer_brand}
+            </span>
+            {job.intercompany_status && (
+              <Pill tone="info">{job.intercompany_status}</Pill>
+            )}
+          </div>
+          {job.intercompany_amount_ngn && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted">Amount</span>
+              <MoneyText ngn={parseFloat(job.intercompany_amount_ngn)} />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="glass p-3 rounded-lg space-y-2 border border-warn/30">
+          <p className="text-sm text-warn font-medium">
+            ⚠ No matched inter-company invoice yet
+          </p>
+          <p className="text-xs text-muted">
+            This wig belongs to another entity. Record the FLH styling invoice
+            in Intercompany, then paste its transaction ID here to link it.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              className="input flex-1 text-sm font-mono"
+              placeholder="Intercompany transaction ID"
+              value={icId}
+              onChange={(e) => setIcId(e.target.value)}
+            />
+            <Button
+              size="sm"
+              disabled={!icId.trim() || linkIntercompany.isPending}
+              onClick={() => linkIntercompany.mutate(icId.trim())}
+            >
+              {linkIntercompany.isPending ? "Linking…" : "Link"}
+            </Button>
+          </div>
+          {linkIntercompany.isError && (
+            <p className="text-xs text-danger">
+              {(linkIntercompany.error as Error)?.message ??
+                "Could not link — check the transaction ID."}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Job detail drawer ──────────────────────────────────────
 
 function JobDetailDrawer({
@@ -585,6 +662,10 @@ function JobDetailDrawer({
                 </p>
                 <RecipeCard recipeId={job.recipe_id} />
               </div>
+            )}
+
+            {(job.is_intercompany || job.intercompany_number) && (
+              <IntercompanyPanel job={job} />
             )}
 
             {nextStates.length > 0 && (

@@ -19,6 +19,7 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { ACCOUNTS } = require("../accounting/posting-map");
 
 const REFERENCE_TABLE = "expenses";
 const A = (brand, user_id, action_key, target_id, after, request_id) =>
@@ -228,15 +229,17 @@ async function approve({ brand, user, request_id, id, notes }) {
     const vat = money(exp.vat_amount_ngn);
     if (vat.gt(0))
       lines.push({
-        account_code: "2110",
+        account_code: ACCOUNTS.VAT_INPUT,
         debit_ngn: toCurrencyString(vat),
         description: "VAT input",
       });
-    const cashOut = money(exp.total_amount_ngn).plus(vat);
+    // Policy Q2 (two-step accrual): approval recognises the expense as a
+    // LIABILITY — cash only moves when markPaid posts DR 2310 / CR Bank.
+    const owed = money(exp.total_amount_ngn).plus(vat);
     lines.push({
-      account_code: "1100",
-      credit_ngn: toCurrencyString(cashOut),
-      description: `Expense ${exp.expense_number}`,
+      account_code: ACCOUNTS.ACCRUED_EXPENSES,
+      credit_ngn: toCurrencyString(owed),
+      description: `Expense accrued ${exp.expense_number}`,
     });
 
     const journal = await accounting.postEntry({
@@ -333,16 +336,50 @@ async function markPaid({ brand, user, request_id, id, input }) {
       `Only approved expenses can be paid (is '${exp.status}')`,
       409,
     );
-  const updated = await repo.setStatus({
-    brand,
-    id,
-    status: "paid",
-    extra: {
-      paid_at: new Date().toISOString(),
-      paid_by: user.user_id,
-      payment_method: input.payment_method,
-      payment_reference: input.payment_reference,
-    },
+  const updated = await transaction(async (client) => {
+    // Policy Q2 second leg: settle the accrual — DR 2310 / CR Bank for the
+    // full owed amount (net + VAT input, mirroring the approval credit).
+    const owed = money(exp.total_amount_ngn).plus(money(exp.vat_amount_ngn));
+    if (owed.gt(0)) {
+      const amt = toCurrencyString(owed);
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "expense",
+          source_table: REFERENCE_TABLE,
+          source_id: id,
+          reference: exp.expense_number,
+          description: `Expense paid ${exp.expense_number}`,
+          idempotency_key: `expense_paid:${id}`,
+        },
+        lines: [
+          {
+            account_code: ACCOUNTS.ACCRUED_EXPENSES,
+            debit_ngn: amt,
+            description: `Accrual settled ${exp.expense_number}`,
+          },
+          {
+            account_code: ACCOUNTS.BANK_MAIN,
+            credit_ngn: amt,
+            description: `Expense paid ${exp.expense_number}`,
+          },
+        ],
+      });
+    }
+    return repo.setStatus({
+      client,
+      brand,
+      id,
+      status: "paid",
+      extra: {
+        paid_at: new Date().toISOString(),
+        paid_by: user.user_id,
+        payment_method: input.payment_method,
+        payment_reference: input.payment_reference,
+      },
+    });
   });
   await A(
     brand,

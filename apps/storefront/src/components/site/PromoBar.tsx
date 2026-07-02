@@ -1,3 +1,5 @@
+import { SmartLink } from "@/components/site/SmartLink";
+
 const ITEMS: { text: string; emphasis?: string; to?: string }[] = [
   { text: "Complimentary worldwide shipping on orders over $800" },
   { text: "Bulk savings — 2 pieces $40 off · 3 pieces $90 off", emphasis: "auto-applied" },
@@ -31,9 +33,9 @@ export function PromoBar() {
           return (
             <span key={i} className="flex items-center gap-10 px-10">
               {it.to ? (
-                <a href={it.to} className="hover:text-cream transition-colors">
+                <SmartLink to={it.to} className="hover:text-cream transition-colors">
                   {content}
-                </a>
+                </SmartLink>
               ) : (
                 content
               )}

@@ -6,11 +6,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID, t } = require("../../config/brands");
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
+const { VALID, t, assertBrand } = require("../../config/brands");
 /**
  * Directory KPIs. total/vip/new are global (contacts are shared); at_risk is
  * per-brand — customers who have ordered from this brand but not in 90 days.
@@ -275,9 +272,6 @@ async function exportRows({ type, from, to, limit = 50000 }) {
 }
 
 // ── Segments (brand-scoped) ──────────────────────────────
-function assertBrand(b) {
-  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
-}
 async function listSegments({ client, brand }) {
   assertBrand(brand);
   const { rows } = await ex(client)(

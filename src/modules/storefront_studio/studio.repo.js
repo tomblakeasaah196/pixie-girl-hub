@@ -9,10 +9,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { ex } = require("../../config/database");
 // ── Themes (singleton per brand) ───────────────────────────
 async function getThemes({ client, brand }) {
   const { rows } = await ex(client)(

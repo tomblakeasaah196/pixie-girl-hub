@@ -14,15 +14,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-const { VALID } = require("../../config/brands");
-
-const t = (b, tbl) => {
-  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
-  return `${b}.${tbl}`;
-};
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { ex } = require("../../config/database");
+const { t } = require("../../config/brands");
 // Client-settable columns. shade_code is generated server-side (NOT NULL,
 // never patched here); created_by / deleted_at are set explicitly.
 const SHADE_COLS = [

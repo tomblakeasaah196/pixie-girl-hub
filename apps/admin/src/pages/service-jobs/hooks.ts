@@ -142,6 +142,11 @@ export function useJobActions(jobId: string) {
         api.recordOutcome(jobId, input),
       onSuccess: invalidate,
     }),
+    linkIntercompany: useMutation({
+      mutationFn: (icTransactionId: string) =>
+        api.linkIntercompany(jobId, icTransactionId),
+      onSuccess: invalidate,
+    }),
   };
 }
 

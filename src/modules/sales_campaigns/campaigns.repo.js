@@ -13,10 +13,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID_BRANDS } = require("../../config/brands");
-
+const { ex: exec } = require("../../config/database");
+const { t } = require("../../config/brands");
 const VALID_STATUSES = new Set([
   "draft",
   "pending_approval",
@@ -26,15 +24,6 @@ const VALID_STATUSES = new Set([
   "ended",
   "archived",
 ]);
-
-function t(brand, table) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${table}`;
-}
-
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
 
 // Columns a client may set on create, and how to bind them.
 const CREATE_COLS = [

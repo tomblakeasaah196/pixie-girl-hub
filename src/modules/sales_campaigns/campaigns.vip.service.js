@@ -14,16 +14,11 @@
 "use strict";
 
 const { query, transaction } = require("../../config/database");
-const { VALID_BRANDS } = require("../../config/brands");
+const { t } = require("../../config/brands");
 const campaignsRepo = require("./campaigns.repo");
 const events = require("./campaigns.events");
 const { audit } = require("../../middleware/audit");
 const { NotFoundError } = require("../../utils/errors");
-
-function t(brand, table) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${table}`;
-}
 
 // Order statuses that count as money the customer has actually spent. Mirrors
 // the "paid" convention used across the codebase (contacts timeline, weekly

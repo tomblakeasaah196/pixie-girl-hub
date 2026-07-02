@@ -197,6 +197,10 @@ const qc = z
 
 const writeOff = z.object({ reason: z.string().min(1).max(500) }).strict();
 
+const intercompanyLink = z
+  .object({ ic_transaction_id: z.string().uuid() })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -217,4 +221,5 @@ module.exports = {
   validateReferenceAdd: mk(referenceAdd),
   validateQc: mk(qc),
   validateWriteOff: mk(writeOff),
+  validateIntercompanyLink: mk(intercompanyLink),
 };

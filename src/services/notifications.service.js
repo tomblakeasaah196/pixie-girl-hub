@@ -8,7 +8,7 @@
 "use strict";
 
 const { query } = require("../config/database");
-const { getIo } = require("../config/socket");
+const { getBroadcaster } = require("../realtime/emitter");
 const { ROOMS } = require("../realtime/rooms");
 
 const VALID_PRIORITY = new Set(["low", "normal", "high", "urgent"]);
@@ -77,11 +77,11 @@ async function notify({
     created_at: rows[0].created_at,
   };
   try {
-    getIo()
+    getBroadcaster()
       .to(ROOMS.user_notifications(user_id))
       .emit("notification:new", notif);
   } catch {
-    // socket.io not ready (worker context); skip silently
+    // redis not ready (tests/scripts); skip silently
   }
   // Fire web push for the user's registered push subscriptions if channel is enabled.
   try {

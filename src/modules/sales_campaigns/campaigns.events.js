@@ -14,27 +14,6 @@
 
 "use strict";
 
-const { EventEmitter } = require("events");
-const { logger } = require("../../config/logger");
+const { createModuleEvents } = require("../../shared/events/module-events");
 
-const emitter = new EventEmitter();
-emitter.setMaxListeners(50);
-
-function emit(eventType, payload) {
-  const fullType = `sales_campaigns.${eventType}`;
-  try {
-    emitter.emit(fullType, payload);
-    emitter.emit("*", { type: fullType, payload });
-  } catch (err) {
-    logger.error(
-      { err, eventType: fullType },
-      "sales_campaigns event emit failed",
-    );
-  }
-}
-
-function on(eventType, handler) {
-  emitter.on(`sales_campaigns.${eventType}`, handler);
-}
-
-module.exports = { emit, on, emitter };
+module.exports = createModuleEvents("sales_campaigns");

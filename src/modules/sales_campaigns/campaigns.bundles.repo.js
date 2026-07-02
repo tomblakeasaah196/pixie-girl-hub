@@ -15,12 +15,7 @@
 "use strict";
 
 const { query } = require("../../config/database");
-const { VALID_BRANDS } = require("../../config/brands");
-
-function t(brand, table) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${table}`;
-}
+const { t } = require("../../config/brands");
 function ex(client) {
   return client ? client.query.bind(client) : query;
 }

@@ -8,10 +8,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
 const CREATE_COLS = [
   "ic_number",
   "flow_type",

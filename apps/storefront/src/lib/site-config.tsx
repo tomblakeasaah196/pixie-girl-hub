@@ -17,16 +17,63 @@ export interface StudioPage {
   slots?: Record<string, unknown>;
 }
 
+export interface StudioPopup {
+  popup_key?: string;
+  trigger_type?: string;
+  trigger_value?: number;
+  audience?: string;
+  content?: Record<string, unknown>;
+  display_rules?: Record<string, unknown>;
+}
+
+export interface NavItem {
+  label: string;
+  url: string;
+  children?: { label: string; url: string }[];
+}
+export interface FooterColumn {
+  title: string;
+  links: { label: string; url: string }[];
+}
+export interface StudioNavigation {
+  header_items?: NavItem[];
+  footer_columns?: FooterColumn[];
+  socials?: Record<string, string>;
+}
+
 const PagesCtx = createContext<StudioPage[]>([]);
+const PopupsCtx = createContext<StudioPopup[]>([]);
+const NavCtx = createContext<StudioNavigation | null>(null);
 
 export function SiteConfigProvider({
   pages,
+  popups,
+  navigation,
   children,
 }: {
   pages?: StudioPage[];
+  popups?: StudioPopup[];
+  navigation?: StudioNavigation | null;
   children: ReactNode;
 }) {
-  return <PagesCtx.Provider value={pages ?? []}>{children}</PagesCtx.Provider>;
+  return (
+    <PagesCtx.Provider value={pages ?? []}>
+      <PopupsCtx.Provider value={popups ?? []}>
+        <NavCtx.Provider value={navigation ?? null}>{children}</NavCtx.Provider>
+      </PopupsCtx.Provider>
+    </PagesCtx.Provider>
+  );
+}
+
+/** Published navigation (header items / footer columns / socials), or null. */
+export function useNavigation(): StudioNavigation | null {
+  return useContext(NavCtx);
+}
+
+/** Published popup config by key (undefined when unseeded). */
+export function usePopup(popupKey: string): StudioPopup | undefined {
+  const popups = useContext(PopupsCtx);
+  return popups.find((p) => p.popup_key === popupKey);
 }
 
 /** Published slots for a page_key (empty object when unseeded). */

@@ -36,6 +36,7 @@ const { config } = require("../config/env");
 const { logger } = require("../config/logger");
 const { getClient: getRedisClient } = require("../config/redis");
 const { refreshBrands } = require("../config/brands");
+const { withCronLock } = require("./cron-lock");
 
 const queueNames = [
   "media-processing",
@@ -98,12 +99,19 @@ async function startWorkers() {
   }
 
   // ── Cron schedules ─────────────────────────────────────
-  const scheduleCron = (name, expr, fn) => {
+  // Every job runs under a Postgres advisory lock (jobs/cron-lock.js) so a
+  // second worker instance — or ENABLE_WORKERS=true on the API alongside a
+  // dedicated worker — cannot double-run it (double email sends, double
+  // billing). `perInstance: true` opts a job OUT of the lock: jobs that
+  // maintain per-PROCESS state (in-memory brand registry, local mmdb file)
+  // must run in every instance, not once per fleet.
+  const scheduleCron = (name, expr, fn, { perInstance = false } = {}) => {
+    const run = perInstance ? fn : () => withCronLock(name, fn);
     const job = cron.schedule(
       expr,
       async () => {
         try {
-          await fn();
+          await run();
         } catch (err) {
           logger.error({ err, cron: name }, "cron job failed");
         }
@@ -111,7 +119,7 @@ async function startWorkers() {
       { timezone: config.TZ },
     );
     cronJobs.push({ name, job });
-    logger.info({ cron: name, expr }, "cron scheduled");
+    logger.info({ cron: name, expr, locked: !perInstance }, "cron scheduled");
   };
 
   const { runDailyAiBriefing } = require("./schedulers/ai-briefing");
@@ -167,8 +175,11 @@ async function startWorkers() {
   const { runHrAttendanceSweep } = require("./schedulers/hr-attendance");
 
   // Re-sync the brand registry so a business provisioned by the API process
-  // reaches this worker's crons without a restart.
-  scheduleCron("brand-registry-refresh", "*/5 * * * *", refreshBrands);
+  // reaches this worker's crons without a restart. Per-instance: it refreshes
+  // THIS process's in-memory Set — every instance must run it itself.
+  scheduleCron("brand-registry-refresh", "*/5 * * * *", refreshBrands, {
+    perInstance: true,
+  });
   scheduleCron("ugc-ingestion", "*/10 * * * *", runUgcIngestionSweep);
   scheduleCron(
     "daily-ai-briefing",
@@ -249,10 +260,12 @@ async function startWorkers() {
   );
   // Daily 08:00 — flag wigs sitting too long with a stylist (accountability).
   scheduleCron("missing-wig-check", "0 8 * * *", runMissingWigCheck);
+  // Per-instance: downloads the GeoLite2 mmdb to THIS instance's local disk.
   scheduleCron(
     "geoip-db-update",
     config.CRON_GEOIP_DB_UPDATE,
     runGeoIpDatabaseUpdate,
+    { perInstance: true },
   );
 
   // ── Transactional outbox dispatcher (H-2) ──────────────

@@ -11,7 +11,10 @@ import type {
 } from "./types";
 
 const T = "/tasks";
-const CAL = "/calendar/events";
+// Calendar events resource. The backend mounts create at POST /calendar and
+// by-id ops at /calendar/:id (only GET has a /calendar/events list alias), so
+// the base path is /calendar — NOT /calendar/events, which 404s on write.
+const CAL = "/calendar";
 
 function qs(params: Record<string, unknown>) {
   const q = new URLSearchParams();

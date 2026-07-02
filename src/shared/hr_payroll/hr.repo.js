@@ -72,8 +72,16 @@ function decryptRow(row) {
   return out;
 }
 
+// user_id is the staff member's login account (shared.users.staff_profile_id →
+// profile). It's exposed here because performance scoring, payroll and other
+// flows key on user_id, and the admin staff pickers filter to staff who have a
+// login. Scalar subquery (not a JOIN) so a profile never multiplies its row.
 const LIST_SELECT = `
-  sp.*, c.display_name, c.primary_phone, c.email AS contact_email`;
+  sp.*, c.display_name, c.primary_phone, c.email AS contact_email,
+  (SELECT u.user_id FROM shared.users u
+     WHERE u.staff_profile_id = sp.profile_id
+     ORDER BY u.is_active DESC, u.created_at ASC
+     LIMIT 1) AS user_id`;
 
 async function findAll({
   client,

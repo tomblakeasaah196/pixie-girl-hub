@@ -60,7 +60,12 @@ const tierCreateSchema = z
   })
   .strict();
 
-const tierUpdateSchema = tierCreateSchema.partial().omit({ tier_key: true });
+// The admin drawer submits the whole existing tier back on edit (incl. the
+// read-only tier_id), so strip unknown keys instead of 400-ing.
+const tierUpdateSchema = tierCreateSchema
+  .omit({ tier_key: true })
+  .partial()
+  .strip();
 
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});

@@ -104,7 +104,7 @@ function FacePicker({
             className={`flex flex-col items-center gap-1 rounded-xl border px-3 py-2 transition-all ${
               active
                 ? "border-accent bg-accent/10 scale-105"
-                : "border-white/10 opacity-70 hover:opacity-100"
+                : "border-line opacity-70 hover:opacity-100"
             }`}
           >
             <span className="text-2xl leading-none">{f.emoji}</span>
@@ -140,7 +140,7 @@ function JobCard({
     <button
       type="button"
       onClick={onClick}
-      className="glass w-full text-left p-3 rounded-lg border border-white/5 hover:border-accent/40 transition-colors space-y-1.5"
+      className="glass w-full text-left p-3 rounded-lg border border-line hover:border-accent/40 transition-colors space-y-1.5"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs text-muted">{job.job_number}</span>
@@ -245,7 +245,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-muted text-xs">
+              <tr className="border-b border-line text-muted text-xs">
                 <th className="text-left py-1 pr-3">Chemical</th>
                 <th className="text-left py-1 pr-3">Brand</th>
                 <th className="text-right py-1 pr-3">Qty</th>
@@ -255,7 +255,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             </thead>
             <tbody>
               {chemicals.map((c) => (
-                <tr key={c.consumption_id} className="border-b border-white/5">
+                <tr key={c.consumption_id} className="border-b border-line">
                   <td className="py-1.5 pr-3 font-medium">{c.chemical_name}</td>
                   <td className="py-1.5 pr-3 text-muted">
                     {c.chemical_brand ?? "—"}
@@ -280,7 +280,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
         </div>
       )}
 
-      <div className="border-t border-white/10 pt-4">
+      <div className="border-t border-line pt-4">
         <p className="text-xs text-muted mb-3 font-semibold uppercase tracking-wide">
           Add chemical
         </p>
@@ -440,7 +440,7 @@ function RecipeCard({ recipeId }: { recipeId: string }) {
         ))}
       </div>
       {recipe.instructions && (
-        <p className="text-xs text-muted border-t border-white/10 pt-2">
+        <p className="text-xs text-muted border-t border-line pt-2">
           {recipe.instructions}
         </p>
       )}
@@ -462,7 +462,7 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
   const linked = !!job.intercompany_number;
 
   return (
-    <div className="border-t border-white/10 pt-4 space-y-2">
+    <div className="border-t border-line pt-4 space-y-2">
       <p className="text-xs text-muted uppercase tracking-wide font-semibold">
         Inter-company · Flow 1
       </p>
@@ -586,15 +586,15 @@ function JobDetailDrawer({
         </div>
 
         {/* Tab bar */}
-        <div className="flex border-b border-white/10 gap-4">
+        <div className="flex border-b border-line gap-4">
           {(["details", "chemicals", "outcome"] as const).map((t) => (
             <button
               key={t}
               type="button"
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
                 tab === t
-                  ? "border-accent text-foreground"
-                  : "border-transparent text-muted hover:text-foreground"
+                  ? "border-accent text-text-primary"
+                  : "border-transparent text-muted hover:text-text-primary"
               }`}
               onClick={() => setTab(t)}
             >
@@ -669,7 +669,7 @@ function JobDetailDrawer({
             )}
 
             {nextStates.length > 0 && (
-              <div className="border-t border-white/10 pt-4 space-y-2">
+              <div className="border-t border-line pt-4 space-y-2">
                 <p className="text-xs text-muted uppercase tracking-wide font-semibold">
                   Advance status
                 </p>
@@ -958,7 +958,7 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
                     <span className="text-xs text-muted">{colJobs.length}</span>
                   </div>
                   {colJobs.length === 0 ? (
-                    <div className="text-xs text-muted text-center py-6 border border-dashed border-white/10 rounded-lg">
+                    <div className="text-xs text-muted text-center py-6 border border-dashed border-line rounded-lg">
                       Empty
                     </div>
                   ) : (

@@ -34,7 +34,19 @@ const createSchema = z
   })
   .strict();
 
-const updateSchema = createSchema.partial().omit({ rule_key: true });
+// The admin drawer submits the whole existing row back on edit, so the payload
+// carries read-only keys (rule_id, …) and null-valued optionals. `.strip()`
+// drops unknown keys and nullish() tolerates the nulls.
+const updateSchema = createSchema
+  .omit({ rule_key: true })
+  .extend({
+    description: z.string().max(1000).nullish(),
+    points_value: z.coerce.number().int().nonnegative().nullish(),
+    currency_per_point: z.coerce.number().positive().nullish(),
+    points_expire_days: z.coerce.number().int().positive().nullish(),
+  })
+  .partial()
+  .strip();
 
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});

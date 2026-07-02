@@ -169,6 +169,20 @@ interface ListEnvelope<T> {
   data: T[];
 }
 
+/**
+ * The API client (lib/api) already unwraps a bare `{ data }` envelope to the
+ * inner value — it only keeps the envelope intact when a `meta` key is present.
+ * These HR list endpoints return `{ data: [...] }` with NO meta, so the client
+ * hands us the array directly; a further `.data` access would read undefined
+ * off the array and silently blank the list (this is exactly why the pending
+ * leave inbox showed nothing). `asList` tolerates either shape.
+ */
+function asList<T>(r: unknown): T[] {
+  if (Array.isArray(r)) return r as T[];
+  const d = (r as { data?: unknown } | null)?.data;
+  return Array.isArray(d) ? (d as T[]) : [];
+}
+
 export interface MyToday {
   profile_id: string;
   clocked_in: boolean;
@@ -261,17 +275,21 @@ export const listAttendanceDays = (params: Record<string, string> = {}) =>
     .get<ListEnvelope<AttendanceDay>>(
       `/hr/attendance-days${qs(params)}`,
     )
-    .then((r) => r.data);
+    .then((r) => asList<AttendanceDay>(r));
 
 export const listLeave = (params: Record<string, string> = {}) =>
-  api.get<ListEnvelope<LeaveRequest>>(`/hr/leave${qs(params)}`).then((r) => r.data);
+  api
+    .get<ListEnvelope<LeaveRequest>>(`/hr/leave${qs(params)}`)
+    .then((r) => asList<LeaveRequest>(r));
 export const approveLeave = (id: string) =>
   api.post<LeaveRequest>(`/hr/leave/${id}/approve`);
 export const rejectLeave = (id: string, rejection_reason?: string) =>
   api.post<LeaveRequest>(`/hr/leave/${id}/reject`, { rejection_reason });
 
 export const listQueries = (params: Record<string, string> = {}) =>
-  api.get<ListEnvelope<HrQuery>>(`/hr/queries${qs(params)}`).then((r) => r.data);
+  api
+    .get<ListEnvelope<HrQuery>>(`/hr/queries${qs(params)}`)
+    .then((r) => asList<HrQuery>(r));
 export const raiseQuery = (body: {
   profile_id: string;
   query_type?: string;
@@ -286,7 +304,9 @@ export const resolveQuery = (
 ) => api.post<HrQuery>(`/hr/queries/${id}/resolve`, { resolution, note });
 
 export const listTargets = (params: Record<string, string> = {}) =>
-  api.get<ListEnvelope<PerformanceTarget>>(`/hr/targets${qs(params)}`).then((r) => r.data);
+  api
+    .get<ListEnvelope<PerformanceTarget>>(`/hr/targets${qs(params)}`)
+    .then((r) => asList<PerformanceTarget>(r));
 export const setTarget = (body: {
   profile_id: string;
   period_month: number;
@@ -352,7 +372,9 @@ export interface StaffContract {
   document_id: string | null;
 }
 export const listEmployeeContracts = (id: string) =>
-  api.get<{ data: StaffContract[] }>(`/hr/employees/${id}/contracts`).then((r) => r.data);
+  api
+    .get<{ data: StaffContract[] }>(`/hr/employees/${id}/contracts`)
+    .then((r) => asList<StaffContract>(r));
 export const generateContract = (
   id: string,
   body: {

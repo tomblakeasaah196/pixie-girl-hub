@@ -12,7 +12,7 @@ import {
 import type { ServiceJob } from "./types";
 
 const inputCls =
-  "flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-accent transition-colors";
+  "flex-1 rounded-lg border border-line bg-white/5 px-3 py-2 text-sm outline-none focus:border-accent transition-colors";
 
 function fmt(mins: number) {
   const h = Math.floor(mins / 60);
@@ -54,7 +54,7 @@ export function JobWorkPanel({
     <div className="space-y-3">
       {/* Timer */}
       {canTime && (
-        <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+        <div className="flex items-center gap-3 rounded-lg border border-line bg-white/5 px-3 py-2">
           <Clock size={16} className="text-accent-glow" />
           <span className="text-sm">
             Time on this wig: <b>{fmt(totalMins)}</b>
@@ -93,7 +93,7 @@ export function JobWorkPanel({
       )}
 
       {/* Materials */}
-      <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+      <div className="rounded-lg border border-line bg-white/5 p-3 space-y-2">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <FlaskConical size={15} className="text-accent-glow" /> Materials used
         </div>

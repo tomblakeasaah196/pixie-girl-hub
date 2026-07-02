@@ -378,7 +378,7 @@ function ReconciliationTab() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-muted text-xs">
+              <tr className="border-b border-line text-muted text-xs">
                 <th className="text-left py-2 pr-3">Chemical</th>
                 <th className="text-right py-2 pr-3">Purchased</th>
                 <th className="text-right py-2 pr-3">Consumed</th>
@@ -394,7 +394,7 @@ function ReconciliationTab() {
                 return (
                   <tr
                     key={r.reconciliation_id}
-                    className={`border-b border-white/5 ${
+                    className={`border-b border-line ${
                       r.variance_status === "flagged" ? "bg-danger/5" : ""
                     }`}
                   >
@@ -550,15 +550,15 @@ export function ServiceJobsPage() {
       <KpiStrip />
 
       {/* Tabs */}
-      <div className="flex border-b border-white/10 gap-5 overflow-x-auto">
+      <div className="flex border-b border-line gap-5 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             className={`pb-2 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
               tab === t.id
-                ? "border-accent text-foreground"
-                : "border-transparent text-muted hover:text-foreground"
+                ? "border-accent text-text-primary"
+                : "border-transparent text-muted hover:text-text-primary"
             }`}
             onClick={() => setTab(t.id)}
           >

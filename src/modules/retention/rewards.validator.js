@@ -30,7 +30,21 @@ const createSchema = z
   })
   .strict();
 
-const updateSchema = createSchema.partial().omit({ reward_key: true });
+// The admin drawers edit an existing row and submit the whole object back,
+// so the update payload carries server-owned/read-only keys (reward_id,
+// total_redeemed, …) and null-valued optionals for the reward types that
+// don't use them. `.strip()` drops the unknown keys instead of 400-ing, and
+// nullish() tolerates the nulls that the list rows carry.
+const updateSchema = createSchema
+  .omit({ reward_key: true })
+  .extend({
+    description: z.string().max(1000).nullish(),
+    discount_type: z.enum(["percentage", "fixed_amount"]).nullish(),
+    discount_value: z.coerce.number().nonnegative().nullish(),
+    max_discount_value: z.coerce.number().nonnegative().nullish(),
+  })
+  .partial()
+  .strip();
 
 const redeemSchema = z
   .object({

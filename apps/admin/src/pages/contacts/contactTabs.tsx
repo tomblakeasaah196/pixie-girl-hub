@@ -277,7 +277,7 @@ export function InvoicesTab({ contactId }: { contactId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["contacts", contactId, "invoices"],
     queryFn: () =>
-      api.get(`/invoicing?contact_id=${contactId}&page_size=50`),
+      api.get(`/invoicing/invoices?contact_id=${contactId}&page_size=50`),
   });
   const invoices = asArray<Invoice>(data);
 

@@ -62,6 +62,13 @@ router.post("/", can("create"), v.validateCreate, c.create);
 router.get("/milestones", can("view"), c.milestones);
 router.get("/stats", can("view"), c.stats);
 
+// Global tag management (brand-scoped; the URL id is the tag_name). Declared
+// before /:id and /:id/tags so "tags"/"tags/merge" aren't captured as an id.
+router.get("/tags", can("view"), c.listAllTags);
+router.post("/tags/merge", can("edit"), c.mergeTags);
+router.patch("/tags/:tagName", can("edit"), c.updateTag);
+router.delete("/tags/:tagName", can("delete"), c.deleteTagGlobal);
+
 // Bulk import / export (clients & suppliers via CSV/Excel). Literal segments,
 // declared before /:id so they're never captured as a contact id.
 //   GET  /import-template?kind=clients|suppliers → CSV template + sample row

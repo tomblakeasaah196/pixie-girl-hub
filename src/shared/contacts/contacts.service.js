@@ -313,6 +313,58 @@ async function removeTag({ brand, user, request_id, id, tag_id }) {
   );
 }
 
+// ── Global tag management (tag_name is the identity) ─────────
+function listAllTags({ brand }) {
+  return repo.listAllTags({ brand });
+}
+async function updateTag({ brand, user, request_id, tag_id, input }) {
+  const tag = await repo.renameTagGlobal({
+    brand,
+    old_name: tag_id,
+    new_name: input.tag_name,
+    colour: input.colour,
+  });
+  await A(
+    brand,
+    user.user_id,
+    "contacts.tag.update",
+    "contact_tag",
+    tag_id,
+    { new_name: input.tag_name, colour: input.colour },
+    request_id,
+  );
+  return tag;
+}
+async function deleteTagGlobal({ brand, user, request_id, tag_id }) {
+  const removed = await repo.deleteTagGlobal({ brand, tag_name: tag_id });
+  await A(
+    brand,
+    user.user_id,
+    "contacts.tag.delete",
+    "contact_tag",
+    tag_id,
+    { removed },
+    request_id,
+  );
+}
+async function mergeTags({ brand, user, request_id, source_tag_id, target_tag_id }) {
+  const tag = await repo.renameTagGlobal({
+    brand,
+    old_name: source_tag_id,
+    new_name: target_tag_id,
+  });
+  await A(
+    brand,
+    user.user_id,
+    "contacts.tag.merge",
+    "contact_tag",
+    target_tag_id,
+    { from: source_tag_id },
+    request_id,
+  );
+  return tag;
+}
+
 function stats({ brand }) {
   return repo.stats({ brand });
 }
@@ -322,6 +374,10 @@ module.exports = {
   listTags,
   addTag,
   removeTag,
+  listAllTags,
+  updateTag,
+  deleteTagGlobal,
+  mergeTags,
   milestones,
   list,
   getById,

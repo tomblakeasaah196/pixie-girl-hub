@@ -8,18 +8,22 @@
 
 const { z } = require("zod");
 
+// The builder round-trips loaded steps back on save, so a step carries its
+// server-assigned step_id and null-valued optionals. Keep step_id (the service
+// uses it to match existing steps), tolerate nulls, and strip any other extras.
 const stepSchema = z
   .object({
+    step_id: z.string().uuid().optional(),
     step_order: z.coerce.number().int().positive().optional(),
     wait_minutes: z.coerce.number().int().nonnegative().optional(),
-    step_conditions: z.record(z.any()).optional(),
+    step_conditions: z.record(z.any()).nullish(),
     action_type: z.string().min(2).max(40),
-    action_config: z.record(z.any()).optional(),
-    email_template_id: z.string().uuid().optional(),
-    coupon_template: z.record(z.any()).optional(),
-    description: z.string().max(400).optional(),
+    action_config: z.record(z.any()).nullish(),
+    email_template_id: z.string().uuid().nullish(),
+    coupon_template: z.record(z.any()).nullish(),
+    description: z.string().max(400).nullish(),
   })
-  .strict();
+  .strip();
 
 const createSchema = z
   .object({
@@ -39,7 +43,18 @@ const createSchema = z
   })
   .strict();
 
-const updateSchema = createSchema.partial().omit({ strategy_key: true });
+// Editing submits the whole strategy back (incl. read-only strategy_id,
+// summary, counters …) — strip unknowns instead of 400-ing.
+const updateSchema = createSchema
+  .omit({ strategy_key: true })
+  .extend({
+    description: z.string().max(1000).nullish(),
+    template_key: z.string().max(80).nullish(),
+    audience_segment_id: z.string().uuid().nullish(),
+    trigger_conditions: z.record(z.any()).nullish(),
+  })
+  .partial()
+  .strip();
 
 const statusSchema = z
   .object({ status: z.enum(["draft", "active", "paused", "archived"]) })

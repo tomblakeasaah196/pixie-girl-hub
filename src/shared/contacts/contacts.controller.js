@@ -209,11 +209,42 @@ async function removeTag(req, res) {
   res.status(204).end();
 }
 
+// Global tags (tag_name is the identity in the URL).
+async function listAllTags(req, res) {
+  res.json({ data: await service.listAllTags({ brand: req.brand }) });
+}
+async function updateTag(req, res) {
+  res.json({
+    data: await service.updateTag({
+      ...base(req),
+      tag_id: req.params.tagName,
+      input: req.body,
+    }),
+  });
+}
+async function deleteTagGlobal(req, res) {
+  await service.deleteTagGlobal({ ...base(req), tag_id: req.params.tagName });
+  res.status(204).end();
+}
+async function mergeTags(req, res) {
+  res.json({
+    data: await service.mergeTags({
+      ...base(req),
+      source_tag_id: req.body.source_tag_id,
+      target_tag_id: req.body.target_tag_id,
+    }),
+  });
+}
+
 module.exports = {
   stats,
   listTags,
   addTag,
   removeTag,
+  listAllTags,
+  updateTag,
+  deleteTagGlobal,
+  mergeTags,
   milestones,
   importTemplate,
   importContacts,

@@ -9,7 +9,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
-import { PageActions } from "@/components/shell/PageActions";
 import { usePipelines, usePipelineDeals, usePipelineStages } from "../hooks";
 import { KanbanView } from "./KanbanView";
 import { TableView } from "./TableView";
@@ -38,10 +37,7 @@ const STATUS_FILTERS = [
 export function PipelineTab() {
   const [view, setView] = useState<ViewMode>("kanban");
   const [filter, setFilter] = useState<DealFilter>({ status: "open" });
-  const [newDealContact, setNewDealContact] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
+  const [showNewDeal, setShowNewDeal] = useState(false);
 
   const { data: pipelines = [], isLoading: loadPipelines } = usePipelines();
   const defaultPipeline = pipelines.find((p) => p.is_default) ?? pipelines[0];
@@ -145,16 +141,14 @@ export function PipelineTab() {
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
 
-        <PageActions>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={<Plus className="w-3.5 h-3.5" />}
-            onClick={() => setNewDealContact({ id: "", name: "New Contact" })}
-          >
-            New deal
-          </Button>
-        </PageActions>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Plus className="w-3.5 h-3.5" />}
+          onClick={() => setShowNewDeal(true)}
+        >
+          New deal
+        </Button>
       </div>
 
       {/* Deal count */}
@@ -171,7 +165,7 @@ export function PipelineTab() {
         <KanbanView
           columns={columns}
           isLoading={isLoading}
-          onAddDeal={() => setNewDealContact({ id: "", name: "New Contact" })}
+          onAddDeal={() => setShowNewDeal(true)}
         />
       )}
       {view === "table" && (
@@ -184,12 +178,11 @@ export function PipelineTab() {
         <CalendarView columns={columns} isLoading={isLoading} />
       )}
 
-      {/* New deal modal — needs a contact; if no context, open contacts drawer to pick */}
-      {newDealContact && newDealContact.id && (
+      {/* New deal modal — opens with an inline contact picker (no preset contact). */}
+      {showNewDeal && (
         <NewDealModal
-          contactId={newDealContact.id}
-          contactName={newDealContact.name}
-          onClose={() => setNewDealContact(null)}
+          onClose={() => setShowNewDeal(false)}
+          onCreated={() => refetch()}
         />
       )}
     </div>

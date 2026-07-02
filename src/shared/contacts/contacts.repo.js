@@ -461,11 +461,82 @@ async function removeTag({ client, brand, contact_id, tag_id }) {
   return rowCount > 0;
 }
 
+// ── Global tags (brand-scoped) — tags have no master table; a "tag" is a
+// tag_name shared across contact rows. tag_name is the global identity. ──
+async function listAllTags({ brand }) {
+  const { rows } = await query(
+    `SELECT tag_name AS tag_id, tag_name,
+            (array_agg(colour ORDER BY created_at DESC))[1] AS colour,
+            count(*)::int AS usage_count
+       FROM shared.contact_tags
+      WHERE business = $1
+      GROUP BY tag_name
+      ORDER BY tag_name`,
+    [brand],
+  );
+  return rows;
+}
+
+/** Recolour and/or rename a tag across every contact (rename doubles as merge:
+ *  rows whose contact already has the target name are dropped). */
+async function renameTagGlobal({ brand, old_name, new_name, colour }) {
+  if (colour) {
+    await query(
+      `UPDATE shared.contact_tags SET colour = $3
+        WHERE business = $1 AND tag_name = $2`,
+      [brand, old_name, colour],
+    );
+  }
+  if (new_name && new_name !== old_name) {
+    await query(
+      `UPDATE shared.contact_tags s SET tag_name = $3
+        WHERE s.business = $1 AND s.tag_name = $2
+          AND NOT EXISTS (
+            SELECT 1 FROM shared.contact_tags t
+             WHERE t.business = $1 AND t.tag_name = $3
+               AND t.contact_id = s.contact_id)`,
+      [brand, old_name, new_name],
+    );
+    await query(
+      `DELETE FROM shared.contact_tags WHERE business = $1 AND tag_name = $2`,
+      [brand, old_name],
+    );
+  }
+  const finalName = new_name || old_name;
+  const { rows } = await query(
+    `SELECT $2::text AS tag_id, $2::text AS tag_name,
+            (array_agg(colour ORDER BY created_at DESC))[1] AS colour,
+            count(*)::int AS usage_count
+       FROM shared.contact_tags WHERE business = $1 AND tag_name = $2
+      GROUP BY tag_name`,
+    [brand, finalName],
+  );
+  return (
+    rows[0] || {
+      tag_id: finalName,
+      tag_name: finalName,
+      colour: colour || null,
+      usage_count: 0,
+    }
+  );
+}
+
+async function deleteTagGlobal({ brand, tag_name }) {
+  const { rowCount } = await query(
+    `DELETE FROM shared.contact_tags WHERE business = $1 AND tag_name = $2`,
+    [brand, tag_name],
+  );
+  return rowCount;
+}
+
 module.exports = {
   stats,
   listTags,
   addTag,
   removeTag,
+  listAllTags,
+  renameTagGlobal,
+  deleteTagGlobal,
   upcomingMilestones,
   findAll,
   findById,

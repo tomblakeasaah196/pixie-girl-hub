@@ -67,6 +67,7 @@ function useCashRequestDetail(
 
   const canApprove = can("expenses", "approve");
   const isBusy =
+    mutations.submit.isPending ||
     mutations.finance.isPending ||
     mutations.ceo.isPending ||
     mutations.disburse.isPending ||
@@ -111,6 +112,10 @@ function useCashRequestDetail(
     mutations.cancel.mutate({ id: r.cash_request_id }, { onSuccess: onClose });
   }
 
+  function handleSubmit() {
+    mutations.submit.mutate(r.cash_request_id, { onSuccess: onClose });
+  }
+
   const activeStage: "finance" | "ceo" | null =
     r.status === "pending_finance"
       ? "finance"
@@ -141,6 +146,7 @@ function useCashRequestDetail(
     handleDecision,
     handleDisburse,
     handleCancel,
+    handleSubmit,
     onSettle,
   };
 }
@@ -185,8 +191,16 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
         )}
       </div>
 
-      {/* Financial ribbon */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Financial ribbon. The request status already shows as a pill above, so
+          the third slot is reserved for the advance's unsettled balance and is
+          only rendered for cash advances (otherwise we'd just repeat the
+          status here). */}
+      <div
+        className={cn(
+          "grid gap-3",
+          r.requires_settlement ? "grid-cols-3" : "grid-cols-2",
+        )}
+      >
         <MiniCard label="Requested">
           <MoneyText ngn={Number(r.amount_requested_ngn)} className="text-lg" />
         </MiniCard>
@@ -200,9 +214,9 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
             <span className="text-text-faint text-sm">—</span>
           )}
         </MiniCard>
-        <MiniCard label={r.requires_settlement ? "Unsettled" : "Status"}>
-          {r.requires_settlement ? (
-            r.unsettled_balance_ngn ? (
+        {r.requires_settlement && (
+          <MiniCard label="Unsettled">
+            {r.unsettled_balance_ngn ? (
               <MoneyText
                 ngn={Number(r.unsettled_balance_ngn)}
                 className="text-lg text-warn"
@@ -211,18 +225,9 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
               <span className="text-success text-sm font-bold">Settled</span>
             ) : (
               <span className="text-text-faint text-sm">Pending</span>
-            )
-          ) : (
-            <span
-              className={cn(
-                "text-sm font-bold",
-                meta.tone === "success" ? "text-success" : "text-text-muted",
-              )}
-            >
-              {meta.label}
-            </span>
-          )}
-        </MiniCard>
+            )}
+          </MiniCard>
+        )}
       </div>
 
       {/* Details */}
@@ -510,6 +515,7 @@ function DrawerActions({ d }: { d: CashRequestDetail }) {
     setShowDisburse,
     handleDecision,
     handleCancel,
+    handleSubmit,
     onSettle,
   } = d;
   const status = r.status;
@@ -520,6 +526,20 @@ function DrawerActions({ d }: { d: CashRequestDetail }) {
 
   return (
     <>
+      {/* Submit for approval — the requester posts a draft (or a returned
+          "sent back" request) into the finance approval queue. */}
+      {["draft", "sent_back"].includes(status) && (
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={isBusy}
+          onClick={handleSubmit}
+          icon={<Send className="w-3.5 h-3.5" />}
+        >
+          Submit for Approval
+        </Button>
+      )}
+
       {/* Approval actions */}
       {activeStage && canApprove && (
         <>

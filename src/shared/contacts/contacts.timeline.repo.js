@@ -26,31 +26,31 @@ function unionSql(brand) {
             NULL::text AS title, status::text AS status, total_ngn AS amount_ngn
        FROM ${t(brand, "sales_orders")} WHERE contact_id = $1`,
     `SELECT created_at, 'sales', 'quotation', quotation_id, quotation_number,
-            NULL, status, total_ngn
+            NULL, status::text, total_ngn
        FROM ${t(brand, "quotations")} WHERE contact_id = $1`,
     `SELECT created_at, 'invoicing', 'invoice', invoice_id, invoice_number,
-            NULL, status, total_ngn
+            NULL, status::text, total_ngn
        FROM ${t(brand, "invoices")} WHERE contact_id = $1`,
     `SELECT issued_at, 'invoicing', 'receipt', receipt_id, receipt_number,
             NULL, NULL, amount_ngn
        FROM ${t(brand, "receipts")} WHERE contact_id = $1`,
     `SELECT created_at, 'pos', 'pos_sale', transaction_id, NULL,
-            NULL, status, total_ngn
+            NULL, status::text, total_ngn
        FROM ${t(brand, "pos_transactions")} WHERE customer_contact_id = $1`,
     `SELECT created_at, 'crm', 'deal', deal_id, NULL,
-            title, status, expected_value_ngn
+            title, status::text, expected_value_ngn
        FROM ${t(brand, "crm_deals")} WHERE contact_id = $1`,
     `SELECT performed_at, 'crm', 'activity', activity_id, NULL,
-            subject, activity_type, NULL::numeric
+            subject, activity_type::text, NULL::numeric
        FROM ${t(brand, "crm_activities")} WHERE contact_id = $1`,
     `SELECT created_at, 'crm', 'note', note_id, NULL,
             left(body, 140), NULL, NULL
        FROM ${t(brand, "crm_notes")} WHERE contact_id = $1`,
     `SELECT created_at, 'service', 'service_job', job_id, job_number,
-            NULL, status, agreed_cost_ngn
+            NULL, status::text, agreed_cost_ngn
        FROM ${t(brand, "service_jobs")} WHERE customer_contact_id = $1`,
     `SELECT created_at, 'logistics', 'delivery', delivery_id, delivery_number,
-            NULL, status, NULL
+            NULL, status::text, NULL
        FROM ${t(brand, "deliveries")} WHERE recipient_contact_id = $1`,
     `SELECT completed_at, 'retention', 'hair_quiz', response_id, NULL,
             NULL, NULL, NULL
@@ -58,10 +58,10 @@ function unionSql(brand) {
       WHERE contact_id = $1 AND completed_at IS NOT NULL`,
     // ── Shared schema (scoped by business) ──────────────────
     `SELECT created_at, 'retention', 'loyalty', ledger_id, NULL,
-            transaction_type, NULL, NULL
+            transaction_type::text, NULL, NULL
        FROM shared.loyalty_ledger WHERE contact_id = $1 AND business = $2`,
     `SELECT created_at, 'retention', 'referral_redemption', redemption_id, NULL,
-            NULL, status, NULL
+            NULL, status::text, NULL
        FROM shared.referral_redemptions
       WHERE referred_contact_id = $1 AND business = $2`,
     `SELECT created_at, 'storefront', 'review', review_id, NULL,

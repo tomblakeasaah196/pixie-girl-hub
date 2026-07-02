@@ -258,7 +258,7 @@ function RecipeCard({
       {recipe.target_shade && (
         <p className="text-xs text-muted">
           Target shade:{" "}
-          <span className="text-foreground">{recipe.target_shade}</span>
+          <span className="text-text-primary">{recipe.target_shade}</span>
         </p>
       )}
 
@@ -291,7 +291,7 @@ function RecipeCard({
             </div>
           ))}
           {recipe.instructions && (
-            <p className="text-xs text-muted mt-2 border-t border-white/10 pt-2">
+            <p className="text-xs text-muted mt-2 border-t border-line pt-2">
               {recipe.instructions}
             </p>
           )}

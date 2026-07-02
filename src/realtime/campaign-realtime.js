@@ -11,20 +11,26 @@
 
 const events = require("../modules/sales_campaigns/campaigns.events");
 const { ROOMS } = require("./rooms");
-const { getIo } = require("../config/socket");
+const { getBroadcaster } = require("./emitter");
 const { logger } = require("../config/logger");
 
 function emitToRoom(brand, id, channel, payload) {
   if (!brand || !id) return;
   try {
-    getIo().to(ROOMS.campaign_live(brand, id)).emit(channel, payload);
+    getBroadcaster().to(ROOMS.campaign_live(brand, id)).emit(channel, payload);
   } catch (err) {
-    // Socket.io may not be initialised (e.g. worker process / tests).
+    // Redis unavailable (tests/scripts without initRedis).
     logger.debug({ err: err.message }, "campaign realtime emit skipped");
   }
 }
 
+let registered = false;
+
 function registerCampaignRealtime() {
+  // Idempotent: socket init (API) and startWorkers (worker/in-process dev)
+  // may both call this; the second call must not duplicate emissions.
+  if (registered) return;
+  registered = true;
   events.on("metrics_updated", ({ brand, id, metrics }) =>
     emitToRoom(brand, id, "campaign:metrics", metrics),
   );

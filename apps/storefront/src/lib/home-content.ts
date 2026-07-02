@@ -215,13 +215,40 @@ export function mapShades(rows: RawShade[]): ShadeItem[] {
 }
 
 interface RawBundleComponent { price_ngn?: string | number | null; quantity?: number; image_url?: string | null }
-interface RawBundle {
+export interface RawBundle {
   bundle_code: string;
   display_name: string;
+  pricing_model?: string;
+  discount_value?: string | number | null;
   bundle_price_ngn?: string | number | null;
   hero_image_url?: string | null;
   components?: RawBundleComponent[];
 }
+
+/**
+ * Effective bundle price in NGN — mirrors the backend's computeBundleEconomics so
+ * discount-based bundles (pct_off / amount_off) don't show ₦0. `discount_value`
+ * is a fraction for pct_off (0.15 = 15%) and ₦/unit for amount_off.
+ */
+export function bundleEffectiveNgn(
+  b: Pick<RawBundle, "pricing_model" | "discount_value" | "bundle_price_ngn">,
+  subtotalNgn: number,
+  units: number,
+): number {
+  const dv = num(b.discount_value);
+  const bp = num(b.bundle_price_ngn);
+  switch (b.pricing_model) {
+    case "fixed_bundle_price":
+      return bp;
+    case "pct_off":
+      return Math.max(0, subtotalNgn - Math.min(subtotalNgn * dv, subtotalNgn));
+    case "amount_off":
+      return Math.max(0, subtotalNgn - Math.min(dv * Math.max(1, units), subtotalNgn));
+    default:
+      return bp > 0 ? bp : subtotalNgn;
+  }
+}
+
 export function mapBundles(rows: RawBundle[]): BundleItem[] {
   return rows.map((b) => {
     const comps = b.components ?? [];
@@ -229,9 +256,12 @@ export function mapBundles(rows: RawBundle[]): BundleItem[] {
       (sum, c) => sum + num(c.price_ngn) * (Number(c.quantity) || 1),
       0,
     );
-    const priceNgn = num(b.bundle_price_ngn);
+    const units = comps.reduce((s, c) => s + (Number(c.quantity) || 1), 0);
+    const priceNgn = bundleEffectiveNgn(b, compareAtNgn, units);
     const savingsPct =
-      compareAtNgn > 0 ? Math.round(((compareAtNgn - priceNgn) / compareAtNgn) * 100) : 0;
+      compareAtNgn > priceNgn && compareAtNgn > 0
+        ? Math.round(((compareAtNgn - priceNgn) / compareAtNgn) * 100)
+        : 0;
     return {
       slug: b.bundle_code,
       name: b.display_name,

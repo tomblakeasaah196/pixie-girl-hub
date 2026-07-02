@@ -2,7 +2,7 @@
   "name": "pixie-girl-hub-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Pixie Girl Hub — multi-entity ERP/CRM/E-commerce backend (Pixie Girl Global + Faitlynhair)",
+  "description": "Pixie Girl Hub \u2014 multi-entity ERP/CRM/E-commerce backend (Pixie Girl Global + Faitlynhair)",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=20.0.0"
@@ -43,10 +43,12 @@
     "workers:start": "node src/jobs/worker.js",
     "coverage:frontend": "node scripts/build-frontend-coverage.js",
     "build:action-catalogue": "node scripts/build-action-catalogue.js",
-    "rag:reembed": "node scripts/rag-reembed.js"
+    "rag:reembed": "node scripts/rag-reembed.js",
+    "books:verify": "node scripts/verify-books.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
+    "@socket.io/redis-emitter": "^5.1.0",
     "argon2": "^0.41.1",
     "axios": "^1.7.9",
     "bullmq": "^5.34.10",

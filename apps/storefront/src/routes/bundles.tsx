@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getBundles, addCartItem, fmt } from "@/lib/storefront";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
+import { bundleEffectiveNgn } from "@/lib/home-content";
 
 export const Route = createFileRoute("/bundles")({
   head: () => ({ meta: [{ title: "Bundles — Better Together · Faitlyn Hair" }] }),
@@ -69,8 +70,9 @@ function BundlesPage() {
           bundles.map((b, i) => {
             const comps = b.components ?? [];
             const compareAt = comps.reduce((s, c) => s + n(c.price_ngn) * (Number(c.quantity) || 1), 0);
-            const price = n(b.bundle_price_ngn);
-            const savePct = compareAt > 0 ? Math.round(((compareAt - price) / compareAt) * 100) : 0;
+            const units = comps.reduce((s, c) => s + (Number(c.quantity) || 1), 0);
+            const price = bundleEffectiveNgn(b, compareAt, units);
+            const savePct = compareAt > price && compareAt > 0 ? Math.round(((compareAt - price) / compareAt) * 100) : 0;
             const cover = b.hero_image_url ?? comps[0]?.image_url;
             return (
               <motion.article

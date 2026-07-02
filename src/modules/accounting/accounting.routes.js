@@ -60,6 +60,13 @@ router.post(
   controller.createManualJournal,
 );
 router.get("/journals/:entryId", can("view"), controller.getJournal);
+// Go-live opening balances (policy Q15) — CEO/approver only.
+router.post(
+  "/opening-balance",
+  can("approve"),
+  validator.validateManualJournal,
+  controller.postOpeningBalance,
+);
 router.post(
   "/journals/:entryId/reverse",
   can("approve"),

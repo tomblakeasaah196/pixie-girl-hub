@@ -94,6 +94,9 @@ const CashRequestsPage = lazyWithRetry(
 const ExpensesPage = lazyWithRetry(
   () => import("@/pages/expenses/ExpensesPage"),
 );
+const AccountingPage = lazyWithRetry(
+  () => import("@/pages/accounting/AccountingPage"),
+);
 const ProductionPage = lazyWithRetry(() =>
   import("@/pages/production/ProductionPage").then((m) => ({
     default: m.ProductionPage,
@@ -381,6 +384,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <ExpensesPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "accounting",
+              element: (
+                <Suspense fallback={null}>
+                  <AccountingPage />
                 </Suspense>
               ),
             },

@@ -114,6 +114,11 @@ const ServiceJobsPage = lazyWithRetry(() =>
     default: m.ServiceJobsPage,
   })),
 );
+const StylistsPage = lazyWithRetry(() =>
+  import("@/pages/stylists/StylistsPage").then((m) => ({
+    default: m.StylistsPage,
+  })),
+);
 const FactoryLanguagePage = lazyWithRetry(() =>
   import("@/pages/FactoryLanguagePage").then((m) => ({
     default: m.FactoryLanguagePage,
@@ -527,6 +532,16 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <ServiceJobsPage />
+                </Suspense>
+              ),
+            },
+
+            // Stylist Partner Programme (§6.26 — PXG partner network)
+            {
+              path: "stylists",
+              element: (
+                <Suspense fallback={null}>
+                  <StylistsPage />
                 </Suspense>
               ),
             },

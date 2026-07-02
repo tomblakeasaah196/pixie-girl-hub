@@ -362,8 +362,8 @@ function emitBrandingUpdated(payload) {
   // cold start (e.g. seed migration replay in tests) we simply skip
   // the broadcast rather than crash the request.
   try {
-    const { getIo } = require("../../config/socket");
-    getIo().emit("branding:updated", payload);
+    const { getBroadcaster } = require("../../realtime/emitter");
+    getBroadcaster().emit("branding:updated", payload);
   } catch {
     /* socket not initialised yet — non-fatal */
   }

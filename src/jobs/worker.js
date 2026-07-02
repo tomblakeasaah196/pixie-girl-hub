@@ -289,6 +289,19 @@ async function startWorkers() {
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met → service job
   require("../modules/business_setup/webhooks.service"); // webhook.received → dispatch
+
+  // ── Realtime relays (DEFECT-3) ──────────────────────────
+  // The outbox consumers and cron sweeps above emit domain events IN THIS
+  // process. Register the realtime relays here too, so those events reach
+  // connected clients via the Redis emitter bridge (realtime/emitter.js)
+  // instead of dying unheard when the worker runs as a separate process.
+  // Each register is idempotent — in-process dev (ENABLE_WORKERS=true on
+  // the API) already registered them during socket init.
+  require("../realtime/stock-realtime").registerStockRealtime();
+  require("../realtime/workflow-realtime").registerWorkflowRealtime();
+  require("../realtime/campaign-realtime").registerCampaignRealtime();
+  require("../modules/smartcomm/smartcomm.realtime"); // self-registers, guarded
+
   outboxTimer = setInterval(() => {
     outbox
       .dispatchDue()

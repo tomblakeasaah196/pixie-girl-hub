@@ -14,22 +14,28 @@
 
 const wf = require("../workflows/engine");
 const { ROOMS } = require("./rooms");
-const { getIo } = require("../config/socket");
+const { getBroadcaster } = require("./emitter");
 const { logger } = require("../config/logger");
 
 function emitToApprovals(instance, channel, payload) {
   if (!instance || !instance.business) return;
   try {
-    getIo()
+    getBroadcaster()
       .to(ROOMS.approvals(instance.business))
       .emit(channel, { instance_id: instance.instance_id, ...payload });
   } catch (err) {
-    // Socket.io may not be initialised (worker process / tests).
+    // Redis unavailable (tests/scripts without initRedis).
     logger.debug({ err: err.message }, "workflow realtime emit skipped");
   }
 }
 
+let registered = false;
+
 function registerWorkflowRealtime() {
+  // Idempotent: socket init (API) and startWorkers (worker/in-process dev)
+  // may both call this; the second call must not duplicate emissions.
+  if (registered) return;
+  registered = true;
   wf.onWorkflowEvent("workflow.opened", ({ instance }) =>
     emitToApprovals(instance, "approval:opened", {
       current_stage: instance.current_stage,

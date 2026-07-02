@@ -169,10 +169,22 @@ const HOME_SLOTS = {
       { q: "Three units in. Each one outlasts the last. This is what luxury hair should have always been.", a: "Sophie L.", r: "London · Founder" },
     ],
   },
+  // Each tile carries a photo plus an optional Instagram link + handle. Paste
+  // the tagger's post URL into `instagram_link` (Studio → Pages → Home →
+  // Gallery) to make the tile clickable and credit the `handle` on hover.
   gallery: {
     eyebrow: "@faitlynhair",
     heading: "Tagged on Instagram",
-    images: [IMG.pixie, IMG.bob, IMG.curls, IMG.straight, IMG.models, IMG.model2, IMG.hero, IMG.pixie],
+    items: [
+      { image: IMG.pixie, instagram_link: "", handle: "" },
+      { image: IMG.bob, instagram_link: "", handle: "" },
+      { image: IMG.curls, instagram_link: "", handle: "" },
+      { image: IMG.straight, instagram_link: "", handle: "" },
+      { image: IMG.models, instagram_link: "", handle: "" },
+      { image: IMG.model2, instagram_link: "", handle: "" },
+      { image: IMG.hero, instagram_link: "", handle: "" },
+      { image: IMG.pixie, instagram_link: "", handle: "" },
+    ],
   },
   founder: {
     eyebrow: "A note from Faitlyn",

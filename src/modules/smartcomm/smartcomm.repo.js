@@ -8,10 +8,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { query, ex } = require("../../config/database");
 const { config } = require("../../config/env");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 // Build a browser-fetchable URL for a stored document file_path, mirroring
 // services/storage.service.js (CDN when configured, else the /media proxy).

@@ -8,10 +8,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 async function nextTag({ client, brand }) {
   const { rows } = await ex(client)(

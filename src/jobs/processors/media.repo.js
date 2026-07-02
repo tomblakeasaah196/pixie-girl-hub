@@ -5,10 +5,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 // ── media_assets ───────────────────────────────────────────
 async function findAsset({ client, brand, asset_id }) {

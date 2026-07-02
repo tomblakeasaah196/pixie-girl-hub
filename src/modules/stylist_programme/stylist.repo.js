@@ -39,13 +39,15 @@ async function linkServiceJobStylist({ client, brand, job_id, stylist_id }) {
 // Partners
 // ════════════════════════════════════════════════════════════
 async function createPartner({ client, p }) {
+  // referral_code defaults to the partner code — every partner can refer from
+  // day one (Q17); the portal can add labelled per-campaign links on top.
   const { rows } = await ex(client)(
     `INSERT INTO shared.stylist_partners
        (partner_code, contact_id, display_name, country_code, city, state,
         latitude, longitude, service_radius_km, max_active_assignments,
-        payout_currency, bio, portfolio_url)
+        payout_currency, bio, portfolio_url, referral_code)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,25),COALESCE($10,5),
-             COALESCE($11,'NGN'),$12,$13)
+             COALESCE($11,'NGN'),$12,$13,lower($1))
      RETURNING *`,
     [
       p.partner_code,
@@ -108,11 +110,14 @@ async function findPartnerByContact({ client, contact_id }) {
 }
 async function findPartnerByBadge({ token }) {
   const { rows } = await query(
-    `SELECT stylist_id, partner_code, display_name, status, city, country_code,
-            current_tier_key, current_tier_expires_at, badge_token, badge_revoked_at,
-            portfolio_url, bio
-       FROM shared.stylist_partners
-      WHERE badge_token = $1`,
+    `SELECT p.stylist_id, p.partner_code, p.display_name, p.status, p.city,
+            p.country_code, p.current_tier_key, p.current_tier_expires_at,
+            p.badge_token, p.badge_revoked_at, p.portfolio_url, p.bio,
+            p.probation_ends_at, p.avg_rating, p.rating_count,
+            t.label AS tier_label, t.badge_color AS tier_color
+       FROM shared.stylist_partners p
+       LEFT JOIN shared.stylist_tiers t ON t.tier_key = p.current_tier_key
+      WHERE p.badge_token = $1`,
     [token],
   );
   return rows[0] || null;
@@ -134,6 +139,17 @@ async function updatePartner({ client, id, patch }) {
     "paystack_recipient_code",
     "bio",
     "portfolio_url",
+    "instagram_url",
+    "youtube_url",
+    "website_url",
+    "probation_ends_at",
+    "id_document_id",
+    "business_document_id",
+    "contract_document_id",
+    "contract_signature_request_id",
+    "contract_signed_at",
+    "vetting_decision_note",
+    "referral_commission_pct",
   ];
   const sets = [];
   const params = [];
@@ -360,7 +376,7 @@ async function createAssignment({ client, a }) {
        (assignment_number, business, customer_contact_id, reference_type,
         reference_id, service_key, offer_expires_at, base_rate,
         platform_fee_pct, payout_currency, scheduled_at, service_address)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),$10,$11,$12)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::numeric,0),$10,$11,$12)
      RETURNING *`,
     [
       a.assignment_number,
@@ -433,13 +449,25 @@ async function setAssignmentStatus({ client, id, status, fields = {} }) {
   );
   return rows[0] || null;
 }
-async function createOffer({ client, assignment_id, stylist_id }) {
+async function createOffer({
+  client,
+  assignment_id,
+  stylist_id,
+  match_score,
+  match_rank,
+}) {
   const { rows } = await ex(client)(
-    `INSERT INTO shared.stylist_assignment_offers (assignment_id, stylist_id)
-     VALUES ($1,$2)
+    `INSERT INTO shared.stylist_assignment_offers
+       (assignment_id, stylist_id, match_score, match_rank)
+     VALUES ($1,$2,$3,$4)
      ON CONFLICT (assignment_id, stylist_id) DO NOTHING
      RETURNING *`,
-    [assignment_id, stylist_id],
+    [
+      assignment_id,
+      stylist_id,
+      match_score === undefined ? null : match_score,
+      match_rank === undefined ? null : match_rank,
+    ],
   );
   return rows[0] || null;
 }
@@ -508,10 +536,15 @@ async function completedUnpaidAssignments({
   period_start,
   period_end,
 }) {
+  // Quality-hold (Q14): an assignment enters a payout only once the customer
+  // confirmed satisfaction or the hold window lapsed (payable_at), and never
+  // while a dispute is open.
   const { rows } = await ex(client)(
     `SELECT * FROM shared.stylist_assignments
       WHERE stylist_id = $1 AND status = 'completed' AND payout_id IS NULL
         AND completed_at::date BETWEEN $2 AND $3
+        AND payable_at IS NOT NULL AND payable_at <= now()
+        AND (disputed_at IS NULL OR dispute_resolved_at IS NOT NULL)
       ORDER BY completed_at ASC`,
     [stylist_id, period_start, period_end],
   );
@@ -523,7 +556,8 @@ async function createPayout({ client, p }) {
        (payout_number, stylist_id, period_start, period_end, currency,
         gross_amount, platform_fee_amount, adjustments_amount, net_amount,
         amount_ngn, fx_rate_used, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,0),$9,COALESCE($10,0),$11,$12)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::numeric,0),$9,
+             COALESCE($10::numeric,0),$11,$12)
      RETURNING *`,
     [
       p.payout_number,
@@ -545,11 +579,15 @@ async function createPayout({ client, p }) {
 async function addPayoutLine({ client, line }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.stylist_payout_lines
-       (payout_id, assignment_id, gross_amount, platform_fee_amount, net_amount, description)
-     VALUES ($1,$2,$3,COALESCE($4,0),$5,$6) RETURNING *`,
+       (payout_id, assignment_id, attribution_id, line_kind, gross_amount,
+        platform_fee_amount, net_amount, description)
+     VALUES ($1,$2,$3,COALESCE($4,'assignment'),$5,COALESCE($6::numeric,0),$7,$8)
+     RETURNING *`,
     [
       line.payout_id,
-      line.assignment_id,
+      line.assignment_id || null,
+      line.attribution_id || null,
+      line.line_kind || null,
       line.gross_amount,
       line.platform_fee_amount,
       line.net_amount,

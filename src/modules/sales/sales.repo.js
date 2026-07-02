@@ -37,6 +37,10 @@ const ORDER = [
   "payment_model",
   "required_deposit_pct",
   "required_deposit_ngn",
+  // Stylist Programme (§6.26 Q17): validated partner referral code captured at
+  // checkout; the stylist_programme outbox consumer accrues the commission on
+  // order.paid. Distinct from the customer rail's referral_code_used.
+  "stylist_referral_code",
 ];
 const LINE = [
   "order_id",

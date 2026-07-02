@@ -11,6 +11,35 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-02 — Stylist Partner Programme v2 (§6.26 full build-out, PR1)
+
+**Source:** V2.2 §6.26 + `docs/STYLIST_PROGRAMME_IMPLEMENTATION_GUIDE.md`
+(20-question decision session Q1–Q20).
+
+**Files:** `000251_shared_stylist_programme_v2.sql`,
+`template/000075_business_stylist_referral.sql.template`.
+
+**What:** 8 new shared tables — `stylist_tiers` (D-2 config-driven tiers with
+payout multipliers), `stylist_programme_config` (quality-hold days, routing
+weights, offer window/top-N, referral commission %, portal subdomain),
+`stylist_questionnaire_questions` + `stylist_application_responses`
+(config-driven brand-alignment questionnaire), `stylist_vetting_reviews`
+(rubric-scored human vetting), `stylist_referral_links` +
+`stylist_referral_attributions` (two-way earnings), `stylist_notifications`
+(in-portal feed). Alters: partners (+socials, probation, ID/contract doc
+refs, referral code/commission, denormalised verified rating), assignments
+(+review token, satisfaction confirmation, quality-hold `payable_at`,
+disputes), offers (+match score/rank), payout lines (assignment XOR referral
+attribution), payouts (+`pending_approval` status + workflow ref),
+certifications (+reminder markers), credentials (+reset-token rail). Brand
+template 000075 adds `sales_orders.stylist_referral_code` (distinct from the
+customer rail's `referral_code_used`).
+
+**Why:** closes every §6.26 spec gap ahead of the admin Stylists module (PR2)
+and the style.pixiegirlglobal.com portal (PR3/PR4).
+
+---
+
 ## 2026-06-30 — Stylist Studio: sell-a-service rail + POS teardown (PR3)
 
 **Source:** Stylist Studio (V2.2 §6.24) — sell services through the same order →

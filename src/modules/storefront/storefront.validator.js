@@ -37,6 +37,8 @@ const orderFormSchema = z
     redeem_points: z.coerce.number().int().positive().optional(),
     bundle_id: z.string().uuid().optional(),
     client_idempotency_key: z.string().max(80).optional(),
+    // Stylist Programme referral capture (§6.26 Q17).
+    referral_code: z.string().max(80).optional(),
   })
   .strict();
 

@@ -667,6 +667,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         total_ngn: toCurrencyString(total),
         coupon_code: input.coupon_code || null,
         client_idempotency_key: input.client_idempotency_key || null,
+        stylist_referral_code: input.stylist_referral_code || null,
         payment_model: paymentModel,
         required_deposit_pct:
           requiredDepositPct !== null && requiredDepositPct !== undefined

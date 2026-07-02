@@ -165,6 +165,10 @@ async function startWorkers() {
     runCatalogueTrashPurge,
   } = require("./schedulers/catalogue-trash-purge");
   const { runHrAttendanceSweep } = require("./schedulers/hr-attendance");
+  const {
+    runStylistOfferSweep,
+    runStylistCertificationSweep,
+  } = require("./schedulers/stylist-programme-sweep");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart.
@@ -249,6 +253,14 @@ async function startWorkers() {
   );
   // Daily 08:00 — flag wigs sitting too long with a stylist (accountability).
   scheduleCron("missing-wig-check", "0 8 * * *", runMissingWigCheck);
+  // Stylist programme (§6.26): offer expiry + referral hold release every
+  // 15 min; certification reminders/auto-lapse nightly (03:15 Lagos).
+  scheduleCron("stylist-offer-sweep", "*/15 * * * *", runStylistOfferSweep);
+  scheduleCron(
+    "stylist-certification-sweep",
+    "15 3 * * *",
+    runStylistCertificationSweep,
+  );
   scheduleCron(
     "geoip-db-update",
     config.CRON_GEOIP_DB_UPDATE,
@@ -275,6 +287,7 @@ async function startWorkers() {
   require("../modules/retention/workflow.subscribers"); // order.paid → workflow trigger
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met → service job
+  require("../modules/stylist_programme/stylist.subscribers"); // order.paid → stylist referral accrual
   require("../modules/business_setup/webhooks.service"); // webhook.received → dispatch
   outboxTimer = setInterval(() => {
     outbox

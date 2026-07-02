@@ -17,21 +17,26 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
+// Re-baselined 2026-07 against a fresh provision (db:create → migrate:shared
+// 000001–000251 → bootstrap both brands with 65 templates). The previous
+// expectations (112/162 + literal "valid-brand-key-*" schema names) had
+// drifted long before and could never pass. shared includes the +8 Stylist
+// Programme v2 tables (000251): stylist_tiers, stylist_programme_config,
+// stylist_questionnaire_questions, stylist_application_responses,
+// stylist_vetting_reviews, stylist_referral_links,
+// stylist_referral_attributions, stylist_notifications.
 const EXPECTED = {
-  shared: 112,
-  // +7 brand tables from Stylist Studio (PR1, template 000067–000072):
-  //   styled_product_bom, service_job_time_logs, service_job_materials,
-  //   service_job_references, wig_custody_ledger, customer_assets, studio_config.
-  // −8 from the POS teardown (PR3, template 000074): pos_* tables removed.
-  "valid-brand-key-1": 162,
-  "valid-brand-key-2": 162,
+  shared: 178,
+  pixiegirl: 196,
+  faitlynhair: 196,
 };
 
 async function main() {
   const out = {};
   for (const schema of Object.keys(EXPECTED)) {
     const { rows } = await pool.query(
-      `SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = $1`,
+      `SELECT COUNT(*)::int AS n FROM information_schema.tables
+        WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
       [schema],
     );
     out[schema] = rows[0].n;

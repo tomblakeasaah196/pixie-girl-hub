@@ -11122,6 +11122,210 @@ paths:
       }
 
   # ── Dashboards (Module 6.20) ─────────────────────────────────────
+  # Domain dashboards: overview + the 9 spec domains (sales, customers,
+  # finance, stock, logistics, marketing, ecommerce, retention, hr).
+  # VIEW admits the management circle via RBAC matrix OR org-chart rights
+  # (management position / dotted-line can_view_dashboards); export is
+  # matrix-only. Finance tab additionally requires accounting.view, HR tab
+  # hr_payroll.view; cost tiles require accounting.view (field privacy).
+  /dashboards/domains:
+    get:
+      {
+        summary: Visible dashboard domains + tile manifests + capabilities + hidden-tile prefs,
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.view (or org-chart dashboard rights)",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Domain registry for this user } },
+      }
+  /dashboards/domains/{key}:
+    get:
+      {
+        summary: One domain's dashboard payload (KPIs with prev-period deltas, charts, top-N tables),
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: key,
+              in: path,
+              required: true,
+              schema:
+                {
+                  type: string,
+                  enum:
+                    [
+                      overview,
+                      sales,
+                      customers,
+                      finance,
+                      stock,
+                      logistics,
+                      marketing,
+                      ecommerce,
+                      retention,
+                      hr,
+                    ],
+                },
+            },
+            {
+              name: from,
+              in: query,
+              schema: { type: string, format: date-time },
+            },
+            {
+              name: to,
+              in: query,
+              schema: { type: string, format: date-time },
+            },
+          ],
+        x-required-permission: "dashboards.view (or org-chart dashboard rights); finance→accounting.view; hr→hr_payroll.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          {
+            "200":
+              {
+                description: "{domain,label,period,previous_period,kpis[{key,label,format,value,previous,delta_pct}],charts[{key,label,type,series|slices|steps}],tables[{key,label,detail_key,columns,rows}]}",
+              },
+          },
+      }
+  /dashboards/domains/{key}/detail/{table}:
+    get:
+      {
+        summary: Paginated drill-down detail table for a domain tile,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            { name: key, in: path, required: true, schema: { type: string } },
+            {
+              name: table,
+              in: path,
+              required: true,
+              schema: { type: string },
+            },
+            {
+              name: from,
+              in: query,
+              schema: { type: string, format: date-time },
+            },
+            {
+              name: to,
+              in: query,
+              schema: { type: string, format: date-time },
+            },
+            { name: page, in: query, schema: { type: integer, minimum: 1 } },
+            {
+              name: page_size,
+              in: query,
+              schema: { type: integer, minimum: 1, maximum: 100 },
+            },
+            { name: status, in: query, schema: { type: string } },
+            { name: sales_channel, in: query, schema: { type: string } },
+          ],
+        x-required-permission: "dashboards.view (or org-chart dashboard rights); domain gates apply",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          {
+            "200":
+              {
+                description: "{data,columns[{key,label,format}],label,period,meta{page,page_size,total,has_more}}",
+              },
+          },
+      }
+  /dashboards/domains/{key}/export:
+    get:
+      {
+        summary: Styled Excel workbook of the domain dashboard (Summary + chart sheets + full detail sheets),
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            { name: key, in: path, required: true, schema: { type: string } },
+            {
+              name: from,
+              in: query,
+              schema: { type: string, format: date-time },
+            },
+            {
+              name: to,
+              in: query,
+              schema: { type: string, format: date-time },
+            },
+          ],
+        x-required-permission: "dashboards.export (matrix only — org rights never export)",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: .xlsx attachment } },
+      }
+  /dashboards/global:
+    get:
+      {
+        summary: CEO-only cross-entity rollup (combined + per-business KPIs + revenue trend),
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: from,
+              in: query,
+              schema: { type: string, format: date-time },
+            },
+            {
+              name: to,
+              in: query,
+              schema: { type: string, format: date-time },
+            },
+          ],
+        x-required-permission: "dashboards.view + is_ceo (server-enforced)",
+        x-entity-scope: all,
+        x-is-write: false,
+        responses: { "200": { description: Combined + per-business rollup } },
+      }
+  /dashboards/preferences:
+    get:
+      {
+        summary: This user's hidden dashboard tiles (fixed layout + personal show/hide),
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.view (or org-chart dashboard rights)",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: "{hidden_tiles[]}" } },
+      }
+    put:
+      {
+        summary: Replace this user's hidden dashboard tiles (keys `domain:kpi|chart|table:tileKey`),
+        tags: [dashboards],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "dashboards.view (or org-chart dashboard rights)",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: "{hidden_tiles[]}" } },
+      }
+  /dashboards/report-runs/{id}/excel:
+    get:
+      {
+        summary: Styled Excel workbook of a report run's stored outputs,
+        tags: [dashboards],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "dashboards.export",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: .xlsx attachment } },
+      }
   /dashboards/overview:
     get:
       {

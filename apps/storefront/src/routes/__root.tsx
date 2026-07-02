@@ -17,7 +17,9 @@ import { SiteFooter } from "@/components/site/SiteFooter";
 import { PageTransition } from "@/components/site/PageTransition";
 import { NewsletterModal } from "@/components/site/NewsletterModal";
 import { CartDrawer } from "@/components/site/CartDrawer";
+import { FloatingToolbar } from "@/components/site/FloatingToolbar";
 import { SiteConfigProvider, type StudioPage } from "@/lib/site-config";
+import { resolveToolbar } from "@/lib/toolbar";
 
 /*
  * SSR shell for the Storefront Website (dark-first maison).
@@ -160,6 +162,14 @@ function RootComponent() {
   const { preview, theme, pages, popups, navigation, brand } =
     Route.useLoaderData();
   const branding = brandingFrom(theme?.tokens, brand);
+  // Toolbar config lives in the theme tokens (Studio → Toolbar); fall back to
+  // the brand's WhatsApp from nav socials when no number is set there.
+  const navSocials = (navigation as { socials?: Record<string, string> } | null)
+    ?.socials;
+  const toolbar = resolveToolbar(
+    (theme?.tokens as Record<string, unknown> | undefined)?.toolbar,
+    navSocials?.whatsapp,
+  );
   return (
     <QueryClientProvider client={queryClient}>
       <SiteConfigProvider
@@ -167,6 +177,7 @@ function RootComponent() {
         popups={popups as never}
         navigation={navigation as never}
         branding={branding}
+        toolbar={toolbar}
       >
         {preview ? (
           <div className="bg-primary py-1.5 text-center text-[0.62rem] tracking-[0.4em] uppercase text-primary-foreground">
@@ -178,6 +189,7 @@ function RootComponent() {
           <Outlet />
         </PageTransition>
         <SiteFooter />
+        <FloatingToolbar />
         <CartDrawer />
         <NewsletterModal />
         <Toaster position="bottom-center" theme="dark" />

@@ -110,7 +110,9 @@ async function createOrderTx({ brand, user, request_id, input }) {
         "BUSINESS_CONFIG_MISSING",
         `Business configuration not found for brand "${brand}"`,
         500,
-        "System configuration error — please contact support",
+        // AppError's 4th arg is an options object; a bare string here was
+        // silently discarded and the internal message leaked to the client.
+        { user_message: "System configuration error — please contact support" },
       );
     }
     // VAT rate is read from business_config as SSOT. The DB guarantees a row

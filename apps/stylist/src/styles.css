@@ -1,0 +1,187 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "@fontsource/playfair-display/400.css";
+@import "@fontsource/playfair-display/500.css";
+@import "@fontsource/playfair-display/600.css";
+@import "@fontsource/montserrat/400.css";
+@import "@fontsource/montserrat/500.css";
+@import "@fontsource/montserrat/600.css";
+@import "@fontsource/montserrat/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+
+/*
+ * Stylist Partner Programme portal — Maroon Noir (canon §2), the same
+ * palette family as the Hub: near-black with a maroon pinch, warm cream
+ * text, deep-red #690909 accent used sparingly. Playfair Display for
+ * display, Montserrat for body, JetBrains Mono for money/codes.
+ */
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-ink: var(--ink);
+  --color-cream: var(--cream);
+  --color-cream-muted: var(--cream-muted);
+  --color-cream-faint: var(--cream-faint);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-glow: var(--accent-glow);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-line: var(--line);
+
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body: "Montserrat", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius-xl2: 18px;
+}
+
+:root {
+  --bg: #0f0809;
+  --panel: #1a0f11;
+  --panel-2: #271619;
+  --ink: #0f0809;
+  --cream: #f4e9d9;
+  --cream-muted: #b3a49b;
+  --cream-faint: #80706b;
+  --accent: #a81d1d;
+  --accent-deep: #690909;
+  --accent-glow: #d85c57;
+  --success: #7fa06a;
+  --warn: #c9a24b;
+  --danger: #e5544e;
+  --info: #1878b9;
+  --line: rgb(244 233 217 / 0.09);
+}
+
+html {
+  background: var(--bg);
+  color: var(--cream);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  /* Living brand mesh behind the glass (canon §2.5) */
+  background:
+    radial-gradient(1100px 500px at 85% -10%, rgb(105 9 9 / 0.28), transparent 60%),
+    radial-gradient(900px 480px at -10% 30%, rgb(168 29 29 / 0.14), transparent 55%),
+    radial-gradient(700px 420px at 55% 110%, rgb(105 9 9 / 0.18), transparent 60%),
+    var(--bg);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Frosted panel (canon §2.5) */
+.glass {
+  background: rgb(26 15 17 / 0.62);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.35);
+}
+
+.micro {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cream-faint);
+}
+
+.input {
+  width: 100%;
+  background: rgb(244 233 217 / 0.05);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 11px 14px;
+  outline: none;
+  transition: border-color 0.25s ease;
+}
+.input:focus {
+  border-color: rgb(216 92 87 / 0.55);
+}
+.input::placeholder {
+  color: var(--cream-faint);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent-deep);
+  color: var(--cream);
+  border: 1px solid var(--accent-deep);
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 13px 28px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.btn-primary:hover {
+  background: var(--accent);
+  box-shadow: 0 10px 34px rgb(105 9 9 / 0.55);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgb(244 233 217 / 0.04);
+  color: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.btn-ghost:hover {
+  border-color: rgb(216 92 87 / 0.4);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

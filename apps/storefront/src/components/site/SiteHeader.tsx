@@ -3,8 +3,6 @@ import { motion, type Variants } from "motion/react";
 import { useEffect, useState } from "react";
 import { useCartCount, openCart } from "@/lib/useStore";
 import { PromoBar } from "./PromoBar";
-import { CurrencySwitcher } from "./CurrencySwitcher";
-import { ThemeToggle } from "./ThemeToggle";
 import { BrandLogo } from "./BrandLogo";
 import { useNavigation, useBranding } from "@/lib/site-config";
 
@@ -99,11 +97,10 @@ export function SiteHeader() {
             animate={ready ? "show" : "hidden"}
             className="flex gap-4 md:gap-6 text-[0.7rem] tracking-[0.32em] uppercase text-cream/85 items-center justify-self-end"
           >
+            {/* Currency + theme now live in the draggable FloatingToolbar. */}
             <motion.div variants={item} className="hidden md:block">
               <Link to="/contact" className="hover:text-taupe transition-colors">Contact</Link>
             </motion.div>
-            <motion.div variants={item}><CurrencySwitcher /></motion.div>
-            <motion.div variants={item}><ThemeToggle /></motion.div>
             <motion.div variants={item}>
               <Link to="/auth" className="hover:text-taupe transition-colors">Sign in</Link>
             </motion.div>

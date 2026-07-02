@@ -1,4 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
+import { DEFAULT_TOOLBAR, type ToolbarConfig } from "./toolbar";
 
 /**
  * Site-wide Studio config, hydrated once at the root from GET /site (all
@@ -59,18 +60,21 @@ const PagesCtx = createContext<StudioPage[]>([]);
 const PopupsCtx = createContext<StudioPopup[]>([]);
 const NavCtx = createContext<StudioNavigation | null>(null);
 const BrandingCtx = createContext<SiteBranding>({ name: "" });
+const ToolbarCtx = createContext<ToolbarConfig>(DEFAULT_TOOLBAR);
 
 export function SiteConfigProvider({
   pages,
   popups,
   navigation,
   branding,
+  toolbar,
   children,
 }: {
   pages?: StudioPage[];
   popups?: StudioPopup[];
   navigation?: StudioNavigation | null;
   branding?: SiteBranding;
+  toolbar?: ToolbarConfig;
   children: ReactNode;
 }) {
   return (
@@ -78,7 +82,9 @@ export function SiteConfigProvider({
       <PopupsCtx.Provider value={popups ?? []}>
         <NavCtx.Provider value={navigation ?? null}>
           <BrandingCtx.Provider value={branding ?? { name: "" }}>
-            {children}
+            <ToolbarCtx.Provider value={toolbar ?? DEFAULT_TOOLBAR}>
+              {children}
+            </ToolbarCtx.Provider>
           </BrandingCtx.Provider>
         </NavCtx.Provider>
       </PopupsCtx.Provider>
@@ -94,6 +100,11 @@ export function useNavigation(): StudioNavigation | null {
 /** Resolved branding (logos/favicons/name) for header, footer and preloader. */
 export function useBranding(): SiteBranding {
   return useContext(BrandingCtx);
+}
+
+/** Resolved floating-toolbar config (buttons, dock, WhatsApp, help steps). */
+export function useToolbar(): ToolbarConfig {
+  return useContext(ToolbarCtx);
 }
 
 /** Published popup config by key (undefined when unseeded). */

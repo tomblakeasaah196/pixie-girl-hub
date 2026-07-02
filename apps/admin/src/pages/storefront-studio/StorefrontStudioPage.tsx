@@ -30,6 +30,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill } from "@/components/ui/primitives";
+import { Toggle, Select } from "@/components/ui/controls";
 import { Tabs } from "@/pages/stock/parts";
 import { useBusinessStore } from "@/stores/business";
 import {
@@ -60,6 +61,7 @@ import {
 type Tab =
   | "theme"
   | "branding"
+  | "toolbar"
   | "navigation"
   | "pages"
   | "popups"
@@ -69,6 +71,7 @@ type Tab =
 const TABS: { key: Tab; label: string }[] = [
   { key: "theme", label: "Theme" },
   { key: "branding", label: "Branding" },
+  { key: "toolbar", label: "Toolbar" },
   { key: "navigation", label: "Navigation" },
   { key: "pages", label: "Pages" },
   { key: "popups", label: "Popups" },
@@ -110,6 +113,7 @@ export function StorefrontStudioPage() {
       <div>
         {tab === "theme" ? <ThemeTab /> : null}
         {tab === "branding" ? <BrandingTab /> : null}
+        {tab === "toolbar" ? <ToolbarTab /> : null}
         {tab === "navigation" ? <NavigationTab /> : null}
         {tab === "pages" ? <PagesTab /> : null}
         {tab === "popups" ? <PopupsTab /> : null}
@@ -702,6 +706,223 @@ function BrandingTab() {
           onClick={async () => {
             await publish.mutateAsync();
             setMsg("Branding published.");
+          }}
+        >
+          Publish
+        </Button>
+      </div>
+      <Status msg={msg} />
+    </Card>
+  );
+}
+
+// ============================================================
+// Toolbar — the storefront's draggable floating toolbar (stored in theme
+// tokens.toolbar, so it rides the same theme draft/publish lifecycle)
+// ============================================================
+
+type ToolbarStep = { title: string; body: string };
+type ToolbarCfg = {
+  enabled: boolean;
+  dock: "left" | "right";
+  buttons: { currency: boolean; theme: boolean; whatsapp: boolean; help: boolean };
+  whatsapp: { number: string; greeting: string };
+  help: { title: string; steps: ToolbarStep[] };
+};
+
+const DEFAULT_TOOLBAR_CFG: ToolbarCfg = {
+  enabled: true,
+  dock: "left",
+  buttons: { currency: true, theme: true, whatsapp: true, help: true },
+  whatsapp: {
+    number: "",
+    greeting: "Hi! I'd love some help choosing the right piece.",
+  },
+  help: {
+    title: "How to shop",
+    steps: [
+      { title: "Browse the maison", body: "Explore the catalogue, bundles and shades. Tap any piece to see photos, details and sizing." },
+      { title: "Choose your options", body: "Pick your length, texture or shade — the price updates live as you choose." },
+      { title: "Add to bag", body: "Tap Add to bag. Your currency (₦ or $) follows the toggle on this toolbar." },
+      { title: "Checkout securely", body: "Open your bag, tap Checkout, add delivery details and pay. We ship worldwide from Lagos." },
+    ],
+  },
+};
+
+function readToolbarCfg(tokens: Record<string, unknown>): ToolbarCfg {
+  const raw = tokens.toolbar;
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const b = (o.buttons && typeof o.buttons === "object" ? o.buttons : {}) as Record<string, unknown>;
+  const wa = (o.whatsapp && typeof o.whatsapp === "object" ? o.whatsapp : {}) as Record<string, unknown>;
+  const help = (o.help && typeof o.help === "object" ? o.help : {}) as Record<string, unknown>;
+  const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+  const steps = Array.isArray(help.steps)
+    ? (help.steps as unknown[]).map((s) => {
+        const so = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+        return {
+          title: typeof so.title === "string" ? so.title : "",
+          body: typeof so.body === "string" ? so.body : "",
+        };
+      })
+    : DEFAULT_TOOLBAR_CFG.help.steps;
+  return {
+    enabled: bool(o.enabled, true),
+    dock: o.dock === "right" ? "right" : "left",
+    buttons: {
+      currency: bool(b.currency, true),
+      theme: bool(b.theme, true),
+      whatsapp: bool(b.whatsapp, true),
+      help: bool(b.help, true),
+    },
+    whatsapp: {
+      number: typeof wa.number === "string" ? wa.number : "",
+      greeting: typeof wa.greeting === "string" ? wa.greeting : DEFAULT_TOOLBAR_CFG.whatsapp.greeting,
+    },
+    help: {
+      title: typeof help.title === "string" && help.title ? help.title : DEFAULT_TOOLBAR_CFG.help.title,
+      steps: steps.length ? steps : DEFAULT_TOOLBAR_CFG.help.steps,
+    },
+  };
+}
+
+function ToolbarTab() {
+  const { data, isLoading } = useThemes();
+  const save = useSaveThemeDraft();
+  const publish = usePublishTheme();
+  const active = pickActive(data);
+  const [tokens, setTokens] = useState<Record<string, unknown>>({});
+  const [cfg, setCfg] = useState<ToolbarCfg>(DEFAULT_TOOLBAR_CFG);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    const t = (active.tokens || {}) as Record<string, unknown>;
+    setTokens(t);
+    setCfg(readToolbarCfg(t));
+  }, [active]);
+
+  if (isLoading)
+    return <p className="text-[13px] text-text-muted">Loading...</p>;
+
+  const patchButtons = (p: Partial<ToolbarCfg["buttons"]>) =>
+    setCfg((c) => ({ ...c, buttons: { ...c.buttons, ...p } }));
+  const patchWa = (p: Partial<ToolbarCfg["whatsapp"]>) =>
+    setCfg((c) => ({ ...c, whatsapp: { ...c.whatsapp, ...p } }));
+  const setSteps = (steps: ToolbarStep[]) =>
+    setCfg((c) => ({ ...c, help: { ...c.help, steps } }));
+
+  // Persist toolbar under the theme's tokens, preserving every other token
+  // (branding logos/favicons, colour overrides) untouched.
+  const nextTokens = { ...tokens, toolbar: cfg } as unknown as Record<string, string>;
+
+  return (
+    <Card className="max-w-xl space-y-5 p-5">
+      <p className="text-[13px] text-text-muted">
+        The floating toolbar is a draggable cluster of round buttons on every
+        storefront page. Choose which buttons show, where it sits, and edit the
+        WhatsApp details and the &ldquo;How to shop&rdquo; steps. Save as a draft,
+        then Publish to go live.
+      </p>
+
+      <div className="flex items-center justify-between rounded-[12px] border border-line px-4 py-3">
+        <span className="text-[13px] font-medium text-text-primary">Show the toolbar</span>
+        <Toggle checked={cfg.enabled} onChange={(v) => setCfg((c) => ({ ...c, enabled: v }))} />
+      </div>
+
+      <div>
+        <span className={labelCls}>Dock side (customers can drag it anywhere)</span>
+        <Select
+          value={cfg.dock}
+          onChange={(v) => setCfg((c) => ({ ...c, dock: v }))}
+          options={[
+            { value: "left", label: "Left edge" },
+            { value: "right", label: "Right edge" },
+          ]}
+        />
+      </div>
+
+      <Section title="Buttons" defaultOpen>
+        <div className="space-y-3">
+          <Toggle checked={cfg.buttons.currency} onChange={(v) => patchButtons({ currency: v })} label="Currency toggle (₦ / $)" />
+          <Toggle checked={cfg.buttons.theme} onChange={(v) => patchButtons({ theme: v })} label="Dark / light theme" />
+          <Toggle checked={cfg.buttons.whatsapp} onChange={(v) => patchButtons({ whatsapp: v })} label="WhatsApp chat" />
+          <Toggle checked={cfg.buttons.help} onChange={(v) => patchButtons({ help: v })} label="How-to-shop help" />
+        </div>
+      </Section>
+
+      <Section title="WhatsApp" hint="Used by the WhatsApp button. Leave the number blank to fall back to your Navigation → Socials WhatsApp.">
+        <TextField
+          label="WhatsApp number (international, e.g. 2348012345678)"
+          value={cfg.whatsapp.number}
+          onChange={(v) => patchWa({ number: v })}
+          placeholder="2348012345678"
+        />
+        <AreaField
+          label="Pre-filled greeting"
+          value={cfg.whatsapp.greeting}
+          onChange={(v) => patchWa({ greeting: v })}
+          rows={2}
+        />
+      </Section>
+
+      <Section title="How-to-shop steps">
+        <TextField
+          label="Title"
+          value={cfg.help.title}
+          onChange={(v) => setCfg((c) => ({ ...c, help: { ...c.help, title: v } }))}
+        />
+        <div className="space-y-3">
+          {cfg.help.steps.map((s, i) => (
+            <div key={i} className="space-y-2 rounded-[10px] border border-line bg-text-primary/[0.03] p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-medium text-text-muted">Step {i + 1}</span>
+                <button
+                  onClick={() => setSteps(cfg.help.steps.filter((_, j) => j !== i))}
+                  className="text-xs text-text-muted hover:text-danger"
+                >
+                  Remove
+                </button>
+              </div>
+              <TextField
+                label="Heading"
+                value={s.title}
+                onChange={(v) => setSteps(cfg.help.steps.map((x, j) => (j === i ? { ...x, title: v } : x)))}
+              />
+              <AreaField
+                label="Text"
+                value={s.body}
+                rows={2}
+                onChange={(v) => setSteps(cfg.help.steps.map((x, j) => (j === i ? { ...x, body: v } : x)))}
+              />
+            </div>
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSteps([...cfg.help.steps, { title: "", body: "" }])}
+          >
+            + Add step
+          </Button>
+        </div>
+      </Section>
+
+      <div className="flex gap-2">
+        <Button
+          variant="primary"
+          disabled={save.isPending}
+          onClick={async () => {
+            await save.mutateAsync(nextTokens);
+            setMsg("Draft saved.");
+          }}
+        >
+          Save draft
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={publish.isPending}
+          onClick={async () => {
+            await publish.mutateAsync();
+            setMsg("Toolbar published.");
           }}
         >
           Publish

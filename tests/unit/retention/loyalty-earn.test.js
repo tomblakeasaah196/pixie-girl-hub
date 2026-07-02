@@ -16,6 +16,10 @@ jest.mock("../../../src/config/database", () => ({
   query: jest.fn(),
 }));
 jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
+// Earning now provisions the loyalty liability on the GL (policy Q13).
+jest.mock("../../../src/modules/accounting/accounting.service", () => ({
+  postEntry: jest.fn(async () => ({ entry_id: "gl-1" })),
+}));
 
 const repo = require("../../../src/modules/retention/retention.repo");
 const earnRepo = require("../../../src/modules/retention/earn.repo");

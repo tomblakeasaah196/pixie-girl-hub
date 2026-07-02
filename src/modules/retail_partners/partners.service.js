@@ -480,11 +480,45 @@ async function generateSettlement({ brand, user, request_id, input }) {
     return { ...settlement, lines_count: lines.size };
   });
 }
+/** Policy Q11: the partner's share becomes a liability on approval. */
+async function postSettlementAccrual({ brand, user_id, s }) {
+  const share = money(s.total_partner_share_ngn || 0);
+  if (share.lte(0)) return null;
+  const accounting = require("../accounting/accounting.service");
+  const { ACCOUNTS } = require("../accounting/posting-map");
+  const amt = toCurrencyString(share);
+  return accounting.postEntry({
+    brand,
+    user_id,
+    entry: {
+      source_type: "expense",
+      source_table: "partner_settlements",
+      source_id: s.settlement_id,
+      reference: s.settlement_number,
+      description: `Partner settlement accrued — ${s.settlement_number}`,
+      idempotency_key: `partner_settlement_accrual:${s.settlement_id}`,
+    },
+    lines: [
+      {
+        account_code: ACCOUNTS.COMMISSION_EXPENSE,
+        debit_ngn: amt,
+        description: `Partner share — ${s.settlement_number}`,
+      },
+      {
+        account_code: ACCOUNTS.COMMISSIONS_PAYABLE,
+        credit_ngn: amt,
+        description: `Payable to partner — ${s.settlement_number}`,
+      },
+    ],
+  });
+}
+
 async function approveSettlement({ brand, user, request_id, id }) {
   const s = await repo.findSettlement({ brand, id });
   if (!s) throw new NotFoundError("Settlement");
   if (s.status !== "draft" && s.status !== "reviewed")
     throw new AppError("BAD_STATE", `Settlement is ${s.status}`, 422);
+  await postSettlementAccrual({ brand, user_id: user.user_id, s });
   const updated = await repo.setSettlementStatus({
     brand,
     id,
@@ -516,6 +550,38 @@ async function markSettlementPaid({
   if (!s) throw new NotFoundError("Settlement");
   if (s.status !== "approved" && s.status !== "invoiced")
     throw new AppError("BAD_STATE", `Settlement is ${s.status}`, 422);
+  // Q11 second leg: accrual first (idempotent), then clear the payable.
+  await postSettlementAccrual({ brand, user_id: user.user_id, s });
+  const share = money(s.total_partner_share_ngn || 0);
+  if (share.gt(0)) {
+    const accounting = require("../accounting/accounting.service");
+    const { ACCOUNTS } = require("../accounting/posting-map");
+    const amt = toCurrencyString(share);
+    await accounting.postEntry({
+      brand,
+      user_id: user.user_id,
+      entry: {
+        source_type: "payment",
+        source_table: "partner_settlements",
+        source_id: id,
+        reference: s.settlement_number,
+        description: `Partner settlement paid — ${s.settlement_number}`,
+        idempotency_key: `partner_settlement_paid:${id}`,
+      },
+      lines: [
+        {
+          account_code: ACCOUNTS.COMMISSIONS_PAYABLE,
+          debit_ngn: amt,
+          description: `Payable settled — ${s.settlement_number}`,
+        },
+        {
+          account_code: ACCOUNTS.BANK_MAIN,
+          credit_ngn: amt,
+          description: `Transfer to partner — ${s.settlement_number}`,
+        },
+      ],
+    });
+  }
   const updated = await repo.setSettlementStatus({
     brand,
     id,

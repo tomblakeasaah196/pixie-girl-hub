@@ -11,16 +11,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID_BRANDS } = require("../../config/brands");
-const ex = (c) => (c ? c.query.bind(c) : query);
-
-function assertBrand(brand) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return brand;
-}
-
+const { query, ex } = require("../../config/database");
+const { assertBrand } = require("../../config/brands");
 const CREATE_COLS = [
   "business",
   "request_number",

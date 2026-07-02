@@ -15,6 +15,7 @@ const mockQuery = jest.fn();
 jest.mock("../../../src/config/database", () => ({ query: mockQuery }));
 jest.mock("../../../src/config/brands", () => ({
   VALID: new Set(["pixiegirl", "faitlynhair"]),
+  t: (b, tbl) => `${b}.${tbl}`,
 }));
 
 const mockStyledService = { create: jest.fn() };

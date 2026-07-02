@@ -40,6 +40,29 @@ export function useOrder(id: string | null) {
   });
 }
 
+/**
+ * Watch an order's payment state at the counter. Polls every 3s while the
+ * balance is still outstanding, then stops the moment the gateway webhook
+ * clears it — so the cashier's screen flips to "Paid" on its own without any
+ * manual (and pocketable) payment entry.
+ */
+export function useOrderPaymentWatch(id: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-orders", biz, "detail", id],
+    queryFn: () => salesApi.getOrder(id!),
+    enabled: !!id,
+    refetchInterval: (query) => {
+      const o = query.state.data;
+      if (!o) return 3000;
+      const paid =
+        Number(o.balance_due_ngn) <= 0 ||
+        !["draft", "pending_payment"].includes(o.status);
+      return paid ? false : 3000;
+    },
+  });
+}
+
 export function useCreateOrder() {
   const qc = useQueryClient();
   const biz = useBiz();

@@ -46,7 +46,6 @@ import {
   useSavePopupDraft,
   usePublishPopup,
   useDeletePopup,
-  useSectionTemplates,
   uploadStorefrontImage,
   usePreviewInfo,
   useRevisions,
@@ -961,46 +960,6 @@ function NavigationTab() {
 // Pages + section composer (no JSON)
 // ============================================================
 
-type SectionFieldKind = "text" | "area" | "image";
-type SectionFieldDef = { key: string; label: string; kind: SectionFieldKind };
-
-const SECTION_SCHEMA: Record<
-  string,
-  { label: string; fields: SectionFieldDef[] }
-> = {
-  hero: {
-    label: "Hero banner",
-    fields: [
-      { key: "subheading", label: "Eyebrow / subheading", kind: "text" },
-      { key: "heading", label: "Headline", kind: "text" },
-      { key: "body", label: "Body text", kind: "area" },
-      { key: "cta_label", label: "Button label", kind: "text" },
-      { key: "cta_href", label: "Button link", kind: "text" },
-      { key: "image_url", label: "Background image", kind: "image" },
-    ],
-  },
-  editorial: {
-    label: "Editorial (image + text)",
-    fields: [
-      { key: "heading", label: "Headline", kind: "text" },
-      { key: "body", label: "Body text", kind: "area" },
-      { key: "image_url", label: "Image", kind: "image" },
-      { key: "cta_label", label: "Button label", kind: "text" },
-      { key: "cta_href", label: "Button link", kind: "text" },
-    ],
-  },
-  product_grid: {
-    label: "Product grid",
-    fields: [{ key: "heading", label: "Section heading", kind: "text" }],
-  },
-  banner: {
-    label: "Announcement banner",
-    fields: [{ key: "text", label: "Banner text", kind: "text" }],
-  },
-};
-
-type PageSection = { type: string } & Record<string, string>;
-
 const BLANK_PAGE: PageRow = {
   page_key: "",
   template_key: "home_hero_v1",
@@ -1013,11 +972,10 @@ const BLANK_PAGE: PageRow = {
 
 function PagesTab() {
   const { data, isLoading } = usePages();
-  const templates = useSectionTemplates();
   const save = useSavePageDraft();
   const publish = usePublishPage();
   const [sel, setSel] = useState<PageRow | null>(null);
-  const [sections, setSections] = useState<PageSection[]>([]);
+  const [slots, setSlots] = useState<Record<string, unknown>>({});
   const [msg, setMsg] = useState<string | null>(null);
 
   const pages = useMemo(() => {
@@ -1030,14 +988,13 @@ function PagesTab() {
 
   function edit(p: PageRow) {
     setSel({ ...p });
-    const s = (p.slots as { sections?: PageSection[] } | undefined)?.sections;
-    setSections(Array.isArray(s) ? s : []);
+    setSlots((p.slots as Record<string, unknown>) || {});
     setMsg(null);
   }
 
   async function onSave() {
     if (!sel) return;
-    await save.mutateAsync({ ...sel, slots: { sections } });
+    await save.mutateAsync({ ...sel, slots });
     setMsg("Draft saved.");
   }
 
@@ -1112,17 +1069,13 @@ function PagesTab() {
 
           <div>
             <label className={cn(labelCls, "text-[13px] text-text-primary")}>
-              Page sections
+              Page content
             </label>
             <p className="mb-2 text-[12px] text-text-muted">
-              Build the page by stacking sections. Drag the handle (::) to
-              reorder them.
+              Edit the text and images for this page. Changes save as a draft;
+              press Publish to make them live.
             </p>
-            <SectionComposer
-              sections={sections}
-              onChange={setSections}
-              templates={templates.data}
-            />
+            <SlotsEditor value={slots} onChange={setSlots} />
           </div>
 
           <div className="flex gap-2 pt-1">
@@ -1151,206 +1104,280 @@ function PagesTab() {
   );
 }
 
-function SectionComposer({
-  sections,
+// ============================================================
+// Generic keyed-slots editor — edits the exact `slots` object the storefront
+// reads (hero/heading/body/image fields, string lists, nested groups, lists of
+// objects). No JSON, ever. Works for any page shape the seed produced.
+// ============================================================
+
+function humanize(k: string): string {
+  return k
+    .replace(/_/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
+const AREA_HINT = /(body|description|desc|note|message|answer|quote|excerpt|content)/i;
+const IMAGE_HINT = /(image|img|url|logo|photo|cover|banner|avatar|hero)/i;
+const IMAGE_LIST_HINT = /(image|photo|gallery|slide|banner)/i;
+
+function SlotValue({
+  fieldKey,
+  value,
   onChange,
-  templates,
 }: {
-  sections: PageSection[];
-  onChange: (s: PageSection[]) => void;
-  templates?: { template_key: string; display_name: string; default_slots: Record<string, unknown> }[];
+  fieldKey: string;
+  value: unknown;
+  onChange: (v: unknown) => void;
 }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
+  const label = humanize(fieldKey);
 
-  const update = (i: number, key: string, value: string) =>
-    onChange(sections.map((s, idx) => (idx === i ? { ...s, [key]: value } : s)));
-  const remove = (i: number) =>
-    onChange(sections.filter((_, idx) => idx !== i));
-
-  // Stable-per-position ids for the sortable list.
-  const ids = sections.map((_, i) => `section-${i}`);
-
-  function onDragEnd(e: DragEndEvent) {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const from = ids.indexOf(String(active.id));
-    const to = ids.indexOf(String(over.id));
-    if (from < 0 || to < 0) return;
-    onChange(arrayMove(sections, from, to));
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    const s = value == null ? "" : String(value);
+    if (IMAGE_HINT.test(fieldKey))
+      return <ImageField label={label} value={s} onChange={onChange} />;
+    if (AREA_HINT.test(fieldKey) || s.length > 80)
+      return <AreaField label={label} value={s} onChange={onChange} />;
+    return <TextField label={label} value={s} onChange={onChange} />;
   }
 
-  function addType(type: string) {
-    onChange([...sections, { type } as PageSection]);
-  }
-  function addTemplate(t: { default_slots: Record<string, unknown> }) {
-    const slots = t.default_slots || {};
-    const type = String((slots as { type?: string }).type || "");
-    const flat: PageSection = { type } as PageSection;
-    for (const [k, v] of Object.entries(slots)) {
-      if (k === "type") continue;
-      flat[k] = typeof v === "string" ? v : "";
-    }
-    onChange([...sections, flat]);
+  if (Array.isArray(value)) {
+    const arr = value as unknown[];
+    const isObjectList = arr.some(
+      (x) => x !== null && typeof x === "object" && !Array.isArray(x),
+    );
+    if (isObjectList)
+      return (
+        <ObjectListField
+          label={label}
+          items={arr as Record<string, unknown>[]}
+          onChange={(v) => onChange(v)}
+        />
+      );
+    const strItems = arr.map((x) => (x == null ? "" : String(x)));
+    if (IMAGE_LIST_HINT.test(fieldKey))
+      return (
+        <ImageListField label={label} items={strItems} onChange={(v) => onChange(v)} />
+      );
+    return (
+      <StringListField label={label} items={strItems} onChange={(v) => onChange(v)} />
+    );
   }
 
-  // Prefer the seeded template library; fall back to the built-in schema.
-  const addOptions =
-    templates && templates.length
-      ? templates
-          .filter((t) =>
-            Boolean((t.default_slots as { type?: string })?.type),
-          )
-          .map((t) => ({
-            label: t.display_name,
-            onClick: () => addTemplate(t),
-          }))
-      : Object.entries(SECTION_SCHEMA).map(([type, def]) => ({
-          label: def.label,
-          onClick: () => addType(type),
-        }));
-
+  // Plain object -> collapsible group of sub-fields.
+  const obj = value as Record<string, unknown>;
   return (
-    <div className="space-y-3">
-      {sections.length === 0 ? (
-        <p className="rounded-[10px] border border-dashed border-line px-3 py-4 text-center text-[12px] text-text-muted">
-          No sections yet. Add one below to start building the page.
-        </p>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
-        >
-          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-            <div className="space-y-3">
-              {sections.map((s, i) => (
-                <SortableSection
-                  key={ids[i]}
-                  id={ids[i]}
-                  section={s}
-                  fields={SECTION_SCHEMA[s.type]?.fields || inferFields(s)}
-                  title={
-                    SECTION_SCHEMA[s.type]?.label || s.type.replace(/_/g, " ")
-                  }
-                  onUpdate={(key, value) => update(i, key, value)}
-                  onRemove={() => remove(i)}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-      )}
+    <Section title={label}>
+      {Object.entries(obj).map(([k, v]) => (
+        <SlotValue
+          key={k}
+          fieldKey={k}
+          value={v}
+          onChange={(nv) => onChange({ ...obj, [k]: nv })}
+        />
+      ))}
+    </Section>
+  );
+}
 
-      <div className="flex flex-wrap gap-2">
-        {addOptions.map((o) => (
-          <Button key={o.label} variant="ghost" size="sm" onClick={o.onClick}>
-            + {o.label}
-          </Button>
+function StringListField({
+  label,
+  items,
+  onChange,
+}: {
+  label: string;
+  items: string[];
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <div>
+      <span className={labelCls}>{label}</span>
+      <div className="space-y-2">
+        {items.map((it, i) => (
+          <div key={i} className="flex gap-2">
+            <input
+              className={inputCls}
+              value={it}
+              onChange={(e) =>
+                onChange(items.map((x, j) => (j === i ? e.target.value : x)))
+              }
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange(items.filter((_, j) => j !== i))}
+            >
+              Remove
+            </Button>
+          </div>
         ))}
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mt-2"
+        onClick={() => onChange([...items, ""])}
+      >
+        + Add
+      </Button>
     </div>
   );
 }
 
-function SortableSection({
-  id,
-  section,
-  fields,
-  title,
-  onUpdate,
-  onRemove,
+function ImageListField({
+  label,
+  items,
+  onChange,
 }: {
-  id: string;
-  section: PageSection;
-  fields: SectionFieldDef[];
-  title: string;
-  onUpdate: (key: string, value: string) => void;
-  onRemove: () => void;
+  label: string;
+  items: string[];
+  onChange: (v: string[]) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-  };
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="rounded-[10px] border border-line bg-text-primary/[0.03] p-3"
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="cursor-grab touch-none px-1 text-text-muted hover:text-text-primary active:cursor-grabbing"
-            aria-label="Drag to reorder"
-            {...attributes}
-            {...listeners}
-          >
-            ::
-          </button>
-          <span className="text-[13px] font-medium text-text-primary">
-            {title}
-          </span>
+    <Section title={label}>
+      {items.map((it, i) => (
+        <div key={i} className="space-y-1">
+          <ImageField
+            label={`${label} ${i + 1}`}
+            value={it}
+            onChange={(v) => onChange(items.map((x, j) => (j === i ? v : x)))}
+          />
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange(items.filter((_, j) => j !== i))}
+            >
+              Remove
+            </Button>
+          </div>
         </div>
-        <button
-          onClick={onRemove}
-          className="text-xs text-text-muted hover:text-danger"
-        >
-          Remove
-        </button>
-      </div>
-      <div className="space-y-2.5">
-        {fields.map((f) => {
-          if (f.kind === "area")
-            return (
-              <AreaField
-                key={f.key}
-                label={f.label}
-                value={section[f.key] || ""}
-                onChange={(v) => onUpdate(f.key, v)}
-              />
-            );
-          if (f.kind === "image")
-            return (
-              <ImageField
-                key={f.key}
-                label={f.label}
-                value={section[f.key] || ""}
-                onChange={(v) => onUpdate(f.key, v)}
-              />
-            );
-          return (
-            <TextField
-              key={f.key}
-              label={f.label}
-              value={section[f.key] || ""}
-              onChange={(v) => onUpdate(f.key, v)}
-            />
-          );
-        })}
-      </div>
-    </div>
+      ))}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mt-2"
+        onClick={() => onChange([...items, ""])}
+      >
+        + Add image
+      </Button>
+    </Section>
   );
 }
 
-/** For a section whose type isn't in the built-in schema, expose its existing
- *  string fields as plain text inputs so nothing is uneditable. */
-function inferFields(s: PageSection): SectionFieldDef[] {
-  return Object.keys(s)
-    .filter((k) => k !== "type")
-    .map((k) => ({
-      key: k,
-      label: k.replace(/_/g, " "),
-      kind: k.includes("image") ? "image" : "text",
-    }));
+function emptyLike(sample: Record<string, unknown> | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(sample || {})) out[k] = "";
+  return out;
+}
+
+function ObjectListField({
+  label,
+  items,
+  onChange,
+}: {
+  label: string;
+  items: Record<string, unknown>[];
+  onChange: (v: Record<string, unknown>[]) => void;
+}) {
+  return (
+    <Section title={label}>
+      {items.map((item, i) => (
+        <div
+          key={i}
+          className="space-y-2 rounded-[10px] border border-line bg-text-primary/[0.03] p-3"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] font-medium text-text-muted">
+              {label} {i + 1}
+            </span>
+            <button
+              onClick={() => onChange(items.filter((_, j) => j !== i))}
+              className="text-xs text-text-muted hover:text-danger"
+            >
+              Remove
+            </button>
+          </div>
+          {Object.entries(item).map(([k, v]) => (
+            <SlotValue
+              key={k}
+              fieldKey={k}
+              value={v}
+              onChange={(nv) =>
+                onChange(items.map((x, j) => (j === i ? { ...x, [k]: nv } : x)))
+              }
+            />
+          ))}
+        </div>
+      ))}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mt-2"
+        onClick={() => onChange([...items, emptyLike(items[0])])}
+      >
+        + Add
+      </Button>
+    </Section>
+  );
+}
+
+function SlotsEditor({
+  value,
+  onChange,
+}: {
+  value: Record<string, unknown>;
+  onChange: (v: Record<string, unknown>) => void;
+}) {
+  const [newKey, setNewKey] = useState("");
+  const entries = Object.entries(value);
+  return (
+    <div className="space-y-3">
+      {entries.length === 0 ? (
+        <p className="rounded-[10px] border border-dashed border-line px-3 py-4 text-center text-[12px] text-text-muted">
+          No fields yet. Add one below.
+        </p>
+      ) : (
+        entries.map(([k, v]) => (
+          <SlotValue
+            key={k}
+            fieldKey={k}
+            value={v}
+            onChange={(nv) => onChange({ ...value, [k]: nv })}
+          />
+        ))
+      )}
+      <div className="flex items-end gap-2 border-t border-line pt-3">
+        <label className="flex-1">
+          <span className={labelCls}>Add a field (name)</span>
+          <input
+            className={inputCls}
+            value={newKey}
+            placeholder="e.g. heading"
+            onChange={(e) => setNewKey(e.target.value)}
+          />
+        </label>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!newKey.trim() || newKey.trim() in value}
+          onClick={() => {
+            onChange({ ...value, [newKey.trim()]: "" });
+            setNewKey("");
+          }}
+        >
+          Add
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // ============================================================

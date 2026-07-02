@@ -9,17 +9,12 @@
 const express = require("express");
 const c = require("./service-catalogue.controller");
 const v = require("./service-catalogue.validator");
-const { publicWriteLimiter } = require("../../middleware");
 
 const router = express.Router();
 
 router.get("/", c.publicList);
 router.get("/:slug", c.publicGet);
-router.post(
-  "/:slug/book",
-  publicWriteLimiter,
-  v.validateBookingRequest,
-  c.publicBook,
-);
+// No per-IP write limiter — booking requests shouldn't be throttled like login.
+router.post("/:slug/book", v.validateBookingRequest, c.publicBook);
 
 module.exports = router;

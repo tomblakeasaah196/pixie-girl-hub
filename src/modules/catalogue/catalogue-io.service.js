@@ -15,7 +15,7 @@
 "use strict";
 
 const { query } = require("../../config/database");
-const { VALID } = require("../../config/brands");
+const { t } = require("../../config/brands");
 const {
   buildWorkbook,
   parseWorkbook,
@@ -28,11 +28,6 @@ const catalogueService = require("./catalogue.service");
 const catalogueRepo = require("./catalogue.repo");
 const bundleService = require("../retention/bundle.service");
 const bundleRepo = require("../retention/bundle.repo");
-
-const t = (b, tbl) => {
-  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
-  return `${b}.${tbl}`;
-};
 
 const isBlank = (v) => v === undefined || v === null || String(v).trim() === "";
 const str = (v) => (isBlank(v) ? undefined : String(v).trim());

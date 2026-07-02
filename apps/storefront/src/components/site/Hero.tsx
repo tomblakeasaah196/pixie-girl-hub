@@ -1,4 +1,5 @@
 import { motion } from "motion/react";
+import { SmartLink } from "@/components/site/SmartLink";
 import { DEFAULT_HOME, type HeroContent } from "@/lib/home-content";
 
 export function Hero({ content = DEFAULT_HOME.hero }: { content?: HeroContent }) {
@@ -64,12 +65,12 @@ export function Hero({ content = DEFAULT_HOME.hero }: { content?: HeroContent })
           transition={{ duration: 0.9, delay: 1.3 }}
           className="mt-10 flex flex-wrap gap-4"
         >
-          <a href={content.cta1Href} className="group relative overflow-hidden px-9 py-4 bg-taupe text-ink text-[0.7rem] tracking-[0.4em] uppercase font-medium hover:bg-cream transition-colors">
+          <SmartLink to={content.cta1Href} className="group relative overflow-hidden px-9 py-4 bg-taupe text-ink text-[0.7rem] tracking-[0.4em] uppercase font-medium hover:bg-cream transition-colors">
             {content.cta1Label}
-          </a>
-          <a href={content.cta2Href} className="px-9 py-4 border border-taupe/40 text-taupe text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe/10 transition-colors">
+          </SmartLink>
+          <SmartLink to={content.cta2Href} className="px-9 py-4 border border-taupe/40 text-taupe text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe/10 transition-colors">
             {content.cta2Label}
-          </a>
+          </SmartLink>
         </motion.div>
 
         <motion.div

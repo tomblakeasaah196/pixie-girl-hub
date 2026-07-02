@@ -15,6 +15,8 @@
 
 const { transaction } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
+const { money, toCurrencyString } = require("../../utils/money");
+const { logger } = require("../../config/logger");
 const repo = require("./factory-account.repo");
 const events = require("./factory-account.events");
 const {
@@ -108,6 +110,75 @@ async function updateAccount({ brand, user, request_id, id, input }) {
 
 // ── Ledger entries ────────────────────────────────────────
 
+// Policy Q12: the RMB running ledger mirrors into the GL as standard AP.
+// Charges (factory-ledger DR) capitalise into Inventory — In Transit 1320
+// against AP Factory 2020 (bank charges hit 5500 instead); payments clear
+// 2020 from the bank; credits/discounts go to Other Income. CNY→NGN at the
+// latest stored rate — when no rate is configured the mirror SKIPS LOUDLY
+// (the books must never guess a rate).
+async function mirrorLedgerEntryToGl({ client, brand, entry, user }) {
+  const accounting = require("../accounting/accounting.service");
+  const { ACCOUNTS } = require("../accounting/posting-map");
+  const bsRepo = require("../business_setup/business-setup.repo");
+
+  let amountNgn;
+  if ((entry.original_currency || "CNY") === "NGN") {
+    amountNgn = money(entry.amount_original);
+  } else {
+    const rate = await bsRepo.latestRate({
+      client,
+      from: entry.original_currency || "CNY",
+    });
+    if (!rate) {
+      logger.warn(
+        { brand, entry_id: entry.entry_id, currency: entry.original_currency },
+        "factory ledger GL mirror skipped — no FX rate to NGN configured",
+      );
+      return null;
+    }
+    amountNgn = money(entry.amount_original).times(money(rate.rate));
+  }
+  if (amountNgn.lte(0)) return null;
+  const amt = toCurrencyString(amountNgn);
+  const d = (code) => ({
+    account_code: code,
+    debit_ngn: amt,
+    description: `${entry.entry_type} — factory ledger`,
+  });
+  const c = (code) => ({
+    account_code: code,
+    credit_ngn: amt,
+    description: `${entry.entry_type} — factory ledger`,
+  });
+  let lines;
+  if (entry.direction === "DR") {
+    const debitTo =
+      entry.entry_type === "bank_charge"
+        ? ACCOUNTS.BANK_CHARGES
+        : ACCOUNTS.INVENTORY_TRANSIT;
+    lines = [d(debitTo), c(ACCOUNTS.AP_FACTORY_CNY)];
+  } else if (entry.entry_type === "payment") {
+    lines = [d(ACCOUNTS.AP_FACTORY_CNY), c(ACCOUNTS.BANK_MAIN)];
+  } else {
+    // discount / misc_credit / CR adjustment — the factory owes us less.
+    lines = [d(ACCOUNTS.AP_FACTORY_CNY), c(ACCOUNTS.OTHER_INCOME)];
+  }
+  return accounting.postEntry({
+    client,
+    brand,
+    user_id: user?.user_id,
+    entry: {
+      source_type: "purchase",
+      source_table: `${brand}.factory_account_ledger`,
+      source_id: entry.entry_id,
+      reference: entry.reference_id || entry.entry_id,
+      description: `Factory ledger ${entry.entry_type} (${entry.direction}) — ${toCurrencyString(money(entry.amount_original))} ${entry.original_currency || "CNY"}`,
+      idempotency_key: `factory_ledger:${entry.entry_id}`,
+    },
+    lines,
+  });
+}
+
 async function addLedgerEntry({ brand, user, request_id, account_id, input }) {
   return transaction(async (client) => {
     const account = await repo.getAccount({ client, brand, id: account_id });
@@ -124,6 +195,9 @@ async function addLedgerEntry({ brand, user, request_id, account_id, input }) {
       brand,
       data: { ...input, account_id, recorded_by: user?.user_id },
     });
+
+    // Policy Q12: mirror the RMB running-balance entry into the GL.
+    await mirrorLedgerEntryToGl({ client, brand, entry, user });
 
     // Alert check: balance exceeds credit alert threshold
     if (

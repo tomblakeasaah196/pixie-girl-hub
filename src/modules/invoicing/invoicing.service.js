@@ -46,6 +46,94 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ── GL accrual for standalone (credit) invoices — policy Q1 ──
+// Order-backed invoices are EXCLUDED from the whole invoice GL lifecycle:
+// the order.paid sale journal owns their books (cash + revenue + VAT + COGS),
+// so accruing or settling them here would double-post revenue and cash.
+const { ACCOUNTS } = require("../accounting/posting-map");
+
+const isOrderBacked = (inv) => Boolean(inv.order_id);
+
+/**
+ * Journal lines for issuing a credit invoice (exported for unit tests):
+ *   DR AR (total) / CR revenue per line's revenue_account_code, CR VAT
+ *   output, CR shipping revenue. WHT is NOT recognised here — it becomes a
+ *   WHT Receivable when the customer actually withholds, i.e. at payment.
+ * Uses the STORED line figures (line_total − tax) so the journal always ties
+ * to the invoice row, and postEntry's balance assert catches any drift.
+ */
+function buildInvoiceAccrualLines(inv) {
+  const lines = [
+    {
+      account_code: ACCOUNTS.AR_CUSTOMERS,
+      debit_ngn: toCurrencyString(money(inv.total_ngn)),
+      description: `Invoice ${inv.invoice_number}`,
+      contact_id: inv.contact_id,
+    },
+  ];
+  const byAccount = new Map();
+  for (const l of inv.lines || []) {
+    const net = money(l.line_total_ngn).minus(money(l.tax_amount_ngn || 0));
+    const code = l.revenue_account_code || ACCOUNTS.SALES_STOREFRONT;
+    byAccount.set(code, (byAccount.get(code) || money(0)).plus(net));
+  }
+  if (byAccount.size === 0) {
+    // Line-less invoice: fall back to the header net.
+    byAccount.set(
+      ACCOUNTS.SALES_STOREFRONT,
+      money(inv.subtotal_ngn).minus(money(inv.discount_amount_ngn || 0)),
+    );
+  }
+  for (const [code, amount] of byAccount) {
+    if (amount.lte(0)) continue;
+    lines.push({
+      account_code: code,
+      credit_ngn: toCurrencyString(amount),
+      description: "Sales revenue (credit invoice)",
+    });
+  }
+  const tax = money(inv.tax_amount_ngn || 0);
+  if (tax.gt(0))
+    lines.push({
+      account_code: ACCOUNTS.VAT_OUTPUT,
+      credit_ngn: toCurrencyString(tax),
+      description: "VAT output",
+    });
+  const shipping = money(inv.shipping_fee_ngn || 0);
+  if (shipping.gt(0))
+    lines.push({
+      account_code: ACCOUNTS.SHIPPING_REVENUE,
+      credit_ngn: toCurrencyString(shipping),
+      description: "Shipping revenue",
+    });
+  return lines;
+}
+
+/**
+ * Post the AR accrual for a standalone invoice. Idempotent (opt-in key), so
+ * both `send` and `recordPayment` may call it — a draft that takes payment
+ * without ever being sent still accrues exactly once. No-op for order-backed
+ * or zero-total invoices.
+ */
+async function postInvoiceAccrual({ client, brand, inv, user_id }) {
+  if (isOrderBacked(inv)) return null;
+  if (!money(inv.total_ngn).gt(0)) return null;
+  return accounting.postEntry({
+    client,
+    brand,
+    user_id,
+    entry: {
+      source_type: "invoice",
+      source_table: "invoices",
+      source_id: inv.invoice_id,
+      reference: inv.invoice_number,
+      description: `Invoice ${inv.invoice_number} issued`,
+      idempotency_key: `invoice_issue:${inv.invoice_id}`,
+    },
+    lines: buildInvoiceAccrualLines(inv),
+  });
+}
+
 /**
  * Create a fully-paid invoice from a settled sales order. Idempotent: returns
  * the existing invoice if one already exists for the order. Pass a client to
@@ -261,14 +349,20 @@ async function send({ brand, user, request_id, id, input = {} }) {
       409,
     );
   const status = inv.status === "draft" ? "sent" : inv.status;
-  const updated = await repo.setStatus({
-    brand,
-    id,
-    status,
-    extra: {
-      sent_at: new Date().toISOString(),
-      sent_via: input.sent_via || "email",
-    },
+  // Issuing a credit invoice IS the revenue-recognition event (policy Q1):
+  // accrue DR AR / CR revenue+VAT atomically with the status flip.
+  const updated = await transaction(async (client) => {
+    await postInvoiceAccrual({ client, brand, inv, user_id: user.user_id });
+    return repo.setStatus({
+      client,
+      brand,
+      id,
+      status,
+      extra: {
+        sent_at: new Date().toISOString(),
+        sent_via: input.sent_via || "email",
+      },
+    });
   });
   await A(
     brand,
@@ -481,7 +575,7 @@ async function recordPayment({ brand, user, request_id, id, input }) {
         `Payment exceeds the outstanding balance of ${toCurrencyString(outstanding)}.`,
         422,
       );
-    await repo.applyPayment({
+    const application = await repo.applyPayment({
       client,
       brand,
       payment: {
@@ -492,6 +586,55 @@ async function recordPayment({ brand, user, request_id, id, input }) {
         notes: input.notes,
       },
     });
+
+    // GL (policy Q1): a standalone invoice settles DR cash (+ DR WHT
+    // receivable for the customer-withheld share, pro-rated like the
+    // supplier-side mirror in purchasing) / CR AR. Order-backed invoices are
+    // settled by the sales pipeline — posting here would double-count cash.
+    if (!isOrderBacked(inv)) {
+      // Draft paid without ever being sent still accrues first (idempotent).
+      await postInvoiceAccrual({ client, brand, inv, user_id: user.user_id });
+      const applied = money(input.amount_applied_ngn);
+      const total = money(inv.total_ngn);
+      const whtShare = total.gt(0)
+        ? money(inv.wht_amount_ngn || 0).times(applied).div(total)
+        : money(0);
+      const whtStr = toCurrencyString(whtShare);
+      const cash = applied.minus(money(whtStr));
+      const lines = [
+        {
+          account_code: ACCOUNTS.BANK_MAIN,
+          debit_ngn: toCurrencyString(cash),
+          description: `Invoice ${inv.invoice_number} payment`,
+        },
+      ];
+      if (money(whtStr).gt(0))
+        lines.push({
+          account_code: ACCOUNTS.WHT_RECEIVABLE,
+          debit_ngn: whtStr,
+          description: "WHT withheld by customer",
+        });
+      lines.push({
+        account_code: ACCOUNTS.AR_CUSTOMERS,
+        credit_ngn: toCurrencyString(applied),
+        description: `AR settled — ${inv.invoice_number}`,
+        contact_id: inv.contact_id,
+      });
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "payment",
+          source_table: "invoice_payments",
+          source_id: application.application_id,
+          reference: inv.invoice_number,
+          description: `Payment on invoice ${inv.invoice_number}`,
+          idempotency_key: `invoice_payment:${application.application_id}`,
+        },
+        lines,
+      });
+    }
     const updated = await repo.findById({ client, brand, id });
     const balance = money(updated.balance_due_ngn);
     const status = balance.lte(money("0.00")) ? "paid" : "partially_paid";
@@ -543,6 +686,24 @@ async function voidInvoice({ brand, user, request_id, id }) {
       "Invoices with recorded payments cannot be voided — issue a credit note or refund instead.",
       409,
     );
+  // A sent standalone invoice already accrued AR/revenue — voiding must put
+  // the GL back where it was (reversal, never deletion — audit trail stays).
+  if (!isOrderBacked(inv)) {
+    const journal = await accounting.findEntryBySource({
+      brand,
+      source_type: "invoice",
+      source_id: id,
+    });
+    if (journal && journal.status === "posted") {
+      await accounting.reverseEntry({
+        brand,
+        user,
+        request_id,
+        id: journal.entry_id,
+        reason: `Invoice ${inv.invoice_number} voided`,
+      });
+    }
+  }
   const updated = await repo.setStatus({ brand, id, status: "void" });
   await A(
     brand,
@@ -645,10 +806,11 @@ async function issueCreditNote({ brand, user, request_id, id }) {
         409,
       );
     const inv = await repo.findById({ client, brand, id: cn.invoice_id });
-    // Reverse the sale on the GL: DR Revenue + DR VAT, CR Accounts Receivable.
+    // Reverse the sale on the GL (policy Q8): DR Sales Returns (contra
+    // revenue, keeps gross vs net visible) + DR VAT, CR Accounts Receivable.
     const lines = [
       {
-        account_code: "4000",
+        account_code: ACCOUNTS.SALES_RETURNS,
         debit_ngn: cn.subtotal_ngn,
         description: "Sales returns / credit",
         contact_id: inv ? inv.contact_id : null,
@@ -656,12 +818,12 @@ async function issueCreditNote({ brand, user, request_id, id }) {
     ];
     if (money(cn.tax_amount_ngn).gt(0))
       lines.push({
-        account_code: "2100",
+        account_code: ACCOUNTS.VAT_OUTPUT,
         debit_ngn: cn.tax_amount_ngn,
         description: "VAT output reversal",
       });
     lines.push({
-      account_code: "1200",
+      account_code: ACCOUNTS.AR_CUSTOMERS,
       credit_ngn: cn.total_ngn,
       description: `Credit note ${cn.credit_note_number}`,
       contact_id: inv ? inv.contact_id : null,
@@ -1117,6 +1279,7 @@ async function updateDocumentSettings({ brand, user, request_id, input }) {
 }
 
 module.exports = {
+  buildInvoiceAccrualLines,
   createFromOrder,
   createManual,
   listInvoices,

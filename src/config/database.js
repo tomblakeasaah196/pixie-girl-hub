@@ -237,6 +237,17 @@ async function brandTransaction(brand, userId, fn) {
   return requestContext.run({ brand, userId }, () => transaction(fn));
 }
 
+/**
+ * Repo executor helper: returns the query function bound to an open
+ * transaction client when one is passed, else the pool-level `query`.
+ * Lets a repo function join a caller's transaction transparently:
+ *
+ *   async function findById({ client, brand, id }) {
+ *     const { rows } = await ex(client)(sql, params);
+ *   }
+ */
+const ex = (client) => (client ? client.query.bind(client) : query);
+
 async function closeDatabase() {
   if (pool) {
     await pool.end();
@@ -248,6 +259,7 @@ module.exports = {
   initDatabase,
   getPool,
   query,
+  ex,
   transaction,
   brandTransaction,
   setSessionContext,

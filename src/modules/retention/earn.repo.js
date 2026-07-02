@@ -6,10 +6,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
 async function listActiveEarnRules({ client, brand, action_type }) {
   const params = [brand];
   let where = "business = $1 AND is_active = true";

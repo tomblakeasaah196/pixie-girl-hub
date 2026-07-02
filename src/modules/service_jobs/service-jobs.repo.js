@@ -10,10 +10,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 async function nextNumber({ client, brand, type }) {
   const { rows } = await ex(client)(
@@ -140,11 +138,35 @@ async function createServiceJob({ client, brand, job }) {
 }
 async function getServiceJob({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT j.*, st.display_name AS service_type_name, st.service_key
+    `SELECT j.*, st.display_name AS service_type_name, st.service_key,
+            ic.ic_number          AS intercompany_number,
+            ic.seller_doc_number  AS intercompany_seller_doc,
+            ic.seller_brand       AS intercompany_seller_brand,
+            ic.buyer_brand        AS intercompany_buyer_brand,
+            ic.status             AS intercompany_status,
+            ic.amount_ngn         AS intercompany_amount_ngn
        FROM ${t(brand, "service_jobs")} j
        LEFT JOIN ${t(brand, "service_types")} st ON st.service_type_id = j.service_type_id
+       LEFT JOIN shared.intercompany_transactions ic
+              ON ic.ic_transaction_id = j.intercompany_transaction_id
       WHERE j.job_id = $1`,
     [id],
+  );
+  return rows[0] || null;
+}
+/**
+ * Flow-1 linkage: bind a service job to its matched inter-company styling
+ * transaction (the FLH styling invoice → PXG). Sets is_intercompany so the
+ * books-integrity watchdog treats it as a cross-entity job.
+ */
+async function linkIntercompany({ client, brand, id, ic_transaction_id }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "service_jobs")}
+        SET intercompany_transaction_id = $2,
+            is_intercompany = true,
+            updated_at = now()
+      WHERE job_id = $1 RETURNING *`,
+    [id, ic_transaction_id],
   );
   return rows[0] || null;
 }
@@ -737,6 +759,7 @@ module.exports = {
   serviceJobExistsForOrder,
   setServiceJobStatus,
   updateServiceJob,
+  linkIntercompany,
   getStudioConfig,
   getStyledDNA,
   listStyledBom,

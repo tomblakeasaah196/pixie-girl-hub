@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Reveal, RevealGroup, RevealItem } from "@/components/site/Reveal";
 import {
   DEFAULT_HOME,
@@ -34,8 +35,9 @@ export function ShopByShade({
         <RevealGroup className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
           {shades.map((s) => (
             <RevealItem key={s.slug}>
-              <a
-                href={`/shop?shade=${s.slug}`}
+              <Link
+                to="/shop"
+                search={{ shade: s.slug }}
                 className="group relative block aspect-[3/4] overflow-hidden focus:outline-none focus:ring-2 focus:ring-rose/60"
                 aria-label={`Shop ${s.name}`}
               >
@@ -56,7 +58,7 @@ export function ShopByShade({
                   <h3 className="font-display text-lg md:text-xl mt-1 text-cream drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">{s.name}</h3>
                 </div>
                 <span className="absolute top-3 right-3 w-7 h-7 rounded-full border border-cream/60 grid place-items-center text-cream/80 text-xs opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm bg-ink/20">→</span>
-              </a>
+              </Link>
             </RevealItem>
           ))}
         </RevealGroup>

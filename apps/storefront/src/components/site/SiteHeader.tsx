@@ -6,14 +6,16 @@ import { PromoBar } from "./PromoBar";
 import { CurrencySwitcher } from "./CurrencySwitcher";
 import { ThemeToggle } from "./ThemeToggle";
 import { SITE_IMAGES } from "@/lib/site-assets";
+import { useNavigation } from "@/lib/site-config";
 
-const NAV = [
-  { to: "/shop", label: "Shop" },
-  { to: "/bundles", label: "Bundles" },
-  { to: "/services", label: "Services" },
-  { to: "/about", label: "Maison" },
-  { to: "/journal", label: "Journal" },
-] as const;
+// Fallback nav (used when Storefront Studio navigation isn't published yet).
+const NAV_FALLBACK = [
+  { label: "Shop", url: "/shop" },
+  { label: "Bundles", url: "/bundles" },
+  { label: "Services", url: "/services" },
+  { label: "Maison", url: "/about" },
+  { label: "Journal", url: "/journal" },
+];
 
 const container: Variants = {
   hidden: {},
@@ -30,6 +32,9 @@ export function SiteHeader({
   logoUrl?: string;
 } = {}) {
   const count = useCartCount();
+  const nav = useNavigation();
+  const items =
+    nav?.header_items && nav.header_items.length ? nav.header_items : NAV_FALLBACK;
   // The cinematic preloader covers the first ~2s on the home page; gate the
   // header entrance so the stagger plays AFTER the gold reveal (and quickly on
   // return visits where the preloader is skipped).
@@ -62,9 +67,9 @@ export function SiteHeader({
             animate={ready ? "show" : "hidden"}
             className="hidden md:flex items-center gap-5 lg:gap-7 text-[0.68rem] tracking-[0.28em] uppercase text-cream/85 justify-self-start"
           >
-            {NAV.map((n) => (
-              <motion.div key={n.to} variants={item}>
-                <Link to={n.to} className="relative py-2 transition-colors hover:text-taupe after:content-[''] after:absolute after:left-0 after:-bottom-0.5 after:h-px after:w-0 after:bg-taupe after:transition-all after:duration-300 hover:after:w-full">
+            {items.map((n) => (
+              <motion.div key={n.url} variants={item}>
+                <Link to={n.url} className="relative py-2 transition-colors hover:text-taupe after:content-[''] after:absolute after:left-0 after:-bottom-0.5 after:h-px after:w-0 after:bg-taupe after:transition-all after:duration-300 hover:after:w-full">
                   {n.label}
                 </Link>
               </motion.div>
@@ -121,8 +126,8 @@ export function SiteHeader({
 
         {/* Mobile nav — horizontally scrollable */}
         <nav className="md:hidden flex items-center gap-5 overflow-x-auto px-6 pb-2.5 text-[0.62rem] tracking-[0.28em] uppercase text-cream/80 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV.map((n) => (
-            <Link key={n.to} to={n.to} className="whitespace-nowrap hover:text-taupe transition-colors">
+          {items.map((n) => (
+            <Link key={n.url} to={n.url} className="whitespace-nowrap hover:text-taupe transition-colors">
               {n.label}
             </Link>
           ))}

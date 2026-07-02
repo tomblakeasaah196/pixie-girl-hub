@@ -10,11 +10,7 @@
 
 const { query } = require("../../config/database");
 
-const { VALID } = require("../../config/brands");
-const t = (brand, tbl) => {
-  if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${tbl}`;
-};
+const { t } = require("../../config/brands");
 const ex = (client) => (client ? client.query.bind(client) : query);
 
 function buildUpdate(cols, src, start = 1) {

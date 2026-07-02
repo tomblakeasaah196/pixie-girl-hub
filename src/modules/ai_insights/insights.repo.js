@@ -11,10 +11,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 // category → shared table (hardcoded; never interpolate user input)
 const TABLE = {
@@ -300,6 +298,27 @@ async function unlinkedServiceJobs({ brand, limit = 500 }) {
   );
   return rows;
 }
+// Flow-1 books integrity: a cross-entity styling job (FLH styling PXG's hair)
+// must carry its matched inter-company transaction (the FLH styling invoice).
+// Flags intercompany jobs with no link, or whose linked txn is void — once the
+// job is completed, or has been open long enough that the invoice is overdue.
+async function intercompanyJobsMissingMatch({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT j.job_id, j.job_number, j.assigned_stylist_id, j.assigned_staff_user_id,
+            j.completed_at, j.agreed_cost_ngn, j.actual_cost_ngn, j.status
+       FROM ${t(brand, "service_jobs")} j
+       LEFT JOIN shared.intercompany_transactions ic
+              ON ic.ic_transaction_id = j.intercompany_transaction_id
+      WHERE j.is_intercompany = true
+        AND j.status NOT IN ('cancelled', 'rejected')
+        AND (j.status = 'completed' OR j.created_at < now() - interval '2 days')
+        AND (j.intercompany_transaction_id IS NULL
+             OR ic.status IN ('rejected', 'cancelled', 'reversed', 'disputed'))
+      ORDER BY j.created_at DESC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
 
 module.exports = {
   TABLE,
@@ -318,4 +337,5 @@ module.exports = {
   staleIntercompany,
   staleApprovals,
   unlinkedServiceJobs,
+  intercompanyJobsMissingMatch,
 };

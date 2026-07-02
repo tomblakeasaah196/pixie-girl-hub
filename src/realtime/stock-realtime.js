@@ -15,20 +15,26 @@
 
 const events = require("../modules/stock/stock.events");
 const { ROOMS } = require("./rooms");
-const { getIo } = require("../config/socket");
+const { getBroadcaster } = require("./emitter");
 const { logger } = require("../config/logger");
 
 function emitToBrand(brand, channel, payload) {
   if (!brand) return;
   try {
-    getIo().to(ROOMS.stock(brand)).emit(channel, payload);
+    getBroadcaster().to(ROOMS.stock(brand)).emit(channel, payload);
   } catch (err) {
-    // Socket.io may not be initialised (worker process / tests).
+    // Redis unavailable (tests/scripts without initRedis).
     logger.debug({ err: err.message }, "stock realtime emit skipped");
   }
 }
 
+let registered = false;
+
 function registerStockRealtime() {
+  // Idempotent: socket init (API) and startWorkers (worker/in-process dev)
+  // may both call this; the second call must not duplicate emissions.
+  if (registered) return;
+  registered = true;
   // A movement is the finest-grained change; carry the variant/location so a
   // client can decide whether the change is relevant to what it's showing.
   events.on(

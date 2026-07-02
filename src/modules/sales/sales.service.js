@@ -37,45 +37,28 @@ const { money, toCurrencyString } = require("../../utils/money");
 const { toUtc, formatTz } = require("../../utils/dates");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
+const { channelPrice } = require("./pricing/channel-price");
+const { createDiscountAllocator } = require("./pricing/allocator");
+const { clampToMarginFloor } = require("./pricing/margin-floor");
+const {
+  resolveCouponApplication,
+  campaignDiscountTotal,
+} = require("./pricing/coupon");
+const { computePointsRedemption } = require("./pricing/points");
+const { assertBundleComplete, computeBundleDiscount } = require("./pricing/bundle");
+const { exitIntentMatches } = require("./pricing/exit-intent");
+const { computeTotalsAndLines, computeDepositPolicy } = require("./pricing/totals");
 
 const PAID_STATES = new Set(["paid", "awaiting_dispatch", "completed"]);
 
-// Per-gateway Payment Processing Fees GL accounts (V2.2 §6.6 A-7 / seed 000035).
-// Stripe is split per settlement currency.
-const GATEWAY_FEE_ACCOUNT = {
-  paystack: "5511",
-  opay: "5512",
-  nomba: "5513",
-};
-const STRIPE_FEE_ACCOUNT_BY_CCY = {
-  USD: "5514",
-  GBP: "5515",
-  EUR: "5516",
-  CAD: "5517",
-  GHS: "5518",
-};
-function gatewayFeeAccount(provider, paid_currency) {
-  if (provider === "stripe")
-    return (
-      STRIPE_FEE_ACCOUNT_BY_CCY[(paid_currency || "USD").toUpperCase()] ||
-      "5514"
-    );
-  return GATEWAY_FEE_ACCOUNT[provider] || null;
-}
-
-function channelPrice(ctx, channel) {
-  // NOTE: the POS *terminal app* was retired (replaced by the Quick Sale Form),
-  // but 'pos' survives here as the IN-STORE PRICE TIER (price_pos_ngn) and as a
-  // sales_channel/payroll-commission channel. That is a pricing concept, not the
-  // terminal, and is intentionally kept — a walk-in sale can still be priced at
-  // the in-store rate. Renaming the tier is a separate, deliberate migration.
-  if (channel === "pos") return ctx.price_pos_ngn ?? ctx.price_storefront_ngn;
-  if (channel === "wholesale" || channel === "intercompany")
-    return ctx.price_wholesale_ngn ?? ctx.price_storefront_ngn;
-  if (channel === "partner" || channel === "stylist_routed")
-    return ctx.price_partner_ngn ?? ctx.price_storefront_ngn;
-  return ctx.price_storefront_ngn ?? ctx.price_pos_ngn;
-}
+// GL account codes resolved through the accounting posting map — the SSOT
+// for all journal account codes (V2.2 §6.6, ratified policy Q4/Q7/Q8).
+const {
+  ACCOUNTS,
+  gatewayFeeAccount,
+  settlementAccountForProvider,
+} = require("../accounting/posting-map");
+const salesPostings = require("./sales.postings");
 
 async function createOrder({ brand, user, request_id, input }) {
   // Idempotency (H-9): a double-submitted public checkout must not create two
@@ -110,7 +93,9 @@ async function createOrderTx({ brand, user, request_id, input }) {
         "BUSINESS_CONFIG_MISSING",
         `Business configuration not found for brand "${brand}"`,
         500,
-        "System configuration error — please contact support",
+        // AppError's 4th arg is an options object; a bare string here was
+        // silently discarded and the internal message leaked to the client.
+        { user_message: "System configuration error — please contact support" },
       );
     }
     // VAT rate is read from business_config as SSOT. The DB guarantees a row
@@ -202,15 +187,9 @@ async function createOrderTx({ brand, user, request_id, input }) {
       }
     }
 
-    // 3. Margin-floor clamp (§6.25): never below the variant's min_price.
-    for (const b of built) {
-      if (b.ctx.min_price_ngn !== null && b.ctx.min_price_ngn !== undefined) {
-        const floor = money(b.ctx.min_price_ngn);
-        const maxDiscount = b.unit.minus(floor);
-        if (b.perUnitDiscount.gt(maxDiscount))
-          b.perUnitDiscount = maxDiscount.lt(0) ? money(0) : maxDiscount;
-      }
-    }
+    // 3. Margin-floor clamp (§6.25): never below the variant's min_price
+    // (pure — pricing/margin-floor.js).
+    clampToMarginFloor(built);
 
     // 3.5 Coupon (F-3) — resolve the coupon IN Sales. Distribute the discount
     // across taxable lines pre-VAT (tax is computed on the post-coupon price);
@@ -234,50 +213,13 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // pre-order lines — threaded onto the returned order so the public checkout
     // can show them without ever blocking the sale.
     const notices = [];
-    // Combined coupon+points discount added to each line's discount.
-    const extraShareByIdx = built.map(() => money(0));
-
-    const preNetByIdx = built.map((b) =>
-      b.unit.minus(b.perUnitDiscount).times(b.li.quantity),
-    );
-    const preNet = preNetByIdx.reduce((a, n) => a.plus(n), money(0));
-    // §6.25 floor: each line's headroom above its variant min_price. Order-
-    // level discounts (coupon, points) may only consume this headroom, so a
-    // stacked discount can never sell below floor. Mutated as each is applied.
-    const headroomByIdx = built.map((b, idx) => {
-      if (b.ctx.min_price_ngn === null || b.ctx.min_price_ngn === undefined)
-        return preNetByIdx[idx];
-      const floorNet = money(b.ctx.min_price_ngn).times(b.li.quantity);
-      const hr = preNetByIdx[idx].minus(floorNet);
-      return hr.lt(0) ? money(0) : hr;
-    });
-    const headroomLeft = () =>
-      headroomByIdx.reduce((a, n) => a.plus(n), money(0));
-    // Apply an order-level discount proportionally to remaining headroom; pre-
-    // VAT (the forEach below taxes the post-discount base). Returns the amount
-    // actually applied (capped at available headroom).
-    const applyOrderDiscount = (requested) => {
-      const avail = headroomLeft();
-      const amt = requested.gt(avail) ? avail : requested;
-      if (amt.lte(money(0))) return money(0);
-      let allocated = money(0);
-      built.forEach((b, idx) => {
-        const last = idx === built.length - 1;
-        const share = last
-          ? amt.minus(allocated)
-          : avail.gt(money(0))
-            ? money(
-                toCurrencyString(
-                  amt.times(headroomByIdx[idx]).dividedBy(avail),
-                ),
-              )
-            : money(0);
-        extraShareByIdx[idx] = extraShareByIdx[idx].plus(share);
-        headroomByIdx[idx] = headroomByIdx[idx].minus(share);
-        allocated = allocated.plus(share);
-      });
-      return amt;
-    };
+    // Order-level discount allocation (coupon / points / bundle / deal
+    // ladder). The §6.25 headroom ledger + proportional allocation live in
+    // pricing/allocator.js; the arrays destructured here are the allocator's
+    // live state (mutated as each stage applies).
+    const alloc = createDiscountAllocator(built);
+    const { preNet, preNetByIdx, extraShareByIdx } = alloc;
+    const applyOrderDiscount = alloc.applyOrderDiscount;
 
     // Exit-intent code (§6.22). When the entered code matches the LIVE
     // campaign's exit_intent_code, apply exit_intent_discount_ngn as a flat,
@@ -300,16 +242,10 @@ async function createOrderTx({ brand, user, request_id, input }) {
             slug: campaignRef.slug,
           });
       const entered = String(input.coupon_code).trim().toUpperCase();
-      if (
-        campRow &&
-        campRow.exit_intent_enabled &&
-        campRow.exit_intent_code &&
-        String(campRow.exit_intent_code).trim().toUpperCase() === entered &&
-        campRow.exit_intent_discount_ngn !== null &&
-        campRow.exit_intent_discount_ngn !== undefined &&
-        money(campRow.exit_intent_discount_ngn).gt(money(0)) &&
-        campaignsService.resolveState(campRow) === "live"
-      ) {
+      const liveState = campRow
+        ? campaignsService.resolveState(campRow)
+        : null;
+      if (exitIntentMatches(campRow, entered, liveState)) {
         // The code is recognised as this campaign's exit-intent promo — claim
         // it so it never falls through to the coupon validator (which would
         // reject it as COUPON_INVALID). The applied amount may be 0 if the live
@@ -350,47 +286,30 @@ async function createOrderTx({ brand, user, request_id, input }) {
         );
       couponMeta = cr.coupon;
       // PD §6.23/§6.25: the CEO sets whether discounts may stack on already-
-      // discounted sale items (floor is always enforced above).
-      const allowStack = !!(
-        cfg &&
-        cfg.loyalty_settings &&
-        cfg.loyalty_settings.allow_stacking_on_sale
-      );
-      if (cr.discount_type === "free_shipping") {
-        // Free-shipping is orthogonal to item pricing — always honour it.
+      // discounted sale items (floor is always enforced above). The decision
+      // (free-shipping / stack / better-of-sale-vs-coupon) is pure —
+      // pricing/coupon.js — returning what to allocate + any buyer notice.
+      const decision = resolveCouponApplication({
+        coupon: cr,
+        discount_ngn: cr.discount_ngn,
+        campaignActive: !!campaign,
+        allowStacking: !!(
+          cfg &&
+          cfg.loyalty_settings &&
+          cfg.loyalty_settings.allow_stacking_on_sale
+        ),
+        campaignDiscountTotal: campaignDiscountTotal(built),
+        preNet,
+      });
+      if (decision.kind === "free_shipping") {
         couponShipping = shipping0;
-      } else if (campaign && !allowStack) {
-        // Non-stacking sale: never hard-block the buyer. Give them the BETTER
-        // of (sale price already applied) vs (coupon), and tell them softly.
-        const campaignDiscountTotal = built.reduce(
-          (s, b) => s.plus(b.perUnitDiscount.times(b.li.quantity)),
-          money(0),
-        );
-        let want = money(cr.discount_ngn);
-        if (want.gt(preNet)) want = preNet;
-        if (want.gt(campaignDiscountTotal)) {
-          // Coupon beats the sale — top up by the difference so the total
-          // discount equals the coupon value (floor-respecting via headroom).
-          const topUp = want.minus(campaignDiscountTotal);
-          couponLineTotal = applyOrderDiscount(topUp);
-          notices.push({
-            code: "COUPON_APPLIED_BEST",
-            message:
-              "We applied your coupon — it's a better deal than the sale price.",
-          });
-        } else {
-          // Sale is the better deal — drop the coupon (no redemption recorded).
-          couponMeta = null;
-          notices.push({
-            code: "SALE_PRICE_KEPT",
-            message:
-              "Your coupon wasn't applied because the sale price is already a bigger saving.",
-          });
-        }
+      } else if (decision.kind === "keep_sale") {
+        // Sale is the better deal — drop the coupon (no redemption recorded).
+        couponMeta = null;
+        notices.push(decision.notice);
       } else {
-        let amt = money(cr.discount_ngn);
-        if (amt.gt(preNet)) amt = preNet;
-        couponLineTotal = applyOrderDiscount(amt);
+        couponLineTotal = applyOrderDiscount(decision.requested);
+        if (decision.notice) notices.push(decision.notice);
       }
     }
 
@@ -413,19 +332,12 @@ async function createOrderTx({ brand, user, request_id, input }) {
             "Not enough points to redeem",
             409,
           );
-        const rate = money(
-          (cfg &&
-            cfg.loyalty_settings &&
-            cfg.loyalty_settings.naira_per_point) ||
-            10,
-        );
-        let usePts = pts;
-        let value = rate.times(usePts);
-        const avail = headroomLeft();
-        if (value.gt(avail) && rate.gt(money(0))) {
-          usePts = Math.floor(Number(avail.dividedBy(rate).toString()));
-          value = rate.times(usePts);
-        }
+        const { usePts, value } = computePointsRedemption({
+          points: pts,
+          nairaPerPoint:
+            cfg && cfg.loyalty_settings && cfg.loyalty_settings.naira_per_point,
+          headroomAvailable: alloc.headroomLeft(),
+        });
         if (usePts > 0) {
           applyOrderDiscount(value);
           pointsUsed = usePts;
@@ -447,64 +359,15 @@ async function createOrderTx({ brand, user, request_id, input }) {
           "Bundle not found or inactive",
           409,
         );
-      const components = bundle.components || [];
-      const isComponent = (b) =>
-        components.some((c) =>
-          c.variant_id
-            ? b.li.variant_id === c.variant_id
-            : b.ctx.product_id === c.product_id,
-        );
-      for (const comp of components.filter(
-        (c) => c.role === "core" || !c.role,
-      )) {
-        const have = built.reduce((q, b) => {
-          const match = comp.variant_id
-            ? b.li.variant_id === comp.variant_id
-            : b.ctx.product_id === comp.product_id;
-          return match ? q + b.li.quantity : q;
-        }, 0);
-        if (have < (comp.quantity || 1))
-          throw new AppError(
-            "BUNDLE_INCOMPLETE",
-            "Bundle components missing from the order",
-            409,
-          );
-      }
-      const compSubtotal = built.reduce(
-        (s, b, idx) => (isComponent(b) ? s.plus(preNetByIdx[idx]) : s),
-        money(0),
-      );
-      let d = money(0);
-      if (bundle.pricing_model === "fixed_bundle_price") {
-        const price = money(bundle.bundle_price_ngn || 0);
-        d = compSubtotal.gt(price) ? compSubtotal.minus(price) : money(0);
-      } else if (bundle.pricing_model === "pct_off") {
-        d = compSubtotal.times(money(bundle.discount_value || 0));
-      } else if (bundle.pricing_model === "amount_off") {
-        d = money(bundle.discount_value || 0);
-        if (d.gt(compSubtotal)) d = compSubtotal;
-      } else if (
-        bundle.pricing_model === "buy_x_get_y" ||
-        bundle.pricing_model === "tiered_qty"
-      ) {
-        // Quantity-based models need per-line context (F-2 remainder).
-        const componentLines = built
-          .map((b, idx) => ({ b, idx }))
-          .filter(({ b }) => isComponent(b))
-          .map(({ b, idx }) => ({
-            quantity: b.li.quantity,
-            unit_price_ngn:
-              b.li.quantity > 0
-                ? money(preNetByIdx[idx]).div(b.li.quantity)
-                : money(0),
-          }));
-        d = bundleService.quantityBundleDiscount({
-          pricing_model: bundle.pricing_model,
-          bundle,
-          lines: componentLines,
-          component_subtotal_ngn: compSubtotal,
-        });
-      }
+      // Component verification + discount amount are pure — pricing/bundle.js
+      // (quantity models delegate to retention's quantityBundleDiscount).
+      assertBundleComplete(bundle, built);
+      const d = computeBundleDiscount({
+        bundle,
+        built,
+        preNetByIdx,
+        quantityBundleDiscount: bundleService.quantityBundleDiscount,
+      });
       bundleMeta = bundle;
       bundleLineTotal = applyOrderDiscount(d);
     }
@@ -529,115 +392,27 @@ async function createOrderTx({ brand, user, request_id, input }) {
     if (input.campaign_deal_discount_ngn) {
       const want = money(input.campaign_deal_discount_ngn);
       if (want.gt(money(0))) {
-        // Remaining net per line = full line value minus whatever the
-        // floor-respecting discounts (coupon / points / bundle) already removed.
-        // Campaign deals may consume all of it, ignoring the margin floor.
-        const netByIdx = built.map((b, idx) => {
-          const net = preNetByIdx[idx].minus(extraShareByIdx[idx]);
-          return net.lt(money(0)) ? money(0) : net;
-        });
-        const availNet = netByIdx.reduce((a, n) => a.plus(n), money(0));
-        const amt = want.gt(availNet) ? availNet : want;
-        if (amt.gt(money(0))) {
-          let allocated = money(0);
-          built.forEach((b, idx) => {
-            const last = idx === built.length - 1;
-            const share = last
-              ? amt.minus(allocated)
-              : availNet.gt(money(0))
-                ? money(
-                    toCurrencyString(
-                      amt.times(netByIdx[idx]).dividedBy(availNet),
-                    ),
-                  )
-                : money(0);
-            extraShareByIdx[idx] = extraShareByIdx[idx].plus(share);
-            allocated = allocated.plus(share);
-          });
-          dealLineTotal = amt;
-        }
+        // Floor-IGNORING allocation (pricing/allocator.js): consumes each
+        // line's full remaining net value, matching the floor-free quote the
+        // buyer was shown. Runs last; nothing after it consumes headroom.
+        dealLineTotal = alloc.applyFloorFreeDiscount(want);
       }
     }
 
-    // 4. Totals + VAT.
-    let subtotal = money(0),
-      discountTotal = money(0),
-      taxTotal = money(0);
-    const lineRows = [];
-    built.forEach((b, idx) => {
-      const qty = b.li.quantity;
-      const gross = b.unit.times(qty);
-      const lineDiscount = b.perUnitDiscount
-        .times(qty)
-        .plus(extraShareByIdx[idx]);
-      const taxable = b.ctx.taxable !== false;
-      const rate = taxable
-        ? b.ctx.product_vat !== null && b.ctx.product_vat !== undefined
-          ? money(b.ctx.product_vat)
-          : defaultVat
-        : money(0);
-      const taxableBase = gross.minus(lineDiscount);
-      const tax = taxableBase.times(rate);
-      const lineTotal = taxableBase.plus(tax);
-      subtotal = subtotal.plus(gross);
-      discountTotal = discountTotal.plus(lineDiscount);
-      taxTotal = taxTotal.plus(tax);
-      lineRows.push({
-        product_id: b.ctx.product_id,
-        variant_id: b.li.variant_id,
-        // Snapshot overrides let a caller (e.g. a styled-product checkout line)
-        // record the styled name/label/SKU instead of the base variant's.
-        product_name_snapshot: b.li.product_name_snapshot ?? b.ctx.product_name,
-        variant_label_snapshot:
-          b.li.variant_label_snapshot ?? b.ctx.variant_name,
-        sku_snapshot: b.li.sku_snapshot ?? b.ctx.sku,
-        quantity: qty,
-        unit_price_ngn: toCurrencyString(b.unit),
-        unit_cost_ngn: b.ctx.cost_price_ngn,
-        line_discount_ngn: toCurrencyString(lineDiscount),
-        // Portion from resolveDiscount only (percentage / fixed / price-override).
-        // Used for the per-line "campaign" breakdown row so that order-level
-        // discounts (coupon, points, bundle, deal) are not double-counted there.
-        _campaign_resolve_discount_ngn: toCurrencyString(
-          b.perUnitDiscount.times(qty),
-        ),
-        tax_rate: rate.toFixed(4),
-        tax_amount_ngn: toCurrencyString(tax),
-        line_total_ngn: toCurrencyString(lineTotal),
-        display_order: idx,
-        notes: b.li.notes,
-        // Stylist Studio (PR3): what the line sells. Default 'product', but
-        // 'service' when it carries a service offering, so the deposit-met
-        // auto-open opens a job only for styling work.
-        line_kind:
-          b.li.line_kind ||
-          (b.li.service_offering_id
-            ? "service"
-            : b.li.styled_id
-              ? "styled"
-              : "product"),
-        service_offering_id: b.li.service_offering_id || null,
-        styled_id: b.li.styled_id || null,
-      });
-    });
+    // 4. Totals + VAT + persistable line snapshots (pure — pricing/totals.js).
+    const { subtotal, discountTotal, taxTotal, lineRows } =
+      computeTotalsAndLines({ built, extraShareByIdx, defaultVat });
     const shipping = shipping0.minus(couponShipping);
     const total = subtotal.minus(discountTotal).plus(taxTotal).plus(shipping);
 
-    // 4b. Payment model + deposit policy (V2.2 §6.2). The order inherits its
-    // model from the first line's variant/product; deposit_triggered orders
-    // snapshot the required deposit so fulfilment can unlock at the threshold.
-    const paymentModel = built[0].ctx.payment_model || "layaway";
-    const settings = (cfg && cfg.installment_settings) || {};
-    let requiredDepositPct = null;
-    let requiredDepositNgn = null;
-    if (paymentModel === "deposit_triggered") {
-      requiredDepositPct = money(
-        input.required_deposit_pct ??
-          settings.default_deposit_pct_for_deposit_triggered ??
-          50,
-      );
-      requiredDepositNgn = total.times(requiredDepositPct).dividedBy(100);
-    }
+    // 4b. Payment model + deposit policy (V2.2 §6.2) — pricing/totals.js.
+    const { paymentModel, requiredDepositPct, requiredDepositNgn } =
+      computeDepositPolicy({
+        built,
+        installmentSettings: (cfg && cfg.installment_settings) || {},
+        input,
+        total,
+      });
 
     // 5. Persist.
     const order_number = await repo.nextNumber({
@@ -1055,7 +830,13 @@ async function addPayment({ brand, user, request_id, id, input }) {
     // gateway webhook (Paystack / Opay / Nomba / Stripe). Staff-recorded
     // and POS-originated payments are blocked at the service layer as
     // defense-in-depth (the validator also blocks them at the HTTP edge).
-    if (input.payment_path !== "gateway") {
+    // Sole exception: pay-on-delivery remittances — stock already left with
+    // the courier, and only logistics' remit flow (never HTTP input, the
+    // validator strips unknown fields) can set the internal flag.
+    const isPodRemit =
+      input._internal_pod_remit === true &&
+      input.method === "pay_on_delivery";
+    if (input.payment_path !== "gateway" && !isPodRemit) {
       throw new AppError(
         "PAYMENT_PATH_BLOCKED",
         "Payments may only be recorded through an authorized payment gateway. Manual payment entry is disabled.",
@@ -1102,13 +883,40 @@ async function addPayment({ brand, user, request_id, id, input }) {
       return repo.findById({ client, brand, id });
     }
 
+    // Capture journal (policy Q4/Q7): DR the gateway's settlement float /
+    // CR Customer Deposits 2400. The sale journal draws 2400 down by the
+    // order total once fully paid, so partials/layaway/multi-gateway all
+    // reconcile. POD remittances are excluded — logistics posts the COD
+    // clearing journals (collect → 1610, remit → bank) itself.
+    const accounting = require("../accounting/accounting.service");
+    if (!isPodRemit) {
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "payment",
+          source_table: "sales_order_payments",
+          source_id: paymentRow.payment_id,
+          reference: order.order_number,
+          description: `Payment captured — ${order.order_number}`,
+          idempotency_key: `payment_capture:${paymentRow.payment_id}`,
+        },
+        lines: salesPostings.buildCaptureLines({
+          amount_ngn: input.amount_ngn,
+          provider: input.provider,
+          contact_id: order.contact_id,
+          reference: order.order_number,
+        }),
+      });
+    }
+
     // Per-gateway processing fee (§6.6/§6.21): book the fee to the gateway's
-    // dedicated 551x expense account, contra the same cash account the sale
-    // journal debits — so cash nets to the actual settlement (net_received).
+    // dedicated 551x expense account, contra the SAME settlement account the
+    // capture debited — so the float nets to the actual payout amount.
     const feeNgn = money(input.fee_ngn || 0);
     const feeAccount = gatewayFeeAccount(input.provider, input.paid_currency);
     if (feeNgn.gt(0) && feeAccount) {
-      const accounting = require("../accounting/accounting.service");
       const feeStr = toCurrencyString(feeNgn);
       await accounting.postEntry({
         client,
@@ -1129,9 +937,9 @@ async function addPayment({ brand, user, request_id, id, input }) {
             description: `${input.provider} processing fee`,
           },
           {
-            account_code: "1100",
+            account_code: settlementAccountForProvider(input.provider),
             credit_ngn: feeStr,
-            description: `${input.provider} fee settled from cash`,
+            description: `${input.provider} fee netted from settlement`,
           },
         ],
       });
@@ -1147,11 +955,13 @@ async function addPayment({ brand, user, request_id, id, input }) {
       input.paid_amount &&
       order.fx_rate_used
     ) {
-      const accounting = require("../accounting/accounting.service");
       const bookedNgn = money(input.paid_amount).times(
         money(order.fx_rate_used),
       );
       const deltaNgn = money(input.amount_ngn).minus(bookedNgn);
+      // The capture credited 2400 with the ACTUAL NGN; the sale journal
+      // draws down the BOOKED total — the variance lives in 2400, so the
+      // FX gain/loss clears against deposits, not the bank.
       await accounting.postFxGainLoss({
         client,
         brand,
@@ -1161,6 +971,7 @@ async function addPayment({ brand, user, request_id, id, input }) {
         source_id: order.order_id,
         user_id: user.user_id,
         idempotency_key: `fx_revaluation:${paymentRow.payment_id}`,
+        cash_account_code: ACCOUNTS.CUSTOMER_DEPOSITS,
       });
     }
 
@@ -1459,6 +1270,35 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
     // superseded duplicate) so the order detail explains the cancellation.
     if (reason) {
       await repo.setCancellationReason({ client, brand, id, reason });
+    }
+    // Policy Q7: deposits held by a cancelled unpaid order (layaway
+    // abandonment sweep, manual cancel) are forfeited to Other Income —
+    // the 2400 liability cannot survive an order that no longer exists.
+    // A pending cancellation request owns the money instead (its approval
+    // posts the refund/fee split), so never forfeit under its feet.
+    if (
+      order.status !== "cancellation_requested" &&
+      money(order.amount_paid_ngn || 0).gt(0)
+    ) {
+      const accounting = require("../accounting/accounting.service");
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "refund",
+          source_table: "sales_orders",
+          source_id: id,
+          reference: order.order_number,
+          description: `Deposit forfeited on cancellation — ${order.order_number}`,
+          idempotency_key: `deposit_forfeit:${id}`,
+        },
+        lines: salesPostings.buildForfeitLines({
+          amount_paid_ngn: order.amount_paid_ngn,
+          contact_id: order.contact_id,
+          reference: order.order_number,
+        }),
+      });
     }
     await audit({
       business: brand,
@@ -1965,6 +1805,41 @@ async function reviewCancellation({
         id: cr.order_id,
         status: "cancelled",
       });
+      // Policy Q8: post the refund. Shape depends on whether the sale
+      // journal already recognised revenue (order reached paid) — then the
+      // refund is contra revenue + VAT reversal against bank; otherwise the
+      // money still sits in Customer Deposits 2400 and settles from there,
+      // splitting cash-back vs the retained cancellation fee.
+      const order = await repo.findById({ client, brand, id: cr.order_id });
+      const accounting = require("../accounting/accounting.service");
+      const saleJournal = await accounting.findEntryBySource({
+        brand,
+        source_type: "sales",
+        source_id: cr.order_id,
+      });
+      const refundLines = salesPostings.buildCancellationRefundLines({
+        order,
+        fee_amount_ngn: cr.fee_amount_ngn,
+        refund_amount_ngn: cr.refund_amount_ngn,
+        revenueRecognised: Boolean(saleJournal),
+        reference: order.order_number,
+      });
+      if (refundLines) {
+        await accounting.postEntry({
+          client,
+          brand,
+          user_id: user.user_id,
+          entry: {
+            source_type: "refund",
+            source_table: "cancellation_requests",
+            source_id: id,
+            reference: order.order_number,
+            description: `Cancellation refund — ${order.order_number}`,
+            idempotency_key: `cancellation_refund:${id}`,
+          },
+          lines: refundLines,
+        });
+      }
     } else {
       // Reverting: put the order back to pending_payment so it can proceed.
       await repo.setStatus({

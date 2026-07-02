@@ -17,20 +17,40 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
+// GL treatment per movement type (policies Q5/Q6). 'sale' is EXCLUDED —
+// the order.paid sale journal owns COGS/inventory relief for sales.
+// Inbound value arrives via GRNI 2050 (cleared when the supplier invoice
+// is approved); shrinkage hits Wastage 5080; found stock is Other Income;
+// customer returns reverse COGS at cost.
+const MOVEMENT_GL = {
+  receive: { debit: "INVENTORY_FG", credit: "GRNI", source: "goods_received" },
+  production_in: { debit: "INVENTORY_FG", credit: "GRNI", source: "goods_received" },
+  adjustment_in: { debit: "INVENTORY_FG", credit: "OTHER_INCOME", source: "stock_adjustment" },
+  adjustment_out: { debit: "WASTAGE", credit: "INVENTORY_FG", source: "stock_adjustment" },
+  damage: { debit: "WASTAGE", credit: "INVENTORY_FG", source: "stock_adjustment" },
+  sample: { debit: "WASTAGE", credit: "INVENTORY_FG", source: "stock_adjustment" },
+  theft_writeoff: { debit: "WASTAGE", credit: "INVENTORY_FG", source: "stock_adjustment" },
+  return: { debit: "INVENTORY_FG", credit: "COGS", source: "refund" },
+};
+
 /**
- * Record a movement AND maintain the variant's weighted-average cost in the
- * same transaction (policy Q9). Every movement write in this module goes
- * through here — never call repo.recordMovement directly, or the average
- * drifts from the movement ledger.
+ * Record a movement AND, in the same transaction: (1) maintain the
+ * variant's weighted-average cost (policy Q9); (2) post the movement's GL
+ * journal (policies Q5/Q6) at the movement's cost — falling back to the
+ * weighted average for uncosted outbound movements. Every movement write
+ * in this module goes through here — never call repo.recordMovement
+ * directly, or the books drift from the movement ledger.
  */
 async function applyMovement({ client, brand, input, user_id }) {
   const m = await repo.recordMovement({ client, brand, input, user_id });
+  let costBefore = null;
   if (!costing.isCostingExempt(m.movement_type)) {
     const current = await repo.lockVariantCosting({
       client,
       brand,
       variant_id: m.variant_id,
     });
+    costBefore = current ? current.avg_cost_ngn : null;
     const next = costing.applyMovementToCosting(current, m);
     await repo.updateVariantCosting({
       client,
@@ -40,6 +60,57 @@ async function applyMovement({ client, brand, input, user_id }) {
       avg_cost_ngn: next.avg_cost_ngn,
       movement_id: m.movement_id,
     });
+  }
+
+  const gl = MOVEMENT_GL[m.movement_type];
+  if (gl) {
+    const { money, toCurrencyString } = require("../../utils/money");
+    const unitCost =
+      m.unit_cost_ngn !== null && m.unit_cost_ngn !== undefined
+        ? money(m.unit_cost_ngn)
+        : costBefore && money(costBefore).gt(0)
+          ? money(costBefore)
+          : null;
+    // No cost basis at all → nothing valuable moved on the books; skip
+    // rather than invent a figure (the GRNI clearing at invoice approval
+    // surfaces any residue).
+    if (unitCost && unitCost.gt(0)) {
+      const accounting = require("../accounting/accounting.service");
+      const { ACCOUNTS } = require("../accounting/posting-map");
+      // Intercompany receipts: the buyer's IC journal already expensed the
+      // trade to IC-COGS 5060 at approval — receiving the goods reclasses
+      // that into inventory (never GRNI, or the value would double-count).
+      const creditKey =
+        m.movement_type === "receive" && m.reference_type === "intercompany"
+          ? "COGS_INTERCOMPANY"
+          : gl.credit;
+      const value = toCurrencyString(unitCost.times(Math.abs(m.quantity)));
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id,
+        entry: {
+          source_type: gl.source,
+          source_table: "stock_movements",
+          source_id: m.movement_id,
+          reference: m.movement_number,
+          description: `Stock ${m.movement_type} — ${m.movement_number}`,
+          idempotency_key: `stock_move:${m.movement_id}`,
+        },
+        lines: [
+          {
+            account_code: ACCOUNTS[gl.debit],
+            debit_ngn: value,
+            description: `${m.movement_type} — ${m.movement_number}`,
+          },
+          {
+            account_code: ACCOUNTS[creditKey],
+            credit_ngn: value,
+            description: `${m.movement_type} — ${m.movement_number}`,
+          },
+        ],
+      });
+    }
   }
   return m;
 }

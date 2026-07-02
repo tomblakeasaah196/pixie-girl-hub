@@ -22,6 +22,7 @@ const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
 
 const A = (
   brand,
@@ -689,11 +690,62 @@ async function generatePayout({ brand, user, request_id, input }) {
     return { ...payout, lines_count: assignments.length };
   });
 }
+/**
+ * NGN value of a payout for the GL: explicit amount_ngn, else the net for
+ * NGN-denominated payouts. Foreign-currency payouts without an NGN figure
+ * cannot be valued — both GL legs skip together (logged), never one-sided.
+ */
+function payoutNgn(p) {
+  if (p.amount_ngn) return money(p.amount_ngn);
+  if ((p.currency || "NGN") === "NGN") return money(p.net_amount || 0);
+  return null;
+}
+
+/** Policy Q11: earned commissions are a liability the moment they're approved. */
+async function postPayoutAccrual({ brand, user_id, p }) {
+  const ngn = payoutNgn(p);
+  if (!ngn || ngn.lte(0)) {
+    logger.warn(
+      { payout_id: p.payout_id, currency: p.currency },
+      "stylist payout has no NGN value — GL accrual skipped",
+    );
+    return null;
+  }
+  const accounting = require("../accounting/accounting.service");
+  const { ACCOUNTS } = require("../accounting/posting-map");
+  const amt = toCurrencyString(ngn);
+  return accounting.postEntry({
+    brand,
+    user_id,
+    entry: {
+      source_type: "expense",
+      source_table: "stylist_payouts",
+      source_id: p.payout_id,
+      reference: p.payout_number,
+      description: `Stylist payout accrued — ${p.payout_number}`,
+      idempotency_key: `stylist_payout_accrual:${p.payout_id}`,
+    },
+    lines: [
+      {
+        account_code: ACCOUNTS.MARKETING_INFLUENCER,
+        debit_ngn: amt,
+        description: `Stylist commission — ${p.payout_number}`,
+      },
+      {
+        account_code: ACCOUNTS.COMMISSIONS_PAYABLE,
+        credit_ngn: amt,
+        description: `Payable to stylist — ${p.payout_number}`,
+      },
+    ],
+  });
+}
+
 async function approvePayout({ brand, user, request_id, id }) {
   const p = await repo.findPayout({ id });
   if (!p) throw new NotFoundError("Payout");
   if (p.status !== "draft")
     throw new AppError("BAD_STATE", `Payout is ${p.status}`, 422);
+  await postPayoutAccrual({ brand, user_id: user.user_id, p });
   const updated = await repo.setPayoutStatus({
     id,
     status: "approved",
@@ -718,6 +770,39 @@ async function markPayoutPaid({ brand, user, request_id, id, transfer_code }) {
   if (!p) throw new NotFoundError("Payout");
   if (p.status !== "approved" && p.status !== "processing")
     throw new AppError("BAD_STATE", `Payout is ${p.status}`, 422);
+  // Q11 second leg: clear the payable. Accrual first (idempotent) in case
+  // the payout reached 'processing' without passing through approvePayout.
+  const accrued = await postPayoutAccrual({ brand, user_id: user.user_id, p });
+  const ngn = payoutNgn(p);
+  if (ngn && ngn.gt(0) && accrued !== null) {
+    const accounting = require("../accounting/accounting.service");
+    const { ACCOUNTS } = require("../accounting/posting-map");
+    const amt = toCurrencyString(ngn);
+    await accounting.postEntry({
+      brand,
+      user_id: user.user_id,
+      entry: {
+        source_type: "payment",
+        source_table: "stylist_payouts",
+        source_id: id,
+        reference: p.payout_number,
+        description: `Stylist payout paid — ${p.payout_number}`,
+        idempotency_key: `stylist_payout_paid:${id}`,
+      },
+      lines: [
+        {
+          account_code: ACCOUNTS.COMMISSIONS_PAYABLE,
+          debit_ngn: amt,
+          description: `Payable settled — ${p.payout_number}`,
+        },
+        {
+          account_code: ACCOUNTS.BANK_MAIN,
+          credit_ngn: amt,
+          description: `Transfer to stylist — ${p.payout_number}`,
+        },
+      ],
+    });
+  }
   const updated = await repo.setPayoutStatus({
     id,
     status: "paid",

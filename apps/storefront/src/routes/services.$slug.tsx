@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Check } from "lucide-react";
 import {
   getService,
   requestBooking,
@@ -31,13 +32,25 @@ function ServicePage() {
     setForm((p) => ({ ...p, [k]: v }));
 
   const booking = useMutation({
-    mutationFn: () => requestBooking(slug, form),
+    mutationFn: () => {
+      // Strict validator: only send non-empty fields (empty date/email 422s).
+      const payload: BookingInput = { full_name: form.full_name.trim() };
+      if (form.phone?.trim()) payload.phone = form.phone.trim();
+      if (form.email?.trim()) payload.email = form.email.trim();
+      if (form.preferred_date) payload.preferred_date = form.preferred_date;
+      if (form.preferred_time?.trim()) payload.preferred_time = form.preferred_time.trim();
+      if (form.notes?.trim()) payload.notes = form.notes.trim();
+      return requestBooking(slug, payload);
+    },
     onSuccess: (r) => {
       toast.success(r?.message || "Booking request sent. We'll be in touch.");
       setForm({ full_name: "" });
     },
-    onError: () =>
-      toast.error("Couldn't send your request. Please try again."),
+    onError: (err) =>
+      toast.error(
+        (err as { userMessage?: string })?.userMessage ||
+          "Couldn't send your request. Please try again.",
+      ),
   });
 
   function submit(e: React.FormEvent) {
@@ -121,6 +134,25 @@ function ServicePage() {
         </div>
 
         <div className="rounded-lg border border-border p-6">
+          {booking.isSuccess ? (
+            <div className="py-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-primary/50 text-primary">
+                <Check size={22} />
+              </div>
+              <h2 className="text-h5 font-display">Request received</h2>
+              <p className="mt-2 text-body-sm text-muted-foreground">
+                Thank you — our team will reach out within 24 hours to confirm your{" "}
+                {data.name} booking.
+              </p>
+              <button
+                onClick={() => booking.reset()}
+                className="mt-6 text-body-sm text-primary underline-offset-4 hover:underline"
+              >
+                Request another
+              </button>
+            </div>
+          ) : (
+          <>
           <h2 className="text-h5 font-display">Request a booking</h2>
           {data.deposit_required ? (
             <p className="mt-1 text-body-sm text-muted-foreground">
@@ -179,6 +211,8 @@ function ServicePage() {
               {booking.isPending ? "Sending..." : "Request booking"}
             </button>
           </form>
+          </>
+          )}
         </div>
       </div>
     </Section>

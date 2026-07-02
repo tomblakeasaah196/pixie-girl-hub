@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { SITE_IMAGES } from "@/lib/site-assets";
 import { usePopup } from "@/lib/site-config";
+import { subscribeNewsletter } from "@/lib/storefront";
 
 const KEY = "faitlyn.newsletter.seen.v1";
 
@@ -95,12 +96,18 @@ export function NewsletterModal() {
                 <p className="mt-8 text-taupe font-display text-xl">Welcome in. Check your inbox.</p>
               ) : (
                 <form
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault();
-                    if (email) {
-                      setSent(true);
-                      setTimeout(close, 1800);
+                    if (!email) return;
+                    // Persist to the Hub as a website lead; still thank them if
+                    // it's a duplicate or the request hiccups.
+                    try {
+                      await subscribeNewsletter(email);
+                    } catch {
+                      /* best-effort */
                     }
+                    setSent(true);
+                    setTimeout(close, 1800);
                   }}
                   className="mt-8 flex flex-col gap-3"
                 >

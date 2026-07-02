@@ -44,7 +44,8 @@
     "coverage:frontend": "node scripts/build-frontend-coverage.js",
     "build:action-catalogue": "node scripts/build-action-catalogue.js",
     "rag:reembed": "node scripts/rag-reembed.js",
-    "lint:naming": "node scripts/check-file-naming.js"
+    "lint:naming": "node scripts/check-file-naming.js",
+    "books:verify": "node scripts/verify-books.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

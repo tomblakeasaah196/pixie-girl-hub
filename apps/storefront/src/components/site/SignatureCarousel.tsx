@@ -1,4 +1,5 @@
 import useEmblaCarousel from "embla-carousel-react";
+import { Link } from "@tanstack/react-router";
 import { Price } from "@/components/site/Price";
 import {
   DEFAULT_HOME,
@@ -38,9 +39,10 @@ export function SignatureCarousel({
       <div ref={ref} className="overflow-hidden">
         <div className="flex gap-5 pl-6 lg:pl-10">
           {products.map((p) => (
-            <a
+            <Link
               key={p.slug}
-              href={`/product/${p.slug}`}
+              to="/product/$slug"
+              params={{ slug: p.slug }}
               className="group flex-[0_0_75%] sm:flex-[0_0_45%] lg:flex-[0_0_28%] relative aspect-[3/4] overflow-hidden bg-card"
             >
               {p.image ? (
@@ -52,7 +54,7 @@ export function SignatureCarousel({
                 <h3 className="font-display text-2xl mt-2 text-cream">{p.name}</h3>
                 <Price usd={Number(p.priceUsd) || 0} ngnOverride={Number(p.priceNgn) || 0} className="text-xs text-taupe mt-1 block" />
               </div>
-            </a>
+            </Link>
           ))}
         </div>
       </div>

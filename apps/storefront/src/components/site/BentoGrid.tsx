@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { RevealGroup, RevealItem } from "@/components/site/Reveal";
 import { fmt } from "@/lib/storefront";
 import {
@@ -40,8 +41,9 @@ export function BentoGrid({
       <RevealGroup className="grid md:grid-cols-2 gap-4">
         {bundles.map((b) => (
           <RevealItem key={b.slug}>
-            <a
-              href={`/bundles/${b.slug}`}
+            <Link
+              to="/bundles/$slug"
+              params={{ slug: b.slug }}
               className="group relative block w-full h-[420px] md:h-[520px] overflow-hidden bg-card"
             >
               {b.cover && (
@@ -74,7 +76,7 @@ export function BentoGrid({
                   </span>
                 </div>
               </div>
-            </a>
+            </Link>
           </RevealItem>
         ))}
       </RevealGroup>

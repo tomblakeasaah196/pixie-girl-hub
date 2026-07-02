@@ -326,24 +326,31 @@ async function seedBrand(client, brand) {
     );
   }
 
-  if (await tableExists(client, "storefront_popups")) {
-    for (const p of POPUPS) {
-      await client.query(
-        `DELETE FROM shared.storefront_popups
-          WHERE business = $1 AND popup_key = $2 AND status = 'published'`,
-        [brand, p.popup_key],
-      );
-      await client.query(
-        `INSERT INTO shared.storefront_popups
-           (business, status, popup_key, trigger_type, trigger_value, audience,
-            content, display_rules, display_order)
-         VALUES ($1, 'published', $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)`,
-        [brand, p.popup_key, p.trigger_type, p.trigger_value, p.audience, JSON.stringify(p.content), JSON.stringify(p.display_rules), p.display_order],
-      );
-    }
-  }
+  process.stdout.write(`  seeded ${brand}: theme + nav + ${pages.length} pages\n`);
+}
 
-  process.stdout.write(`  seeded ${brand} (theme + nav + ${pages.length} pages + popups)\n`);
+// Popups live in a NEWER table (may be absent, or its columns may differ) — keep
+// it best-effort in its own transaction so it can NEVER roll back the pages.
+async function seedPopupsFor(client, brand) {
+  if (!(await tableExists(client, "storefront_popups"))) {
+    process.stdout.write(`  (storefront_popups absent — popups skipped for ${brand})\n`);
+    return;
+  }
+  for (const p of POPUPS) {
+    await client.query(
+      `DELETE FROM shared.storefront_popups
+        WHERE business = $1 AND popup_key = $2 AND status = 'published'`,
+      [brand, p.popup_key],
+    );
+    await client.query(
+      `INSERT INTO shared.storefront_popups
+         (business, status, popup_key, trigger_type, trigger_value, audience,
+          content, display_rules, display_order)
+       VALUES ($1, 'published', $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)`,
+      [brand, p.popup_key, p.trigger_type, p.trigger_value, p.audience, JSON.stringify(p.content), JSON.stringify(p.display_rules), p.display_order],
+    );
+  }
+  process.stdout.write(`  seeded ${brand}: ${POPUPS.length} popup(s)\n`);
 }
 
 async function seedSectionTemplates(client) {
@@ -371,16 +378,53 @@ async function seedSectionTemplates(client) {
 async function main() {
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
     process.stdout.write("Seeding storefront studio config...\n");
-    await seedSectionTemplates(client);
-    for (const brand of BRANDS) {
-      await seedBrand(client, brand);
+
+    // Section templates — best-effort, isolated.
+    try {
+      await client.query("BEGIN");
+      await seedSectionTemplates(client);
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      console.error("  section templates skipped:", e.message);
     }
-    await client.query("COMMIT");
+
+    // Each brand's core (theme/nav/pages) commits independently; popups are a
+    // separate best-effort txn so a popups schema mismatch can't wipe the pages.
+    for (const brand of BRANDS) {
+      try {
+        await client.query("BEGIN");
+        await seedBrand(client, brand);
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK");
+        console.error(`  ${brand} core seed FAILED:`, e.message);
+      }
+      try {
+        await client.query("BEGIN");
+        await seedPopupsFor(client, brand);
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK");
+        console.error(`  ${brand} popups skipped:`, e.message);
+      }
+    }
+
+    // Verify — print what actually landed so you can confirm at a glance.
+    const { rows } = await client.query(
+      `SELECT business, count(*)::int AS n
+         FROM shared.storefront_pages
+        WHERE status = 'published'
+        GROUP BY business ORDER BY business`,
+    );
+    process.stdout.write("Published pages now in DB:\n");
+    if (!rows.length)
+      process.stdout.write("  (none — see the errors above)\n");
+    for (const r of rows)
+      process.stdout.write(`  ${r.business}: ${r.n} pages\n`);
     process.stdout.write("Done.\n");
   } catch (err) {
-    await client.query("ROLLBACK");
     console.error("Seed failed:", err.message);
     process.exitCode = 1;
   } finally {

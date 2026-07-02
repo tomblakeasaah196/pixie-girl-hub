@@ -23,6 +23,77 @@ const { money } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
 const DEFAULT_POINTS_PER_NAIRA = 100; // ₦100 = 1 base point
+const DEFAULT_POINT_VALUE_NGN = 1; // redemption value of 1 pt; loyalty_settings.point_value_ngn overrides
+
+/**
+ * Policy Q13: provision the loyalty liability as points move.
+ *   earn / manual increase  → DR Other Operating 5900 / CR Loyalty 2420
+ *   redeem / manual decrease → DR 2420 / CR 5900 (provision released — the
+ *     customer's benefit already shows as an order discount)
+ *   expiry (breakage)        → DR 2420 / CR Other Income 4900
+ * Valued at loyalty_settings.point_value_ngn (default ₦1/pt); a zero value
+ * keeps the programme off-ledger by explicit choice.
+ */
+async function postLoyaltyGl({ client, brand, entry }) {
+  if (!entry || !entry.points) return null;
+  const accounting = require("../accounting/accounting.service");
+  const { ACCOUNTS } = require("../accounting/posting-map");
+  const cfg = await businessConfig.findByKey(brand);
+  const pointValue = money(
+    (cfg && cfg.loyalty_settings && cfg.loyalty_settings.point_value_ngn) ??
+      DEFAULT_POINT_VALUE_NGN,
+  );
+  if (pointValue.lte(0)) return null;
+  const value = pointValue.times(Math.abs(entry.points));
+  if (value.lte(0)) return null;
+  const amt = value.toDecimalPlaces(2).toFixed(2);
+  const isExpiry = entry.transaction_type === "expired";
+  const lines =
+    entry.points > 0
+      ? [
+          {
+            account_code: ACCOUNTS.OTHER_OPERATING,
+            debit_ngn: amt,
+            description: "Loyalty points provision",
+          },
+          {
+            account_code: ACCOUNTS.LOYALTY_LIABILITY,
+            credit_ngn: amt,
+            description: "Loyalty liability",
+            contact_id: entry.contact_id,
+          },
+        ]
+      : [
+          {
+            account_code: ACCOUNTS.LOYALTY_LIABILITY,
+            debit_ngn: amt,
+            description: "Loyalty liability released",
+            contact_id: entry.contact_id,
+          },
+          {
+            account_code: isExpiry
+              ? ACCOUNTS.OTHER_INCOME
+              : ACCOUNTS.OTHER_OPERATING,
+            credit_ngn: amt,
+            description: isExpiry
+              ? "Loyalty breakage"
+              : "Loyalty provision released",
+          },
+        ];
+  return accounting.postEntry({
+    client,
+    brand,
+    user_id: entry.created_by || null,
+    entry: {
+      source_type: "accrual",
+      source_table: "shared.loyalty_ledger",
+      source_id: entry.ledger_id || null,
+      description: `Loyalty ${entry.transaction_type} (${entry.points} pts)`,
+      idempotency_key: entry.ledger_id ? `loyalty:${entry.ledger_id}` : undefined,
+    },
+    lines,
+  });
+}
 
 // ── Loyalty ────────────────────────────────────────────────
 function listTiers({ brand }) {
@@ -170,6 +241,7 @@ async function earnForOrder({
         created_by,
       },
     });
+    await postLoyaltyGl({ client: c, brand, entry });
     await recomputeTier({ client: c, brand, contact_id });
     events.emit("loyalty.earned", { brand, contact_id, points, order_id });
     return entry;
@@ -246,6 +318,7 @@ async function earnForAction({
         created_by,
       },
     });
+    await postLoyaltyGl({ client: c, brand, entry });
     await recomputeTier({ client: c, brand, contact_id });
     events.emit("loyalty.earned", { brand, contact_id, points, action_type });
     return entry;
@@ -280,6 +353,7 @@ async function redeemPoints({
         created_by: user.user_id,
       },
     });
+    await postLoyaltyGl({ client: client, brand, entry });
     await audit({
       business: brand,
       user_id: user.user_id,
@@ -314,6 +388,7 @@ async function adjustPoints({
         created_by: user.user_id,
       },
     });
+    await postLoyaltyGl({ client: client, brand, entry });
     await recomputeTier({ client, brand, contact_id });
     await audit({
       business: brand,
@@ -456,7 +531,7 @@ async function redeemReferral({
       reward_value: rewardCredit,
     });
     // Credit the referrer's loyalty balance.
-    await repo.insertLoyaltyLedger({
+    const referralEntry = await repo.insertLoyaltyLedger({
       client,
       brand,
       entry: {
@@ -468,6 +543,7 @@ async function redeemReferral({
         notes: `Referral reward (${code})`,
       },
     });
+    await postLoyaltyGl({ client, brand, entry: referralEntry });
     await recomputeTier({ client, brand, contact_id: ref.contact_id });
     events.emit("referral.redeemed", {
       brand,

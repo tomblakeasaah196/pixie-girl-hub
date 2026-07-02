@@ -292,7 +292,9 @@ function listSectionTemplates() {
 
 // ── Branding image upload (logo / favicon / OG) ────────────
 // Stored via the shared storage service; the returned URL is written into the
-// theme tokens (--logo-url / --favicon-url / --og-image) by the Branding tab.
+// theme tokens by the Branding tab — dark/light logo (--logo-url-dark /
+// --logo-url-light), dark/light favicon (--favicon-url-dark /
+// --favicon-url-light) and the share image (--og-image).
 async function uploadImage({ brand, file }) {
   if (!file || !file.buffer || !file.buffer.length)
     throw new AppError("NO_FILE", "No image was uploaded", 400);

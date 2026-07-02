@@ -5,8 +5,8 @@ import { useCartCount, openCart } from "@/lib/useStore";
 import { PromoBar } from "./PromoBar";
 import { CurrencySwitcher } from "./CurrencySwitcher";
 import { ThemeToggle } from "./ThemeToggle";
-import { SITE_IMAGES } from "@/lib/site-assets";
-import { useNavigation } from "@/lib/site-config";
+import { BrandLogo } from "./BrandLogo";
+import { useNavigation, useBranding } from "@/lib/site-config";
 
 // Fallback nav (used when Storefront Studio navigation isn't published yet).
 const NAV_FALLBACK = [
@@ -26,13 +26,10 @@ const item: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] } },
 };
 
-export function SiteHeader({
-  logoUrl = SITE_IMAGES.logoCream,
-}: {
-  logoUrl?: string;
-} = {}) {
+export function SiteHeader() {
   const count = useCartCount();
   const nav = useNavigation();
+  const { name } = useBranding();
   const items =
     nav?.header_items && nav.header_items.length ? nav.header_items : NAV_FALLBACK;
   // The cinematic preloader covers the first ~2s on the home page; gate the
@@ -83,21 +80,15 @@ export function SiteHeader({
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             className="justify-self-center"
           >
-            <Link to="/" className="flex items-center shrink-0" aria-label="Faitlyn Hair — home">
-              {logoUrl ? (
-                <img
-                  src={logoUrl}
-                  alt="Faitlyn Hair"
-                  width={709}
-                  height={274}
-                  className="h-auto w-[120px] sm:w-[140px] md:w-[160px] lg:w-[170px] max-h-12 object-contain select-none block"
-                  draggable={false}
-                />
-              ) : (
-                <span className="font-display text-base md:text-lg tracking-[0.28em] uppercase text-cream whitespace-nowrap">
-                  Faitlyn Hair
-                </span>
-              )}
+            <Link to="/" className="flex items-center shrink-0" aria-label={`${name || "Home"} — home`}>
+              <BrandLogo
+                imgClassName="h-auto w-[120px] sm:w-[140px] md:w-[160px] lg:w-[170px] max-h-12 object-contain select-none"
+                fallback={
+                  <span className="font-display text-base md:text-lg tracking-[0.28em] uppercase text-cream whitespace-nowrap">
+                    {name || "Faitlyn Hair"}
+                  </span>
+                }
+              />
             </Link>
           </motion.div>
 

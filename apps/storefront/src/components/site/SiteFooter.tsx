@@ -1,6 +1,6 @@
 import { Instagram, Facebook, Twitter, MessageCircle } from "lucide-react";
-import { SITE_IMAGES } from "@/lib/site-assets";
-import { useNavigation, type FooterColumn } from "@/lib/site-config";
+import { useNavigation, useBranding, type FooterColumn } from "@/lib/site-config";
+import { BrandLogo } from "@/components/site/BrandLogo";
 import { SmartLink } from "@/components/site/SmartLink";
 
 // Fallback columns (used when Studio navigation isn't published yet).
@@ -41,12 +41,9 @@ const SOCIAL_ICON: Record<string, typeof Instagram> = {
   whatsapp: MessageCircle,
 };
 
-export function SiteFooter({
-  logoUrl = SITE_IMAGES.logoCream,
-}: {
-  logoUrl?: string;
-} = {}) {
+export function SiteFooter() {
   const nav = useNavigation();
+  const { name } = useBranding();
   const columns =
     nav?.footer_columns && nav.footer_columns.length
       ? nav.footer_columns
@@ -58,20 +55,14 @@ export function SiteFooter({
     <footer className="bg-ink border-t border-taupe/15 mt-32">
       <div className="mx-auto max-w-[1400px] px-6 lg:px-10 py-20 grid gap-12 md:grid-cols-4">
         <div>
-          {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt="Faitlyn Hair"
-              width={709}
-              height={274}
-              className="w-[170px] h-auto max-h-12 object-contain select-none"
-              draggable={false}
-            />
-          ) : (
-            <span className="font-display text-lg tracking-[0.28em] uppercase text-cream">
-              Faitlyn Hair
-            </span>
-          )}
+          <BrandLogo
+            imgClassName="w-[170px] h-auto max-h-12 object-contain select-none"
+            fallback={
+              <span className="font-display text-lg tracking-[0.28em] uppercase text-cream">
+                {name || "Faitlyn Hair"}
+              </span>
+            }
+          />
           <p className="mt-6 text-sm text-muted-foreground max-w-xs leading-relaxed">
             A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.
           </p>

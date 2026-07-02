@@ -635,22 +635,47 @@ function BrandingTab() {
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (active) setTokens(active.tokens || {});
+    if (!active) return;
+    const t = { ...(active.tokens || {}) };
+    // Migrate a previously-single logo/favicon into the dark slot so it stays
+    // visible in the editor and keeps rendering on the (dark-default) site.
+    if (!t["--logo-url-dark"] && t["--logo-url"])
+      t["--logo-url-dark"] = t["--logo-url"];
+    if (!t["--favicon-url-dark"] && t["--favicon-url"])
+      t["--favicon-url-dark"] = t["--favicon-url"];
+    setTokens(t);
   }, [active]);
 
   if (isLoading)
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
   const rows = [
-    { key: "--logo-url", label: "Logo" },
-    { key: "--favicon-url", label: "Favicon (a square logo works best)" },
+    {
+      key: "--logo-url-dark",
+      label: "Logo — dark mode (a light/cream logo, for the dark site)",
+    },
+    {
+      key: "--logo-url-light",
+      label: "Logo — light mode (a dark logo, for the light site)",
+    },
+    {
+      key: "--favicon-url-dark",
+      label: "Favicon — dark browsers (square; use a light mark)",
+    },
+    {
+      key: "--favicon-url-light",
+      label: "Favicon — light browsers (square; use a dark mark)",
+    },
     { key: "--og-image", label: "Share image (shown when the link is posted)" },
   ];
   return (
     <Card className="max-w-xl space-y-5 p-5">
       <p className="text-[13px] text-text-muted">
-        Upload your logo, favicon and link-share image. Save as a draft, then
-        Publish to go live.
+        Upload a logo for dark mode and one for light mode — each is used in both
+        the header and the footer, and swaps automatically with the site theme.
+        The favicon is the little icon in the browser tab; give a light one for
+        dark browsers and a dark one for light browsers. Leave a light-mode slot
+        empty to reuse the dark one. Save as a draft, then Publish to go live.
       </p>
       {rows.map((r) => (
         <ImageField

@@ -37,7 +37,7 @@
 "use strict";
 
 const { EventEmitter } = require("events");
-const { query, transaction } = require("../config/database");
+const { transaction, ex: execFor } = require("../config/database");
 const { AppError } = require("../utils/errors");
 const cond = require("./conditions");
 const defaults = require("./default-definitions");
@@ -46,10 +46,6 @@ const emitter = new EventEmitter();
 emitter.setMaxListeners(50);
 
 const VALID_ACTIONS = new Set(["approve", "reject", "request_changes"]);
-
-function execFor(client) {
-  return client ? client.query.bind(client) : query;
-}
 
 // Re-export the pure normaliser so callers/tests keep one entry point.
 const normaliseStages = cond.normaliseStages;

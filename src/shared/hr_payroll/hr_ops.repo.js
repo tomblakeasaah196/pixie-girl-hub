@@ -12,12 +12,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
-
+const { ex: exec } = require("../../config/database");
 // Staff visible to a brand: primary brand OR listed as an additional brand.
 const VISIBLE = `(sp.business = $1 OR $1 = ANY(sp.additional_businesses))`;
 

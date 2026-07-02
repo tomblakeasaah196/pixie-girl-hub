@@ -37,7 +37,9 @@ const A = (
 // (e.g. during seeding / tests).
 function emitSettingsUpdated(payload) {
   try {
-    require("../../config/socket").getIo().emit("settings:updated", payload);
+    require("../../realtime/emitter")
+      .getBroadcaster()
+      .emit("settings:updated", payload);
   } catch {
     /* socket not initialised — non-fatal */
   }

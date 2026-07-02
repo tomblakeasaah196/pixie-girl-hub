@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getContentPost } from "@/lib/storefront";
+import { usePageSlots } from "@/lib/site-config";
 
 export const Route = createFileRoute("/policies/$slug")({
   head: () => ({ meta: [{ title: "Policy — Faitlyn Hair" }] }),
@@ -55,7 +56,13 @@ function PolicyPage() {
     queryFn: () => getContentPost("policy", slug),
     retry: false,
   });
-  const title = data?.title || TITLES[slug] || slug.replace(/-/g, " ");
+  // Studio-managed override (page_key `policy-<slug>`): { title, body_md, body_html }.
+  const studio = usePageSlots(`policy-${slug}`) as {
+    title?: string;
+    body_md?: string;
+    body_html?: string;
+  };
+  const title = data?.title || studio.title || TITLES[slug] || slug.replace(/-/g, " ");
 
   return (
     <main className="min-h-screen bg-ink text-cream pt-32 md:pt-28 pb-24 px-6">
@@ -70,6 +77,10 @@ function PolicyPage() {
           <div className="prose mt-12 max-w-none text-cream/80" dangerouslySetInnerHTML={{ __html: data.body_html }} />
         ) : data?.body_md ? (
           <p className="mt-12 whitespace-pre-wrap text-cream/80 leading-relaxed">{data.body_md}</p>
+        ) : studio.body_html ? (
+          <div className="prose mt-12 max-w-none text-cream/80" dangerouslySetInnerHTML={{ __html: studio.body_html }} />
+        ) : studio.body_md ? (
+          <p className="mt-12 whitespace-pre-wrap text-cream/80 leading-relaxed">{studio.body_md}</p>
         ) : slug === "cancellation" ? (
           <CancellationBody />
         ) : (

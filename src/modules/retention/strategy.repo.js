@@ -6,15 +6,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-const { VALID } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-const t = (brand, tbl) => {
-  if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${tbl}`;
-};
-
+const { query, ex } = require("../../config/database");
+const { t } = require("../../config/brands");
 const STRATEGY_COLS = [
   "strategy_key",
   "display_name",

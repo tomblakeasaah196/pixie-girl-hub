@@ -11,12 +11,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-function execFor(client) {
-  return client ? client.query.bind(client) : query;
-}
-
+const { ex: execFor } = require("../../config/database");
 const INITIATOR_NAME = `
   COALESCE(ic.display_name, split_part(iu.email::text, '@', 1))`;
 

@@ -56,15 +56,11 @@ const THEMES = {
 // Nav (matches the ported SiteHeader/SiteFooter — no "Shades" item).
 const NAV = {
   header_items: [
-    { label: "Shop", url: "/shop", children: [
-      { label: "All catalogue", url: "/shop" },
-      { label: "Bundles", url: "/bundles" },
-    ] },
+    { label: "Shop", url: "/shop" },
+    { label: "Bundles", url: "/bundles" },
     { label: "Services", url: "/services" },
-    { label: "Maison", url: "/about", children: [
-      { label: "Our story", url: "/about" },
-      { label: "Journal", url: "/journal" },
-    ] },
+    { label: "Maison", url: "/about" },
+    { label: "Journal", url: "/journal" },
   ],
   footer_columns: [
     { title: "Shop", links: [
@@ -185,18 +181,95 @@ const HOME_SLOTS = {
   },
 };
 
-function homePage(brand) {
+const POLICY_TITLES = {
+  cancellation: "Cancellation Policy",
+  returns: "Returns & Refunds",
+  shipping: "Shipping Policy",
+  privacy: "Privacy Policy",
+  terms: "Terms of Service",
+};
+
+// Every storefront page as an editable Studio record. The `slots` keys match the
+// storefront's per-page defaults (usePageSlots / withSlots), so editing them in
+// Studio changes the live page. Catalogue data (products/services/bundles) still
+// comes from the Hub — these slots are the surrounding copy/imagery.
+function pagesFor(brand) {
   const name = brand === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl";
-  return {
-    page_key: "home",
-    template_key: "maison_home_v1",
-    url_path: "/",
-    meta_title: `${name} — Luxury Natural Hair, Crafted in Lagos`,
-    meta_description: `${name}: a Lagos maison crafting the world's most coveted pixies, bobs and curls. Hand-finished, lace-perfect luxury — shipped worldwide.`,
-    og_image_url: IMG.hero,
-    slots: HOME_SLOTS,
-  };
+  const pages = [
+    {
+      page_key: "home", template_key: "maison_home_v1", url_path: "/", og_image_url: IMG.hero,
+      meta_title: `${name} — Luxury Natural Hair, Crafted in Lagos`,
+      meta_description: `${name}: a Lagos maison crafting the world's most coveted pixies, bobs and curls. Hand-finished, lace-perfect luxury — shipped worldwide.`,
+      slots: HOME_SLOTS,
+    },
+    {
+      page_key: "shop", template_key: "catalogue_v1", url_path: "/shop", og_image_url: IMG.hero,
+      meta_title: `Shop the Catalogue — ${name}`,
+      meta_description: "Every silhouette, live from the Lagos atelier — hand-finished and shade-matched.",
+      slots: { eyebrow: "The Catalogue", heading: "Shop the ", headingAccent: "maison", headingAfter: ".", body: "Every silhouette, live from the Lagos atelier — hand-finished and shade-matched." },
+    },
+    {
+      page_key: "about", template_key: "maison_about_v1", url_path: "/about", og_image_url: IMG.models,
+      meta_title: `The Maison — Our Story · ${name}`,
+      meta_description: "Inside the Lagos atelier crafting hand-finished pixies, bobs and curls for women of colour worldwide.",
+      slots: { eyebrow: "Est. Lagos · 2021", heading: "The hair we always wished we could ", headingAccent: "buy", headingAfter: ".", imageUrl: IMG.models },
+    },
+    {
+      page_key: "services", template_key: "services_v1", url_path: "/services", og_image_url: IMG.hero,
+      meta_title: `Services & Bookings — ${name}`,
+      meta_description: "Installs, in-home styling sessions and virtual consults with a senior stylist.",
+      slots: { eyebrow: "Services · Prestations", heading: "Book with the ", headingAccent: "maison", headingAfter: ".", body: "Installs, in-home styling sessions and virtual consults — each booked with a senior Faitlyn stylist." },
+    },
+    {
+      page_key: "bundles", template_key: "bundles_v1", url_path: "/bundles", og_image_url: IMG.hero,
+      meta_title: `Bundles — Better Together · ${name}`,
+      meta_description: "Curated sets at a couture discount. Three pieces. Two pieces. One opportunity to save.",
+      slots: { eyebrow: "Bundles · Ensembles", heading: "Better ", headingAccent: "together", headingAfter: ".", body: "Curated sets at a couture discount. Three pieces. Two pieces. One opportunity to save." },
+    },
+    {
+      page_key: "journal", template_key: "journal_v1", url_path: "/journal", og_image_url: IMG.atelier,
+      meta_title: `Journal — Notes from the Atelier · ${name}`,
+      meta_description: "Notes, care guides and edits from the Lagos atelier.",
+      slots: { eyebrow: "Journal", heading: "Notes from the ", headingAccent: "atelier", headingAfter: "." },
+    },
+    {
+      page_key: "contact", template_key: "contact_v1", url_path: "/contact", og_image_url: IMG.hero,
+      meta_title: `Contact — ${name}`,
+      meta_description: "Reach the Lagos studio for sizing, orders and aftercare.",
+      slots: { eyebrow: "Concierge", heading: "Let's talk ", headingAccent: "hair", headingAfter: ".", body: "Sizing, shade-matching, bulk & trade orders, aftercare — our Lagos studio answers every message personally. ", bodyAccent: "Fait avec soin.", email: "hello@faitlynhair.com", whatsapp: "2348061987874", studio: "10B Emma Abimbola Cole Street, Lekki Phase 1, Lagos", hours: "Mon – Sat · 9am – 6pm WAT" },
+    },
+  ];
+  for (const [slug, title] of Object.entries(POLICY_TITLES)) {
+    pages.push({
+      page_key: `policy-${slug}`, template_key: "policy_v1", url_path: `/policies/${slug}`, og_image_url: null,
+      meta_title: `${title} — ${name}`,
+      meta_description: `${title} for ${name}.`,
+      slots: { title },
+    });
+  }
+  return pages;
 }
+
+// Studio-managed popups (newsletter "The Letter"). Content keys mirror what the
+// storefront modal reads; seeded only where the table exists.
+const POPUPS = [
+  {
+    popup_key: "newsletter",
+    trigger_type: "time_delay",
+    trigger_value: 25,
+    audience: "all",
+    content: {
+      eyebrow: "The Letter",
+      heading: "One curated note. Once a month.",
+      bullets: ["Early access to limited drops", "Hair education from the Lagos atelier", "Founder picks, no spam, ever"],
+      cta_label: "Join the list",
+      placeholder: "your@email.com",
+      image_url: IMG.model2,
+    },
+    display_rules: { frequency: "session" },
+    display_order: 0,
+  },
+];
 
 // Optional Studio section-template library (guided page composer). Seeded only
 // when the table exists (migration 000243); skipped otherwise.
@@ -237,21 +310,40 @@ async function seedBrand(client, brand) {
     [brand, JSON.stringify(NAV.header_items), JSON.stringify(NAV.footer_columns), JSON.stringify(NAV.socials)],
   );
 
-  const page = homePage(brand);
-  await client.query(
-    `DELETE FROM shared.storefront_pages
-      WHERE business = $1 AND page_key = $2 AND status = 'published'`,
-    [brand, page.page_key],
-  );
-  await client.query(
-    `INSERT INTO shared.storefront_pages
-       (business, page_key, template_key, status, url_path, meta_title,
-        meta_description, og_image_url, slots)
-     VALUES ($1, $2, $3, 'published', $4, $5, $6, $7, $8)`,
-    [brand, page.page_key, page.template_key, page.url_path, page.meta_title, page.meta_description, page.og_image_url, JSON.stringify(page.slots)],
-  );
+  const pages = pagesFor(brand);
+  for (const page of pages) {
+    await client.query(
+      `DELETE FROM shared.storefront_pages
+        WHERE business = $1 AND page_key = $2 AND status = 'published'`,
+      [brand, page.page_key],
+    );
+    await client.query(
+      `INSERT INTO shared.storefront_pages
+         (business, page_key, template_key, status, url_path, meta_title,
+          meta_description, og_image_url, slots)
+       VALUES ($1, $2, $3, 'published', $4, $5, $6, $7, $8)`,
+      [brand, page.page_key, page.template_key, page.url_path, page.meta_title, page.meta_description, page.og_image_url, JSON.stringify(page.slots)],
+    );
+  }
 
-  process.stdout.write(`  seeded ${brand} (theme + nav + home)\n`);
+  if (await tableExists(client, "storefront_popups")) {
+    for (const p of POPUPS) {
+      await client.query(
+        `DELETE FROM shared.storefront_popups
+          WHERE business = $1 AND popup_key = $2 AND status = 'published'`,
+        [brand, p.popup_key],
+      );
+      await client.query(
+        `INSERT INTO shared.storefront_popups
+           (business, status, popup_key, trigger_type, trigger_value, audience,
+            content, display_rules, display_order)
+         VALUES ($1, 'published', $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)`,
+        [brand, p.popup_key, p.trigger_type, p.trigger_value, p.audience, JSON.stringify(p.content), JSON.stringify(p.display_rules), p.display_order],
+      );
+    }
+  }
+
+  process.stdout.write(`  seeded ${brand} (theme + nav + ${pages.length} pages + popups)\n`);
 }
 
 async function seedSectionTemplates(client) {

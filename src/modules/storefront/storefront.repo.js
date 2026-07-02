@@ -8,15 +8,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID_BRANDS } = require("../../config/brands");
-const ex = (c) => (c ? c.query.bind(c) : query);
-const t = (brand, tbl) => {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${tbl}`;
-};
-
+const { query, ex } = require("../../config/database");
+const { VALID_BRANDS, t } = require("../../config/brands");
 // SINGLE SOURCE for the storefront "from" price (lowest variant price) in BOTH
 // currencies. The expression MIRRORS catalogue/styled_variants.repo.listVariants
 // (effective_price_ngn/usd) so list cards and the detail page never diverge — we

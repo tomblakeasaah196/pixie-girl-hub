@@ -6,17 +6,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID_BRANDS } = require("../../config/brands");
-function t(brand, table) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${table}`;
-}
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
-
+const { ex: exec } = require("../../config/database");
+const { t } = require("../../config/brands");
 // ── Active staff (with their user account) for a payroll run ───────────
 async function listActiveStaffForPayroll({ client, brand, period_end }) {
   const { rows } = await exec(client)(

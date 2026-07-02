@@ -255,6 +255,11 @@ const LogisticsPage = lazyWithRetry(() =>
     default: m.LogisticsPage,
   })),
 );
+const RetailPartnersPage = lazyWithRetry(() =>
+  import("@/pages/retail-partners/RetailPartnersPage").then((m) => ({
+    default: m.RetailPartnersPage,
+  })),
+);
 const MyHrPage = lazyWithRetry(() => import("@/pages/hr/MyHrPage"));
 const HrStaffPage = lazyWithRetry(() => import("@/pages/hr/HrStaffPage"));
 const PayrollPage = lazyWithRetry(() => import("@/pages/hr/PayrollPage"));
@@ -575,6 +580,15 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <InvoicingPage />
+                </Suspense>
+              ),
+            },
+            // Retail / Consignment Partners (V2.2 §6.29, guide §2.21).
+            {
+              path: "retail-partners",
+              element: (
+                <Suspense fallback={null}>
+                  <RetailPartnersPage />
                 </Suspense>
               ),
             },

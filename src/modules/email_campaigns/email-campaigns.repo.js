@@ -8,10 +8,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 /**
  * Compile a saved-segment audience filter into SQL AND-clauses against

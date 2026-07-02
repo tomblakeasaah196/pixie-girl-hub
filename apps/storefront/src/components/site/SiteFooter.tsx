@@ -1,42 +1,58 @@
+import { Instagram, Facebook, Twitter, MessageCircle } from "lucide-react";
 import { SITE_IMAGES } from "@/lib/site-assets";
+import { useNavigation, type FooterColumn } from "@/lib/site-config";
 
-type FooterLink = { label: string; to?: string };
-
-const columns: { h: string; l: FooterLink[] }[] = [
+// Fallback columns (used when Studio navigation isn't published yet).
+const FALLBACK_COLUMNS: FooterColumn[] = [
   {
-    h: "Shop",
-    l: [
-      { label: "All catalogue", to: "/shop" },
-      { label: "Bundles", to: "/bundles" },
-      { label: "Pixie Cuts", to: "/shop" },
-      { label: "Bob Wigs", to: "/shop" },
-      { label: "Curly Collection", to: "/shop" },
-      { label: "Limited Drops", to: "/shop" },
+    title: "Shop",
+    links: [
+      { label: "All catalogue", url: "/shop" },
+      { label: "Bundles", url: "/bundles" },
+      { label: "Pixie Cuts", url: "/shop" },
+      { label: "Bob Wigs", url: "/shop" },
+      { label: "Curly Collection", url: "/shop" },
+      { label: "Limited Drops", url: "/shop" },
     ],
   },
   {
-    h: "Maison",
-    l: [
-      { label: "Our Story", to: "/about" },
-      { label: "Journal", to: "/journal" },
-      { label: "Services", to: "/services" },
+    title: "Maison",
+    links: [
+      { label: "Our Story", url: "/about" },
+      { label: "Journal", url: "/journal" },
+      { label: "Services", url: "/services" },
     ],
   },
   {
-    h: "Care",
-    l: [
-      { label: "Contact", to: "/contact" },
-      { label: "Email Preferences", to: "/account" },
-      { label: "Cancellation Policy", to: "/policies/cancellation" },
+    title: "Care",
+    links: [
+      { label: "Contact", url: "/contact" },
+      { label: "Email Preferences", url: "/account" },
+      { label: "Cancellation Policy", url: "/policies/cancellation" },
     ],
   },
 ];
+
+const SOCIAL_ICON: Record<string, typeof Instagram> = {
+  instagram: Instagram,
+  facebook: Facebook,
+  twitter: Twitter,
+  whatsapp: MessageCircle,
+};
 
 export function SiteFooter({
   logoUrl = SITE_IMAGES.logoCream,
 }: {
   logoUrl?: string;
 } = {}) {
+  const nav = useNavigation();
+  const columns =
+    nav?.footer_columns && nav.footer_columns.length
+      ? nav.footer_columns
+      : FALLBACK_COLUMNS;
+  const socials = nav?.socials ?? {};
+  const socialEntries = Object.entries(socials).filter(([, href]) => href);
+
   return (
     <footer className="bg-ink border-t border-taupe/15 mt-32">
       <div className="mx-auto max-w-[1400px] px-6 lg:px-10 py-20 grid gap-12 md:grid-cols-4">
@@ -58,14 +74,33 @@ export function SiteFooter({
           <p className="mt-6 text-sm text-muted-foreground max-w-xs leading-relaxed">
             A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.
           </p>
+          {socialEntries.length ? (
+            <div className="mt-6 flex gap-3">
+              {socialEntries.map(([key, href]) => {
+                const Icon = SOCIAL_ICON[key] ?? Instagram;
+                return (
+                  <a
+                    key={key}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={key}
+                    className="grid h-9 w-9 place-items-center rounded-full border border-taupe/30 text-taupe hover:border-taupe hover:text-cream transition-colors"
+                  >
+                    <Icon size={15} />
+                  </a>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
-        {columns.map((c) => (
-          <div key={c.h}>
-            <h4 className="text-[0.7rem] tracking-[0.4em] uppercase text-taupe mb-5">{c.h}</h4>
+        {columns.map((col) => (
+          <div key={col.title}>
+            <h4 className="text-[0.7rem] tracking-[0.4em] uppercase text-taupe mb-5">{col.title}</h4>
             <ul className="space-y-3 text-sm text-muted-foreground">
-              {c.l.map((i, idx) => (
-                <li key={`${i.label}-${idx}`} className="hover:text-cream transition-colors">
-                  {i.to ? <a href={i.to}>{i.label}</a> : <span className="cursor-pointer">{i.label}</span>}
+              {col.links.map((l, idx) => (
+                <li key={`${l.label}-${idx}`} className="hover:text-cream transition-colors">
+                  <a href={l.url}>{l.label}</a>
                 </li>
               ))}
             </ul>

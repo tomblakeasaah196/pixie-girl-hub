@@ -24,7 +24,7 @@
 "use strict";
 
 const { AppError } = require("../utils/errors");
-const businessConfigRepo = require("../modules/business_setup/business-config.repo");
+const identityCache = require("../shared/cache/identity-cache");
 const requestContext = require("../config/request-context");
 
 const { VALID_BRANDS } = require("../config/brands");
@@ -54,7 +54,9 @@ async function brandContextMiddleware(req, _res, next) {
     throw new AppError("BRAND_ACCESS_DENIED", `No access to ${brand}`, 403);
   }
 
-  const business = await businessConfigRepo.findByKey(brand);
+  // Cached (30 s TTL; business-setup config.updated invalidates) — saves a
+  // DB round-trip on every brand-scoped request.
+  const business = await identityCache.getBrandConfig(brand);
   if (!business) {
     throw new AppError(
       "BRAND_NOT_FOUND",

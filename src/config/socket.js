@@ -59,6 +59,9 @@ async function initSocketIo(httpServer) {
   const { registerStockRealtime } = require("../realtime/stock-realtime");
   registerStockRealtime();
 
+  const { registerPraxisRealtime } = require("../realtime/praxis-realtime");
+  registerPraxisRealtime();
+
   logger.info("socket.io initialised with redis adapter");
   return io;
 }

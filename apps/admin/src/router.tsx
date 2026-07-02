@@ -217,6 +217,7 @@ const WorkspacePage = lazyWithRetry(() =>
     default: m.WorkspacePage,
   })),
 );
+const PraxisPage = lazyWithRetry(() => import("@/pages/praxis/PraxisPage"));
 const InvoicingPage = lazyWithRetry(() =>
   import("@/pages/invoicing/InvoicingPage").then((m) => ({
     default: m.InvoicingPage,
@@ -405,6 +406,16 @@ export const router = createBrowserRouter(
             { path: "catalogue/styled/:id", element: <StyledProductPage /> },
 
             // Workspace (Tasks + Calendar + My Day)
+            // Praxis AI agent (§6.29) — full workspace; the drawer opens
+            // from the FloatingLauncher on every screen.
+            {
+              path: "praxis",
+              element: (
+                <Suspense fallback={null}>
+                  <PraxisPage />
+                </Suspense>
+              ),
+            },
             {
               path: "workspace",
               element: (

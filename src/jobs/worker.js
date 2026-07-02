@@ -300,6 +300,7 @@ async function startWorkers() {
   require("../realtime/stock-realtime").registerStockRealtime();
   require("../realtime/workflow-realtime").registerWorkflowRealtime();
   require("../realtime/campaign-realtime").registerCampaignRealtime();
+  require("../realtime/praxis-realtime").registerPraxisRealtime();
   require("../modules/smartcomm/smartcomm.realtime"); // self-registers, guarded
 
   outboxTimer = setInterval(() => {

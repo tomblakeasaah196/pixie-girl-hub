@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useUnreadCount } from "@/hooks/useCommandCenter";
 import { useChatDockStore } from "@/stores/chat-dock";
+import { usePraxisDockStore } from "@/stores/praxis-dock";
 import { useUnreadMessages } from "@/hooks/useSmartcomm";
 
 /**
@@ -18,6 +19,7 @@ export function FloatingLauncher() {
   const { data } = useUnreadCount();
   const { data: messagesUnread } = useUnreadMessages();
   const openDock = useChatDockStore((s) => s.openDock);
+  const openPraxis = usePraxisDockStore((s) => s.openDock);
   const unread = (data?.unread ?? 0) + (messagesUnread?.unread_count ?? 0);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -75,14 +77,14 @@ export function FloatingLauncher() {
             {mini(
               "Praxis AI",
               <Sparkles className="w-5 h-5" />,
-              () => navigate("/praxis"),
+              () => openPraxis(),
               true,
             )}
           </div>
         </div>
       )}
       <button
-        onClick={() => (isDesktop ? navigate("/praxis") : setOpen((v) => !v))}
+        onClick={() => (isDesktop ? openPraxis() : setOpen((v) => !v))}
         aria-label="Quick actions"
         className={cn(
           "relative grid place-items-center w-[58px] h-[58px] rounded-[20px] text-[#F4E9D9] border border-white/10 shadow-[0_12px_30px_rgb(var(--accent-deep)/0.5)] transition-transform hover:-translate-y-0.5 hover:scale-105",

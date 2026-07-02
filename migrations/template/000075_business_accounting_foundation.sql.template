@@ -1,0 +1,82 @@
+-- ============================================================
+-- 000075 — Accounting foundation (full double-entry rollout, Phase 1)
+--
+-- Implements the ratified accounting policy (2026-07):
+--
+--   variant_costing   — moving weighted-average unit cost per variant
+--                       (policy Q9). Recomputed on every cost-bearing
+--                       receipt; sales, write-offs and production
+--                       consumption relieve inventory at this average.
+--   Contra Revenue    — account group '4C'. normal_balance is 'credit'
+--                       ON PURPOSE: a returns account carries a debit
+--                       balance, so its report balance (credit − debit)
+--                       comes out negative and the P&L nets it off
+--                       revenue with no service-layer changes.
+--   New GL accounts   — COD-in-transit clearing (Q10), GRNI clearing
+--                       (Q5), factory AP in CNY (Q12), commissions
+--                       payable (Q11), sales returns (Q8), depreciation
+--                       expense (asset register default).
+-- ============================================================
+
+-- ── variant_costing ──────────────────────────────────────
+-- One row per variant. The service layer locks this row (FOR UPDATE),
+-- applies the movement, and persists the new average inside the SAME
+-- transaction as the stock movement — so the average can never drift
+-- from the movement ledger.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.variant_costing (
+  variant_id        UUID          PRIMARY KEY
+                    REFERENCES {{BUSINESS}}.product_variants (variant_id) ON DELETE CASCADE,
+  -- Units the current average was built over (variant-level, all locations).
+  qty_tracked       NUMERIC(14,2) NOT NULL DEFAULT 0,
+  -- Moving weighted-average unit cost. 4dp so repeated small receipts do not
+  -- drift; journal amounts are rounded to 2dp only at posting time.
+  avg_cost_ngn      NUMERIC(14,4) NOT NULL DEFAULT 0,
+  -- The movement that last moved the average (traceability).
+  last_movement_id  UUID,
+  updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE TRIGGER trg_{{BUSINESS}}_variant_costing_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.variant_costing
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+-- ── Contra Revenue group ─────────────────────────────────
+INSERT INTO {{BUSINESS}}.account_groups
+  (group_code, group_name, group_type, normal_balance, statement, display_order)
+VALUES
+  ('4C', 'Contra Revenue', 'contra_revenue', 'credit', 'income_statement', 6)
+ON CONFLICT (group_code) DO NOTHING;
+
+-- ── New GL accounts ──────────────────────────────────────
+DO $$
+DECLARE
+  g_assets      UUID;
+  g_liabilities UUID;
+  g_contra_rev  UUID;
+  g_expenses    UUID;
+  cny           TEXT;
+BEGIN
+  SELECT group_id INTO g_assets      FROM {{BUSINESS}}.account_groups WHERE group_code = '1';
+  SELECT group_id INTO g_liabilities FROM {{BUSINESS}}.account_groups WHERE group_code = '2';
+  SELECT group_id INTO g_contra_rev  FROM {{BUSINESS}}.account_groups WHERE group_code = '4C';
+  SELECT group_id INTO g_expenses    FROM {{BUSINESS}}.account_groups WHERE group_code = '5';
+  -- Factory AP is CNY-denominated only if the currency is registered;
+  -- otherwise the account still exists, just without FX revaluation.
+  SELECT currency_code INTO cny FROM shared.currencies WHERE currency_code = 'CNY';
+
+  INSERT INTO {{BUSINESS}}.chart_of_accounts
+    (account_code, account_name, group_id, is_control_account, control_subledger, account_currency, description)
+  VALUES
+    ('1610', 'COD in Transit — Couriers', g_assets, false, NULL, NULL,
+     'Cash collected on delivery, held by couriers until remitted (policy Q10)'),
+    ('2020', 'Accounts Payable — Factory (CNY)', g_liabilities, false, NULL, cny,
+     'China factory running balance folded into standard AP (policy Q12)'),
+    ('2050', 'GRNI — Goods Received Not Invoiced', g_liabilities, false, NULL, NULL,
+     'Clearing: inventory received before the supplier invoice is approved (policy Q5)'),
+    ('2260', 'Commissions Payable — Stylists & Partners', g_liabilities, false, NULL, NULL,
+     'Accrued stylist-programme and retail-partner payouts (policy Q11)'),
+    ('4090', 'Sales Returns & Allowances', g_contra_rev, false, NULL, NULL,
+     'Contra revenue: refunds and returns net off gross sales (policy Q8)'),
+    ('5930', 'Depreciation Expense', g_expenses, false, NULL, NULL,
+     'Monthly straight-line depreciation charge (asset register)')
+  ON CONFLICT (account_code) DO NOTHING;
+END $$;

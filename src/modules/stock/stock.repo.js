@@ -237,6 +237,62 @@ async function recordMovement({ client, brand, input, user_id }) {
   return rows[0];
 }
 
+// ── Variant costing (weighted average, policy Q9) ────────
+// Ensure-then-lock: the row is created lazily on the variant's first
+// non-exempt movement, then locked so concurrent movements serialise.
+async function lockVariantCosting({ client, brand, variant_id }) {
+  await ex(client)(
+    `INSERT INTO ${t(brand, "variant_costing")} (variant_id)
+     VALUES ($1) ON CONFLICT (variant_id) DO NOTHING`,
+    [variant_id],
+  );
+  const { rows } = await ex(client)(
+    `SELECT variant_id, qty_tracked, avg_cost_ngn
+       FROM ${t(brand, "variant_costing")}
+      WHERE variant_id = $1 FOR UPDATE`,
+    [variant_id],
+  );
+  return rows[0];
+}
+
+async function updateVariantCosting({
+  client,
+  brand,
+  variant_id,
+  qty_tracked,
+  avg_cost_ngn,
+  movement_id,
+}) {
+  await ex(client)(
+    `UPDATE ${t(brand, "variant_costing")}
+        SET qty_tracked = $2, avg_cost_ngn = $3, last_movement_id = $4
+      WHERE variant_id = $1`,
+    [variant_id, qty_tracked, avg_cost_ngn, movement_id],
+  );
+}
+
+/**
+ * COGS basis per variant: the weighted average when one exists, else the
+ * variant's (deprecated but still populated) standard cost. Returns a
+ * Map(variant_id → cost string); variants with no basis are absent.
+ */
+async function getCostBasisForVariants({ client, brand, variant_ids }) {
+  if (!variant_ids || variant_ids.length === 0) return new Map();
+  const { rows } = await ex(client)(
+    `SELECT pv.variant_id,
+            COALESCE(NULLIF(vc.avg_cost_ngn, 0), pv.cost_price_ngn) AS unit_cost_ngn
+       FROM ${t(brand, "product_variants")} pv
+       LEFT JOIN ${t(brand, "variant_costing")} vc ON vc.variant_id = pv.variant_id
+      WHERE pv.variant_id = ANY($1)`,
+    [variant_ids],
+  );
+  const map = new Map();
+  for (const r of rows) {
+    if (r.unit_cost_ngn !== null) map.set(r.variant_id, r.unit_cost_ngn);
+  }
+  return map;
+}
+
 async function nextDocNumber({ client, brand, type }) {
   const { rows } = await ex(client)(
     `SELECT ${t(brand, "fn_next_document_number")}($1) AS n`,
@@ -741,6 +797,9 @@ module.exports = {
   defaultVariantForProduct,
   listMovements,
   recordMovement,
+  lockVariantCosting,
+  updateVariantCosting,
+  getCostBasisForVariants,
   createAdjustment,
   addAdjustmentLine,
   listAdjustmentLines,

@@ -495,9 +495,10 @@ async function cashFlow({ brand, from, to }) {
   };
 }
 
-const FX_GAIN_ACCOUNT = "4910"; // FX Gain — Realised (revenue)
-const FX_LOSS_ACCOUNT = "5910"; // FX Loss — Realised (expense)
-const CASH_BANK_ACCOUNT = "1100"; // Bank — Operating Account (NGN)
+const { ACCOUNTS } = require("./posting-map");
+const FX_GAIN_ACCOUNT = ACCOUNTS.FX_GAIN_REALISED;
+const FX_LOSS_ACCOUNT = ACCOUNTS.FX_LOSS_REALISED;
+const CASH_BANK_ACCOUNT = ACCOUNTS.BANK_MAIN;
 
 /**
  * Post a realised FX gain/loss (V2.2 §6.6). `delta_ngn` is the NGN variance
@@ -597,8 +598,8 @@ async function payablesAgeing({ brand, as_of }) {
 }
 
 // ── FX Period-End Revaluation (F-9) ──────────────────────
-const UNREALISED_FX_GAIN = "4920"; // Unrealised FX Gain
-const UNREALISED_FX_LOSS = "5920"; // Unrealised FX Loss
+const UNREALISED_FX_GAIN = ACCOUNTS.FX_GAIN_UNREALISED;
+const UNREALISED_FX_LOSS = ACCOUNTS.FX_LOSS_UNREALISED;
 
 /**
  * Run a period-end FX revaluation. For every FX-denominated account with a

@@ -40,28 +40,9 @@ const { logger } = require("../../config/logger");
 
 const PAID_STATES = new Set(["paid", "awaiting_dispatch", "completed"]);
 
-// Per-gateway Payment Processing Fees GL accounts (V2.2 §6.6 A-7 / seed 000035).
-// Stripe is split per settlement currency.
-const GATEWAY_FEE_ACCOUNT = {
-  paystack: "5511",
-  opay: "5512",
-  nomba: "5513",
-};
-const STRIPE_FEE_ACCOUNT_BY_CCY = {
-  USD: "5514",
-  GBP: "5515",
-  EUR: "5516",
-  CAD: "5517",
-  GHS: "5518",
-};
-function gatewayFeeAccount(provider, paid_currency) {
-  if (provider === "stripe")
-    return (
-      STRIPE_FEE_ACCOUNT_BY_CCY[(paid_currency || "USD").toUpperCase()] ||
-      "5514"
-    );
-  return GATEWAY_FEE_ACCOUNT[provider] || null;
-}
+// Per-gateway Payment Processing Fees GL accounts (V2.2 §6.6 A-7): resolved
+// through the accounting posting map, the SSOT for all journal account codes.
+const { gatewayFeeAccount } = require("../accounting/posting-map");
 
 function channelPrice(ctx, channel) {
   // NOTE: the POS *terminal app* was retired (replaced by the Quick Sale Form),

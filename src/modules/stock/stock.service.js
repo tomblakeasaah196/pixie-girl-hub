@@ -12,9 +12,37 @@ require("./stock.subscribers"); // side-effect: register catalogue listener
 
 const repo = require("./stock.repo");
 const events = require("./stock.events");
+const costing = require("./stock.costing");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+
+/**
+ * Record a movement AND maintain the variant's weighted-average cost in the
+ * same transaction (policy Q9). Every movement write in this module goes
+ * through here — never call repo.recordMovement directly, or the average
+ * drifts from the movement ledger.
+ */
+async function applyMovement({ client, brand, input, user_id }) {
+  const m = await repo.recordMovement({ client, brand, input, user_id });
+  if (!costing.isCostingExempt(m.movement_type)) {
+    const current = await repo.lockVariantCosting({
+      client,
+      brand,
+      variant_id: m.variant_id,
+    });
+    const next = costing.applyMovementToCosting(current, m);
+    await repo.updateVariantCosting({
+      client,
+      brand,
+      variant_id: m.variant_id,
+      qty_tracked: next.qty_tracked,
+      avg_cost_ngn: next.avg_cost_ngn,
+      movement_id: m.movement_id,
+    });
+  }
+  return m;
+}
 
 // Locations
 const listLocations = ({ brand }) => repo.listLocations({ brand });
@@ -76,7 +104,7 @@ function listMovements({ brand, filters, page, page_size }) {
 }
 async function recordMovement({ brand, user, request_id, input }) {
   return transaction(async (client) => {
-    const m = await repo.recordMovement({
+    const m = await applyMovement({
       client,
       brand,
       input,
@@ -139,7 +167,7 @@ async function deductForSale({
       },
     );
   }
-  const m = await repo.recordMovement({
+  const m = await applyMovement({
     client,
     brand,
     user_id,
@@ -189,7 +217,7 @@ async function receiveStock({
   unit_cost_ngn,
   user_id,
 }) {
-  const m = await repo.recordMovement({
+  const m = await applyMovement({
     client,
     brand,
     user_id,
@@ -280,7 +308,7 @@ async function reserveForOrder({
   reference_id,
   user_id,
 }) {
-  const m = await repo.recordMovement({
+  const m = await applyMovement({
     client,
     brand,
     user_id,
@@ -319,7 +347,7 @@ async function releaseReservation({
   user_id,
   reason,
 }) {
-  const m = await repo.recordMovement({
+  const m = await applyMovement({
     client,
     brand,
     user_id,
@@ -524,7 +552,7 @@ async function postAdjustment({ brand, user, request_id, id }) {
     for (const line of adj.lines) {
       const delta = line.physical_count - line.system_count;
       if (delta === 0) continue;
-      await repo.recordMovement({
+      await applyMovement({
         client,
         brand,
         user_id: user.user_id,
@@ -607,7 +635,7 @@ async function dispatchTransfer({ brand, user, request_id, id }) {
         409,
       );
     for (const line of tr.lines) {
-      await repo.recordMovement({
+      await applyMovement({
         client,
         brand,
         user_id: user.user_id,
@@ -666,7 +694,7 @@ async function receiveTransfer({ brand, user, request_id, id, input = {} }) {
         qty_received: qty,
       });
       if (qty > 0) {
-        await repo.recordMovement({
+        await applyMovement({
           client,
           brand,
           user_id: user.user_id,
@@ -824,7 +852,7 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
         line_id: line.line_id,
         qty_received: r.quantity,
       });
-      await repo.recordMovement({
+      await applyMovement({
         client,
         brand,
         user_id: user.user_id,
@@ -902,7 +930,7 @@ async function receiveShipment({ brand, user, request_id, id, input = {} }) {
         qty_rejected: r.qty_rejected,
       });
       if (qty > 0) {
-        await repo.recordMovement({
+        await applyMovement({
           client,
           brand,
           user_id: user.user_id,

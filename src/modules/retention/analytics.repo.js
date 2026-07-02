@@ -8,13 +8,7 @@
 "use strict";
 
 const { query } = require("../../config/database");
-const { VALID } = require("../../config/brands");
-
-const tbl = (brand, name) => {
-  if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${name}`;
-};
-
+const { t: tbl } = require("../../config/brands");
 const COUNTED = `('pending_payment','paid','awaiting_dispatch','in_production','with_stylist',
   'ready_for_dispatch','dispatched','in_transit','out_for_delivery','delivered','completed')`;
 

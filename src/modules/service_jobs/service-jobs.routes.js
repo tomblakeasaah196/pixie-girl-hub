@@ -72,6 +72,13 @@ router.post("/:id/return", can("edit"), c.returnForQc);
 router.post("/:id/qc", can("edit"), v.validateQc, c.recordQc);
 router.post("/:id/dispatch", can("edit"), c.dispatch);
 router.post("/:id/hand-to-sales", can("edit"), c.handToSales);
+// Flow-1: bind a cross-entity styling job to its matched IC styling invoice.
+router.post(
+  "/:id/intercompany-link",
+  can("edit"),
+  v.validateIntercompanyLink,
+  c.linkIntercompany,
+);
 router.post(
   "/:id/write-off",
   can("approve"),

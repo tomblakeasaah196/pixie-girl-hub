@@ -6,11 +6,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
-
+const { ex: exec } = require("../../config/database");
 // ── geofences (shared, business-scoped) ────────────────────
 const GEO_WRITE = [
   "name",

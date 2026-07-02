@@ -12,6 +12,7 @@
 "use strict";
 
 const repo = require("./service-jobs.repo");
+const icRepo = require("../intercompany/intercompany.repo");
 const events = require("./service-jobs.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -1115,6 +1116,76 @@ async function handToSales({ brand, user, request_id, id }) {
   });
 }
 
+/**
+ * Flow-1 (Faitlyn styles Pixie's hair): bind this styling job to its matched
+ * inter-company transaction — the FLH styling invoice raised to PXG. The IC
+ * transaction is recorded + CEO-approved through the intercompany module (which
+ * already forces a REAL seller invoice as its `seller_doc`); here we attach it
+ * so both sides carry the link and the books-integrity watchdog (AI Insights →
+ * no_intercompany_match) is satisfied. Never let a cross-entity styling job
+ * exist without its matched invoice (V2.2 §5.1 Flow 1).
+ */
+async function linkIntercompany({
+  brand,
+  user,
+  request_id,
+  id,
+  ic_transaction_id,
+}) {
+  return transaction(async (client) => {
+    const job = await repo.getServiceJob({ client, brand, id });
+    if (!job) throw new NotFoundError("Service job");
+    const ic = await icRepo.findById({ client, id: ic_transaction_id });
+    if (!ic) throw new NotFoundError("Intercompany transaction");
+    if (ic.flow_type !== "styling")
+      throw new AppError(
+        "IC_NOT_STYLING",
+        "Only a styling inter-company transaction can be linked to a service job",
+        422,
+      );
+    if (ic.seller_brand !== brand)
+      throw new AppError(
+        "IC_WRONG_SELLER",
+        `This job's brand (${brand}) must be the seller on the inter-company transaction`,
+        422,
+      );
+    if (["rejected", "cancelled", "reversed"].includes(ic.status))
+      throw new AppError(
+        "IC_NOT_ACTIVE",
+        `Cannot link a ${ic.status} inter-company transaction`,
+        409,
+      );
+
+    const linked = await repo.linkIntercompany({
+      client,
+      brand,
+      id,
+      ic_transaction_id,
+    });
+    // Back-reference the job on the IC txn when it isn't already pointed at one,
+    // so the intercompany side shows which styling job it settles.
+    if (!ic.reference_id) {
+      await icRepo.setStatus({
+        client,
+        id: ic_transaction_id,
+        status: ic.status,
+        fields: { reference_type: "service_job", reference_id: id },
+      });
+    }
+    await A(
+      brand,
+      user,
+      "service_jobs.intercompany.link",
+      "service_job",
+      id,
+      { ic_transaction_id, ic_number: ic.ic_number },
+      request_id,
+    );
+    events.emit("advanced", { brand, job_id: id, status: linked.status });
+    return repo.getServiceJob({ client, brand, id });
+  });
+}
+
 // ── Wig accountability ─────────────────────────────────────
 async function getAccountability({ brand }) {
   const cfg = await repo.getStudioConfig({ brand });
@@ -1231,6 +1302,7 @@ module.exports = {
   recordQc,
   dispatch,
   handToSales,
+  linkIntercompany,
   getAccountability,
   listCustodyLedger,
   writeOffWig,

@@ -8,7 +8,10 @@ import {
   Send,
   QrCode,
   Copy,
+  CheckCircle2,
+  Smartphone,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/cn";
 import { Card, Button, MoneyText } from "@/components/ui/primitives";
 import { Toggle, Select, NumberField } from "@/components/ui/controls";
@@ -20,7 +23,7 @@ import {
 import { ProductPicker } from "@/components/catalogue/ProductPicker";
 import { resolvePick, type ProductHit } from "@/lib/product-search";
 import { SALES_CHANNELS, FULFILMENT_OPTIONS } from "./constants";
-import { useCreateOrder } from "./hooks";
+import { useCreateOrder, useOrderPaymentWatch } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { onboardingApi } from "@/lib/smartcomm-api";
 import { useBusinessStore } from "@/stores/business";
@@ -92,6 +95,17 @@ export function QuickSaleForm() {
   const [qrLoading, setQrLoading] = useState(false);
   const toast = useToastStore();
   const activeBiz = useBusinessStore((s) => s.activeKey);
+
+  // Watch the created order so the counter screen flips to "Paid" on its own
+  // once the gateway confirms — no manual payment entry (anti-pocketing).
+  const paymentWatch = useOrderPaymentWatch(sentOrderId);
+  const watchedOrder = paymentWatch.data;
+  const isPaid = watchedOrder
+    ? Number(watchedOrder.balance_due_ngn) <= 0 ||
+      !["draft", "pending_payment"].includes(watchedOrder.status)
+    : false;
+  // Walk-in = customer is at the counter → pay on the spot by scanning.
+  const inStore = fulfilment === "walk_in";
 
   const fireToast = (
     title: string,
@@ -269,7 +283,9 @@ export function QuickSaleForm() {
       setStep(6);
       fireToast(
         "Order Created",
-        `Order ${order.order_number} created — payment link sent.`,
+        inStore
+          ? `Order ${order.order_number} ready — ask the customer to scan & pay.`
+          : `Order ${order.order_number} created — payment link sent.`,
       );
     } catch {
       fireToast(
@@ -706,11 +722,23 @@ export function QuickSaleForm() {
             <div className="flex-1" />
             <Button
               variant="primary"
-              icon={<Send className="w-4 h-4" />}
+              icon={
+                inStore ? (
+                  <QrCode className="w-4 h-4" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )
+              }
               onClick={handleSubmit}
               disabled={submitting}
             >
-              {submitting ? "Sending…" : "Create Order & Send Pay Link"}
+              {submitting
+                ? inStore
+                  ? "Preparing…"
+                  : "Sending…"
+                : inStore
+                  ? "Take Payment Now"
+                  : "Create Order & Send Pay Link"}
             </Button>
           </div>
 
@@ -726,25 +754,45 @@ export function QuickSaleForm() {
       {/* Step 6: Confirmation */}
       {sentOrderId && (
         <Card className="p-5 text-center">
-          <div className="w-14 h-14 rounded-full bg-success/10 grid place-items-center mx-auto mb-3">
-            <Send className="w-6 h-6 text-success" />
-          </div>
-          <h3 className="font-display text-lg font-medium mb-1">
-            Order Created!
-          </h3>
-          <p className="text-[13px] text-text-muted mb-4">
-            Payment link has been sent to the customer. The order will be
-            confirmed once payment is received via the gateway.
-          </p>
-          {paymentUrl && (
-            <div className="mb-4 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line">
-              <div className="text-[11px] text-text-faint mb-1">
-                Payment Link
+          {isPaid ? (
+            /* ── Paid: the gateway cleared the balance ── */
+            <>
+              <div className="w-16 h-16 rounded-full bg-success/10 grid place-items-center mx-auto mb-3">
+                <CheckCircle2 className="w-8 h-8 text-success" />
               </div>
-              <div className="flex items-center gap-2 justify-center">
-                <code className="text-[11px] text-accent-glow font-mono break-all">
-                  {paymentUrl}
-                </code>
+              <h3 className="font-display text-xl font-medium mb-1">Paid ✓</h3>
+              <p className="text-[14px] text-text-muted mb-4">
+                Payment confirmed. You can hand over the goods.
+              </p>
+            </>
+          ) : inStore && paymentUrl ? (
+            /* ── In-store: customer scans and pays on the spot ── */
+            <>
+              <div className="w-12 h-12 rounded-full bg-accent/10 grid place-items-center mx-auto mb-3">
+                <Smartphone className="w-6 h-6 text-accent-glow" />
+              </div>
+              <h3 className="font-display text-lg font-medium mb-1">
+                Ask the customer to scan &amp; pay
+              </h3>
+              <p className="text-[13px] text-text-muted mb-4">
+                Point their phone camera at the code. They can pay by{" "}
+                <span className="text-text-primary font-semibold">
+                  bank transfer, card, or USSD
+                </span>{" "}
+                — the screen updates the moment it&apos;s done.
+              </p>
+
+              <div className="inline-block bg-white p-4 rounded-[14px] mb-4">
+                <QRCodeSVG value={paymentUrl} size={196} level="M" />
+              </div>
+
+              <div className="flex items-center justify-center gap-2 text-[13px] text-text-muted mb-4">
+                <span className="w-2.5 h-2.5 rounded-full bg-warn animate-pulse" />
+                Waiting for payment…
+              </div>
+
+              {/* Fallback: send/copy the link if they'd rather use their own device */}
+              <div className="flex items-center gap-2 justify-center flex-wrap">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -754,10 +802,47 @@ export function QuickSaleForm() {
                     fireToast("Copied", "Payment link copied to clipboard");
                   }}
                 >
-                  Copy
+                  Copy link
                 </Button>
               </div>
-            </div>
+            </>
+          ) : (
+            /* ── Remote / dispatch: link sent to the customer ── */
+            <>
+              <div className="w-14 h-14 rounded-full bg-success/10 grid place-items-center mx-auto mb-3">
+                <Send className="w-6 h-6 text-success" />
+              </div>
+              <h3 className="font-display text-lg font-medium mb-1">
+                Order Created!
+              </h3>
+              <p className="text-[13px] text-text-muted mb-4">
+                Payment link has been sent to the customer. The order confirms
+                automatically once payment is received via the gateway.
+              </p>
+              {paymentUrl && (
+                <div className="mb-4 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line">
+                  <div className="text-[11px] text-text-faint mb-1">
+                    Payment Link
+                  </div>
+                  <div className="flex items-center gap-2 justify-center">
+                    <code className="text-[11px] text-accent-glow font-mono break-all">
+                      {paymentUrl}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<Copy className="w-3 h-3" />}
+                      onClick={() => {
+                        navigator.clipboard.writeText(paymentUrl);
+                        fireToast("Copied", "Payment link copied to clipboard");
+                      }}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <Button variant="primary" onClick={reset}>
             New Quick Sale

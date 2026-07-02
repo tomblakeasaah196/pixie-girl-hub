@@ -245,6 +245,36 @@ async function detectServiceMatch({ brand }) {
   return raised;
 }
 
+// Flow-1 books integrity (V2.2 §5.1): a styling job that crosses entities must
+// never exist without its matched inter-company invoice. Raises the schema's
+// long-anticipated `no_intercompany_match` alert so finance can raise/attach the
+// FLH styling invoice before the trade is lost.
+async function detectIntercompanyServiceJobs({ brand }) {
+  const rows = await repo.intercompanyJobsMissingMatch({ brand });
+  let raised = 0;
+  for (const job of rows) {
+    const expected = money(job.actual_cost_ngn || job.agreed_cost_ngn || 0);
+    await repo.raiseServiceMatch({
+      r: {
+        business: brand,
+        service_job_id: job.job_id,
+        service_job_number: job.job_number,
+        completed_by_stylist_id: job.assigned_stylist_id,
+        completed_by_user_id: job.assigned_staff_user_id,
+        alert_type: "no_intercompany_match",
+        job_completed_at: job.completed_at || new Date().toISOString(),
+        expected_amount_ngn: expected.gt(0) ? expected.toFixed(2) : null,
+        found_amount_ngn: "0.00",
+        variance_ngn: expected.gt(0) ? expected.toFixed(2) : null,
+        severity: job.status === "completed" ? "high" : "medium",
+        suppression_key: `no_ic:${job.job_id}`,
+      },
+    });
+    raised += 1;
+  }
+  return raised;
+}
+
 /** Full detector sweep (cron). Per-brand + shared detectors, best-effort. */
 async function runDetectorSweep() {
   const result = { invoice: 0, intercompany: 0, approval: 0, service_match: 0 };
@@ -263,6 +293,14 @@ async function runDetectorSweep() {
       logger.error(
         { err: err.message, brand },
         "insights: service-match detector failed",
+      );
+    }
+    try {
+      result.service_match += await detectIntercompanyServiceJobs({ brand });
+    } catch (err) {
+      logger.error(
+        { err: err.message, brand },
+        "insights: intercompany service-job detector failed",
       );
     }
   }

@@ -134,6 +134,15 @@ async function handToSales(req, res) {
     data: await service.handToSales({ ...base(req), id: req.params.id }),
   });
 }
+async function linkIntercompany(req, res) {
+  res.json({
+    data: await service.linkIntercompany({
+      ...base(req),
+      id: req.params.id,
+      ic_transaction_id: req.body.ic_transaction_id,
+    }),
+  });
+}
 
 // ── Materials / references / time ──────────────────────────
 async function logMaterial(req, res) {
@@ -298,6 +307,7 @@ module.exports = {
   recordQc,
   dispatch,
   handToSales,
+  linkIntercompany,
   logMaterial,
   listMaterials,
   addReference,

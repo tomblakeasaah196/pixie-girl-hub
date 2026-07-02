@@ -1,16 +1,22 @@
-import { lazy, Suspense, useState } from "react";
+import { useState } from "react";
 import { Lock } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
-import { EmptyState, Skeleton } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 
-const ReportsTab = lazy(() => import("./ReportsTab"));
-const JournalsTab = lazy(() => import("./JournalsTab"));
-const CoaTab = lazy(() => import("./CoaTab"));
-const TaxCenterTab = lazy(() => import("./TaxCenterTab"));
-const PeriodsTab = lazy(() => import("./PeriodsTab"));
-const BankTab = lazy(() => import("./BankTab"));
+// Tabs are imported statically ON PURPOSE: the page itself is already a
+// lazy route chunk (via lazyWithRetry). Sub-lazy chunks re-introduced the
+// stale-deploy failure mode — a client holding yesterday's index.html
+// fetches a tab chunk whose hash no longer exists and hard-crashes with
+// "Failed to fetch dynamically imported module". One chunk, one fetch,
+// route-level retry/reload handles redeploys.
+import ReportsTab from "./ReportsTab";
+import JournalsTab from "./JournalsTab";
+import CoaTab from "./CoaTab";
+import TaxCenterTab from "./TaxCenterTab";
+import PeriodsTab from "./PeriodsTab";
+import BankTab from "./BankTab";
 
 const TABS = [
   { key: "reports", label: "Reports" },
@@ -66,14 +72,12 @@ export default function AccountingPage() {
         ))}
       </div>
 
-      <Suspense fallback={<Skeleton className="w-full h-64 rounded-2xl" />}>
-        {tab === "reports" && <ReportsTab />}
-        {tab === "journals" && <JournalsTab />}
-        {tab === "coa" && <CoaTab />}
-        {tab === "tax" && <TaxCenterTab />}
-        {tab === "periods" && <PeriodsTab />}
-        {tab === "bank" && <BankTab />}
-      </Suspense>
+      {tab === "reports" && <ReportsTab />}
+      {tab === "journals" && <JournalsTab />}
+      {tab === "coa" && <CoaTab />}
+      {tab === "tax" && <TaxCenterTab />}
+      {tab === "periods" && <PeriodsTab />}
+      {tab === "bank" && <BankTab />}
     </div>
   );
 }

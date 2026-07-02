@@ -69,7 +69,7 @@ function Index() {
         <EditorialSplit content={c.editorial} />
         <PressStrip eyebrow={c.press.eyebrow} items={c.press.items} />
         <Testimonials eyebrow={c.testimonials.eyebrow} items={c.testimonials.items} />
-        <Gallery eyebrow={c.gallery.eyebrow} heading={c.gallery.heading} images={c.gallery.images} />
+        <Gallery eyebrow={c.gallery.eyebrow} heading={c.gallery.heading} items={c.gallery.items} />
         <FounderNote content={c.founder} />
       </main>
     </>

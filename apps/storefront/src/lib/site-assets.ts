@@ -4,11 +4,14 @@
  * Real, self-hosted stills live in `apps/storefront/public/maison/` (copied from
  * the reference build) and are served at `/maison/*` — no third-party CDN.
  *
- * The full-bleed model shots (hero, editorial models) and the logo wordmark are
- * NOT in the repo — they ship via Studio Branding / home-page slot uploads
- * (`theme.tokens.logo_url`, slot `imageUrl`). Until those are uploaded we fall
- * back to a local still so nothing 404s, and the logo renders as a text wordmark
- * (see SiteHeader/SiteFooter/CinematicPreloader).
+ * The full-bleed model shots (hero, editorial models) ship via home-page slot
+ * uploads (slot `imageUrl`); until uploaded we fall back to a local still so
+ * nothing 404s.
+ *
+ * The LOGO is no longer here — it comes from Storefront Studio → Branding as
+ * dark/light theme tokens, resolved in __root and read via `useBranding()`
+ * (see BrandLogo / SiteHeader / SiteFooter / CinematicPreloader). Until a logo
+ * is uploaded the chrome renders a text wordmark.
  */
 
 const P = "/maison";
@@ -25,8 +28,4 @@ export const SITE_IMAGES = {
   heroModel: `${P}/editorial-atelier.jpg`,
   models: `${P}/product-curls.jpg`,
   model2: `${P}/product-straight.jpg`,
-
-  // Logo wordmark: uploaded via Studio (theme.tokens.logo_url). Empty → the
-  // chrome renders a styled text wordmark instead of an <img>.
-  logoCream: "",
 } as const;

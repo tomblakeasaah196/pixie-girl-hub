@@ -49,22 +49,37 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "robots", content: "index,follow,max-image-preview:large" },
       { name: "theme-color", content: "#0c0a09" },
     ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/favicon.ico" },
-    ],
+    // The favicon is emitted dynamically in RootShell from the Studio-uploaded
+    // branding tokens (dark/light aware), so it isn't declared here.
+    links: [{ rel: "stylesheet", href: appCss }],
   }),
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFound,
 });
 
-// Colour/type tokens the Studio theme may override. Non-CSS-var keys like
-// `logo_url` are consumed separately (see logoFrom) and skipped here.
+// Branding tokens are consumed as image URLs (logo <img>, favicon <link>), not
+// as CSS custom properties — keep them out of the palette <style> block.
+const NON_CSS_TOKENS = new Set([
+  "--logo-url",
+  "--logo-url-dark",
+  "--logo-url-light",
+  "--favicon-url",
+  "--favicon-url-dark",
+  "--favicon-url-light",
+  "--og-image",
+]);
+
+// Colour/type tokens the Studio theme may override. Branding image keys (logo /
+// favicon / OG) are consumed separately (see brandingFrom) and skipped here.
 function tokensToCss(tokens?: Record<string, string>): string | null {
   if (!tokens || Object.keys(tokens).length === 0) return null;
   const body = Object.entries(tokens)
-    .filter(([k]) => k.startsWith("--") || k.startsWith("color") || k.startsWith("font"))
+    .filter(
+      ([k]) =>
+        !NON_CSS_TOKENS.has(k) &&
+        (k.startsWith("--") || k.startsWith("color") || k.startsWith("font")),
+    )
     .map(([k, v]) => `${k.startsWith("--") ? k : `--${k}`}: ${v};`)
     .join("");
   if (!body) return null;
@@ -73,8 +88,34 @@ function tokensToCss(tokens?: Record<string, string>): string | null {
   return `.dark{${body}}`;
 }
 
-function logoFrom(tokens?: Record<string, string>): string | undefined {
-  return tokens?.logo_url || tokens?.["logo-url"] || undefined;
+const BRAND_NAMES: Record<BrandKey, string> = {
+  faitlynhair: "Faitlyn Hair",
+  pixiegirl: "Pixie Girl",
+};
+
+function firstToken(
+  tokens: Record<string, string> | undefined,
+  keys: string[],
+): string | undefined {
+  if (!tokens) return undefined;
+  for (const k of keys) {
+    const v = tokens[k];
+    if (v) return v;
+  }
+  return undefined;
+}
+
+// Resolve the operator's uploaded logos/favicons from the theme tokens. Reads
+// the dark/light keys, falling back to the legacy single key (`--logo-url` /
+// `--favicon-url`, and the older non-prefixed aliases) so nothing regresses.
+function brandingFrom(tokens: Record<string, string> | undefined, brand: BrandKey) {
+  return {
+    name: BRAND_NAMES[brand] ?? "",
+    logoDark: firstToken(tokens, ["--logo-url-dark", "--logo-url", "logo_url", "logo-url"]),
+    logoLight: firstToken(tokens, ["--logo-url-light", "--logo-url", "logo_url", "logo-url"]),
+    faviconDark: firstToken(tokens, ["--favicon-url-dark", "--favicon-url", "favicon_url", "favicon-url"]),
+    faviconLight: firstToken(tokens, ["--favicon-url-light", "--favicon-url", "favicon_url", "favicon-url"]),
+  };
 }
 
 // Applied before paint so a stored light-mode choice doesn't flash dark.
@@ -83,10 +124,24 @@ const THEME_BOOT = `try{var t=localStorage.getItem('sf_theme');var d=document.do
 function RootShell({ children }: { children: ReactNode }) {
   const { brand, theme } = Route.useLoaderData();
   const themeCss = tokensToCss(theme?.tokens);
+  const { faviconDark, faviconLight } = brandingFrom(theme?.tokens, brand);
+  // Dark-default site → the plain link (fallback for browsers that ignore
+  // `media` on icons) uses the dark favicon; the media links pick the right
+  // one by the browser/OS colour scheme, which is what renders the tab.
+  const faviconDefault = faviconDark || faviconLight;
   return (
     <html lang="en" data-brand={brand} className="dark">
       <head>
         <HeadContent />
+        {faviconDefault ? (
+          <>
+            <link rel="icon" href={faviconDefault} />
+            <link rel="icon" href={faviconDark || faviconDefault} media="(prefers-color-scheme: dark)" />
+            <link rel="icon" href={faviconLight || faviconDefault} media="(prefers-color-scheme: light)" />
+          </>
+        ) : (
+          <link rel="icon" href="/favicon.ico" />
+        )}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
         {themeCss ? (
           <style dangerouslySetInnerHTML={{ __html: themeCss }} />
@@ -102,21 +157,27 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const { preview, theme, pages, popups, navigation } = Route.useLoaderData();
-  const logoUrl = logoFrom(theme?.tokens);
+  const { preview, theme, pages, popups, navigation, brand } =
+    Route.useLoaderData();
+  const branding = brandingFrom(theme?.tokens, brand);
   return (
     <QueryClientProvider client={queryClient}>
-      <SiteConfigProvider pages={pages} popups={popups as never} navigation={navigation as never}>
+      <SiteConfigProvider
+        pages={pages}
+        popups={popups as never}
+        navigation={navigation as never}
+        branding={branding}
+      >
         {preview ? (
           <div className="bg-primary py-1.5 text-center text-[0.62rem] tracking-[0.4em] uppercase text-primary-foreground">
             Preview — showing draft changes (not published)
           </div>
         ) : null}
-        <SiteHeader logoUrl={logoUrl} />
+        <SiteHeader />
         <PageTransition>
           <Outlet />
         </PageTransition>
-        <SiteFooter logoUrl={logoUrl} />
+        <SiteFooter />
         <CartDrawer />
         <NewsletterModal />
         <Toaster position="bottom-center" theme="dark" />

@@ -41,25 +41,46 @@ export interface StudioNavigation {
   socials?: Record<string, string>;
 }
 
+/**
+ * Resolved branding for the chrome — the operator's uploaded logos/favicons
+ * (Storefront Studio → Branding, stored as theme tokens) plus the brand's
+ * display name. The dark/light logo swaps with the site theme; the header and
+ * footer share the same assets so they always match.
+ */
+export interface SiteBranding {
+  name: string;
+  logoDark?: string;
+  logoLight?: string;
+  faviconDark?: string;
+  faviconLight?: string;
+}
+
 const PagesCtx = createContext<StudioPage[]>([]);
 const PopupsCtx = createContext<StudioPopup[]>([]);
 const NavCtx = createContext<StudioNavigation | null>(null);
+const BrandingCtx = createContext<SiteBranding>({ name: "" });
 
 export function SiteConfigProvider({
   pages,
   popups,
   navigation,
+  branding,
   children,
 }: {
   pages?: StudioPage[];
   popups?: StudioPopup[];
   navigation?: StudioNavigation | null;
+  branding?: SiteBranding;
   children: ReactNode;
 }) {
   return (
     <PagesCtx.Provider value={pages ?? []}>
       <PopupsCtx.Provider value={popups ?? []}>
-        <NavCtx.Provider value={navigation ?? null}>{children}</NavCtx.Provider>
+        <NavCtx.Provider value={navigation ?? null}>
+          <BrandingCtx.Provider value={branding ?? { name: "" }}>
+            {children}
+          </BrandingCtx.Provider>
+        </NavCtx.Provider>
       </PopupsCtx.Provider>
     </PagesCtx.Provider>
   );
@@ -68,6 +89,11 @@ export function SiteConfigProvider({
 /** Published navigation (header items / footer columns / socials), or null. */
 export function useNavigation(): StudioNavigation | null {
   return useContext(NavCtx);
+}
+
+/** Resolved branding (logos/favicons/name) for header, footer and preloader. */
+export function useBranding(): SiteBranding {
+  return useContext(BrandingCtx);
 }
 
 /** Published popup config by key (undefined when unseeded). */

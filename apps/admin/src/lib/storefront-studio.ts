@@ -254,10 +254,19 @@ export function useRollbackRevision() {
   });
 }
 
-/** Pick the published row (else draft) from a [draft, published] list. */
+/**
+ * Pick the row an EDITOR should bind to from a [draft, published] list.
+ * Prefer the DRAFT: a freshly saved draft must stay on screen. Preferring the
+ * published row instead made saved edits "disappear" — the form reloaded the
+ * still-published tokens on the next refetch. Falls back to published, then any.
+ */
 export function pickActive<T extends { status?: StudioStatus }>(
   rows?: T[],
 ): T | undefined {
   if (!rows || !rows.length) return undefined;
-  return rows.find((r) => r.status === "published") || rows[0];
+  return (
+    rows.find((r) => r.status === "draft") ||
+    rows.find((r) => r.status === "published") ||
+    rows[0]
+  );
 }

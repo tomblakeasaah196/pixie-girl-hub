@@ -49,6 +49,23 @@
   --biz-2: #690909;
   --biz-accent: #690909;
 
+  /* Chart series — categorical slots in FIXED order (identity follows the
+     entity, never its rank) + a neutral for "Other"/previous-period, and a
+     single-hue ordinal ramp (funnels/stages). Validated per mode against the
+     panel surface (dataviz six checks: lightness band, chroma floor, adjacent
+     CVD ΔE ≥ 12, ≥ 3:1 contrast) — only change in step with a validator run. */
+  --chart-1: #d24a46;
+  --chart-2: #4f8fce;
+  --chart-3: #bd8a2e;
+  --chart-4: #54a254;
+  --chart-5: #c06ab8;
+  --chart-other: #80706b;
+  --chart-ramp-1: #9c2018;
+  --chart-ramp-2: #b53a30;
+  --chart-ramp-3: #cc5247;
+  --chart-ramp-4: #e0705f;
+  --chart-ramp-5: #f0937f;
+
   --side-w: 264px;
   --side-c: 78px;
 
@@ -77,6 +94,17 @@
   --success: 94 126 80;
   --warn: 185 138 46;
   --danger: 199 54 47;
+  --chart-1: #b23430;
+  --chart-2: #2d6fb5;
+  --chart-3: #96701e;
+  --chart-4: #3f8a3f;
+  --chart-5: #a8509e;
+  --chart-other: #9b8c88;
+  --chart-ramp-1: #690909;
+  --chart-ramp-2: #8f1d15;
+  --chart-ramp-3: #b23430;
+  --chart-ramp-4: #d24a46;
+  --chart-ramp-5: #e8837c;
   --mesh-op: 0.36;
   --glass-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.9), 0 16px 40px rgb(80 20 20 / 0.1);

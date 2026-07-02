@@ -105,7 +105,7 @@ function CheckoutPage() {
   const rails = currency === "USD" ? ["nomba"] : ["nomba", "paystack"];
 
   return (
-    <Section className="max-w-2xl">
+    <Section className="pt-28 md:pt-24 max-w-2xl">
       <h1 className="text-h3 font-display">Checkout</h1>
       <Link
         to="/cart"

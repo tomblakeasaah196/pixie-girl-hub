@@ -31,7 +31,16 @@ function ServicePage() {
     setForm((p) => ({ ...p, [k]: v }));
 
   const booking = useMutation({
-    mutationFn: () => requestBooking(slug, form),
+    mutationFn: () => {
+      // Strict validator: only send non-empty fields (empty date/email 422s).
+      const payload: BookingInput = { full_name: form.full_name.trim() };
+      if (form.phone?.trim()) payload.phone = form.phone.trim();
+      if (form.email?.trim()) payload.email = form.email.trim();
+      if (form.preferred_date) payload.preferred_date = form.preferred_date;
+      if (form.preferred_time?.trim()) payload.preferred_time = form.preferred_time.trim();
+      if (form.notes?.trim()) payload.notes = form.notes.trim();
+      return requestBooking(slug, payload);
+    },
     onSuccess: (r) => {
       toast.success(r?.message || "Booking request sent. We'll be in touch.");
       setForm({ full_name: "" });
@@ -55,19 +64,19 @@ function ServicePage() {
 
   if (isLoading)
     return (
-      <Section>
+      <Section className="pt-28 md:pt-24">
         <LoadingGrid />
       </Section>
     );
   if (isError || !data)
     return (
-      <Section>
+      <Section className="pt-28 md:pt-24">
         <ErrorState onRetry={() => refetch()} />
       </Section>
     );
 
   return (
-    <Section>
+    <Section className="pt-28 md:pt-24">
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
         <div>
           <h1 className="text-h2 font-display">{data.name}</h1>

@@ -1,6 +1,7 @@
 import { Instagram, Facebook, Twitter, MessageCircle } from "lucide-react";
 import { SITE_IMAGES } from "@/lib/site-assets";
 import { useNavigation, type FooterColumn } from "@/lib/site-config";
+import { SmartLink } from "@/components/site/SmartLink";
 
 // Fallback columns (used when Studio navigation isn't published yet).
 const FALLBACK_COLUMNS: FooterColumn[] = [
@@ -100,7 +101,7 @@ export function SiteFooter({
             <ul className="space-y-3 text-sm text-muted-foreground">
               {col.links.map((l, idx) => (
                 <li key={`${l.label}-${idx}`} className="hover:text-cream transition-colors">
-                  <a href={l.url}>{l.label}</a>
+                  <SmartLink to={l.url}>{l.label}</SmartLink>
                 </li>
               ))}
             </ul>

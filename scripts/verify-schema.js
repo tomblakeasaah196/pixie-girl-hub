@@ -2,6 +2,9 @@
 /**
  * Schema verification — runs after migrate/bootstrap to confirm expected state.
  * Output is a quick health report; non-zero exit on any failure.
+ *
+ * Brand schemas are discovered from shared.business_config (the same source
+ * the app boots from), so this works for any brand keys, not hardcoded ones.
  */
 
 "use strict";
@@ -17,34 +20,39 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
-// Re-baselined 2026-07 against a fresh provision (db:create → migrate:shared
-// 000001–000251 → bootstrap both brands with 65 templates). The previous
-// expectations (112/162 + literal "valid-brand-key-*" schema names) had
-// drifted long before and could never pass. shared includes the +8 Stylist
-// Programme v2 tables (000251): stylist_tiers, stylist_programme_config,
-// stylist_questionnaire_questions, stylist_application_responses,
-// stylist_vetting_reviews, stylist_referral_links,
-// stylist_referral_attributions, stylist_notifications.
-const EXPECTED = {
-  shared: 178,
-  pixiegirl: 196,
-  faitlynhair: 196,
-};
+// Baseline counts after shared 000251 + brand template 000075. Brands are
+// discovered from shared.business_config (the same source the app boots from),
+// so this works for any brand keys — not hardcoded pixiegirl/faitlynhair.
+//   - Accounting foundation (main): brand template 000075 adds variant_costing
+//     per brand (policy Q9) → per-brand 203.
+//   - Stylist Programme v2 (000251): +8 shared tables (stylist_tiers,
+//     stylist_programme_config, stylist_questionnaire_questions,
+//     stylist_application_responses, stylist_vetting_reviews,
+//     stylist_referral_links, stylist_referral_attributions,
+//     stylist_notifications) → shared 170 + 8 = 178. Its brand template adds a
+//     column only (sales_orders.stylist_referral_code), no new table.
+const EXPECTED_SHARED = 178;
+const EXPECTED_PER_BRAND = 203;
+
+async function countTables(schema) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = $1`,
+    [schema],
+  );
+  return rows[0].n;
+}
 
 async function main() {
-  const out = {};
-  for (const schema of Object.keys(EXPECTED)) {
-    const { rows } = await pool.query(
-      `SELECT COUNT(*)::int AS n FROM information_schema.tables
-        WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
-      [schema],
-    );
-    out[schema] = rows[0].n;
-  }
-  process.stdout.write("Schema table counts:");
+  const { rows: brands } = await pool.query(
+    `SELECT business_key FROM shared.business_config WHERE is_active = true ORDER BY business_key`,
+  );
+  const checks = [["shared", EXPECTED_SHARED]];
+  for (const b of brands) checks.push([b.business_key, EXPECTED_PER_BRAND]);
+
+  process.stdout.write("Schema table counts:\n");
   let ok = true;
-  for (const [schema, expected] of Object.entries(EXPECTED)) {
-    const actual = out[schema];
+  for (const [schema, expected] of checks) {
+    const actual = await countTables(schema);
     const status = actual === expected ? "✓" : "✗";
     process.stdout.write(
       `  ${status} ${schema}: ${actual} (expected ${expected})\n`,

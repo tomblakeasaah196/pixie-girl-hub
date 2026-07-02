@@ -100,6 +100,13 @@ const createManualJournal = async (req, res) =>
       input: req.body,
     }),
   });
+const postOpeningBalance = async (req, res) =>
+  res.status(201).json({
+    data: await service.postOpeningBalance({
+      ...base(req),
+      input: req.body,
+    }),
+  });
 const reverseJournal = async (req, res) =>
   res.status(201).json({
     data: await service.reverseEntry({
@@ -210,6 +217,7 @@ module.exports = {
   listJournals,
   getJournal,
   createManualJournal,
+  postOpeningBalance,
   reverseJournal,
   trialBalance,
   profitAndLoss,

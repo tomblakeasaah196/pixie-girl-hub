@@ -292,6 +292,12 @@ const schema = z.object({
   // as a SHA-256 hash in redis.
   PASSWORD_RESET_TTL_MIN: z.coerce.number().int().positive().default(30),
 
+  // Identity cache (shared/cache/identity-cache.js): TTL in seconds for the
+  // per-request user / brand-config / permission-grant lookups. Domain events
+  // invalidate eagerly; the TTL is the staleness backstop. 0 disables the
+  // cache entirely (every request goes straight to the DB — the escape hatch).
+  IDENTITY_CACHE_TTL_S: z.coerce.number().int().min(0).default(30),
+
   // Per-IP throttle for unauthenticated write endpoints (middleware/index.js).
   PUBLIC_WRITE_RATE_WINDOW_MS: z.coerce
     .number()

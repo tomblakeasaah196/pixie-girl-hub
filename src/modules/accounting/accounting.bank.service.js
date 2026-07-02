@@ -254,6 +254,120 @@ async function completeReconciliation({ brand, user, request_id, id }) {
   });
 }
 
+// ── Tax computation from the GL (policy Q14) ─────────────
+// Each figure is the POSTED journal activity on the tax's own control
+// account over the fiscal period, with full line-level drill-down — the
+// filing is a report OF the books, never a typed-in number.
+const { ACCOUNTS } = require("./posting-map");
+const { money: M, toCurrencyString: S } = require("../../utils/money");
+const coreRepo = require("./accounting.repo");
+
+const TAX_DUE_DAY = { VAT: 21, PAYE: 10, WHT: 21 }; // FIRS/LIRS calendars
+const DEFAULT_VAT_RATE = 0.075;
+
+// pg returns DATE columns as JS Dates; normalise either shape to ISO.
+function isoDay(value) {
+  return value instanceof Date
+    ? value.toISOString().slice(0, 10)
+    : String(value).slice(0, 10);
+}
+
+function dueDateAfter(period_ends_on, tax_type) {
+  const d = new Date(`${isoDay(period_ends_on)}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  d.setUTCDate(TAX_DUE_DAY[tax_type] || 21);
+  return d.toISOString().slice(0, 10);
+}
+
+async function computeTax({ brand, tax_type, period_id }) {
+  const period = await coreRepo.getPeriod({ brand, id: period_id });
+  if (!period) throw new NotFoundError("Fiscal period not found");
+  const from = isoDay(period.starts_on);
+  const to = isoDay(period.ends_on);
+  const activity = (code) =>
+    repo.taxAccountActivity({ brand, account_code: code, from, to });
+
+  if (tax_type === "VAT") {
+    const out = await activity(ACCOUNTS.VAT_OUTPUT);
+    const inp = await activity(ACCOUNTS.VAT_INPUT);
+    // Output accrues credit-side; the settlement journal (pay) debits it —
+    // exclude tax_filing settlements so a paid prior draft doesn't zero the
+    // period. Input VAT accrues debit-side.
+    const output = M(out.credits);
+    const input = M(inp.debits).minus(M(inp.credits));
+    const net = output.minus(input);
+    const lines = await repo.taxAccountLines({
+      brand,
+      account_codes: [ACCOUNTS.VAT_OUTPUT, ACCOUNTS.VAT_INPUT],
+      from,
+      to,
+    });
+    return {
+      tax_type,
+      period: { period_id, period_name: period.period_name, from, to },
+      output_vat_ngn: S(output),
+      input_vat_ngn: S(input),
+      tax_amount_ngn: S(net),
+      taxable_amount_ngn: S(output.div(DEFAULT_VAT_RATE)),
+      due_date: dueDateAfter(period.ends_on, tax_type),
+      lines,
+    };
+  }
+
+  const code =
+    tax_type === "PAYE" ? ACCOUNTS.PAYE_PAYABLE : ACCOUNTS.WHT_PAYABLE;
+  const act = await activity(code);
+  const accrued = M(act.credits); // settlement debits excluded from the charge
+  const lines = await repo.taxAccountLines({
+    brand,
+    account_codes: [code],
+    from,
+    to,
+  });
+  let taxable = M(0);
+  if (tax_type === "PAYE") {
+    // Taxable base = gross payroll expense booked in the period.
+    for (const c of [
+      ACCOUNTS.SALARIES,
+      ACCOUNTS.COMMISSION_EXPENSE,
+      ACCOUNTS.BONUS_EXPENSE,
+    ]) {
+      const a = await activity(c);
+      taxable = taxable.plus(M(a.debits)).minus(M(a.credits));
+    }
+  }
+  return {
+    tax_type,
+    period: { period_id, period_name: period.period_name, from, to },
+    tax_amount_ngn: S(accrued),
+    taxable_amount_ngn: S(taxable),
+    due_date: dueDateAfter(period.ends_on, tax_type),
+    lines,
+  };
+}
+
+/** Auto-draft a filing for a period straight from the computed GL figures. */
+async function draftFilingFromPeriod({ brand, user, request_id, input }) {
+  const comp = await computeTax({
+    brand,
+    tax_type: input.tax_type,
+    period_id: input.fiscal_period_id,
+  });
+  return createFiling({
+    brand,
+    user,
+    request_id,
+    input: {
+      tax_type: input.tax_type,
+      fiscal_period_id: input.fiscal_period_id,
+      taxable_amount_ngn: comp.taxable_amount_ngn,
+      tax_amount_ngn: comp.tax_amount_ngn,
+      due_date: comp.due_date,
+      notes: `Auto-computed from GL for ${comp.period.period_name} (${comp.lines.length} journal lines)`,
+    },
+  });
+}
+
 // ── Tax filings ──────────────────────────────────────────
 async function createFiling({ brand, user, request_id, input }) {
   return transaction(async (client) => {
@@ -430,6 +544,8 @@ async function payFiling({ brand, user, request_id, id, input }) {
 }
 
 module.exports = {
+  computeTax,
+  draftFilingFromPeriod,
   importStatement,
   getStatement,
   listStatements,

@@ -94,6 +94,12 @@ const filingCreate = z
     notes: z.string().max(1000).optional(),
   })
   .strict();
+const filingDraftFromPeriod = z
+  .object({
+    tax_type: z.enum(["VAT", "WHT", "PAYE"]),
+    fiscal_period_id: z.string().uuid(),
+  })
+  .strict();
 const filingFile = z
   .object({
     filing_reference: z.string().max(120).optional(),
@@ -117,6 +123,7 @@ module.exports = {
   validateReconOpen: mw(reconOpen),
   validateReconMatch: mw(reconMatch),
   validateFilingCreate: mw(filingCreate),
+  validateFilingDraftFromPeriod: mw(filingDraftFromPeriod),
   validateFilingFile: mw(filingFile),
   validateFilingPay: mw(filingPay),
 };

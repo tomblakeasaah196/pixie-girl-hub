@@ -12,15 +12,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-const { VALID } = require("../../config/brands");
-
-const t = (b, tbl) => {
-  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
-  return `${b}.${tbl}`;
-};
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { ex } = require("../../config/database");
+const { t } = require("../../config/brands");
 // ── Grants (shared) ──────────────────────────────────────
 // A user can see the vault for a brand if they hold a live grant for
 // that exact brand OR a wildcard ('*') grant across all brands.

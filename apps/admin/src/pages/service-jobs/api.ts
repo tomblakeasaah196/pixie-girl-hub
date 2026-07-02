@@ -223,6 +223,11 @@ export function dispatchJob(id: string) {
 export function handToSales(id: string) {
   return api.post<{ data: ServiceJob }>(`${BASE}/${id}/hand-to-sales`, {});
 }
+export function linkIntercompany(id: string, ic_transaction_id: string) {
+  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/intercompany-link`, {
+    ic_transaction_id,
+  });
+}
 export function writeOffWig(id: string, reason: string) {
   return api.post<{ data: CustodyEntry }>(`${BASE}/${id}/write-off`, {
     reason,

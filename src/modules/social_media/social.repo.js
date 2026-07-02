@@ -6,9 +6,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
 // ── Accounts ───────────────────────────────────────────────
 async function createAccount({ brand, account }) {
   const { rows } = await query(

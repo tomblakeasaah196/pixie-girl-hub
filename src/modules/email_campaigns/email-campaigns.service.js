@@ -307,17 +307,21 @@ async function recordEvent({ brand, campaign_id, email: addr, event_type }) {
 
 // ── Newsletter (public) — connects into CRM contacts ───────
 async function subscribeNewsletter({ brand, input }) {
-  if (!input.email || !input.phone)
+  // Website newsletter is email-first; phone is optional (the storefront popup
+  // only collects an email). At least an email is required.
+  if (!input.email)
     throw new AppError(
-      "EMAIL_PHONE_REQUIRED",
-      "Email and phone are required to subscribe",
+      "EMAIL_REQUIRED",
+      "An email is required to subscribe",
       422,
     );
+  const phone = input.phone || null;
   // Merge by email or phone; else create a contact tagged source='website'.
   const { rows: existing } = await query(
     `SELECT contact_id FROM shared.contacts
-      WHERE is_deleted = false AND (email = $1 OR primary_phone = $2) LIMIT 1`,
-    [input.email, input.phone],
+      WHERE is_deleted = false
+        AND (email = $1 OR ($2::text IS NOT NULL AND primary_phone = $2)) LIMIT 1`,
+    [input.email, phone],
   );
   if (existing[0])
     return { contact_id: existing[0].contact_id, created: false };
@@ -334,7 +338,7 @@ async function subscribeNewsletter({ brand, input }) {
       display_name,
       input.first_name || null,
       input.last_name || null,
-      input.phone,
+      phone,
       input.email,
       brand,
     ],

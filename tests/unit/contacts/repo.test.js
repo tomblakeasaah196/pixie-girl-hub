@@ -3,9 +3,10 @@
 // Lightweight mock for the pg pool so we can assert on the SQL the repo emits
 // without needing a real connection. db.query is a Jest mock; we inspect
 // .mock.calls and stage results via mockResolvedValueOnce.
-jest.mock("../../../src/config/database", () => ({
-  query: jest.fn(async () => ({ rows: [], rowCount: 0 })),
-}));
+jest.mock("../../../src/config/database", () => {
+  const query = jest.fn(async () => ({ rows: [], rowCount: 0 }));
+  return { query, ex: (c) => (c ? c.query.bind(c) : query) };
+});
 
 const db = require("../../../src/config/database");
 const repo = require("../../../src/shared/contacts/contacts.repo");

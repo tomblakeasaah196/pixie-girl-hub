@@ -10,11 +10,7 @@
 const { query } = require("../../config/database");
 const coreRepo = require("./accounting.repo");
 
-const { VALID } = require("../../config/brands");
-const t = (brand, tbl) => {
-  if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${tbl}`;
-};
+const { t } = require("../../config/brands");
 const ex = (client) => (client ? client.query.bind(client) : query);
 
 async function nextNumber({ client, brand, type }) {
@@ -273,7 +269,7 @@ async function createFiling({ client, brand, row }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "tax_filings")}
        (filing_number, tax_type, fiscal_period_id, taxable_amount_ngn, tax_amount_ngn, due_date, notes)
-     VALUES ($1,$2,$3,COALESCE($4,0),COALESCE($5,0),$6,$7) RETURNING *`,
+     VALUES ($1,$2,$3,COALESCE($4::numeric,0),COALESCE($5::numeric,0),$6,$7) RETURNING *`,
     [
       row.filing_number,
       row.tax_type,
@@ -347,7 +343,45 @@ async function setFilingStatus({ client, brand, id, status, extra = {} }) {
   return rows[0] || null;
 }
 
+// ── Tax computation from the GL (policy Q14) ─────────────
+// Posted journal activity on one account over a date window. Liability
+// accounts (VAT output, PAYE, WHT payables) accrue on the credit side.
+async function taxAccountActivity({ client, brand, account_code, from, to }) {
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(jl.credit_ngn), 0) AS credits,
+            COALESCE(SUM(jl.debit_ngn), 0)  AS debits
+       FROM ${t(brand, "journal_lines")} jl
+       JOIN ${t(brand, "journal_entries")} je ON je.entry_id = jl.entry_id
+       JOIN ${t(brand, "chart_of_accounts")} coa ON coa.account_id = jl.account_id
+      WHERE je.status = 'posted'
+        AND coa.account_code = $1
+        AND je.posting_date BETWEEN $2 AND $3`,
+    [account_code, from, to],
+  );
+  return rows[0];
+}
+
+/** Drill-down: every posted journal line behind a computed tax figure. */
+async function taxAccountLines({ client, brand, account_codes, from, to }) {
+  const { rows } = await ex(client)(
+    `SELECT je.entry_number, je.posting_date, je.source_type, je.reference,
+            je.description AS entry_description, coa.account_code,
+            jl.debit_ngn, jl.credit_ngn, jl.description AS line_description
+       FROM ${t(brand, "journal_lines")} jl
+       JOIN ${t(brand, "journal_entries")} je ON je.entry_id = jl.entry_id
+       JOIN ${t(brand, "chart_of_accounts")} coa ON coa.account_id = jl.account_id
+      WHERE je.status = 'posted'
+        AND coa.account_code = ANY($1)
+        AND je.posting_date BETWEEN $2 AND $3
+      ORDER BY je.posting_date, je.entry_number`,
+    [account_codes, from, to],
+  );
+  return rows;
+}
+
 module.exports = {
+  taxAccountActivity,
+  taxAccountLines,
   nextNumber,
   findActivePeriod,
   createStatement,

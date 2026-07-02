@@ -1,12 +1,13 @@
 /**
  * Purchasing & Procurement (V2.2 §6.8) — goods receipt + payables service.
  *
- * GRN: receive against a PO → posts 'receive' stock movements (SSOT) and rolls
+ * GRN: receive against a PO → posts 'receive' stock movements (SSOT), which
+ * book DR Inventory 1300 / CR GRNI 2050 at receipt cost (policy Q5) and roll
  * received quantities up to the PO, capturing the actual unit cost at receipt.
  * Supplier invoices: three-way match (PO line ↔ GRN line ↔ invoice line) →
- * approve (DR Inventory 1300 + DR VAT-input 2110 / CR AP 2000) → pay
- * (DR AP / CR Cash, withholding to WHT Payable 2240). Invoice-driven inventory
- * valuation per the as-shipped COA (no GRNI account).
+ * approve (DR GRNI 2050 + DR VAT-input 2110 / CR AP 2000 — clearing the
+ * receipt accrual; price variances surface as GRNI residue) → pay
+ * (DR AP / CR Cash, withholding to WHT Payable 2240).
  */
 
 "use strict";
@@ -17,6 +18,7 @@ const { money, toCurrencyString } = require("../../utils/money");
 const repo = require("./purchasing.repo");
 const events = require("./purchasing.events");
 const accounting = require("../accounting/accounting.service");
+const { ACCOUNTS } = require("../accounting/posting-map");
 const stock = require("../stock/stock.service");
 const {
   NotFoundError,
@@ -425,22 +427,25 @@ async function approveSupplierInvoice({
     const fx = money(inv.fx_rate_used);
     const totalNgn = money(inv.total_ngn);
     const taxNgn = money(inv.tax_amount).times(fx);
-    const inventoryNgn = totalNgn.minus(taxNgn); // subtotal + shipping, capitalised into inventory
+    // Policy Q5: inventory was already debited at GRN (DR 1300 / CR 2050),
+    // so approval clears GRNI into AP. A price gap between receipt cost and
+    // invoice shows as GRNI residue — exactly what the account is for.
+    const grniNgn = totalNgn.minus(taxNgn); // subtotal + shipping
     const lines = [
       {
-        account_code: "1300",
-        debit_ngn: toCurrencyString(inventoryNgn),
-        description: `Inventory — ${inv.internal_reference}`,
+        account_code: ACCOUNTS.GRNI,
+        debit_ngn: toCurrencyString(grniNgn),
+        description: `GRNI cleared — ${inv.internal_reference}`,
       },
     ];
     if (taxNgn.gt(0))
       lines.push({
-        account_code: "2110",
+        account_code: ACCOUNTS.VAT_INPUT,
         debit_ngn: toCurrencyString(taxNgn),
         description: "VAT input",
       });
     lines.push({
-      account_code: "2000",
+      account_code: ACCOUNTS.AP_SUPPLIERS,
       credit_ngn: toCurrencyString(totalNgn),
       description: `AP — supplier invoice ${inv.invoice_number}`,
     });
@@ -505,19 +510,19 @@ async function paySupplierInvoice({ brand, user, request_id, id, input }) {
     const cashOut = amount.minus(whtThis);
     const lines = [
       {
-        account_code: "2000",
+        account_code: ACCOUNTS.AP_SUPPLIERS,
         debit_ngn: toCurrencyString(amount),
         description: `AP settled — ${inv.internal_reference}`,
       },
       {
-        account_code: input.payment_account_code || "1100",
+        account_code: input.payment_account_code || ACCOUNTS.BANK_MAIN,
         credit_ngn: toCurrencyString(cashOut),
         description: `Paid supplier ${inv.invoice_number}`,
       },
     ];
     if (whtThis.gt(0))
       lines.push({
-        account_code: "2240",
+        account_code: ACCOUNTS.WHT_PAYABLE,
         credit_ngn: toCurrencyString(whtThis),
         description: "WHT withheld",
       });

@@ -15,7 +15,9 @@
 const crypto = require("crypto");
 const { transaction, query } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
-const { money } = require("../../utils/money");
+const { money, toCurrencyString } = require("../../utils/money");
+const accounting = require("../accounting/accounting.service");
+const { ACCOUNTS } = require("../accounting/posting-map");
 const brandDocs = require("../../services/pdf.brand-docs");
 const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
@@ -605,6 +607,37 @@ async function markPodCollected({ brand, user, request_id, id, input }) {
         collected_at: new Date().toISOString(),
       },
     });
+    // Policy Q10: the courier now holds our cash — book it as COD-in-transit
+    // against the customer-deposit liability until remittance clears it.
+    const collected = money(input.collected_amount_ngn || 0);
+    if (collected.gt(0)) {
+      const amt = toCurrencyString(collected);
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user?.user_id,
+        entry: {
+          source_type: "payment",
+          source_table: `${brand}.pay_on_delivery_collections`,
+          source_id: id,
+          reference: pod.collection_number,
+          description: `COD collected by courier — ${pod.collection_number}`,
+          idempotency_key: `pod_collect:${id}`,
+        },
+        lines: [
+          {
+            account_code: ACCOUNTS.COD_IN_TRANSIT,
+            debit_ngn: amt,
+            description: `COD held by courier — ${pod.collection_number}`,
+          },
+          {
+            account_code: ACCOUNTS.CUSTOMER_DEPOSITS,
+            credit_ngn: amt,
+            description: `COD customer payment — ${pod.collection_number}`,
+          },
+        ],
+      });
+    }
     await A(
       brand,
       user?.user_id,
@@ -629,8 +662,18 @@ async function remitPodCollection({ brand, user, request_id, id, input }) {
       brand,
       id: pod.delivery_id,
     });
+    const collectedNgn = money(
+      input.collected_amount_ngn ??
+        pod.collected_amount_ngn ??
+        pod.expected_amount_ngn ??
+        0,
+    );
     const sales_order_payment_id = null;
     if (delivery && delivery.order_id) {
+      // Records the sales payment (drives order.paid → stock + sale journal).
+      // _internal_pod_remit bypasses the gateway-only guard for this one
+      // server-side path AND skips the generic capture journal — the COD
+      // clearing journals below own the money movement.
       await salesService.addPayment({
         brand,
         user,
@@ -638,14 +681,78 @@ async function remitPodCollection({ brand, user, request_id, id, input }) {
         id: delivery.order_id,
         input: {
           method: "pay_on_delivery",
-          amount_ngn:
-            input.collected_amount_ngn ??
-            pod.collected_amount_ngn ??
-            pod.expected_amount_ngn,
+          amount_ngn: toCurrencyString(collectedNgn),
           provider: "manual",
           provider_reference: input.remitted_reference,
           payment_path: "pos",
+          _internal_pod_remit: true,
         },
+      });
+    }
+    // Policy Q10 clearing journals. The collect leg (DR 1610 / CR 2400) is
+    // idempotency-keyed, so a remit straight from 'pending' (courier never
+    // marked collected) still books it exactly once; then the remit leg
+    // moves the money to bank, netting the courier's POD fee to Logistics.
+    if (collectedNgn.gt(0)) {
+      const amt = toCurrencyString(collectedNgn);
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user?.user_id,
+        entry: {
+          source_type: "payment",
+          source_table: `${brand}.pay_on_delivery_collections`,
+          source_id: id,
+          reference: pod.collection_number,
+          description: `COD collected by courier — ${pod.collection_number}`,
+          idempotency_key: `pod_collect:${id}`,
+        },
+        lines: [
+          {
+            account_code: ACCOUNTS.COD_IN_TRANSIT,
+            debit_ngn: amt,
+            description: `COD held by courier — ${pod.collection_number}`,
+          },
+          {
+            account_code: ACCOUNTS.CUSTOMER_DEPOSITS,
+            credit_ngn: amt,
+            description: `COD customer payment — ${pod.collection_number}`,
+          },
+        ],
+      });
+      const feeRaw = money(pod.courier_fee_ngn || 0);
+      const fee = feeRaw.gt(collectedNgn) ? collectedNgn : feeRaw;
+      const remitLines = [
+        {
+          account_code: ACCOUNTS.BANK_MAIN,
+          debit_ngn: toCurrencyString(collectedNgn.minus(fee)),
+          description: `COD remitted — ${pod.collection_number}`,
+        },
+      ];
+      if (fee.gt(0))
+        remitLines.push({
+          account_code: ACCOUNTS.LOGISTICS_LOCAL,
+          debit_ngn: toCurrencyString(fee),
+          description: `Courier POD fee — ${pod.collection_number}`,
+        });
+      remitLines.push({
+        account_code: ACCOUNTS.COD_IN_TRANSIT,
+        credit_ngn: amt,
+        description: `COD transit cleared — ${pod.collection_number}`,
+      });
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user?.user_id,
+        entry: {
+          source_type: "payment",
+          source_table: `${brand}.pay_on_delivery_collections`,
+          source_id: id,
+          reference: pod.collection_number,
+          description: `COD remittance — ${pod.collection_number}`,
+          idempotency_key: `pod_remit:${id}`,
+        },
+        lines: remitLines,
       });
     }
     const updated = await repo.setPodStatus({

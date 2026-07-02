@@ -60,6 +60,13 @@ router.post(
   controller.createManualJournal,
 );
 router.get("/journals/:entryId", can("view"), controller.getJournal);
+// Go-live opening balances (policy Q15) — CEO/approver only.
+router.post(
+  "/opening-balance",
+  can("approve"),
+  validator.validateManualJournal,
+  controller.postOpeningBalance,
+);
 router.post(
   "/journals/:entryId/reverse",
   can("approve"),
@@ -134,6 +141,14 @@ router.post(
 );
 
 // Tax filings
+// Tax Center (policy Q14): computed straight from posted journals.
+router.get("/tax/computation", can("view"), bankController.computeTax);
+router.post(
+  "/tax-filings/draft-from-period",
+  can("create"),
+  bankValidator.validateFilingDraftFromPeriod,
+  bankController.draftFilingFromPeriod,
+);
 router.get("/tax-filings", can("view"), bankController.listFilings);
 router.post(
   "/tax-filings",

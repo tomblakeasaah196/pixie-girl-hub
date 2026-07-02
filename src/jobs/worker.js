@@ -36,6 +36,7 @@ const { config } = require("../config/env");
 const { logger } = require("../config/logger");
 const { getClient: getRedisClient } = require("../config/redis");
 const { refreshBrands } = require("../config/brands");
+const { withCronLock } = require("./cron-lock");
 
 const queueNames = [
   "media-processing",
@@ -98,12 +99,19 @@ async function startWorkers() {
   }
 
   // ── Cron schedules ─────────────────────────────────────
-  const scheduleCron = (name, expr, fn) => {
+  // Every job runs under a Postgres advisory lock (jobs/cron-lock.js) so a
+  // second worker instance — or ENABLE_WORKERS=true on the API alongside a
+  // dedicated worker — cannot double-run it (double email sends, double
+  // billing). `perInstance: true` opts a job OUT of the lock: jobs that
+  // maintain per-PROCESS state (in-memory brand registry, local mmdb file)
+  // must run in every instance, not once per fleet.
+  const scheduleCron = (name, expr, fn, { perInstance = false } = {}) => {
+    const run = perInstance ? fn : () => withCronLock(name, fn);
     const job = cron.schedule(
       expr,
       async () => {
         try {
-          await fn();
+          await run();
         } catch (err) {
           logger.error({ err, cron: name }, "cron job failed");
         }
@@ -111,7 +119,7 @@ async function startWorkers() {
       { timezone: config.TZ },
     );
     cronJobs.push({ name, job });
-    logger.info({ cron: name, expr }, "cron scheduled");
+    logger.info({ cron: name, expr, locked: !perInstance }, "cron scheduled");
   };
 
   const { runDailyAiBriefing } = require("./schedulers/ai-briefing");
@@ -171,8 +179,11 @@ async function startWorkers() {
   } = require("./schedulers/stylist-programme-sweep");
 
   // Re-sync the brand registry so a business provisioned by the API process
-  // reaches this worker's crons without a restart.
-  scheduleCron("brand-registry-refresh", "*/5 * * * *", refreshBrands);
+  // reaches this worker's crons without a restart. Per-instance: it refreshes
+  // THIS process's in-memory Set — every instance must run it itself.
+  scheduleCron("brand-registry-refresh", "*/5 * * * *", refreshBrands, {
+    perInstance: true,
+  });
   scheduleCron("ugc-ingestion", "*/10 * * * *", runUgcIngestionSweep);
   scheduleCron(
     "daily-ai-briefing",
@@ -261,10 +272,12 @@ async function startWorkers() {
     "15 3 * * *",
     runStylistCertificationSweep,
   );
+  // Per-instance: downloads the GeoLite2 mmdb to THIS instance's local disk.
   scheduleCron(
     "geoip-db-update",
     config.CRON_GEOIP_DB_UPDATE,
     runGeoIpDatabaseUpdate,
+    { perInstance: true },
   );
 
   // ── Transactional outbox dispatcher (H-2) ──────────────
@@ -289,6 +302,19 @@ async function startWorkers() {
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met → service job
   require("../modules/stylist_programme/stylist.subscribers"); // order.paid → stylist referral accrual
   require("../modules/business_setup/webhooks.service"); // webhook.received → dispatch
+
+  // ── Realtime relays (DEFECT-3) ──────────────────────────
+  // The outbox consumers and cron sweeps above emit domain events IN THIS
+  // process. Register the realtime relays here too, so those events reach
+  // connected clients via the Redis emitter bridge (realtime/emitter.js)
+  // instead of dying unheard when the worker runs as a separate process.
+  // Each register is idempotent — in-process dev (ENABLE_WORKERS=true on
+  // the API) already registered them during socket init.
+  require("../realtime/stock-realtime").registerStockRealtime();
+  require("../realtime/workflow-realtime").registerWorkflowRealtime();
+  require("../realtime/campaign-realtime").registerCampaignRealtime();
+  require("../modules/smartcomm/smartcomm.realtime"); // self-registers, guarded
+
   outboxTimer = setInterval(() => {
     outbox
       .dispatchDue()

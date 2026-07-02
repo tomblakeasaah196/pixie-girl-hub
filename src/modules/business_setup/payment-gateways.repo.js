@@ -7,10 +7,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
 async function list({ brand }) {
   const { rows } = await query(
     `SELECT gateway_id, business, provider, is_active, role,

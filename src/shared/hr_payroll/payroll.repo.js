@@ -6,17 +6,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-const { VALID_BRANDS } = require("../../config/brands");
-function t(brand, table) {
-  if (!VALID_BRANDS.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${table}`;
-}
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
-
+const { ex: exec } = require("../../config/database");
+const { t } = require("../../config/brands");
 // ── Active staff (with their user account) for a payroll run ───────────
 async function listActiveStaffForPayroll({ client, brand, period_end }) {
   const { rows } = await exec(client)(
@@ -555,7 +546,31 @@ async function commissionExistsForOrder({ client, brand, order_id }) {
   return rows.length > 0;
 }
 
+// ── GL sums (policy Q3) ────────────────────────────────────
+// Payslip-level sums so the accrual journal always ties to the slips, not
+// to run totals that might have been patched independently.
+async function sumRunPayslips({ client, brand, run_id }) {
+  const { rows } = await exec(client)(
+    `SELECT
+        COALESCE(SUM(base_salary_ngn + allowances_ngn + overtime_ngn + reimbursements_ngn), 0) AS earnings_ngn,
+        COALESCE(SUM(commission_ngn), 0)          AS commission_ngn,
+        COALESCE(SUM(bonus_ngn), 0)               AS bonus_ngn,
+        COALESCE(SUM(paye_ngn), 0)                AS paye_ngn,
+        COALESCE(SUM(pension_employee_ngn), 0)    AS pension_employee_ngn,
+        COALESCE(SUM(pension_employer_ngn), 0)    AS pension_employer_ngn,
+        COALESCE(SUM(nhf_ngn), 0)                 AS nhf_ngn,
+        COALESCE(SUM(loan_repayment_ngn + advance_recovery_ngn), 0) AS staff_recoveries_ngn,
+        COALESCE(SUM(other_deductions_ngn), 0)    AS other_deductions_ngn,
+        COALESCE(SUM(net_pay_ngn), 0)             AS net_pay_ngn
+       FROM ${t(brand, "payslips")}
+      WHERE payroll_run_id = $1`,
+    [run_id],
+  );
+  return rows[0];
+}
+
 module.exports = {
+  sumRunPayslips,
   listActiveStaffForPayroll,
   activeDeductionConfigs,
   listRuns,

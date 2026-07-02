@@ -1,4 +1,5 @@
 import { motion } from "motion/react";
+import { SmartLink } from "@/components/site/SmartLink";
 import { DEFAULT_HOME, type EditorialContent } from "@/lib/home-content";
 
 export function EditorialSplit({
@@ -32,9 +33,9 @@ export function EditorialSplit({
             {content.headingAfter}
           </h2>
           <p className="mt-8 text-cream/70 leading-relaxed max-w-md">{content.body}</p>
-          <a href={content.ctaHref} className="mt-10 self-start px-9 py-4 border border-taupe/40 text-taupe text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe hover:text-ink transition-colors">
+          <SmartLink to={content.ctaHref} className="mt-10 self-start px-9 py-4 border border-taupe/40 text-taupe text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe hover:text-ink transition-colors">
             {content.ctaLabel}
-          </a>
+          </SmartLink>
         </motion.div>
       </div>
     </section>

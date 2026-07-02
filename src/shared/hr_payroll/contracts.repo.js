@@ -5,12 +5,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-
-function exec(client) {
-  return client ? client.query.bind(client) : query;
-}
-
+const { ex: exec } = require("../../config/database");
 async function businessName({ client, brand }) {
   const { rows } = await exec(client)(
     `SELECT display_name FROM shared.business_config WHERE business_key = $1 LIMIT 1`,

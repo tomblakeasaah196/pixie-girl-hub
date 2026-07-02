@@ -12,10 +12,30 @@ const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const pinoHttp = require("pino-http");
 
+const { RedisStore } = require("rate-limit-redis");
+
 const { config } = require("../config/env");
 const { logger } = require("../config/logger");
+const { getClient: getRedisClient } = require("../config/redis");
 const { requestIdMiddleware } = require("./request-id");
 const { geoCurrencyMiddleware } = require("./geo-currency");
+
+/**
+ * Redis-backed rate-limit store so limits hold across processes/instances
+ * and survive restarts (the default MemoryStore is per-process — two API
+ * replicas would double every limit; a deploy resets all counters).
+ *
+ * The client is resolved lazily per command, so constructing a store at
+ * require time (before initRedis()) is safe. `passOnStoreError` on the
+ * limiters keeps the API available (fail-open, unlimited) if Redis blips —
+ * Redis being down already degrades sessions, so availability wins here.
+ */
+function redisRateLimitStore(prefix) {
+  return new RedisStore({
+    prefix,
+    sendCommand: (...args) => getRedisClient().call(...args),
+  });
+}
 
 function applyGlobalMiddleware(app) {
   // Behind a proxy (nginx, etc.) — trust X-Forwarded-* headers. An integer
@@ -104,7 +124,14 @@ function applyGlobalMiddleware(app) {
     );
   }
 
-  // Global rate limit (per-route limits applied separately)
+  // Global rate limit (per-route limits applied separately).
+  //
+  // Exactly ONE limiter guards /api. A second, identical limiter used to be
+  // mounted right after this one (an artefact of adding the SSR skip as a new
+  // block instead of editing this one): every request was counted against two
+  // independent buckets, and because the FIRST limiter had no skip, the
+  // localhost exemption below never actually applied — internal storefront
+  // SSR calls could be 429'd despite the comment saying otherwise.
   app.use(
     "/api/",
     rateLimit({
@@ -112,22 +139,8 @@ function applyGlobalMiddleware(app) {
       max: 300,
       standardHeaders: true,
       legacyHeaders: false,
-      message: {
-        error: {
-          code: "TOO_MANY_REQUESTS",
-          message: "Slow down — try again in a minute.",
-        },
-      },
-    }),
-  );
-
-  app.use(
-    "/api/",
-    rateLimit({
-      windowMs: 60_000,
-      max: 300,
-      standardHeaders: true,
-      legacyHeaders: false,
+      store: redisRateLimitStore("rl:api:"),
+      passOnStoreError: true,
       // Skip rate limiting for internal SSR requests from the storefront
       // (127.0.0.1 / ::1). Real client IP limiting still applies for all
       // external traffic via the cf-connecting-ip / x-real-ip override above.
@@ -156,6 +169,8 @@ const publicWriteLimiter = rateLimit({
   max: config.PUBLIC_WRITE_RATE_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  store: redisRateLimitStore("rl:pubw:"),
+  passOnStoreError: true,
   message: {
     error: {
       code: "TOO_MANY_REQUESTS",

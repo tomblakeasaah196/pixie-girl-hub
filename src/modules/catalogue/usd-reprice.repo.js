@@ -15,16 +15,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-const { VALID } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
-
-function brandSchema(b) {
-  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
-  return b;
-}
-
+const { ex } = require("../../config/database");
+const { assertBrand: brandSchema } = require("../../config/brands");
 /**
  * Every USD column in the catalogue, mapped to the NGN column it derives from.
  * `schema: "shared"` + `brandScoped` means the table is shared but tagged by a

@@ -9,15 +9,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
-const { VALID } = require("../../config/brands");
-
-const t = (b, tbl) => {
-  if (!VALID.has(b)) throw new Error(`Invalid brand: ${b}`);
-  return `${b}.${tbl}`;
-};
-const ex = (c) => (c ? c.query.bind(c) : query);
-
+const { query, ex } = require("../../config/database");
+const { t } = require("../../config/brands");
 // Resolve a styled product's module-card hero, in priority order: the explicit
 // primary_image_id → the default colour's first picture → any picture on the
 // styled product. Used by list + detail so the module shows imagery, not just

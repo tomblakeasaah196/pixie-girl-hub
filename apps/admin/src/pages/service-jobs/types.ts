@@ -102,6 +102,13 @@ export interface ServiceJob {
   styled_id: string | null;
   shipment_id: string | null;
   customer_asset_id: string | null;
+  // ── Intercompany Flow-1 (FLH styles PXG's hair) — from getJob join ──
+  intercompany_number?: string | null;
+  intercompany_seller_doc?: string | null;
+  intercompany_seller_brand?: string | null;
+  intercompany_buyer_brand?: string | null;
+  intercompany_status?: string | null;
+  intercompany_amount_ngn?: string | null;
 }
 
 export interface JobPaginated {

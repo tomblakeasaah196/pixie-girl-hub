@@ -33,16 +33,16 @@
 
 const events = require("./smartcomm.events");
 const { query } = require("../../config/database");
-const { getIo } = require("../../config/socket");
+const { getBroadcaster } = require("../../realtime/emitter");
 const { logger } = require("../../config/logger");
 
 let registered = false;
 
 function emit(room, event, payload) {
   try {
-    getIo().to(room).emit(event, payload);
+    getBroadcaster().to(room).emit(event, payload);
   } catch (err) {
-    // Socket.io not initialised (worker process / tests) — skip silently.
+    // Redis unavailable (tests/scripts without initRedis) — skip silently.
     logger.debug(
       { err: err.message, room, event },
       "smartcomm realtime emit skipped",

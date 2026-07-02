@@ -20,6 +20,7 @@
 
 const repo = require("./payroll.repo");
 const calc = require("./payroll.calc");
+const postings = require("./payroll.postings");
 const pdf = require("../../services/pdf.service");
 const hrOps = require("./hr_ops.service");
 const disbursement = require("../../services/disbursement.service");
@@ -259,12 +260,37 @@ async function transitionRun({
   to,
   extra = {},
 }) {
-  return transaction(async (client) => {
+  const updated = await transaction(async (client) => {
     const run = await repo.findRun({ client, brand, run_id });
     if (!run) throw new NotFoundError("Payroll run");
     assertTransition(run.status, to);
     const patch = { status: to, ...extra };
-    const updated = await repo.updateRun({ client, brand, run_id, patch });
+    // Policy Q3: approval IS the expense-recognition event — book the full
+    // statutory accrual (salaries/PAYE/pension/NHF/net-pay payable) from the
+    // payslip sums, atomic with the status flip.
+    if (to === "approved") {
+      const accounting = require("../../modules/accounting/accounting.service");
+      const sums = await repo.sumRunPayslips({ client, brand, run_id });
+      const lines = postings.buildPayrollAccrualLines(sums, run.run_number);
+      if (lines.length >= 2) {
+        const journal = await accounting.postEntry({
+          client,
+          brand,
+          user_id: user.user_id,
+          entry: {
+            source_type: "payroll",
+            source_table: "payroll_runs",
+            source_id: run_id,
+            reference: run.run_number,
+            description: `Payroll accrual — ${run.run_number}`,
+            idempotency_key: `payroll_accrual:${run_id}`,
+          },
+          lines,
+        });
+        patch.journal_entry_id = journal.entry_id;
+      }
+    }
+    const row = await repo.updateRun({ client, brand, run_id, patch });
     await aud({
       business: brand,
       user_id: user.user_id,
@@ -276,8 +302,27 @@ async function transitionRun({
       request_id,
     });
     events.emit(`payroll_run_${to}`, { brand, run_id });
-    return updated;
+    return row;
   });
+  // Reversing a run must put the GL back too (reverseEntry manages its own
+  // transaction, so it runs after the status flip commits).
+  if (to === "reversed" && updated.journal_entry_id) {
+    const accounting = require("../../modules/accounting/accounting.service");
+    const entry = await accounting.getJournal({
+      brand,
+      id: updated.journal_entry_id,
+    });
+    if (entry && entry.status === "posted") {
+      await accounting.reverseEntry({
+        brand,
+        user,
+        request_id,
+        id: updated.journal_entry_id,
+        reason: `Payroll run ${updated.run_number} reversed`,
+      });
+    }
+  }
+  return updated;
 }
 
 const reviewRun = (a) => transitionRun({ ...a, to: "reviewed" });
@@ -337,6 +382,7 @@ async function payRun({ brand, user, request_id, run_id, pin }) {
     let paid = 0;
     let failed = 0;
     let queued = 0;
+    let paidOutNgn = money(0); // net pay that actually left (paid + queued)
     for (const slip of slips) {
       const result = await disbursement.disburseSlip({ provider, slip });
       await repo.setPayslipPayment({
@@ -357,11 +403,36 @@ async function payRun({ brand, user, request_id, run_id, pin }) {
       }
       if (result.status === "paid") paid++;
       else queued++;
+      paidOutNgn = paidOutNgn.plus(money(slip.net_pay_ngn || 0));
       await repo.markCommissionsPaidForUser({
         client, brand, user_id: slip.user_id, run_id, paid_at: now,
       });
       await repo.markBonusesPaidForUser({
         client, brand, user_id: slip.user_id, run_id, paid_at: now,
+      });
+    }
+
+    // Policy Q3: clear Net-Pay Payable for the money that actually moved
+    // (paid + queued transfers). Failed slips stay accrued in 2300; a
+    // queued payout that later fails re-accrues via the payout webhook.
+    if (paidOutNgn.gt(0)) {
+      const accounting = require("../../modules/accounting/accounting.service");
+      await accounting.postEntry({
+        client,
+        brand,
+        user_id: user.user_id,
+        entry: {
+          source_type: "payroll",
+          source_table: "payroll_runs",
+          source_id: run_id,
+          reference: run.run_number,
+          description: `Payroll disbursement — ${run.run_number}`,
+          idempotency_key: `payroll_pay:${run_id}`,
+        },
+        lines: postings.buildPayrollPaymentLines(
+          toCurrencyString(paidOutNgn),
+          run.run_number,
+        ),
       });
     }
 
@@ -413,6 +484,28 @@ async function reconcilePayout({ reference, success, failed, provider_ref }) {
       },
     });
     if (row) {
+      // Policy Q3: a queued transfer that FAILED never left the bank — the
+      // pay journal already credited 1100, so put the money back and
+      // re-accrue the slip's net pay (idempotent per payslip).
+      if (failed && money(row.net_pay_ngn || 0).gt(0)) {
+        const accounting = require("../../modules/accounting/accounting.service");
+        await accounting.postEntry({
+          brand,
+          user_id: null,
+          entry: {
+            source_type: "payroll",
+            source_table: "payslips",
+            source_id: payslip_id,
+            reference: row.payslip_number,
+            description: `Failed payout re-accrued — ${row.payslip_number}`,
+            idempotency_key: `payroll_payout_fail:${payslip_id}:${provider_ref || reference}`,
+          },
+          lines: postings.buildPayoutFailureLines(
+            row.net_pay_ngn,
+            row.payslip_number,
+          ),
+        });
+      }
       events.emit("payout_reconciled", { brand, payslip_id, status });
       return { updated: true, brand, status };
     }

@@ -9,10 +9,8 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
-
-const ex = (c) => (c ? c.query.bind(c) : query);
 
 async function nextNumber({ client, brand, type }) {
   const { rows } = await ex(client)(
@@ -52,19 +50,25 @@ async function listPartners({ brand, status }) {
   const params = [];
   let i = 1;
   if (status) {
-    where.push(`status = $${i++}`);
+    where.push(`rp.status = $${i++}`);
     params.push(status);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const { rows } = await query(
-    `SELECT * FROM ${t(brand, "retail_partners")} ${w} ORDER BY created_at DESC`,
+    `SELECT rp.*, c.email, c.primary_phone, c.company_name
+       FROM ${t(brand, "retail_partners")} rp
+       LEFT JOIN shared.contacts c ON c.contact_id = rp.contact_id
+       ${w} ORDER BY rp.created_at DESC`,
     params,
   );
   return rows;
 }
 async function findPartner({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "retail_partners")} WHERE partner_id = $1`,
+    `SELECT rp.*, c.email, c.primary_phone, c.company_name
+       FROM ${t(brand, "retail_partners")} rp
+       LEFT JOIN shared.contacts c ON c.contact_id = rp.contact_id
+      WHERE rp.partner_id = $1`,
     [id],
   );
   return rows[0] || null;
@@ -193,16 +197,24 @@ async function listStock({ brand, partner_id, consignment_location_id }) {
   const params = [];
   let i = 1;
   if (partner_id) {
-    where.push(`partner_id = $${i++}`);
+    where.push(`cs.partner_id = $${i++}`);
     params.push(partner_id);
   }
   if (consignment_location_id) {
-    where.push(`consignment_location_id = $${i++}`);
+    where.push(`cs.consignment_location_id = $${i++}`);
     params.push(consignment_location_id);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const { rows } = await query(
-    `SELECT * FROM ${t(brand, "consignment_stock")} ${w} ORDER BY last_movement_at DESC NULLS LAST`,
+    `SELECT cs.*, pv.sku, pv.variant_name,
+            cl.display_name AS location_name,
+            rp.display_name AS partner_name
+       FROM ${t(brand, "consignment_stock")} cs
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = cs.variant_id
+       LEFT JOIN ${t(brand, "consignment_locations")} cl
+              ON cl.consignment_location_id = cs.consignment_location_id
+       LEFT JOIN ${t(brand, "retail_partners")} rp ON rp.partner_id = cs.partner_id
+       ${w} ORDER BY cs.last_movement_at DESC NULLS LAST`,
     params,
   );
   return rows;
@@ -256,18 +268,26 @@ async function listMovements({
   const params = [];
   let i = 1;
   if (partner_id) {
-    where.push(`partner_id = $${i++}`);
+    where.push(`m.partner_id = $${i++}`);
     params.push(partner_id);
   }
   if (consignment_location_id) {
-    where.push(`consignment_location_id = $${i++}`);
+    where.push(`m.consignment_location_id = $${i++}`);
     params.push(consignment_location_id);
   }
-  if (settled === false) where.push(`settlement_id IS NULL`);
-  if (settled === true) where.push(`settlement_id IS NOT NULL`);
+  if (settled === false) where.push(`m.settlement_id IS NULL`);
+  if (settled === true) where.push(`m.settlement_id IS NOT NULL`);
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const { rows } = await query(
-    `SELECT * FROM ${t(brand, "consignment_movements")} ${w} ORDER BY recorded_at DESC`,
+    `SELECT m.*, pv.sku, pv.variant_name,
+            cl.display_name AS location_name,
+            rp.display_name AS partner_name
+       FROM ${t(brand, "consignment_movements")} m
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = m.variant_id
+       LEFT JOIN ${t(brand, "consignment_locations")} cl
+              ON cl.consignment_location_id = m.consignment_location_id
+       LEFT JOIN ${t(brand, "retail_partners")} rp ON rp.partner_id = m.partner_id
+       ${w} ORDER BY m.recorded_at DESC`,
     params,
   );
   return rows;
@@ -356,28 +376,40 @@ async function listSettlements({ brand, partner_id, status }) {
   const params = [];
   let i = 1;
   if (partner_id) {
-    where.push(`partner_id = $${i++}`);
+    where.push(`ps.partner_id = $${i++}`);
     params.push(partner_id);
   }
   if (status) {
-    where.push(`status = $${i++}`);
+    where.push(`ps.status = $${i++}`);
     params.push(status);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const { rows } = await query(
-    `SELECT * FROM ${t(brand, "partner_settlements")} ${w} ORDER BY period_end DESC`,
+    `SELECT ps.*, rp.display_name AS partner_name
+       FROM ${t(brand, "partner_settlements")} ps
+       LEFT JOIN ${t(brand, "retail_partners")} rp ON rp.partner_id = ps.partner_id
+       ${w} ORDER BY ps.period_end DESC`,
     params,
   );
   return rows;
 }
 async function findSettlement({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "partner_settlements")} WHERE settlement_id = $1`,
+    `SELECT ps.*, rp.display_name AS partner_name
+       FROM ${t(brand, "partner_settlements")} ps
+       LEFT JOIN ${t(brand, "retail_partners")} rp ON rp.partner_id = ps.partner_id
+      WHERE ps.settlement_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
   const { rows: lines } = await ex(client)(
-    `SELECT * FROM ${t(brand, "partner_settlement_lines")} WHERE settlement_id = $1 ORDER BY display_order`,
+    `SELECT l.*, pv.sku, pv.variant_name,
+            cl.display_name AS location_name
+       FROM ${t(brand, "partner_settlement_lines")} l
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = l.variant_id
+       LEFT JOIN ${t(brand, "consignment_locations")} cl
+              ON cl.consignment_location_id = l.consignment_location_id
+      WHERE l.settlement_id = $1 ORDER BY l.display_order`,
     [id],
   );
   return { ...rows[0], lines };

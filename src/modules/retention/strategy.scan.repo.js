@@ -12,13 +12,8 @@
 "use strict";
 
 const { query, transaction } = require("../../config/database");
-const { VALID } = require("../../config/brands");
-
+const { t: tbl } = require("../../config/brands");
 const COUNTED = "('draft','cancelled','refunded','cancellation_requested')";
-const tbl = (brand, name) => {
-  if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);
-  return `${brand}.${name}`;
-};
 
 async function birthdaysToday({ brand, limit = 1000 }) {
   const { rows } = await query(

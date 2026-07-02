@@ -66,6 +66,9 @@ const orderCreate = z
     utm_source: z.string().max(80).optional(),
     utm_medium: z.string().max(80).optional(),
     utm_campaign: z.string().max(120).optional(),
+    // Stylist Programme referral capture (§6.26 Q17) — validated upstream
+    // against shared.stylist_referral_links before it reaches the order.
+    stylist_referral_code: z.string().max(80).optional(),
   })
   .strict();
 

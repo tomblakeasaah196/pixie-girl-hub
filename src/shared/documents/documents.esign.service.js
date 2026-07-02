@@ -15,6 +15,7 @@ const crypto = require("crypto");
 // withTransaction(...) call sites below keep working.
 const { transaction: withTransaction } = require("../../config/database");
 const repo = require("./documents.esign.repo");
+const documentsEvents = require("./documents.events");
 const { audit } = require("../../middleware/audit");
 const {
   NotFoundError,
@@ -156,6 +157,36 @@ async function sendRequest({ brand, user, request_id, id }) {
 
 /** Record a signature for the signer identified by token (external) — public-facing. */
 async function signByToken({
+  token,
+  ip,
+  ua,
+  device,
+  captured_signature_path,
+  signature_image_byte_size,
+}) {
+  const result = await signByTokenTx({
+    token,
+    ip,
+    ua,
+    device,
+    captured_signature_path,
+    signature_image_byte_size,
+  });
+  // Post-commit domain event so cross-module reactions (e.g. the Stylist
+  // Programme issuing a badge when the partner contract is fully signed)
+  // never act on an uncommitted signature.
+  if (result && result.status === "fully_signed")
+    documentsEvents.emit("signature.fully_signed", {
+      request_id: result.request_id,
+      business: result.business,
+      document_id: result.document_id,
+      reference_type: result.reference_type,
+      reference_id: result.reference_id,
+    });
+  return result;
+}
+
+async function signByTokenTx({
   token,
   ip,
   ua,

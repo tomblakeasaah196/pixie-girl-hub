@@ -6,6 +6,13 @@
 "use strict";
 
 const service = require("./stylist.service");
+const applicationService = require("./application.service");
+const contractService = require("./contract.service");
+const referralService = require("./referral.service");
+const routingService = require("./routing.service");
+const badgeCard = require("./badge-card.service");
+const programmeRepo = require("./programme.repo");
+const notify = require("./stylist.notify");
 
 const base = (req) => ({
   brand: req.brand,
@@ -168,12 +175,161 @@ async function approvePayout(req, res) {
     data: await service.approvePayout({ ...base(req), id: req.params.id }),
   });
 }
+async function submitPayout(req, res) {
+  res.json({
+    data: await service.submitPayout({ ...base(req), id: req.params.id }),
+  });
+}
 async function markPayoutPaid(req, res) {
   res.json({
     data: await service.markPayoutPaid({
       ...base(req),
       id: req.params.id,
       transfer_code: req.body.transfer_code,
+    }),
+  });
+}
+
+// ── Admin: applications & vetting ──────────────────────────
+async function listApplications(req, res) {
+  res.json({
+    data: await applicationService.listApplications({
+      status: req.query.status,
+    }),
+  });
+}
+async function getApplication(req, res) {
+  res.json({
+    data: await applicationService.getApplication({ id: req.params.id }),
+  });
+}
+async function addVettingReview(req, res) {
+  res.status(201).json({
+    data: await applicationService.addVettingReview({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function decideApplication(req, res) {
+  res.json({
+    data: await applicationService.decide({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function invitePartner(req, res) {
+  res.json({
+    data: await applicationService.invite({ ...base(req), id: req.params.id }),
+  });
+}
+async function sendContract(req, res) {
+  res.json({
+    data: await contractService.generateAndSend({
+      ...base(req),
+      stylist_id: req.params.id,
+    }),
+  });
+}
+
+// ── Admin: programme configuration ──────────────────────────
+async function getConfig(req, res) {
+  res.json({ data: await programmeRepo.getConfig({ business: notify.BRAND }) });
+}
+async function updateConfig(req, res) {
+  res.json({
+    data: await programmeRepo.updateConfig({
+      business: notify.BRAND,
+      patch: req.body,
+    }),
+  });
+}
+async function listTiers(req, res) {
+  res.json({ data: await programmeRepo.listTiers({}) });
+}
+async function updateTier(req, res) {
+  res.json({
+    data: await programmeRepo.updateTier({
+      tier_key: req.params.tier_key,
+      patch: req.body,
+    }),
+  });
+}
+async function listQuestions(req, res) {
+  res.json({ data: await programmeRepo.listQuestions({}) });
+}
+async function createQuestion(req, res) {
+  res.status(201).json({ data: await programmeRepo.createQuestion({ q: req.body }) });
+}
+async function updateQuestion(req, res) {
+  res.json({
+    data: await programmeRepo.updateQuestion({
+      question_id: req.params.question_id,
+      patch: req.body,
+    }),
+  });
+}
+
+// ── Admin: routing, disputes, reviews, referrals ────────────
+async function routingSuggest(req, res) {
+  res.json({
+    data: await routingService.suggest({
+      business: req.brand,
+      service_key: req.query.service_key,
+      target: {
+        city: req.query.city,
+        state: req.query.state,
+        country_code: req.query.country_code,
+        latitude: req.query.latitude,
+        longitude: req.query.longitude,
+      },
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    }),
+  });
+}
+async function addOffers(req, res) {
+  res.status(201).json({
+    data: await service.addOffers({
+      ...base(req),
+      assignment_id: req.params.id,
+      stylist_ids: req.body.stylist_ids,
+    }),
+  });
+}
+async function disputeAssignment(req, res) {
+  res.json({
+    data: await service.disputeAssignment({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+async function listReviews(req, res) {
+  res.json({
+    data: await programmeRepo.listVerifiedReviews({
+      stylist_id: req.query.stylist_id,
+      include_hidden: req.query.hidden === "true",
+    }),
+  });
+}
+async function setReviewVisibility(req, res) {
+  res.json({
+    data: await programmeRepo.setReviewVisibility({
+      assignment_id: req.params.assignment_id,
+      hidden: Boolean(req.body.hidden),
+    }),
+  });
+}
+async function listReferralAttributions(req, res) {
+  res.json({
+    data: await referralService.listAttributions({
+      stylist_id: req.query.stylist_id,
+      business: req.brand,
+      status: req.query.status,
     }),
   });
 }
@@ -245,10 +401,178 @@ async function completeAssignment(req, res) {
     }),
   });
 }
+async function forgotPassword(req, res) {
+  res.json({
+    data: await applicationService.forgotPassword({ email: req.body.email }),
+  });
+}
+async function resetPassword(req, res) {
+  res.json({
+    data: await applicationService.resetPassword({
+      token: req.body.token,
+      password: req.body.password,
+    }),
+  });
+}
+async function updateMyProfile(req, res) {
+  res.json({
+    data: await service.updateMyProfile({
+      stylist_id: req.stylist.stylist_id,
+      patch: req.body,
+    }),
+  });
+}
+async function updateMyPayoutDetails(req, res) {
+  res.json({
+    data: await service.updateMyPayoutDetails({
+      stylist_id: req.stylist.stylist_id,
+      patch: req.body,
+    }),
+  });
+}
+async function myEarnings(req, res) {
+  res.json({
+    data: await service.myEarnings({ stylist_id: req.stylist.stylist_id }),
+  });
+}
+async function myPayout(req, res) {
+  res.json({
+    data: await service.myPayout({
+      stylist_id: req.stylist.stylist_id,
+      id: req.params.id,
+    }),
+  });
+}
+async function myReferrals(req, res) {
+  res.json({
+    data: await referralService.summary({
+      stylist_id: req.stylist.stylist_id,
+    }),
+  });
+}
+async function createReferralLink(req, res) {
+  res.status(201).json({
+    data: await referralService.createLink({
+      stylist_id: req.stylist.stylist_id,
+      business: notify.BRAND,
+      input: req.body,
+    }),
+  });
+}
+async function myNotifications(req, res) {
+  res.json({
+    data: await service.myNotifications({
+      stylist_id: req.stylist.stylist_id,
+      unread_only: req.query.unread === "true",
+    }),
+  });
+}
+async function markNotificationRead(req, res) {
+  res.json({
+    data: await service.markNotificationRead({
+      stylist_id: req.stylist.stylist_id,
+      notification_id: req.params.id,
+    }),
+  });
+}
+async function markAllNotificationsRead(req, res) {
+  res.json({
+    data: {
+      updated: await service.markAllNotificationsRead({
+        stylist_id: req.stylist.stylist_id,
+      }),
+    },
+  });
+}
+async function myBadge(req, res) {
+  res.json({
+    data: await badgeCard.badgeInfo({ stylist_id: req.stylist.stylist_id }),
+  });
+}
+async function myBadgeCard(req, res) {
+  const card = await badgeCard.renderCard({
+    stylist_id: req.stylist.stylist_id,
+  });
+  res.setHeader("Content-Type", card.mime_type);
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${card.filename}"`,
+  );
+  res.send(card.buffer);
+}
+async function myContract(req, res) {
+  res.json({
+    data: await contractService.getContractState({
+      stylist_id: req.stylist.stylist_id,
+    }),
+  });
+}
 
 // ════════════════ Public ════════════════
 async function verifyBadge(req, res) {
   res.json({ data: await service.verifyBadge({ token: req.params.badge_id }) });
+}
+async function publicQuestions(req, res) {
+  res.json({ data: await applicationService.getPublicQuestions() });
+}
+async function publicApply(req, res) {
+  const files = {};
+  for (const f of req.files || []) {
+    if (f.fieldname === "id_doc") files.id_doc = f;
+    if (f.fieldname === "business_doc") files.business_doc = f;
+  }
+  // Multipart fields arrive as strings; answers is a JSON-encoded array.
+  const input = { ...req.body };
+  if (typeof input.answers === "string") {
+    try {
+      input.answers = JSON.parse(input.answers);
+    } catch {
+      input.answers = [];
+    }
+  }
+  res.status(201).json({
+    data: await applicationService.apply({
+      input,
+      files,
+      request_id: req.request_id,
+    }),
+  });
+}
+async function publicDirectory(req, res) {
+  res.json({
+    data: await service.publicDirectory({
+      city: req.query.city,
+      country_code: req.query.country_code,
+      tier: req.query.tier,
+      service_key: req.query.service_key,
+    }),
+  });
+}
+async function publicGetReview(req, res) {
+  res.json({
+    data: await service.getReviewByToken({ token: req.params.token }),
+  });
+}
+async function publicSubmitReview(req, res) {
+  res.json({
+    data: await service.submitReviewByToken({
+      token: req.params.token,
+      rating: req.body.rating,
+      review: req.body.review,
+    }),
+  });
+}
+async function publicReferralRedirect(req, res) {
+  const { publicBaseUrl } = require("../../utils/brand-urls");
+  const storefrontBase = (await publicBaseUrl(notify.BRAND)) || "";
+  const hit = await referralService.resolveRedirect({ code: req.params.code });
+  if (!hit) return res.redirect(302, `${storefrontBase}/`);
+  const path =
+    hit.target_path && hit.target_path.startsWith("/") ? hit.target_path : "/";
+  res.redirect(
+    302,
+    `${storefrontBase}${path}${path.includes("?") ? "&" : "?"}ref=${encodeURIComponent(hit.code)}`,
+  );
 }
 
 module.exports = {
@@ -274,18 +598,58 @@ module.exports = {
   listPayouts,
   getPayout,
   generatePayout,
+  submitPayout,
   approvePayout,
   markPayoutPaid,
+  listApplications,
+  getApplication,
+  addVettingReview,
+  decideApplication,
+  invitePartner,
+  sendContract,
+  getConfig,
+  updateConfig,
+  listTiers,
+  updateTier,
+  listQuestions,
+  createQuestion,
+  updateQuestion,
+  routingSuggest,
+  addOffers,
+  disputeAssignment,
+  listReviews,
+  setReviewVisibility,
+  listReferralAttributions,
   // portal
   login,
   myProfile,
   myOffers,
   myAssignments,
   myPayouts,
+  myPayout,
   acceptOffer,
   declineOffer,
   startAssignment,
   completeAssignment,
+  forgotPassword,
+  resetPassword,
+  updateMyProfile,
+  updateMyPayoutDetails,
+  myEarnings,
+  myReferrals,
+  createReferralLink,
+  myNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  myBadge,
+  myBadgeCard,
+  myContract,
   // public
   verifyBadge,
+  publicQuestions,
+  publicApply,
+  publicDirectory,
+  publicGetReview,
+  publicSubmitReview,
+  publicReferralRedirect,
 };

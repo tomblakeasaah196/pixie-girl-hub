@@ -1,0 +1,25 @@
+-- ============================================================
+-- TEMPLATE 000075 — Stylist Partner Programme: referral attribution capture
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.26 (two-way earnings, Q17)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000074) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose, so the file
+-- re-applies every repair — safe because the ADD COLUMN is IF NOT EXISTS.
+--
+-- WHY: a stylist shares a tracked storefront link (?ref=<code>); checkout /
+-- public order form validate the code against shared.stylist_referral_links
+-- and stamp it here. On `order.paid` the stylist_programme outbox consumer
+-- writes the shared.stylist_referral_attributions accrual. This column is
+-- DISTINCT from referral_code_used, which belongs to the CUSTOMER referral
+-- programme (§6.23) and is auto-redeemed by the retention subscriber.
+--
+-- Altered:  sales_orders (+ stylist_referral_code)
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS stylist_referral_code TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_orders_stylist_ref
+  ON {{BUSINESS}}.sales_orders (stylist_referral_code)
+  WHERE stylist_referral_code IS NOT NULL;

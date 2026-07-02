@@ -277,6 +277,9 @@ async function submitOrderForm({ brand, input, request_id }) {
         redeem_points: input.redeem_points,
         bundle_id: input.bundle_id,
         client_idempotency_key: input.client_idempotency_key,
+        stylist_referral_code: await resolveStylistReferral(
+          input.referral_code,
+        ),
       },
     });
 
@@ -289,6 +292,18 @@ async function submitOrderForm({ brand, input, request_id }) {
       contact_id: contact.contact_id,
     };
   });
+}
+
+// Stylist referral capture (§6.26 Q17): only a code that resolves to an
+// ACTIVE partner is stamped on the order — a stale/garbage ?ref= silently
+// drops instead of failing the checkout.
+async function resolveStylistReferral(code) {
+  if (!code) return undefined;
+  const stylistReferrals = require("../stylist_programme/referral.service");
+  const hit = await stylistReferrals
+    .validateCode({ code })
+    .catch(() => null);
+  return hit ? String(code) : undefined;
 }
 
 // ── Persistent-cart checkout (own path; mirrors the proven sale sequence) ──
@@ -656,6 +671,10 @@ async function checkout({ brand, cart_id, input = {} }) {
       );
   }
 
+  const stylistReferralCode = await resolveStylistReferral(
+    input.referral_code,
+  );
+
   // 4. Create the sales order (same engine + outbox as every channel).
   const order = await salesService.createOrder({
     brand,
@@ -668,6 +687,7 @@ async function checkout({ brand, cart_id, input = {} }) {
       lines: orderLines,
       shipping_fee_ngn: shippingFeeNgn,
       coupon_code: input.coupon_code || null,
+      stylist_referral_code: stylistReferralCode,
       // Loyalty points redemption (optional) — createOrder validates + caps it.
       redeem_points: input.redeem_points || undefined,
       // Bundle savings folded into the order-level deal discount (floor-respecting

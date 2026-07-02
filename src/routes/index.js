@@ -142,6 +142,7 @@ const {
 } = require("../middleware/customer-auth");
 const publicAnalyticsRouter = require("../modules/storefront/analytics.public.routes");
 const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.routes");
+const publicStylistProgrammeRouter = require("../modules/stylist_programme/stylist.public.routes");
 const publicReferralRouter = require("../modules/retention/referral.routes");
 const publicHairQuizRouter = require("../modules/retention/hair-quiz.routes");
 const publicCampaignRouter = require("../modules/sales_campaigns/campaigns.public.routes");
@@ -221,6 +222,14 @@ function mountRoutes(app) {
   // Storefront analytics ingestion at the canonical /api/public/analytics path.
   publicRouter.use("/analytics", publicWriteLimiter, publicAnalyticsRouter);
   publicRouter.use("/stylist-verify", publicStylistVerifyRouter);
+  // Stylist programme public surface (§6.26): questionnaire + application
+  // intake, certified-partner directory, tokenised customer reviews, referral
+  // redirect. The write limiter blunts application/review spam.
+  publicRouter.use(
+    "/stylist-programme",
+    publicWriteLimiter,
+    publicStylistProgrammeRouter,
+  );
   publicRouter.use("/referral", publicWriteLimiter, publicReferralRouter);
   publicRouter.use("/hair-quiz", publicWriteLimiter, publicHairQuizRouter);
   // Public sales landing — host → brand resolver runs first so the

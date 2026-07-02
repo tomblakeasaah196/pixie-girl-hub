@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useState } from "react";
 import { motion } from "motion/react";
 import { getProducts, unwrap, priceFor, type ProductCard } from "@/lib/storefront";
 import { ssrProducts } from "@/lib/server";
@@ -15,13 +16,21 @@ export const Route = createFileRoute("/shop")({
 function Shop() {
   const initial = Route.useLoaderData();
   const [currency] = useCurrency();
-  const { data, isLoading } = useQuery({
-    queryKey: ["products", initial.brand],
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ["products", initial.brand, page],
     queryFn: async () =>
-      (unwrap(await getProducts("?page=1&page_size=24")) as ProductCard[]) ?? [],
-    initialData: initial.products,
+      (unwrap(await getProducts(`?page=${page}&page_size=24`)) as ProductCard[]) ?? [],
+    initialData: page === 1 ? initial.products : undefined,
+    placeholderData: keepPreviousData,
   });
   const products = data ?? [];
+  const hasNext = products.length >= 24;
+
+  const goto = (p: number) => {
+    setPage(Math.max(1, p));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const s = withSlots(
     {
       eyebrow: "The Catalogue",
@@ -82,6 +91,28 @@ function Shop() {
             ))}
           </div>
         )}
+
+        {products.length > 0 ? (
+          <div className="mt-16 flex items-center justify-center gap-6">
+            <button
+              disabled={page === 1 || isFetching}
+              onClick={() => goto(page - 1)}
+              className="border border-taupe/40 px-6 py-3 text-[0.65rem] tracking-[0.35em] uppercase text-taupe transition-colors hover:bg-taupe/10 disabled:opacity-30"
+            >
+              ← Prev
+            </button>
+            <span className="text-[0.65rem] tracking-[0.35em] uppercase text-cream/60">
+              Page {page}
+            </span>
+            <button
+              disabled={!hasNext || isFetching}
+              onClick={() => goto(page + 1)}
+              className="border border-taupe/40 px-6 py-3 text-[0.65rem] tracking-[0.35em] uppercase text-taupe transition-colors hover:bg-taupe/10 disabled:opacity-30"
+            >
+              Next →
+            </button>
+          </div>
+        ) : null}
       </section>
     </main>
   );

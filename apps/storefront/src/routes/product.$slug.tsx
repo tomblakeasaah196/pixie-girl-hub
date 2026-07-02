@@ -68,7 +68,7 @@ function ProductPage() {
 
   if (!product) {
     return (
-      <Section className="pt-28 md:pt-24">
+      <Section>
         <ErrorState />
       </Section>
     );

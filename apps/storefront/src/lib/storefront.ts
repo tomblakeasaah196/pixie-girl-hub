@@ -159,6 +159,8 @@ export const getBundles = (ctx?: ApiContext) =>
       bundle_code: string;
       display_name: string;
       description?: string;
+      pricing_model?: string;
+      discount_value?: string | number | null;
       bundle_price_ngn?: string;
       hero_image_url?: string;
       components?: {

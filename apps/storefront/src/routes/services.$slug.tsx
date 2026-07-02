@@ -64,19 +64,19 @@ function ServicePage() {
 
   if (isLoading)
     return (
-      <Section className="pt-28 md:pt-24">
+      <Section>
         <LoadingGrid />
       </Section>
     );
   if (isError || !data)
     return (
-      <Section className="pt-28 md:pt-24">
+      <Section>
         <ErrorState onRetry={() => refetch()} />
       </Section>
     );
 
   return (
-    <Section className="pt-28 md:pt-24">
+    <Section>
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
         <div>
           <h1 className="text-h2 font-display">{data.name}</h1>

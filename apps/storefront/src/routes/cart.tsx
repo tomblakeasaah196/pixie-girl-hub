@@ -47,19 +47,19 @@ function CartPage() {
 
   if (cartQ.isLoading)
     return (
-      <Section className="pt-28 md:pt-24">
+      <Section>
         <p className="text-body text-muted-foreground">Loading your bag...</p>
       </Section>
     );
   if (cartQ.isError)
     return (
-      <Section className="pt-28 md:pt-24">
+      <Section>
         <ErrorState onRetry={() => cartQ.refetch()} />
       </Section>
     );
   if (items.length === 0)
     return (
-      <Section className="pt-28 md:pt-24">
+      <Section>
         <h1 className="text-h3 font-display">Your bag</h1>
         <EmptyState
           title="Your bag is empty."
@@ -76,7 +76,7 @@ function CartPage() {
   const total = q ? (useUsd ? q.total_display : q.total_ngn) : null;
 
   return (
-    <Section className="pt-28 md:pt-24 grid gap-10 md:grid-cols-[1fr_360px]">
+    <Section className="grid gap-10 md:grid-cols-[1fr_360px]">
       <div>
         <h1 className="text-h3 font-display">Your bag</h1>
         <ul className="mt-6 divide-y divide-border">

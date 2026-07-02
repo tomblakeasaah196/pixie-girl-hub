@@ -5,6 +5,103 @@
 "use strict";
 
 const service = require("./dashboards.service");
+const metricsService = require("./dashboards.metrics.service");
+const exportService = require("./dashboards.export");
+
+const XLSX_MIME =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+function sendWorkbook(res, { buffer, filename }) {
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Type", XLSX_MIME);
+  res.send(buffer);
+}
+
+// ── Domain dashboards (§6.20 rebuild) ──────────────────────
+
+async function listDomains(req, res) {
+  res.json({
+    data: await metricsService.listDomains({ brand: req.brand, user: req.user }),
+  });
+}
+
+async function getDomain(req, res) {
+  res.json({
+    data: await metricsService.domainData({
+      brand: req.brand,
+      user: req.user,
+      key: req.params.key,
+      from: req.query.from,
+      to: req.query.to,
+    }),
+  });
+}
+
+async function getDomainDetail(req, res) {
+  const { data, columns, label, period, meta } =
+    await metricsService.domainDetail({
+      brand: req.brand,
+      user: req.user,
+      key: req.params.key,
+      tableKey: req.params.table,
+      from: req.query.from,
+      to: req.query.to,
+      filters: {
+        status: req.query.status,
+        sales_channel: req.query.sales_channel,
+      },
+      page: req.query.page,
+      page_size: req.query.page_size,
+    });
+  res.json({ data, columns, label, period, meta });
+}
+
+async function exportDomainXlsx(req, res) {
+  sendWorkbook(
+    res,
+    await exportService.exportDomain({
+      brand: req.brand,
+      user: req.user,
+      key: req.params.key,
+      from: req.query.from,
+      to: req.query.to,
+    }),
+  );
+}
+
+async function getGlobal(req, res) {
+  res.json({
+    data: await metricsService.globalOverview({
+      user: req.user,
+      from: req.query.from,
+      to: req.query.to,
+    }),
+  });
+}
+
+async function getPreferences(req, res) {
+  res.json({
+    data: await metricsService.getPreferences({
+      brand: req.brand,
+      user: req.user,
+    }),
+  });
+}
+
+async function putPreferences(req, res) {
+  res.json({
+    data: await metricsService.putPreferences({
+      brand: req.brand,
+      user: req.user,
+      hidden_tiles: req.body.hidden_tiles,
+    }),
+  });
+}
+
+async function exportReportRunExcel(req, res) {
+  const run = await service.getReportRun({ brand: req.brand, id: req.params.id });
+  sendWorkbook(res, await exportService.exportReportRun({ run }));
+}
 
 async function overview(req, res) {
   res.json({
@@ -206,6 +303,14 @@ async function generateReportRunPdf(req, res) {
 }
 
 module.exports = {
+  listDomains,
+  getDomain,
+  getDomainDetail,
+  exportDomainXlsx,
+  getGlobal,
+  getPreferences,
+  putPreferences,
+  exportReportRunExcel,
   overview,
   salesKpis,
   opsKpis,

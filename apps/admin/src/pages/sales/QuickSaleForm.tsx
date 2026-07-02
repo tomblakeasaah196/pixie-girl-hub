@@ -37,6 +37,9 @@ interface CartLine {
   variant_id: string;
   // Set when this line is a service (walk-in revamp/install) instead of a product.
   service_offering_id?: string;
+  // Set when the picked product was a styled SKU — stamped so Sales writes
+  // line_kind='styled' and Stylist Studio opens a job on payment.
+  styled_id?: string;
   label: string;
   sku: string;
   unit_price: number;
@@ -188,7 +191,13 @@ export function QuickSaleForm() {
       setCart((prev) => {
         const next = [...prev];
         for (const l of lines) {
-          const i = next.findIndex((c) => c.variant_id === l.variant_id);
+          // Merge only when both variant AND styled provenance match — a base
+          // wig and its styled sibling share a variant but are different lines.
+          const i = next.findIndex(
+            (c) =>
+              c.variant_id === l.variant_id &&
+              (c.styled_id || null) === (l.styled_id || null),
+          );
           if (i >= 0)
             next[i] = { ...next[i], quantity: next[i].quantity + l.quantity };
           else next.push({ id: crypto.randomUUID(), ...l });
@@ -251,6 +260,9 @@ export function QuickSaleForm() {
                 variant_id: l.variant_id,
                 quantity: l.quantity,
                 unit_price_ngn: l.unit_price || undefined,
+                ...(l.styled_id
+                  ? { styled_id: l.styled_id, line_kind: "styled" as const }
+                  : {}),
               },
         ),
         bundle_id: bundleId || undefined,

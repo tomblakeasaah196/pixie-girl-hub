@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
@@ -81,7 +81,13 @@ function ServicePage() {
 
   return (
     <Section>
-      <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
+      <Link
+        to="/services"
+        className="inline-flex items-center gap-2 text-[0.62rem] tracking-[0.4em] uppercase text-taupe hover:text-cream transition-colors"
+      >
+        ← Services
+      </Link>
+      <div className="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-2">
         <div>
           <h1 className="text-h2 font-display">{data.name}</h1>
           <p className="mt-2 text-body-sm font-mono">

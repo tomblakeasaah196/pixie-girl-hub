@@ -27,7 +27,7 @@
 "use strict";
 
 const { AppError } = require("../utils/errors");
-const permissionsRepo = require("../shared/org_workflow/permissions.repo");
+const identityCache = require("../shared/cache/identity-cache");
 
 const VALID_ACTIONS = new Set([
   "view",
@@ -58,7 +58,9 @@ function requirePermission(moduleKey, action) {
       return next();
     }
 
-    const grants = await permissionsRepo.findGrants({
+    // Cached (30 s TTL; permission edits invalidate every grants entry) —
+    // saves a DB round-trip on every permission-gated request.
+    const grants = await identityCache.getGrants({
       role_ids: req.user.role_ids,
       module: moduleKey,
       action,

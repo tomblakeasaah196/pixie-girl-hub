@@ -2,11 +2,12 @@
  * Redis client.
  *
  * Used for:
- *   - Cache (FX rates, hot product reads, action catalogue)
- *   - Sessions (refresh tokens, pending action confirmations)
- *   - Rate limiting (express-rate-limit store)
- *   - Pub/Sub coordination across Socket.io workers
- *   - BullMQ job queue (workers and scheduled jobs)
+ *   - Identity cache — per-request user / brand-config / permission-grant
+ *     lookups with event-driven invalidation (shared/cache/identity-cache.js)
+ *   - Sessions (refresh tokens, password-reset tokens, revocation)
+ *   - Pub/Sub coordination across Socket.io workers (redis adapter)
+ *   - BullMQ job queues (workers and scheduled jobs)
+ *   - Rate limiting (express-rate-limit Redis store)
  */
 
 "use strict";

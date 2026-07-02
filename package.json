@@ -40,6 +40,7 @@
     "db:verify": "node scripts/verify-schema.js",
     "db:create-admin": "node scripts/create-admin.js",
     "catalogue:wipe": "node scripts/wipe-catalogue.js",
+    "backfill:service-jobs": "node scripts/backfill-service-jobs.js",
     "workers:start": "node src/jobs/worker.js",
     "coverage:frontend": "node scripts/build-frontend-coverage.js",
     "build:action-catalogue": "node scripts/build-action-catalogue.js",

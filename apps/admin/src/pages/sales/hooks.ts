@@ -182,6 +182,19 @@ export function useContactRecentOrders(
   });
 }
 
+/** Reminders + sends for this order's invoice (powers the Comms log). */
+export function useInvoiceReminders(invoiceId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["invoicing", biz, "reminders", invoiceId],
+    queryFn: async () => {
+      const res = await salesApi.getInvoiceReminders(invoiceId!);
+      return res.data ?? [];
+    },
+    enabled: !!invoiceId,
+  });
+}
+
 /** Send / resend the order's invoice to the customer (email / WhatsApp). */
 export function useSendOrderInvoice(orderId: string | null) {
   const qc = useQueryClient();

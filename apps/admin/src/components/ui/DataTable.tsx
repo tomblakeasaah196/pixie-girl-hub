@@ -24,6 +24,7 @@ export function DataTable<T>({
   loading,
   empty,
   toolbar,
+  activeKey,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -37,6 +38,8 @@ export function DataTable<T>({
     action?: ReactNode;
   };
   toolbar?: ReactNode;
+  /** Row to visually highlight — for keyboard focus + return-from-detail. */
+  activeKey?: string | null;
 }) {
   return (
     <Card className="overflow-hidden">
@@ -75,14 +78,19 @@ export function DataTable<T>({
                 </tr>
               ))}
             {!loading &&
-              rows.map((row) => (
+              rows.map((row) => {
+                const k = rowKey(row);
+                const isActive = activeKey === k;
+                return (
                 <tr
-                  key={rowKey(row)}
+                  key={k}
+                  data-row-key={k}
                   onClick={() => onRowClick?.(row)}
                   className={cn(
                     "border-b hairline last:border-0 transition-colors",
                     onRowClick &&
                       "cursor-pointer hover:bg-text-primary/[0.035]",
+                    isActive && "bg-accent/[0.10] ring-1 ring-inset ring-accent/40",
                   )}
                 >
                   {columns.map((c) => (
@@ -95,7 +103,8 @@ export function DataTable<T>({
                     </td>
                   ))}
                 </tr>
-              ))}
+                );
+              })}
           </tbody>
         </table>
       </div>

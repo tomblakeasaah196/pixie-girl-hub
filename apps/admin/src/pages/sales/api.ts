@@ -89,6 +89,25 @@ export const sendOrderInvoice = (
   input: { sent_via?: string } = {},
 ) => api.post(`/invoicing/invoices/${invoiceId}/send`, input);
 
+/** Every reminder scheduled or sent for this invoice — powers the Comms log. */
+export interface InvoiceReminder {
+  reminder_id: string;
+  reminder_type: string;
+  channel: "whatsapp" | "email" | "sms" | "in_app";
+  recipient_address: string;
+  status: string;
+  scheduled_for: string;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  failure_reason: string | null;
+}
+
+export const getInvoiceReminders = (invoiceId: string) =>
+  api.get<{ data: InvoiceReminder[] }>(
+    `/invoicing/invoices/${invoiceId}/reminders`,
+  );
+
 // ── Order rollup (Studio + Delivery + Customer history) ─────
 
 /** The Studio job attached to this order (paginated list; first row is what we want). */

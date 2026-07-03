@@ -368,6 +368,93 @@ select:-webkit-autofill {
   .input-sm:focus {
     border-color: rgb(var(--accent) / 0.5);
   }
+
+  /* Standard form field — same glass material as .input-sm, sized to match
+     the shared NumberField / Select controls (42px) so text inputs sit flush
+     with the component kit. Modules that render `className="input"` (Stylists,
+     Stylist Studio) fell back to a raw white browser control before this
+     existed. */
+  .input {
+    width: 100%;
+    height: 42px;
+    padding: 0 13px;
+    border-radius: 11px;
+    background: rgb(var(--text) / 0.04);
+    border: 1px solid rgb(var(--border-c) / var(--border-alpha));
+    font-size: 13px;
+    color: rgb(var(--text));
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .input::placeholder {
+    color: rgb(var(--text-faint));
+  }
+  .input:focus {
+    border-color: rgb(var(--accent) / 0.5);
+  }
+  .input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  textarea.input {
+    height: auto;
+    min-height: 88px;
+    padding: 10px 13px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+  /* House rule: number inputs never show the browser spinner/stepper. */
+  .input[type="number"]::-webkit-outer-spin-button,
+  .input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  /* Native <select class="input"> — hide the OS chrome, draw our own chevron.
+     (The option list itself is still OS-native; prefer the glass <Select>
+     component for anything the user opens often.) */
+  select.input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 34px;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgb(128,112,107)' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+  }
+  select.input option {
+    background: rgb(var(--panel));
+    color: rgb(var(--text));
+  }
+
+  /* Field caption — the form-field cousin of .micro (which is a tiny section
+     eyebrow). Readable size, same uppercase tracking discipline. */
+  .label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(var(--text-faint));
+    margin-bottom: 6px;
+  }
+
+  /* Accent-tint native range / checkbox for the few forms that keep them
+     (routing-weight + rubric sliders). accent-color styles the track+thumb
+     in every modern browser, so a native control stops looking off-system. */
+  .range-accent {
+    accent-color: rgb(var(--accent));
+    width: 100%;
+  }
+  .check-accent {
+    accent-color: rgb(var(--accent-deep));
+    width: 16px;
+    height: 16px;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════

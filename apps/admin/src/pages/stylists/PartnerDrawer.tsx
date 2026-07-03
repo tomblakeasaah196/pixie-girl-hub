@@ -8,8 +8,14 @@ import { useState } from "react";
 import { BadgeCheck, QrCode, Send, ShieldOff } from "lucide-react";
 import { Button, Pill, MoneyText } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
-import { ErrorState, ConfirmDialog } from "@/components/ui/controls";
+import {
+  ErrorState,
+  ConfirmDialog,
+  Select,
+  NumberField,
+} from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
+import { useToast } from "@/lib/toast";
 import { usePartner, usePartnerMutations, useTiers } from "./hooks";
 import { PARTNER_STATUS_META } from "./constants";
 
@@ -30,6 +36,7 @@ export function PartnerDrawer({
   onClose: () => void;
 }) {
   const can = useAuthStore((s) => s.can);
+  const toast = useToast();
   const partner = usePartner(stylistId);
   const tiers = useTiers();
   const m = usePartnerMutations(stylistId);
@@ -123,7 +130,13 @@ export function PartnerDrawer({
                   variant="danger"
                   icon={<ShieldOff className="w-3.5 h-3.5" />}
                   disabled={m.revokeBadge.isPending}
-                  onClick={() => m.revokeBadge.mutate()}
+                  onClick={() =>
+                    m.revokeBadge.mutate(undefined, {
+                      onSuccess: () => toast.success("Badge revoked"),
+                      onError: (e) =>
+                        toast.error("Couldn't revoke badge", (e as Error).message),
+                    })
+                  }
                 >
                   Revoke badge
                 </Button>
@@ -132,7 +145,13 @@ export function PartnerDrawer({
                   size="sm"
                   icon={<QrCode className="w-3.5 h-3.5" />}
                   disabled={m.issueBadge.isPending}
-                  onClick={() => m.issueBadge.mutate()}
+                  onClick={() =>
+                    m.issueBadge.mutate(undefined, {
+                      onSuccess: () => toast.success("Badge issued"),
+                      onError: (e) =>
+                        toast.error("Couldn't issue badge", (e as Error).message),
+                    })
+                  }
                 >
                   Issue badge
                 </Button>
@@ -141,14 +160,28 @@ export function PartnerDrawer({
                 size="sm"
                 icon={<Send className="w-3.5 h-3.5" />}
                 disabled={m.sendContract.isPending}
-                onClick={() => m.sendContract.mutate()}
+                onClick={() =>
+                  m.sendContract.mutate(undefined, {
+                    onSuccess: () =>
+                      toast.success("Contract sent for signature"),
+                    onError: (e) =>
+                      toast.error("Couldn't send contract", (e as Error).message),
+                  })
+                }
               >
                 {p.contract_document_id ? "Resend contract" : "Send contract"}
               </Button>
               <Button
                 size="sm"
                 disabled={m.invite.isPending}
-                onClick={() => m.invite.mutate()}
+                onClick={() =>
+                  m.invite.mutate(undefined, {
+                    onSuccess: (r) =>
+                      toast.success("Portal invite sent", r?.email),
+                    onError: (e) =>
+                      toast.error("Couldn't send invite", (e as Error).message),
+                  })
+                }
               >
                 {m.invite.isSuccess ? "Invite sent ✓" : "Send portal invite"}
               </Button>
@@ -203,7 +236,13 @@ export function PartnerDrawer({
                     <Button
                       size="sm"
                       variant="danger"
-                      onClick={() => m.revokeCertification.mutate(c.certification_id)}
+                      onClick={() =>
+                        m.revokeCertification.mutate(c.certification_id, {
+                          onSuccess: () => toast.success("Certification revoked"),
+                          onError: (e) =>
+                            toast.error("Couldn't revoke", (e as Error).message),
+                        })
+                      }
                     >
                       Revoke
                     </Button>
@@ -265,12 +304,10 @@ export function PartnerDrawer({
                   </div>
                   <div>
                     <label className="label">Rate (₦)</label>
-                    <input
-                      className="input h-9 w-28 tabular-nums"
-                      type="number"
-                      min={0}
+                    <NumberField
+                      className="w-28"
                       value={newSpec.rate}
-                      onChange={(e) => setNewSpec((f) => ({ ...f, rate: e.target.value }))}
+                      onChange={(v) => setNewSpec((f) => ({ ...f, rate: v }))}
                     />
                   </div>
                   <Button
@@ -286,7 +323,14 @@ export function PartnerDrawer({
                           display_name: newSpec.display_name,
                           rate: Number(newSpec.rate),
                         },
-                        { onSuccess: () => setNewSpec({ service_key: "", display_name: "", rate: "" }) },
+                        {
+                          onSuccess: () => {
+                            setNewSpec({ service_key: "", display_name: "", rate: "" });
+                            toast.success("Speciality added");
+                          },
+                          onError: (e) =>
+                            toast.error("Couldn't add speciality", (e as Error).message),
+                        },
                       )
                     }
                   >
@@ -310,30 +354,27 @@ export function PartnerDrawer({
           <div className="space-y-3 text-left">
             <div>
               <label className="label">Tier</label>
-              <select
-                className="input w-full"
+              <Select
                 value={awardTier}
-                onChange={(e) => setAwardTier(e.target.value)}
-              >
-                <option value="">Select tier…</option>
-                {(tiers.data ?? [])
-                  .filter((t) => t.is_active)
-                  .map((t) => (
-                    <option key={t.tier_key} value={t.tier_key}>
-                      {t.label} — ×{Number(t.payout_multiplier)} payout, {t.validity_months}mo
-                    </option>
-                  ))}
-              </select>
+                onChange={setAwardTier}
+                options={[
+                  { value: "", label: "Select tier…" },
+                  ...(tiers.data ?? [])
+                    .filter((t) => t.is_active)
+                    .map((t) => ({
+                      value: t.tier_key,
+                      label: `${t.label} — ×${Number(t.payout_multiplier)} payout, ${t.validity_months}mo`,
+                    })),
+                ]}
+              />
             </div>
             <div>
               <label className="label">Assessment score (0–100, optional)</label>
-              <input
-                className="input w-28 tabular-nums"
-                type="number"
-                min={0}
-                max={100}
+              <NumberField
+                className="w-28"
+                allowDecimal={false}
                 value={awardScore}
-                onChange={(e) => setAwardScore(e.target.value)}
+                onChange={setAwardScore}
               />
             </div>
             <p className="text-[11.5px]">
@@ -354,7 +395,16 @@ export function PartnerDrawer({
               expires_at: expires.toISOString(),
               assessment_score: awardScore ? Number(awardScore) : undefined,
             },
-            { onSuccess: () => setAwarding(false) },
+            {
+              onSuccess: () => {
+                setAwarding(false);
+                setAwardTier("");
+                setAwardScore("");
+                toast.success(`${tier.label} tier awarded`);
+              },
+              onError: (e) =>
+                toast.error("Couldn't award tier", (e as Error).message),
+            },
           );
         }}
         onClose={() => setAwarding(false)}
@@ -383,7 +433,15 @@ export function PartnerDrawer({
         onConfirm={() =>
           m.setStatus.mutate(
             { status: "suspended", reason: suspendReason || undefined },
-            { onSuccess: () => setSuspend(false) },
+            {
+              onSuccess: () => {
+                setSuspend(false);
+                setSuspendReason("");
+                toast.success("Partner suspended");
+              },
+              onError: (e) =>
+                toast.error("Couldn't suspend", (e as Error).message),
+            },
           )
         }
         onClose={() => setSuspend(false)}

@@ -9,9 +9,9 @@
  */
 
 import { useMemo, useState } from "react";
-import { Scissors, Star } from "lucide-react";
+import { Scissors, Search, Star } from "lucide-react";
 import { Pill, KpiTile } from "@/components/ui/primitives";
-import { DeniedState, ErrorState } from "@/components/ui/controls";
+import { DeniedState, ErrorState, Select } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -44,7 +44,7 @@ function DirectoryPanel({
   onOpenPartner: (id: string) => void;
 }) {
   const [status, setStatus] = useState("");
-  const [city, setCity] = useState("");
+  const [q, setQ] = useState("");
   const partners = usePartners({ status: status || undefined });
   const tiers = useTiers();
   const tierLabel = useMemo(() => {
@@ -54,8 +54,14 @@ function DirectoryPanel({
     return m;
   }, [tiers.data]);
 
+  const needle = q.trim().toLowerCase();
   const rows = (partners.data ?? []).filter(
-    (p) => !city || p.city.toLowerCase().includes(city.toLowerCase()),
+    (p) =>
+      !needle ||
+      p.display_name.toLowerCase().includes(needle) ||
+      p.partner_code.toLowerCase().includes(needle) ||
+      p.city.toLowerCase().includes(needle) ||
+      (p.state ?? "").toLowerCase().includes(needle),
   );
 
   const columns: Column<Partner>[] = [
@@ -161,24 +167,27 @@ function DirectoryPanel({
       onRowClick={(p) => onOpenPartner(p.stylist_id)}
       toolbar={
         <>
-          <select
-            className="input h-9 text-[12.5px]"
+          <Select
+            className="w-44"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="">All statuses</option>
-            {Object.entries(PARTNER_STATUS_META).map(([k, m]) => (
-              <option key={k} value={k}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <input
-            className="input h-9 text-[12.5px] w-44"
-            placeholder="Filter by city…"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={setStatus}
+            options={[
+              { value: "", label: "All statuses" },
+              ...Object.entries(PARTNER_STATUS_META).map(([k, m]) => ({
+                value: k,
+                label: m.label,
+              })),
+            ]}
           />
+          <div className="relative w-60">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint pointer-events-none" />
+            <input
+              className="input !pl-9"
+              placeholder="Search name, code or city…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
           <span className="ml-auto micro">
             {rows.length} partner{rows.length === 1 ? "" : "s"}
           </span>

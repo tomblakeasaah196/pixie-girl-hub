@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { Link2 } from "lucide-react";
 import { Pill, MoneyText, KpiTile } from "@/components/ui/primitives";
-import { ErrorState } from "@/components/ui/controls";
+import { ErrorState, Select } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAttributions, usePartners } from "./hooks";
 import { ATTRIBUTION_STATUS_META } from "./constants";
@@ -101,18 +101,18 @@ export function ReferralsPanel() {
         rowKey={(r) => r.attribution_id}
         loading={attributions.isLoading}
         toolbar={
-          <select
-            className="input h-9 text-[12.5px]"
+          <Select
+            className="w-44"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="">All statuses</option>
-            {Object.entries(ATTRIBUTION_STATUS_META).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v.label}
-              </option>
-            ))}
-          </select>
+            onChange={setStatus}
+            options={[
+              { value: "", label: "All statuses" },
+              ...Object.entries(ATTRIBUTION_STATUS_META).map(([k, v]) => ({
+                value: k,
+                label: v.label,
+              })),
+            ]}
+          />
         }
         empty={{
           icon: <Link2 className="w-6 h-6" />,

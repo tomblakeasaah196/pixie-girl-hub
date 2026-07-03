@@ -1,11 +1,29 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence, type Variants } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Menu, ShoppingBag, X } from "lucide-react";
+import {
+  ChevronDown,
+  Facebook,
+  Instagram,
+  Menu,
+  MessageCircle,
+  ShoppingBag,
+  Twitter,
+  X,
+} from "lucide-react";
 import { useCartCount, openCart } from "@/lib/useStore";
 import { PromoBar } from "./PromoBar";
 import { BrandLogo } from "./BrandLogo";
-import { useNavigation, useBranding, type NavItem } from "@/lib/site-config";
+import { useNavigation, useBranding, useToolbar, type NavItem } from "@/lib/site-config";
+import { waDigits } from "@/lib/toolbar";
+import { SITE_IMAGES } from "@/lib/site-assets";
+
+const SOCIAL_ICON: Record<string, typeof Instagram> = {
+  instagram: Instagram,
+  facebook: Facebook,
+  twitter: Twitter,
+  whatsapp: MessageCircle,
+};
 
 /**
  * Centred-logo maison header.
@@ -295,7 +313,7 @@ function DesktopNavItem({ group, pathname }: { group: NavItem; pathname: string 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute left-1/2 top-full z-10 -translate-x-1/2 pt-4"
+            className="absolute left-0 top-full z-10 pt-4"
           >
             <div className="min-w-[220px] overflow-hidden rounded-xl border border-taupe/20 bg-ink/90 backdrop-blur-xl p-2 shadow-2xl">
               {group.children.map((c) => (
@@ -335,6 +353,14 @@ function MobileDrawer({
   name: string;
   pathname: string;
 }) {
+  const nav = useNavigation();
+  const toolbar = useToolbar();
+  const socialEntries = Object.entries(nav?.socials ?? {}).filter(([, href]) => href);
+  const waNumber = waDigits(toolbar.whatsapp.number);
+  const conciergeHref = waNumber
+    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(toolbar.whatsapp.greeting)}`
+    : null;
+
   useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
@@ -373,7 +399,7 @@ function MobileDrawer({
               </button>
             </div>
 
-            <nav className="flex-1 overflow-y-auto px-6 py-8">
+            <nav className="flex-1 overflow-y-auto px-6 py-7">
               {groups.map((g) =>
                 g.children?.length ? (
                   <DrawerAccordion key={g.label} group={g} pathname={pathname} onNavigate={onClose} />
@@ -381,9 +407,83 @@ function MobileDrawer({
                   <DrawerLink key={g.url} to={g.url} label={g.label} onNavigate={onClose} />
                 ),
               )}
-              <div className="my-5 h-px bg-taupe/15" />
+              <div className="my-4 h-px bg-taupe/15" />
               <DrawerLink to="/contact" label="Contact" onNavigate={onClose} small />
               <DrawerLink to="/auth" label="Sign in" onNavigate={onClose} small />
+
+              {/* Featured editorial — turns the dead space into a shoppable moment */}
+              <Link
+                to="/shop"
+                onClick={onClose}
+                className="group relative mt-8 block overflow-hidden rounded-2xl border border-taupe/15"
+              >
+                <img
+                  src={SITE_IMAGES.editorialAtelier}
+                  alt=""
+                  loading="lazy"
+                  className="h-44 w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/45 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 p-5">
+                  <p className="text-[0.58rem] tracking-[0.42em] uppercase text-taupe">New in</p>
+                  <p className="mt-1.5 font-display text-xl leading-tight text-cream">
+                    The Maison Collection
+                  </p>
+                  <span className="mt-2 inline-flex items-center gap-1.5 text-[0.6rem] tracking-[0.3em] uppercase text-cream/85">
+                    Shop the drop
+                    <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+                  </span>
+                </div>
+              </Link>
+
+              {/* Concierge — a real person, one tap away */}
+              {conciergeHref ? (
+                <a
+                  href={conciergeHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onClose}
+                  className="mt-4 flex items-center justify-center gap-2.5 rounded-full border border-taupe/40 py-3.5 text-[0.66rem] tracking-[0.3em] uppercase text-cream transition-colors hover:bg-cream/5"
+                >
+                  <MessageCircle size={15} strokeWidth={1.5} />
+                  Chat with a stylist
+                </a>
+              ) : (
+                <Link
+                  to="/contact"
+                  onClick={onClose}
+                  className="mt-4 flex items-center justify-center gap-2.5 rounded-full border border-taupe/40 py-3.5 text-[0.66rem] tracking-[0.3em] uppercase text-cream transition-colors hover:bg-cream/5"
+                >
+                  <MessageCircle size={15} strokeWidth={1.5} />
+                  Book a consultation
+                </Link>
+              )}
+
+              {/* Socials + maison signature */}
+              <div className="mt-7 flex items-center justify-between">
+                {socialEntries.length ? (
+                  <div className="flex gap-2.5">
+                    {socialEntries.map(([key, href]) => {
+                      const Icon = SOCIAL_ICON[key] ?? Instagram;
+                      return (
+                        <a
+                          key={key}
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={key}
+                          className="grid h-9 w-9 place-items-center rounded-full border border-taupe/30 text-taupe transition-colors hover:border-taupe hover:text-cream"
+                        >
+                          <Icon size={14} />
+                        </a>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <span />
+                )}
+                <span className="font-couture italic text-sm text-taupe">Est. Lagos · 2021</span>
+              </div>
             </nav>
           </motion.div>
         </motion.div>
@@ -407,8 +507,8 @@ function DrawerLink({
     <Link
       to={to}
       onClick={onNavigate}
-      className={`block py-3 font-display text-cream hover:text-taupe transition-colors ${
-        small ? "text-lg" : "text-3xl"
+      className={`block font-display text-cream hover:text-taupe transition-colors ${
+        small ? "py-2.5 text-base" : "py-2.5 text-2xl"
       }`}
     >
       {label}
@@ -434,11 +534,11 @@ function DrawerAccordion({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between py-3 font-display text-3xl text-cream"
+        className="flex w-full items-center justify-between py-2.5 font-display text-2xl text-cream"
       >
         {group.label}
         <ChevronDown
-          size={22}
+          size={18}
           strokeWidth={1.5}
           className={`text-taupe transition-transform duration-300 ${open ? "rotate-180" : ""}`}
         />

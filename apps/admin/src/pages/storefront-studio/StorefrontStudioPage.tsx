@@ -57,6 +57,33 @@ import {
   type NavRow,
   type StudioStatus,
 } from "@/lib/storefront-studio";
+import { toast } from "@/stores/toast";
+import { describeError } from "@/lib/error-report";
+
+/**
+ * Run a Studio mutation with unmissable feedback. Success shows a toast (plus
+ * the optional inline note via onOk); failure — previously a SILENT no-op that
+ * let operators close the tab thinking they'd saved — shows an error toast with
+ * a one-tap "Contact System Admin" (JBS Praxis) report attached.
+ */
+async function runStudio(
+  run: () => Promise<unknown>,
+  opts: { area: string; action: string; success: string; onOk?: () => void },
+): Promise<void> {
+  try {
+    await run();
+    opts.onOk?.();
+    toast.success(opts.success);
+  } catch (err) {
+    const { message, detail } = describeError(err);
+    toast.error(`Couldn't ${opts.action.toLowerCase()}`, {
+      description: message,
+      report: { area: opts.area, action: opts.action, message, detail },
+    });
+  }
+}
+
+const STUDIO_AREA = "Storefront Studio";
 
 type Tab =
   | "theme"
@@ -358,8 +385,19 @@ function ImageField({
     setErr(null);
     try {
       onChange(await uploadStorefrontImage(file));
-    } catch {
+      toast.success("Image uploaded.");
+    } catch (e) {
+      const { message, detail } = describeError(e);
       setErr("Upload failed - try again or paste a URL.");
+      toast.error("Couldn't upload the image", {
+        description: message,
+        report: {
+          area: `${STUDIO_AREA} → ${label}`,
+          action: "Upload image",
+          message,
+          detail,
+        },
+      });
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -603,20 +641,28 @@ function ThemeTab() {
         <Button
           variant="primary"
           disabled={save.isPending}
-          onClick={async () => {
-            await save.mutateAsync(tokens);
-            setMsg("Draft saved.");
-          }}
+          onClick={() =>
+            runStudio(() => save.mutateAsync(tokens), {
+              area: `${STUDIO_AREA} → Theme`,
+              action: "Save theme draft",
+              success: "Draft saved.",
+              onOk: () => setMsg("Draft saved."),
+            })
+          }
         >
           Save draft
         </Button>
         <Button
           variant="secondary"
           disabled={publish.isPending}
-          onClick={async () => {
-            await publish.mutateAsync();
-            setMsg("Theme published.");
-          }}
+          onClick={() =>
+            runStudio(() => publish.mutateAsync(), {
+              area: `${STUDIO_AREA} → Theme`,
+              action: "Publish theme",
+              success: "Theme published — it's live now.",
+              onOk: () => setMsg("Theme published."),
+            })
+          }
         >
           Publish
         </Button>
@@ -693,20 +739,28 @@ function BrandingTab() {
         <Button
           variant="primary"
           disabled={save.isPending}
-          onClick={async () => {
-            await save.mutateAsync(tokens);
-            setMsg("Draft saved.");
-          }}
+          onClick={() =>
+            runStudio(() => save.mutateAsync(tokens), {
+              area: `${STUDIO_AREA} → Branding`,
+              action: "Save branding draft",
+              success: "Draft saved.",
+              onOk: () => setMsg("Draft saved."),
+            })
+          }
         >
           Save draft
         </Button>
         <Button
           variant="secondary"
           disabled={publish.isPending}
-          onClick={async () => {
-            await publish.mutateAsync();
-            setMsg("Branding published.");
-          }}
+          onClick={() =>
+            runStudio(() => publish.mutateAsync(), {
+              area: `${STUDIO_AREA} → Branding`,
+              action: "Publish branding",
+              success: "Branding published — it's live now.",
+              onOk: () => setMsg("Branding published."),
+            })
+          }
         >
           Publish
         </Button>
@@ -910,20 +964,28 @@ function ToolbarTab() {
         <Button
           variant="primary"
           disabled={save.isPending}
-          onClick={async () => {
-            await save.mutateAsync(nextTokens);
-            setMsg("Draft saved.");
-          }}
+          onClick={() =>
+            runStudio(() => save.mutateAsync(nextTokens), {
+              area: `${STUDIO_AREA} → Toolbar`,
+              action: "Save toolbar draft",
+              success: "Draft saved.",
+              onOk: () => setMsg("Draft saved."),
+            })
+          }
         >
           Save draft
         </Button>
         <Button
           variant="secondary"
           disabled={publish.isPending}
-          onClick={async () => {
-            await publish.mutateAsync();
-            setMsg("Toolbar published.");
-          }}
+          onClick={() =>
+            runStudio(() => publish.mutateAsync(), {
+              area: `${STUDIO_AREA} → Toolbar`,
+              action: "Publish toolbar",
+              success: "Toolbar published — it's live now.",
+              onOk: () => setMsg("Toolbar published."),
+            })
+          }
         >
           Publish
         </Button>
@@ -974,8 +1036,12 @@ function NavigationTab() {
       footer_columns: footer,
       socials,
     };
-    await save.mutateAsync(nav);
-    setMsg("Draft saved.");
+    await runStudio(() => save.mutateAsync(nav), {
+      area: `${STUDIO_AREA} → Navigation`,
+      action: "Save navigation draft",
+      success: "Draft saved.",
+      onOk: () => setMsg("Draft saved."),
+    });
   }
 
   if (isLoading)
@@ -1189,10 +1255,14 @@ function NavigationTab() {
         <Button
           variant="secondary"
           disabled={publish.isPending}
-          onClick={async () => {
-            await publish.mutateAsync();
-            setMsg("Navigation published.");
-          }}
+          onClick={() =>
+            runStudio(() => publish.mutateAsync(), {
+              area: `${STUDIO_AREA} → Navigation`,
+              action: "Publish navigation",
+              success: "Navigation published — it's live now.",
+              onOk: () => setMsg("Navigation published."),
+            })
+          }
         >
           Publish
         </Button>
@@ -1240,8 +1310,12 @@ function PagesTab() {
 
   async function onSave() {
     if (!sel) return;
-    await save.mutateAsync({ ...sel, slots });
-    setMsg("Draft saved.");
+    await runStudio(() => save.mutateAsync({ ...sel, slots }), {
+      area: `${STUDIO_AREA} → Pages (${sel.page_key || "new"})`,
+      action: "Save page draft",
+      success: "Draft saved.",
+      onOk: () => setMsg("Draft saved."),
+    });
   }
 
   if (isLoading)
@@ -1331,10 +1405,14 @@ function PagesTab() {
             <Button
               variant="secondary"
               disabled={!sel.page_key || publish.isPending}
-              onClick={async () => {
-                await publish.mutateAsync(sel.page_key);
-                setMsg("Page published.");
-              }}
+              onClick={() =>
+                runStudio(() => publish.mutateAsync(sel.page_key), {
+                  area: `${STUDIO_AREA} → Pages (${sel.page_key})`,
+                  action: "Publish page",
+                  success: "Page published — it's live now.",
+                  onOk: () => setMsg("Page published."),
+                })
+              }
             >
               Publish
             </Button>
@@ -1680,8 +1758,12 @@ function PopupsTab() {
 
   async function onSave() {
     if (!sel) return;
-    await save.mutateAsync(sel);
-    setMsg("Draft saved.");
+    await runStudio(() => save.mutateAsync(sel), {
+      area: `${STUDIO_AREA} → Popups (${sel.popup_key || "new"})`,
+      action: "Save popup draft",
+      success: "Draft saved.",
+      onOk: () => setMsg("Draft saved."),
+    });
   }
 
   if (isLoading)
@@ -1833,20 +1915,28 @@ function PopupsTab() {
             <Button
               variant="secondary"
               disabled={!sel.popup_key || publish.isPending}
-              onClick={async () => {
-                await publish.mutateAsync(sel.popup_key);
-                setMsg("Popup published.");
-              }}
+              onClick={() =>
+                runStudio(() => publish.mutateAsync(sel.popup_key), {
+                  area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
+                  action: "Publish popup",
+                  success: "Popup published — it's live now.",
+                  onOk: () => setMsg("Popup published."),
+                })
+              }
             >
               Publish
             </Button>
             <Button
               variant="danger"
               disabled={!sel.popup_key || del.isPending}
-              onClick={async () => {
-                await del.mutateAsync(sel.popup_key);
-                setSel(null);
-              }}
+              onClick={() =>
+                runStudio(() => del.mutateAsync(sel.popup_key), {
+                  area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
+                  action: "Delete popup",
+                  success: "Popup deleted.",
+                  onOk: () => setSel(null),
+                })
+              }
             >
               Delete
             </Button>
@@ -1906,10 +1996,15 @@ function RevisionsTab() {
                     variant="ghost"
                     size="sm"
                     disabled={rollback.isPending}
-                    onClick={async () => {
-                      await rollback.mutateAsync(r.revision_id);
-                      setMsg("Restored to draft - review and publish.");
-                    }}
+                    onClick={() =>
+                      runStudio(() => rollback.mutateAsync(r.revision_id), {
+                        area: `${STUDIO_AREA} → Revisions`,
+                        action: "Restore revision",
+                        success: "Restored to draft — review and publish.",
+                        onOk: () =>
+                          setMsg("Restored to draft - review and publish."),
+                      })
+                    }
                   >
                     Restore to draft
                   </Button>

@@ -16,6 +16,7 @@ import { CommandPalette } from "@/components/search/CommandPalette";
 import { BusinessSwitchOverlay } from "./BusinessSwitchOverlay";
 import { NotificationManager } from "@/components/notifications/NotificationManager";
 import { NotificationToastContainer } from "@/components/notifications/NotificationToast";
+import { Toaster } from "@/components/feedback/Toaster";
 import { ChatDock } from "@/components/messaging/ChatDock";
 import { PraxisDrawer } from "@/components/praxis/PraxisDrawer";
 import { IosInstallHint } from "./IosInstallHint";
@@ -85,6 +86,9 @@ export function AppShell() {
       {/* Global notification layer */}
       <NotificationManager />
       <NotificationToastContainer />
+
+      {/* App-wide save/publish feedback + JBS Praxis error reporting */}
+      <Toaster />
     </div>
   );
 }

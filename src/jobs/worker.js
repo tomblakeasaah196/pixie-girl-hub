@@ -299,7 +299,7 @@ async function startWorkers() {
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
   require("../modules/retention/workflow.subscribers"); // order.paid → workflow trigger
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
-  require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met → service job
+  require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met + order.paid → service job
   require("../modules/stylist_programme/stylist.subscribers"); // order.paid → stylist referral accrual
   require("../modules/business_setup/webhooks.service"); // webhook.received → dispatch
 

@@ -85,6 +85,11 @@ export interface OrderLine {
   line_total_ngn: string;
   display_order: number;
   notes: string | null;
+  // Stylist Studio provenance — 'styled'/'service' drives Studio auto-open,
+  // 'product' is a plain wig sale that needs no styling work.
+  line_kind?: "product" | "styled" | "bundle" | "service" | null;
+  styled_id?: string | null;
+  service_offering_id?: string | null;
 }
 
 export interface OrderPayment {
@@ -152,6 +157,9 @@ export interface SalesOrder {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Distinct line kinds on the order (list endpoint only) — drives the
+   *  register's Kind column: base product vs styled vs service vs bundle. */
+  line_kinds?: Array<"product" | "styled" | "bundle" | "service"> | null;
   lines?: OrderLine[];
   payments?: OrderPayment[];
   discounts?: OrderDiscount[];

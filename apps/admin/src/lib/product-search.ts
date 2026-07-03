@@ -46,6 +46,9 @@ export interface ResolvedLine {
   sku: string;
   unit_price: number;
   quantity: number;
+  // Set when the pick was a styled product. Sales pricing reads this to stamp
+  // line_kind='styled' so Stylist Studio auto-opens a job on order.paid.
+  styled_id?: string;
 }
 
 export interface ResolvedPick {
@@ -246,6 +249,7 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
           sku,
           unit_price: num(sp.retail_price_ngn),
           quantity: 1,
+          styled_id: sp.styled_id,
         },
       ],
     };

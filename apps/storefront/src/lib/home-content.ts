@@ -89,6 +89,16 @@ export interface EditorialContent {
 export interface Testimonial { q: string; a: string; r: string }
 export interface FounderContent { eyebrow: string; body: string; attribution: string }
 
+/** One tile in the "Tagged on Instagram" gallery. */
+export interface GalleryItem {
+  /** Photo shown in the tile. */
+  image: string;
+  /** Instagram post/profile URL the tile links to. Empty → tile isn't clickable. */
+  href?: string;
+  /** Handle credited on hover, e.g. "@ada.styles". */
+  handle?: string;
+}
+
 export interface HomeContent {
   hero: HeroContent;
   marquee: string[];
@@ -99,7 +109,7 @@ export interface HomeContent {
   editorial: EditorialContent;
   press: { eyebrow: string; items: string[] };
   testimonials: { eyebrow: string; items: Testimonial[] };
-  gallery: { eyebrow: string; heading: string; images: string[] };
+  gallery: { eyebrow: string; heading: string; items: GalleryItem[] };
   founder: FounderContent;
 }
 
@@ -181,7 +191,16 @@ export const DEFAULT_HOME: HomeContent = {
   gallery: {
     eyebrow: "@faitlynhair",
     heading: "Tagged on Instagram",
-    images: [I.productPixie, I.productBob, I.productCurls, I.productStraight, I.models, I.model2, I.heroModel, I.productPixie],
+    items: [
+      { image: I.productPixie },
+      { image: I.productBob },
+      { image: I.productCurls },
+      { image: I.productStraight },
+      { image: I.models },
+      { image: I.model2 },
+      { image: I.heroModel },
+      { image: I.productPixie },
+    ],
   },
   founder: {
     eyebrow: "A note from Faitlyn",
@@ -309,6 +328,47 @@ export const DEMO_BUNDLE_ITEMS: BundleItem[] = DEMO_BUNDLES.map((b) => {
 
 type Slots = Record<string, unknown> | null | undefined;
 
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/**
+ * Normalize a Studio gallery slot into GalleryItem[]. Accepts the new object
+ * shape (`items: [{ image, instagram_link/link/href, handle }]`) and the legacy
+ * string shape (`images: [url, ...]` or `items: [url, ...]`). Link and image
+ * keys are read leniently so Studio field naming can vary. Returns null when
+ * there's nothing usable so the caller keeps the baked default.
+ */
+function toGalleryItems(raw: unknown): GalleryItem[] | null {
+  if (!Array.isArray(raw)) return null;
+  const items = raw
+    .map((x): GalleryItem | null => {
+      if (typeof x === "string") return x ? { image: x } : null;
+      if (x && typeof x === "object") {
+        const o = x as Record<string, unknown>;
+        const image = str(o.image) || str(o.url) || str(o.photo);
+        if (!image) return null;
+        const href =
+          str(o.instagram_link) || str(o.link) || str(o.href) || undefined;
+        const handle = str(o.handle) || str(o.username) || undefined;
+        return { image, href: href || undefined, handle: handle || undefined };
+      }
+      return null;
+    })
+    .filter((x): x is GalleryItem => x !== null);
+  return items.length ? items : null;
+}
+
+/** Resolve the gallery slot (new items / legacy images) over the default. */
+function resolveGallery(slot: unknown): HomeContent["gallery"] {
+  const def = DEFAULT_HOME.gallery;
+  if (!slot || typeof slot !== "object") return def;
+  const s = slot as Record<string, unknown>;
+  return {
+    eyebrow: str(s.eyebrow) || def.eyebrow,
+    heading: str(s.heading) || def.heading,
+    items: toGalleryItems(s.items) ?? toGalleryItems(s.images) ?? def.items,
+  };
+}
+
 /** Shallow-merge each section's slot object over the ported default. */
 export function resolveHomeContent(slots: Slots): HomeContent {
   if (!slots || typeof slots !== "object") return DEFAULT_HOME;
@@ -325,7 +385,7 @@ export function resolveHomeContent(slots: Slots): HomeContent {
     editorial: merge(DEFAULT_HOME.editorial, "editorial"),
     press: merge(DEFAULT_HOME.press, "press"),
     testimonials: merge(DEFAULT_HOME.testimonials, "testimonials"),
-    gallery: merge(DEFAULT_HOME.gallery, "gallery"),
+    gallery: resolveGallery(s.gallery),
     founder: merge(DEFAULT_HOME.founder, "founder"),
   };
 }

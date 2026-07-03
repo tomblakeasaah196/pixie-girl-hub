@@ -61,5 +61,7 @@ router.post("/notifications/:id/read", stylistAuth, c.markNotificationRead);
 router.get("/badge", stylistAuth, c.myBadge);
 router.get("/badge/card", stylistAuth, c.myBadgeCard);
 router.get("/contract", stylistAuth, c.myContract);
+router.get("/contract/document", stylistAuth, c.myContractDocument);
+router.post("/contract/sign", stylistAuth, v.validateContractSign, c.signMyContract);
 
 module.exports = router;

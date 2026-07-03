@@ -1,0 +1,11 @@
+node_modules
+dist
+.output
+.nitro
+.tanstack
+.vinxi
+# TanStack Start generates this on `vite dev` / `vite build`:
+src/routeTree.gen.ts
+.env
+.env.local
+*.log

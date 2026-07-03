@@ -298,6 +298,15 @@ const referralLinkBody = z
   })
   .strict();
 
+const contractSignBody = z
+  .object({
+    signature_image: z
+      .string()
+      .regex(/^data:image\/(png|jpeg);base64,/, "PNG/JPEG data URL required")
+      .max(3_000_000),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -330,4 +339,5 @@ module.exports = {
   validateMyProfilePatch: mk(myProfilePatch),
   validateMyPayoutDetails: mk(myPayoutDetailsPatch),
   validateReferralLink: mk(referralLinkBody),
+  validateContractSign: mk(contractSignBody),
 };

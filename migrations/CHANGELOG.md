@@ -11,6 +11,24 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-03 — Shade Finder feature flag (public Praxis shade match)
+
+**Source:** Shade Finder build (photo → shade + product recommendation on
+the Storefront Website).
+
+**Files:** `000254_shared_shade_finder.sql` (new).
+
+**What:** Seeds one `shared.ai_feature_flags` row — `shade_finder`
+(gemini / gemini-2.5-flash, est ₦2.00/call). Idempotent
+`ON CONFLICT DO NOTHING`.
+
+**Why:** The public Shade Finder meters its Gemini calls into
+`shared.ai_usage_ledger` (user_id NULL — anonymous visitors) and must be
+toggleable + budget-capped from AI Governance; `feature_key` is a
+RESTRICT FK onto the flags table, so the flag row has to exist.
+
+---
+
 ## 2026-07-02 — Stylist Partner Programme v2 (§6.26 full build-out, PR1)
 
 **Source:** V2.2 §6.26 + `docs/STYLIST_PROGRAMME_IMPLEMENTATION_GUIDE.md`

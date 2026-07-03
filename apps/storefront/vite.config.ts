@@ -41,6 +41,13 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Socket.io (Shade Finder live "thinking" stages) — websocket upgrade.
+      "/socket.io": {
+        target: process.env.VITE_API_PROXY_TARGET || "http://localhost:7000",
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
     },
   },
 });

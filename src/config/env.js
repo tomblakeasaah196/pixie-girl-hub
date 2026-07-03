@@ -240,6 +240,15 @@ const schema = z.object({
   AI_MONTHLY_SOFT_CAP_NGN: z.coerce.number().nonnegative().default(75000),
   AI_MONTHLY_HARD_CAP_NGN: z.coerce.number().nonnegative().default(80000),
 
+  // Shade Finder (public Praxis shade match on the storefront). Photo
+  // analyses per device per day; a wider per-IP ceiling backstops device-id
+  // resets; follow-up text turns get their own (cheaper) daily cap.
+  SHADE_FINDER_DAILY_LIMIT: z.coerce.number().int().positive().default(10),
+  SHADE_FINDER_IP_DAILY_LIMIT: z.coerce.number().int().positive().default(30),
+  SHADE_FINDER_CHAT_DAILY_LIMIT: z.coerce.number().int().positive().default(60),
+  // Guest session lifetime (Redis TTL + guest-token expiry), seconds.
+  SHADE_FINDER_SESSION_TTL_S: z.coerce.number().int().positive().default(7200),
+
   // Observability
   SENTRY_DSN: z.string().optional(),
   ENABLE_REQUEST_LOGGING: zBool(true),

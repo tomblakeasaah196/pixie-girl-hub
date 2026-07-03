@@ -11,6 +11,16 @@
  *
  * Returns a vendor-neutral shape so the orchestrator can swap providers
  * without branching: { text, input_tokens, output_tokens, model }.
+ *
+ * Vision + structured output (Shade Finder):
+ *   - A message's `content` may be an ARRAY of parts instead of a string:
+ *       { type: 'text',  text: '…' }
+ *       { type: 'image', mime_type: 'image/jpeg', data: '<base64>' }
+ *     Image bytes ride inline (`inlineData`) — nothing is uploaded to Google
+ *     file storage, so the photo lives only for the duration of the call.
+ *   - `responseSchema` (plus responseMimeType: application/json) forces the
+ *     model to emit JSON matching the schema — used to keep perception
+ *     grounded (enums of OUR shade slugs, never free-typed product names).
  */
 
 "use strict";
@@ -32,10 +42,26 @@ function isConfigured() {
  *   'user'     | user
  *   'assistant'| model
  */
+function toGeminiParts(content) {
+  // String content → single text part (the pre-vision behaviour).
+  if (!Array.isArray(content)) return [{ text: String(content || "") }];
+  return content.map((p) => {
+    if (p && p.type === "image" && p.data) {
+      return {
+        inlineData: {
+          mimeType: p.mime_type || "image/jpeg",
+          data: String(p.data),
+        },
+      };
+    }
+    return { text: String((p && p.text) || "") };
+  });
+}
+
 function toGeminiContents({ system, messages }) {
   const contents = (messages || []).map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: String(m.content || "") }],
+    parts: toGeminiParts(m.content),
   }));
   const systemInstruction = system
     ? { role: "user", parts: [{ text: String(system) }] }
@@ -52,6 +78,8 @@ function toGeminiContents({ system, messages }) {
  * @param {string} [args.model]       Defaults to env GEMINI_MODEL
  * @param {number} [args.temperature] 0..1, default 0.7
  * @param {number} [args.maxOutputTokens]
+ * @param {object} [args.responseSchema] Gemini structured-output schema; when
+ *                 set the response is forced to application/json.
  */
 async function chatCompletion({
   system,
@@ -60,6 +88,7 @@ async function chatCompletion({
   temperature = 0.7,
   maxOutputTokens = 1024,
   timeoutMs = 30000,
+  responseSchema,
 }) {
   if (!isConfigured()) {
     const err = new Error("GEMINI_NOT_CONFIGURED");
@@ -80,6 +109,9 @@ async function chatCompletion({
     generationConfig: {
       temperature,
       maxOutputTokens,
+      ...(responseSchema
+        ? { responseMimeType: "application/json", responseSchema }
+        : {}),
     },
   };
   try {

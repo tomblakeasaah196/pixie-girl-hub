@@ -387,6 +387,10 @@ async function resolveStyledLine({ brand, item }) {
     product_name_snapshot: styled.name,
     variant_label_snapshot: label || null,
     sku_snapshot: v.sku || null,
+    // Carry the styled provenance so Sales stamps line_kind='styled' and Studio
+    // auto-opens a job on order.paid (V2.2 §6.24).
+    styled_id,
+    line_kind: "styled",
   };
 }
 
@@ -436,6 +440,11 @@ async function resolveStorefrontBundle({ brand, bundle_id, copies }) {
       quantity: compQty * units,
       unit_price_ngn: toCurrencyString(money(comp.unit_price_ngn || 0)),
       product_name_snapshot: comp.styled_name || comp.product_name || null,
+      // Bundle component was a styled SKU — keep the provenance so Sales writes
+      // line_kind='styled' and Studio opens a job for the styling work.
+      ...(comp.styled_id
+        ? { styled_id: comp.styled_id, line_kind: "styled" }
+        : {}),
     });
   }
   // discount_ngn is per single bundle (decorateBundle) → × copies.

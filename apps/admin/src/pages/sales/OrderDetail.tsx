@@ -1,5 +1,17 @@
 import { useState } from "react";
-import { Link2, XCircle, FileText, Download, Send, Eye } from "lucide-react";
+import {
+  Link2,
+  XCircle,
+  FileText,
+  Download,
+  Send,
+  Eye,
+  Scissors,
+  Truck,
+  User,
+  ExternalLink,
+  Package,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
@@ -12,12 +24,62 @@ import {
   useCancelOrder,
   useOrderInvoice,
   useSendOrderInvoice,
+  useOrderServiceJob,
+  useOrderDelivery,
+  useContactRecentOrders,
 } from "./hooks";
 import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { saveFileFromUrl } from "@/lib/api";
 import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
 import type { OrderPayment } from "./types";
+
+// ── Studio job status → friendly label + tone ────────────────
+type Tone = "success" | "warn" | "danger" | "info" | "accent" | "neutral";
+const JOB_STATUS: Record<string, { label: string; tone: Tone }> = {
+  pending: { label: "Awaiting stylist", tone: "warn" },
+  assigned: { label: "Assigned", tone: "info" },
+  in_progress: { label: "In progress", tone: "info" },
+  on_hold: { label: "On hold", tone: "warn" },
+  returned_for_qc: { label: "Awaiting QC", tone: "warn" },
+  qc_passed: { label: "QC passed", tone: "success" },
+  rework: { label: "Rework", tone: "warn" },
+  ready_for_dispatch: { label: "Ready to ship", tone: "success" },
+  handed_to_sales: { label: "Handed to Sales", tone: "success" },
+  completed: { label: "Completed", tone: "success" },
+  rejected: { label: "Rejected", tone: "danger" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
+};
+
+// ── Delivery status → friendly label + tone ──────────────────
+const DELIVERY_STATUS: Record<string, { label: string; tone: Tone }> = {
+  queued: { label: "Queued", tone: "warn" },
+  booked: { label: "Booked", tone: "info" },
+  picked_up: { label: "Picked up", tone: "info" },
+  in_transit: { label: "In transit", tone: "info" },
+  arrived_destination_city: { label: "Arrived city", tone: "info" },
+  out_for_delivery: { label: "Out for delivery", tone: "info" },
+  attempted_failed: { label: "Attempt failed", tone: "danger" },
+  delivered: { label: "Delivered", tone: "success" },
+  returned_to_sender: { label: "Returned", tone: "danger" },
+  lost: { label: "Lost", tone: "danger" },
+  damaged: { label: "Damaged", tone: "danger" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
+};
+
+const JOB_TERMINAL = new Set([
+  "completed",
+  "handed_to_sales",
+  "ready_for_dispatch",
+]);
+const DELIVERY_TERMINAL = new Set(["delivered"]);
+
+function fmtDate(iso?: string | null) {
+  return iso ? new Date(iso).toLocaleDateString() : null;
+}
+function fmtDateTime(iso?: string | null) {
+  return iso ? new Date(iso).toLocaleString() : null;
+}
 
 export function OrderDetail({
   orderId,
@@ -29,10 +91,38 @@ export function OrderDetail({
   const { data: order, isLoading, isError, refetch } = useOrder(orderId);
   const { data: timeline } = useOrderTimeline(orderId);
   const { data: invoice } = useOrderInvoice(orderId);
+  const { data: job } = useOrderServiceJob(orderId);
+  const { data: delivery } = useOrderDelivery(orderId);
+  const { data: contactHistory } = useContactRecentOrders(
+    order?.contact_id ?? null,
+    orderId,
+  );
   const sendInvoice = useSendOrderInvoice(orderId);
   const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
   const navigate = useNavigate();
+
+  // Whether this order should have a Studio job. If it doesn't need styling
+  // (plain wig sale) we don't dangle a "Not routed" scare in front of the user.
+  const needsStudio = !!order?.lines?.some(
+    (l) => l.line_kind === "styled" || l.line_kind === "service",
+  );
+  const needsDelivery = order?.order_type === "dispatch";
+
+  // Fulfilment strip chips (Studio · Dispatch · Delivery).
+  const jobMeta = job ? JOB_STATUS[job.status] : null;
+  const jobDone = job ? JOB_TERMINAL.has(job.status) : false;
+  const deliveryMeta = delivery ? DELIVERY_STATUS[delivery.status] : null;
+  const deliveryDone = delivery ? DELIVERY_TERMINAL.has(delivery.status) : false;
+  const paidTone: Tone = ["draft", "pending_payment"].includes(order?.status ?? "")
+    ? "warn"
+    : "success";
+
+  // Contact history totals — lifetime NGN for the strip.
+  const historyLtv = (contactHistory?.orders ?? []).reduce(
+    (sum, o) => sum + Number(o.total_ngn || 0),
+    0,
+  );
 
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
@@ -196,6 +286,31 @@ export function OrderDetail({
                 </Button>
               </div>
             )}
+
+            {/* Fulfilment strip — Payment · Studio · Dispatch at a glance. Only
+                shows the lanes this order actually needs (walk-in / digital
+                orders skip the delivery lane; plain wig sales skip Studio). */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Pill tone={paidTone}>
+                {paidTone === "success" ? "Paid" : "Payment pending"}
+              </Pill>
+              {needsStudio && (
+                <Pill tone={jobMeta?.tone ?? (jobDone ? "success" : "neutral")}>
+                  <Scissors className="w-3 h-3 inline mr-1" />
+                  Studio: {jobMeta?.label ?? "Not opened yet"}
+                </Pill>
+              )}
+              {needsDelivery && (
+                <Pill
+                  tone={
+                    deliveryMeta?.tone ?? (deliveryDone ? "success" : "neutral")
+                  }
+                >
+                  <Truck className="w-3 h-3 inline mr-1" />
+                  Delivery: {deliveryMeta?.label ?? "Not booked yet"}
+                </Pill>
+              )}
+            </div>
 
             {/* Invoice link + delivery status */}
             {invoice && (
@@ -449,6 +564,234 @@ export function OrderDetail({
                       </div>
                     </div>
                   ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Studio job — surface everything Sales cares about without
+                round-tripping to Stylist Studio. Hidden when the order is a
+                plain wig sale with no styling work. */}
+            {needsStudio && (
+              <Card className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="micro flex items-center gap-1.5">
+                    <Scissors className="w-3.5 h-3.5" />
+                    Stylist Studio
+                  </div>
+                  {job && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<ExternalLink className="w-3.5 h-3.5" />}
+                      onClick={() =>
+                        navigate(`/service-jobs?tab=board&job=${job.job_id}`)
+                      }
+                    >
+                      Open in Studio
+                    </Button>
+                  )}
+                </div>
+                {job ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <span className="font-semibold">{job.job_number}</span>
+                      {jobMeta && <Pill tone={jobMeta.tone}>{jobMeta.label}</Pill>}
+                      {(job.rework_count ?? 0) > 0 && (
+                        <Pill tone="warn">Rework ×{job.rework_count}</Pill>
+                      )}
+                    </div>
+                    <FormGrid>
+                      <div>
+                        <div className="micro">Stylist</div>
+                        <div className="text-[13px] mt-1">
+                          {job.assigned_staff_user_id
+                            ? job.assigned_staff_user_id.slice(0, 8)
+                            : "Unassigned"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="micro">Started</div>
+                        <div className="text-[13px] mt-1">
+                          {fmtDateTime(job.started_at) ?? "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="micro">Expected</div>
+                        <div className="text-[13px] mt-1">
+                          {fmtDate(job.expected_completion_at) ?? "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="micro">Completed</div>
+                        <div className="text-[13px] mt-1">
+                          {fmtDateTime(job.completed_at) ?? "—"}
+                        </div>
+                      </div>
+                    </FormGrid>
+                  </div>
+                ) : (
+                  <div className="text-[13px] text-text-faint">
+                    No Studio job yet. It opens automatically once the deposit
+                    or full payment clears — refresh in a moment.
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Delivery — where the wig is between Ops and the customer.
+                Hidden for walk-in / digital orders that don't ship. */}
+            {needsDelivery && (
+              <Card className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="micro flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5" />
+                    Delivery
+                  </div>
+                  {delivery && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<ExternalLink className="w-3.5 h-3.5" />}
+                      onClick={() =>
+                        navigate(`/logistics?delivery=${delivery.delivery_id}`)
+                      }
+                    >
+                      Open in Logistics
+                    </Button>
+                  )}
+                </div>
+                {delivery ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <span className="font-semibold">
+                        {delivery.delivery_number}
+                      </span>
+                      {deliveryMeta && (
+                        <Pill tone={deliveryMeta.tone}>{deliveryMeta.label}</Pill>
+                      )}
+                      {delivery.is_pay_on_delivery && (
+                        <Pill tone="warn">Pay on delivery</Pill>
+                      )}
+                    </div>
+                    <FormGrid>
+                      <div>
+                        <div className="micro">Recipient</div>
+                        <div className="text-[13px] mt-1">
+                          {delivery.recipient_name ?? "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="micro">Tracking</div>
+                        <div className="text-[13px] mt-1">
+                          {delivery.courier_tracking_ref ? (
+                            delivery.courier_tracking_url ? (
+                              <a
+                                href={delivery.courier_tracking_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-accent hover:underline inline-flex items-center gap-1"
+                              >
+                                {delivery.courier_tracking_ref}
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              delivery.courier_tracking_ref
+                            )
+                          ) : (
+                            "—"
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="micro">Scheduled</div>
+                        <div className="text-[13px] mt-1">
+                          {fmtDate(delivery.scheduled_for) ?? "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="micro">Delivered</div>
+                        <div className="text-[13px] mt-1">
+                          {fmtDateTime(delivery.delivered_at) ??
+                            (delivery.first_attempted_at
+                              ? `attempt ${fmtDate(delivery.first_attempted_at)}`
+                              : "—")}
+                        </div>
+                      </div>
+                    </FormGrid>
+                  </div>
+                ) : (
+                  <div className="text-[13px] text-text-faint">
+                    No delivery booked yet. Sales hands the finished wig to
+                    Logistics once Studio marks it ready to ship.
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Customer history — quick take on this contact. Total orders +
+                lifetime value + the last 5 orders, each opening in a fresh
+                drawer so the trail is one click away. */}
+            {contactHistory && contactHistory.orders.length > 0 && (
+              <Card className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="micro flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5" />
+                    Customer History
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      navigate(`/crm?contact=${order.contact_id}`)
+                    }
+                  >
+                    Open Profile
+                  </Button>
+                </div>
+                <FormGrid>
+                  <div>
+                    <div className="micro">Total orders</div>
+                    <div className="text-[15px] font-semibold mt-1">
+                      {contactHistory.total}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="micro">Lifetime value</div>
+                    <MoneyText
+                      ngn={historyLtv}
+                      className="text-[15px] mt-1 block"
+                    />
+                  </div>
+                </FormGrid>
+                <div className="h-px bg-line my-3" />
+                <div className="space-y-1.5">
+                  {contactHistory.orders.map((o) => {
+                    const s = ORDER_STATUS[o.status];
+                    return (
+                      <button
+                        key={o.order_id}
+                        type="button"
+                        className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-text-primary/[0.03] text-left text-[12px]"
+                        onClick={() =>
+                          navigate(`/sales?tab=orders&order=${o.order_id}`)
+                        }
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Package className="w-3 h-3 text-text-faint shrink-0" />
+                          <span className="font-semibold truncate">
+                            {o.order_number}
+                          </span>
+                          {s && <Pill tone={s.tone}>{s.label}</Pill>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <MoneyText ngn={Number(o.total_ngn)} />
+                          <div className="text-[10px] text-text-faint">
+                            {new Date(o.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </Card>
             )}

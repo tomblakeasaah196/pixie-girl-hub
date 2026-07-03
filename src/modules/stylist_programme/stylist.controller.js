@@ -507,6 +507,31 @@ async function myContract(req, res) {
     }),
   });
 }
+async function signMyContract(req, res) {
+  res.json({
+    data: await contractService.signMyContract({
+      stylist_id: req.stylist.stylist_id,
+      signature_image_base64: req.body.signature_image,
+      ip: req.ip,
+      ua: req.headers["user-agent"],
+    }),
+  });
+}
+/** The contract PDF itself, streamed to the signed-in partner. */
+async function myContractDocument(req, res) {
+  const repo = require("./stylist.repo");
+  const documents = require("../../shared/documents/documents.service");
+  const partner = await repo.findPartner({ id: req.stylist.stylist_id });
+  if (!partner || !partner.contract_document_id)
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "No contract" } });
+  const dl = await documents.download({
+    brand: notify.BRAND,
+    id: partner.contract_document_id,
+  });
+  res.setHeader("Content-Type", dl.mime_type);
+  res.setHeader("Content-Disposition", `inline; filename="${dl.filename}"`);
+  res.send(dl.buffer);
+}
 
 // ════════════════ Public ════════════════
 async function verifyBadge(req, res) {
@@ -644,6 +669,8 @@ module.exports = {
   myBadge,
   myBadgeCard,
   myContract,
+  signMyContract,
+  myContractDocument,
   // public
   verifyBadge,
   publicQuestions,

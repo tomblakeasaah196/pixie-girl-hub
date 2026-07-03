@@ -68,3 +68,4 @@ tmp/
 # Claude Code
 .claude/
 client folder for hub-system/hub-system.zip
+dump.rdb

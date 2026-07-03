@@ -30,6 +30,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill } from "@/components/ui/primitives";
+import { Toggle, Select } from "@/components/ui/controls";
 import { Tabs } from "@/pages/stock/parts";
 import { useBusinessStore } from "@/stores/business";
 import {
@@ -56,10 +57,38 @@ import {
   type NavRow,
   type StudioStatus,
 } from "@/lib/storefront-studio";
+import { toast } from "@/stores/toast";
+import { describeError } from "@/lib/error-report";
+
+/**
+ * Run a Studio mutation with unmissable feedback. Success shows a toast (plus
+ * the optional inline note via onOk); failure — previously a SILENT no-op that
+ * let operators close the tab thinking they'd saved — shows an error toast with
+ * a one-tap "Contact System Admin" (JBS Praxis) report attached.
+ */
+async function runStudio(
+  run: () => Promise<unknown>,
+  opts: { area: string; action: string; success: string; onOk?: () => void },
+): Promise<void> {
+  try {
+    await run();
+    opts.onOk?.();
+    toast.success(opts.success);
+  } catch (err) {
+    const { message, detail } = describeError(err);
+    toast.error(`Couldn't ${opts.action.toLowerCase()}`, {
+      description: message,
+      report: { area: opts.area, action: opts.action, message, detail },
+    });
+  }
+}
+
+const STUDIO_AREA = "Storefront Studio";
 
 type Tab =
   | "theme"
   | "branding"
+  | "toolbar"
   | "navigation"
   | "pages"
   | "popups"
@@ -69,6 +98,7 @@ type Tab =
 const TABS: { key: Tab; label: string }[] = [
   { key: "theme", label: "Theme" },
   { key: "branding", label: "Branding" },
+  { key: "toolbar", label: "Toolbar" },
   { key: "navigation", label: "Navigation" },
   { key: "pages", label: "Pages" },
   { key: "popups", label: "Popups" },
@@ -110,6 +140,7 @@ export function StorefrontStudioPage() {
       <div>
         {tab === "theme" ? <ThemeTab /> : null}
         {tab === "branding" ? <BrandingTab /> : null}
+        {tab === "toolbar" ? <ToolbarTab /> : null}
         {tab === "navigation" ? <NavigationTab /> : null}
         {tab === "pages" ? <PagesTab /> : null}
         {tab === "popups" ? <PopupsTab /> : null}
@@ -354,8 +385,19 @@ function ImageField({
     setErr(null);
     try {
       onChange(await uploadStorefrontImage(file));
-    } catch {
+      toast.success("Image uploaded.");
+    } catch (e) {
+      const { message, detail } = describeError(e);
       setErr("Upload failed - try again or paste a URL.");
+      toast.error("Couldn't upload the image", {
+        description: message,
+        report: {
+          area: `${STUDIO_AREA} → ${label}`,
+          action: "Upload image",
+          message,
+          detail,
+        },
+      });
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -599,20 +641,28 @@ function ThemeTab() {
         <Button
           variant="primary"
           disabled={save.isPending}
-          onClick={async () => {
-            await save.mutateAsync(tokens);
-            setMsg("Draft saved.");
-          }}
+          onClick={() =>
+            runStudio(() => save.mutateAsync(tokens), {
+              area: `${STUDIO_AREA} → Theme`,
+              action: "Save theme draft",
+              success: "Draft saved.",
+              onOk: () => setMsg("Draft saved."),
+            })
+          }
         >
           Save draft
         </Button>
         <Button
           variant="secondary"
           disabled={publish.isPending}
-          onClick={async () => {
-            await publish.mutateAsync();
-            setMsg("Theme published.");
-          }}
+          onClick={() =>
+            runStudio(() => publish.mutateAsync(), {
+              area: `${STUDIO_AREA} → Theme`,
+              action: "Publish theme",
+              success: "Theme published — it's live now.",
+              onOk: () => setMsg("Theme published."),
+            })
+          }
         >
           Publish
         </Button>
@@ -689,20 +739,253 @@ function BrandingTab() {
         <Button
           variant="primary"
           disabled={save.isPending}
-          onClick={async () => {
-            await save.mutateAsync(tokens);
-            setMsg("Draft saved.");
-          }}
+          onClick={() =>
+            runStudio(() => save.mutateAsync(tokens), {
+              area: `${STUDIO_AREA} → Branding`,
+              action: "Save branding draft",
+              success: "Draft saved.",
+              onOk: () => setMsg("Draft saved."),
+            })
+          }
         >
           Save draft
         </Button>
         <Button
           variant="secondary"
           disabled={publish.isPending}
-          onClick={async () => {
-            await publish.mutateAsync();
-            setMsg("Branding published.");
-          }}
+          onClick={() =>
+            runStudio(() => publish.mutateAsync(), {
+              area: `${STUDIO_AREA} → Branding`,
+              action: "Publish branding",
+              success: "Branding published — it's live now.",
+              onOk: () => setMsg("Branding published."),
+            })
+          }
+        >
+          Publish
+        </Button>
+      </div>
+      <Status msg={msg} />
+    </Card>
+  );
+}
+
+// ============================================================
+// Toolbar — the storefront's draggable floating toolbar (stored in theme
+// tokens.toolbar, so it rides the same theme draft/publish lifecycle)
+// ============================================================
+
+type ToolbarStep = { title: string; body: string };
+type ToolbarCfg = {
+  enabled: boolean;
+  dock: "left" | "right";
+  buttons: { currency: boolean; theme: boolean; whatsapp: boolean; help: boolean };
+  whatsapp: { number: string; greeting: string };
+  help: { title: string; steps: ToolbarStep[] };
+};
+
+const DEFAULT_TOOLBAR_CFG: ToolbarCfg = {
+  enabled: true,
+  dock: "left",
+  buttons: { currency: true, theme: true, whatsapp: true, help: true },
+  whatsapp: {
+    number: "",
+    greeting: "Hi! I'd love some help choosing the right piece.",
+  },
+  help: {
+    title: "How to shop",
+    steps: [
+      { title: "Browse the maison", body: "Explore the catalogue, bundles and shades. Tap any piece to see photos, details and sizing." },
+      { title: "Choose your options", body: "Pick your length, texture or shade — the price updates live as you choose." },
+      { title: "Add to bag", body: "Tap Add to bag. Your currency (₦ or $) follows the toggle on this toolbar." },
+      { title: "Checkout securely", body: "Open your bag, tap Checkout, add delivery details and pay. We ship worldwide from Lagos." },
+    ],
+  },
+};
+
+function readToolbarCfg(tokens: Record<string, unknown>): ToolbarCfg {
+  const raw = tokens.toolbar;
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const b = (o.buttons && typeof o.buttons === "object" ? o.buttons : {}) as Record<string, unknown>;
+  const wa = (o.whatsapp && typeof o.whatsapp === "object" ? o.whatsapp : {}) as Record<string, unknown>;
+  const help = (o.help && typeof o.help === "object" ? o.help : {}) as Record<string, unknown>;
+  const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+  const steps = Array.isArray(help.steps)
+    ? (help.steps as unknown[]).map((s) => {
+        const so = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+        return {
+          title: typeof so.title === "string" ? so.title : "",
+          body: typeof so.body === "string" ? so.body : "",
+        };
+      })
+    : DEFAULT_TOOLBAR_CFG.help.steps;
+  return {
+    enabled: bool(o.enabled, true),
+    dock: o.dock === "right" ? "right" : "left",
+    buttons: {
+      currency: bool(b.currency, true),
+      theme: bool(b.theme, true),
+      whatsapp: bool(b.whatsapp, true),
+      help: bool(b.help, true),
+    },
+    whatsapp: {
+      number: typeof wa.number === "string" ? wa.number : "",
+      greeting: typeof wa.greeting === "string" ? wa.greeting : DEFAULT_TOOLBAR_CFG.whatsapp.greeting,
+    },
+    help: {
+      title: typeof help.title === "string" && help.title ? help.title : DEFAULT_TOOLBAR_CFG.help.title,
+      steps: steps.length ? steps : DEFAULT_TOOLBAR_CFG.help.steps,
+    },
+  };
+}
+
+function ToolbarTab() {
+  const { data, isLoading } = useThemes();
+  const save = useSaveThemeDraft();
+  const publish = usePublishTheme();
+  const active = pickActive(data);
+  const [tokens, setTokens] = useState<Record<string, unknown>>({});
+  const [cfg, setCfg] = useState<ToolbarCfg>(DEFAULT_TOOLBAR_CFG);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    const t = (active.tokens || {}) as Record<string, unknown>;
+    setTokens(t);
+    setCfg(readToolbarCfg(t));
+  }, [active]);
+
+  if (isLoading)
+    return <p className="text-[13px] text-text-muted">Loading...</p>;
+
+  const patchButtons = (p: Partial<ToolbarCfg["buttons"]>) =>
+    setCfg((c) => ({ ...c, buttons: { ...c.buttons, ...p } }));
+  const patchWa = (p: Partial<ToolbarCfg["whatsapp"]>) =>
+    setCfg((c) => ({ ...c, whatsapp: { ...c.whatsapp, ...p } }));
+  const setSteps = (steps: ToolbarStep[]) =>
+    setCfg((c) => ({ ...c, help: { ...c.help, steps } }));
+
+  // Persist toolbar under the theme's tokens, preserving every other token
+  // (branding logos/favicons, colour overrides) untouched.
+  const nextTokens = { ...tokens, toolbar: cfg } as unknown as Record<string, string>;
+
+  return (
+    <Card className="max-w-xl space-y-5 p-5">
+      <p className="text-[13px] text-text-muted">
+        The floating toolbar is a draggable cluster of round buttons on every
+        storefront page. Choose which buttons show, where it sits, and edit the
+        WhatsApp details and the &ldquo;How to shop&rdquo; steps. Save as a draft,
+        then Publish to go live.
+      </p>
+
+      <div className="flex items-center justify-between rounded-[12px] border border-line px-4 py-3">
+        <span className="text-[13px] font-medium text-text-primary">Show the toolbar</span>
+        <Toggle checked={cfg.enabled} onChange={(v) => setCfg((c) => ({ ...c, enabled: v }))} />
+      </div>
+
+      <div>
+        <span className={labelCls}>Dock side (customers can drag it anywhere)</span>
+        <Select
+          value={cfg.dock}
+          onChange={(v) => setCfg((c) => ({ ...c, dock: v }))}
+          options={[
+            { value: "left", label: "Left edge" },
+            { value: "right", label: "Right edge" },
+          ]}
+        />
+      </div>
+
+      <Section title="Buttons" defaultOpen>
+        <div className="space-y-3">
+          <Toggle checked={cfg.buttons.currency} onChange={(v) => patchButtons({ currency: v })} label="Currency toggle (₦ / $)" />
+          <Toggle checked={cfg.buttons.theme} onChange={(v) => patchButtons({ theme: v })} label="Dark / light theme" />
+          <Toggle checked={cfg.buttons.whatsapp} onChange={(v) => patchButtons({ whatsapp: v })} label="WhatsApp chat" />
+          <Toggle checked={cfg.buttons.help} onChange={(v) => patchButtons({ help: v })} label="How-to-shop help" />
+        </div>
+      </Section>
+
+      <Section title="WhatsApp" hint="Used by the WhatsApp button. Leave the number blank to fall back to your Navigation → Socials WhatsApp.">
+        <TextField
+          label="WhatsApp number (international, e.g. 2348012345678)"
+          value={cfg.whatsapp.number}
+          onChange={(v) => patchWa({ number: v })}
+          placeholder="2348012345678"
+        />
+        <AreaField
+          label="Pre-filled greeting"
+          value={cfg.whatsapp.greeting}
+          onChange={(v) => patchWa({ greeting: v })}
+          rows={2}
+        />
+      </Section>
+
+      <Section title="How-to-shop steps">
+        <TextField
+          label="Title"
+          value={cfg.help.title}
+          onChange={(v) => setCfg((c) => ({ ...c, help: { ...c.help, title: v } }))}
+        />
+        <div className="space-y-3">
+          {cfg.help.steps.map((s, i) => (
+            <div key={i} className="space-y-2 rounded-[10px] border border-line bg-text-primary/[0.03] p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-medium text-text-muted">Step {i + 1}</span>
+                <button
+                  onClick={() => setSteps(cfg.help.steps.filter((_, j) => j !== i))}
+                  className="text-xs text-text-muted hover:text-danger"
+                >
+                  Remove
+                </button>
+              </div>
+              <TextField
+                label="Heading"
+                value={s.title}
+                onChange={(v) => setSteps(cfg.help.steps.map((x, j) => (j === i ? { ...x, title: v } : x)))}
+              />
+              <AreaField
+                label="Text"
+                value={s.body}
+                rows={2}
+                onChange={(v) => setSteps(cfg.help.steps.map((x, j) => (j === i ? { ...x, body: v } : x)))}
+              />
+            </div>
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSteps([...cfg.help.steps, { title: "", body: "" }])}
+          >
+            + Add step
+          </Button>
+        </div>
+      </Section>
+
+      <div className="flex gap-2">
+        <Button
+          variant="primary"
+          disabled={save.isPending}
+          onClick={() =>
+            runStudio(() => save.mutateAsync(nextTokens), {
+              area: `${STUDIO_AREA} → Toolbar`,
+              action: "Save toolbar draft",
+              success: "Draft saved.",
+              onOk: () => setMsg("Draft saved."),
+            })
+          }
+        >
+          Save draft
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={publish.isPending}
+          onClick={() =>
+            runStudio(() => publish.mutateAsync(), {
+              area: `${STUDIO_AREA} → Toolbar`,
+              action: "Publish toolbar",
+              success: "Toolbar published — it's live now.",
+              onOk: () => setMsg("Toolbar published."),
+            })
+          }
         >
           Publish
         </Button>
@@ -753,8 +1036,12 @@ function NavigationTab() {
       footer_columns: footer,
       socials,
     };
-    await save.mutateAsync(nav);
-    setMsg("Draft saved.");
+    await runStudio(() => save.mutateAsync(nav), {
+      area: `${STUDIO_AREA} → Navigation`,
+      action: "Save navigation draft",
+      success: "Draft saved.",
+      onOk: () => setMsg("Draft saved."),
+    });
   }
 
   if (isLoading)
@@ -968,10 +1255,14 @@ function NavigationTab() {
         <Button
           variant="secondary"
           disabled={publish.isPending}
-          onClick={async () => {
-            await publish.mutateAsync();
-            setMsg("Navigation published.");
-          }}
+          onClick={() =>
+            runStudio(() => publish.mutateAsync(), {
+              area: `${STUDIO_AREA} → Navigation`,
+              action: "Publish navigation",
+              success: "Navigation published — it's live now.",
+              onOk: () => setMsg("Navigation published."),
+            })
+          }
         >
           Publish
         </Button>
@@ -1019,8 +1310,24 @@ function PagesTab() {
 
   async function onSave() {
     if (!sel) return;
-    await save.mutateAsync({ ...sel, slots });
-    setMsg("Draft saved.");
+    // Send ONLY the editable fields — never spread the loaded row, whose DB-only
+    // keys (page_id, business, status, timestamps) tripped the backend validator
+    // with "Invalid input" and blocked every save.
+    const payload = {
+      page_key: sel.page_key,
+      template_key: sel.template_key,
+      url_path: sel.url_path,
+      meta_title: sel.meta_title ?? undefined,
+      meta_description: sel.meta_description ?? undefined,
+      og_image_url: sel.og_image_url ?? undefined,
+      slots,
+    };
+    await runStudio(() => save.mutateAsync(payload), {
+      area: `${STUDIO_AREA} → Pages (${sel.page_key || "new"})`,
+      action: "Save page draft",
+      success: "Draft saved.",
+      onOk: () => setMsg("Draft saved."),
+    });
   }
 
   if (isLoading)
@@ -1110,10 +1417,14 @@ function PagesTab() {
             <Button
               variant="secondary"
               disabled={!sel.page_key || publish.isPending}
-              onClick={async () => {
-                await publish.mutateAsync(sel.page_key);
-                setMsg("Page published.");
-              }}
+              onClick={() =>
+                runStudio(() => publish.mutateAsync(sel.page_key), {
+                  area: `${STUDIO_AREA} → Pages (${sel.page_key})`,
+                  action: "Publish page",
+                  success: "Page published — it's live now.",
+                  onOk: () => setMsg("Page published."),
+                })
+              }
             >
               Publish
             </Button>
@@ -1459,8 +1770,12 @@ function PopupsTab() {
 
   async function onSave() {
     if (!sel) return;
-    await save.mutateAsync(sel);
-    setMsg("Draft saved.");
+    await runStudio(() => save.mutateAsync(sel), {
+      area: `${STUDIO_AREA} → Popups (${sel.popup_key || "new"})`,
+      action: "Save popup draft",
+      success: "Draft saved.",
+      onOk: () => setMsg("Draft saved."),
+    });
   }
 
   if (isLoading)
@@ -1612,20 +1927,28 @@ function PopupsTab() {
             <Button
               variant="secondary"
               disabled={!sel.popup_key || publish.isPending}
-              onClick={async () => {
-                await publish.mutateAsync(sel.popup_key);
-                setMsg("Popup published.");
-              }}
+              onClick={() =>
+                runStudio(() => publish.mutateAsync(sel.popup_key), {
+                  area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
+                  action: "Publish popup",
+                  success: "Popup published — it's live now.",
+                  onOk: () => setMsg("Popup published."),
+                })
+              }
             >
               Publish
             </Button>
             <Button
               variant="danger"
               disabled={!sel.popup_key || del.isPending}
-              onClick={async () => {
-                await del.mutateAsync(sel.popup_key);
-                setSel(null);
-              }}
+              onClick={() =>
+                runStudio(() => del.mutateAsync(sel.popup_key), {
+                  area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
+                  action: "Delete popup",
+                  success: "Popup deleted.",
+                  onOk: () => setSel(null),
+                })
+              }
             >
               Delete
             </Button>
@@ -1685,10 +2008,15 @@ function RevisionsTab() {
                     variant="ghost"
                     size="sm"
                     disabled={rollback.isPending}
-                    onClick={async () => {
-                      await rollback.mutateAsync(r.revision_id);
-                      setMsg("Restored to draft - review and publish.");
-                    }}
+                    onClick={() =>
+                      runStudio(() => rollback.mutateAsync(r.revision_id), {
+                        area: `${STUDIO_AREA} → Revisions`,
+                        action: "Restore revision",
+                        success: "Restored to draft — review and publish.",
+                        onOk: () =>
+                          setMsg("Restored to draft - review and publish."),
+                      })
+                    }
                   >
                     Restore to draft
                   </Button>

@@ -49,6 +49,29 @@ async function initSocketIo(httpServer) {
   // Bind handlers (room join/leave + module-specific event emitters)
   bindHandlers(io);
 
+  // PUBLIC namespace — storefront guests (no staff JWT). Auth is a signed
+  // guest token (currently the Shade Finder session token); on connect the
+  // socket is locked into exactly its own session room — there is no
+  // generic 'join' verb to probe. Shares the Redis adapter with the main
+  // namespace, so worker-side emits fan out the same way.
+  const publicNs = io.of("/public");
+  publicNs.use((socket, next) => {
+    const {
+      verifyGuestToken,
+    } = require("../modules/shade_finder/shade-finder.service");
+    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    const payload = token && verifyGuestToken(token);
+    if (!payload) return next(new Error("AUTH_REQUIRED"));
+    socket.data.shadeSession = { sid: payload.sid, brand: payload.brand };
+    return next();
+  });
+  publicNs.on("connection", (socket) => {
+    const { ROOMS } = require("../realtime/rooms");
+    const { sid, brand } = socket.data.shadeSession;
+    socket.join(ROOMS.shade_session(brand, sid));
+    socket.emit("joined", { room: ROOMS.shade_session(brand, sid) });
+  });
+
   // Register module realtime relays (lazy require to avoid an init cycle)
   const { registerCampaignRealtime } = require("../realtime/campaign-realtime");
   registerCampaignRealtime();
@@ -61,6 +84,11 @@ async function initSocketIo(httpServer) {
 
   const { registerPraxisRealtime } = require("../realtime/praxis-realtime");
   registerPraxisRealtime();
+
+  const {
+    registerShadeFinderRealtime,
+  } = require("../realtime/shade-finder-realtime");
+  registerShadeFinderRealtime();
 
   logger.info("socket.io initialised with redis adapter");
   return io;

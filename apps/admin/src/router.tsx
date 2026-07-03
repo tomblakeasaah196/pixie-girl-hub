@@ -10,6 +10,8 @@ import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
 import { ContactTagsPage } from "@/pages/ContactTagsPage";
 import { CrmPage } from "@/pages/crm/CrmPage";
 import { SalesPage } from "@/pages/sales/SalesPage";
+import { OrderDetailPage } from "@/pages/sales/OrderDetailPage";
+import { DashboardPage } from "@/pages/dashboard/DashboardPage";
 import { DealDetailPage } from "@/pages/crm/deals/DealDetailPage";
 import { CataloguePage } from "@/pages/catalogue/CataloguePage";
 import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
@@ -115,6 +117,11 @@ const PurchasingPage = lazyWithRetry(() =>
 const ServiceJobsPage = lazyWithRetry(() =>
   import("@/pages/service-jobs/ServiceJobsPage").then((m) => ({
     default: m.ServiceJobsPage,
+  })),
+);
+const StylistsPage = lazyWithRetry(() =>
+  import("@/pages/stylists/StylistsPage").then((m) => ({
+    default: m.StylistsPage,
   })),
 );
 const FactoryLanguagePage = lazyWithRetry(() =>
@@ -337,7 +344,9 @@ export const router = createBrowserRouter(
           element: <AppShell />,
           children: [
             { index: true, element: <CommandCenter /> },
+            { path: "dashboard", element: <DashboardPage /> },
             { path: "sales", element: <SalesPage /> },
+            { path: "sales/orders/:orderId", element: <OrderDetailPage /> },
             // Storefront Studio - renders inside the app shell like other modules.
             {
               path: "storefront-studio",
@@ -554,6 +563,16 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <ServiceJobsPage />
+                </Suspense>
+              ),
+            },
+
+            // Stylist Partner Programme (§6.26 — PXG partner network)
+            {
+              path: "stylists",
+              element: (
+                <Suspense fallback={null}>
+                  <StylistsPage />
                 </Suspense>
               ),
             },

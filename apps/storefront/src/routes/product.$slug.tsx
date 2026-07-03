@@ -10,6 +10,7 @@ import {
 import { ssrProduct } from "@/lib/server";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { Section, ErrorState } from "@/components/parts";
+import { YouTubeFacade, youtubeId } from "@/components/site/VideoEmbed";
 
 export const Route = createFileRoute("/product/$slug")({
   loader: async ({ params }) => ssrProduct({ data: { slug: params.slug } }),
@@ -88,6 +89,12 @@ function ProductPage() {
     unstyled,
     currency,
   );
+
+  // Head-size video: YouTube URLs get the lazy branded facade player (same
+  // engineering as the live sales landing); anything else falls back to a
+  // native <video>. Null when the brand set no video for this product.
+  const videoUrl = product.size_guide?.video_url ?? null;
+  const videoId = videoUrl ? youtubeId(videoUrl) : null;
 
   async function add() {
     if (!unstyled && !selectedVariant) {
@@ -246,11 +253,26 @@ function ProductPage() {
           </button>
         </div>
 
-        {product.size_guide ? (
+        {product.size_guide &&
+        (product.size_guide.guide_md || videoUrl) ? (
           <details className="mt-8 border-t border-border pt-4">
             <summary className="cursor-pointer text-body-sm">
               {product.size_guide.title}
             </summary>
+            {videoId ? (
+              <div className="mt-3">
+                <YouTubeFacade
+                  videoId={videoId}
+                  title={product.size_guide.title || "Head size guide"}
+                />
+              </div>
+            ) : videoUrl ? (
+              <video
+                src={videoUrl}
+                controls
+                className="mt-3 max-h-[420px] w-full rounded-md bg-secondary"
+              />
+            ) : null}
             {product.size_guide.guide_md ? (
               <p className="mt-2 whitespace-pre-wrap text-body-sm text-muted-foreground">
                 {product.size_guide.guide_md}

@@ -240,6 +240,48 @@ async function onContractSigned({ reference_id }) {
   });
 }
 
+/**
+ * Portal signing (PR4): the partner draws/types their signature in the
+ * dashboard; we persist the image to storage and drive the same e-sign
+ * token flow as any external signer — the constraint chain
+ * (captured_signature_path + audit hash + fully_signed → badge) is
+ * identical to signing via the emailed link.
+ */
+async function signMyContract({ stylist_id, signature_image_base64, ip, ua }) {
+  const state = await getContractState({ stylist_id });
+  if (!state.exists || !state.signing_token)
+    throw new AppError(
+      "NOT_SIGNABLE",
+      "There is no contract awaiting your signature",
+      422,
+    );
+  const m = /^data:image\/(png|jpeg);base64,(.+)$/.exec(
+    signature_image_base64 || "",
+  );
+  if (!m)
+    throw new AppError(
+      "BAD_SIGNATURE_IMAGE",
+      "Signature must be a PNG or JPEG data URL",
+      422,
+    );
+  const buffer = Buffer.from(m[2], "base64");
+  if (!buffer.length || buffer.length > 2 * 1024 * 1024)
+    throw new AppError("BAD_SIGNATURE_IMAGE", "Signature image too large", 422);
+  const storage = require("../../services/storage.service");
+  const stored = await storage.put(buffer, {
+    key: `${BRAND}/signatures/stylist-${stylist_id}-${Date.now()}.${m[1] === "jpeg" ? "jpg" : "png"}`,
+    contentType: `image/${m[1]}`,
+  });
+  return esign.signByToken({
+    token: state.signing_token,
+    ip,
+    ua,
+    device: "stylist-portal",
+    captured_signature_path: stored.key,
+    signature_image_byte_size: buffer.length,
+  });
+}
+
 /** Portal view: the contract document + live signing state. */
 async function getContractState({ stylist_id }) {
   const partner = await repo.findPartner({ id: stylist_id });
@@ -270,4 +312,9 @@ async function getContractState({ stylist_id }) {
   return out;
 }
 
-module.exports = { generateAndSend, onContractSigned, getContractState };
+module.exports = {
+  generateAndSend,
+  onContractSigned,
+  getContractState,
+  signMyContract,
+};

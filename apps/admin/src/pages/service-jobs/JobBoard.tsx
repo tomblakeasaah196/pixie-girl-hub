@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Package } from "lucide-react";
 import {
   Button,
   Pill,
@@ -127,6 +129,7 @@ function JobCard({
   serviceTypes: ServiceType[];
   onClick: () => void;
 }) {
+  const navigate = useNavigate();
   const st = serviceTypes.find(
     (t) => t.service_type_id === job.service_type_id,
   );
@@ -153,6 +156,28 @@ function JobCard({
           </span>
         )}
       </div>
+      {/* Source order chip — one tap jumps to the sales order that opened this
+          job, so the studio floor can answer "who's this wig for?" instantly. */}
+      {job.sales_order_id && (
+        <span
+          role="link"
+          tabIndex={0}
+          className="inline-flex items-center gap-1 text-[11px] font-mono text-accent hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/sales/orders/${job.sales_order_id}`);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.stopPropagation();
+              navigate(`/sales/orders/${job.sales_order_id}`);
+            }
+          }}
+        >
+          <Package className="w-3 h-3" />
+          {job.sales_order_number ?? "Order"}
+        </span>
+      )}
       <div className="flex items-center gap-1.5">
         <span>{icon}</span>
         <span className="text-sm font-medium truncate">
@@ -536,6 +561,7 @@ function JobDetailDrawer({
   serviceTypes: ServiceType[];
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
   const { data: job, isLoading } = useJob(jobId);
   const actions = useJobActions(jobId);
   const [tab, setTab] = useState<"details" | "chemicals" | "outcome">(
@@ -582,6 +608,18 @@ function JobDetailDrawer({
             <span className="text-xs font-semibold text-danger border border-danger/40 rounded px-2 py-0.5">
               ⚠ No linked sale
             </span>
+          )}
+          {job.sales_order_id && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Package className="w-3.5 h-3.5" />}
+              onClick={() =>
+                navigate(`/sales/orders/${job.sales_order_id}`)
+              }
+            >
+              {job.sales_order_number ?? "View order"}
+            </Button>
           )}
         </div>
 
@@ -862,8 +900,19 @@ function CreateJobDrawer({
 export function JobBoard({ canCreate }: { canCreate: boolean }) {
   const { data: serviceTypes = [] } = useServiceTypes(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
-  const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // The open job drawer is URL-driven (?job=<id>) so deep links from the
+  // Order page + notifications land directly on the job, and closing it
+  // cleans the param back off.
+  const [sp, setSp] = useSearchParams();
+  const detailJobId = sp.get("job");
+  const setDetailJobId = (id: string | null) =>
+    setSp((p) => {
+      const next = new URLSearchParams(p);
+      if (id) next.set("job", id);
+      else next.delete("job");
+      return next;
+    });
 
   const { data, isLoading, isError } = useJobs(
     statusFilter

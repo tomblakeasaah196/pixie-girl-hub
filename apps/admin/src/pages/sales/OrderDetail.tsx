@@ -584,7 +584,7 @@ export function OrderDetail({
                       size="sm"
                       icon={<ExternalLink className="w-3.5 h-3.5" />}
                       onClick={() =>
-                        navigate(`/stylist-studio?tab=job-board&job=${job.job_id}`)
+                        navigate(`/service-jobs?tab=board&job=${job.job_id}`)
                       }
                     >
                       Open in Studio

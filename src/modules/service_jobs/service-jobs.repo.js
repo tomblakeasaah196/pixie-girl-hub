@@ -209,13 +209,17 @@ async function listServiceJobs({
     params,
   );
   const offset = (page - 1) * page_size;
-  // Enrich with the source order's number so the Studio Job Board can show
-  // "which order this belongs to" without a second round-trip.
+  // Enrich with the source order's number (Studio board shows "which order is
+  // this wig for?") and the assigned stylist's display name (the Order page's
+  // Studio card shows WHO has the wig, not a UUID).
   const { rows } = await query(
-    `SELECT sj.*, so.order_number AS sales_order_number
+    `SELECT sj.*, so.order_number AS sales_order_number,
+            u.display_name AS assigned_staff_name
        FROM ${t(brand, "service_jobs")} sj
        LEFT JOIN ${t(brand, "sales_orders")} so
          ON so.order_id = sj.sales_order_id
+       LEFT JOIN shared.users u
+         ON u.user_id = sj.assigned_staff_user_id
       ${w}
       ORDER BY sj.created_at DESC LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],

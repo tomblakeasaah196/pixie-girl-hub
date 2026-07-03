@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Package } from "lucide-react";
 import {
   Button,
@@ -165,12 +165,12 @@ function JobCard({
           className="inline-flex items-center gap-1 text-[11px] font-mono text-accent hover:underline"
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/sales?tab=orders&order=${job.sales_order_id}`);
+            navigate(`/sales/orders/${job.sales_order_id}`);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.stopPropagation();
-              navigate(`/sales?tab=orders&order=${job.sales_order_id}`);
+              navigate(`/sales/orders/${job.sales_order_id}`);
             }
           }}
         >
@@ -615,7 +615,7 @@ function JobDetailDrawer({
               size="sm"
               icon={<Package className="w-3.5 h-3.5" />}
               onClick={() =>
-                navigate(`/sales?tab=orders&order=${job.sales_order_id}`)
+                navigate(`/sales/orders/${job.sales_order_id}`)
               }
             >
               {job.sales_order_number ?? "View order"}
@@ -900,8 +900,19 @@ function CreateJobDrawer({
 export function JobBoard({ canCreate }: { canCreate: boolean }) {
   const { data: serviceTypes = [] } = useServiceTypes(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
-  const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // The open job drawer is URL-driven (?job=<id>) so deep links from the
+  // Order page + notifications land directly on the job, and closing it
+  // cleans the param back off.
+  const [sp, setSp] = useSearchParams();
+  const detailJobId = sp.get("job");
+  const setDetailJobId = (id: string | null) =>
+    setSp((p) => {
+      const next = new URLSearchParams(p);
+      if (id) next.set("job", id);
+      else next.delete("job");
+      return next;
+    });
 
   const { data, isLoading, isError } = useJobs(
     statusFilter

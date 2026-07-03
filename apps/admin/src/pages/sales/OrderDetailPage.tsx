@@ -166,7 +166,7 @@ function computeRisks(args: {
         tone: "danger",
         action: {
           label: "Open Studio",
-          to: `/stylist-studio?tab=job-board&job=${job.job_id}`,
+          to: `/service-jobs?tab=board&job=${job.job_id}`,
         },
       });
     }
@@ -409,6 +409,76 @@ export function OrderDetailPage() {
     needsDelivery,
   });
 
+  // ── Studio stage rail — the wig's journey through operations ─────────
+  // Which rail position each status corresponds to (1-based).
+  const STAGE_OF_STATUS: Record<string, number> = {
+    pending: 1,
+    assigned: 2,
+    in_progress: 3,
+    on_hold: 3,
+    rework: 3,
+    returned_for_qc: 4,
+    qc_passed: 4,
+    ready_for_dispatch: 5,
+    handed_to_sales: 6,
+    completed: 6,
+  };
+  interface StudioStage {
+    key: string;
+    label: string;
+    when: string | null;
+    state: "done" | "active" | "todo";
+    warn?: boolean;
+    sub?: string;
+  }
+  const studioStages = useMemo<StudioStage[]>(() => {
+    if (!job || ["cancelled", "rejected"].includes(job.status)) return [];
+    const at = STAGE_OF_STATUS[job.status] ?? 1;
+    const terminal = job.status === "handed_to_sales" || job.status === "completed";
+    const defs = [
+      { key: "queued", label: "Queued", when: job.created_at ?? null },
+      { key: "assigned", label: "Assigned", when: job.assigned_at },
+      {
+        key: "styling",
+        label: job.status === "rework" ? "Styling (rework)" : "Styling",
+        when: job.started_at,
+        warn: job.status === "rework" || job.status === "on_hold",
+        sub: job.status === "on_hold" ? "on hold" : undefined,
+      },
+      { key: "qc", label: "QC", when: job.qc_at ?? job.returned_at },
+      { key: "ready", label: "Ready", when: job.ready_at },
+      {
+        key: "done",
+        label: "Handed off",
+        when: job.handed_at ?? job.completed_at,
+      },
+    ];
+    return defs.map((d, i) => {
+      const idx = i + 1;
+      const state: StudioStage["state"] =
+        idx < at || (idx === at && terminal)
+          ? "done"
+          : idx === at
+            ? "active"
+            : "todo";
+      return { ...d, when: d.when ?? null, state };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job]);
+
+  // SLA countdown chip — hidden once the wig is through operations.
+  const slaChip = useMemo(() => {
+    if (!job || JOB_TERMINAL.has(job.status)) return null;
+    if (["cancelled", "rejected"].includes(job.status)) return null;
+    const due = job.sla_due_at ?? job.expected_completion_at;
+    if (!due) return null;
+    const days = Math.ceil((new Date(due).getTime() - Date.now()) / 86_400_000);
+    if (days < 0)
+      return { label: `Overdue ${-days}d`, tone: "danger" as const };
+    if (days === 0) return { label: "Due today", tone: "warn" as const };
+    return { label: `Due in ${days}d`, tone: "info" as const };
+  }, [job]);
+
   // Comms log — merge invoice send + reminder rows into a single timeline.
   const commsEntries = useMemo(() => {
     const rows: Array<{
@@ -521,7 +591,7 @@ export function OrderDetailPage() {
                 {receiptLoading ? "…" : "Receipt"}
               </Button>
             )}
-            {needsStudio && (
+            {(needsStudio || job) && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -529,8 +599,8 @@ export function OrderDetailPage() {
                 onClick={() =>
                   navigate(
                     job
-                      ? `/stylist-studio?tab=job-board&job=${job.job_id}`
-                      : `/stylist-studio?tab=job-board`,
+                      ? `/service-jobs?tab=board&job=${job.job_id}`
+                      : `/service-jobs?tab=board`,
                   )
                 }
               >
@@ -619,7 +689,7 @@ export function OrderDetailPage() {
             <Pill tone={paidTone}>
               {paidTone === "success" ? "Paid" : "Payment pending"}
             </Pill>
-            {needsStudio && (
+            {(needsStudio || job) && (
               <Pill tone={jobMeta?.tone ?? (jobDone ? "success" : "neutral")}>
                 <Scissors className="w-3 h-3 inline mr-1" />
                 Studio: {jobMeta?.label ?? "Not opened yet"}
@@ -905,73 +975,170 @@ export function OrderDetailPage() {
                 </Card>
               )}
 
-              {/* Studio card */}
-              {needsStudio && (
-                <Card className="p-4">
-                  <div className="flex items-center justify-between mb-3">
+              {/* Stylist Studio — operations stage tracker. Shown whenever a
+                  job exists (even if the order's lines predate line_kind
+                  stamping) or the order clearly needs styling. */}
+              {(needsStudio || job) && (
+                <Card className="p-4 border border-accent/20">
+                  <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
                     <div className="micro flex items-center gap-1.5">
                       <Scissors className="w-3.5 h-3.5" />
                       Stylist Studio
+                      {job && (
+                        <span className="font-mono text-[11px] text-text-muted normal-case">
+                          {job.job_number}
+                        </span>
+                      )}
                     </div>
-                    {job && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={<ExternalLink className="w-3.5 h-3.5" />}
-                        onClick={() =>
-                          navigate(
-                            `/stylist-studio?tab=job-board&job=${job.job_id}`,
-                          )
-                        }
-                      >
-                        Open in Studio
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {job && slaChip && (
+                        <Pill tone={slaChip.tone}>{slaChip.label}</Pill>
+                      )}
+                      {job && (job.rework_count ?? 0) > 0 && (
+                        <Pill tone="warn">Rework ×{job.rework_count}</Pill>
+                      )}
+                      {job && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={<ExternalLink className="w-3.5 h-3.5" />}
+                          onClick={() =>
+                            navigate(`/service-jobs?tab=board&job=${job.job_id}`)
+                          }
+                        >
+                          Open Job {job.job_number}
+                        </Button>
+                      )}
+                    </div>
                   </div>
+
                   {job ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-[13px] flex-wrap">
-                        <span className="font-semibold">{job.job_number}</span>
-                        {jobMeta && (
-                          <Pill tone={jobMeta.tone}>{jobMeta.label}</Pill>
-                        )}
-                        {(job.rework_count ?? 0) > 0 && (
-                          <Pill tone="warn">Rework ×{job.rework_count}</Pill>
-                        )}
+                    ["cancelled", "rejected"].includes(job.status) ? (
+                      <div className="mt-3 p-3 rounded-[10px] bg-danger/[0.07] border border-danger/25 text-[13px] text-danger">
+                        This styling job was {job.status}. Open it in Studio to
+                        see why or raise a fresh one.
                       </div>
-                      <FormGrid>
-                        <div>
-                          <div className="micro">Stylist</div>
-                          <div className="text-[13px] mt-1">
-                            {job.assigned_staff_user_id
-                              ? job.assigned_staff_user_id.slice(0, 8)
-                              : "Unassigned"}
+                    ) : (
+                      <>
+                        {/* Stage rail — the wig's journey through operations.
+                            Done stages fill in with their timestamp; the live
+                            stage pulses; the rest wait dim. */}
+                        <div className="mt-4 overflow-x-auto pb-1">
+                          <div className="flex items-start min-w-[560px]">
+                            {studioStages.map((s, i) => (
+                              <div
+                                key={s.key}
+                                className="flex-1 flex flex-col items-center relative"
+                              >
+                                {/* connector line to the previous stage */}
+                                {i > 0 && (
+                                  <div
+                                    className={`absolute top-[9px] right-1/2 w-full h-[2px] ${
+                                      s.state !== "todo"
+                                        ? "bg-accent/70"
+                                        : "bg-line"
+                                    }`}
+                                  />
+                                )}
+                                <div
+                                  className={`relative z-10 w-[18px] h-[18px] rounded-full border-2 grid place-items-center ${
+                                    s.state === "done"
+                                      ? "bg-accent border-accent"
+                                      : s.state === "active"
+                                        ? "bg-bg border-accent animate-pulse"
+                                        : "bg-bg border-line"
+                                  }`}
+                                >
+                                  {s.state === "done" && (
+                                    <span className="text-[10px] leading-none text-white">
+                                      ✓
+                                    </span>
+                                  )}
+                                  {s.state === "active" && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                                  )}
+                                </div>
+                                <div
+                                  className={`mt-1.5 text-[11px] font-semibold text-center px-1 ${
+                                    s.state === "todo"
+                                      ? "text-text-faint"
+                                      : s.warn
+                                        ? "text-warn"
+                                        : "text-text-primary"
+                                  }`}
+                                >
+                                  {s.label}
+                                </div>
+                                <div className="text-[10px] text-text-faint text-center px-1">
+                                  {s.when ? fmtDate(s.when) : s.sub ?? ""}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                        <div>
-                          <div className="micro">Started</div>
-                          <div className="text-[13px] mt-1">
-                            {fmtDateTime(job.started_at) ?? "—"}
+
+                        {/* Who / what / how much */}
+                        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div>
+                            <div className="micro">Stylist</div>
+                            <div className="text-[13px] mt-1 font-semibold">
+                              {job.assigned_staff_name ??
+                                (job.assigned_staff_user_id
+                                  ? job.assigned_staff_user_id.slice(0, 8)
+                                  : null) ?? (
+                                  <span className="text-warn">Unassigned</span>
+                                )}
+                            </div>
+                            {job.assigned_at && (
+                              <div className="text-[10px] text-text-faint">
+                                since {fmtDate(job.assigned_at)}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="micro">Piece</div>
+                            <div className="text-[13px] mt-1 truncate">
+                              {job.hair_description ?? "—"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="micro">Quality</div>
+                            <div className="text-[13px] mt-1">
+                              {job.quality_rating ? (
+                                <span className="font-mono">
+                                  {"★".repeat(job.quality_rating)}
+                                  {"☆".repeat(5 - job.quality_rating)}
+                                </span>
+                              ) : (
+                                "Not rated"
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="micro">Styling cost</div>
+                            <div className="text-[13px] mt-1">
+                              {job.agreed_cost_ngn ? (
+                                <MoneyText ngn={Number(job.agreed_cost_ngn)} />
+                              ) : (
+                                "—"
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <div>
-                          <div className="micro">Expected</div>
-                          <div className="text-[13px] mt-1">
-                            {fmtDate(job.expected_completion_at) ?? "—"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="micro">Completed</div>
-                          <div className="text-[13px] mt-1">
-                            {fmtDateTime(job.completed_at) ?? "—"}
-                          </div>
-                        </div>
-                      </FormGrid>
-                    </div>
+                      </>
+                    )
                   ) : (
-                    <div className="text-[13px] text-text-faint">
+                    <div className="mt-3 text-[13px] text-text-faint">
                       No Studio job yet. It opens automatically once the deposit
-                      or full payment clears — refresh in a moment.
+                      or full payment clears — refresh in a moment, or open the{" "}
+                      <button
+                        type="button"
+                        className="text-accent hover:underline"
+                        onClick={() => navigate("/service-jobs?tab=board")}
+                      >
+                        Job Board
+                      </button>{" "}
+                      to raise one by hand.
                     </div>
                   )}
                 </Card>

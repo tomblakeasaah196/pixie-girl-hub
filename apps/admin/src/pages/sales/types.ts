@@ -157,6 +157,9 @@ export interface SalesOrder {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Distinct line kinds on the order (list endpoint only) — drives the
+   *  register's Kind column: base product vs styled vs service vs bundle. */
+  line_kinds?: Array<"product" | "styled" | "bundle" | "service"> | null;
   lines?: OrderLine[];
   payments?: OrderPayment[];
   discounts?: OrderDiscount[];

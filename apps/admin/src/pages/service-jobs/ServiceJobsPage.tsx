@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Button,
   Pill,
@@ -503,10 +504,31 @@ type Tab =
   | "recipes"
   | "reconciliation";
 
+const TAB_IDS: Tab[] = [
+  "my",
+  "board",
+  "qc",
+  "accountability",
+  "types",
+  "recipes",
+  "reconciliation",
+];
+
 export function ServiceJobsPage() {
   useBreadcrumbs([{ label: "Stylist Studio" }]);
   const can = useAuthStore((s) => s.can);
-  const [tab, setTab] = useState<Tab>("board");
+  // Tab lives in the URL so deep links from Orders / notifications land on the
+  // right pane (?tab=board&job=<id> opens the board with the job drawer up).
+  const [sp, setSp] = useSearchParams();
+  const urlTab = sp.get("tab") as Tab | null;
+  const tab: Tab = urlTab && TAB_IDS.includes(urlTab) ? urlTab : "board";
+  const setTab = (t: Tab) =>
+    setSp((p) => {
+      const next = new URLSearchParams(p);
+      next.set("tab", t);
+      next.delete("job"); // switching panes drops the job focus
+      return next;
+    });
 
   if (!can("service_jobs", "view")) {
     return (

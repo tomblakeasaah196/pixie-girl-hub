@@ -64,6 +64,47 @@ const columns: Column<SalesOrder>[] = [
     ),
   },
   {
+    key: "kind",
+    header: "Kind",
+    width: "110px",
+    render: (o) => {
+      const kinds = (o.line_kinds ?? []).filter(Boolean);
+      if (!kinds.length)
+        return <span className="text-[12px] text-text-faint">—</span>;
+      // Show the "most operational" kind first — styled/service work drives
+      // Studio, so it outranks a plain base product on the same order.
+      const rank: Record<string, number> = {
+        service: 0,
+        styled: 1,
+        bundle: 2,
+        product: 3,
+      };
+      const sorted = [...kinds].sort(
+        (a, b) => (rank[a] ?? 9) - (rank[b] ?? 9),
+      );
+      const meta: Record<string, { label: string; tone: "success" | "warn" | "danger" | "info" | "accent" | "neutral" }> = {
+        styled: { label: "Styled", tone: "accent" },
+        service: { label: "Service", tone: "info" },
+        bundle: { label: "Bundle", tone: "success" },
+        product: { label: "Base", tone: "neutral" },
+      };
+      const first = meta[sorted[0]] ?? { label: sorted[0], tone: "neutral" as const };
+      return (
+        <span className="inline-flex items-center gap-1">
+          <Pill tone={first.tone}>{first.label}</Pill>
+          {sorted.length > 1 && (
+            <span
+              className="text-[10px] text-text-faint"
+              title={sorted.slice(1).map((k) => meta[k]?.label ?? k).join(", ")}
+            >
+              +{sorted.length - 1}
+            </span>
+          )}
+        </span>
+      );
+    },
+  },
+  {
     key: "fulfilment",
     header: "Fulfilment",
     render: (o) => {

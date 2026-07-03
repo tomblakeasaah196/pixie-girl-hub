@@ -392,9 +392,15 @@ async function listOrders({
     params,
   );
   const { rows } = await run(
-    `SELECT so.*, c.display_name AS contact_name
+    `SELECT so.*, c.display_name AS contact_name,
+            lk.line_kinds
        FROM ${t(brand, "sales_orders")} so
        LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+       LEFT JOIN LATERAL (
+         SELECT array_agg(DISTINCT sol.line_kind) AS line_kinds
+           FROM ${t(brand, "sales_order_lines")} sol
+          WHERE sol.order_id = so.order_id
+       ) lk ON true
        ${w} ORDER BY so.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );

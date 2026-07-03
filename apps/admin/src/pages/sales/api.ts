@@ -117,14 +117,23 @@ export interface OrderServiceJob {
   status: string;
   assigned_staff_user_id: string | null;
   assigned_stylist_id: string | null;
+  /** Stylist display name, joined server-side from shared.users. */
+  assigned_staff_name: string | null;
+  assigned_at: string | null;
   started_at: string | null;
   expected_completion_at: string | null;
+  sla_due_at: string | null;
   completed_at: string | null;
   ready_at: string | null;
   returned_at: string | null;
+  handed_at: string | null;
+  qc_at: string | null;
+  quality_rating: number | null;
   rework_count: number | null;
   agreed_cost_ngn: string | null;
   service_type_id: string | null;
+  hair_description: string | null;
+  created_at: string;
 }
 
 export const getOrderServiceJob = (orderId: string) =>

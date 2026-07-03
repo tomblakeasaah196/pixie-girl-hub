@@ -1,16 +1,26 @@
 /**
- * One-off backfill: open a Stylist Studio service job for every already-paid
- * order that carries styling work (styled or service line) and doesn't yet have
- * a job.
+ * One-off backfill, two phases:
  *
- * Why: Studio's auto-open only wired to `order.deposit_met`, so orders paid in
- * full went straight to `paid`/`awaiting_dispatch` without ever spawning a job.
- * The runtime fix (order.paid subscriber + styled_id threading) handles new
- * orders; this script rescues the ones already sitting in Sales.
+ * PHASE 1 — repair styled provenance on historical lines. Orders captured
+ * before the styled_id fix stored styled sales as line_kind='product', so
+ * nothing downstream (Studio auto-open, the register's Kind column) can tell
+ * them apart from a plain wig. Two matching tiers, safest first:
+ *   1a. product_name_snapshot equals a styled product's name (the storefront
+ *       checkout has always written the styled name into the snapshot).
+ *   1b. the line sells a styled product's pinned base variant AND the unit
+ *       price equals that styled product's retail anchor (QuickSale styled
+ *       picks — base product name in the snapshot, styled price on the line).
+ * Matches get line_kind='styled' + styled_id stamped. Ambiguous rows (several
+ * styled products sharing a name/variant+price) are skipped and logged.
  *
- * Idempotent: `service.createForOrder` internally checks
- * `serviceJobExistsForOrder` and short-circuits if a job is already open, and it
- * short-circuits again on any order whose lines are all plain product. Safe to
+ * PHASE 2 — open a Stylist Studio service job for every committed order that
+ * now carries styling work (styled or service line) and doesn't yet have a
+ * job. Why: Studio's auto-open was only wired to `order.deposit_met`, so
+ * orders paid in full never spawned a job. The runtime fix (order.paid
+ * subscriber + styled_id threading) handles new orders; this rescues the rest.
+ *
+ * Idempotent: the repair UPDATE only touches line_kind='product' rows that
+ * match, and `service.createForOrder` no-ops when a job exists. Safe to
  * re-run.
  *
  * RUN (project root, same .env as the app):
@@ -56,6 +66,73 @@ const COMMITTED_STATES = [
     for (const brand of brands) {
       console.warn(`\n=== ${brand}${dryRun ? " (dry run)" : ""} ===`);
 
+      // ── PHASE 1: repair styled provenance on historical product lines ──
+      // Tier 1a — snapshot name equals exactly one live styled product.
+      const repairByName = `
+        UPDATE ${brand}.sales_order_lines sol
+           SET line_kind = 'styled', styled_id = m.styled_id
+          FROM (
+            SELECT sol2.line_id, min(sp.styled_id::text)::uuid AS styled_id
+              FROM ${brand}.sales_order_lines sol2
+              JOIN ${brand}.styled_products sp
+                ON sp.name = sol2.product_name_snapshot
+               AND sp.is_deleted = false
+             WHERE sol2.line_kind = 'product' AND sol2.styled_id IS NULL
+             GROUP BY sol2.line_id
+            HAVING count(DISTINCT sp.styled_id) = 1
+          ) m
+         WHERE sol.line_id = m.line_id
+         RETURNING sol.line_id`;
+      // Tier 1b — pinned base variant + exact styled retail price.
+      const repairByVariantPrice = `
+        UPDATE ${brand}.sales_order_lines sol
+           SET line_kind = 'styled', styled_id = m.styled_id
+          FROM (
+            SELECT sol2.line_id, min(sp.styled_id::text)::uuid AS styled_id
+              FROM ${brand}.sales_order_lines sol2
+              JOIN ${brand}.styled_products sp
+                ON sp.base_variant_id = sol2.variant_id
+               AND sp.retail_price_ngn = sol2.unit_price_ngn
+               AND sp.is_deleted = false
+             WHERE sol2.line_kind = 'product' AND sol2.styled_id IS NULL
+             GROUP BY sol2.line_id
+            HAVING count(DISTINCT sp.styled_id) = 1
+          ) m
+         WHERE sol.line_id = m.line_id
+         RETURNING sol.line_id`;
+      if (dryRun) {
+        const { rows: r1 } = await query(
+          `SELECT count(*)::int AS n FROM (
+             SELECT sol2.line_id FROM ${brand}.sales_order_lines sol2
+               JOIN ${brand}.styled_products sp
+                 ON sp.name = sol2.product_name_snapshot AND sp.is_deleted = false
+              WHERE sol2.line_kind = 'product' AND sol2.styled_id IS NULL
+              GROUP BY sol2.line_id HAVING count(DISTINCT sp.styled_id) = 1
+           ) x`,
+        );
+        const { rows: r2 } = await query(
+          `SELECT count(*)::int AS n FROM (
+             SELECT sol2.line_id FROM ${brand}.sales_order_lines sol2
+               JOIN ${brand}.styled_products sp
+                 ON sp.base_variant_id = sol2.variant_id
+                AND sp.retail_price_ngn = sol2.unit_price_ngn
+                AND sp.is_deleted = false
+              WHERE sol2.line_kind = 'product' AND sol2.styled_id IS NULL
+              GROUP BY sol2.line_id HAVING count(DISTINCT sp.styled_id) = 1
+           ) x`,
+        );
+        console.warn(
+          `Repair (dry run): would relabel ${r1[0].n} lines by name, then ${r2[0].n} more by variant+price`,
+        );
+      } else {
+        const { rows: byName } = await query(repairByName);
+        const { rows: byVp } = await query(repairByVariantPrice);
+        console.warn(
+          `Repair: relabelled ${byName.length} lines by name, ${byVp.length} by variant+price`,
+        );
+      }
+
+      // ── PHASE 2 ────────────────────────────────────────────
       // Candidate orders: committed status + at least one styled/service line
       // + no existing service_job attached. The LEFT JOIN + IS NULL gate keeps
       // the second pass a no-op after a successful first pass.

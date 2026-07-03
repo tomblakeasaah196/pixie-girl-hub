@@ -599,7 +599,9 @@ async function notifyUser({
       priority: priority || "normal",
       reference_type: "service_job",
       reference_id: job_id,
-      action_url: `/stylist-studio/jobs/${job_id}`,
+      // Admin route is /service-jobs (the "Stylist Studio" nav item); ?job=
+      // opens the job drawer directly.
+      action_url: `/service-jobs?tab=board&job=${job_id}`,
     });
   } catch (err) {
     logger.warn({ err, job_id, user_id }, "studio notification skipped");

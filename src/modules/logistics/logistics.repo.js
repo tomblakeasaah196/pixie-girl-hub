@@ -96,8 +96,12 @@ async function getDefaultCourier({ client, brand }) {
 }
 /** Idempotency: is there already a delivery for this order? */
 async function findDeliveryByOrder({ client, brand, order_id }) {
+  // A cancelled delivery does not count as "already has a delivery" — otherwise
+  // a premature/cancelled row would block the real delivery from being created
+  // when the order is (finally) paid. Only a live delivery guards the create.
   const { rows } = await ex(client)(
-    `SELECT delivery_id FROM ${t(brand, "deliveries")} WHERE order_id = $1 LIMIT 1`,
+    `SELECT delivery_id FROM ${t(brand, "deliveries")}
+      WHERE order_id = $1 AND status <> 'cancelled' LIMIT 1`,
     [order_id],
   );
   return rows[0] || null;
@@ -198,7 +202,22 @@ async function addDeliveryItem({ client, brand, item }) {
 }
 async function getDelivery({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "deliveries")} WHERE delivery_id = $1`,
+    `SELECT d.*,
+            so.order_number,
+            so.status     AS order_status,
+            sj.job_id     AS service_job_id,
+            sj.job_number AS service_job_number,
+            sj.status     AS service_job_status
+       FROM ${t(brand, "deliveries")} d
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+       LEFT JOIN LATERAL (
+         SELECT job_id, job_number, status
+           FROM ${t(brand, "service_jobs")} sjx
+          WHERE sjx.sales_order_id = d.order_id
+          ORDER BY sjx.created_at DESC
+          LIMIT 1
+       ) sj ON true
+      WHERE d.delivery_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
@@ -277,10 +296,22 @@ async function listDeliveries({
             so.order_type,
             so.shipping_fee_ngn AS order_shipping_fee_ngn,
             so.status           AS order_status,
-            ct.display_name     AS customer_name
+            ct.display_name     AS customer_name,
+            sj.job_id           AS service_job_id,
+            sj.job_number       AS service_job_number,
+            sj.status           AS service_job_status
        FROM ${t(brand, "deliveries")} d
        LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
        LEFT JOIN shared.contacts ct ON ct.contact_id = so.contact_id
+       -- Styling status for the order (if any) so dispatchers can see whether
+       -- the wig is still in the studio and pre-arrange the courier. Latest job.
+       LEFT JOIN LATERAL (
+         SELECT job_id, job_number, status
+           FROM ${t(brand, "service_jobs")} sjx
+          WHERE sjx.sales_order_id = d.order_id
+          ORDER BY sjx.created_at DESC
+          LIMIT 1
+       ) sj ON true
        ${w}
       ORDER BY d.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],

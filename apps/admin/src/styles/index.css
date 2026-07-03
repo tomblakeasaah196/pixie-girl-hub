@@ -437,6 +437,18 @@ select:-webkit-autofill {
     opacity: 0.55;
     cursor: not-allowed;
   }
+  /* House rule: number inputs never show the browser spinner/stepper — the
+     grey stepper box was the "white box with grey text" the Stylist config
+     pages showed against the dark surface. */
+  .input[type="number"]::-webkit-outer-spin-button,
+  .input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
   .label {
     display: block;
     font-size: 12px;
@@ -471,6 +483,14 @@ select:-webkit-autofill {
     color: rgb(var(--accent-glow));
     background: rgb(var(--accent) / 0.12);
     border-color: rgb(var(--accent) / 0.3);
+  }
+
+  /* Accent-tint native range sliders (routing-weight + rubric sliders that stay
+     native). accent-color styles the track+thumb in every modern browser, so a
+     native control stops looking off-system. */
+  .range-accent {
+    accent-color: rgb(var(--accent));
+    width: 100%;
   }
 }
 

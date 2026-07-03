@@ -10,9 +10,10 @@ import { useState } from "react";
 import { Wallet } from "lucide-react";
 import { Button, Pill, MoneyText } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
-import { ErrorState, ConfirmDialog } from "@/components/ui/controls";
+import { ErrorState, ConfirmDialog, Select } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
+import { useToast } from "@/lib/toast";
 import { usePayouts, usePayout, usePayoutMutations, usePartners } from "./hooks";
 import { PAYOUT_STATUS_META } from "./constants";
 import type { Payout } from "./types";
@@ -30,6 +31,7 @@ function fmtDay(v: string): string {
 }
 
 function GenerateDrawer({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
   const partners = usePartners({ status: "certified" });
   const { generate } = usePayoutMutations();
   const [stylistId, setStylistId] = useState("");
@@ -46,18 +48,17 @@ function GenerateDrawer({ onClose }: { onClose: () => void }) {
       <div className="space-y-4">
         <div>
           <label className="label">Partner</label>
-          <select
-            className="input w-full"
+          <Select
             value={stylistId}
-            onChange={(e) => setStylistId(e.target.value)}
-          >
-            <option value="">Select partner…</option>
-            {(partners.data ?? []).map((p) => (
-              <option key={p.stylist_id} value={p.stylist_id}>
-                {p.display_name} ({p.partner_code})
-              </option>
-            ))}
-          </select>
+            onChange={setStylistId}
+            options={[
+              { value: "", label: "Select partner…" },
+              ...(partners.data ?? []).map((p) => ({
+                value: p.stylist_id,
+                label: `${p.display_name} (${p.partner_code})`,
+              })),
+            ]}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -85,17 +86,34 @@ function GenerateDrawer({ onClose }: { onClose: () => void }) {
           onClick={() =>
             generate.mutate(
               { stylist_id: stylistId, period_start: start, period_end: end },
-              { onSuccess: onClose },
+              {
+                onSuccess: (p) => {
+                  toast.success(
+                    "Draft payout generated",
+                    p ? `${p.payout_number} · net ₦${Number(p.net_amount).toLocaleString()}` : undefined,
+                  );
+                  onClose();
+                },
+                onError: (e) => {
+                  const err = e as { code?: string; message: string };
+                  if (err.code === "NOTHING_TO_PAY")
+                    toast.info(
+                      "Nothing payable in this period",
+                      "No hold-cleared assignments or payable referral commissions for this partner and dates.",
+                    );
+                  else toast.error("Couldn't generate payout", err.message);
+                },
+              },
             )
           }
         >
           {generate.isPending ? "Generating…" : "Generate draft"}
         </Button>
-        {generate.isError && (
-          <p className="text-danger text-[12px]">
-            {(generate.error as Error).message}
-          </p>
-        )}
+        <p className="text-[11.5px] text-text-faint">
+          A draft only collects work whose quality-hold has cleared and
+          referral commissions already marked payable — nothing on hold is
+          pulled in.
+        </p>
       </div>
     </Drawer>
   );
@@ -109,6 +127,7 @@ function PayoutDrawer({
   onClose: () => void;
 }) {
   const can = useAuthStore((s) => s.can);
+  const toast = useToast();
   const detail = usePayout(payoutId);
   const m = usePayoutMutations();
   const [paying, setPaying] = useState(false);
@@ -188,7 +207,14 @@ function PayoutDrawer({
                 variant="primary"
                 size="sm"
                 disabled={m.submit.isPending}
-                onClick={() => m.submit.mutate(p.payout_id)}
+                onClick={() =>
+                  m.submit.mutate(p.payout_id, {
+                    onSuccess: () =>
+                      toast.success("Submitted for approval"),
+                    onError: (e) =>
+                      toast.error("Couldn't submit", (e as Error).message),
+                  })
+                }
               >
                 Submit for approval
               </Button>
@@ -198,7 +224,13 @@ function PayoutDrawer({
                 variant="primary"
                 size="sm"
                 disabled={m.approve.isPending}
-                onClick={() => m.approve.mutate(p.payout_id)}
+                onClick={() =>
+                  m.approve.mutate(p.payout_id, {
+                    onSuccess: () => toast.success("Payout approved"),
+                    onError: (e) =>
+                      toast.error("Couldn't approve", (e as Error).message),
+                  })
+                }
               >
                 Approve
               </Button>
@@ -247,7 +279,12 @@ function PayoutDrawer({
         }
         onConfirm={() =>
           m.markPaid.mutate([payoutId, transferCode || undefined], {
-            onSuccess: () => setPaying(false),
+            onSuccess: () => {
+              setPaying(false);
+              toast.success("Payout marked paid", "The partner has been notified.");
+            },
+            onError: (e) =>
+              toast.error("Couldn't mark paid", (e as Error).message),
           })
         }
         onClose={() => setPaying(false)}
@@ -318,18 +355,18 @@ export function PayoutsPanel() {
         onRowClick={(p) => setOpenId(p.payout_id)}
         toolbar={
           <>
-            <select
-              className="input h-9 text-[12.5px]"
+            <Select
+              className="w-48"
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="">All statuses</option>
-              {Object.entries(PAYOUT_STATUS_META).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+              onChange={setStatus}
+              options={[
+                { value: "", label: "All statuses" },
+                ...Object.entries(PAYOUT_STATUS_META).map(([k, v]) => ({
+                  value: k,
+                  label: v.label,
+                })),
+              ]}
+            />
             {can("stylist_programme", "create") && (
               <Button size="sm" className="ml-auto" onClick={() => setGenerating(true)}>
                 Generate batch

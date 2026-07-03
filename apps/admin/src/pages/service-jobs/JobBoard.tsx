@@ -41,12 +41,12 @@ function StarRating({
   value: number | null;
   max?: number;
 }) {
-  if (!value) return <span className="text-muted text-sm">Not rated</span>;
+  if (!value) return <span className="text-text-muted text-sm">Not rated</span>;
   return (
     <span className="text-sm font-mono">
       {"★".repeat(value)}
       {"☆".repeat(max - value)}
-      <span className="text-muted ml-1">({RATING_LABELS[value]})</span>
+      <span className="text-text-muted ml-1">({RATING_LABELS[value]})</span>
     </span>
   );
 }
@@ -66,7 +66,7 @@ function StarPicker({
         <button
           key={n}
           type="button"
-          className={`text-xl transition-colors ${n <= value ? "text-yellow-400" : "text-muted"}`}
+          className={`text-xl transition-colors ${n <= value ? "text-yellow-400" : "text-text-muted"}`}
           onClick={() => onChange(n)}
         >
           ★
@@ -108,7 +108,7 @@ function FacePicker({
             }`}
           >
             <span className="text-2xl leading-none">{f.emoji}</span>
-            <span className="text-[11px] text-muted">{f.label}</span>
+            <span className="text-[11px] text-text-muted">{f.label}</span>
           </button>
         );
       })}
@@ -143,7 +143,7 @@ function JobCard({
       className="glass w-full text-left p-3 rounded-lg border border-line hover:border-accent/40 transition-colors space-y-1.5"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs text-muted">{job.job_number}</span>
+        <span className="font-mono text-xs text-text-muted">{job.job_number}</span>
         {isPocketing && (
           <span
             className="text-danger text-xs font-semibold"
@@ -160,10 +160,10 @@ function JobCard({
         </span>
       </div>
       {job.hair_description && (
-        <p className="text-xs text-muted truncate">{job.hair_description}</p>
+        <p className="text-xs text-text-muted truncate">{job.hair_description}</p>
       )}
       <div className="flex items-center justify-between gap-2 pt-0.5">
-        <span className="text-xs text-muted">
+        <span className="text-xs text-text-muted">
           {job.assigned_staff_user_id
             ? "Staff assigned"
             : job.assigned_stylist_id
@@ -171,7 +171,7 @@ function JobCard({
               : "Unassigned"}
         </span>
         {job.scheduled_for && (
-          <span className="text-xs font-mono text-muted">
+          <span className="text-xs font-mono text-text-muted">
             {new Date(job.scheduled_for).toLocaleDateString("en-NG", {
               month: "short",
               day: "numeric",
@@ -183,7 +183,7 @@ function JobCard({
       {job.customer_rating !== null && (
         <div className="text-sm" title={`Customer: ${RATING_LABELS[job.customer_rating]}`}>
           <span className="mr-1">{HAPPINESS_EMOJI[job.customer_rating]}</span>
-          <span className="text-muted text-xs">customer</span>
+          <span className="text-text-muted text-xs">customer</span>
         </div>
       )}
     </button>
@@ -231,7 +231,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Chemicals consumed for this job</p>
+      <p className="text-sm text-text-muted">Chemicals consumed for this job</p>
 
       {isLoading ? (
         <Skeleton className="h-24" />
@@ -245,7 +245,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-line text-muted text-xs">
+              <tr className="border-b border-line text-text-muted text-xs">
                 <th className="text-left py-1 pr-3">Chemical</th>
                 <th className="text-left py-1 pr-3">Brand</th>
                 <th className="text-right py-1 pr-3">Qty</th>
@@ -257,13 +257,13 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
               {chemicals.map((c) => (
                 <tr key={c.consumption_id} className="border-b border-line">
                   <td className="py-1.5 pr-3 font-medium">{c.chemical_name}</td>
-                  <td className="py-1.5 pr-3 text-muted">
+                  <td className="py-1.5 pr-3 text-text-muted">
                     {c.chemical_brand ?? "—"}
                   </td>
                   <td className="py-1.5 pr-3 text-right font-mono">
                     {c.qty_used}
                   </td>
-                  <td className="py-1.5 pr-3 text-right text-muted">
+                  <td className="py-1.5 pr-3 text-right text-text-muted">
                     {c.unit}
                   </td>
                   <td className="py-1.5 text-right">
@@ -281,7 +281,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
       )}
 
       <div className="border-t border-line pt-4">
-        <p className="text-xs text-muted mb-3 font-semibold uppercase tracking-wide">
+        <p className="text-xs text-text-muted mb-3 font-semibold uppercase tracking-wide">
           Add chemical
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -372,7 +372,7 @@ function OutcomeTab({ job, jobId }: { job: ServiceJob; jobId: string }) {
           <p className="text-base font-semibold">
             How happy was the customer? 💛
           </p>
-          <p className="text-xs text-muted">
+          <p className="text-xs text-text-muted">
             Tap the face that matches how they looked at collection.
           </p>
         </div>
@@ -420,27 +420,27 @@ function RecipeCard({ recipeId }: { recipeId: string }) {
     <div className="glass p-3 rounded-lg space-y-2">
       <p className="text-sm font-semibold">{recipe.display_name}</p>
       {recipe.target_shade && (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-text-muted">
           Target shade: {recipe.target_shade}
         </p>
       )}
       <div className="space-y-1">
         {recipe.ingredients.map((ing, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
-            <span className="text-muted w-4">{i + 1}.</span>
+            <span className="text-text-muted w-4">{i + 1}.</span>
             <span className="font-medium">{ing.chemical_name}</span>
-            {ing.brand && <span className="text-muted">({ing.brand})</span>}
+            {ing.brand && <span className="text-text-muted">({ing.brand})</span>}
             {(ing.qty_ml || ing.qty_g) && (
               <span className="font-mono ml-auto">
                 {ing.qty_ml ? `${ing.qty_ml} ml` : `${ing.qty_g} g`}
               </span>
             )}
-            {ing.role && <span className="text-muted italic">{ing.role}</span>}
+            {ing.role && <span className="text-text-muted italic">{ing.role}</span>}
           </div>
         ))}
       </div>
       {recipe.instructions && (
-        <p className="text-xs text-muted border-t border-line pt-2">
+        <p className="text-xs text-text-muted border-t border-line pt-2">
           {recipe.instructions}
         </p>
       )}
@@ -463,19 +463,19 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
 
   return (
     <div className="border-t border-line pt-4 space-y-2">
-      <p className="text-xs text-muted uppercase tracking-wide font-semibold">
+      <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">
         Inter-company · Flow 1
       </p>
       {linked ? (
         <div className="glass p-3 rounded-lg space-y-1.5 text-sm">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-muted">Styling invoice</span>
+            <span className="text-text-muted">Styling invoice</span>
             <span className="font-mono">
               {job.intercompany_seller_doc ?? job.intercompany_number}
             </span>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-muted">
+            <span className="text-text-muted">
               {job.intercompany_seller_brand} → {job.intercompany_buyer_brand}
             </span>
             {job.intercompany_status && (
@@ -484,7 +484,7 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
           </div>
           {job.intercompany_amount_ngn && (
             <div className="flex items-center justify-between gap-2">
-              <span className="text-muted">Amount</span>
+              <span className="text-text-muted">Amount</span>
               <MoneyText ngn={parseFloat(job.intercompany_amount_ngn)} />
             </div>
           )}
@@ -494,7 +494,7 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
           <p className="text-sm text-warn font-medium">
             ⚠ No matched inter-company invoice yet
           </p>
-          <p className="text-xs text-muted">
+          <p className="text-xs text-text-muted">
             This wig belongs to another entity. Record the FLH styling invoice
             in Intercompany, then paste its transaction ID here to link it.
           </p>
@@ -594,7 +594,7 @@ function JobDetailDrawer({
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
                 tab === t
                   ? "border-accent text-text-primary"
-                  : "border-transparent text-muted hover:text-text-primary"
+                  : "border-transparent text-text-muted hover:text-text-primary"
               }`}
               onClick={() => setTab(t)}
             >
@@ -613,13 +613,13 @@ function JobDetailDrawer({
             <div className="grid grid-cols-2 gap-3 text-sm">
               {job.hair_description && (
                 <>
-                  <span className="text-muted">Hair</span>
+                  <span className="text-text-muted">Hair</span>
                   <span>{job.hair_description}</span>
                 </>
               )}
               {job.scheduled_for && (
                 <>
-                  <span className="text-muted">Scheduled</span>
+                  <span className="text-text-muted">Scheduled</span>
                   <span className="font-mono">
                     {new Date(job.scheduled_for).toLocaleString("en-NG")}
                   </span>
@@ -627,7 +627,7 @@ function JobDetailDrawer({
               )}
               {job.expected_completion_at && (
                 <>
-                  <span className="text-muted">Due</span>
+                  <span className="text-text-muted">Due</span>
                   <span className="font-mono">
                     {new Date(job.expected_completion_at).toLocaleString(
                       "en-NG",
@@ -637,19 +637,19 @@ function JobDetailDrawer({
               )}
               {job.agreed_cost_ngn && (
                 <>
-                  <span className="text-muted">Agreed cost</span>
+                  <span className="text-text-muted">Agreed cost</span>
                   <MoneyText ngn={parseFloat(job.agreed_cost_ngn)} />
                 </>
               )}
               {job.actual_cost_ngn && (
                 <>
-                  <span className="text-muted">Actual cost</span>
+                  <span className="text-text-muted">Actual cost</span>
                   <MoneyText ngn={parseFloat(job.actual_cost_ngn)} />
                 </>
               )}
               {job.is_intercompany && (
                 <>
-                  <span className="text-muted">Type</span>
+                  <span className="text-text-muted">Type</span>
                   <Pill tone="info">Intercompany</Pill>
                 </>
               )}
@@ -657,7 +657,7 @@ function JobDetailDrawer({
 
             {job.recipe_id && (
               <div>
-                <p className="text-xs text-muted mb-1.5 uppercase tracking-wide font-semibold">
+                <p className="text-xs text-text-muted mb-1.5 uppercase tracking-wide font-semibold">
                   Recipe
                 </p>
                 <RecipeCard recipeId={job.recipe_id} />
@@ -670,7 +670,7 @@ function JobDetailDrawer({
 
             {nextStates.length > 0 && (
               <div className="border-t border-line pt-4 space-y-2">
-                <p className="text-xs text-muted uppercase tracking-wide font-semibold">
+                <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">
                   Advance status
                 </p>
                 {nextStates.includes("completed") && (
@@ -955,10 +955,10 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
                 <div key={col} className="space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <Pill tone={m.tone}>{m.label}</Pill>
-                    <span className="text-xs text-muted">{colJobs.length}</span>
+                    <span className="text-xs text-text-muted">{colJobs.length}</span>
                   </div>
                   {colJobs.length === 0 ? (
-                    <div className="text-xs text-muted text-center py-6 border border-dashed border-line rounded-lg">
+                    <div className="text-xs text-text-muted text-center py-6 border border-dashed border-line rounded-lg">
                       Empty
                     </div>
                   ) : (

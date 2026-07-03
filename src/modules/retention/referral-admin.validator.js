@@ -5,7 +5,12 @@
 "use strict";
 
 const { z } = require("zod");
+const { mkPatch } = require("./patch-body");
 
+// The settings screen loads the current row and PUTs the whole thing back,
+// including server-owned columns (business, updated_at, updated_by). strip()
+// drops those instead of 400-ing on unrecognized keys; cleanPatch() (in
+// mkPatch) drops null/""/undefined so the numeric coercions don't choke.
 const settingsSchema = z
   .object({
     is_active: z.boolean().optional(),
@@ -18,7 +23,7 @@ const settingsSchema = z
     min_qualifying_order_ngn: z.coerce.number().nonnegative().optional(),
     anti_fraud: z.record(z.any()).optional(),
   })
-  .strict();
+  .strip();
 
 const tierSchema = z
   .object({
@@ -30,7 +35,7 @@ const tierSchema = z
   })
   .strict();
 
-const tierUpdateSchema = tierSchema.partial();
+const tierUpdateSchema = tierSchema.omit({}).partial().strip();
 
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
@@ -38,7 +43,7 @@ const mk = (schema) => (req, _res, next) => {
 };
 
 module.exports = {
-  validateSettings: mk(settingsSchema),
+  validateSettings: mkPatch(settingsSchema),
   validateTier: mk(tierSchema),
-  validateTierUpdate: mk(tierUpdateSchema),
+  validateTierUpdate: mkPatch(tierUpdateSchema),
 };

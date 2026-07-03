@@ -242,7 +242,7 @@ function RecipeCard({
           <span className="text-xl">🧪</span>
           <div>
             <p className="font-semibold text-sm">{recipe.display_name}</p>
-            <p className="text-xs font-mono text-muted">{recipe.recipe_key}</p>
+            <p className="text-xs font-mono text-text-muted">{recipe.recipe_key}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -256,7 +256,7 @@ function RecipeCard({
       </div>
 
       {recipe.target_shade && (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-text-muted">
           Target shade:{" "}
           <span className="text-text-primary">{recipe.target_shade}</span>
         </p>
@@ -276,9 +276,9 @@ function RecipeCard({
         <div className="space-y-1 pl-2 border-l-2 border-accent/30">
           {recipe.ingredients.map((ing, i) => (
             <div key={i} className="text-xs flex items-center gap-2">
-              <span className="text-muted">{i + 1}.</span>
+              <span className="text-text-muted">{i + 1}.</span>
               <span className="font-medium">{ing.chemical_name}</span>
-              {ing.brand && <span className="text-muted">({ing.brand})</span>}
+              {ing.brand && <span className="text-text-muted">({ing.brand})</span>}
               {ing.qty_ml && (
                 <span className="font-mono ml-auto">{ing.qty_ml} ml</span>
               )}
@@ -286,12 +286,12 @@ function RecipeCard({
                 <span className="font-mono ml-auto">{ing.qty_g} g</span>
               )}
               {ing.role && (
-                <span className="text-muted italic">{ing.role}</span>
+                <span className="text-text-muted italic">{ing.role}</span>
               )}
             </div>
           ))}
           {recipe.instructions && (
-            <p className="text-xs text-muted mt-2 border-t border-line pt-2">
+            <p className="text-xs text-text-muted mt-2 border-t border-line pt-2">
               {recipe.instructions}
             </p>
           )}
@@ -327,7 +327,7 @@ export function RecipesPanel({ canCreate }: { canCreate: boolean }) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-display text-lg">Chemical Recipes</h3>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-text-muted">
             Colour formulas and mixing guides used in service jobs
           </p>
         </div>

@@ -6,6 +6,7 @@
 "use strict";
 
 const { z } = require("zod");
+const { mkPatch } = require("./patch-body");
 
 const pointsSchema = z
   .object({
@@ -78,7 +79,7 @@ module.exports = {
   validateAwardStreak: mk(awardStreakSchema),
   validateQuizSubmit: mk(quizSubmitSchema),
   validateTierCreate: mk(tierCreateSchema),
-  validateTierUpdate: mk(tierUpdateSchema),
+  validateTierUpdate: mkPatch(tierUpdateSchema),
   pointsSchema,
   adjustSchema,
   awardStreakSchema,

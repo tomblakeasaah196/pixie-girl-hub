@@ -13,15 +13,35 @@ const BASE = "/purchasing";
 
 // ── Suppliers ─────────────────────────────────────────────
 
+// The backend supplier row uses display_name / country_of_origin /
+// default_currency; the UI type uses supplier_name / country / currency. Map
+// them so the list/detail don't render "—" for a supplier that clearly has a
+// name in the API response.
+function normalizeSupplier(raw: Supplier): Supplier {
+  const r = raw as Supplier & {
+    display_name?: string;
+    country_of_origin?: string | null;
+    default_currency?: string;
+  };
+  return {
+    ...raw,
+    supplier_name: r.supplier_name ?? r.display_name ?? "",
+    country: r.country ?? r.country_of_origin ?? null,
+    currency: r.currency ?? r.default_currency ?? "",
+  };
+}
+
 export async function listSuppliers() {
   // The endpoint returns { data, meta }; the api client passes that through.
   // Suppliers are consumed as a bare array, so normalise either shape.
   const r = await api.get<Supplier[] | { data: Supplier[] }>(`${BASE}/suppliers`);
-  return Array.isArray(r) ? r : (r?.data ?? []);
+  const rows = Array.isArray(r) ? r : (r?.data ?? []);
+  return rows.map(normalizeSupplier);
 }
 
-export function getSupplier(id: string) {
-  return api.get<Supplier>(`${BASE}/suppliers/${id}`);
+export async function getSupplier(id: string) {
+  const r = await api.get<Supplier>(`${BASE}/suppliers/${id}`);
+  return normalizeSupplier(r);
 }
 
 export function createSupplier(input: {

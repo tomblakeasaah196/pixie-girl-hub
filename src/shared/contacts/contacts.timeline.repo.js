@@ -114,9 +114,14 @@ async function timeline({
   const union = unionSql(brand);
   const params = [contact_id, brand];
   const where = [];
+  // NOTE: `kind` and `module` are UNION-derived text columns. Postgres cannot
+  // reliably infer the type of an array bind param compared against a derived
+  // column, and returns "could not determine data type of parameter" → 500.
+  // Casting the param to ::text[] removes the ambiguity. (This was the real
+  // cause of the 360 timeline 500 — the tabbed view always sends a category.)
   if (Array.isArray(kinds) && kinds.length > 0) {
     params.push(kinds);
-    where.push(`kind = ANY($${params.length})`);
+    where.push(`kind = ANY($${params.length}::text[])`);
   }
   if (category) {
     // Translate a category filter into the set of modules it covers.
@@ -125,7 +130,7 @@ async function timeline({
       .map(([m]) => m);
     if (modules.length > 0) {
       params.push(modules);
-      where.push(`module = ANY($${params.length})`);
+      where.push(`module = ANY($${params.length}::text[])`);
     }
   }
   const filterSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -174,7 +179,21 @@ async function summary({ brand, contact_id }) {
        (SELECT count(*)::int FROM ${t(brand, "service_jobs")}
          WHERE customer_contact_id = $1) AS service_jobs_count,
        (SELECT COALESCE(current_balance,0) FROM shared.customer_loyalty_state
-         WHERE contact_id = $1 AND business = $2) AS loyalty_balance`,
+         WHERE contact_id = $1 AND business = $2) AS loyalty_balance,
+       -- Most recent touchpoint across the money/engagement sources, so a
+       -- contact with even one order shows a real "last activity" (not null).
+       (SELECT max(occurred) FROM (
+          SELECT max(COALESCE(placed_at, created_at)) AS occurred
+            FROM ${t(brand, "sales_orders")} WHERE contact_id = $1
+          UNION ALL SELECT max(created_at)
+            FROM ${t(brand, "invoices")} WHERE contact_id = $1
+          UNION ALL SELECT max(created_at)
+            FROM ${t(brand, "pos_transactions")} WHERE customer_contact_id = $1
+          UNION ALL SELECT max(performed_at)
+            FROM ${t(brand, "crm_activities")} WHERE contact_id = $1
+          UNION ALL SELECT max(created_at)
+            FROM ${t(brand, "service_jobs")} WHERE customer_contact_id = $1
+       ) a) AS last_activity_at`,
     [contact_id, brand],
   );
   return rows[0];

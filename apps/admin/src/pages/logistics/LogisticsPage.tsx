@@ -174,13 +174,25 @@ export function LogisticsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-[12px] text-text-faint">{d.delivery_number}</span>
+                  {d.order_number && (
+                    <span className="font-mono text-[11px] text-text-muted">· {d.order_number}</span>
+                  )}
                   <Pill tone={STATUS_META[d.status]?.tone ?? "neutral"}>
                     {STATUS_META[d.status]?.label ?? d.status}
                   </Pill>
+                  {/* Fulfilment type: dispatch = delivery, collection/walk_in = pickup */}
+                  {d.order_type && (
+                    <Pill
+                      tone={d.order_type === "dispatch" ? "accent" : "neutral"}
+                      dot={false}
+                    >
+                      {d.order_type === "dispatch" ? "Delivery" : "Pickup"}
+                    </Pill>
+                  )}
                   {d.is_pay_on_delivery && <Pill tone="warn" dot={false}>POD</Pill>}
                 </div>
                 <div className="text-[13px] mt-0.5 truncate">
-                  {d.recipient_name_snapshot || d.delivery_address_snapshot?.recipient_name || "—"}
+                  {d.customer_name || d.recipient_name_snapshot || d.delivery_address_snapshot?.recipient_name || "—"}
                 </div>
                 <div className="text-[11.5px] text-text-faint truncate">
                   {addressLine(d.delivery_address_snapshot)}
@@ -190,9 +202,14 @@ export function LogisticsPage() {
                 {d.courier_name && (
                   <div className="text-[11.5px] text-text-muted">{d.courier_name}</div>
                 )}
-                {d.courier_fee_ngn != null && (
+                {/* Customer-billed delivery fee (from the order), falling back to
+                    the courier cost when the order fee isn't set. */}
+                {d.order_shipping_fee_ngn != null && Number(d.order_shipping_fee_ngn) > 0 ? (
+                  <div className="font-mono text-[12px]">{money(Number(d.order_shipping_fee_ngn))}</div>
+                ) : d.courier_fee_ngn != null ? (
                   <div className="font-mono text-[12px]">{money(d.courier_fee_ngn)}</div>
-                )}
+                ) : null}
+                <div className="text-[10.5px] text-text-faint">delivery fee</div>
               </div>
             </button>
           ))}
@@ -354,7 +371,7 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
                   size="sm"
                   variant="secondary"
                   disabled={busy}
-                  onClick={() => proof.mutate({ id, proof_type: "recipient_signature" })}
+                  onClick={() => proof.mutate({ id, proof_type: "signature" })}
                   icon={<CheckCircle2 className="w-4 h-4" />}
                 >
                   Add proof

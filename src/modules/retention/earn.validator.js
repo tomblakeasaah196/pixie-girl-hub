@@ -5,6 +5,7 @@
 "use strict";
 
 const { z } = require("zod");
+const { mkPatch } = require("./patch-body");
 
 const createSchema = z
   .object({
@@ -34,23 +35,15 @@ const createSchema = z
   })
   .strict();
 
-// The admin drawer submits the whole existing row back on edit, so the payload
-// carries read-only keys (rule_id, …) and null-valued optionals. `.strip()`
-// drops unknown keys and nullish() tolerates the nulls.
-const updateSchema = createSchema
-  .omit({ rule_key: true })
-  .extend({
-    description: z.string().max(1000).nullish(),
-    points_value: z.coerce.number().int().nonnegative().nullish(),
-    currency_per_point: z.coerce.number().positive().nullish(),
-    points_expire_days: z.coerce.number().int().positive().nullish(),
-  })
-  .partial()
-  .strip();
+// The admin drawer submits the whole existing row back on edit. cleanPatch()
+// (in mkPatch) drops null/""/undefined first — so read-only keys and DB-null
+// optionals don't trip the coerce→0→positive() or strict-key checks — and
+// strip() removes any remaining unknown keys.
+const updateSchema = createSchema.omit({ rule_key: true }).partial().strip();
 
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
 };
 
-module.exports = { validateCreate: mk(createSchema), validateUpdate: mk(updateSchema) };
+module.exports = { validateCreate: mk(createSchema), validateUpdate: mkPatch(updateSchema) };

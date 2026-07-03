@@ -18,6 +18,12 @@ const path = require("path");
 const crypto = require("crypto");
 const { config } = require("../config/env");
 
+/** Build the public URL for a stored key (used by put() and by callers that
+ *  already hold a stored file's key, e.g. document dedup reuse). */
+function publicUrl(key) {
+  return config.CDN_BASE_URL ? `${config.CDN_BASE_URL}/${key}` : `/media/${key}`;
+}
+
 async function put(buffer, { key, contentType }) {
   const finalKey = key || crypto.randomBytes(16).toString("hex");
   const filePath = path.join(config.STORAGE_LOCAL_ROOT, finalKey);
@@ -25,9 +31,7 @@ async function put(buffer, { key, contentType }) {
   await fs.writeFile(filePath, buffer);
   return {
     key: finalKey,
-    public_url: config.CDN_BASE_URL
-      ? `${config.CDN_BASE_URL}/${finalKey}`
-      : `/media/${finalKey}`,
+    public_url: publicUrl(finalKey),
     size: buffer.length,
     content_type: contentType,
   };
@@ -41,4 +45,4 @@ async function del(key) {
   await fs.unlink(path.join(config.STORAGE_LOCAL_ROOT, key));
 }
 
-module.exports = { put, get, delete: del };
+module.exports = { put, get, delete: del, publicUrl };

@@ -5,6 +5,7 @@
 "use strict";
 
 const { z } = require("zod");
+const { mkPatch } = require("./patch-body");
 
 const createSchema = z
   .object({
@@ -30,21 +31,13 @@ const createSchema = z
   })
   .strict();
 
-// The admin drawers edit an existing row and submit the whole object back,
-// so the update payload carries server-owned/read-only keys (reward_id,
-// total_redeemed, …) and null-valued optionals for the reward types that
-// don't use them. `.strip()` drops the unknown keys instead of 400-ing, and
-// nullish() tolerates the nulls that the list rows carry.
-const updateSchema = createSchema
-  .omit({ reward_key: true })
-  .extend({
-    description: z.string().max(1000).nullish(),
-    discount_type: z.enum(["percentage", "fixed_amount"]).nullish(),
-    discount_value: z.coerce.number().nonnegative().nullish(),
-    max_discount_value: z.coerce.number().nonnegative().nullish(),
-  })
-  .partial()
-  .strip();
+// The admin drawers edit an existing row and submit the whole object back, so
+// the update payload carries server-owned keys (reward_id, total_redeemed, …)
+// and null-valued optionals for the reward types that don't use them (e.g.
+// free_product_id / valid_to on an order_discount). cleanPatch() (in mkPatch)
+// drops null/""/undefined first so those never trip the uuid/string/positive
+// checks, and strip() removes the remaining unknown keys.
+const updateSchema = createSchema.omit({ reward_key: true }).partial().strip();
 
 const redeemSchema = z
   .object({

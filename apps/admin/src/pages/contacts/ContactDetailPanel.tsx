@@ -566,26 +566,28 @@ function PreferencesTab({ contactId }: { contactId: string }) {
         <div className="micro mb-3">Wig Preferences</div>
         {prefs ? (
           <div className="grid grid-cols-1 gap-2">
-            {prefs.preferred_textures.length > 0 && (
+            {/* Array fields can come back null (a prefs row exists but a list
+                was never set), so guard every .length with optional chaining. */}
+            {!!prefs.preferred_textures?.length && (
               <PrefRow label="Textures" values={prefs.preferred_textures} />
             )}
-            {prefs.preferred_lace_types.length > 0 && (
+            {!!prefs.preferred_lace_types?.length && (
               <PrefRow label="Lace Types" values={prefs.preferred_lace_types} />
             )}
-            {prefs.preferred_colours.length > 0 && (
+            {!!prefs.preferred_colours?.length && (
               <PrefRow label="Colours" values={prefs.preferred_colours} />
             )}
-            {prefs.preferred_densities.length > 0 && (
+            {!!prefs.preferred_densities?.length && (
               <PrefRow label="Densities" values={prefs.preferred_densities} />
             )}
-            {prefs.avoid_textures.length > 0 && (
+            {!!prefs.avoid_textures?.length && (
               <PrefRow
                 label="Avoid textures"
                 values={prefs.avoid_textures}
                 tone="danger"
               />
             )}
-            {prefs.avoid_colours.length > 0 && (
+            {!!prefs.avoid_colours?.length && (
               <PrefRow
                 label="Avoid colours"
                 values={prefs.avoid_colours}

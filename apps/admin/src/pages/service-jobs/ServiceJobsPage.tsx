@@ -1,5 +1,17 @@
 import { useState } from "react";
 import {
+  Scissors,
+  LayoutGrid,
+  ClipboardCheck,
+  PackageSearch,
+  Wrench,
+  FlaskConical,
+  Sparkles,
+  UserRound,
+  Plus,
+} from "lucide-react";
+import { cn } from "@/lib/cn";
+import {
   Button,
   Pill,
   Skeleton,
@@ -210,18 +222,20 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">
+        <p className="text-sm text-text-muted">
           Define the services Faitlyn offers (Installation, Revamping, Colour
           Creation…)
         </p>
         {canCreate && (
-          <Button onClick={() => setShowCreate(true)}>+ New Type</Button>
+          <Button onClick={() => setShowCreate(true)} icon={<Plus className="w-4 h-4" />}>
+            New Type
+          </Button>
         )}
       </div>
 
       {types.length === 0 ? (
         <EmptyState
-          icon={<span className="text-3xl">⚙️</span>}
+          icon={<Wrench className="w-7 h-7" />}
           title="No service types"
           message="Create your first service type"
         />
@@ -233,7 +247,7 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
               key: "service_key",
               header: "Key",
               render: (t) => (
-                <span className="font-mono text-xs text-muted">
+                <span className="font-mono text-xs text-text-muted">
                   {SERVICE_KEY_ICON[t.service_key] ?? "🔧"} {t.service_key}
                 </span>
               ),
@@ -329,7 +343,7 @@ function ReconciliationTab() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="font-display text-lg">Chemical Reconciliation</h3>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-text-muted">
             Month-end: purchased vs consumed. Negative variance = anti-pocketing
             flag.
           </p>
@@ -370,7 +384,7 @@ function ReconciliationTab() {
 
       {rows.length === 0 ? (
         <EmptyState
-          icon={<span className="text-3xl">🔬</span>}
+          icon={<FlaskConical className="w-7 h-7" />}
           title="No reconciliation data"
           message="Run a reconciliation to see chemical usage vs purchased"
         />
@@ -378,7 +392,7 @@ function ReconciliationTab() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-line text-muted text-xs">
+              <tr className="border-b border-line text-text-muted text-xs">
                 <th className="text-left py-2 pr-3">Chemical</th>
                 <th className="text-right py-2 pr-3">Purchased</th>
                 <th className="text-right py-2 pr-3">Consumed</th>
@@ -400,7 +414,7 @@ function ReconciliationTab() {
                   >
                     <td className="py-2 pr-3 font-medium">
                       {r.chemical_name}
-                      <span className="text-muted ml-1 text-xs">
+                      <span className="text-text-muted ml-1 text-xs">
                         ({r.unit})
                       </span>
                     </td>
@@ -511,10 +525,13 @@ export function ServiceJobsPage() {
   if (!can("service_jobs", "view")) {
     return (
       <div className="p-6">
-        <div className="glass rounded-xl p-6 text-center space-y-2">
+        <div className="glass rounded-[16px] shadow-glass p-8 text-center space-y-3 max-w-md mx-auto">
+          <span className="grid place-items-center w-12 h-12 mx-auto rounded-[14px] bg-text-primary/[0.05] border border-line text-text-faint">
+            <Scissors className="w-6 h-6" />
+          </span>
           <p className="text-lg font-semibold">Access Restricted</p>
-          <p className="text-muted text-sm">
-            You don't have permission to view Service Jobs.
+          <p className="text-text-muted text-sm">
+            You don't have permission to view Stylist Studio.
           </p>
         </div>
       </div>
@@ -524,47 +541,64 @@ export function ServiceJobsPage() {
   const canCreate = can("service_jobs", "create");
   const canEdit = can("service_jobs", "edit");
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "my", label: "My Jobs" },
-    { id: "board", label: "Job Board" },
-    { id: "qc", label: "QC Queue" },
-    { id: "accountability", label: "Wig Accountability" },
-    { id: "types", label: "Service Types" },
-    { id: "recipes", label: "Recipes" },
-    { id: "reconciliation", label: "Chemical Reconciliation" },
+  const tabs: { id: Tab; label: string; icon: typeof LayoutGrid }[] = [
+    { id: "my", label: "My Jobs", icon: UserRound },
+    { id: "board", label: "Job Board", icon: LayoutGrid },
+    { id: "qc", label: "QC Queue", icon: ClipboardCheck },
+    { id: "accountability", label: "Wig Accountability", icon: PackageSearch },
+    { id: "types", label: "Service Types", icon: Wrench },
+    { id: "recipes", label: "Recipes", icon: Sparkles },
+    { id: "reconciliation", label: "Chemical Reconciliation", icon: FlaskConical },
   ];
 
   return (
     <div className="p-4 md:p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-display text-2xl">Stylist Studio</h1>
-          <p className="text-muted text-sm">
-            In-house styling operations — assign, track, QC and never lose a wig
-          </p>
+      {/* Hero header */}
+      <div className="relative overflow-hidden rounded-[18px] glass shadow-glass p-5 md:p-6">
+        <div
+          className="pointer-events-none absolute -right-16 -top-20 w-64 h-64 rounded-full blur-3xl"
+          style={{ background: "rgb(var(--accent-deep) / 0.25)" }}
+        />
+        <div className="relative flex items-center gap-4">
+          <span className="grid place-items-center w-12 h-12 rounded-[14px] bg-accent-deep/90 text-[#F4E9D9] border border-accent/30 shadow-[0_8px_24px_rgb(var(--accent-deep)/0.45)] shrink-0">
+            <Scissors className="w-6 h-6" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl md:text-[28px] leading-tight">
+              Stylist Studio
+            </h1>
+            <p className="text-text-muted text-[13px] md:text-sm mt-0.5">
+              In-house styling operations — assign, track, QC and never lose a wig
+            </p>
+          </div>
         </div>
       </div>
 
       {/* KPI strip */}
       <KpiStrip />
 
-      {/* Tabs */}
-      <div className="flex border-b border-line gap-5 overflow-x-auto">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`pb-2 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
-              tab === t.id
-                ? "border-accent text-text-primary"
-                : "border-transparent text-muted hover:text-text-primary"
-            }`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Tabs — glassy pills */}
+      <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto">
+        {tabs.map((t) => {
+          const on = tab === t.id;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                "inline-flex items-center gap-2 px-3.5 h-10 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-all",
+                on
+                  ? "bg-accent-deep text-[#F4E9D9] shadow-[0_6px_18px_rgb(var(--accent-deep)/0.4)]"
+                  : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05]",
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab content */}

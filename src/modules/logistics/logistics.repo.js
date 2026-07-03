@@ -246,29 +246,43 @@ async function listDeliveries({
   const params = [];
   let i = 1;
   if (filters.status) {
-    where.push(`status = $${i++}`);
+    where.push(`d.status = $${i++}`);
     params.push(filters.status);
   }
   if (filters.courier_id) {
-    where.push(`courier_id = $${i++}`);
+    where.push(`d.courier_id = $${i++}`);
     params.push(filters.courier_id);
   }
   if (filters.order_id) {
-    where.push(`order_id = $${i++}`);
+    where.push(`d.order_id = $${i++}`);
     params.push(filters.order_id);
   }
   if (filters.is_pay_on_delivery !== undefined) {
-    where.push(`is_pay_on_delivery = $${i++}`);
+    where.push(`d.is_pay_on_delivery = $${i++}`);
     params.push(filters.is_pay_on_delivery);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "deliveries")} ${w}`,
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "deliveries")} d ${w}`,
     params,
   );
+  // Join the originating order + customer so the delivery queue can show the
+  // order number, the customer name, the customer-billed delivery fee
+  // (order.shipping_fee_ngn) and the fulfilment type (order.order_type —
+  // 'dispatch' = delivery, 'collection'/'walk_in' = pickup).
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "deliveries")} ${w} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+    `SELECT d.*,
+            so.order_number,
+            so.order_type,
+            so.shipping_fee_ngn AS order_shipping_fee_ngn,
+            so.status           AS order_status,
+            ct.display_name     AS customer_name
+       FROM ${t(brand, "deliveries")} d
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+       LEFT JOIN shared.contacts ct ON ct.contact_id = so.contact_id
+       ${w}
+      ORDER BY d.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {

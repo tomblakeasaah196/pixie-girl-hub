@@ -356,8 +356,17 @@ export interface StaffRow {
   base_salary: number;
   employment_type: string;
 }
-export const listStaff = (params: Record<string, string> = {}) =>
-  api.get<{ data: StaffRow[]; meta?: unknown }>(`/hr/employees${qs(params)}`);
+// /hr/employees returns { data, page, page_size, total } with NO `meta` key, so
+// the api client unwraps it to the bare StaffRow[] array. Every consumer reads
+// `staff.data`, though — which would be undefined on an array and silently empty
+// the staff pickers (Performance scoring, HR queries/attendance/appraisals).
+// Normalise back to a { data } envelope so `.data` always resolves.
+export const listStaff = async (params: Record<string, string> = {}) => {
+  const r = await api.get<StaffRow[] | { data: StaffRow[] }>(
+    `/hr/employees${qs(params)}`,
+  );
+  return { data: asList<StaffRow>(r) };
+};
 export const createStaff = (body: Record<string, unknown>) =>
   api.post<StaffRow>("/hr/employees", body);
 export const updateStaff = (id: string, patch: Record<string, unknown>) =>

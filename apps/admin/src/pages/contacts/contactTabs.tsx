@@ -268,8 +268,8 @@ interface Invoice {
   invoice_id: string;
   invoice_number: string;
   status: string;
-  total_amount?: string | number;
-  total?: string | number;
+  total_ngn?: string | number;
+  balance_due_ngn?: string | number;
   due_date?: string | null;
 }
 
@@ -301,7 +301,7 @@ export function InvoicesTab({ contactId }: { contactId: string }) {
           invoices.map((inv) => (
             <Link
               key={inv.invoice_id}
-              to={`/invoicing/${inv.invoice_id}`}
+              to={`/invoicing?tab=invoices&invoice=${inv.invoice_id}`}
               className="flex items-center justify-between p-3 rounded-[10px] bg-text-primary/[0.04] border hairline hover:border-accent/40 transition-colors"
             >
               <span className="flex items-center gap-2">
@@ -321,7 +321,7 @@ export function InvoicesTab({ contactId }: { contactId: string }) {
                   {inv.status}
                 </Pill>
               </span>
-              <MoneyText ngn={Number(inv.total_amount ?? inv.total ?? 0)} />
+              <MoneyText ngn={Number(inv.total_ngn ?? inv.balance_due_ngn ?? 0)} />
             </Link>
           ))
         )}

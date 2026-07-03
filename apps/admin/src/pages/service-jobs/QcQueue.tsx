@@ -61,7 +61,7 @@ function QcCard({ job }: { job: ServiceJob }) {
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-mono text-xs text-muted">{job.job_number}</div>
+          <div className="font-mono text-xs text-text-muted">{job.job_number}</div>
           <div className="font-display text-lg">
             {job.service_type_name ?? "Styling job"}
           </div>
@@ -74,7 +74,7 @@ function QcCard({ job }: { job: ServiceJob }) {
 
       {/* Rate it */}
       <div className="flex items-center gap-1">
-        <span className="text-sm text-muted mr-1">Quality:</span>
+        <span className="text-sm text-text-muted mr-1">Quality:</span>
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}

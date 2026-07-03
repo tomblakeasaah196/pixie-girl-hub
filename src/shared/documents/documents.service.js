@@ -126,7 +126,25 @@ async function store({
     filename = filenameForMime(filename, converted.mime_type);
   }
 
+  const content_hash = sha256(buffer);
+
   const run = async (c) => {
+    // Idempotency: if this exact file already exists for the same reference,
+    // reuse it instead of creating a duplicate. This keeps regenerated or
+    // re-attached documents (unchanged invoice PDFs, the same uploaded receipt)
+    // from piling up copies no matter how many times the action is repeated.
+    const existing = await repo.findDuplicate({
+      client: c,
+      brand,
+      content_hash,
+      reference_type,
+      reference_id,
+    });
+    if (existing) {
+      await repo.attachTags({ client: c, rows: [existing] });
+      return { ...existing, url: storage.publicUrl(existing.file_path) };
+    }
+
     const document_number = await repo.nextNumber({ client: c, brand });
     const key = `${brand}/documents/${document_number}${extFor(filename, mime_type)}`;
     const stored = await storage.put(buffer, { key, contentType: mime_type });
@@ -140,7 +158,7 @@ async function store({
         file_path: stored.key,
         file_size_bytes: buffer.length,
         mime_type,
-        content_hash: sha256(buffer),
+        content_hash,
         reference_type,
         reference_id,
         uploaded_by: user_id,

@@ -75,12 +75,12 @@ function MyJobCard({ job }: { job: ServiceJob }) {
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-mono text-xs text-muted">{job.job_number}</div>
+          <div className="font-mono text-xs text-text-muted">{job.job_number}</div>
           <div className="font-display text-lg">
             {job.service_type_name ?? "Styling job"}
           </div>
           {job.hair_description && (
-            <div className="text-muted text-sm">{job.hair_description}</div>
+            <div className="text-text-muted text-sm">{job.hair_description}</div>
           )}
         </div>
         <Pill tone={meta.tone}>{meta.label}</Pill>
@@ -127,7 +127,7 @@ function MyJobCard({ job }: { job: ServiceJob }) {
           "ready_for_dispatch",
           "on_hold",
         ].includes(job.status) && (
-          <span className="text-muted text-sm">
+          <span className="text-text-muted text-sm">
             Handed back — waiting on the operations manager.
           </span>
         )}

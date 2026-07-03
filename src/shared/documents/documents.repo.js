@@ -42,6 +42,33 @@ async function insert({ client, row }) {
   return rows[0];
 }
 
+/**
+ * Find an existing, non-deleted document with identical content for the same
+ * reference. Used by store() to avoid persisting the same file twice when a
+ * caller regenerates/re-attaches it (e.g. re-rendering an invoice PDF that
+ * hasn't changed, or re-uploading the same receipt).
+ */
+async function findDuplicate({
+  client,
+  brand,
+  content_hash,
+  reference_type = null,
+  reference_id = null,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.documents
+      WHERE business = $1
+        AND content_hash = $2
+        AND reference_type IS NOT DISTINCT FROM $3
+        AND reference_id IS NOT DISTINCT FROM $4
+        AND is_deleted = false
+      ORDER BY created_at ASC
+      LIMIT 1`,
+    [brand, content_hash, reference_type, reference_id],
+  );
+  return rows[0] || null;
+}
+
 async function findById({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM shared.documents WHERE document_id = $1 AND business = $2 AND is_deleted = false`,
@@ -187,6 +214,7 @@ async function softDelete({ client, brand, id }) {
 module.exports = {
   nextNumber,
   insert,
+  findDuplicate,
   findById,
   listByReference,
   findAll,

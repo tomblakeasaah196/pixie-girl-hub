@@ -99,7 +99,7 @@ export function JobWorkPanel({
         </div>
         <div className="flex flex-wrap gap-2">
           {(materials ?? []).length === 0 && (
-            <span className="text-muted text-sm">Nothing logged yet.</span>
+            <span className="text-text-muted text-sm">Nothing logged yet.</span>
           )}
           {(materials ?? []).map((m) => (
             <Pill
@@ -158,7 +158,7 @@ export function JobWorkPanel({
           Style brief
         </div>
         {(refs ?? []).length === 0 && (
-          <span className="text-muted text-sm">No reference yet.</span>
+          <span className="text-text-muted text-sm">No reference yet.</span>
         )}
         {(refs ?? []).map((r) => (
           <div key={r.reference_id} className="flex items-start gap-2 text-sm">
@@ -179,14 +179,14 @@ export function JobWorkPanel({
               <span className="text-text-primary">“{r.body}”</span>
             )}
             {(r.ref_type === "image" || r.ref_type === "audio") && (
-              <span className="text-muted">
+              <span className="text-text-muted">
                 {r.ref_type === "image" ? "📷 photo" : "🎙 voice note"}
               </span>
             )}
             {canLog && (
               <button
                 type="button"
-                className="ml-auto text-muted hover:text-danger"
+                className="ml-auto text-text-muted hover:text-danger"
                 onClick={() => refMut.remove.mutate(r.reference_id)}
                 aria-label="Remove reference"
               >

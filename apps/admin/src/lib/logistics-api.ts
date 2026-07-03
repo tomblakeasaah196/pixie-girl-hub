@@ -131,6 +131,12 @@ export interface Delivery {
   cancelled_at?: string | null;
   created_at: string;
   updated_at: string;
+  // Joined from the originating sales order (list endpoint only).
+  order_number?: string | null;
+  order_type?: string | null; // 'dispatch' = delivery, 'collection'/'walk_in' = pickup
+  order_shipping_fee_ngn?: number | string | null; // customer-billed delivery fee
+  order_status?: string | null;
+  customer_name?: string | null;
   items?: DeliveryItem[];
   attempts?: DeliveryAttempt[];
   proofs?: DeliveryProof[];

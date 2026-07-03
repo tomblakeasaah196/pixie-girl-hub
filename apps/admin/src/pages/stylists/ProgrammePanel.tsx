@@ -9,8 +9,9 @@
 import { useEffect, useState } from "react";
 import { Settings2 } from "lucide-react";
 import { Button, Pill } from "@/components/ui/primitives";
-import { ErrorState } from "@/components/ui/controls";
+import { ErrorState, NumberField, Toggle } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
+import { useToast } from "@/lib/toast";
 import {
   useProgrammeConfig,
   useTiers,
@@ -32,6 +33,7 @@ function ConfigCard({ title, children }: { title: string; children: React.ReactN
 
 export function ProgrammePanel() {
   const can = useAuthStore((s) => s.can);
+  const toast = useToast();
   const config = useProgrammeConfig();
   const tiers = useTiers();
   const questions = useQuestions();
@@ -98,15 +100,14 @@ export function ProgrammePanel() {
                   Days after completion before pay releases without customer confirmation (Q14)
                 </div>
               </div>
-              <input
-                type="number"
-                min={0}
-                max={90}
+              <NumberField
+                className="w-24 shrink-0"
+                allowDecimal={false}
                 disabled={!canEdit}
-                className="input w-20 tabular-nums text-right"
-                value={form.quality_hold_days}
-                onChange={(e) =>
-                  setForm((f) => f && { ...f, quality_hold_days: Number(e.target.value) })
+                suffix="days"
+                value={String(form.quality_hold_days)}
+                onChange={(v) =>
+                  setForm((f) => f && { ...f, quality_hold_days: Number(v || 0) })
                 }
               />
             </div>
@@ -117,15 +118,13 @@ export function ProgrammePanel() {
                   Default % of an attributed order paid to the partner (per-partner overrides win)
                 </div>
               </div>
-              <input
-                type="number"
-                min={0}
-                max={100}
+              <NumberField
+                className="w-24 shrink-0"
                 disabled={!canEdit}
-                className="input w-20 tabular-nums text-right"
-                value={form.referral_commission_pct}
-                onChange={(e) =>
-                  setForm((f) => f && { ...f, referral_commission_pct: Number(e.target.value) })
+                suffix="%"
+                value={String(form.referral_commission_pct)}
+                onChange={(v) =>
+                  setForm((f) => f && { ...f, referral_commission_pct: Number(v || 0) })
                 }
               />
             </div>
@@ -141,15 +140,14 @@ export function ProgrammePanel() {
                   How long candidates have before the pool expires + escalates
                 </div>
               </div>
-              <input
-                type="number"
-                min={1}
-                max={720}
+              <NumberField
+                className="w-24 shrink-0"
+                allowDecimal={false}
                 disabled={!canEdit}
-                className="input w-20 tabular-nums text-right"
-                value={form.offer_window_hours}
-                onChange={(e) =>
-                  setForm((f) => f && { ...f, offer_window_hours: Number(e.target.value) })
+                suffix="hrs"
+                value={String(form.offer_window_hours)}
+                onChange={(v) =>
+                  setForm((f) => f && { ...f, offer_window_hours: Number(v || 0) })
                 }
               />
             </div>
@@ -160,15 +158,13 @@ export function ProgrammePanel() {
                   How many ranked candidates get the one-click offer
                 </div>
               </div>
-              <input
-                type="number"
-                min={1}
-                max={20}
+              <NumberField
+                className="w-24 shrink-0"
+                allowDecimal={false}
                 disabled={!canEdit}
-                className="input w-20 tabular-nums text-right"
-                value={form.offer_top_n}
-                onChange={(e) =>
-                  setForm((f) => f && { ...f, offer_top_n: Number(e.target.value) })
+                value={String(form.offer_top_n)}
+                onChange={(v) =>
+                  setForm((f) => f && { ...f, offer_top_n: Number(v || 0) })
                 }
               />
             </div>
@@ -179,12 +175,11 @@ export function ProgrammePanel() {
                   The public landing accepts new applications
                 </div>
               </div>
-              <input
-                type="checkbox"
-                disabled={!canEdit}
+              <Toggle
                 checked={form.applications_open}
-                onChange={(e) =>
-                  setForm((f) => f && { ...f, applications_open: e.target.checked })
+                disabled={!canEdit}
+                onChange={(v) =>
+                  setForm((f) => f && { ...f, applications_open: v })
                 }
               />
             </div>
@@ -217,7 +212,7 @@ export function ProgrammePanel() {
                       },
                   )
                 }
-                className="w-full accent-[rgb(var(--accent))]"
+                className="range-accent"
               />
             </div>
           ))}
@@ -230,25 +225,27 @@ export function ProgrammePanel() {
             variant="primary"
             disabled={!dirty || m.updateConfig.isPending}
             onClick={() =>
-              m.updateConfig.mutate({
-                quality_hold_days: form.quality_hold_days,
-                offer_window_hours: form.offer_window_hours,
-                offer_top_n: form.offer_top_n,
-                referral_commission_pct: form.referral_commission_pct,
-                applications_open: form.applications_open,
-                routing_weights: form.weights,
-              })
+              m.updateConfig.mutate(
+                {
+                  quality_hold_days: form.quality_hold_days,
+                  offer_window_hours: form.offer_window_hours,
+                  offer_top_n: form.offer_top_n,
+                  referral_commission_pct: form.referral_commission_pct,
+                  applications_open: form.applications_open,
+                  routing_weights: form.weights,
+                },
+                {
+                  onSuccess: () => toast.success("Programme config saved"),
+                  onError: (e) =>
+                    toast.error("Couldn't save config", (e as Error).message),
+                },
+              )
             }
           >
             {m.updateConfig.isPending ? "Saving…" : "Save programme config"}
           </Button>
-          {m.updateConfig.isError && (
-            <span className="text-danger text-[12px]">
-              {(m.updateConfig.error as Error).message}
-            </span>
-          )}
-          {m.updateConfig.isSuccess && !dirty && (
-            <span className="text-success text-[12px]">Saved</span>
+          {dirty && (
+            <span className="text-[12px] text-text-muted">Unsaved changes</span>
           )}
         </div>
       )}
@@ -268,32 +265,48 @@ export function ProgrammePanel() {
               <span className="micro">{t.validity_months}mo validity</span>
               {!t.is_active && <Pill tone="neutral" dot={false}>Inactive</Pill>}
               {canEdit && (
-                <div className="ml-auto flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.05"
-                    min={0.1}
-                    max={10}
-                    className="input h-8 w-20 tabular-nums text-right"
-                    defaultValue={Number(t.payout_multiplier)}
-                    onBlur={(e) => {
-                      const v = Number(e.target.value);
-                      if (v && v !== Number(t.payout_multiplier))
-                        m.updateTier.mutate([t.tier_key, { payout_multiplier: v }]);
-                    }}
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    max={120}
-                    className="input h-8 w-16 tabular-nums text-right"
-                    defaultValue={t.validity_months}
-                    onBlur={(e) => {
-                      const v = Number(e.target.value);
-                      if (v && v !== t.validity_months)
-                        m.updateTier.mutate([t.tier_key, { validity_months: v }]);
-                    }}
-                  />
+                <div className="ml-auto flex items-end gap-3">
+                  <div>
+                    <label className="label !mb-1">Payout ×</label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min={0.1}
+                      max={10}
+                      className="input-sm w-20 tabular-nums text-right"
+                      defaultValue={Number(t.payout_multiplier)}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (v && v !== Number(t.payout_multiplier))
+                          m.updateTier.mutate([t.tier_key, { payout_multiplier: v }], {
+                            onSuccess: () =>
+                              toast.success(`${t.label}: multiplier updated`),
+                            onError: (err) =>
+                              toast.error("Update failed", (err as Error).message),
+                          });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="label !mb-1">Validity mo</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      className="input-sm w-20 tabular-nums text-right"
+                      defaultValue={t.validity_months}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (v && v !== t.validity_months)
+                          m.updateTier.mutate([t.tier_key, { validity_months: v }], {
+                            onSuccess: () =>
+                              toast.success(`${t.label}: validity updated`),
+                            onError: (err) =>
+                              toast.error("Update failed", (err as Error).message),
+                          });
+                      }}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -321,7 +334,15 @@ export function ProgrammePanel() {
                   variant="ghost"
                   disabled={m.updateQuestion.isPending}
                   onClick={() =>
-                    m.updateQuestion.mutate([q.question_id, { is_active: !q.is_active }])
+                    m.updateQuestion.mutate(
+                      [q.question_id, { is_active: !q.is_active }],
+                      {
+                        onSuccess: () =>
+                          toast.success(
+                            q.is_active ? "Question retired" : "Question restored",
+                          ),
+                      },
+                    )
                   }
                 >
                   {q.is_active ? "Retire" : "Restore"}
@@ -332,7 +353,7 @@ export function ProgrammePanel() {
           {canEditQuestions && (
             <div className="flex gap-2 pt-1">
               <input
-                className="input h-9 flex-1"
+                className="input flex-1"
                 placeholder="New question…"
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
@@ -348,7 +369,14 @@ export function ProgrammePanel() {
                       field_type: "textarea",
                       display_order: (questions.data?.length ?? 0) + 1,
                     },
-                    { onSuccess: () => setNewQuestion("") },
+                    {
+                      onSuccess: () => {
+                        setNewQuestion("");
+                        toast.success("Question added");
+                      },
+                      onError: (e) =>
+                        toast.error("Couldn't add question", (e as Error).message),
+                    },
                   )
                 }
               >

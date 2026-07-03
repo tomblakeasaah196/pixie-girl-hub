@@ -8,7 +8,8 @@ import { useState } from "react";
 import { Compass, Route } from "lucide-react";
 import { Button, Pill, MoneyText } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
-import { ErrorState, ConfirmDialog } from "@/components/ui/controls";
+import { ErrorState, ConfirmDialog, Select } from "@/components/ui/controls";
+import { useToast } from "@/lib/toast";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -53,6 +54,7 @@ function SuggestDrawer({
     city: city || undefined,
     country_code: country || undefined,
   });
+  const toast = useToast();
   const { addOffers } = useAssignmentMutations(assignmentId);
   const [picked, setPicked] = useState<string[]>([]);
   const topN = suggest.data?.offer_top_n ?? 3;
@@ -145,7 +147,20 @@ function SuggestDrawer({
           <Button
             variant="primary"
             disabled={!picked.length || addOffers.isPending}
-            onClick={() => addOffers.mutate(picked, { onSuccess: onClose })}
+            onClick={() =>
+              addOffers.mutate(picked, {
+                onSuccess: (r) => {
+                  toast.success(
+                    `Offered to ${r?.added ?? picked.length} stylist${
+                      (r?.added ?? picked.length) === 1 ? "" : "s"
+                    }`,
+                  );
+                  onClose();
+                },
+                onError: (e) =>
+                  toast.error("Couldn't send offers", (e as Error).message),
+              })
+            }
           >
             Offer to {picked.length || "…"} selected
           </Button>
@@ -156,7 +171,14 @@ function SuggestDrawer({
               onClick={() =>
                 addOffers.mutate(
                   suggest.data!.candidates.slice(0, topN).map((c) => c.stylist_id),
-                  { onSuccess: onClose },
+                  {
+                    onSuccess: (r) => {
+                      toast.success(`Offered to top ${r?.added ?? topN}`);
+                      onClose();
+                    },
+                    onError: (e) =>
+                      toast.error("Couldn't send offers", (e as Error).message),
+                  },
                 )
               }
             >
@@ -182,6 +204,7 @@ function AssignmentDrawer({
   onClose: () => void;
 }) {
   const can = useAuthStore((s) => s.can);
+  const toast = useToast();
   const detail = useAssignment(assignmentId);
   const m = useAssignmentMutations(assignmentId);
   const [suggesting, setSuggesting] = useState(false);
@@ -326,7 +349,13 @@ function AssignmentDrawer({
                   size="sm"
                   variant="danger"
                   disabled={m.cancel.isPending}
-                  onClick={() => m.cancel.mutate(undefined)}
+                  onClick={() =>
+                    m.cancel.mutate(undefined, {
+                      onSuccess: () => toast.success("Assignment cancelled"),
+                      onError: (e) =>
+                        toast.error("Couldn't cancel", (e as Error).message),
+                    })
+                  }
                 >
                   Cancel assignment
                 </Button>
@@ -363,7 +392,15 @@ function AssignmentDrawer({
         onConfirm={() =>
           m.dispute.mutate(
             { action: "open", reason: disputeText || undefined },
-            { onSuccess: () => setDisputing(null) },
+            {
+              onSuccess: () => {
+                setDisputing(null);
+                setDisputeText("");
+                toast.success("Dispute opened — payable frozen");
+              },
+              onError: (e) =>
+                toast.error("Couldn't open dispute", (e as Error).message),
+            },
           )
         }
         onClose={() => setDisputing(null)}
@@ -403,7 +440,19 @@ function AssignmentDrawer({
         onConfirm={() =>
           m.dispute.mutate(
             { action: "resolve", resolution: disputeText || undefined, outcome },
-            { onSuccess: () => setDisputing(null) },
+            {
+              onSuccess: () => {
+                setDisputing(null);
+                setDisputeText("");
+                toast.success(
+                  outcome === "release"
+                    ? "Dispute resolved — payment released"
+                    : "Dispute upheld — payable voided",
+                );
+              },
+              onError: (e) =>
+                toast.error("Couldn't resolve", (e as Error).message),
+            },
           )
         }
         onClose={() => setDisputing(null)}
@@ -488,18 +537,18 @@ export function AssignmentsPanel() {
         loading={assignments.isLoading}
         onRowClick={(a) => setOpenId(a.assignment_id)}
         toolbar={
-          <select
-            className="input h-9 text-[12.5px]"
+          <Select
+            className="w-48"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="">All statuses</option>
-            {Object.entries(ASSIGNMENT_STATUS_META).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v.label}
-              </option>
-            ))}
-          </select>
+            onChange={setStatus}
+            options={[
+              { value: "", label: "All statuses" },
+              ...Object.entries(ASSIGNMENT_STATUS_META).map(([k, v]) => ({
+                value: k,
+                label: v.label,
+              })),
+            ]}
+          />
         }
         empty={{
           icon: <Route className="w-6 h-6" />,

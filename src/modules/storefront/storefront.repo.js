@@ -589,6 +589,7 @@ async function nearbyStylists({ city, limit = 3 }) {
 }
 
 module.exports = {
+  fromPriceLateral, // pricing SSOT — reused by shade_finder so cards never diverge
   listProducts,
   getLiveStyledIdBySlug,
   listStyledGallery,

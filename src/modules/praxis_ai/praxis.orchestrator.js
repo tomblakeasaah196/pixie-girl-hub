@@ -39,21 +39,38 @@ const safeName = (key) =>
     .replace(/[^a-zA-Z0-9_-]/g, "_")
     .slice(0, 64);
 
+/**
+ * OpenAI-compatible tool `parameters` MUST be a JSON Schema object rooted at
+ * `type: "object"` with a `properties` map. A stored payload_schema that isn't
+ * shaped that way makes the vendor 400 the whole request, so normalise it.
+ */
+function normalizeParams(schema) {
+  if (
+    schema &&
+    typeof schema === "object" &&
+    !Array.isArray(schema) &&
+    schema.type === "object"
+  ) {
+    return { properties: {}, ...schema };
+  }
+  return { type: "object", properties: {} };
+}
+
 function buildTools(actions) {
   const byName = new Map();
   const tools = [];
   for (const a of actions.slice(0, config.PRAXIS_MAX_TOOLS)) {
     const name = safeName(a.action_key);
+    // safeName can collapse two action_keys to the same name; a duplicate tool
+    // name is a hard 400 on OpenAI-compatible APIs, so keep the first only.
+    if (byName.has(name)) continue;
     byName.set(name, a);
     tools.push({
       type: "function",
       function: {
         name,
         description: a.description || a.title || a.action_key,
-        parameters:
-          a.payload_schema && typeof a.payload_schema === "object"
-            ? a.payload_schema
-            : { type: "object", properties: {} },
+        parameters: normalizeParams(a.payload_schema),
       },
     });
   }
@@ -142,7 +159,24 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
   const { tools, byName } = buildTools(actions);
   // §8.2 Query Agent: expose the read-only query catalogue as tools too, so the
   // model can answer questions about LIVE data (not just embedded docs).
-  const allTools = [...tools, ...queryAgent.tools()];
+  // Dedup by function name across both sets — a repeated tool name 400s the API.
+  const seenTool = new Set();
+  const allTools = [...tools, ...queryAgent.tools()]
+    .filter((t) => {
+      const n = t?.function?.name;
+      if (!n || seenTool.has(n)) return false;
+      seenTool.add(n);
+      return true;
+    })
+    // Normalise EVERY tool's parameters (query catalogue included) so one
+    // malformed schema can't 400 the whole request.
+    .map((t) => ({
+      ...t,
+      function: {
+        ...t.function,
+        parameters: normalizeParams(t.function.parameters),
+      },
+    }));
   const messages = [
     { role: "system", content: systemPrompt({ brand, contextChunks }) },
     ...history,

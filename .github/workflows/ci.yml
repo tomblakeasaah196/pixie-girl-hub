@@ -243,4 +243,43 @@ jobs:
               exit 1
             fi
 
+            # ── Stylist (TanStack Start / Nitro SSR) ────────────
+            # One process serves BOTH brands; brand resolves from the Host
+            # Nitro server in apps/stylist/.output (gitignored, so rebuild
+            # from clean every deploy like the landing .next above).
+            echo "--- Installing stylist dependencies"
+            cd apps/stylist
+            npm install
+
+            echo "--- Building stylist app (.output)"
+            rm -rf .output
+            npm run build
+
+            cd ../..
+
+            echo "--- Zero-downtime reload stylist"
+            pm2 reload pixie-girl-stylist || pm2 start ecosystem.config.js --only pixie-girl-stylist --env production
+
+            echo "--- Saving PM2 process list"
+            pm2 save
+
+            echo "--- Health check stylist"
+            HEALTHY=0
+            for i in $(seq 1 10); do
+              if curl -sf "http://localhost:3003" > /dev/null; then
+                echo "Stylist health check passed on attempt $i ✓"
+                HEALTHY=1
+                break
+              fi
+              echo "  attempt $i/10 — not ready, waiting 3s..."
+              sleep 3
+            done
+
+            if [ "$HEALTHY" -ne 1 ]; then
+              echo "Stylist health check FAILED"
+              pm2 list || true
+              pm2 logs pixie-girl-stylist --lines 40 --nostream || true
+              exit 1
+            fi
+
             echo "Production deploy complete ✓"

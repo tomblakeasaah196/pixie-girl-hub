@@ -45,13 +45,28 @@ async function chat({ vendor, messages, tools, model, temperature = 0.2 }) {
     body.tools = tools;
     body.tool_choice = "auto";
   }
-  const { data } = await axios.post(`${base}/chat/completions`, body, {
-    headers: {
-      Authorization: `Bearer ${vendor.api_key}`,
-      "Content-Type": "application/json",
-    },
-    timeout: 60000,
-  });
+  let data;
+  try {
+    ({ data } = await axios.post(`${base}/chat/completions`, body, {
+      headers: {
+        Authorization: `Bearer ${vendor.api_key}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 60000,
+    }));
+  } catch (err) {
+    // Surface the vendor's actual error (axios only gives "status code 400").
+    // The response body says WHY — bad model, invalid tool schema, duplicate
+    // tool name, unsupported param — which is what we need to debug.
+    const r = err.response;
+    const detail =
+      r?.data?.error?.message ||
+      r?.data?.message ||
+      (r?.data ? JSON.stringify(r.data).slice(0, 800) : null);
+    throw new Error(
+      `LLM ${vendor.vendor} ${r?.status ?? ""} ${detail || err.message}`.trim(),
+    );
+  }
   const choice = (data.choices && data.choices[0]) || {};
   const msg = choice.message || {};
   return {

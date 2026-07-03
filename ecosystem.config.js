@@ -60,16 +60,16 @@ module.exports = {
       // Stylist Website (TanStack Start / Nitro SSR). ONE instance serves
       // BOTH brands — brand is resolved per request from the Host header
       // NOT the Sales Campaign Landing above.
-      name: "pixie-girl-Stylist",
+      name: "pixie-girl-stylist",
       script: ".output/server/index.mjs",
-      cwd: "/var/www/pixie-girl-hub/apps/Stylist",
+      cwd: "/var/www/pixie-girl-hub/apps/stylist",
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
       watch: false,
       max_memory_restart: "1G",
-      error_file: "/var/www/pixie-girl-hub/logs/Stylist-error.log",
-      out_file: "/var/www/pixie-girl-hub/logs/Stylist-out.log",
+      error_file: "/var/www/pixie-girl-hub/logs/stylist-error.log",
+      out_file: "/var/www/pixie-girl-hub/logs/stylist-out.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       env: {
         NODE_ENV: "production",

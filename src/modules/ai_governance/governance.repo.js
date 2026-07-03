@@ -252,7 +252,8 @@ async function recordUsage({ client, u }) {
         total_tokens, cost_native, cost_native_currency, cost_ngn, latency_ms,
         was_successful, error_code, error_message)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,0),COALESCE($11,0),
-             COALESCE($12,0),COALESCE($13,0),COALESCE($14,0),$15,COALESCE($16,0),
+             COALESCE($12,0),COALESCE($13,0),COALESCE($14::numeric,0),$15,
+             COALESCE($16::numeric,0),
              $17,COALESCE($18,true),$19,$20)
      RETURNING usage_id, cost_ngn, occurred_at`,
     [

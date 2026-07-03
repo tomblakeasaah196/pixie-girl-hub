@@ -47,6 +47,22 @@ import { useAuthStore } from "@/stores/auth";
 
 type RailTab = "pending" | "trace" | "abilities";
 
+/** Relative "when" for a conversation, safe against missing/invalid dates. */
+function formatWhen(iso?: string | null): string {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const diff = Date.now() - t;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hrs = Math.floor(min / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(t).toLocaleDateString();
+}
+
 function ConversationList({
   activeId,
   onPick,
@@ -100,7 +116,7 @@ function ConversationList({
                   {c.title || "Untitled conversation"}
                 </div>
                 <div className="text-[11px] text-text-muted">
-                  {new Date(c.updated_at).toLocaleString()}
+                  {formatWhen(c.last_activity_at ?? c.updated_at ?? c.created_at)}
                 </div>
               </div>
               <span

@@ -37,8 +37,10 @@ export interface PraxisConversation {
   business: string | null;
   is_voice_started: boolean;
   provider?: string | null;
-  created_at: string;
-  updated_at: string;
+  // The table tracks last_activity_at (there is no created_at/updated_at).
+  last_activity_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface PraxisMessage {

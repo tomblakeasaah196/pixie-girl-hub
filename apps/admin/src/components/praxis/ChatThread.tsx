@@ -1,15 +1,55 @@
 /**
  * Praxis chat thread (§6.29) — the message list for both the drawer and the
- * full page. Renders user/assistant bubbles, threads each pending-action
- * card under the assistant turn that proposed it, shows a thinking indicator
- * while a turn is in flight, and auto-sticks to the bottom.
+ * full page. Renders user/assistant bubbles (assistant output is markdown),
+ * threads each pending-action card under the assistant turn that proposed it,
+ * shows a thinking indicator while a turn is in flight, renders locally-queued
+ * (optimistic) sends immediately, and offers retry on a failed send.
  */
 
-import { useEffect, useMemo, useRef } from "react";
-import { Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Sparkles, Copy, Check, RotateCw, X, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Markdown } from "@/components/help/Markdown";
 import { PendingActionCard } from "./PendingActionCard";
 import type { PendingAction, PraxisMessage } from "@/lib/praxis-api";
+
+/** A user message sent from this client but not yet acknowledged by the server. */
+export interface OutboxItem {
+  localId: string;
+  content: string;
+  input_mode: "text" | "voice";
+  status: "sending" | "failed";
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          /* clipboard blocked — ignore */
+        }
+      }}
+      title={copied ? "Copied" : "Copy"}
+      className="inline-flex items-center gap-1 text-[11px] text-text-faint hover:text-text-primary transition-colors"
+    >
+      {copied ? (
+        <>
+          <Check className="w-3 h-3" /> Copied
+        </>
+      ) : (
+        <>
+          <Copy className="w-3 h-3" /> Copy
+        </>
+      )}
+    </button>
+  );
+}
 
 function Bubble({ msg }: { msg: PraxisMessage }) {
   const isUser = msg.role === "user";
@@ -23,9 +63,9 @@ function Bubble({ msg }: { msg: PraxisMessage }) {
       )}
       <div
         className={cn(
-          "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap break-words",
+          "group max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed break-words",
           isUser
-            ? "bg-accent-deep/85 text-[#F4E9D9] rounded-br-md"
+            ? "bg-accent-deep/85 text-[#F4E9D9] rounded-br-md whitespace-pre-wrap"
             : "bg-text-primary/[0.05] border border-line rounded-bl-md",
         )}
       >
@@ -34,8 +74,73 @@ function Bubble({ msg }: { msg: PraxisMessage }) {
             voice
           </span>
         )}
-        {text}
+        {isUser ? (
+          text
+        ) : (
+          <>
+            <Markdown
+              source={text}
+              className="text-[13.5px] leading-relaxed space-y-2.5 [&_ul]:my-1 [&_ol]:my-1"
+            />
+            {text.trim() && (
+              <div className="mt-1.5 pt-1.5 border-t border-line/70 opacity-0 group-hover:opacity-100 transition-opacity">
+                <CopyButton text={text} />
+              </div>
+            )}
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Optimistic / failed user bubble (client-side, not yet server-acked). */
+function OutboxBubble({
+  item,
+  onRetry,
+  onDismiss,
+}: {
+  item: OutboxItem;
+  onRetry: (localId: string) => void;
+  onDismiss: (localId: string) => void;
+}) {
+  const failed = item.status === "failed";
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex gap-2.5 flex-row-reverse w-full">
+        <div
+          className={cn(
+            "max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap break-words",
+            failed
+              ? "bg-danger/15 border border-danger/40 text-text-primary"
+              : "bg-accent-deep/60 text-[#F4E9D9]/90",
+          )}
+        >
+          {item.content}
+        </div>
+      </div>
+      {failed ? (
+        <div className="flex items-center gap-2 pr-1 text-[11px] text-danger">
+          <AlertCircle className="w-3 h-3" />
+          <span>Not sent</span>
+          <button
+            type="button"
+            onClick={() => onRetry(item.localId)}
+            className="inline-flex items-center gap-1 text-accent-glow hover:underline"
+          >
+            <RotateCw className="w-3 h-3" /> Retry
+          </button>
+          <button
+            type="button"
+            onClick={() => onDismiss(item.localId)}
+            className="inline-flex items-center gap-1 text-text-faint hover:text-text-primary"
+          >
+            <X className="w-3 h-3" /> Dismiss
+          </button>
+        </div>
+      ) : (
+        <span className="pr-1 text-[10.5px] text-text-faint">Sending…</span>
+      )}
     </div>
   );
 }
@@ -45,17 +150,23 @@ export function ChatThread({
   pendingActions,
   thinking,
   errorNotice,
+  outbox = [],
+  onRetry,
+  onDismiss,
 }: {
   messages: PraxisMessage[];
   pendingActions: PendingAction[];
   thinking?: boolean;
   /** e.g. the AI_UNAVAILABLE budget/flag message — shown as a system note. */
   errorNotice?: string | null;
+  outbox?: OutboxItem[];
+  onRetry?: (localId: string) => void;
+  onDismiss?: (localId: string) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, pendingActions.length, thinking, errorNotice]);
+  }, [messages.length, pendingActions.length, thinking, errorNotice, outbox.length]);
 
   // Thread each pending card under the assistant message that proposed it;
   // cards with no message anchor render at the end (e.g. after a refetch).
@@ -88,6 +199,15 @@ export function ChatThread({
         <div key={p.pending_id} className="pl-9">
           <PendingActionCard action={p} />
         </div>
+      ))}
+
+      {outbox.map((item) => (
+        <OutboxBubble
+          key={item.localId}
+          item={item}
+          onRetry={onRetry ?? (() => {})}
+          onDismiss={onDismiss ?? (() => {})}
+        />
       ))}
 
       {thinking && (

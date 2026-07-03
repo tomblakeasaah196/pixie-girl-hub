@@ -1,10 +1,15 @@
 /**
  * Logistics subscriber (G-2) — auto-create a delivery when a dispatch order is
- * paid (PRD §6.10). Driven by the transactional outbox (H-2): runs post-commit
+ * PAID (PRD §6.10). Driven by the transactional outbox (H-2): runs post-commit
  * with at-least-once delivery. Idempotent: `createForOrder` no-ops for
  * non-dispatch orders, missing address/courier, or an order that already has a
  * delivery. Best-effort — a failure is logged and swallowed (the row's other
  * consumers are unaffected; a missed dispatch is recoverable manually).
+ *
+ * PREPAID-ONLY (owner directive): the business never ships pay-on-delivery, so
+ * a delivery is created ONLY once payment clears (`order.paid`). We deliberately
+ * do NOT subscribe to `order.confirmed` — an unpaid order must never enter the
+ * dispatch queue.
  */
 
 "use strict";
@@ -32,13 +37,11 @@ let registered = false;
 function register() {
   if (registered) return;
   registered = true;
-  // A dispatch order reaches the queue at confirmation (covers pay-on-delivery,
-  // which never fires order.paid pre-shipment) and again at payment as a
-  // fallback. createForOrder is idempotent, so the second event no-ops.
-  outbox.register("order.confirmed", "logistics", autoDelivery);
+  // Prepaid-only: a dispatch order enters the queue ONLY once it is paid.
+  // (No `order.confirmed` subscription — see the file header.)
   outbox.register("order.paid", "logistics", autoDelivery);
   logger.info(
-    "logistics subscribers registered (outbox order.confirmed/order.paid → dispatch delivery)",
+    "logistics subscribers registered (outbox order.paid → dispatch delivery)",
   );
 }
 

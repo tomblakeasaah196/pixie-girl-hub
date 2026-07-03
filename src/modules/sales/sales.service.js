@@ -706,22 +706,11 @@ async function createOrderTx({ brand, user, request_id, input }) {
       order_id: order.order_id,
       contact_id: order.contact_id,
     });
-    // A confirmed dispatch order goes straight to the logistics queue (H-2):
-    // enqueue `order.confirmed` so logistics auto-creates a queued delivery —
-    // covers pay-on-delivery orders that never fire `order.paid` before they
-    // ship. Idempotent downstream (no-ops if a delivery already exists).
-    if ((input.order_type || "dispatch") === "dispatch") {
-      await outbox.enqueue(client, {
-        business: brand,
-        event_type: "order.confirmed",
-        payload: {
-          brand,
-          order_id: order.order_id,
-          contact_id: order.contact_id,
-        },
-        dedup_key: `order.confirmed:${order.order_id}`,
-      });
-    }
+    // Prepaid-only (owner directive): the business never ships pay-on-delivery,
+    // so an unpaid order must NOT enter the logistics queue. The delivery is
+    // created only once payment clears — logistics subscribes to `order.paid`
+    // alone. (Previously we enqueued `order.confirmed` here to pre-queue a
+    // dispatch; that path is intentionally removed.)
     const finalOrder = await repo.findById({
       client,
       brand,

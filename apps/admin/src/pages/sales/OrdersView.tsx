@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ShoppingBag, Search } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText } from "@/components/ui/primitives";
@@ -176,7 +177,32 @@ export function OrdersView() {
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sp, setSp] = useSearchParams();
+  // Support deep links from Studio + other modules: /sales?tab=orders&order=<id>
+  // opens the OrderDetail drawer for that order on mount / when the param
+  // changes.
+  const urlOrderId = sp.get("order");
+  const [selectedId, setSelectedId] = useState<string | null>(urlOrderId);
+  useEffect(() => {
+    if (urlOrderId !== selectedId) setSelectedId(urlOrderId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlOrderId]);
+  const openOrder = (id: string) => {
+    setSelectedId(id);
+    setSp((p) => {
+      const next = new URLSearchParams(p);
+      next.set("order", id);
+      return next;
+    });
+  };
+  const closeOrder = () => {
+    setSelectedId(null);
+    setSp((p) => {
+      const next = new URLSearchParams(p);
+      next.delete("order");
+      return next;
+    });
+  };
 
   const { data, isLoading, isError, refetch } = useOrders({
     status: status || undefined,
@@ -198,7 +224,7 @@ export function OrdersView() {
             columns={columns}
             rows={orders}
             rowKey={(o) => o.order_id}
-            onRowClick={(o) => setSelectedId(o.order_id)}
+            onRowClick={(o) => openOrder(o.order_id)}
             loading={isLoading}
             empty={{
               icon: <ShoppingBag className="w-8 h-8" />,
@@ -263,7 +289,7 @@ export function OrdersView() {
         </>
       )}
 
-      <OrderDetail orderId={selectedId} onClose={() => setSelectedId(null)} />
+      <OrderDetail orderId={selectedId} onClose={closeOrder} />
     </>
   );
 }

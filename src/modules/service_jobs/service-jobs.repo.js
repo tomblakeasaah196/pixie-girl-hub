@@ -176,6 +176,7 @@ async function listServiceJobs({
   assigned_staff_user_id,
   assigned_stylist_id,
   customer_contact_id,
+  sales_order_id,
   page = 1,
   page_size = 25,
 }) {
@@ -183,30 +184,40 @@ async function listServiceJobs({
   const params = [];
   let i = 1;
   if (status) {
-    where.push(`status = $${i++}`);
+    where.push(`sj.status = $${i++}`);
     params.push(status);
   }
   if (assigned_staff_user_id) {
-    where.push(`assigned_staff_user_id = $${i++}`);
+    where.push(`sj.assigned_staff_user_id = $${i++}`);
     params.push(assigned_staff_user_id);
   }
   if (assigned_stylist_id) {
-    where.push(`assigned_stylist_id = $${i++}`);
+    where.push(`sj.assigned_stylist_id = $${i++}`);
     params.push(assigned_stylist_id);
   }
   if (customer_contact_id) {
-    where.push(`customer_contact_id = $${i++}`);
+    where.push(`sj.customer_contact_id = $${i++}`);
     params.push(customer_contact_id);
+  }
+  if (sales_order_id) {
+    where.push(`sj.sales_order_id = $${i++}`);
+    params.push(sales_order_id);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const { rows: c } = await query(
-    `SELECT count(*)::int AS total FROM ${t(brand, "service_jobs")} ${w}`,
+    `SELECT count(*)::int AS total FROM ${t(brand, "service_jobs")} sj ${w}`,
     params,
   );
   const offset = (page - 1) * page_size;
+  // Enrich with the source order's number so the Studio Job Board can show
+  // "which order this belongs to" without a second round-trip.
   const { rows } = await query(
-    `SELECT * FROM ${t(brand, "service_jobs")} ${w}
-      ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i}`,
+    `SELECT sj.*, so.order_number AS sales_order_number
+       FROM ${t(brand, "service_jobs")} sj
+       LEFT JOIN ${t(brand, "sales_orders")} so
+         ON so.order_id = sj.sales_order_id
+      ${w}
+      ORDER BY sj.created_at DESC LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],
   );
   return { data: rows, page, page_size, total: c[0].total };

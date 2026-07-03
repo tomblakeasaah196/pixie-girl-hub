@@ -50,6 +50,7 @@ async function listJobs(req, res) {
       assigned_staff_user_id: req.query.assigned_staff_user_id,
       assigned_stylist_id: req.query.assigned_stylist_id,
       customer_contact_id: req.query.customer_contact_id,
+      sales_order_id: req.query.sales_order_id,
       page,
       page_size,
     }),

@@ -26,6 +26,7 @@ const variantsService = require("./styled_variants.service");
 const variantsRepo = require("./styled_variants.repo");
 const catalogueService = require("./catalogue.service");
 const catalogueRepo = require("./catalogue.repo");
+const shadesRepo = require("./shades.repo");
 const bundleService = require("../retention/bundle.service");
 const bundleRepo = require("../retention/bundle.repo");
 
@@ -53,7 +54,7 @@ const slugify = (s) =>
 // Reference data (names operators may safely cite)
 // ════════════════════════════════════════════════════════════
 async function referenceLists(brand) {
-  const [bases, collections, bundles, sizes, lace] = await Promise.all([
+  const [bases, collections, bundles, sizes, lace, shades] = await Promise.all([
     query(
       `SELECT name FROM ${t(brand, "products")} WHERE is_deleted = false ORDER BY name`,
     ),
@@ -65,6 +66,7 @@ async function referenceLists(brand) {
     ),
     variantsRepo.listSizeTiers({ brand, activeOnly: true }),
     variantsRepo.listLaceSizes({ brand, activeOnly: true }),
+    shadesRepo.list({ brand }).catch(() => []),
   ]);
   return {
     bases: bases.rows.map((r) => r.name),
@@ -72,6 +74,7 @@ async function referenceLists(brand) {
     bundles: bundles.rows.map((r) => r.display_name),
     sizes: sizes.map((s) => s.size_code),
     lace: lace.map((l) => l.lace_code),
+    shades: shades.map((s) => s.name),
   };
 }
 
@@ -106,6 +109,9 @@ const STYLED_COLUMNS = [
   { header: "Default Colour?", key: "is_default_colour", width: 14, list: ["yes", "no"] },
   { header: "Collections (comma)", key: "collections", width: 24 },
   { header: "Bundles (comma)", key: "bundles", width: 24 },
+  // One shade per styled product (styled_products.shade_id is scalar). Blank
+  // preserves the current shade on re-import; only a resolved name re-homes.
+  { header: "Shade", key: "shade", width: 20, ref: "Existing shades" },
   { header: "Status", key: "status", width: 10, list: ["draft", "live"] },
   { header: "Short Description", key: "short_description", width: 30 },
   { header: "Long Description", key: "long_description", width: 40 },
@@ -134,6 +140,7 @@ async function styledTemplate({ brand }) {
     { title: "Existing base products", values: ref.bases },
     { title: "Existing collections", values: ref.collections },
     { title: "Existing bundles", values: ref.bundles },
+    { title: "Existing shades", values: ref.shades },
     { title: "Size codes", values: ref.sizes },
     { title: "Lace codes", values: ref.lace },
   ];
@@ -189,6 +196,17 @@ async function colourImageMap(brand, styled_id) {
   }
   return map;
 }
+// shade_id → shade name for the whole brand (small table; one query suffices).
+async function shadeNameMap(brand) {
+  const map = new Map();
+  try {
+    const shades = await shadesRepo.list({ brand });
+    for (const s of shades) map.set(s.shade_id, s.name);
+  } catch {
+    /* shades are a bonus in export */
+  }
+  return map;
+}
 async function collectionsForStyled(brand, styled_id) {
   if (!styled_id) return "";
   try {
@@ -222,8 +240,10 @@ async function bundlesForStyled(brand, styled_id) {
 // re-imports 1:1 (the Faitlynhair → Pixie Girl round-trip).
 async function exportStyled({ brand }) {
   const { data } = await styledRepo.list({ brand, page_size: 1000 });
+  const shadeNames = await shadeNameMap(brand);
   const rows = [];
   for (const s of data) {
+    const shade = shadeNames.get(s.shade_id) || "";
     const [variants, imagesByColour, collections, bundles] = await Promise.all([
       variantsRepo.listVariants({ brand, styled_id: s.styled_id }),
       colourImageMap(brand, s.styled_id),
@@ -240,6 +260,7 @@ async function exportStyled({ brand }) {
         long_description: s.long_description,
         collections,
         bundles,
+        shade,
       });
       continue;
     }
@@ -258,6 +279,7 @@ async function exportStyled({ brand }) {
         is_default_colour: yn(v.colour_is_default),
         collections,
         bundles,
+        shade,
         status: s.status,
         short_description: s.short_description,
         long_description: s.long_description,
@@ -297,6 +319,15 @@ async function importStyled({ brand, user, request_id, buffer }) {
     `SELECT bundle_id, display_name FROM ${t(brand, "bundle_offers")} WHERE is_active = true`,
   );
   const bundleByName = nameIndex(bundleRes.rows, "display_name");
+  // Shades: name → id. A row's Shade cell only re-homes when it resolves; a
+  // blank leaves the styled product's current shade_id untouched (diff-only).
+  const shadeByName = new Map();
+  try {
+    const shadeList = await shadesRepo.list({ brand });
+    for (const sh of shadeList) shadeByName.set(lc(sh.name), sh.shade_id);
+  } catch {
+    /* no shades table yet or empty — Shade cells will surface as warnings */
+  }
   const sizeTiers = await variantsRepo.listSizeTiers({ brand });
   const sizeByCode = new Map();
   for (const stz of sizeTiers) {
@@ -386,20 +417,40 @@ async function importStyled({ brand, user, request_id, buffer }) {
     const laceLabels = [...new Set(group.items.map((it) => str(it.raw["Lace"])).filter(Boolean))];
     const laceCodeList = laceLabels.map(laceCodeOf).filter(Boolean);
     const prices = group.items.map((it) => num(it.raw["Retail Price (NGN)*"])).filter((x) => x !== null && x !== undefined);
-    const anchor = prices.length ? Math.min(...prices) : null;
+    const anchor = prices.length ? Math.min(...prices) : undefined;
     const usdPrices = group.items.map((it) => num(it.raw["Retail Price (USD)"])).filter((x) => x !== null && x !== undefined);
-    const usdAnchor = usdPrices.length ? Math.min(...usdPrices) : null;
+    const usdAnchor = usdPrices.length ? Math.min(...usdPrices) : undefined;
 
-    const input = {
-      base_product_id: repBase.product_id,
-      name: group.name,
-      slug,
-      short_description: str(first["Short Description"]) ?? null,
-      long_description: str(first["Long Description"]) ?? null,
-      retail_price_ngn: anchor,
-      retail_price_usd: usdAnchor,
-      lace_size_codes: laceCodeList.length ? laceCodeList : null,
-    };
+    // Shade re-homing: any row in the group that names a resolvable shade wins;
+    // an unknown name surfaces as a warning; blank in every row keeps whatever
+    // shade the styled product currently has (diff-only). Search from the top
+    // so the operator's earliest declaration wins.
+    let shade_id;
+    let shadeWarnedFor = null;
+    for (const it of group.items) {
+      const shadeCell = str(it.raw["Shade"]);
+      if (!shadeCell) continue;
+      const resolved = shadeByName.get(lc(shadeCell));
+      if (resolved) {
+        shade_id = resolved;
+        break;
+      }
+      if (!shadeWarnedFor) shadeWarnedFor = shadeCell;
+    }
+
+    // Diff-only patch: only include keys the sheet actually supplied (str/num
+    // return undefined for blanks), so a blank cell on re-import does NOT wipe
+    // the existing value. base_product_id + name + slug are always set (name is
+    // the group key; the seed base is required to have this row at all).
+    const input = { base_product_id: repBase.product_id, name: group.name, slug };
+    const sdRaw = str(first["Short Description"]);
+    if (sdRaw !== undefined) input.short_description = sdRaw;
+    const ldRaw = str(first["Long Description"]);
+    if (ldRaw !== undefined) input.long_description = ldRaw;
+    if (anchor !== undefined) input.retail_price_ngn = anchor;
+    if (usdAnchor !== undefined) input.retail_price_usd = usdAnchor;
+    if (laceCodeList.length) input.lace_size_codes = laceCodeList;
+    if (shade_id !== undefined) input.shade_id = shade_id;
 
     let styled;
     try {
@@ -417,6 +468,14 @@ async function importStyled({ brand, user, request_id, buffer }) {
       results.push({ sheet: STYLED_SHEET, row: firstLine, status: "error", reason: err.userMessage || err.message });
       continue;
     }
+    if (shadeWarnedFor && shade_id === undefined) {
+      results.push({
+        sheet: STYLED_SHEET,
+        row: firstLine,
+        status: "warn",
+        reason: `shade "${shadeWarnedFor}" not found — create the shade, then re-import`,
+      });
+    }
 
     // Ensure a lace vocabulary entry for every code this product uses.
     for (const label of laceLabels) {
@@ -430,23 +489,51 @@ async function importStyled({ brand, user, request_id, buffer }) {
     }
 
     // Colours: find-or-create one per distinct colour name in the group.
+    // On re-import, an EXISTING colour's Hex / Default Colour? cells are diff-
+    // applied — the row's values overwrite, a blank keeps whatever's stored.
+    // Each colour is touched at most once per file (the first row that names
+    // it wins), so a later row can't fight an earlier one within the same run.
     const colourIdByName = new Map();
     const existingColours = await variantsRepo.listColours({ brand, styled_id: styled.styled_id });
     for (const c of existingColours) colourIdByName.set(lc(c.name), c.colour_id);
+    const colourHandled = new Set();
     for (const it of group.items) {
       const cname = str(it.raw["Colour*"]);
-      if (!cname || colourIdByName.has(lc(cname))) continue;
+      if (!cname) continue;
+      const key = lc(cname);
+      if (colourHandled.has(key)) continue;
+      colourHandled.add(key);
+      const hexRaw = str(it.raw["Hex"]);
+      const isDefaultRaw = bool(it.raw["Default Colour?"]);
+      const existingId = colourIdByName.get(key);
+      if (existingId) {
+        // Update-in-place — only fields the row supplied. Skips entirely when
+        // both cells are blank (nothing to change) so we don't churn history.
+        if (hexRaw === undefined && isDefaultRaw === undefined) continue;
+        try {
+          const patch = {};
+          if (hexRaw !== undefined) patch.hex = hexRaw;
+          if (isDefaultRaw !== undefined) patch.is_default = isDefaultRaw;
+          await variantsService.updateColour({
+            brand, user, request_id, styled_id: styled.styled_id,
+            colour_id: existingId, patch,
+          });
+        } catch (err) {
+          results.push({ sheet: STYLED_SHEET, row: it.line, status: "warn", reason: `colour "${cname}": ${err.userMessage || err.message}` });
+        }
+        continue;
+      }
       try {
         const colour = await variantsService.createColour({
           brand, user, request_id, styled_id: styled.styled_id,
           input: {
             name: cname,
-            hex: str(it.raw["Hex"]) ?? null,
+            hex: hexRaw ?? null,
             premium_ngn: 0, // per-variant price carries the truth; colour stays flat
-            is_default: bool(it.raw["Default Colour?"]) ?? false,
+            is_default: isDefaultRaw ?? false,
           },
         });
-        colourIdByName.set(lc(cname), colour.colour_id);
+        colourIdByName.set(key, colour.colour_id);
         for (const url of csv(it.raw["Image URLs (comma)"]) ?? []) {
           await catalogueRepo
             .addImage({
@@ -477,10 +564,10 @@ async function importStyled({ brand, user, request_id, buffer }) {
       const size_code = sizeByCode.get(lc(str(it.raw["Size*"]) || ""));
       const laceLabel = str(it.raw["Lace"]);
       const lace_code = laceLabel ? laceCodeOf(laceLabel) : null;
-      const price = num(it.raw["Retail Price (NGN)*"]) ?? null;
-      const price_usd = num(it.raw["Retail Price (USD)"]) ?? null;
-      const compare_at = num(it.raw["Compare-at Price (NGN)"]) ?? null;
-      const compare_at_usd = num(it.raw["Compare-at Price (USD)"]) ?? null;
+      const price = num(it.raw["Retail Price (NGN)*"]);
+      const price_usd = num(it.raw["Retail Price (USD)"]);
+      const compare_at = num(it.raw["Compare-at Price (NGN)"]);
+      const compare_at_usd = num(it.raw["Compare-at Price (USD)"]);
       const rowBaseName = str(it.raw["Base Product*"]);
       // A row that names a base which doesn't exist is skipped + reported (never
       // silently re-homed onto the seed base). A row that leaves base blank
@@ -512,26 +599,35 @@ async function importStyled({ brand, user, request_id, buffer }) {
       const key = vkey(colour_id, size_code, lace_code);
       try {
         if (varByKey.has(key)) {
-          await variantsService.updateVariant({
-            brand, user, request_id, styled_id: styled.styled_id,
-            styled_variant_id: varByKey.get(key).styled_variant_id,
-            patch: {
-              price_override_ngn: price,
-              price_override_usd: price_usd,
-              compare_at_price_ngn: compare_at,
-              compare_at_price_usd: compare_at_usd,
-              base_product_id: rowBase.product_id,
-            },
-          });
+          // Diff-only variant patch: blank price cells preserve the current
+          // override; the base is only re-pointed when a row explicitly names a
+          // DIFFERENT base — an unchanged base is a no-op, so re-imports that
+          // don't touch pricing don't spam the audit log with same-value writes.
+          const existingVar = varByKey.get(key);
+          const patch = {};
+          if (price !== undefined) patch.price_override_ngn = price;
+          if (price_usd !== undefined) patch.price_override_usd = price_usd;
+          if (compare_at !== undefined) patch.compare_at_price_ngn = compare_at;
+          if (compare_at_usd !== undefined) patch.compare_at_price_usd = compare_at_usd;
+          if (rowBaseName && rowBase.product_id !== existingVar.base_product_id) {
+            patch.base_product_id = rowBase.product_id;
+          }
+          if (Object.keys(patch).length) {
+            await variantsService.updateVariant({
+              brand, user, request_id, styled_id: styled.styled_id,
+              styled_variant_id: existingVar.styled_variant_id,
+              patch,
+            });
+          }
         } else {
           const v = await variantsService.createVariant({
             brand, user, request_id, styled_id: styled.styled_id,
             input: {
               colour_id, size_code, lace_code, base_product_id: rowBase.product_id,
-              price_override_ngn: price,
-              price_override_usd: price_usd,
-              compare_at_price_ngn: compare_at,
-              compare_at_price_usd: compare_at_usd,
+              price_override_ngn: price ?? null,
+              price_override_usd: price_usd ?? null,
+              compare_at_price_ngn: compare_at ?? null,
+              compare_at_price_usd: compare_at_usd ?? null,
             },
           });
           varByKey.set(key, v);

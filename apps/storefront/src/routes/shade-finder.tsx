@@ -80,6 +80,7 @@ const SESSION_KEY = "sf_session";
 
 function ShadeFinderPage() {
   const [phase, setPhase] = useState<"boot" | "ready" | "error">("boot");
+  const [bootError, setBootError] = useState<string | null>(null);
   const [session, setSession] = useState<ShadeSession | null>(null);
   const [quota, setQuota] = useState<ShadeQuota | null>(null);
   const [items, setItems] = useState<ChatItem[]>([]);
@@ -159,7 +160,10 @@ function ShadeFinderPage() {
       setQuota(fresh.quota);
       setItems([{ id: cid(), role: "praxis", kind: "text", text: WELCOME }]);
       setPhase("ready");
-    } catch {
+    } catch (e) {
+      setBootError(
+        e instanceof Error && e.message ? e.message : null,
+      );
       setPhase("error");
     }
   }, []);
@@ -312,9 +316,9 @@ function ShadeFinderPage() {
   if (phase === "error")
     return (
       <Section>
-        <div className="py-24 text-center">
+        <div className="mx-auto max-w-md py-24 text-center">
           <p className="text-body text-destructive">
-            Praxis couldn't come to the phone — please try again.
+            {bootError || "Praxis couldn't come to the phone — please try again."}
           </p>
           <button
             onClick={() => void boot()}

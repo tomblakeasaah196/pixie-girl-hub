@@ -22,6 +22,7 @@ export interface ToolbarConfig {
   enabled: boolean;
   dock: ToolbarDock;
   buttons: {
+    shade: boolean;
     currency: boolean;
     theme: boolean;
     whatsapp: boolean;
@@ -41,7 +42,7 @@ export const DEFAULT_HELP_STEPS: ToolbarHelpStep[] = [
 export const DEFAULT_TOOLBAR: ToolbarConfig = {
   enabled: true,
   dock: "left",
-  buttons: { currency: true, theme: true, whatsapp: true, help: true },
+  buttons: { shade: true, currency: true, theme: true, whatsapp: true, help: true },
   whatsapp: {
     number: "",
     greeting: "Hi! I'd love some help choosing the right piece.",
@@ -99,6 +100,7 @@ export function resolveToolbar(
     enabled: bool(o.enabled, d.enabled),
     dock: o.dock === "right" ? "right" : "left",
     buttons: {
+      shade: bool(buttons.shade, d.buttons.shade),
       currency: bool(buttons.currency, d.buttons.currency),
       theme: bool(buttons.theme, d.buttons.theme),
       whatsapp: bool(buttons.whatsapp, d.buttons.whatsapp),

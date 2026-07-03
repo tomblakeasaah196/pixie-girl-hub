@@ -26,7 +26,7 @@ function WhatsAppIcon({ size = 18 }: { size?: number }) {
 }
 
 const CIRCLE =
-  "grid h-11 w-11 place-items-center rounded-full bg-ink/50 backdrop-blur-xl border border-taupe/25 text-cream shadow-[0_10px_28px_rgba(0,0,0,0.35)] transition-[transform,border-color,color] duration-150 hover:scale-110 hover:border-taupe active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cream/70";
+  "grid h-9 w-9 sm:h-11 sm:w-11 place-items-center rounded-full bg-ink/50 backdrop-blur-xl border border-taupe/25 text-cream shadow-[0_10px_28px_rgba(0,0,0,0.35)] transition-[transform,border-color,color] duration-150 hover:scale-110 hover:border-taupe active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cream/70";
 
 export function FloatingToolbar() {
   const cfg = useToolbar();
@@ -141,7 +141,7 @@ export function FloatingToolbar() {
       <div
         ref={ref}
         data-no-convert
-        className="sf-toolbar"
+        className="sf-toolbar gap-1.5 sm:gap-2"
         style={{
           position: "fixed",
           top: pos ? pos.y : "50%",
@@ -151,7 +151,6 @@ export function FloatingToolbar() {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 8,
           touchAction: "none",
           userSelect: "none",
           cursor: dragging ? "grabbing" : "grab",
@@ -163,10 +162,10 @@ export function FloatingToolbar() {
         {/* Grab handle — signals the whole cluster is draggable */}
         <div
           aria-hidden
-          className="grid h-5 w-9 place-items-center rounded-full text-taupe/60"
+          className="grid h-4 w-8 sm:h-5 sm:w-9 place-items-center rounded-full text-taupe/60"
           title="Drag to move"
         >
-          <GripHorizontal size={16} strokeWidth={1.75} />
+          <GripHorizontal size={15} strokeWidth={1.75} />
         </div>
 
         {showCurrency && (

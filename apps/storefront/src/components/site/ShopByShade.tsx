@@ -2,14 +2,15 @@ import { Link } from "@tanstack/react-router";
 import { Reveal, RevealGroup, RevealItem } from "@/components/site/Reveal";
 import {
   DEFAULT_HOME,
-  DEMO_SHADE_ITEMS,
   type ShadeItem,
   type HeadContent,
 } from "@/lib/home-content";
 
 /**
- * Shop-by-shade tiles. `items` come live from the Hub (/shades) with their
- * cover images; falls back to the ported demo swatches.
+ * Shop-by-shade tiles. Fully parametric: `items` come live from the Hub
+ * (/shades) with their catalogue cover images. When the catalogue has no
+ * shades the section renders nothing at all — we never fabricate shades that
+ * don't exist in the admin catalogue (they'd link to dead /shop?shade slugs).
  */
 export function ShopByShade({
   head = DEFAULT_HOME.shadesHead,
@@ -18,7 +19,8 @@ export function ShopByShade({
   head?: HeadContent;
   items?: ShadeItem[];
 }) {
-  const shades = items && items.length ? items : DEMO_SHADE_ITEMS;
+  const shades = items ?? [];
+  if (!shades.length) return null;
   return (
     <section className="bg-card/40 border-y border-taupe/15">
       <div className="mx-auto max-w-[1400px] px-6 lg:px-10 py-28 md:py-36">

@@ -40,9 +40,10 @@ export function CommandPalette() {
     ).map((a) => ({ ...a, kind: "quick" as const }));
     const apps = MODULES.filter(
       (m) =>
-        !t ||
-        m.label.toLowerCase().includes(t) ||
-        m.description.toLowerCase().includes(t),
+        !m.hidden &&
+        (!t ||
+          m.label.toLowerCase().includes(t) ||
+          m.description.toLowerCase().includes(t)),
     )
       .slice(0, 7)
       .map((m) => ({

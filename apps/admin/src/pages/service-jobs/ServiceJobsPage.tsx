@@ -575,28 +575,7 @@ export function ServiceJobsPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-5">
-      {/* Hero header */}
-      <div className="relative overflow-hidden rounded-[18px] glass shadow-glass p-5 md:p-6">
-        <div
-          className="pointer-events-none absolute -right-16 -top-20 w-64 h-64 rounded-full blur-3xl"
-          style={{ background: "rgb(var(--accent-deep) / 0.25)" }}
-        />
-        <div className="relative flex items-center gap-4">
-          <span className="grid place-items-center w-12 h-12 rounded-[14px] bg-accent-deep/90 text-[#F4E9D9] border border-accent/30 shadow-[0_8px_24px_rgb(var(--accent-deep)/0.45)] shrink-0">
-            <Scissors className="w-6 h-6" />
-          </span>
-          <div className="min-w-0">
-            <h1 className="font-display text-2xl md:text-[28px] leading-tight">
-              Stylist Studio
-            </h1>
-            <p className="text-text-muted text-[13px] md:text-sm mt-0.5">
-              In-house styling operations — assign, track, QC and never lose a wig
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI strip */}
+      {/* KPI strip (the page title/subtitle already render in the app header) */}
       <KpiStrip />
 
       {/* Tabs — glassy pills */}

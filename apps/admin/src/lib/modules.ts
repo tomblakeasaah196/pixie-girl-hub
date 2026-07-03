@@ -53,6 +53,12 @@ export interface AppModule {
   icon: LucideIcon;
   /** Optional key into a live badge map (unread/pending counts). */
   badgeKey?: string;
+  /**
+   * Hidden from navigation (sidebar, "More", App Grid, command palette). The
+   * route + code stay intact so it can be re-enabled for a client that needs
+   * it — just flip this off. Used for modules out of scope for this project.
+   */
+  hidden?: boolean;
 }
 
 export const GROUP_LABELS: Record<ModuleGroup, string> = {
@@ -117,6 +123,7 @@ export const MODULES: AppModule[] = [
     group: "run",
     route: "/ecommerce",
     icon: Globe,
+    hidden: true, // out of scope for this project; keep for future clients
   },
   {
     key: "workspace",
@@ -231,6 +238,7 @@ export const MODULES: AppModule[] = [
     group: "finance",
     route: "/intercompany",
     icon: ArrowLeftRight,
+    hidden: true, // out of scope for this project; keep for future clients
   },
   {
     key: "my-hr",

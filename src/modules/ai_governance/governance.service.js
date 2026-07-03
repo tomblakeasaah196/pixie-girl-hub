@@ -13,9 +13,47 @@ const repo = require("./governance.repo");
 const brandVoiceRepo = require("./brand-voice.repo");
 const modelCatalogue = require("./model-catalogue.repo");
 const crypto = require("../../services/encryption.service");
+const { config } = require("../../config/env");
 const { audit } = require("../../middleware/audit");
 const { money } = require("../../utils/money");
 const { NotFoundError } = require("../../utils/errors");
+
+/**
+ * Fallback vendor config from environment variables. A key set in .env is used
+ * when a vendor row has no encrypted key stored via the AI Control UI, so
+ * operators can configure keys either way. Only the api_key / endpoint / model
+ * come from env; costs + caps still come from the DB row.
+ */
+function envVendor(vendor) {
+  switch (vendor) {
+    case "deepseek":
+      return {
+        api_key: config.DEEPSEEK_API_KEY,
+        endpoint_url: config.DEEPSEEK_BASE_URL,
+        default_model: config.DEEPSEEK_MODEL,
+      };
+    case "openai":
+      return {
+        api_key: config.OPENAI_API_KEY,
+        endpoint_url: "https://api.openai.com/v1",
+        default_model: config.OPENAI_EMBEDDING_MODEL,
+      };
+    case "groq":
+      return {
+        api_key: config.GROQ_API_KEY,
+        endpoint_url: "https://api.groq.com/openai/v1",
+        default_model: "whisper-large-v3",
+      };
+    case "gemini":
+      return {
+        api_key: config.GEMINI_API_KEY,
+        endpoint_url: config.GEMINI_BASE_URL,
+        default_model: config.GEMINI_MODEL,
+      };
+    default:
+      return {};
+  }
+}
 
 const A = (user, action_key, target_type, target_id, after, request_id) =>
   audit({
@@ -92,8 +130,19 @@ async function revokeGrant({ user, request_id, grant_id, reason }) {
 }
 
 // ── Vendor credentials ─────────────────────────────────────
-function listVendors() {
-  return repo.listVendors();
+async function listVendors() {
+  const rows = await repo.listVendors();
+  // Reflect an env-provided key/endpoint/model so a vendor configured purely
+  // via .env still shows as ready (has_api_key) and surfaces its endpoint/model.
+  return rows.map((r) => {
+    const env = envVendor(r.vendor);
+    return {
+      ...r,
+      has_api_key: r.has_api_key || Boolean(env.api_key),
+      endpoint_url: r.endpoint_url ?? env.endpoint_url ?? null,
+      default_model: r.default_model ?? env.default_model ?? null,
+    };
+  });
 }
 async function upsertVendor({ user, request_id, input }) {
   const v = { ...input };
@@ -146,11 +195,14 @@ async function setVendorActive({ user, request_id, vendor, is_active }) {
 async function getVendorConfig({ vendor }) {
   const v = await repo.getVendorRaw({ vendor });
   if (!v || !v.is_active) return null;
+  // Prefer the encrypted key/endpoint/model stored via AI Control; fall back to
+  // the .env values so a vendor configured only through the environment works.
+  const env = envVendor(vendor);
   return {
     vendor: v.vendor,
-    endpoint_url: v.endpoint_url,
-    default_model: v.default_model,
-    api_key: v.api_key_enc ? crypto.decrypt(v.api_key_enc) : null,
+    endpoint_url: v.endpoint_url || env.endpoint_url || null,
+    default_model: v.default_model || env.default_model || null,
+    api_key: v.api_key_enc ? crypto.decrypt(v.api_key_enc) : env.api_key || null,
     org_id: v.org_id_enc ? crypto.decrypt(v.org_id_enc) : null,
     cost_per_1k_input_tokens: v.cost_per_1k_input_tokens,
     cost_per_1k_output_tokens: v.cost_per_1k_output_tokens,

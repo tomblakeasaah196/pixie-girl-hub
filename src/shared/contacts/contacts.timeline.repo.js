@@ -17,57 +17,96 @@
 const { query } = require("../../config/database");
 const { t } = require("../../config/brands");
 
-/** The UNION ALL of every contact-activity source for a brand. */
-function unionSql(brand) {
+/**
+ * Return the subset of the given brand tables that actually exist in the DB.
+ * Some brand tables are optional / can be retired (e.g. POS was decommissioned,
+ * so `{brand}.pos_transactions` may be absent). Referencing a missing table
+ * makes the whole UNION 500, so callers filter their sources through this.
+ */
+async function existingBrandTables(brand, shortNames) {
+  const qualified = shortNames.map((n) => t(brand, n));
+  const { rows } = await query(
+    `SELECT n FROM unnest($1::text[]) AS n WHERE to_regclass(n) IS NOT NULL`,
+    [qualified],
+  );
+  const present = new Set(rows.map((r) => r.n));
+  return (name) => present.has(t(brand, name));
+}
+
+/** Every contact-activity source, tagged with the brand table it depends on
+ *  (null = shared table, always present). */
+function unionParts(brand) {
   return [
     // ── Brand schema ────────────────────────────────────────
-    `SELECT COALESCE(placed_at, created_at) AS occurred_at, 'sales'::text AS module,
-            'sales_order'::text AS kind, order_id AS ref_id, order_number AS ref,
-            NULL::text AS title, status::text AS status, total_ngn AS amount_ngn
-       FROM ${t(brand, "sales_orders")} WHERE contact_id = $1`,
-    `SELECT created_at, 'sales', 'quotation', quotation_id, quotation_number,
-            NULL, status::text, total_ngn
-       FROM ${t(brand, "quotations")} WHERE contact_id = $1`,
-    `SELECT created_at, 'invoicing', 'invoice', invoice_id, invoice_number,
-            NULL, status::text, total_ngn
-       FROM ${t(brand, "invoices")} WHERE contact_id = $1`,
-    `SELECT issued_at, 'invoicing', 'receipt', receipt_id, receipt_number,
-            NULL, NULL, amount_ngn
-       FROM ${t(brand, "receipts")} WHERE contact_id = $1`,
-    `SELECT created_at, 'pos', 'pos_sale', transaction_id, NULL,
-            NULL, status::text, total_ngn
-       FROM ${t(brand, "pos_transactions")} WHERE customer_contact_id = $1`,
-    `SELECT created_at, 'crm', 'deal', deal_id, NULL,
-            title, status::text, expected_value_ngn
-       FROM ${t(brand, "crm_deals")} WHERE contact_id = $1`,
-    `SELECT performed_at, 'crm', 'activity', activity_id, NULL,
-            subject, activity_type::text, NULL::numeric
-       FROM ${t(brand, "crm_activities")} WHERE contact_id = $1`,
-    `SELECT created_at, 'crm', 'note', note_id, NULL,
-            left(body, 140), NULL, NULL
-       FROM ${t(brand, "crm_notes")} WHERE contact_id = $1`,
-    `SELECT created_at, 'service', 'service_job', job_id, job_number,
-            NULL, status::text, agreed_cost_ngn
-       FROM ${t(brand, "service_jobs")} WHERE customer_contact_id = $1`,
-    `SELECT created_at, 'logistics', 'delivery', delivery_id, delivery_number,
-            NULL, status::text, NULL
-       FROM ${t(brand, "deliveries")} WHERE recipient_contact_id = $1`,
-    `SELECT completed_at, 'retention', 'hair_quiz', response_id, NULL,
-            NULL, NULL, NULL
-       FROM ${t(brand, "hair_quiz_responses")}
-      WHERE contact_id = $1 AND completed_at IS NOT NULL`,
-    // ── Shared schema (scoped by business) ──────────────────
-    `SELECT created_at, 'retention', 'loyalty', ledger_id, NULL,
-            transaction_type::text, NULL, NULL
-       FROM shared.loyalty_ledger WHERE contact_id = $1 AND business = $2`,
-    `SELECT created_at, 'retention', 'referral_redemption', redemption_id, NULL,
-            NULL, status::text, NULL
-       FROM shared.referral_redemptions
-      WHERE referred_contact_id = $1 AND business = $2`,
-    `SELECT created_at, 'storefront', 'review', review_id, NULL,
-            NULL, NULL, NULL
-       FROM shared.product_reviews WHERE contact_id = $1 AND business = $2`,
-  ].join("\n    UNION ALL\n");
+    { tbl: "sales_orders", sql:
+      `SELECT COALESCE(placed_at, created_at) AS occurred_at, 'sales'::text AS module,
+              'sales_order'::text AS kind, order_id AS ref_id, order_number AS ref,
+              NULL::text AS title, status::text AS status, total_ngn AS amount_ngn
+         FROM ${t(brand, "sales_orders")} WHERE contact_id = $1` },
+    { tbl: "quotations", sql:
+      `SELECT created_at, 'sales', 'quotation', quotation_id, quotation_number,
+              NULL, status::text, total_ngn
+         FROM ${t(brand, "quotations")} WHERE contact_id = $1` },
+    { tbl: "invoices", sql:
+      `SELECT created_at, 'invoicing', 'invoice', invoice_id, invoice_number,
+              NULL, status::text, total_ngn
+         FROM ${t(brand, "invoices")} WHERE contact_id = $1` },
+    { tbl: "receipts", sql:
+      `SELECT issued_at, 'invoicing', 'receipt', receipt_id, receipt_number,
+              NULL, NULL, amount_ngn
+         FROM ${t(brand, "receipts")} WHERE contact_id = $1` },
+    { tbl: "pos_transactions", sql:
+      `SELECT created_at, 'pos', 'pos_sale', transaction_id, NULL,
+              NULL, status::text, total_ngn
+         FROM ${t(brand, "pos_transactions")} WHERE customer_contact_id = $1` },
+    { tbl: "crm_deals", sql:
+      `SELECT created_at, 'crm', 'deal', deal_id, NULL,
+              title, status::text, expected_value_ngn
+         FROM ${t(brand, "crm_deals")} WHERE contact_id = $1` },
+    { tbl: "crm_activities", sql:
+      `SELECT performed_at, 'crm', 'activity', activity_id, NULL,
+              subject, activity_type::text, NULL::numeric
+         FROM ${t(brand, "crm_activities")} WHERE contact_id = $1` },
+    { tbl: "crm_notes", sql:
+      `SELECT created_at, 'crm', 'note', note_id, NULL,
+              left(body, 140), NULL, NULL
+         FROM ${t(brand, "crm_notes")} WHERE contact_id = $1` },
+    { tbl: "service_jobs", sql:
+      `SELECT created_at, 'service', 'service_job', job_id, job_number,
+              NULL, status::text, agreed_cost_ngn
+         FROM ${t(brand, "service_jobs")} WHERE customer_contact_id = $1` },
+    { tbl: "deliveries", sql:
+      `SELECT created_at, 'logistics', 'delivery', delivery_id, delivery_number,
+              NULL, status::text, NULL
+         FROM ${t(brand, "deliveries")} WHERE recipient_contact_id = $1` },
+    { tbl: "hair_quiz_responses", sql:
+      `SELECT completed_at, 'retention', 'hair_quiz', response_id, NULL,
+              NULL, NULL, NULL
+         FROM ${t(brand, "hair_quiz_responses")}
+        WHERE contact_id = $1 AND completed_at IS NOT NULL` },
+    // ── Shared schema (scoped by business; always present) ──
+    { tbl: null, sql:
+      `SELECT created_at, 'retention', 'loyalty', ledger_id, NULL,
+              transaction_type::text, NULL, NULL
+         FROM shared.loyalty_ledger WHERE contact_id = $1 AND business = $2` },
+    { tbl: null, sql:
+      `SELECT created_at, 'retention', 'referral_redemption', redemption_id, NULL,
+              NULL, status::text, NULL
+         FROM shared.referral_redemptions
+        WHERE referred_contact_id = $1 AND business = $2` },
+    { tbl: null, sql:
+      `SELECT created_at, 'storefront', 'review', review_id, NULL,
+              NULL, NULL, NULL
+         FROM shared.product_reviews WHERE contact_id = $1 AND business = $2` },
+  ];
+}
+
+/** Build the UNION ALL from only the sources whose table exists. */
+function unionSql(brand, has) {
+  return unionParts(brand)
+    .filter((p) => p.tbl === null || has(p.tbl))
+    .map((p) => p.sql)
+    .join("\n    UNION ALL\n");
 }
 
 // Module → frontend timeline category. "commercial" = money-bearing events,
@@ -111,7 +150,20 @@ async function timeline({
   page = 1,
   page_size = 30,
 }) {
-  const union = unionSql(brand);
+  const has = await existingBrandTables(brand, [
+    "sales_orders",
+    "quotations",
+    "invoices",
+    "receipts",
+    "pos_transactions",
+    "crm_deals",
+    "crm_activities",
+    "crm_notes",
+    "service_jobs",
+    "deliveries",
+    "hair_quiz_responses",
+  ]);
+  const union = unionSql(brand, has);
   const params = [contact_id, brand];
   const where = [];
   // NOTE: `kind` and `module` are UNION-derived text columns. Postgres cannot
@@ -165,6 +217,46 @@ async function timeline({
 /** Roll-up counters for the contact header (cheap targeted aggregates). */
 async function summary({ brand, contact_id }) {
   const paid = "('paid','awaiting_dispatch','completed')";
+
+  // Build "last activity" only from sources whose table exists (POS in
+  // particular can be retired). Referencing a missing table would 500 the
+  // whole summary — which is exactly what happened when this was hard-coded.
+  const has = await existingBrandTables(brand, [
+    "sales_orders",
+    "invoices",
+    "pos_transactions",
+    "crm_activities",
+    "service_jobs",
+  ]);
+  const actParts = [];
+  if (has("sales_orders"))
+    actParts.push(
+      `SELECT max(COALESCE(placed_at, created_at)) AS occurred
+         FROM ${t(brand, "sales_orders")} WHERE contact_id = $1`,
+    );
+  if (has("invoices"))
+    actParts.push(
+      `SELECT max(created_at) FROM ${t(brand, "invoices")} WHERE contact_id = $1`,
+    );
+  if (has("pos_transactions"))
+    actParts.push(
+      `SELECT max(created_at) FROM ${t(brand, "pos_transactions")}
+        WHERE customer_contact_id = $1`,
+    );
+  if (has("crm_activities"))
+    actParts.push(
+      `SELECT max(performed_at) FROM ${t(brand, "crm_activities")}
+        WHERE contact_id = $1`,
+    );
+  if (has("service_jobs"))
+    actParts.push(
+      `SELECT max(created_at) FROM ${t(brand, "service_jobs")}
+        WHERE customer_contact_id = $1`,
+    );
+  const lastActivitySql = actParts.length
+    ? `(SELECT max(occurred) FROM (${actParts.join(" UNION ALL ")}) a)`
+    : "NULL::timestamptz";
+
   const { rows } = await query(
     `SELECT
        (SELECT count(*)::int FROM ${t(brand, "sales_orders")} WHERE contact_id = $1)
@@ -180,20 +272,7 @@ async function summary({ brand, contact_id }) {
          WHERE customer_contact_id = $1) AS service_jobs_count,
        (SELECT COALESCE(current_balance,0) FROM shared.customer_loyalty_state
          WHERE contact_id = $1 AND business = $2) AS loyalty_balance,
-       -- Most recent touchpoint across the money/engagement sources, so a
-       -- contact with even one order shows a real "last activity" (not null).
-       (SELECT max(occurred) FROM (
-          SELECT max(COALESCE(placed_at, created_at)) AS occurred
-            FROM ${t(brand, "sales_orders")} WHERE contact_id = $1
-          UNION ALL SELECT max(created_at)
-            FROM ${t(brand, "invoices")} WHERE contact_id = $1
-          UNION ALL SELECT max(created_at)
-            FROM ${t(brand, "pos_transactions")} WHERE customer_contact_id = $1
-          UNION ALL SELECT max(performed_at)
-            FROM ${t(brand, "crm_activities")} WHERE contact_id = $1
-          UNION ALL SELECT max(created_at)
-            FROM ${t(brand, "service_jobs")} WHERE customer_contact_id = $1
-       ) a) AS last_activity_at`,
+       ${lastActivitySql} AS last_activity_at`,
     [contact_id, brand],
   );
   return rows[0];

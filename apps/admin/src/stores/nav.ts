@@ -29,17 +29,17 @@ interface NavState {
 
 const ANCHOR = "dashboard";
 
+// Hidden modules are excluded from all navigation surfaces.
+const isNavable = (k: string) =>
+  MODULES.some((m) => m.key === k && !m.hidden);
+
 function normalize(keys: string[]): string[] {
-  const valid = keys.filter(
-    (k) => MODULES.some((m) => m.key === k) && k !== ANCHOR,
-  );
+  const valid = keys.filter((k) => isNavable(k) && k !== ANCHOR);
   return [ANCHOR, ...valid];
 }
 
 function normalizeBottomNav(keys: string[]): string[] {
-  return keys
-    .filter((k) => MODULES.some((m) => m.key === k))
-    .slice(0, BOTTOM_NAV_LIMIT);
+  return keys.filter(isNavable).slice(0, BOTTOM_NAV_LIMIT);
 }
 
 export const useNavStore = create<NavState>()(
@@ -101,7 +101,10 @@ export const useNavStore = create<NavState>()(
   ),
 );
 
-/** Keys not in the top grid, in catalogue order — the "More" set. */
+/** Keys not in the top grid, in catalogue order — the "More" set. Hidden
+ *  modules are excluded so they never appear in the sidebar. */
 export function moreKeys(top: string[]): string[] {
-  return MODULES.map((m) => m.key).filter((k) => !top.includes(k));
+  return MODULES.filter((m) => !m.hidden)
+    .map((m) => m.key)
+    .filter((k) => !top.includes(k));
 }

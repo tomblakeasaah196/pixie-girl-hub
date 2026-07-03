@@ -25,16 +25,33 @@ const { geoCurrencyMiddleware } = require("./geo-currency");
  * and survive restarts (the default MemoryStore is per-process — two API
  * replicas would double every limit; a deploy resets all counters).
  *
- * The client is resolved lazily per command, so constructing a store at
- * require time (before initRedis()) is safe. `passOnStoreError` on the
- * limiters keeps the API available (fail-open, unlimited) if Redis blips —
- * Redis being down already degrades sessions, so availability wins here.
+ * NOTE: rate-limit-redis v4's RedisStore constructor eagerly issues a
+ * `SCRIPT LOAD` (loadIncrementScript) — so building a store needs a LIVE Redis
+ * client, it is NOT safe at require time before initRedis(). `sendCommand` is
+ * async so a not-yet-ready / disconnected client surfaces as a rejected promise
+ * that `passOnStoreError` fails open on, rather than a synchronous throw that
+ * crashes the process. Stores are also only built lazily on first request (see
+ * lazyLimiter) — by then startup has finished and Redis is connected.
  */
 function redisRateLimitStore(prefix) {
   return new RedisStore({
     prefix,
-    sendCommand: (...args) => getRedisClient().call(...args),
+    sendCommand: async (...args) => getRedisClient().call(...args),
   });
+}
+
+/**
+ * Wrap a rate-limiter factory so the limiter (and its Redis store) is built on
+ * first request instead of at module-load time. This is what lets
+ * publicWriteLimiter be `require`d before initRedis() runs — requests only
+ * arrive after server.listen(), which is well after Redis is connected.
+ */
+function lazyLimiter(factory) {
+  let mw = null;
+  return (req, res, next) => {
+    if (!mw) mw = factory();
+    return mw(req, res, next);
+  };
 }
 
 function applyGlobalMiddleware(app) {
@@ -134,27 +151,31 @@ function applyGlobalMiddleware(app) {
   // SSR calls could be 429'd despite the comment saying otherwise.
   app.use(
     "/api/",
-    rateLimit({
-      windowMs: 60_000,
-      max: 300,
-      standardHeaders: true,
-      legacyHeaders: false,
-      store: redisRateLimitStore("rl:api:"),
-      passOnStoreError: true,
-      // Skip rate limiting for internal SSR requests from the storefront
-      // (127.0.0.1 / ::1). Real client IP limiting still applies for all
-      // external traffic via the cf-connecting-ip / x-real-ip override above.
-      skip: (req) => {
-        const ip = req.ip || req.socket?.remoteAddress || "";
-        return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-      },
-      message: {
-        error: {
-          code: "TOO_MANY_REQUESTS",
-          message: "Slow down — try again in a minute.",
+    lazyLimiter(() =>
+      rateLimit({
+        windowMs: 60_000,
+        max: 300,
+        standardHeaders: true,
+        legacyHeaders: false,
+        store: redisRateLimitStore("rl:api:"),
+        passOnStoreError: true,
+        // Skip rate limiting for internal SSR requests from the storefront
+        // (127.0.0.1 / ::1). Real client IP limiting still applies for all
+        // external traffic via the cf-connecting-ip / x-real-ip override above.
+        skip: (req) => {
+          const ip = req.ip || req.socket?.remoteAddress || "";
+          return (
+            ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1"
+          );
         },
-      },
-    }),
+        message: {
+          error: {
+            code: "TOO_MANY_REQUESTS",
+            message: "Slow down — try again in a minute.",
+          },
+        },
+      }),
+    ),
   );
 }
 
@@ -164,19 +185,21 @@ function applyGlobalMiddleware(app) {
  * The global limiter is generous; these blunt enumeration/abuse on writes that
  * create records. Keyed by client IP (trust proxy is set above).
  */
-const publicWriteLimiter = rateLimit({
-  windowMs: config.PUBLIC_WRITE_RATE_WINDOW_MS,
-  max: config.PUBLIC_WRITE_RATE_MAX,
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: redisRateLimitStore("rl:pubw:"),
-  passOnStoreError: true,
-  message: {
-    error: {
-      code: "TOO_MANY_REQUESTS",
-      message: "Too many submissions — please try again shortly.",
+const publicWriteLimiter = lazyLimiter(() =>
+  rateLimit({
+    windowMs: config.PUBLIC_WRITE_RATE_WINDOW_MS,
+    max: config.PUBLIC_WRITE_RATE_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: redisRateLimitStore("rl:pubw:"),
+    passOnStoreError: true,
+    message: {
+      error: {
+        code: "TOO_MANY_REQUESTS",
+        message: "Too many submissions — please try again shortly.",
+      },
     },
-  },
-});
+  }),
+);
 
 module.exports = { applyGlobalMiddleware, publicWriteLimiter };

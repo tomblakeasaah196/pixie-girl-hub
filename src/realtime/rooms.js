@@ -23,6 +23,10 @@ const ROOMS = {
   campaign_live: (brand, campaignId) => `brand:${brand}:campaign:${campaignId}`,
   order_timeline_public: (brand, token) =>
     `brand:${brand}:order_timeline:${token}`,
+  // Shade Finder guest chat — PUBLIC namespace (/public) only; the socket
+  // auto-joins its own session room after guest-token auth (no 'join' verb).
+  shade_session: (brand, sessionId) =>
+    `brand:${brand}:shade_session:${sessionId}`,
   approvals: (brand) => `brand:${brand}:approvals`,
 
   // User-scoped push channels

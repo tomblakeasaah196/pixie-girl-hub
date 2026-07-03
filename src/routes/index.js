@@ -149,6 +149,7 @@ const publicStylistVerifyRouter = require("../modules/stylist_programme/verify.r
 const publicStylistProgrammeRouter = require("../modules/stylist_programme/stylist.public.routes");
 const publicReferralRouter = require("../modules/retention/referral.routes");
 const publicHairQuizRouter = require("../modules/retention/hair-quiz.routes");
+const publicShadeFinderRouter = require("../modules/shade_finder/shade-finder.routes");
 const publicCampaignRouter = require("../modules/sales_campaigns/campaigns.public.routes");
 const publicLandingRouter = require("../modules/landing_studio/landing.public.routes");
 const publicSignRouter = require("../shared/documents/documents.esign.public.routes");
@@ -236,6 +237,12 @@ function mountRoutes(app) {
   );
   publicRouter.use("/referral", publicWriteLimiter, publicReferralRouter);
   publicRouter.use("/hair-quiz", publicWriteLimiter, publicHairQuizRouter);
+  // Praxis Shade Finder — photo → shade + product recommendations.
+  // NOTE: no publicWriteLimiter here (same reasoning as /storefront/cart) —
+  // a conversational session posts many small turns and would trip the
+  // 20-per-window throttle. The module enforces its own per-device 10/day
+  // photo quota, an IP-ceiling backstop, and a chat-turn daily cap in Redis.
+  publicRouter.use("/shade-finder", publicShadeFinderRouter);
   // Public sales landing — host → brand resolver runs first so the
   // /sale/:slug controller knows which brand to load when served from
   // sales.pixiegirlglobal.com / sales.thefaitlynbrand.com.

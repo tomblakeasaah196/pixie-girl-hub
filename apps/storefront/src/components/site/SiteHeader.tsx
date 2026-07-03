@@ -28,6 +28,7 @@ const NAV_GROUPS: NavItem[] = [
       { label: "By shade", url: "/shades" },
       { label: "By collection", url: "/collections" },
       { label: "By bundle", url: "/bundles" },
+      { label: "Find my shade", url: "/shade-finder" },
     ],
   },
   { label: "Services", url: "/services" },

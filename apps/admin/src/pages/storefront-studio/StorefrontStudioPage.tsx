@@ -1310,7 +1310,19 @@ function PagesTab() {
 
   async function onSave() {
     if (!sel) return;
-    await runStudio(() => save.mutateAsync({ ...sel, slots }), {
+    // Send ONLY the editable fields — never spread the loaded row, whose DB-only
+    // keys (page_id, business, status, timestamps) tripped the backend validator
+    // with "Invalid input" and blocked every save.
+    const payload = {
+      page_key: sel.page_key,
+      template_key: sel.template_key,
+      url_path: sel.url_path,
+      meta_title: sel.meta_title ?? undefined,
+      meta_description: sel.meta_description ?? undefined,
+      og_image_url: sel.og_image_url ?? undefined,
+      slots,
+    };
+    await runStudio(() => save.mutateAsync(payload), {
       area: `${STUDIO_AREA} → Pages (${sel.page_key || "new"})`,
       action: "Save page draft",
       success: "Draft saved.",

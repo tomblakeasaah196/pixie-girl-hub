@@ -141,6 +141,16 @@ export const aiGovernanceApi = {
     cost_per_1k_output_tokens?: number;
     cost_native_currency?: string;
   }) => api.post<AiVendorRow>("/ai-governance/vendors", input),
+  rotateVendorKey: (vendor: AiVendor, api_key: string) =>
+    api.post<{ credential_id: string; vendor: AiVendor }>(
+      `/ai-governance/vendors/${vendor}/rotate`,
+      { api_key },
+    ),
+  setVendorActive: (vendor: AiVendor, is_active: boolean) =>
+    api.post<{ credential_id: string; vendor: AiVendor; is_active: boolean }>(
+      `/ai-governance/vendors/${vendor}/active`,
+      { is_active },
+    ),
 
   spendMeter: (params: { from?: string; to?: string } = {}) => {
     const u = new URLSearchParams();

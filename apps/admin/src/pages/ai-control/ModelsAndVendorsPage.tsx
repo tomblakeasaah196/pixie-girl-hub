@@ -64,6 +64,9 @@ export function ModelsAndVendorsPage() {
   }, [modelsQ.data]);
 
   const [editingModel, setEditingModel] = useState<AiModel | null>(null);
+  const [editingVendor, setEditingVendor] = useState<
+    AiVendorRow | "new" | null
+  >(null);
 
   const setCurrentModel = useMutation({
     mutationFn: ({
@@ -112,10 +115,13 @@ export function ModelsAndVendorsPage() {
       <section>
         <div className="flex items-center justify-between mb-2.5">
           <h3 className="font-display text-[16px]">Configured vendors</h3>
-          <p className="text-[11px] text-text-faint">
-            Primary: <code className="font-mono">deepseek</code> · Fallback:{" "}
-            <code className="font-mono">gemini</code>
-          </p>
+          <button
+            onClick={() => setEditingVendor("new")}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-panel-2 border hairline px-3 py-1.5 text-[12px] hover:border-accent/40"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add vendor
+          </button>
         </div>
         <Card className="p-0 overflow-hidden">
           {vendorsQ.isLoading ? (
@@ -191,6 +197,13 @@ export function ModelsAndVendorsPage() {
                         ]}
                       />
                     </div>
+                    <button
+                      onClick={() => setEditingVendor(row)}
+                      title="Configure vendor (API key, endpoint, costs)"
+                      className="shrink-0 mt-5 text-text-muted hover:text-accent-glow"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               );
@@ -251,7 +264,220 @@ export function ModelsAndVendorsPage() {
           }}
         />
       )}
+
+      {editingVendor && (
+        <VendorEditor
+          row={editingVendor === "new" ? null : editingVendor}
+          existingVendors={(vendorsQ.data ?? []).map((v) => v.vendor)}
+          onClose={() => setEditingVendor(null)}
+          onSaved={() => {
+            setEditingVendor(null);
+            qc.invalidateQueries({ queryKey: ["ai", "vendors"] });
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// ── Vendor editor modal ───────────────────────────────────
+
+const VENDOR_OPTIONS: { value: AiVendor; label: string }[] = [
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "gemini", label: "Gemini" },
+  { value: "openai", label: "OpenAI" },
+  { value: "groq", label: "Groq" },
+  { value: "self_hosted", label: "Self-hosted" },
+  { value: "other", label: "Other" },
+];
+
+function VendorEditor({
+  row,
+  existingVendors,
+  onClose,
+  onSaved,
+}: {
+  row: AiVendorRow | null;
+  existingVendors: AiVendor[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isNew = !row;
+  const [vendor, setVendor] = useState<AiVendor>(row?.vendor ?? "deepseek");
+  const [displayName, setDisplayName] = useState(row?.display_name ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [endpoint, setEndpoint] = useState(row?.endpoint_url ?? "");
+  const [defaultModel, setDefaultModel] = useState(row?.default_model ?? "");
+  const [costIn, setCostIn] = useState(
+    String(row?.cost_per_1k_input_tokens ?? "0"),
+  );
+  const [costOut, setCostOut] = useState(
+    String(row?.cost_per_1k_output_tokens ?? "0"),
+  );
+  const [currency, setCurrency] = useState(row?.cost_native_currency ?? "");
+  const [active, setActive] = useState(row?.is_active ?? true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      setErr(null);
+      const cur = currency.trim().toUpperCase();
+      await aiGovernanceApi.upsertVendor({
+        vendor,
+        display_name: displayName.trim(),
+        // Only send api_key when provided — omitting it keeps the current key.
+        api_key: apiKey.trim() || undefined,
+        endpoint_url: endpoint.trim() || undefined,
+        default_model: defaultModel.trim() || undefined,
+        current_model: row?.current_model ?? undefined,
+        cost_per_1k_input_tokens: Number(costIn) || 0,
+        cost_per_1k_output_tokens: Number(costOut) || 0,
+        cost_native_currency: cur.length === 3 ? cur : undefined,
+      });
+      // is_active isn't part of upsert — apply it via the dedicated endpoint.
+      if (row && active !== row.is_active) {
+        await aiGovernanceApi.setVendorActive(vendor, active);
+      }
+    },
+    onSuccess: onSaved,
+    onError: (e) =>
+      setErr(e instanceof Error ? e.message : "Couldn’t save vendor."),
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={
+        <span className="flex items-center gap-2">
+          <KeyRound className="w-4 h-4 text-accent-glow" />
+          {isNew ? "Add vendor" : `Configure ${row?.vendor}`}
+        </span>
+      }
+      footer={
+        <>
+          <button
+            onClick={onClose}
+            className="rounded-xl bg-panel-2 border hairline px-4 py-2 text-[13px] text-text-muted hover:text-text-primary"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => save.mutate()}
+            disabled={!displayName.trim() || save.isPending}
+            className="rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {save.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Check className="w-3.5 h-3.5" />
+            )}
+            Save
+          </button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-[11.5px] text-text-muted mb-1">
+            Vendor
+          </span>
+          <Select
+            value={vendor}
+            onChange={(v) => setVendor(v as AiVendor)}
+            disabled={!isNew}
+            options={VENDOR_OPTIONS.map((o) => ({
+              ...o,
+              label:
+                !isNew || !existingVendors.includes(o.value)
+                  ? o.label
+                  : `${o.label} (already added)`,
+            }))}
+          />
+        </label>
+        <FieldText
+          label="Display name"
+          value={displayName}
+          onChange={setDisplayName}
+        />
+        <div className="sm:col-span-2">
+          <span className="block text-[11.5px] text-text-muted mb-1">
+            API key{" "}
+            {!isNew && (
+              <span className="text-text-faint">
+                — {row?.has_api_key ? "leave blank to keep current" : "not set"}
+              </span>
+            )}
+          </span>
+          <div className="relative">
+            <input
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={
+                row?.has_api_key ? "•••••••••• (unchanged)" : "sk-…"
+              }
+              autoComplete="off"
+              className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 pr-9 text-[13px] font-mono focus:outline-none focus:border-accent/40"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((s) => !s)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-primary"
+            >
+              {showKey ? (
+                <EyeOff className="w-3.5 h-3.5" />
+              ) : (
+                <Eye className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+        </div>
+        <FieldText
+          label="Endpoint URL"
+          value={endpoint}
+          onChange={setEndpoint}
+        />
+        <FieldText
+          label="Default model"
+          value={defaultModel}
+          onChange={setDefaultModel}
+        />
+        <FieldText
+          label="Cost / 1k input tokens (native)"
+          value={costIn}
+          onChange={setCostIn}
+        />
+        <FieldText
+          label="Cost / 1k output tokens (native)"
+          value={costOut}
+          onChange={setCostOut}
+        />
+        <FieldText
+          label="Cost currency (3-letter, e.g. USD)"
+          value={currency}
+          onChange={setCurrency}
+        />
+        {!isNew && (
+          <label className="flex items-center gap-2 text-[12.5px] text-text-muted mt-6">
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+              className="accent-accent"
+            />
+            Active
+          </label>
+        )}
+      </div>
+      {(err || save.isError) && (
+        <div className="pt-2 text-[12px] text-danger inline-flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5" />
+          {err ?? "Couldn’t save."}
+        </div>
+      )}
+    </Modal>
   );
 }
 

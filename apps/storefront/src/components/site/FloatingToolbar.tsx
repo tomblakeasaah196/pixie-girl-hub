@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { GripHorizontal, HelpCircle, Moon, Sun, X } from "lucide-react";
+import { GripHorizontal, HelpCircle, Moon, Sparkles, Sun, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { useToolbar } from "@/lib/site-config";
 import { useCurrency } from "@/lib/useStore";
 import { useTheme } from "@/lib/theme";
@@ -34,6 +35,7 @@ export function FloatingToolbar() {
 
   const [currency, setCurrency] = useCurrency();
   const { toggle: toggleTheme } = useTheme();
+  const navigate = useNavigate();
 
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -47,11 +49,13 @@ export function FloatingToolbar() {
   const [hint, setHint] = useState(false);
 
   const buttons = cfg.buttons;
+  const showShade = buttons.shade;
   const showCurrency = buttons.currency;
   const showTheme = buttons.theme;
   const showWhatsApp = buttons.whatsapp && !!cfg.whatsapp.number;
   const showHelp = buttons.help;
-  const anyButton = showCurrency || showTheme || showWhatsApp || showHelp;
+  const anyButton =
+    showShade || showCurrency || showTheme || showWhatsApp || showHelp;
 
   // Place at the docked edge, vertically centred; re-clamp on resize.
   useEffect(() => {
@@ -167,6 +171,22 @@ export function FloatingToolbar() {
         >
           <GripHorizontal size={15} strokeWidth={1.75} />
         </div>
+
+        {showShade && (
+          <button
+            type="button"
+            onClick={guard(() => void navigate({ to: "/shade-finder" }))}
+            aria-label="Find my shade with Praxis AI"
+            title="Find my shade — AI stylist"
+            className={`sf-shade-btn grid h-9 w-9 sm:h-11 sm:w-11 place-items-center rounded-full text-cream shadow-[0_10px_28px_rgba(0,0,0,0.4)] border border-champagne/50 transition-[transform,box-shadow] duration-150 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cream/70`}
+            style={{
+              background:
+                "linear-gradient(135deg, var(--champagne, #b98a4a), var(--burgundy, #5c1a24))",
+            }}
+          >
+            <Sparkles size={18} strokeWidth={1.8} aria-hidden />
+          </button>
+        )}
 
         {showCurrency && (
           <button
@@ -295,8 +315,14 @@ export function FloatingToolbar() {
           60%  { transform: scale(1.08) rotate(2deg);   opacity: 1; }
           100% { transform: scale(1)    rotate(0deg);   opacity: 1; }
         }
+        .sf-shade-btn { animation: sf-shade-glow 3.4s ease-in-out infinite; }
+        @keyframes sf-shade-glow {
+          0%, 100% { box-shadow: 0 10px 28px rgba(0,0,0,0.4), 0 0 0 0 rgba(185,138,74,0.0); }
+          50%      { box-shadow: 0 10px 28px rgba(0,0,0,0.4), 0 0 0 6px rgba(185,138,74,0.14); }
+        }
         @media (prefers-reduced-motion: reduce) {
           .sf-toolbar { animation: none !important; }
+          .sf-shade-btn { animation: none !important; }
         }
       `}</style>
     </>

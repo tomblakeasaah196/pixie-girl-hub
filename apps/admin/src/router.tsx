@@ -10,6 +10,7 @@ import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
 import { ContactTagsPage } from "@/pages/ContactTagsPage";
 import { CrmPage } from "@/pages/crm/CrmPage";
 import { SalesPage } from "@/pages/sales/SalesPage";
+import { OrderDetailPage } from "@/pages/sales/OrderDetailPage";
 import { DashboardPage } from "@/pages/dashboard/DashboardPage";
 import { DealDetailPage } from "@/pages/crm/deals/DealDetailPage";
 import { CataloguePage } from "@/pages/catalogue/CataloguePage";
@@ -345,6 +346,7 @@ export const router = createBrowserRouter(
             { index: true, element: <CommandCenter /> },
             { path: "dashboard", element: <DashboardPage /> },
             { path: "sales", element: <SalesPage /> },
+            { path: "sales/orders/:orderId", element: <OrderDetailPage /> },
             // Storefront Studio - renders inside the app shell like other modules.
             {
               path: "storefront-studio",

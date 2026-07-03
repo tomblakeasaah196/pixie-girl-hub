@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ShoppingBag, Search } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText } from "@/components/ui/primitives";
@@ -10,8 +11,9 @@ import {
   SALES_CHANNELS,
   FULFILMENT_LABELS,
 } from "./constants";
-import { OrderDetail } from "./OrderDetail";
 import type { SalesOrder, OrderStatus, FulfilmentType } from "./types";
+
+const LAST_OPENED_KEY = "sales-orders-last";
 
 const columns: Column<SalesOrder>[] = [
   {
@@ -173,10 +175,52 @@ const columns: Column<SalesOrder>[] = [
 ];
 
 export function OrdersView() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sp, setSp] = useSearchParams();
+
+  // "Which row is highlighted right now?" — driven by three sources:
+  //   1. ?order=<id> in the URL (deep link or return-from-detail)
+  //   2. sessionStorage (the last order we opened this session; used when
+  //      the user navigates back and the URL lost the param)
+  //   3. keyboard arrow keys
+  // Only one wins at a time; we sync the URL as the source of truth so
+  // reloads + shares preserve the highlight.
+  const urlOrderId = sp.get("order");
+  const initialFocus =
+    urlOrderId ??
+    (typeof window !== "undefined"
+      ? sessionStorage.getItem(LAST_OPENED_KEY)
+      : null);
+  const [focusedId, setFocusedId] = useState<string | null>(initialFocus);
+  useEffect(() => {
+    if (urlOrderId && urlOrderId !== focusedId) setFocusedId(urlOrderId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlOrderId]);
+
+  const focus = useCallback(
+    (id: string | null) => {
+      setFocusedId(id);
+      setSp((p) => {
+        const next = new URLSearchParams(p);
+        if (id) next.set("order", id);
+        else next.delete("order");
+        return next;
+      });
+    },
+    [setSp],
+  );
+
+  const openOrder = useCallback(
+    (id: string) => {
+      sessionStorage.setItem(LAST_OPENED_KEY, id);
+      focus(id);
+      navigate(`/sales/orders/${id}`);
+    },
+    [focus, navigate],
+  );
 
   const { data, isLoading, isError, refetch } = useOrders({
     status: status || undefined,
@@ -188,17 +232,62 @@ export function OrdersView() {
   const orders = data?.data ?? [];
   const meta = data?.meta;
 
+  // Keyboard nav: ↑/↓ move the highlight, Enter opens the focused order,
+  // Escape clears focus. Ignore the shortcuts while the user is typing in
+  // the toolbar's search input.
+  const tableWrap = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+        return;
+      if (!orders.length) return;
+      const idx = focusedId
+        ? orders.findIndex((o) => o.order_id === focusedId)
+        : -1;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = orders[Math.min(orders.length - 1, idx + 1)];
+        if (next) focus(next.order_id);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = orders[Math.max(0, idx <= 0 ? 0 : idx - 1)];
+        if (next) focus(next.order_id);
+      } else if (e.key === "Enter" && focusedId) {
+        e.preventDefault();
+        openOrder(focusedId);
+      } else if (e.key === "Escape" && focusedId) {
+        e.preventDefault();
+        focus(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [orders, focusedId, focus, openOrder]);
+
+  // Scroll the highlighted row into view on mount + whenever focus changes
+  // (esp. useful when returning from OrderDetailPage — the row that was
+  // opened stays anchored where the user's eye is).
+  useLayoutEffect(() => {
+    if (!focusedId || !tableWrap.current) return;
+    const row = tableWrap.current.querySelector<HTMLElement>(
+      `tr[data-row-key="${focusedId}"]`,
+    );
+    if (row) row.scrollIntoView({ block: "nearest" });
+  }, [focusedId, orders]);
+
   return (
     <>
       {isError ? (
         <ErrorState onRetry={() => refetch()} />
       ) : (
-        <>
+        <div ref={tableWrap}>
           <DataTable
             columns={columns}
             rows={orders}
             rowKey={(o) => o.order_id}
-            onRowClick={(o) => setSelectedId(o.order_id)}
+            onRowClick={(o) => openOrder(o.order_id)}
+            activeKey={focusedId}
             loading={isLoading}
             empty={{
               icon: <ShoppingBag className="w-8 h-8" />,
@@ -260,10 +349,11 @@ export function OrdersView() {
               </div>
             </div>
           )}
-        </>
+          <div className="mt-2 text-[11px] text-text-faint px-1">
+            Tip: ↑/↓ to move · Enter to open · Esc to clear
+          </div>
+        </div>
       )}
-
-      <OrderDetail orderId={selectedId} onClose={() => setSelectedId(null)} />
     </>
   );
 }

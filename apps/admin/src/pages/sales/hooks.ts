@@ -132,6 +132,69 @@ export function useOrderInvoice(orderId: string | null) {
   });
 }
 
+/** The Stylist Studio job opened for this order (null while none exists). */
+export function useOrderServiceJob(orderId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-orders", biz, "service-job", orderId],
+    queryFn: async () => {
+      const res = await salesApi.getOrderServiceJob(orderId!);
+      return res.data?.[0] ?? null;
+    },
+    enabled: !!orderId,
+  });
+}
+
+/** The logistics delivery opened for this order (null when not dispatched). */
+export function useOrderDelivery(orderId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-orders", biz, "delivery", orderId],
+    queryFn: async () => {
+      const res = await salesApi.getOrderDelivery(orderId!);
+      return res.data?.[0] ?? null;
+    },
+    enabled: !!orderId,
+  });
+}
+
+/**
+ * The customer's recent orders (excluding the one on screen). Powers the
+ * "N orders · ₦LTV" strip on OrderDetail. contactId comes from the loaded
+ * order, so gate on it.
+ */
+export function useContactRecentOrders(
+  contactId: string | null,
+  excludeOrderId?: string | null,
+) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-orders", biz, "by-contact", contactId],
+    queryFn: async () => {
+      const res = await salesApi.getContactRecentOrders(contactId!, 12);
+      const all = res.data ?? [];
+      const others = excludeOrderId
+        ? all.filter((o) => o.order_id !== excludeOrderId)
+        : all;
+      return { orders: others.slice(0, 5), total: res.meta?.total ?? all.length };
+    },
+    enabled: !!contactId,
+  });
+}
+
+/** Reminders + sends for this order's invoice (powers the Comms log). */
+export function useInvoiceReminders(invoiceId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["invoicing", biz, "reminders", invoiceId],
+    queryFn: async () => {
+      const res = await salesApi.getInvoiceReminders(invoiceId!);
+      return res.data ?? [];
+    },
+    enabled: !!invoiceId,
+  });
+}
+
 /** Send / resend the order's invoice to the customer (email / WhatsApp). */
 export function useSendOrderInvoice(orderId: string | null) {
   const qc = useQueryClient();

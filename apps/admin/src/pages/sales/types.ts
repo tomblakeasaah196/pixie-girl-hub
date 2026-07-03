@@ -85,6 +85,11 @@ export interface OrderLine {
   line_total_ngn: string;
   display_order: number;
   notes: string | null;
+  // Stylist Studio provenance — 'styled'/'service' drives Studio auto-open,
+  // 'product' is a plain wig sale that needs no styling work.
+  line_kind?: "product" | "styled" | "bundle" | "service" | null;
+  styled_id?: string | null;
+  service_offering_id?: string | null;
 }
 
 export interface OrderPayment {

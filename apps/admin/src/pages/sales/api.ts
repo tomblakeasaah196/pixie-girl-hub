@@ -89,6 +89,77 @@ export const sendOrderInvoice = (
   input: { sent_via?: string } = {},
 ) => api.post(`/invoicing/invoices/${invoiceId}/send`, input);
 
+/** Every reminder scheduled or sent for this invoice — powers the Comms log. */
+export interface InvoiceReminder {
+  reminder_id: string;
+  reminder_type: string;
+  channel: "whatsapp" | "email" | "sms" | "in_app";
+  recipient_address: string;
+  status: string;
+  scheduled_for: string;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  failure_reason: string | null;
+}
+
+export const getInvoiceReminders = (invoiceId: string) =>
+  api.get<{ data: InvoiceReminder[] }>(
+    `/invoicing/invoices/${invoiceId}/reminders`,
+  );
+
+// ── Order rollup (Studio + Delivery + Customer history) ─────
+
+/** The Studio job attached to this order (paginated list; first row is what we want). */
+export interface OrderServiceJob {
+  job_id: string;
+  job_number: string;
+  status: string;
+  assigned_staff_user_id: string | null;
+  assigned_stylist_id: string | null;
+  started_at: string | null;
+  expected_completion_at: string | null;
+  completed_at: string | null;
+  ready_at: string | null;
+  returned_at: string | null;
+  rework_count: number | null;
+  agreed_cost_ngn: string | null;
+  service_type_id: string | null;
+}
+
+export const getOrderServiceJob = (orderId: string) =>
+  api.get<PaginatedResponse<OrderServiceJob>>(
+    `/service-jobs${qs({ sales_order_id: orderId, page_size: 1 })}`,
+  );
+
+/** The delivery attached to this order. */
+export interface OrderDelivery {
+  delivery_id: string;
+  delivery_number: string;
+  delivery_type: string;
+  status: string;
+  courier_id: string | null;
+  courier_tracking_ref: string | null;
+  courier_tracking_url: string | null;
+  is_pay_on_delivery: boolean | null;
+  scheduled_for: string | null;
+  first_attempted_at: string | null;
+  delivered_at: string | null;
+  destination_summary: string | null;
+  recipient_name: string | null;
+}
+
+export const getOrderDelivery = (orderId: string) =>
+  api.get<PaginatedResponse<OrderDelivery>>(
+    `/logistics/deliveries${qs({ order_id: orderId, page_size: 1 })}`,
+  );
+
+/** Recent orders for a contact (for the customer-history strip on OrderDetail). */
+export const getContactRecentOrders = (contactId: string, pageSize = 6) =>
+  api.get<PaginatedResponse<SalesOrder>>(
+    `${S}/orders${qs({ contact_id: contactId, page_size: pageSize })}`,
+  );
+
 // ── Quotations ──────────────────────────────────────────────
 
 export interface QuoteListParams {

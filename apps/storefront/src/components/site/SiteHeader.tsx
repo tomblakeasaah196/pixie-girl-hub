@@ -2,8 +2,12 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence, type Variants } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowRight,
+  Check,
   ChevronDown,
+  Copy,
   Facebook,
+  Gift,
   Instagram,
   Menu,
   MessageCircle,
@@ -11,12 +15,15 @@ import {
   Twitter,
   X,
 } from "lucide-react";
-import { useCartCount, openCart } from "@/lib/useStore";
+import { useCartCount, useCurrency, openCart } from "@/lib/useStore";
 import { PromoBar } from "./PromoBar";
 import { BrandLogo } from "./BrandLogo";
 import { useNavigation, useBranding, useToolbar, type NavItem } from "@/lib/site-config";
 import { waDigits } from "@/lib/toolbar";
 import { SITE_IMAGES } from "@/lib/site-assets";
+import { SHADES } from "@/lib/site-data";
+import { bootstrapAuth, getReferral } from "@/lib/auth";
+import type { Currency } from "@/lib/storefront";
 
 const SOCIAL_ICON: Record<string, typeof Instagram> = {
   instagram: Instagram,
@@ -24,6 +31,10 @@ const SOCIAL_ICON: Record<string, typeof Instagram> = {
   twitter: Twitter,
   whatsapp: MessageCircle,
 };
+
+// Module-scoped referral cache so re-opening the drawer doesn't re-hit the
+// network. undefined = not yet checked · null = guest (no code) · string = code.
+let referralCodeCache: string | null | undefined;
 
 /**
  * Centred-logo maison header.
@@ -237,6 +248,7 @@ export function SiteHeader() {
         groups={groups}
         name={name || "Faitlyn Hair"}
         pathname={pathname}
+        cartCount={count}
       />
     </>
   );
@@ -346,15 +358,18 @@ function MobileDrawer({
   groups,
   name,
   pathname,
+  cartCount,
 }: {
   open: boolean;
   onClose: () => void;
   groups: NavItem[];
   name: string;
   pathname: string;
+  cartCount: number;
 }) {
   const nav = useNavigation();
   const toolbar = useToolbar();
+  const [currency, setCurrency] = useCurrency();
   const socialEntries = Object.entries(nav?.socials ?? {}).filter(([, href]) => href);
   const waNumber = waDigits(toolbar.whatsapp.number);
   const conciergeHref = waNumber
@@ -407,15 +422,42 @@ function MobileDrawer({
                   <DrawerLink key={g.url} to={g.url} label={g.label} onNavigate={onClose} />
                 ),
               )}
+
+              {/* Shop by shade — tappable colour dots instead of a buried text link */}
+              <DrawerShades onNavigate={onClose} />
+
               <div className="my-4 h-px bg-taupe/15" />
               <DrawerLink to="/contact" label="Contact" onNavigate={onClose} small />
               <DrawerLink to="/auth" label="Sign in" onNavigate={onClose} small />
+
+              {/* Bag → checkout — jump straight to purchase when the bag has items */}
+              {cartCount > 0 ? (
+                <Link
+                  to="/checkout"
+                  onClick={onClose}
+                  className="mt-5 flex items-center justify-between rounded-2xl border border-taupe/25 bg-cream/[0.03] px-5 py-4 transition-colors hover:bg-cream/[0.06]"
+                >
+                  <span className="flex items-center gap-3">
+                    <ShoppingBag size={17} strokeWidth={1.5} className="text-taupe" />
+                    <span className="text-[0.66rem] tracking-[0.28em] uppercase text-cream">
+                      Bag ({cartCount})
+                    </span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-[0.62rem] tracking-[0.28em] uppercase text-taupe">
+                    Checkout
+                    <ArrowRight size={13} strokeWidth={1.75} />
+                  </span>
+                </Link>
+              ) : null}
+
+              {/* Refer a friend — the maison's word-of-mouth engine, one tap away */}
+              <DrawerReferral onNavigate={onClose} />
 
               {/* Featured editorial — turns the dead space into a shoppable moment */}
               <Link
                 to="/shop"
                 onClick={onClose}
-                className="group relative mt-8 block overflow-hidden rounded-2xl border border-taupe/15"
+                className="group relative mt-5 block overflow-hidden rounded-2xl border border-taupe/15"
               >
                 <img
                   src={SITE_IMAGES.editorialAtelier}
@@ -459,8 +501,23 @@ function MobileDrawer({
                 </Link>
               )}
 
-              {/* Socials + maison signature */}
+              {/* Currency toggle · socials · maison signature */}
               <div className="mt-7 flex items-center justify-between">
+                <div className="inline-flex overflow-hidden rounded-full border border-taupe/25">
+                  {(["NGN", "USD"] as Currency[]).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCurrency(c)}
+                      aria-pressed={currency === c}
+                      className={`px-3.5 py-1.5 text-[0.6rem] tracking-[0.24em] uppercase transition-colors ${
+                        currency === c ? "bg-taupe/90 text-ink" : "text-taupe hover:text-cream"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
                 {socialEntries.length ? (
                   <div className="flex gap-2.5">
                     {socialEntries.map(([key, href]) => {
@@ -479,11 +536,11 @@ function MobileDrawer({
                       );
                     })}
                   </div>
-                ) : (
-                  <span />
-                )}
-                <span className="font-couture italic text-sm text-taupe">Est. Lagos · 2021</span>
+                ) : null}
               </div>
+              <p className="mt-5 text-center font-couture italic text-sm text-taupe">
+                Est. Lagos · 2021
+              </p>
             </nav>
           </motion.div>
         </motion.div>
@@ -567,6 +624,137 @@ function DrawerAccordion({
           </motion.div>
         ) : null}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Shop by shade — tappable colour dots (a swatch beats a buried text link) ──
+
+function DrawerShades({ onNavigate }: { onNavigate: () => void }) {
+  return (
+    <div className="mt-6">
+      <div className="mb-3 flex items-baseline justify-between">
+        <p className="text-[0.58rem] tracking-[0.4em] uppercase text-taupe">Shop by shade</p>
+        <Link
+          to="/shades"
+          onClick={onNavigate}
+          className="text-[0.55rem] tracking-[0.28em] uppercase text-cream/55 hover:text-cream transition-colors"
+        >
+          View all
+        </Link>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {SHADES.map((s) => (
+          <Link
+            key={s.slug}
+            to="/shades/$slug"
+            params={{ slug: s.slug }}
+            onClick={onNavigate}
+            aria-label={s.name}
+            title={s.name}
+            className="h-9 w-9 rounded-full border border-taupe/25 shadow-sm transition-transform duration-200 hover:scale-110 hover:border-taupe"
+            style={{ background: s.swatch }}
+          >
+            <span className="sr-only">{s.name}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Refer a friend — the signed-in customer's code, or a sign-in teaser ──────
+
+function DrawerReferral({ onNavigate }: { onNavigate: () => void }) {
+  const [code, setCode] = useState<string | null | undefined>(referralCodeCache);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (referralCodeCache !== undefined) return; // resolved earlier this session
+    let active = true;
+    (async () => {
+      let resolved: string | null = null;
+      try {
+        const ok = await bootstrapAuth();
+        if (ok) {
+          const ref = await getReferral();
+          resolved = ref.referral_code || null;
+        }
+      } catch {
+        resolved = null; // guest or offline — fall back to the teaser
+      }
+      referralCodeCache = resolved;
+      if (active) setCode(resolved);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Guest (or not yet resolved with no cached code) → invite them to unlock one.
+  if (!code) {
+    return (
+      <Link
+        to="/auth"
+        onClick={onNavigate}
+        className="mt-5 flex items-center gap-3 rounded-2xl border border-taupe/25 px-5 py-4 transition-colors hover:bg-cream/[0.04]"
+      >
+        <Gift size={18} strokeWidth={1.5} className="shrink-0 text-taupe" />
+        <span className="min-w-0">
+          <span className="block text-[0.66rem] tracking-[0.26em] uppercase text-cream">
+            Refer a friend
+          </span>
+          <span className="mt-1 block text-[0.62rem] leading-snug text-cream/55">
+            Sign in for your code — you both get rewarded.
+          </span>
+        </span>
+        <ArrowRight size={15} strokeWidth={1.5} className="ml-auto shrink-0 text-taupe" />
+      </Link>
+    );
+  }
+
+  const shareText = `Shop Faitlyn Hair with my code ${code} — we both get rewarded. https://faitlynhair.com`;
+  const share = async () => {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: "Faitlyn Hair", text: shareText });
+        return;
+      } catch {
+        /* cancelled or unsupported — fall through to copy */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard unavailable — no-op */
+    }
+  };
+
+  return (
+    <div className="mt-5 rounded-2xl border border-taupe/25 bg-cream/[0.03] p-5">
+      <div className="flex items-center gap-2.5">
+        <Gift size={16} strokeWidth={1.5} className="text-taupe" />
+        <p className="text-[0.62rem] tracking-[0.3em] uppercase text-cream">Refer a friend</p>
+      </div>
+      <p className="mt-2 text-[0.66rem] leading-relaxed text-cream/55">
+        Share your code — you both get rewarded when they shop.
+      </p>
+      <div className="mt-3 flex items-center gap-2.5">
+        <code className="flex-1 truncate rounded-lg border border-taupe/20 bg-ink/40 px-3.5 py-2.5 text-center font-mono text-sm tracking-[0.18em] text-cream">
+          {code}
+        </code>
+        <button
+          type="button"
+          onClick={share}
+          aria-label={copied ? "Copied referral code" : "Share referral code"}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-taupe/40 px-4 py-2.5 text-[0.6rem] tracking-[0.26em] uppercase text-cream transition-colors hover:bg-cream/5"
+        >
+          {copied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />}
+          {copied ? "Copied" : "Share"}
+        </button>
+      </div>
     </div>
   );
 }

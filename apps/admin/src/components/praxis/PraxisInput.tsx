@@ -1,12 +1,13 @@
 /**
- * Praxis composer (§6.29) — textarea + mic (Web Speech, hidden when the
- * browser can't) + send. Enter sends, Shift+Enter breaks. While listening,
- * the live interim transcript previews in-place; the final transcript sends
- * as a voice-mode turn.
+ * Praxis composer (§6.29) — a floating glass "pill" (the Claude/Gemini
+ * composer): rounded, elevated, auto-growing textarea with a mic (Web Speech,
+ * hidden when unsupported) and a send affordance. Enter sends, Shift+Enter
+ * breaks. While listening, the live interim transcript previews in-place; the
+ * final transcript sends as a voice-mode turn.
  */
 
 import { useRef, useState } from "react";
-import { Mic, MicOff, SendHorizonal } from "lucide-react";
+import { ArrowUp, Mic, Square } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 
@@ -14,6 +15,7 @@ export function PraxisInput({
   disabled,
   onSend,
   autoFocus,
+  placeholder = "Ask Praxis anything…",
 }: {
   disabled?: boolean;
   onSend: (input: {
@@ -22,8 +24,10 @@ export function PraxisInput({
     transcribed_text?: string;
   }) => void;
   autoFocus?: boolean;
+  placeholder?: string;
 }) {
   const [text, setText] = useState("");
+  const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const { supported, listening, interim, start, stop } = useSpeechInput({
@@ -40,31 +44,45 @@ export function PraxisInput({
     const content = text.trim();
     if (!content || disabled) return;
     setText("");
+    if (taRef.current) taRef.current.style.height = "auto";
     onSend({ content, input_mode: "text" });
     taRef.current?.focus();
   };
 
+  const canSend = !!text.trim() && !disabled;
+
   return (
-    <div className="rounded-2xl border border-line bg-black/25 focus-within:border-accent/50 transition-colors">
+    <div
+      className={cn(
+        "rounded-[26px] border bg-text-primary/[0.04] backdrop-blur-xl transition-all duration-300",
+        "shadow-[0_10px_30px_rgb(0_0_0/0.28)]",
+        focused
+          ? "border-accent/45 shadow-[0_12px_38px_rgb(var(--accent-deep)/0.28)]"
+          : "border-line",
+      )}
+    >
       {listening && (
-        <div className="px-3.5 pt-2.5 text-[12.5px] text-accent-glow">
+        <div className="px-4 pt-3 text-[12.5px] text-accent-glow">
           <span className="inline-flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
-            Listening… {interim && <em className="text-text-muted">{interim}</em>}
+            Listening…{" "}
+            {interim && <em className="text-text-muted not-italic">{interim}</em>}
           </span>
         </div>
       )}
-      <div className="flex items-end gap-1.5 p-1.5">
+      <div className="flex items-end gap-2 p-2">
         <textarea
           ref={taRef}
           autoFocus={autoFocus}
           rows={1}
           value={text}
           disabled={disabled || listening}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onChange={(e) => {
             setText(e.target.value);
             e.target.style.height = "auto";
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 132)}px`;
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 168)}px`;
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -72,44 +90,42 @@ export function PraxisInput({
               sendText();
             }
           }}
-          placeholder={
-            listening ? "Speak your request…" : "Ask Praxis anything…"
-          }
-          className="flex-1 resize-none bg-transparent outline-none px-2.5 py-2 text-[13.5px] leading-relaxed placeholder:text-text-muted max-h-[132px]"
+          placeholder={listening ? "Speak your request…" : placeholder}
+          className="flex-1 resize-none bg-transparent outline-none px-3 py-2.5 text-[14px] leading-relaxed placeholder:text-text-faint max-h-[168px] no-min-h"
         />
         {supported && (
           <button
             type="button"
             aria-label={listening ? "Stop listening" : "Speak to Praxis"}
-            disabled={disabled}
+            disabled={disabled && !listening}
             onClick={() => (listening ? stop() : start())}
             className={cn(
-              "grid place-items-center w-9 h-9 rounded-xl border transition-colors shrink-0",
+              "grid place-items-center w-10 h-10 rounded-full border transition-all shrink-0 no-min-h",
               listening
                 ? "bg-danger/15 border-danger/40 text-danger"
-                : "border-transparent text-text-muted hover:text-text-primary hover:bg-text-primary/[0.07]",
+                : "border-transparent text-text-muted hover:text-text-primary hover:bg-text-primary/[0.08]",
             )}
           >
             {listening ? (
-              <MicOff className="w-4.5 h-4.5" />
+              <Square className="w-4 h-4 fill-current" />
             ) : (
-              <Mic className="w-4.5 h-4.5" />
+              <Mic className="w-[18px] h-[18px]" />
             )}
           </button>
         )}
         <button
           type="button"
           aria-label="Send"
-          disabled={disabled || !text.trim()}
+          disabled={!canSend}
           onClick={sendText}
           className={cn(
-            "grid place-items-center w-9 h-9 rounded-xl shrink-0 transition-all",
-            text.trim() && !disabled
-              ? "bg-accent-deep text-[#F4E9D9] hover:bg-accent"
-              : "bg-text-primary/[0.05] text-text-muted",
+            "grid place-items-center w-10 h-10 rounded-full shrink-0 transition-all duration-300 no-min-h",
+            canSend
+              ? "bg-accent-deep text-[#F4E9D9] hover:bg-accent hover:scale-105 shadow-[0_6px_18px_rgb(var(--accent-deep)/0.5)]"
+              : "bg-text-primary/[0.06] text-text-faint",
           )}
         >
-          <SendHorizonal className="w-4.5 h-4.5" />
+          <ArrowUp className="w-[18px] h-[18px]" />
         </button>
       </div>
     </div>

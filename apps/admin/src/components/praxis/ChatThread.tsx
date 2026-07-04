@@ -1,9 +1,10 @@
 /**
  * Praxis chat thread (§6.29) — the message list for both the drawer and the
- * full page. Renders user/assistant bubbles (assistant output is markdown),
- * threads each pending-action card under the assistant turn that proposed it,
- * shows a thinking indicator while a turn is in flight, renders locally-queued
- * (optimistic) sends immediately, and offers retry on a failed send.
+ * full page. Claude/Gemini layout: assistant turns render as flowing prose
+ * (markdown) beside a soft sparkle avatar; user turns are compact right-aligned
+ * bubbles. Each pending-action card threads under the assistant turn that
+ * proposed it, a "thinking" shimmer shows while a turn is in flight, and
+ * locally-queued (optimistic) sends render immediately with retry on failure.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +20,15 @@ export interface OutboxItem {
   content: string;
   input_mode: "text" | "voice";
   status: "sending" | "failed";
+}
+
+/** The Praxis sparkle medallion, reused by every assistant row. */
+function Avatar({ pulse }: { pulse?: boolean }) {
+  return (
+    <div className="mt-0.5 grid place-items-center w-8 h-8 rounded-[11px] bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))] text-[#F4E9D9] shrink-0 shadow-[0_4px_14px_rgb(var(--accent-deep)/0.4)]">
+      <Sparkles className={cn("w-4 h-4", pulse && "animate-pulse")} />
+    </div>
+  );
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -54,40 +64,35 @@ function CopyButton({ text }: { text: string }) {
 function Bubble({ msg }: { msg: PraxisMessage }) {
   const isUser = msg.role === "user";
   const text = msg.content || msg.transcribed_text || "";
-  return (
-    <div className={cn("flex gap-2.5", isUser && "flex-row-reverse")}>
-      {!isUser && (
-        <div className="mt-1 grid place-items-center w-7 h-7 rounded-[9px] bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))] text-[#F4E9D9] shrink-0">
-          <Sparkles className="w-3.5 h-3.5" />
-        </div>
-      )}
-      <div
-        className={cn(
-          "group max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed break-words",
-          isUser
-            ? "bg-accent-deep/85 text-[#F4E9D9] rounded-br-md whitespace-pre-wrap"
-            : "bg-text-primary/[0.05] border border-line rounded-bl-md",
-        )}
-      >
+
+  if (isUser) {
+    return (
+      <div className="flex flex-col items-end gap-1">
         {msg.input_mode === "voice" && (
-          <span className="block text-[10px] uppercase tracking-wide opacity-60 mb-0.5">
+          <span className="pr-1 text-[9.5px] uppercase tracking-[0.18em] text-text-faint font-bold">
             voice
           </span>
         )}
-        {isUser ? (
-          text
-        ) : (
-          <>
-            <Markdown
-              source={text}
-              className="text-[13.5px] leading-relaxed space-y-2.5 [&_ul]:my-1 [&_ol]:my-1"
-            />
-            {text.trim() && (
-              <div className="mt-1.5 pt-1.5 border-t border-line/70 opacity-0 group-hover:opacity-100 transition-opacity">
-                <CopyButton text={text} />
-              </div>
-            )}
-          </>
+        <div className="max-w-[82%] rounded-[20px] rounded-br-md bg-accent-deep/90 text-[#F4E9D9] px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap break-words shadow-[0_4px_16px_rgb(var(--accent-deep)/0.35)]">
+          {text}
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant — flowing prose, no heavy bubble (the Claude signature).
+  return (
+    <div className="group flex gap-3">
+      <Avatar />
+      <div className="min-w-0 flex-1 pt-0.5">
+        <Markdown
+          source={text}
+          className="text-[14px] leading-[1.7] text-text-primary space-y-3 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_pre]:rounded-xl [&_pre]:bg-black/30 [&_pre]:border [&_pre]:border-line"
+        />
+        {text.trim() && (
+          <div className="mt-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <CopyButton text={text} />
+          </div>
         )}
       </div>
     </div>
@@ -107,17 +112,15 @@ function OutboxBubble({
   const failed = item.status === "failed";
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="flex gap-2.5 flex-row-reverse w-full">
-        <div
-          className={cn(
-            "max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap break-words",
-            failed
-              ? "bg-danger/15 border border-danger/40 text-text-primary"
-              : "bg-accent-deep/60 text-[#F4E9D9]/90",
-          )}
-        >
-          {item.content}
-        </div>
+      <div
+        className={cn(
+          "max-w-[82%] rounded-[20px] rounded-br-md px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap break-words",
+          failed
+            ? "bg-danger/15 border border-danger/40 text-text-primary"
+            : "bg-accent-deep/60 text-[#F4E9D9]/90",
+        )}
+      >
+        {item.content}
       </div>
       {failed ? (
         <div className="flex items-center gap-2 pr-1 text-[11px] text-danger">
@@ -166,7 +169,13 @@ export function ChatThread({
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, pendingActions.length, thinking, errorNotice, outbox.length]);
+  }, [
+    messages.length,
+    pendingActions.length,
+    thinking,
+    errorNotice,
+    outbox.length,
+  ]);
 
   // Thread each pending card under the assistant message that proposed it;
   // cards with no message anchor render at the end (e.g. after a refetch).
@@ -184,19 +193,19 @@ export function ChatThread({
   }, [pendingActions]);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6">
       {messages.map((m) => (
-        <div key={m.message_id} className="flex flex-col gap-2">
+        <div key={m.message_id} className="flex flex-col gap-2.5">
           <Bubble msg={m} />
           {(byMessage.map.get(m.message_id) ?? []).map((p) => (
-            <div key={p.pending_id} className="pl-9">
+            <div key={p.pending_id} className="pl-11">
               <PendingActionCard action={p} />
             </div>
           ))}
         </div>
       ))}
       {byMessage.loose.map((p) => (
-        <div key={p.pending_id} className="pl-9">
+        <div key={p.pending_id} className="pl-11">
           <PendingActionCard action={p} />
         </div>
       ))}
@@ -211,26 +220,25 @@ export function ChatThread({
       ))}
 
       {thinking && (
-        <div className="flex gap-2.5">
-          <div className="mt-1 grid place-items-center w-7 h-7 rounded-[9px] bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))] text-[#F4E9D9] shrink-0">
-            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-          </div>
-          <div className="rounded-2xl rounded-bl-md bg-text-primary/[0.05] border border-line px-3.5 py-2.5">
+        <div className="flex gap-3 items-center">
+          <Avatar pulse />
+          <span className="inline-flex items-center gap-2 text-[12.5px] text-text-muted">
             <span className="inline-flex gap-1">
               {[0, 1, 2].map((i) => (
                 <span
                   key={i}
-                  className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce"
+                  className="w-1.5 h-1.5 rounded-full bg-accent-glow animate-bounce"
                   style={{ animationDelay: `${i * 140}ms` }}
                 />
               ))}
             </span>
-          </div>
+            Praxis is thinking…
+          </span>
         </div>
       )}
 
       {errorNotice && (
-        <div className="mx-9 rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px] text-warn">
+        <div className="ml-11 rounded-xl border border-warn/40 bg-warn/10 px-3.5 py-2.5 text-[12.5px] text-warn">
           {errorNotice}
         </div>
       )}

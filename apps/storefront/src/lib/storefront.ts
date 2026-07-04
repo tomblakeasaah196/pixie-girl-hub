@@ -1,4 +1,10 @@
 import { api, type ApiContext } from "./api";
+import {
+  formatCurrency,
+  formatFromNgn,
+  rateToNgn,
+  type CurrencyInfo,
+} from "./money";
 
 /*
  * Storefront data layer - typed Hub calls + types. Replaces every Supabase
@@ -7,7 +13,11 @@ import { api, type ApiContext } from "./api";
  * (api uses credentials:"include").
  */
 
-export type Currency = "NGN" | "USD";
+// A currency CODE. Widened from the old "NGN" | "USD" union so the storefront
+// is parametric: any currency activated in admin (GBP/EUR/…) flows through the
+// same types with no code change. The active set + rates come from the server
+// currency feed (see getCurrencies / lib/money).
+export type Currency = string;
 
 export interface ProductCard {
   styled_id: string;
@@ -358,6 +368,17 @@ export const getDeliveryQuote = (params: string) =>
     `${SF}/delivery/quote${params}`,
   );
 
+// Parametric currency feed: the active display currencies + their SSOT rates +
+// settlement flags + the geo default. Drives the currency toolbar and the
+// render-time price conversion (see lib/money).
+export interface CurrencyFeed {
+  base: string;
+  default: string;
+  currencies: CurrencyInfo[];
+}
+export const getCurrencies = (ctx?: ApiContext) =>
+  api.get<CurrencyFeed>(`${SF}/currencies`, ctx);
+
 export const trackOrder = (token: string, ctx?: ApiContext) =>
   api.get<unknown>(`/api/public/order-timeline/${token}`, ctx);
 
@@ -368,20 +389,12 @@ export function unwrap<T>(r: T | { data: T }): T {
     : (r as T);
 }
 
-const NGN = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  maximumFractionDigits: 0,
-});
-const USD = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-
 /**
- * Format using the matching server-provided figure for the currency.
- * Never converts NGN/USD on the client - pass the matching price_* field.
+ * Display a catalogue card's price in `currency`. Parametric: converts from the
+ * NGN anchor via the active SSOT rate (landing parity — rounds up to the whole
+ * unit, matching what the gateway charges), so ANY activated currency renders.
+ * Before the currency feed hydrates it prefers a precomputed USD column, then
+ * falls back to NGN so a price is never blank.
  */
 export function priceFor(
   card: {
@@ -392,16 +405,22 @@ export function priceFor(
   },
   currency: Currency,
 ): string {
-  const raw =
-    currency === "USD"
-      ? (card.effective_price_usd ?? card.retail_price_usd)
-      : (card.effective_price_ngn ?? card.retail_price_ngn);
-  if (raw === null || raw === undefined) return "-";
-  const n = typeof raw === "string" ? Number(raw) : raw;
-  if (!Number.isFinite(n)) return "-";
-  return currency === "USD" ? USD.format(n) : NGN.format(n);
+  const ngnRaw = card.effective_price_ngn ?? card.retail_price_ngn;
+  const ngn = ngnRaw == null ? null : Number(ngnRaw);
+  if (currency === "NGN")
+    return ngn != null && Number.isFinite(ngn) ? formatFromNgn(ngn, "NGN") : "-";
+  // Foreign: live-convert from NGN via the SSOT rate once the feed has loaded.
+  if (ngn != null && Number.isFinite(ngn) && rateToNgn(currency) != null)
+    return formatFromNgn(ngn, currency);
+  // Pre-hydration / no rate: fall back to a precomputed USD column if present.
+  const preRaw = card.effective_price_usd ?? card.retail_price_usd;
+  const pre = preRaw == null ? null : Number(preRaw);
+  if (pre != null && Number.isFinite(pre)) return formatCurrency(pre, currency);
+  return ngn != null && Number.isFinite(ngn) ? formatFromNgn(ngn, "NGN") : "-";
 }
 
+/** Format an amount ALREADY denominated in `currency` (e.g. a server-provided
+ *  *_display figure, or a NGN figure with currency "NGN"). No conversion. */
 export function fmt(
   amount: string | number | null | undefined,
   currency: Currency,
@@ -409,5 +428,5 @@ export function fmt(
   if (amount === null || amount === undefined) return "-";
   const n = typeof amount === "string" ? Number(amount) : amount;
   if (!Number.isFinite(n)) return "-";
-  return currency === "USD" ? USD.format(n) : NGN.format(n);
+  return formatCurrency(n, currency);
 }

@@ -25,7 +25,7 @@ import { SITE_IMAGES } from "@/lib/site-assets";
 import { getShades } from "@/lib/storefront";
 import { mapShades } from "@/lib/home-content";
 import { bootstrapAuth, getReferral } from "@/lib/auth";
-import type { Currency } from "@/lib/storefront";
+import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
 
 const SOCIAL_ICON: Record<string, typeof Instagram> = {
   instagram: Instagram,
@@ -373,6 +373,7 @@ function MobileDrawer({
   const nav = useNavigation();
   const toolbar = useToolbar();
   const [currency, setCurrency] = useCurrency();
+  const { currencies } = useCurrencyFeed();
   const socialEntries = Object.entries(nav?.socials ?? {}).filter(([, href]) => href);
   const waNumber = waDigits(toolbar.whatsapp.number);
   const conciergeHref = waNumber
@@ -506,18 +507,19 @@ function MobileDrawer({
 
               {/* Currency toggle · socials · maison signature */}
               <div className="mt-7 flex items-center justify-between">
-                <div className="inline-flex overflow-hidden rounded-full border border-taupe/25">
-                  {(["NGN", "USD"] as Currency[]).map((c) => (
+                <div className="inline-flex flex-wrap overflow-hidden rounded-full border border-taupe/25">
+                  {currencies.map((c) => (
                     <button
-                      key={c}
+                      key={c.code}
                       type="button"
-                      onClick={() => setCurrency(c)}
-                      aria-pressed={currency === c}
+                      onClick={() => setCurrency(c.code)}
+                      aria-pressed={currency === c.code}
+                      title={c.name}
                       className={`px-3.5 py-1.5 text-[0.6rem] tracking-[0.24em] uppercase transition-colors ${
-                        currency === c ? "bg-taupe/90 text-ink" : "text-taupe hover:text-cream"
+                        currency === c.code ? "bg-taupe/90 text-ink" : "text-taupe hover:text-cream"
                       }`}
                     >
-                      {c}
+                      {c.code}
                     </button>
                   ))}
                 </div>

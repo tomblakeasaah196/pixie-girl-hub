@@ -3,10 +3,10 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   addCartItem,
-  fmt,
   type ProductDetail,
   type Currency,
 } from "@/lib/storefront";
+import { formatFromNgn } from "@/lib/money";
 import { ssrProduct } from "@/lib/server";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { Section, ErrorState } from "@/components/parts";
@@ -23,14 +23,16 @@ function priceOfVariant(
   unstyled: boolean,
   currency: Currency,
 ): number | null {
+  // Always resolve the NGN anchor; the caller renders it in the active currency
+  // via the SSOT rate (formatFromNgn), so any currency displays correctly.
+  void currency;
   if (unstyled) {
-    const raw =
-      currency === "USD" ? p.retail_price_usd : p.retail_price_ngn;
+    const raw = p.retail_price_ngn;
     return raw == null ? null : Number(raw);
   }
   const v = p.variants.find((x) => x.styled_variant_id === variantId);
   if (!v) return null;
-  const raw = currency === "USD" ? v.effective_price_usd : v.effective_price_ngn;
+  const raw = v.effective_price_ngn;
   return raw == null ? null : Number(raw);
 }
 
@@ -163,7 +165,7 @@ function ProductPage() {
       <div>
         <h1 className="text-h3 font-display">{product.name}</h1>
         <p className="mt-3 font-mono text-h5">
-          {price == null ? "-" : fmt(price, currency)}
+          {price == null ? "-" : formatFromNgn(price, currency)}
         </p>
         {product.short_description ? (
           <p className="mt-4 text-body text-muted-foreground">

@@ -1,4 +1,5 @@
 import { api, type ApiContext } from "./api";
+import { formatCurrency } from "./money";
 
 /**
  * Geo + display currency.
@@ -13,7 +14,9 @@ import { api, type ApiContext } from "./api";
  * server-side); this resolver returns the server's decision.
  */
 
-export type Currency = "NGN" | "USD";
+// A currency CODE. Widened from "NGN" | "USD" so any admin-activated currency
+// flows through unchanged; the active set + rates come from the currency feed.
+export type Currency = string;
 
 export interface GeoCurrency {
   country_code: string;
@@ -32,23 +35,11 @@ export async function getGeoCurrency(ctx?: ApiContext): Promise<GeoCurrency> {
   }
 }
 
-const NGN = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  maximumFractionDigits: 0,
-});
-const USD = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-
 /**
- * Format a money value the backend already provided in the target currency.
- * NEVER convert NGN↔USD on the client — pass the matching `price_*` field.
+ * Format a money value ALREADY denominated in `currency` (a server-provided
+ * *_display figure, or an amount converted via lib/money). Parametric across
+ * any active currency — the symbol/decimals come from the currency runtime.
  */
 export function formatMoney(amount: number | string, currency: Currency): string {
-  const n = typeof amount === "string" ? Number(amount) : amount;
-  if (!Number.isFinite(n)) return currency === "USD" ? "$—" : "₦—";
-  return currency === "USD" ? USD.format(n) : NGN.format(n);
+  return formatCurrency(amount, currency);
 }

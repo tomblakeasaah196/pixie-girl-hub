@@ -21,6 +21,7 @@ import { CartDrawer } from "@/components/site/CartDrawer";
 import { FloatingToolbar } from "@/components/site/FloatingToolbar";
 import { SiteConfigProvider, type StudioPage } from "@/lib/site-config";
 import { resolveToolbar } from "@/lib/toolbar";
+import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
 
 /*
  * SSR shell for the Storefront Website (dark-first maison).
@@ -158,6 +159,13 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Loads the currency feed + hydrates the client currency runtime. Renders
+ *  nothing; lives inside the QueryClientProvider so useQuery has its context. */
+function CurrencyFeedBoot() {
+  useCurrencyFeed();
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const { preview, theme, pages, popups, navigation, brand } =
@@ -185,6 +193,9 @@ function RootComponent() {
         branding={branding}
         toolbar={toolbar}
       >
+        {/* Hydrate the currency runtime (rates/symbols) + apply the geo default
+            once, globally — even on immersive routes that hide the header. */}
+        <CurrencyFeedBoot />
         {preview ? (
           <div className="bg-primary py-1.5 text-center text-[0.62rem] tracking-[0.4em] uppercase text-primary-foreground">
             Preview — showing draft changes (not published)

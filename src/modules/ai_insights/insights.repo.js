@@ -317,6 +317,73 @@ async function unsettledAdvances({ brand, limit = 500 }) {
   return rows;
 }
 
+// Sales: orders paid but not yet dispatched for too long (fulfilment delay).
+async function fulfillmentDelayedOrders({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT order_id, order_number, contact_id, total_ngn, status,
+            (EXTRACT(EPOCH FROM (now() - placed_at)) / 86400)::int AS age_days
+       FROM ${t(brand, "sales_orders")}
+      WHERE status IN ('paid','awaiting_dispatch','ready_for_dispatch')
+        AND placed_at IS NOT NULL
+        AND placed_at < now() - interval '3 days'
+      ORDER BY placed_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// CRM: open deals with no stage movement for a while (stalled).
+async function stalledDeals({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT deal_id, title, current_stage_id, expected_value_ngn,
+            (EXTRACT(EPOCH FROM (now() - stage_entered_at)) / 86400)::int AS days_in_stage
+       FROM ${t(brand, "crm_deals")}
+      WHERE status = 'open'
+        AND stage_entered_at < now() - interval '14 days'
+      ORDER BY stage_entered_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Production: runs whose expected arrival date has passed and aren't terminal.
+async function delayedProductionRuns({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT run_id, run_number, status, total_landed_cost_ngn,
+            (CURRENT_DATE - expected_arrival_date) AS days_late
+       FROM ${t(brand, "production_runs")}
+      WHERE expected_arrival_date IS NOT NULL
+        AND expected_arrival_date < CURRENT_DATE
+        AND status NOT IN ('received','styled','closed','cancelled')
+      ORDER BY expected_arrival_date ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Accounting: draft journal entries left unposted.
+async function agingDraftJournals({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT entry_id, entry_number, description,
+            (EXTRACT(EPOCH FROM (now() - created_at)) / 86400)::int AS age_days
+       FROM ${t(brand, "journal_entries")}
+      WHERE status = 'draft'
+        AND created_at < now() - interval '7 days'
+      ORDER BY created_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Retention: contacts whose current (non-superseded) churn score is high.
+async function churnRiskContacts({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT score_id, contact_id, risk_score, risk_band, computed_at
+       FROM ${t(brand, "churn_risk_scores")}
+      WHERE superseded_at IS NULL
+        AND risk_band IN ('high','critical')
+      ORDER BY risk_score DESC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
 module.exports = {
   raise,
   list,
@@ -337,4 +404,9 @@ module.exports = {
   overduePurchaseOrders,
   problemDeliveries,
   unsettledAdvances,
+  fulfillmentDelayedOrders,
+  stalledDeals,
+  delayedProductionRuns,
+  agingDraftJournals,
+  churnRiskContacts,
 };

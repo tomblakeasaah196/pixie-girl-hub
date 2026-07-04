@@ -372,6 +372,161 @@ const DETECTORS = [
       });
     },
   },
+
+  // ── Sales: paid orders not dispatched (fulfilment delay) ──
+  {
+    module: "sales",
+    detector: "fulfillment_delayed",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.fulfillmentDelayedOrders({ brand });
+      return rows.map((o) => {
+        const days = Number(o.age_days) || 0;
+        return {
+          module: "sales",
+          detector: "fulfillment_delayed",
+          business: brand,
+          severity: days >= 14 ? "critical" : days >= 7 ? "high" : "medium",
+          title: `Order ${o.order_number} paid but not dispatched (${days}d)`,
+          body: null,
+          context: {
+            order_id: o.order_id,
+            order_number: o.order_number,
+            contact_id: o.contact_id,
+            status: o.status,
+            age_days: days,
+          },
+          amount_ngn: o.total_ngn || null,
+          source_table: "sales_orders",
+          source_id: o.order_id,
+          drill_route: o.order_id ? `/sales/orders/${o.order_id}` : "/sales",
+          suppression_key: `fulfil:${o.order_id}`,
+        };
+      });
+    },
+  },
+
+  // ── CRM: open deals stalled in stage ──
+  {
+    module: "crm",
+    detector: "deal_stalled",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.stalledDeals({ brand });
+      return rows.map((d) => {
+        const days = Number(d.days_in_stage) || 0;
+        return {
+          module: "crm",
+          detector: "deal_stalled",
+          business: brand,
+          severity: days >= 30 ? "high" : "medium",
+          title: `Deal "${d.title}" stalled ${days} days in stage`,
+          body: null,
+          context: {
+            deal_id: d.deal_id,
+            current_stage_id: d.current_stage_id,
+            days_in_stage: days,
+          },
+          amount_ngn: d.expected_value_ngn || null,
+          source_table: "crm_deals",
+          source_id: d.deal_id,
+          drill_route: d.deal_id ? `/crm/deals/${d.deal_id}` : "/crm",
+          suppression_key: `stalled:${d.deal_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Production: run arrival overdue ──
+  {
+    module: "production",
+    detector: "run_delayed",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.delayedProductionRuns({ brand });
+      return rows.map((r) => {
+        const days = Number(r.days_late) || 0;
+        return {
+          module: "production",
+          detector: "run_delayed",
+          business: brand,
+          severity: days >= 14 ? "critical" : days >= 7 ? "high" : "medium",
+          title: `Run ${r.run_number} arrival overdue ${days} day${days === 1 ? "" : "s"}`,
+          body: `Status: ${String(r.status).replace(/_/g, " ")}.`,
+          context: {
+            run_id: r.run_id,
+            run_number: r.run_number,
+            status: r.status,
+            days_late: days,
+          },
+          amount_ngn: r.total_landed_cost_ngn || null,
+          source_table: "production_runs",
+          source_id: r.run_id,
+          drill_route: "/production",
+          suppression_key: `run_late:${r.run_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Accounting: draft journals left unposted ──
+  {
+    module: "accounting",
+    detector: "journal_draft_aging",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.agingDraftJournals({ brand });
+      return rows.map((j) => {
+        const days = Number(j.age_days) || 0;
+        return {
+          module: "accounting",
+          detector: "journal_draft_aging",
+          business: brand,
+          severity: days >= 30 ? "high" : "medium",
+          title: `Draft journal ${j.entry_number} unposted ${days} days`,
+          body: j.description || null,
+          context: {
+            entry_id: j.entry_id,
+            entry_number: j.entry_number,
+            age_days: days,
+          },
+          amount_ngn: null,
+          source_table: "journal_entries",
+          source_id: j.entry_id,
+          drill_route: "/accounting",
+          suppression_key: `je_draft:${j.entry_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Retention: contacts at high churn risk ──
+  {
+    module: "retention",
+    detector: "churn_risk",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.churnRiskContacts({ brand });
+      return rows.map((c) => ({
+        module: "retention",
+        detector: "churn_risk",
+        business: brand,
+        severity: c.risk_band === "critical" ? "critical" : "high",
+        title: `High churn risk (score ${c.risk_score})`,
+        body: null,
+        context: {
+          contact_id: c.contact_id,
+          risk_score: c.risk_score,
+          risk_band: c.risk_band,
+        },
+        amount_ngn: null,
+        source_table: "churn_risk_scores",
+        source_id: c.contact_id,
+        drill_route: c.contact_id ? `/contacts/${c.contact_id}` : "/retention",
+        suppression_key: `churn:${c.contact_id}`,
+      }));
+    },
+  },
 ];
 
 function detectorsForModules(enabledSet) {

@@ -22,6 +22,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { StrategiesTab } from "./StrategiesTab";
 import { LoyaltyTab } from "./LoyaltyTab";
 import { RewardsTab } from "./RewardsTab";
@@ -63,6 +64,7 @@ export function RetentionPage() {
 
   return (
     <div className="max-w-[1180px] space-y-5">
+      <ModuleInsights module="retention" />
       <nav className="flex items-center gap-1 border-b border-line overflow-x-auto">
         {TABS.map((t) => (
           <button

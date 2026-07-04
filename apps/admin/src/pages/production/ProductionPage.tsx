@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { autoDefaultFactoryLang } from "@/i18n";
 import { useFactoryLanguages } from "@/i18n/useFactoryLanguages";
 import {
@@ -113,6 +114,7 @@ export function ProductionPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="production" />
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

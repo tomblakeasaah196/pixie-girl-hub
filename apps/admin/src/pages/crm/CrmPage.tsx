@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { Sun, LayoutGrid, Users } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { TodayTab } from "./today/TodayTab";
 import { PipelineTab } from "./pipeline/PipelineTab";
 import { ClientsTab } from "./clients/ClientsTab";
@@ -24,6 +25,7 @@ export function CrmPage() {
 
   return (
     <div className="animate-fade-in">
+      <ModuleInsights module="crm" className="mb-4" />
       {/* Tab bar */}
       <div className="flex items-center gap-2 mb-6">
         <div className="flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">

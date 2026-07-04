@@ -159,6 +159,60 @@ describe("registry — Wave-3 fan-out detectors", () => {
   });
 });
 
+describe("registry — Wave-3 batch 2 detectors", () => {
+  test("sales/fulfillment_delayed: paid+undispatched escalates by age", async () => {
+    repo.fulfillmentDelayedOrders.mockResolvedValue([
+      { order_id: "o-1", order_number: "PXG-SO-1", contact_id: "c-1", total_ngn: "90000.00", status: "paid", age_days: 15 },
+    ]);
+    const [f] = await det("sales", "fulfillment_delayed").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      module: "sales",
+      severity: "critical", // >= 14d
+      amount_ngn: "90000.00",
+      drill_route: "/sales/orders/o-1",
+      suppression_key: "fulfil:o-1",
+    });
+  });
+
+  test("crm/deal_stalled: >=30d in stage → high", async () => {
+    repo.stalledDeals.mockResolvedValue([
+      { deal_id: "d-1", title: "HD Lace 18in", current_stage_id: "st-1", expected_value_ngn: "250000.00", days_in_stage: 45 },
+    ]);
+    const [f] = await det("crm", "deal_stalled").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({ module: "crm", severity: "high", drill_route: "/crm/deals/d-1", suppression_key: "stalled:d-1" });
+  });
+
+  test("production/run_delayed: arrival overdue escalates", async () => {
+    repo.delayedProductionRuns.mockResolvedValue([
+      { run_id: "r-1", run_number: "PXG-RUN-1", status: "in_transit", total_landed_cost_ngn: "1200000.00", days_late: 9 },
+    ]);
+    const [f] = await det("production", "run_delayed").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({ module: "production", severity: "high", suppression_key: "run_late:r-1" });
+    expect(f.amount_ngn).toBe("1200000.00");
+  });
+
+  test("accounting/journal_draft_aging: unposted draft flagged", async () => {
+    repo.agingDraftJournals.mockResolvedValue([
+      { entry_id: "j-1", entry_number: "PXG-JE-1", description: "Accrual", age_days: 40 },
+    ]);
+    const [f] = await det("accounting", "journal_draft_aging").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({ module: "accounting", severity: "high", suppression_key: "je_draft:j-1" });
+  });
+
+  test("retention/churn_risk: critical band → critical, drills to contact", async () => {
+    repo.churnRiskContacts.mockResolvedValue([
+      { score_id: "s-1", contact_id: "c-9", risk_score: 88, risk_band: "critical", computed_at: "2026-07-01" },
+    ]);
+    const [f] = await det("retention", "churn_risk").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      module: "retention",
+      severity: "critical",
+      drill_route: "/contacts/c-9",
+      suppression_key: "churn:c-9",
+    });
+  });
+});
+
 describe("service.raise — legacy category adapter", () => {
   test("stock category maps to module stock / detector reorder_point", async () => {
     repo.raise.mockResolvedValue(undefined);

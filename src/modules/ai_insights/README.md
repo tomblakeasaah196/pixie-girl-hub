@@ -49,12 +49,17 @@ modules toggled on.
 - **Registry detectors** (sweep): `invoicing` (overdue), `intercompany`
   (stale), `approvals` (backlog), `service_jobs` (×2 — no-sale + no-IC-match),
   `hr_attendance` (off-site clock-in), `purchasing` (PO delivery overdue),
-  `logistics` (failed/overdue deliveries), `expenses` (unsettled advances).
+  `logistics` (failed/overdue deliveries), `expenses` (unsettled advances),
+  `sales` (paid-but-undispatched), `crm` (stalled deals), `production` (run
+  arrival overdue), `accounting` (unposted draft journals), `retention` (high
+  churn risk).
 - **`low-stock.js` scheduler** → `stock` (via the legacy `raise` adapter).
-- **Fan-out (remaining):** `pricing` (margin), `sales`, `crm`, `production`,
-  `retention`, `accounting`, … (all 27 seeded in `ai_insight_modules`; add a
-  registry entry per detector). Detectors run only for modules switched on in
-  AI Control, so new ones ship dormant until the CEO enables them.
+- **Fan-out (remaining):** `pricing` (margin), `retail_partners`,
+  `stylist_programme`, `sales_campaigns`, `marketing`, `social_media`,
+  `smartcomm`, `storefront`, `catalogue`, `iam_security`, `tasks`, `payroll`,
+  `customer_onboarding` — see `docs/PRAXIS_AI_INSIGHTS_BACKLOG.md`. Detectors run
+  only for modules switched on in AI Control, so new ones ship dormant until the
+  CEO enables them.
 
 ## Tier-2
 

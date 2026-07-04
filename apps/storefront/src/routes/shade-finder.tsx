@@ -125,14 +125,28 @@ function ShadeFinderPage() {
         };
         try {
           const state = await getShadeSession(sid, token);
+          const history = state.history.map(
+            (h): ChatItem =>
+              h.role === "user"
+                ? { id: cid(), role: "user", kind: "text", text: h.content }
+                : { id: cid(), role: "praxis", kind: "text", text: h.content },
+          );
+          // The result card carries its own message, so drop the trailing
+          // assistant text bubble that would otherwise duplicate it on restore.
+          if (state.last_result?.shade) {
+            for (let i = history.length - 1; i >= 0; i--) {
+              const h = history[i];
+              if (h.role === "praxis") {
+                if (h.kind === "text" && h.text === state.last_result.message) {
+                  history.splice(i, 1);
+                }
+                break;
+              }
+            }
+          }
           const restored: ChatItem[] = [
             { id: cid(), role: "praxis", kind: "text", text: WELCOME },
-            ...state.history.map(
-              (h): ChatItem =>
-                h.role === "user"
-                  ? { id: cid(), role: "user", kind: "text", text: h.content }
-                  : { id: cid(), role: "praxis", kind: "text", text: h.content },
-            ),
+            ...history,
           ];
           if (state.last_result?.shade) {
             restored.push({

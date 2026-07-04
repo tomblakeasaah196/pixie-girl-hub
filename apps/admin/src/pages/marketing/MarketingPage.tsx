@@ -16,6 +16,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useActiveBusiness } from "@/stores/business";
 import { useAuthStore } from "@/stores/auth";
 import { money, moneyCompact } from "@/lib/format";
@@ -95,6 +96,7 @@ export function MarketingPage() {
 
   return (
     <div className="max-w-[1180px] space-y-5">
+      <ModuleInsights module="marketing" />
       <nav className="flex items-center gap-1 border-b border-line">
         {canEmail && (
           <TabButton active={tab === "email"} onClick={() => setTab("email")} icon={<Mail className="w-4 h-4" />}>

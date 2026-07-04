@@ -266,6 +266,55 @@ describe("registry — Wave-3 batch 3 detectors", () => {
   });
 });
 
+describe("registry — Wave-3 batch 4 detectors", () => {
+  test("stylist_programme/payout_unpaid: failed → high, cross-brand (null business)", async () => {
+    repo.pendingStylistPayouts.mockResolvedValue([
+      { payout_id: "po-1", payout_number: "PXS-PO-1", stylist_id: "st-1", amount_ngn: "60000.00", status: "failed", age_days: 1 },
+    ]);
+    const [f] = await det("stylist_programme", "payout_unpaid").run();
+    expect(f).toMatchObject({
+      module: "stylist_programme",
+      detector: "payout_failed",
+      business: null,
+      severity: "high",
+      suppression_key: "payout:po-1",
+    });
+  });
+
+  test("sales_campaigns/campaign_stuck: live past end → ended_not_closed", async () => {
+    repo.stuckCampaigns.mockResolvedValue([
+      { campaign_id: "ca-1", name: "Black Friday", status: "live", starts_at: "x", ends_at: "y", days_past_end: 3 },
+    ]);
+    const [f] = await det("sales_campaigns", "campaign_stuck").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      detector: "ended_not_closed",
+      drill_route: "/sales-campaigns/ca-1",
+      suppression_key: "campaign:ca-1",
+    });
+  });
+
+  test("marketing/ad_no_conversions: big spend → high, carries business", async () => {
+    repo.wastefulAdCampaigns.mockResolvedValue([
+      { ad_campaign_id: "ad-1", name: "IG Retarget", business: "faitlynhair", spend_ngn: "80000.00", conversions: 0 },
+    ]);
+    const [f] = await det("marketing", "ad_no_conversions").run();
+    expect(f).toMatchObject({ business: "faitlynhair", severity: "high", amount_ngn: "80000.00", suppression_key: "ad_waste:ad-1" });
+  });
+
+  test("smartcomm/unanswered: >24h waiting → high", async () => {
+    repo.unansweredThreads.mockResolvedValue([
+      { channel_id: "ch-1", business: "pixiegirl", external_platform: "whatsapp", name: null, last_at: "x", hours_waiting: 30 },
+    ]);
+    const [f] = await det("smartcomm", "unanswered").run();
+    expect(f).toMatchObject({
+      module: "smartcomm",
+      severity: "high",
+      drill_route: "/smartcomm?channel=ch-1",
+      suppression_key: "unanswered:ch-1",
+    });
+  });
+});
+
 describe("service.raise — legacy category adapter", () => {
   test("stock category maps to module stock / detector reorder_point", async () => {
     repo.raise.mockResolvedValue(undefined);

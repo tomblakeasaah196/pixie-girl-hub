@@ -469,4 +469,77 @@ module.exports = {
   marginBreaches,
   unpaidPartnerSettlements,
   overdueTasks,
+  pendingStylistPayouts,
+  stuckCampaigns,
+  wastefulAdCampaigns,
+  unansweredThreads,
 };
+
+// Stylist programme: approved/processing payouts left unpaid, or failed
+// (shared.stylist_payouts is cross-brand — no business column).
+async function pendingStylistPayouts({ limit = 500 }) {
+  const { rows } = await query(
+    `SELECT payout_id, payout_number, stylist_id, amount_ngn, status,
+            (EXTRACT(EPOCH FROM (now() - created_at)) / 86400)::int AS age_days
+       FROM shared.stylist_payouts
+      WHERE status = 'failed'
+         OR (status IN ('approved','processing')
+             AND created_at < now() - interval '3 days')
+      ORDER BY created_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Sales campaigns: live campaign past its end, or scheduled past its start.
+async function stuckCampaigns({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT campaign_id, name, status, starts_at, ends_at,
+            (EXTRACT(EPOCH FROM (now() - ends_at)) / 86400)::int AS days_past_end
+       FROM ${t(brand, "sales_campaigns")}
+      WHERE (status = 'live' AND ends_at < now())
+         OR (status = 'scheduled' AND starts_at < now())
+      ORDER BY ends_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Marketing: active ad campaigns spending with zero conversions (last 7 days).
+async function wastefulAdCampaigns({ limit = 500 }) {
+  const { rows } = await query(
+    `SELECT c.ad_campaign_id, c.name, c.business,
+            SUM(s.spend_ngn)::numeric(14,2) AS spend_ngn,
+            SUM(s.conversions)::int AS conversions
+       FROM shared.ad_campaigns c
+       JOIN shared.ad_spend_daily s ON s.ad_campaign_id = c.ad_campaign_id
+      WHERE c.status = 'active'
+        AND s.metric_date >= CURRENT_DATE - 7
+      GROUP BY c.ad_campaign_id, c.name, c.business
+     HAVING SUM(s.conversions) = 0 AND SUM(s.spend_ngn) > 5000
+      ORDER BY SUM(s.spend_ngn) DESC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Smartcomm: customer threads whose most-recent message is from the customer
+// (a contact sender) and has gone unanswered past the SLA.
+async function unansweredThreads({ hours = 4, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT c.channel_id, c.business, c.external_platform, c.name,
+            m.created_at AS last_at,
+            (EXTRACT(EPOCH FROM (now() - m.created_at)) / 3600)::int AS hours_waiting
+       FROM shared.message_channels c
+       JOIN LATERAL (
+         SELECT created_at, sender_contact_id
+           FROM shared.messages
+          WHERE channel_id = c.channel_id
+          ORDER BY created_at DESC LIMIT 1
+       ) m ON true
+      WHERE c.channel_type = 'customer_thread'
+        AND c.is_archived = false
+        AND m.sender_contact_id IS NOT NULL
+        AND m.created_at < now() - ($1 || ' hours')::interval
+      ORDER BY m.created_at ASC LIMIT $2`,
+    [hours, limit],
+  );
+  return rows;
+}

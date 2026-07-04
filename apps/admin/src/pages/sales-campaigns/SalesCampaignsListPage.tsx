@@ -10,6 +10,7 @@ import {
   LayoutTemplate,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
 import {
   Button,
@@ -120,6 +121,7 @@ export function SalesCampaignsListPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="sales_campaigns" />
       {/* Hero strip */}
       <Card className="p-6 md:p-7 relative overflow-hidden">
         <div

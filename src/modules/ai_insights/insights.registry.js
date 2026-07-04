@@ -643,6 +643,142 @@ const DETECTORS = [
       });
     },
   },
+
+  // ── Stylist programme: unpaid / failed stylist payouts (cross-brand) ──
+  {
+    module: "stylist_programme",
+    detector: "payout_unpaid",
+    scope: "shared",
+    async run() {
+      const rows = await repo.pendingStylistPayouts({});
+      return rows.map((p) => {
+        const days = Number(p.age_days) || 0;
+        const failed = p.status === "failed";
+        return {
+          module: "stylist_programme",
+          detector: failed ? "payout_failed" : "payout_unpaid",
+          business: null,
+          severity: failed || days >= 14 ? "high" : "medium",
+          title: failed
+            ? `Stylist payout ${p.payout_number} failed`
+            : `Stylist payout ${p.payout_number} unpaid ${days} day${days === 1 ? "" : "s"}`,
+          body: null,
+          context: {
+            payout_id: p.payout_id,
+            payout_number: p.payout_number,
+            stylist_id: p.stylist_id,
+            status: p.status,
+            age_days: days,
+          },
+          amount_ngn: p.amount_ngn || null,
+          source_table: "stylist_payouts",
+          source_id: p.payout_id,
+          drill_route: "/stylists",
+          suppression_key: `payout:${p.payout_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Sales campaigns: live past end, or scheduled past start ──
+  {
+    module: "sales_campaigns",
+    detector: "campaign_stuck",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.stuckCampaigns({ brand });
+      return rows.map((c) => {
+        const overrun = c.status === "live";
+        const days = Number(c.days_past_end) || 0;
+        return {
+          module: "sales_campaigns",
+          detector: overrun ? "ended_not_closed" : "scheduled_not_launched",
+          business: brand,
+          severity: "medium",
+          title: overrun
+            ? `Campaign "${c.name}" past its end but still live`
+            : `Campaign "${c.name}" scheduled but not launched`,
+          body: null,
+          context: {
+            campaign_id: c.campaign_id,
+            status: c.status,
+            days_past_end: overrun ? days : null,
+          },
+          amount_ngn: null,
+          source_table: "sales_campaigns",
+          source_id: c.campaign_id,
+          drill_route: c.campaign_id
+            ? `/sales-campaigns/${c.campaign_id}`
+            : "/sales-campaigns",
+          suppression_key: `campaign:${c.campaign_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Marketing: active ad spend with zero conversions (last 7 days) ──
+  {
+    module: "marketing",
+    detector: "ad_no_conversions",
+    scope: "shared",
+    async run() {
+      const rows = await repo.wastefulAdCampaigns({});
+      return rows.map((a) => {
+        const spend = money(a.spend_ngn || 0);
+        return {
+          module: "marketing",
+          detector: "ad_no_conversions",
+          business: a.business,
+          severity: spend.gte(money("50000")) ? "high" : "medium",
+          title: `Ad "${a.name}" — ₦${spend.toFixed(2)} spent, 0 conversions (7d)`,
+          body: null,
+          context: {
+            ad_campaign_id: a.ad_campaign_id,
+            spend_ngn: a.spend_ngn,
+            conversions: a.conversions,
+          },
+          amount_ngn: a.spend_ngn || null,
+          source_table: "ad_campaigns",
+          source_id: a.ad_campaign_id,
+          drill_route: "/marketing",
+          suppression_key: `ad_waste:${a.ad_campaign_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Smartcomm: customer thread unanswered past SLA ──
+  {
+    module: "smartcomm",
+    detector: "unanswered",
+    scope: "shared",
+    async run() {
+      const rows = await repo.unansweredThreads({ hours: 4 });
+      return rows.map((c) => {
+        const hrs = Number(c.hours_waiting) || 0;
+        return {
+          module: "smartcomm",
+          detector: "unanswered",
+          business: c.business,
+          severity: hrs >= 24 ? "high" : "medium",
+          title: `Unanswered ${c.external_platform || "message"} — waiting ${hrs}h`,
+          body: null,
+          context: {
+            channel_id: c.channel_id,
+            platform: c.external_platform,
+            hours_waiting: hrs,
+          },
+          amount_ngn: null,
+          source_table: "message_channels",
+          source_id: c.channel_id,
+          drill_route: c.channel_id
+            ? `/smartcomm?channel=${c.channel_id}`
+            : "/smartcomm",
+          suppression_key: `unanswered:${c.channel_id}`,
+        };
+      });
+    },
+  },
 ];
 
 function detectorsForModules(enabledSet) {

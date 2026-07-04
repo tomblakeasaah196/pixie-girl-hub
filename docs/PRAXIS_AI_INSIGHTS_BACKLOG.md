@@ -48,11 +48,11 @@ Detectors run only for modules switched **on** in AI Control → Insights
 | 14 | retention | churn_risk | ✅ | ✅ |
 | 15 | pricing | price_below_cost / price_below_floor | ✅ | ✅ `/pricing` |
 | 16 | retail_partners | settlement_unpaid / settlement_disputed | ✅ | ✅ `/retail-partners` |
-| 17 | stylist_programme | stylist_inactive, cert_expiring, payout_pending | ⬜ | ⬜ |
-| 18 | sales_campaigns | underperforming, stock_low_midcampaign | ⬜ | ⬜ |
-| 19 | marketing | spend_no_conversions, budget_exhausted | ⬜ | ⬜ |
+| 17 | stylist_programme | payout_unpaid / payout_failed | ✅ | ✅ `/stylists` |
+| 18 | sales_campaigns | ended_not_closed / scheduled_not_launched | ✅ | ✅ `/sales-campaigns` |
+| 19 | marketing | ad_no_conversions | ✅ | ✅ `/marketing` |
 | 20 | social_media | scheduled_post_failed, token_expiring | ⬜ | ⬜ |
-| 21 | smartcomm | unanswered_past_sla | ⬜ | ⬜ |
+| 21 | smartcomm | unanswered | ✅ | n/a (fixed-height inbox) |
 | 22 | storefront | checkout_failures, oos_high_traffic | ⬜ | ⬜ |
 | 23 | catalogue | missing_image_or_price, unpublished_active | ⬜ | ⬜ |
 | 24 | iam_security | anomalous_login, dormant_privileged | ⬜ | ⬜ |
@@ -60,7 +60,9 @@ Detectors run only for modules switched **on** in AI Control → Insights
 | 26 | payroll | run_due, contract_expiring | ⬜ | ⬜ |
 | 27 | customer_onboarding | onboarding_stalled, kyc_incomplete | ⬜ | ⬜ |
 
-**Detectors done:** 17 modules (19 detectors). **Remaining:** 10 modules.
+**Detectors done:** 21 modules (23 detectors). **Remaining:** 6 modules
+(social_media, storefront, catalogue, iam_security, payroll,
+customer_onboarding).
 Each remaining detector = verify schema → repo read → registry entry → unit
 test (the established pattern). Catalogue's "missing image/price" signal spans
 products + media + variant price across tables — left for a careful pass rather
@@ -110,6 +112,11 @@ than a silent-wrong query.
 
 ## D. Quality / hygiene
 
+- ⬜ **Auto-resolve pass** — detectors raise but never auto-close: an insight
+  stays `open` until acknowledged/resolved even once the underlying condition
+  clears (invoice paid, thread answered, campaign closed). A sweep-side reconcile
+  (resolve open findings whose detector no longer returns them) would keep the
+  list honest without manual cleanup. Applies to every detector.
 - ⬜ **Integration tests** — `/insights` routes + `runDetectorSweep` end-to-end
   against a live DB (`RUN_DB_TESTS=1`). Unit coverage exists (registry/service).
 - ⬜ **Docs** — refresh `docs/AI_PRAXIS.md` and `docs/CONFORMANCE_GAPS.md` to

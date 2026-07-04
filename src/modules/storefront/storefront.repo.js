@@ -264,9 +264,13 @@ async function getShadeBySlug({ brand, slug }) {
 
 // Browse-by-collection index (the detail-by-slug lives in getCollectionBySlug).
 async function listCollections({ brand }) {
+  // The admin cover uploader writes hero_image_url; display_image_url is the
+  // optional card-specific override. Fall back to the hero so a collection with
+  // a single uploaded cover still shows an image on the storefront cards.
   const { rows } = await query(
     `SELECT collection_id, name, slug, description, hero_image_url,
-            display_image_url, display_order
+            COALESCE(display_image_url, hero_image_url) AS display_image_url,
+            display_order
        FROM ${t(brand, "product_collections")}
       WHERE is_active = true AND is_visible_storefront = true
       ORDER BY display_order, name`,

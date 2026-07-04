@@ -22,6 +22,10 @@ router.get("/import-template", can("view"), c.importTemplate);
 router.get("/export", can("view"), c.exportServices);
 router.post("/import", can("create"), upload.single("file"), c.importServices);
 
+// Service photo upload (compress → store → cdn_url). The caller saves the
+// returned url onto the service's image_url. Literal segment before :id.
+router.post("/image", can("edit"), upload.single("file"), c.uploadImage);
+
 router.get("/", can("view"), c.listServices);
 router.post("/", can("create"), v.validateCreateService, c.createService);
 router.get("/:id", can("view"), c.getService);

@@ -22,6 +22,7 @@ const paystack = require("../../services/paystack.service");
 const opay = require("../../services/opay.service");
 const nomba = require("../../services/nomba.service");
 const stripe = require("../../services/stripe.service");
+const currencyService = require("../../services/currency.service");
 const { query } = require("../../config/database");
 const { config } = require("../../config/env");
 const { money, toCurrencyString } = require("../../utils/money");
@@ -77,36 +78,27 @@ async function campaignFxRate({ brand, order }) {
   }
 }
 
-// Storefront orders aren't tied to a campaign, so they have no ngn_per_usd_rate.
-// They settle foreign currency at the brand's catalogue rate — the SAME rate the
-// website displayed and recorded on the order (sales_orders.fx_rate_used).
-async function catalogueFxRate({ brand }) {
-  try {
-    const { rows } = await query(
-      `SELECT usd_fx_rate FROM ${brand}.catalogue_config WHERE singleton = true`,
-    );
-    const rate = rows[0] && rows[0].usd_fx_rate;
-    return rate ? Number(rate) : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * The NGN→foreign rate to settle THIS order at. Precedence:
+ * The NGN→foreign rate to settle THIS order at, for `currency`. Precedence:
  *   1. The rate LOCKED on the order at placement (fx_rate_used) — the exact rate
  *      the buyer was quoted (re-reading a live rate is unsafe: the owner can edit
  *      it after placement). Only called for foreign settlement, where 1.0 is the
  *      "never captured" default, so we ignore 1.0 and fall through.
- *   2. The campaign's static rate (campaign orders).
- *   3. The brand catalogue rate (storefront / non-campaign orders).
+ *   2. The campaign's static rate (campaign orders — USD display).
+ *   3. The system SSOT rate for the settlement currency (currency.service):
+ *      USD → the brand catalogue tool's usd_fx_rate; GBP/EUR/… → the admin-set
+ *      shared.currency_rates. Currency-aware, so a non-USD order settles at ITS
+ *      own rate rather than the USD one.
  */
-async function settlementFxRate({ brand, order }) {
+async function settlementFxRate({ brand, order, currency }) {
   const locked = order && Number(order.fx_rate_used);
   if (locked && locked > 0 && locked !== 1) return locked;
   const campaignRate = await campaignFxRate({ brand, order });
   if (campaignRate && campaignRate > 0) return campaignRate;
-  return catalogueFxRate({ brand });
+  const cur = String(
+    currency || (order && order.display_currency) || "USD",
+  ).toUpperCase();
+  return currencyService.systemFxRate({ brand, currency: cur });
 }
 
 async function initOnGateway({
@@ -259,7 +251,11 @@ async function createPaymentLink({
   ).toUpperCase();
   let chargeAmount = amountStr;
   if (settleCurrency !== "NGN") {
-    const rate = await settlementFxRate({ brand, order });
+    const rate = await settlementFxRate({
+      brand,
+      order,
+      currency: settleCurrency,
+    });
     if (!rate || rate <= 0)
       throw new AppError(
         "NO_FX_RATE",

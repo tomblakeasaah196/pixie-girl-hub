@@ -514,8 +514,10 @@ async function adviseAndReply({
       { role: "user", content: userText },
     ],
     temperature: 0.6,
-    maxOutputTokens: 1024,
+    maxOutputTokens: 2048,
     responseSchema: schema,
+    // See analyzePhoto: thinking off so the token budget is all answer.
+    thinkingBudget: 0,
   });
   await recordUsageSafe({
     brand,
@@ -600,8 +602,12 @@ async function analyzePhoto({ brand, sid, deviceKey, ip, file, message }) {
         },
       ],
       temperature: 0.15,
-      maxOutputTokens: 512,
+      maxOutputTokens: 1024,
       responseSchema: PERCEIVE_SCHEMA,
+      // Structured extraction, not reasoning — without this, Gemini 2.5's
+      // default thinking can consume the whole output budget and return an
+      // empty reply (HTTP 200, finishReason=MAX_TOKENS, no text).
+      thinkingBudget: 0,
     });
     await recordUsageSafe({
       brand,

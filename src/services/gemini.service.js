@@ -80,6 +80,10 @@ function toGeminiContents({ system, messages }) {
  * @param {number} [args.maxOutputTokens]
  * @param {object} [args.responseSchema] Gemini structured-output schema; when
  *                 set the response is forced to application/json.
+ * @param {number} [args.thinkingBudget] Max thinking tokens (Gemini 2.5).
+ *                 Pass 0 to disable thinking — otherwise thought tokens are
+ *                 billed against maxOutputTokens and can leave no room for
+ *                 the actual answer. Omit to keep the model default.
  */
 async function chatCompletion({
   system,
@@ -89,6 +93,7 @@ async function chatCompletion({
   maxOutputTokens = 1024,
   timeoutMs = 30000,
   responseSchema,
+  thinkingBudget,
 }) {
   if (!isConfigured()) {
     const err = new Error("GEMINI_NOT_CONFIGURED");
@@ -112,6 +117,14 @@ async function chatCompletion({
       ...(responseSchema
         ? { responseMimeType: "application/json", responseSchema }
         : {}),
+      // Gemini 2.5 models "think" by default and the thought tokens come out
+      // of maxOutputTokens — a tight budget can be consumed entirely by
+      // thinking, returning HTTP 200 with finishReason=MAX_TOKENS and NO text
+      // parts. Callers that want fast deterministic output (e.g. structured
+      // JSON extraction) pass thinkingBudget: 0 to disable thinking.
+      ...(thinkingBudget !== undefined
+        ? { thinkingConfig: { thinkingBudget } }
+        : {}),
     },
   };
   try {
@@ -123,6 +136,26 @@ async function chatCompletion({
       .map((p) => (typeof p.text === "string" ? p.text : ""))
       .join("")
       .trim();
+    // An empty reply on HTTP 200 is otherwise invisible — surface WHY
+    // (MAX_TOKENS = thinking ate the budget, SAFETY/blockReason = filtered).
+    if (!text) {
+      logger.warn(
+        {
+          model: modelId,
+          finish_reason: (candidate && candidate.finishReason) || null,
+          block_reason:
+            (data && data.promptFeedback && data.promptFeedback.blockReason) ||
+            null,
+          parts_count: parts.length,
+          thoughts_token_count:
+            (data &&
+              data.usageMetadata &&
+              data.usageMetadata.thoughtsTokenCount) ||
+            0,
+        },
+        "gemini.chatCompletion returned no text",
+      );
+    }
     const usage = data && data.usageMetadata;
     return {
       text,

@@ -1,0 +1,38 @@
+-- ============================================================
+-- TEMPLATE MIGRATION 000076 — widen storefront content post types
+-- Pixie Girl Hub · JBS Praxis · V2.2   ({{BUSINESS}} → schema key)
+-- ============================================================
+--
+-- New brands: born with the full post_type set. The base table (000016)
+-- created the CHECK with only blog/faq/guide/lookbook/press; the storefront
+-- also renders 'journal' and 'policy' posts, so add them here. Existing
+-- brands get the same change via shared migration 000255.
+--
+-- Drop the auto-named check first (find it rather than assume the name),
+-- then add the canonical widened constraint.
+-- ============================================================
+
+DO $do$
+DECLARE
+  v_con TEXT;
+BEGIN
+  FOR v_con IN
+    SELECT con.conname
+      FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid
+      JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+     WHERE nsp.nspname = '{{BUSINESS}}'
+       AND rel.relname = 'storefront_content_posts'
+       AND con.contype = 'c'
+       AND pg_get_constraintdef(con.oid) ILIKE '%post_type%'
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE {{BUSINESS}}.storefront_content_posts DROP CONSTRAINT %I',
+      v_con);
+  END LOOP;
+
+  EXECUTE
+    'ALTER TABLE {{BUSINESS}}.storefront_content_posts
+       ADD CONSTRAINT storefront_content_posts_post_type_check
+       CHECK (post_type IN (''blog'',''faq'',''guide'',''lookbook'',''press'',''journal'',''policy''))';
+END $do$;

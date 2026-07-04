@@ -365,13 +365,16 @@ async function getPublishedSite({ brand, path }) {
   };
 }
 
-// List published content posts of a type (journal, guide, policy, …) for index
-// pages. SELECT * so callers can pick fields without coupling to the schema.
+// List PUBLISHED content posts of a type (journal, guide, policy, …) for index
+// pages. The status filter is load-bearing now that Studio can create drafts —
+// a draft or archived post must never surface publicly. Featured first, then
+// the operator's display order, then newest.
 async function listContentPosts({ brand, type, limit = 50 }) {
   const { rows } = await query(
     `SELECT * FROM ${t(brand, "storefront_content_posts")}
-      WHERE post_type = $1
-      ORDER BY created_at DESC
+      WHERE post_type = $1 AND status = 'published'
+      ORDER BY is_featured DESC, display_order ASC, published_at DESC NULLS LAST,
+               created_at DESC
       LIMIT $2`,
     [type, limit],
   );
@@ -431,10 +434,12 @@ async function getDraftSite({ brand, path }) {
   };
 }
 
+// Single PUBLISHED post by slug for a public detail page (journal / policy).
+// Drafts 404 publicly — they only exist inside Studio.
 async function getContentPost({ brand, type, slug }) {
   const { rows } = await query(
     `SELECT * FROM ${t(brand, "storefront_content_posts")}
-      WHERE post_type = $1 AND slug = $2`,
+      WHERE post_type = $1 AND slug = $2 AND status = 'published'`,
     [type, slug],
   );
   return rows[0] || null;

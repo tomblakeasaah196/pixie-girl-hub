@@ -473,7 +473,116 @@ module.exports = {
   stuckCampaigns,
   wastefulAdCampaigns,
   unansweredThreads,
+  failedSocialPosts,
+  expiringSocialTokens,
+  failedStorefrontPayments,
+  overdueAccessReviews,
+  expiringContracts,
+  stalledOnboarding,
+  unbuyableProducts,
 };
+
+// Social: posts that failed to publish, or are scheduled but overdue.
+async function failedSocialPosts({ limit = 500 }) {
+  const { rows } = await query(
+    `SELECT post_id, business, status, scheduled_for
+       FROM shared.social_posts
+      WHERE status = 'failed'
+         OR (status = 'scheduled' AND scheduled_for IS NOT NULL
+             AND scheduled_for < now() - interval '15 minutes')
+      ORDER BY scheduled_for ASC NULLS LAST LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Social: active accounts whose access token expires within a week.
+async function expiringSocialTokens({ limit = 500 }) {
+  const { rows } = await query(
+    `SELECT account_id, business, platform, token_expires_at,
+            (token_expires_at::date - CURRENT_DATE) AS days_left
+       FROM shared.social_accounts
+      WHERE is_active = true
+        AND token_expires_at IS NOT NULL
+        AND token_expires_at < now() + interval '7 days'
+      ORDER BY token_expires_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Storefront: recent failed order payments.
+async function failedStorefrontPayments({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT payment_id, order_id, amount_ngn, method, failure_reason,
+            (EXTRACT(EPOCH FROM (now() - created_at)) / 3600)::int AS hours_ago
+       FROM ${t(brand, "sales_order_payments")}
+      WHERE status = 'failed'
+        AND created_at > now() - interval '7 days'
+      ORDER BY created_at DESC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// IAM/Security: access reviews open past their due date (governance, Hub-level).
+async function overdueAccessReviews({ limit = 500 }) {
+  const { rows } = await query(
+    `SELECT review_id, status, due_date,
+            (CURRENT_DATE - due_date) AS days_overdue
+       FROM shared.access_reviews
+      WHERE status IN ('open','in_progress')
+        AND due_date IS NOT NULL
+        AND due_date < CURRENT_DATE
+      ORDER BY due_date ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Payroll: staff contracts expiring within 30 days (business via staff_profiles).
+async function expiringContracts({ limit = 500 }) {
+  const { rows } = await query(
+    `SELECT c.contract_id, c.profile_id, c.contract_type, c.effective_to,
+            sp.business, (c.effective_to - CURRENT_DATE) AS days_left
+       FROM shared.staff_contracts c
+       JOIN shared.staff_profiles sp ON sp.profile_id = c.profile_id
+      WHERE c.effective_to IS NOT NULL
+        AND c.effective_to >= CURRENT_DATE
+        AND c.effective_to < CURRENT_DATE + 30
+        AND c.contract_type <> 'termination'
+      ORDER BY c.effective_to ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Customer onboarding: submissions never linked to a contact (unprocessed).
+async function stalledOnboarding({ limit = 500 }) {
+  const { rows } = await query(
+    `SELECT submission_id, business, created_at,
+            (EXTRACT(EPOCH FROM (now() - created_at)) / 86400)::int AS age_days
+       FROM shared.customer_onboarding_submissions
+      WHERE contact_id IS NULL
+        AND created_at < now() - interval '2 days'
+      ORDER BY created_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Catalogue: products visible on the storefront with no active, priced variant
+// (visible but not actually buyable).
+async function unbuyableProducts({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT p.product_id, p.name
+       FROM ${t(brand, "products")} p
+      WHERE p.is_visible_storefront = true
+        AND NOT EXISTS (
+          SELECT 1 FROM ${t(brand, "product_variants")} pv
+           WHERE pv.product_id = p.product_id
+             AND pv.is_active = true
+             AND pv.price_storefront_ngn > 0
+        )
+      ORDER BY p.name ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
 
 // Stylist programme: approved/processing payouts left unpaid, or failed
 // (shared.stylist_payouts is cross-brand — no business column).

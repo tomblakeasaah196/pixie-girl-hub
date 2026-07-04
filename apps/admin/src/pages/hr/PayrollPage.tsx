@@ -19,6 +19,7 @@ import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primit
 import { DeniedState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
 import { money } from "@/lib/format";
 import {
@@ -285,6 +286,7 @@ export default function PayrollPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-8">
+      <ModuleInsights module="payroll" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl text-text-primary">Payroll</h1>

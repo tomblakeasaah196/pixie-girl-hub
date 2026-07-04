@@ -779,6 +779,202 @@ const DETECTORS = [
       });
     },
   },
+
+  // ── Social: failed / overdue scheduled posts ──
+  {
+    module: "social_media",
+    detector: "post_failed",
+    scope: "shared",
+    async run() {
+      const rows = await repo.failedSocialPosts({});
+      return rows.map((p) => ({
+        module: "social_media",
+        detector: p.status === "failed" ? "post_failed" : "post_overdue",
+        business: p.business,
+        severity: "medium",
+        title:
+          p.status === "failed"
+            ? "Scheduled post failed to publish"
+            : "Scheduled post is overdue",
+        body: null,
+        context: { post_id: p.post_id, status: p.status, scheduled_for: p.scheduled_for },
+        amount_ngn: null,
+        source_table: "social_posts",
+        source_id: p.post_id,
+        drill_route: "/social",
+        suppression_key: `post:${p.post_id}`,
+      }));
+    },
+  },
+
+  // ── Social: access token expiring (publishing will break) ──
+  {
+    module: "social_media",
+    detector: "token_expiring",
+    scope: "shared",
+    async run() {
+      const rows = await repo.expiringSocialTokens({});
+      return rows.map((a) => {
+        const days = Number(a.days_left) || 0;
+        return {
+          module: "social_media",
+          detector: "token_expiring",
+          business: a.business,
+          severity: days <= 1 ? "high" : "medium",
+          title: `${a.platform} token expires in ${days} day${days === 1 ? "" : "s"}`,
+          body: "Re-authorise the account before it stops publishing.",
+          context: { account_id: a.account_id, platform: a.platform, days_left: days },
+          amount_ngn: null,
+          source_table: "social_accounts",
+          source_id: a.account_id,
+          drill_route: "/social",
+          suppression_key: `token:${a.account_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Storefront: recent failed order payments ──
+  {
+    module: "storefront",
+    detector: "payment_failed",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.failedStorefrontPayments({ brand });
+      return rows.map((p) => {
+        const hrs = Number(p.hours_ago) || 0;
+        return {
+          module: "storefront",
+          detector: "payment_failed",
+          business: brand,
+          severity: hrs <= 24 ? "high" : "medium",
+          title: `Checkout payment failed${p.method ? ` (${p.method})` : ""}`,
+          body: p.failure_reason || null,
+          context: {
+            payment_id: p.payment_id,
+            order_id: p.order_id,
+            method: p.method,
+            hours_ago: hrs,
+          },
+          amount_ngn: p.amount_ngn || null,
+          source_table: "sales_order_payments",
+          source_id: p.payment_id,
+          drill_route: p.order_id ? `/sales/orders/${p.order_id}` : "/sales",
+          suppression_key: `pay_fail:${p.payment_id}`,
+        };
+      });
+    },
+  },
+
+  // ── IAM / Security: access reviews overdue (Hub-level governance) ──
+  {
+    module: "iam_security",
+    detector: "access_review_overdue",
+    scope: "shared",
+    async run() {
+      const rows = await repo.overdueAccessReviews({});
+      return rows.map((r) => {
+        const days = Number(r.days_overdue) || 0;
+        return {
+          module: "iam_security",
+          detector: "access_review_overdue",
+          business: null,
+          severity: days >= 30 ? "high" : "medium",
+          title: `Access review overdue ${days} day${days === 1 ? "" : "s"}`,
+          body: null,
+          context: { review_id: r.review_id, status: r.status, days_overdue: days },
+          amount_ngn: null,
+          source_table: "access_reviews",
+          source_id: r.review_id,
+          drill_route: "/iam-security/reviews",
+          suppression_key: `review:${r.review_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Payroll: staff contracts expiring within 30 days ──
+  {
+    module: "payroll",
+    detector: "contract_expiring",
+    scope: "shared",
+    async run() {
+      const rows = await repo.expiringContracts({});
+      return rows.map((c) => {
+        const days = Number(c.days_left) || 0;
+        return {
+          module: "payroll",
+          detector: "contract_expiring",
+          business: c.business,
+          severity: days <= 7 ? "high" : "medium",
+          title: `Staff contract expires in ${days} day${days === 1 ? "" : "s"}`,
+          body: null,
+          context: {
+            contract_id: c.contract_id,
+            profile_id: c.profile_id,
+            contract_type: c.contract_type,
+            days_left: days,
+          },
+          amount_ngn: null,
+          source_table: "staff_contracts",
+          source_id: c.contract_id,
+          drill_route: "/payroll",
+          suppression_key: `contract:${c.contract_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Customer onboarding: submissions never linked to a contact ──
+  {
+    module: "customer_onboarding",
+    detector: "onboarding_stalled",
+    scope: "shared",
+    async run() {
+      const rows = await repo.stalledOnboarding({});
+      return rows.map((s) => {
+        const days = Number(s.age_days) || 0;
+        return {
+          module: "customer_onboarding",
+          detector: "onboarding_stalled",
+          business: s.business,
+          severity: days >= 7 ? "medium" : "low",
+          title: `Onboarding submission unprocessed ${days} day${days === 1 ? "" : "s"}`,
+          body: "Not yet linked to a contact.",
+          context: { submission_id: s.submission_id, age_days: days },
+          amount_ngn: null,
+          source_table: "customer_onboarding_submissions",
+          source_id: s.submission_id,
+          drill_route: "/contacts",
+          suppression_key: `onboard:${s.submission_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Catalogue: products visible on the storefront but not buyable ──
+  {
+    module: "catalogue",
+    detector: "visible_unbuyable",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.unbuyableProducts({ brand });
+      return rows.map((p) => ({
+        module: "catalogue",
+        detector: "visible_unbuyable",
+        business: brand,
+        severity: "medium",
+        title: `"${p.name}" is visible but has no priced variant`,
+        body: "Customers can see it but can't buy it.",
+        context: { product_id: p.product_id },
+        amount_ngn: null,
+        source_table: "products",
+        source_id: p.product_id,
+        drill_route: p.product_id ? `/catalogue/styled/${p.product_id}` : "/catalogue",
+        suppression_key: `unbuyable:${p.product_id}`,
+      }));
+    },
+  },
 ];
 
 function detectorsForModules(enabledSet) {

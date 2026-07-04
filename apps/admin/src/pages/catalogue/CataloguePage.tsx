@@ -1,5 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
 import { useCategoriesEnabled } from "@/lib/catalogue";
@@ -56,6 +57,7 @@ export function CataloguePage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="catalogue" />
       <Tabs tabs={tabs} active={active} onChange={setTab} />
       {active === "styled" && <StyledTab />}
       {active === "base" && <BaseTab />}

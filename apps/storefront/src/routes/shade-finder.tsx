@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  ArrowUpRight,
   Camera,
   ImagePlus,
   Loader2,
@@ -27,6 +28,7 @@ import {
   startShadeSession,
   type ShadeQuota,
   type ShadeRef,
+  type ShadeReference,
   type ShadeResult,
   type ShadeSession,
   type ShadeStage,
@@ -48,7 +50,13 @@ export const Route = createFileRoute("/shade-finder")({
 type ChatItem =
   | { id: string; role: "user"; kind: "text"; text: string }
   | { id: string; role: "user"; kind: "photo"; photoUrl: string; caption?: string }
-  | { id: string; role: "praxis"; kind: "text"; text: string }
+  | {
+      id: string;
+      role: "praxis";
+      kind: "text";
+      text: string;
+      references?: ShadeReference[];
+    }
   | {
       id: string;
       role: "praxis";
@@ -73,17 +81,19 @@ const FALLBACK_STAGES: ShadeStage[] = [
 ];
 
 const WELCOME =
-  "Hi, I'm Praxis — your personal shade stylist. Share a clear photo of yourself in natural light and I'll read your undertone and depth, find the shade family made for you, and pull the exact styles that carry it. You can also just chat to me about what you're after.";
+  "Hi, I'm Praxis — your personal stylist and concierge. Share a clear photo in natural light and I'll read your undertone, find your shade, and pull the exact styles that carry it. Or just talk to me — the occasion you're dressing for, wig care, our salon services, delivery, anything about the brand.";
 
 const SESSION_KEY = "sf_session";
 
 // Tap-to-start prompts (Gemini/Claude-style) — cut typing and aimless
-// scrolling by handing the visitor a clear first move.
+// scrolling by handing the visitor a clear first move. Spans the full
+// consultant range, not just shade tweaks.
 const SUGGESTIONS = [
   "Something warmer",
-  "A cooler undertone",
   "Deep & rich",
   "Under ₦200k",
+  "How do I care for my wig?",
+  "Delivery & returns",
 ];
 
 // ── Page ────────────────────────────────────────────────────
@@ -125,14 +135,28 @@ function ShadeFinderPage() {
         };
         try {
           const state = await getShadeSession(sid, token);
+          const history = state.history.map(
+            (h): ChatItem =>
+              h.role === "user"
+                ? { id: cid(), role: "user", kind: "text", text: h.content }
+                : { id: cid(), role: "praxis", kind: "text", text: h.content },
+          );
+          // The result card carries its own message, so drop the trailing
+          // assistant text bubble that would otherwise duplicate it on restore.
+          if (state.last_result?.shade) {
+            for (let i = history.length - 1; i >= 0; i--) {
+              const h = history[i];
+              if (h.role === "praxis") {
+                if (h.kind === "text" && h.text === state.last_result.message) {
+                  history.splice(i, 1);
+                }
+                break;
+              }
+            }
+          }
           const restored: ChatItem[] = [
             { id: cid(), role: "praxis", kind: "text", text: WELCOME },
-            ...state.history.map(
-              (h): ChatItem =>
-                h.role === "user"
-                  ? { id: cid(), role: "user", kind: "text", text: h.content }
-                  : { id: cid(), role: "praxis", kind: "text", text: h.content },
-            ),
+            ...history,
           ];
           if (state.last_result?.shade) {
             restored.push({
@@ -263,7 +287,13 @@ function ShadeFinderPage() {
       ...it,
       r.shade
         ? { id: cid(), role: "praxis", kind: "result", result: r }
-        : { id: cid(), role: "praxis", kind: "text", text: r.message },
+        : {
+            id: cid(),
+            role: "praxis",
+            kind: "text",
+            text: r.message,
+            references: r.references,
+          },
     ]);
   };
 
@@ -394,7 +424,9 @@ function ShadeFinderPage() {
           <PraxisAvatar />
           <div className="min-w-0">
             <p className="truncate text-body-sm font-medium">Praxis</p>
-            <p className="text-caption text-muted-foreground">Shade stylist</p>
+            <p className="text-caption text-muted-foreground">
+              Stylist &amp; concierge
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2.5">
@@ -430,8 +462,8 @@ function ShadeFinderPage() {
             <p className="text-caption text-muted-foreground">Praxis · AI stylist</p>
             <h1 className="mt-2 text-h3 font-couture md:text-h2">Find your shade</h1>
             <p className="mx-auto mt-2 max-w-md text-body-sm text-muted-foreground">
-              One photo. Your undertone, your depth, and the exact styles that
-              carry it.
+              One photo finds your shade — and I'm here for everything else
+              too: styles, care, services, delivery.
             </p>
           </div>
 
@@ -449,7 +481,7 @@ function ShadeFinderPage() {
                 ) : item.kind === "result" ? (
                   <ResultBubble result={item.result} currency={currency} />
                 ) : (
-                  <PraxisBubble text={item.text} />
+                  <PraxisBubble text={item.text} references={item.references} />
                 )}
               </motion.div>
             ))}
@@ -569,7 +601,7 @@ function ShadeFinderPage() {
                 placeholder={
                   pendingFile
                     ? "Add a note with your photo (optional)…"
-                    : "Ask Praxis anything — “something warmer?”…"
+                    : "Ask Praxis anything — shades, care, delivery…"
                 }
                 disabled={busy}
                 className="min-w-0 flex-1 rounded-full border border-border bg-card px-4 py-2.5 text-body-sm outline-none placeholder:text-muted-foreground/70 focus:border-ring"
@@ -613,7 +645,13 @@ function PraxisAvatar() {
   );
 }
 
-function PraxisBubble({ text }: { text: string }) {
+function PraxisBubble({
+  text,
+  references,
+}: {
+  text: string;
+  references?: ShadeReference[];
+}) {
   return (
     <div className="flex max-w-[85%] items-end gap-2.5">
       <div className="hidden shrink-0 md:block">
@@ -621,8 +659,32 @@ function PraxisBubble({ text }: { text: string }) {
       </div>
       <div className="rounded-2xl rounded-bl-md bg-secondary px-4 py-3 text-body-sm leading-relaxed">
         {text}
+        <ReferenceChips references={references} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Tappable brand references under a Praxis reply. Every href is validated
+ * server-side against a closed registry of real storefront routes, so a
+ * chip can never 404. Plain anchors: each destination leaves the chat frame.
+ */
+function ReferenceChips({ references }: { references?: ShadeReference[] }) {
+  if (!references || references.length === 0) return null;
+  return (
+    <span className="mt-2.5 flex flex-wrap gap-2">
+      {references.map((r) => (
+        <a
+          key={r.key}
+          href={r.href}
+          className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 px-3 py-1 text-caption text-foreground transition-colors hover:bg-card"
+        >
+          {r.label}
+          <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
+        </a>
+      ))}
+    </span>
   );
 }
 
@@ -788,6 +850,8 @@ function ResultBubble({
               {result.followup_question}
             </p>
           ) : null}
+
+          <ReferenceChips references={result.references} />
         </div>
       </div>
     </div>

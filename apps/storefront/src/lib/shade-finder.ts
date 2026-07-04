@@ -44,6 +44,14 @@ export interface ShadeQuota {
   resets_in_seconds: number;
 }
 
+/** A validated brand reference — always a real storefront route. */
+export interface ShadeReference {
+  key: string;
+  label: string;
+  href: string;
+  kind: string;
+}
+
 export interface ShadeResult {
   message: string;
   confidence: "low" | "medium" | "high";
@@ -51,6 +59,7 @@ export interface ShadeResult {
   shade: ShadeRef | null;
   alternates: ShadeRef[];
   products: ShadeProduct[];
+  references?: ShadeReference[];
   perceived?: { undertone: string; depth: number; lighting: string };
   quota: ShadeQuota;
   privacy: string;

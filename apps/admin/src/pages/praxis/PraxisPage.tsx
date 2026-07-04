@@ -1,31 +1,36 @@
 /**
  * Praxis workspace (V2.2 §6.29) — the full-page surface behind /praxis.
  *
- * Three regions:
- *   left   — conversation history (resume / archive / new)
- *   centre — the active thread + composer (same component as the drawer)
- *   right  — tabs: Pending queue (the confirm gate, across all
- *            conversations) · Trace (run steps for the active thread) ·
+ * A focused, Claude/Gemini-style three-region workspace inside one glass frame:
+ *   left   — conversation history (search / resume / archive / new)
+ *   centre — the active thread + welcome + composer (shared with the drawer)
+ *   right  — a collapsible context rail: Pending queue (the confirm gate across
+ *            all conversations) · Trace (run steps for the active thread) ·
  *            Abilities (the ai_enabled action catalogue)
  *
- * Mobile stacks: history collapses into a select, the right rail folds under
- * the thread. Four states everywhere; permission-denied renders DeniedState.
+ * Desktop keeps all three visible (history + rail each collapse to give the
+ * conversation room). Mobile shows the conversation full-bleed; history and the
+ * context rail open as slide-overs from a slim toolbar. Four states everywhere;
+ * permission-denied renders DeniedState.
  */
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ListChecks,
   MessageSquare,
+  PanelLeft,
+  PanelRight,
   Plus,
   ScrollText,
+  Search,
   Sparkles,
   Wand2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   Button,
-  Card,
   EmptyState,
   IconButton,
   Pill,
@@ -44,6 +49,7 @@ import {
 } from "@/lib/praxis-api";
 import { usePraxisDockStore } from "@/stores/praxis-dock";
 import { useAuthStore } from "@/stores/auth";
+import { useIsDesktop } from "@/hooks/useMediaQuery";
 
 type RailTab = "pending" | "trace" | "abilities";
 
@@ -63,6 +69,8 @@ function formatWhen(iso?: string | null): string {
   return new Date(t).toLocaleDateString();
 }
 
+/* ── History rail ─────────────────────────────────────────────────────── */
+
 function ConversationList({
   activeId,
   onPick,
@@ -72,20 +80,44 @@ function ConversationList({
 }) {
   const list = useConversations();
   const archive = useArchiveConversation();
+  const [q, setQ] = useState("");
+
+  const items = useMemo(() => {
+    const all = list.data ?? [];
+    const needle = q.trim().toLowerCase();
+    if (!needle) return all;
+    return all.filter((c) =>
+      (c.title || "Untitled conversation").toLowerCase().includes(needle),
+    );
+  }, [list.data, q]);
 
   return (
-    <Card className="flex flex-col min-h-0 h-full p-0 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-line">
-        <h3 className="font-display text-[15px]">Conversations</h3>
-        <IconButton aria-label="New conversation" onClick={() => onPick(null)}>
-          <Plus className="w-4 h-4" />
-        </IconButton>
+    <div className="flex flex-col min-h-0 h-full">
+      <div className="p-3 space-y-2.5">
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Plus className="w-4 h-4" />}
+          className="w-full justify-center"
+          onClick={() => onPick(null)}
+        >
+          New conversation
+        </Button>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search conversations"
+            className="w-full h-9 pl-9 pr-3 rounded-xl bg-text-primary/[0.04] border border-line text-[12.5px] outline-none focus:border-accent/45 no-min-h"
+          />
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto px-2 pb-2">
         {list.isLoading ? (
           <div className="space-y-2 p-2">
             {[0, 1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-11" />
+              <Skeleton key={i} className="h-11 rounded-xl" />
             ))}
           </div>
         ) : list.isError ? (
@@ -93,14 +125,18 @@ function ConversationList({
             message="Couldn't load conversations."
             onRetry={() => list.refetch()}
           />
-        ) : (list.data ?? []).length === 0 ? (
+        ) : items.length === 0 ? (
           <EmptyState
             icon={<MessageSquare className="w-7 h-7" />}
-            title="No conversations yet"
-            message="Start one — ask about sales, stock, or tell Praxis what to do."
+            title={q ? "No matches" : "No conversations yet"}
+            message={
+              q
+                ? "Try a different search."
+                : "Start one — ask about sales, stock, or tell Praxis what to do."
+            }
           />
         ) : (
-          (list.data ?? []).map((c) => (
+          items.map((c) => (
             <button
               key={c.conversation_id}
               onClick={() => onPick(c.conversation_id)}
@@ -116,7 +152,9 @@ function ConversationList({
                   {c.title || "Untitled conversation"}
                 </div>
                 <div className="text-[11px] text-text-muted">
-                  {formatWhen(c.last_activity_at ?? c.updated_at ?? c.created_at)}
+                  {formatWhen(
+                    c.last_activity_at ?? c.updated_at ?? c.created_at,
+                  )}
                 </div>
               </div>
               <span
@@ -138,9 +176,11 @@ function ConversationList({
           ))
         )}
       </div>
-    </Card>
+    </div>
   );
 }
+
+/* ── Context rail panels ──────────────────────────────────────────────── */
 
 function PendingQueue() {
   const pending = usePendingActions();
@@ -152,7 +192,7 @@ function PendingQueue() {
     return (
       <div className="space-y-2">
         {[0, 1].map((i) => (
-          <Skeleton key={i} className="h-24" />
+          <Skeleton key={i} className="h-24 rounded-xl" />
         ))}
       </div>
     );
@@ -207,7 +247,7 @@ function TraceRail({ conversationId }: { conversationId: string | null }) {
     return (
       <div className="space-y-2">
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-10" />
+          <Skeleton key={i} className="h-10 rounded-xl" />
         ))}
       </div>
     );
@@ -247,11 +287,21 @@ function TraceRail({ conversationId }: { conversationId: string | null }) {
               </div>
             )}
           </div>
-          <Pill tone={s.status === "completed" ? "success" : s.status === "failed" ? "danger" : "info"}>
+          <Pill
+            tone={
+              s.status === "completed"
+                ? "success"
+                : s.status === "failed"
+                  ? "danger"
+                  : "info"
+            }
+          >
             {s.status}
           </Pill>
           {s.duration_ms != null && (
-            <span className="text-[11px] text-text-muted">{s.duration_ms}ms</span>
+            <span className="text-[11px] text-text-muted">
+              {s.duration_ms}ms
+            </span>
           )}
         </li>
       ))}
@@ -265,7 +315,7 @@ function AbilitiesRail() {
     return (
       <div className="space-y-2">
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-12" />
+          <Skeleton key={i} className="h-12 rounded-xl" />
         ))}
       </div>
     );
@@ -311,10 +361,130 @@ function AbilitiesRail() {
   );
 }
 
+/** The tabbed context rail body (shared by desktop rail + mobile sheet). */
+function ContextRail({
+  tab,
+  setTab,
+  conversationId,
+  openCount,
+}: {
+  tab: RailTab;
+  setTab: (t: RailTab) => void;
+  conversationId: string | null;
+  openCount: number;
+}) {
+  const TABS: { key: RailTab; label: string; icon: React.ReactNode }[] = [
+    {
+      key: "pending",
+      label: openCount > 0 ? `Pending (${openCount})` : "Pending",
+      icon: <ListChecks className="w-3.5 h-3.5" />,
+    },
+    {
+      key: "trace",
+      label: "Trace",
+      icon: <ScrollText className="w-3.5 h-3.5" />,
+    },
+    {
+      key: "abilities",
+      label: "Abilities",
+      icon: <Wand2 className="w-3.5 h-3.5" />,
+    },
+  ];
+  return (
+    <div className="flex flex-col min-h-0 h-full">
+      <div className="flex gap-1 p-2 border-b hairline overflow-x-auto hide-scrollbar">
+        {TABS.map((t) => (
+          <Button
+            key={t.key}
+            size="sm"
+            variant={tab === t.key ? "primary" : "ghost"}
+            icon={t.icon}
+            onClick={() => setTab(t.key)}
+            className="shrink-0"
+          >
+            {t.label}
+          </Button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-y-auto p-3">
+        {tab === "pending" && <PendingQueue />}
+        {tab === "trace" && <TraceRail conversationId={conversationId} />}
+        {tab === "abilities" && <AbilitiesRail />}
+      </div>
+    </div>
+  );
+}
+
+/** Mobile slide-over wrapper (left history / right context). */
+function SlideOver({
+  open,
+  onClose,
+  side,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  side: "left" | "right";
+  title: string;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        className={cn(
+          "fixed inset-0 z-[70] bg-black/50 backdrop-blur-[3px] transition-opacity duration-300 lg:hidden",
+          open ? "opacity-100" : "opacity-0 pointer-events-none",
+        )}
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={cn(
+          "fixed top-0 h-full z-[80] flex flex-col dropglass w-[min(340px,88vw)] transition-[transform,visibility] duration-300 ease-brand lg:hidden",
+          side === "left"
+            ? "left-0 border-r shadow-[30px_0_80px_rgb(0_0_0/0.5)]"
+            : "right-0 border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)]",
+          open
+            ? "translate-x-0 visible"
+            : cn(
+                "invisible pointer-events-none",
+                side === "left" ? "-translate-x-full" : "translate-x-full",
+              ),
+        )}
+      >
+        <div className="flex items-center gap-2 p-3 border-b hairline">
+          <h2 className="font-display text-base font-medium flex-1">{title}</h2>
+          <IconButton aria-label="Close" onClick={onClose}>
+            <X className="w-[18px] h-[18px]" />
+          </IconButton>
+        </div>
+        <div className="flex-1 min-h-0">{children}</div>
+      </aside>
+    </>
+  );
+}
+
+/* ── Page ─────────────────────────────────────────────────────────────── */
+
 export default function PraxisPage() {
   const can = useAuthStore((s) => s.can);
   const { conversationId, setConversation } = usePraxisDockStore();
+  const isDesktop = useIsDesktop();
   const [tab, setTab] = useState<RailTab>("pending");
+  const [railOpen, setRailOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [mobileHistory, setMobileHistory] = useState(false);
+  const [mobileRail, setMobileRail] = useState(false);
   const pending = usePendingActions("proposed");
   usePraxisRealtime();
 
@@ -325,69 +495,132 @@ export default function PraxisPage() {
   }
 
   const openCount = (pending.data ?? []).length;
-  const TABS: { key: RailTab; label: string; icon: React.ReactNode }[] = [
-    {
-      key: "pending",
-      label: openCount > 0 ? `Pending (${openCount})` : "Pending",
-      icon: <ListChecks className="w-3.5 h-3.5" />,
-    },
-    { key: "trace", label: "Trace", icon: <ScrollText className="w-3.5 h-3.5" /> },
-    { key: "abilities", label: "Abilities", icon: <Wand2 className="w-3.5 h-3.5" /> },
-  ];
+
+  const pickConversation = (id: string | null) => {
+    setConversation(id);
+    setMobileHistory(false);
+  };
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100dvh-140px)] min-h-[480px]">
+    <div className="flex flex-col gap-4 h-[calc(100dvh-140px)] min-h-[520px]">
+      {/* Header */}
       <header className="flex items-center gap-3">
-        <div className="grid place-items-center w-11 h-11 rounded-[14px] bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))] text-[#F4E9D9]">
+        <div className="grid place-items-center w-11 h-11 rounded-[14px] bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))] text-[#F4E9D9] shadow-[0_10px_28px_rgb(var(--accent-deep)/0.4)]">
           <Sparkles className="w-5 h-5" />
         </div>
-        <div>
+        <div className="min-w-0">
           <h1 className="font-display text-2xl leading-tight">Praxis</h1>
-          <p className="text-[12.5px] text-text-muted">
+          <p className="text-[12.5px] text-text-muted truncate">
             Reads freely · writes only with your sign-off · acts with your
             permissions
           </p>
         </div>
       </header>
 
-      <div className="grid gap-4 min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_340px]">
-        <div className="hidden lg:block min-h-0">
-          <ConversationList activeId={conversationId} onPick={setConversation} />
+      {/* Workspace frame */}
+      <div className="glass rounded-[var(--radius)] shadow-glass overflow-hidden min-h-0 flex-1 flex">
+        {/* Left history rail (desktop) */}
+        {isDesktop && historyOpen && (
+          <div className="w-[280px] shrink-0 border-r hairline min-h-0">
+            <ConversationList
+              activeId={conversationId}
+              onPick={pickConversation}
+            />
+          </div>
+        )}
+
+        {/* Centre column */}
+        <div className="flex-1 min-w-0 flex flex-col min-h-0">
+          {/* Slim toolbar */}
+          <div className="flex items-center gap-1.5 px-3 py-2 border-b hairline">
+            <IconButton
+              aria-label={
+                isDesktop
+                  ? historyOpen
+                    ? "Hide history"
+                    : "Show history"
+                  : "Conversation history"
+              }
+              onClick={() =>
+                isDesktop
+                  ? setHistoryOpen((v) => !v)
+                  : setMobileHistory(true)
+              }
+            >
+              <PanelLeft className="w-4 h-4" />
+            </IconButton>
+            <div className="flex-1 min-w-0 text-center">
+              <span className="text-[12.5px] font-semibold text-text-muted">
+                {conversationId ? "Conversation" : "New conversation"}
+              </span>
+            </div>
+            <IconButton
+              aria-label="New conversation"
+              onClick={() => pickConversation(null)}
+            >
+              <Plus className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={
+                isDesktop
+                  ? railOpen
+                    ? "Hide context"
+                    : "Show context"
+                  : "Context & pending"
+              }
+              dot={openCount > 0}
+              onClick={() =>
+                isDesktop ? setRailOpen((v) => !v) : setMobileRail(true)
+              }
+            >
+              <PanelRight className="w-4 h-4" />
+            </IconButton>
+          </div>
+
+          <div className="flex-1 min-h-0">
+            <PraxisConversation
+              conversationId={conversationId}
+              onConversationCreated={setConversation}
+              variant="page"
+            />
+          </div>
         </div>
 
-        <Card className="p-0 overflow-hidden min-h-[380px] lg:min-h-0 flex flex-col">
-          <PraxisConversation
-            conversationId={conversationId}
-            onConversationCreated={setConversation}
-          />
-        </Card>
-
-        <Card className="p-0 overflow-hidden min-h-0 flex flex-col">
-          <div className="flex gap-1 p-2 border-b border-line">
-            {TABS.map((t) => (
-              <Button
-                key={t.key}
-                size="sm"
-                variant={tab === t.key ? "primary" : "ghost"}
-                icon={t.icon}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </Button>
-            ))}
+        {/* Right context rail (desktop) */}
+        {isDesktop && railOpen && (
+          <div className="w-[360px] shrink-0 border-l hairline min-h-0">
+            <ContextRail
+              tab={tab}
+              setTab={setTab}
+              conversationId={conversationId}
+              openCount={openCount}
+            />
           </div>
-          <div className="flex-1 overflow-y-auto p-3">
-            {tab === "pending" && <PendingQueue />}
-            {tab === "trace" && <TraceRail conversationId={conversationId} />}
-            {tab === "abilities" && <AbilitiesRail />}
-          </div>
-        </Card>
+        )}
       </div>
 
-      {/* Mobile: history below the thread (the rail tabs cover the rest). */}
-      <div className="lg:hidden">
-        <ConversationList activeId={conversationId} onPick={setConversation} />
-      </div>
+      {/* Mobile slide-overs */}
+      <SlideOver
+        open={!isDesktop && mobileHistory}
+        onClose={() => setMobileHistory(false)}
+        side="left"
+        title="Conversations"
+      >
+        <ConversationList activeId={conversationId} onPick={pickConversation} />
+      </SlideOver>
+      <SlideOver
+        open={!isDesktop && mobileRail}
+        onClose={() => setMobileRail(false)}
+        side="right"
+        title="Context"
+      >
+        <ContextRail
+          tab={tab}
+          setTab={setTab}
+          conversationId={conversationId}
+          openCount={openCount}
+        />
+      </SlideOver>
     </div>
   );
 }

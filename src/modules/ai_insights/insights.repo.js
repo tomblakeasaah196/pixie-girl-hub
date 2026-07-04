@@ -142,6 +142,27 @@ async function summary({ business }) {
   for (const r of rows) out[r.module] = { open: r.open, urgent: r.urgent };
   return out;
 }
+/**
+ * Auto-resolve open insights for a module whose finding no longer appears in
+ * the latest sweep (the condition cleared). `liveKeys` is the set of
+ * suppression_keys the module's detectors produced this run; any open /
+ * acknowledged / investigating insight whose key is NOT in it is resolved.
+ * Returns the count resolved. Only ever called for modules whose detectors all
+ * ran cleanly this sweep, so a detector error never mass-resolves live findings.
+ */
+async function autoResolveStale({ module, liveKeys }) {
+  const { rows } = await query(
+    `UPDATE shared.ai_insights
+        SET status = 'resolved', resolved_at = now(),
+            resolution_notes = 'Auto-resolved: condition cleared'
+      WHERE module = $1
+        AND status IN ('open','acknowledged','investigating')
+        AND NOT (suppression_key = ANY($2::text[]))
+      RETURNING insight_id`,
+    [module, liveKeys],
+  );
+  return rows.length;
+}
 
 // ── AI Control switchboard (ai_insight_modules) ──
 async function listModules() {
@@ -447,6 +468,7 @@ module.exports = {
   getOne,
   setStatus,
   summary,
+  autoResolveStale,
   listModules,
   getModule,
   enabledModules,

@@ -315,6 +315,31 @@ describe("registry — Wave-3 batch 4 detectors", () => {
   });
 });
 
+describe("service.runDetectorSweep — auto-resolve (Wave 4)", () => {
+  test("resolves stale insights for a module that ran cleanly, using its live keys", async () => {
+    repo.enabledModules.mockResolvedValue(["invoicing"]);
+    repo.overdueInvoices.mockResolvedValue([
+      { invoice_id: "inv-1", customer_contact_id: "c", net_due_ngn: "1.00", days_overdue: 5 },
+    ]);
+    repo.raise.mockResolvedValue(null);
+    repo.autoResolveStale.mockResolvedValue(2);
+    await service.runDetectorSweep();
+    // invoicing is brand-scoped (runs per brand) but the mock returns the same
+    // invoice, so the live-key set dedupes to one.
+    expect(repo.autoResolveStale).toHaveBeenCalledWith({
+      module: "invoicing",
+      liveKeys: ["overdue:inv-1"],
+    });
+  });
+
+  test("skips auto-resolve for a module whose detector errored", async () => {
+    repo.enabledModules.mockResolvedValue(["invoicing"]);
+    repo.overdueInvoices.mockRejectedValue(new Error("boom"));
+    await service.runDetectorSweep();
+    expect(repo.autoResolveStale).not.toHaveBeenCalled();
+  });
+});
+
 describe("registry — Wave-3 batch 5 detectors (final 6 modules)", () => {
   test("social_media/post_failed: failed status", async () => {
     repo.failedSocialPosts.mockResolvedValue([

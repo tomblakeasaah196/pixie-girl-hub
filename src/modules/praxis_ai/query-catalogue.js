@@ -25,10 +25,20 @@ const logisticsRepo = require("../logistics/logistics.repo");
 const purchasingRepo = require("../purchasing/purchasing.repo");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const crmRepo = require("../crm/crm.repo");
+const insightsRepo = require("../ai_insights/insights.repo");
 
 const str = (v) => (typeof v === "string" && v ? v : null);
 
 const QUERIES = [
+  {
+    key: "insights_open",
+    title: "Open insights / what needs attention",
+    description:
+      "Open AI-insight counts per module for the current brand — overdue invoices, low stock, unpaid settlements, unanswered messages, and more. Use this when asked 'what needs my attention?', 'any alerts?', or 'what's wrong today?'.",
+    module: "ai_insights",
+    parameters: { type: "object", properties: {} },
+    run: ({ brand }) => insightsRepo.summary({ business: brand }),
+  },
   {
     key: "sales_summary",
     title: "Sales summary",

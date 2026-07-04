@@ -51,6 +51,12 @@ async function bootstrap() {
   await initRedis();
   logger.info("redis connected");
 
+  // ── AI config sanity (non-fatal) ───────────────────────
+  // Warns loudly at boot if GEMINI_BASE_URL is missing/misconfigured, so a
+  // bad host (the classic gemini.api.google.com typo) screams here instead
+  // of silently 503-ing every AI feature at request time.
+  require("./services/gemini.service").checkConfigAtBoot();
+
   // ── GeoIP local database ───────────────────────────────
   // Non-fatal: the server starts fine without the mmdb file; geo lookups
   // return null and the currency middleware falls back to the default (USD).

@@ -33,6 +33,39 @@ function isConfigured() {
   return !!config.GEMINI_API_KEY;
 }
 
+// The public Generative Language API lives ONLY at this host. A .env that
+// overrides GEMINI_BASE_URL with a plausible-but-wrong host (e.g.
+// gemini.api.google.com) makes every call die with getaddrinfo ENOTFOUND
+// before it leaves the box — an invisible, uniform 503 across every AI
+// feature (Shade Finder, Shop AI Search, Praxis). This surfaces that at
+// boot instead. Warning-only: never take the whole backend down over a
+// misconfigured optional AI host. Called once from server bootstrap.
+const EXPECTED_GEMINI_HOSTS = new Set([
+  "generativelanguage.googleapis.com",
+]);
+function checkConfigAtBoot() {
+  if (!isConfigured()) {
+    logger.warn("GEMINI_API_KEY is not set — Gemini-backed AI features are disabled");
+    return;
+  }
+  let host = null;
+  try {
+    host = new URL(config.GEMINI_BASE_URL).hostname;
+  } catch {
+    logger.error(
+      { GEMINI_BASE_URL: config.GEMINI_BASE_URL },
+      "GEMINI_BASE_URL is not a valid URL — every Gemini call will fail; expected https://generativelanguage.googleapis.com",
+    );
+    return;
+  }
+  if (!EXPECTED_GEMINI_HOSTS.has(host)) {
+    logger.error(
+      { host, GEMINI_BASE_URL: config.GEMINI_BASE_URL },
+      "GEMINI_BASE_URL points at an unexpected host — Gemini calls will likely fail with ENOTFOUND; expected generativelanguage.googleapis.com (unset GEMINI_BASE_URL to use the correct default)",
+    );
+  }
+}
+
 /**
  * Translate our generic message array into Gemini's `contents` shape.
  *
@@ -167,10 +200,19 @@ async function chatCompletion({
   } catch (err) {
     const status =
       err.response && err.response.status ? err.response.status : null;
+    // Google's response body says WHY (bad schema, blocked key, quota…) —
+    // without it a 400 is undiagnosable from our logs.
+    const apiError =
+      (err.response &&
+        err.response.data &&
+        err.response.data.error &&
+        err.response.data.error.message) ||
+      null;
     logger.warn(
       {
         status,
         err: err.message,
+        api_error: apiError,
         model: modelId,
       },
       "gemini.chatCompletion failed",
@@ -178,10 +220,11 @@ async function chatCompletion({
     const e = new Error(`gemini call failed (${status || "no response"})`);
     e.code = "GEMINI_CALL_FAILED";
     e.status = status;
+    e.api_message = apiError;
     e.retryable =
       status === null || status >= 500 || status === 429 || status === 408;
     throw e;
   }
 }
 
-module.exports = { isConfigured, chatCompletion };
+module.exports = { isConfigured, checkConfigAtBoot, chatCompletion };

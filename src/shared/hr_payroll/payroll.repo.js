@@ -13,6 +13,7 @@ async function listActiveStaffForPayroll({ client, brand, period_end }) {
   const { rows } = await exec(client)(
     `SELECT sp.profile_id, sp.job_title, sp.department, sp.base_salary,
             sp.bank_account_number, sp.bank_sort_code, sp.bank_name,
+            sp.start_date, sp.end_date, sp.statutory_exempt,
             u.user_id
        FROM shared.staff_profiles sp
        JOIN shared.users u ON u.staff_profile_id = sp.profile_id
@@ -24,6 +25,124 @@ async function listActiveStaffForPayroll({ client, brand, period_end }) {
     [brand, period_end],
   );
   return rows;
+}
+
+// ── Attendance money for a pay period (audit C1) ────────────────────────
+/**
+ * Per-profile attendance summary over the reconciled days of a period:
+ *   deduction_ngn — lateness deductions (unjustified) + the full daily rate
+ *                   for unjustified absences (incl. unpaid-leave days);
+ *   days_worked   — days actually present (incl. late).
+ * shared.attendance_days is the single source; the waive/uphold loop keeps
+ * it honest (waived → justified=true / deduction zeroed).
+ */
+async function attendanceSummaryForPeriod({ client, brand, from, to }) {
+  const { rows } = await exec(client)(
+    `SELECT profile_id,
+            COALESCE(SUM(
+              CASE
+                WHEN justified THEN 0
+                WHEN status = 'absent' THEN daily_rate_ngn
+                ELSE deduction_ngn
+              END), 0)::numeric AS deduction_ngn,
+            COUNT(*) FILTER (WHERE status IN ('present','late'))::int AS days_worked
+       FROM shared.attendance_days
+      WHERE business = $1 AND work_date >= $2 AND work_date <= $3
+      GROUP BY profile_id`,
+    [brand, from, to],
+  );
+  const map = {};
+  for (const r of rows) map[r.profile_id] = r;
+  return map;
+}
+
+// ── Outstanding cash advances (audit C4) ────────────────────────────────
+/**
+ * user_id → outstanding advance balance: disbursed self-advances minus what
+ * has been settled (receipts / cash returned / prior payroll offsets). Only
+ * positive balances are returned. The §6.32 config flag
+ * `auto_deduct_unsettled_via_payroll` gates whether the caller uses this.
+ */
+async function outstandingAdvancesByUser({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT cr.submitted_by AS user_id,
+            SUM(COALESCE(cr.amount_disbursed_ngn, cr.amount_requested_ngn)
+                - COALESCE(s.settled_ngn, 0))::numeric AS outstanding_ngn
+       FROM shared.cash_requests cr
+       LEFT JOIN LATERAL (
+         SELECT SUM(amount_ngn) AS settled_ngn
+           FROM shared.cash_request_settlements
+          WHERE cash_request_id = cr.cash_request_id
+       ) s ON true
+      WHERE cr.business = $1
+        AND cr.status = 'disbursed'
+        AND cr.recipient_type IN ('self_bank','self_cash')
+      GROUP BY cr.submitted_by
+     HAVING SUM(COALESCE(cr.amount_disbursed_ngn, cr.amount_requested_ngn)
+                - COALESCE(s.settled_ngn, 0)) > 0`,
+    [brand],
+  );
+  const map = {};
+  for (const r of rows) map[r.user_id] = Number(r.outstanding_ngn);
+  return map;
+}
+
+/**
+ * Oldest-first open self-advances for one user (to settle a payroll recovery
+ * against specific requests at pay time).
+ */
+async function openAdvancesForUser({ client, brand, user_id }) {
+  const { rows } = await exec(client)(
+    `SELECT cr.cash_request_id,
+            COALESCE(cr.amount_disbursed_ngn, cr.amount_requested_ngn)
+              - COALESCE((SELECT SUM(amount_ngn) FROM shared.cash_request_settlements
+                           WHERE cash_request_id = cr.cash_request_id), 0)
+              AS outstanding_ngn
+       FROM shared.cash_requests cr
+      WHERE cr.business = $1
+        AND cr.submitted_by = $2
+        AND cr.status = 'disbursed'
+        AND cr.recipient_type IN ('self_bank','self_cash')
+      ORDER BY cr.disbursed_at ASC NULLS LAST`,
+    [brand, user_id],
+  );
+  return rows.filter((r) => Number(r.outstanding_ngn) > 0);
+}
+
+/** Record a payroll offset against an advance (entry_type 'cash_returned'). */
+async function settleAdvanceFromPayroll({
+  client,
+  cash_request_id,
+  amount_ngn,
+  description,
+  recorded_by,
+}) {
+  await exec(client)(
+    `INSERT INTO shared.cash_request_settlements
+       (cash_request_id, entry_type, amount_ngn, return_method, description, recorded_by)
+     VALUES ($1, 'cash_returned', $2, 'offset_advance', $3, $4)`,
+    [cash_request_id, amount_ngn, description, recorded_by],
+  );
+  // Fully settled → flip the request status so it leaves the open list.
+  await exec(client)(
+    `UPDATE shared.cash_requests cr
+        SET status = 'settled'
+      WHERE cr.cash_request_id = $1
+        AND cr.status = 'disbursed'
+        AND COALESCE(cr.amount_disbursed_ngn, cr.amount_requested_ngn)
+            <= COALESCE((SELECT SUM(amount_ngn) FROM shared.cash_request_settlements
+                          WHERE cash_request_id = cr.cash_request_id), 0)`,
+    [cash_request_id],
+  );
+}
+
+/** cash_request_settings for a brand (JSONB on business_config). */
+async function cashRequestSettings({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT cash_request_settings FROM shared.business_config WHERE business_key = $1`,
+    [brand],
+  );
+  return (rows[0] && rows[0].cash_request_settings) || {};
 }
 
 // ── payroll_runs ───────────────────────────────────────────
@@ -166,6 +285,10 @@ async function insertPayslip({ client, brand, _payslip_number, data }) {
     "pension_employee_ngn",
     "pension_employer_ngn",
     "nhf_ngn",
+    "attendance_deduction_ngn",
+    "days_worked",
+    "working_days_in_period",
+    "prorate_factor",
     "loan_repayment_ngn",
     "advance_recovery_ngn",
     "other_deductions_ngn",
@@ -225,16 +348,22 @@ async function listPayslips({
     where.push(`payment_status = $${i++}`);
     params.push(filters.payment_status);
   }
-  const whereSql = `WHERE ${where.join(" AND ")}`;
+  // Prefix WHERE columns so the staff-name join stays unambiguous.
+  const whereSql = `WHERE ${where.join(" AND ").replace(/\b(payroll_run_id|user_id|payment_status)\b/g, "ps.$1")}`;
   const offset = (page - 1) * page_size;
   const run = exec(client);
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "payslips")} ${whereSql}
-      ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`,
+    `SELECT ps.*, c.display_name AS staff_name
+       FROM ${t(brand, "payslips")} ps
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = ps.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      ${whereSql}
+      ORDER BY c.display_name ASC NULLS LAST, ps.created_at DESC
+      LIMIT $${i} OFFSET $${i + 1}`,
     [...params, page_size, offset],
   );
   const { rows: cr } = await run(
-    `SELECT count(*)::int AS total FROM ${t(brand, "payslips")} ${whereSql}`,
+    `SELECT count(*)::int AS total FROM ${t(brand, "payslips")} ps ${whereSql}`,
     params,
   );
   return { data: rows, page, page_size, total: cr[0].total };
@@ -572,6 +701,11 @@ async function sumRunPayslips({ client, brand, run_id }) {
 module.exports = {
   sumRunPayslips,
   listActiveStaffForPayroll,
+  attendanceSummaryForPeriod,
+  outstandingAdvancesByUser,
+  openAdvancesForUser,
+  settleAdvanceFromPayroll,
+  cashRequestSettings,
   activeDeductionConfigs,
   listRuns,
   findRun,

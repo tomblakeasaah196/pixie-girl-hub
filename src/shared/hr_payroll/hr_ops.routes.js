@@ -34,6 +34,7 @@ router.post("/me/queries/:id/respond", v.queryRespond, c.respondToQuery);
 router.get("/overview", P("view"), c.getOverview);
 router.get("/analytics", P("view"), c.getAnalytics);
 router.post("/attendance/reconcile", P("edit"), v.reconcile, c.reconcile);
+router.post("/attendance/reconcile-period", P("edit"), v.reconcilePeriod, c.reconcilePeriod);
 router.post("/attendance/apply-lapsed-offsite", P("edit"), c.applyLapsedOffsite);
 router.get("/attendance-days", P("view"), c.listAttendanceDays);
 

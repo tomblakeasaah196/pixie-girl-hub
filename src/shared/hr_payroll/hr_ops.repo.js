@@ -88,7 +88,9 @@ async function profileById({ client, brand, profileId }) {
 async function activeStaff({ client, brand }) {
   const { rows } = await exec(client)(
     `SELECT sp.profile_id, sp.business, sp.base_salary, sp.job_title,
-            sp.work_schedule, sp.work_expected_start_time, sp.work_grace_minutes,
+            sp.work_schedule, sp.work_expected_start_time,
+            sp.work_expected_end_time, sp.work_grace_minutes,
+            sp.start_date, sp.end_date,
             c.display_name
        FROM shared.staff_profiles sp
        LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
@@ -126,9 +128,12 @@ async function updateSettings({ client, brand, patch }) {
     "lateness_query_reminder_days",
     "default_grace_minutes",
     "default_expected_start_time",
+    "default_expected_end_time",
     "working_days",
     "leave_escalation_days",
     "earnings_tracker_enabled",
+    "statutory_deductions_enabled",
+    "advance_recovery_cap_pct",
     "geofence_enabled",
     "geofence_required_on_site",
     "geofence_accuracy_max_m",
@@ -377,8 +382,9 @@ async function upsertAttendanceDay({ client, brand, input }) {
        (business, profile_id, work_date, status, expected_start_time,
         first_clock_in_at, minutes_late, is_late, daily_rate_ngn,
         deduction_pct, deduction_ngn, clock_event_id, leave_id, reconciled_by,
-        is_offsite, offsite_distance_m, clock_in_address, clock_in_lat, clock_in_lng)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        is_offsite, offsite_distance_m, clock_in_address, clock_in_lat, clock_in_lng,
+        last_clock_out_at, early_leave_minutes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      ON CONFLICT (profile_id, work_date) DO UPDATE SET
         status = EXCLUDED.status,
         expected_start_time = EXCLUDED.expected_start_time,
@@ -396,7 +402,9 @@ async function upsertAttendanceDay({ client, brand, input }) {
         offsite_distance_m = EXCLUDED.offsite_distance_m,
         clock_in_address = EXCLUDED.clock_in_address,
         clock_in_lat = EXCLUDED.clock_in_lat,
-        clock_in_lng = EXCLUDED.clock_in_lng
+        clock_in_lng = EXCLUDED.clock_in_lng,
+        last_clock_out_at = EXCLUDED.last_clock_out_at,
+        early_leave_minutes = EXCLUDED.early_leave_minutes
      RETURNING *`,
     [
       brand,
@@ -418,6 +426,8 @@ async function upsertAttendanceDay({ client, brand, input }) {
       input.clock_in_address || null,
       input.clock_in_lat ?? null,
       input.clock_in_lng ?? null,
+      input.last_clock_out_at || null,
+      input.early_leave_minutes || 0,
     ],
   );
   return rows[0];
@@ -458,6 +468,15 @@ async function listAttendanceDays({ client, brand, filters = {} }) {
     params.push(filters.to);
   }
   if (filters.is_late) where.push(`ad.is_late = true`);
+  if (filters.is_offsite) where.push(`ad.is_offsite = true`);
+  if (filters.status) {
+    where.push(`ad.status = $${i++}`);
+    params.push(filters.status);
+  }
+  const pageSize = Math.min(Number(filters.page_size) || 200, 500);
+  const page = Math.max(Number(filters.page) || 1, 1);
+  const offset = (page - 1) * pageSize;
+  params.push(pageSize, offset);
   const { rows } = await exec(client)(
     `SELECT ad.*, c.display_name AS staff_name
        FROM shared.attendance_days ad
@@ -465,10 +484,21 @@ async function listAttendanceDays({ client, brand, filters = {} }) {
        LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
       WHERE ${where.join(" AND ")}
       ORDER BY ad.work_date DESC, c.display_name ASC
-      LIMIT 500`,
+      LIMIT $${i++} OFFSET $${i++}`,
     params,
   );
   return rows;
+}
+
+/** Distinct dates already reconciled in a range (pre-review payroll guard). */
+async function reconciledDatesInRange({ client, brand, from, to }) {
+  const { rows } = await exec(client)(
+    `SELECT DISTINCT work_date::text AS work_date
+       FROM shared.attendance_days
+      WHERE business = $1 AND work_date >= $2 AND work_date <= $3`,
+    [brand, from, to],
+  );
+  return new Set(rows.map((r) => r.work_date.slice(0, 10)));
 }
 
 // ── staff_earnings_daily ───────────────────────────────────
@@ -727,11 +757,14 @@ async function bumpReminder({ client, id }) {
   );
 }
 
-/** profile_id → leave_id for any approved leave covering the date. */
+/**
+ * profile_id → { leave_id, leave_type, is_unpaid } for any approved leave
+ * covering the date. is_unpaid drives whether the day earns pay (§3.5).
+ */
 async function approvedLeaveForDate({ client, profileIds, dateStr }) {
   if (!profileIds.length) return {};
   const { rows } = await exec(client)(
-    `SELECT DISTINCT ON (profile_id) profile_id, leave_id
+    `SELECT DISTINCT ON (profile_id) profile_id, leave_id, leave_type
        FROM shared.leave_requests
       WHERE profile_id = ANY($1::uuid[]) AND status = 'approved'
         AND $2::date BETWEEN start_date AND end_date
@@ -739,7 +772,33 @@ async function approvedLeaveForDate({ client, profileIds, dateStr }) {
     [profileIds, dateStr],
   );
   const map = {};
-  for (const r of rows) map[r.profile_id] = r.leave_id;
+  for (const r of rows) {
+    map[r.profile_id] = {
+      leave_id: r.leave_id,
+      leave_type: r.leave_type,
+      is_unpaid: r.leave_type === "unpaid",
+    };
+  }
+  return map;
+}
+
+/**
+ * Last accepted clock-OUT per profile on a date (for early-departure and
+ * "last to leave" — audit H3 / §6.11 early departures).
+ */
+async function lastClockOutsForDate({ client, profileIds, dateStr }) {
+  if (!profileIds.length) return {};
+  const { rows } = await exec(client)(
+    `SELECT DISTINCT ON (profile_id) profile_id, event_id, occurred_at
+       FROM shared.staff_clock_events
+      WHERE profile_id = ANY($1::uuid[])
+        AND event_type = 'clock_out' AND accepted = true
+        AND occurred_at::date = $2::date
+      ORDER BY profile_id, occurred_at DESC`,
+    [profileIds, dateStr],
+  );
+  const map = {};
+  for (const r of rows) map[r.profile_id] = r;
   return map;
 }
 
@@ -818,6 +877,7 @@ module.exports = {
   linkDayQuery,
   justifyDay,
   listAttendanceDays,
+  reconciledDatesInRange,
   upsertEarningsDay,
   earningsMonthToDate,
   listTargets,
@@ -829,6 +889,7 @@ module.exports = {
   deleteTarget,
   overviewCounts,
   firstClockInsForDate,
+  lastClockOutsForDate,
   approvedLeaveForDate,
   todayClockEvents,
   markDayAbsent,

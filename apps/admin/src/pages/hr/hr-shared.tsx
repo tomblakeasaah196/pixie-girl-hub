@@ -4,10 +4,11 @@
  */
 
 import type { ReactNode } from "react";
+import { MapPin } from "lucide-react";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { Card, Pill, type Tone } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import type { WorkSchedule } from "@/lib/hr-api";
+import type { AttendanceDay, WorkSchedule } from "@/lib/hr-api";
 
 /** Minimal toast helper — the store wants a full notification shape. */
 export function useNotify() {
@@ -77,6 +78,53 @@ export function WeekScheduleView({ schedule }: { schedule: WorkSchedule }) {
         );
       })}
     </div>
+  );
+}
+
+/** Short local-time label from an ISO timestamp (e.g. "8:57 AM"). */
+export function clockTime(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * Clock-in location cell shared by the HR/manager attendance list and the
+ * My-HR self view: shows the stored (Geoapify) address, links the stored
+ * coordinates to a map, falls back to "View on map" when only coords exist,
+ * and "—" when there's nothing. The UI never geocodes on render.
+ */
+export function ClockLocationLink({
+  day,
+  className,
+}: {
+  day: Pick<
+    AttendanceDay,
+    "clock_in_lat" | "clock_in_lng" | "clock_in_address" | "is_offsite"
+  >;
+  className?: string;
+}) {
+  if (day.clock_in_lat == null || day.clock_in_lng == null) {
+    return <span className="text-xs text-text-faint">—</span>;
+  }
+  return (
+    <a
+      href={`https://www.google.com/maps?q=${day.clock_in_lat},${day.clock_in_lng}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Open the exact clock-in location on a map"
+      className={cn(
+        "inline-flex items-center gap-1 text-xs hover:underline",
+        day.is_offsite ? "text-warn" : "text-text-muted",
+        className,
+      )}
+    >
+      <MapPin className="h-3 w-3 shrink-0" />
+      <span className="max-w-[14rem] truncate">
+        {day.clock_in_address || "View on map"}
+      </span>
+    </a>
   );
 }
 

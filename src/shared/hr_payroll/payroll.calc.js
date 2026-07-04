@@ -80,18 +80,42 @@ function computeDeductions({ gross, pensionableBase, configs = {} }) {
 }
 
 /**
+ * How much of an outstanding cash advance one run may recover: capped at
+ * `capPct` % of the net pay BEFORE recovery (decision 2026-07-04: default 50%
+ * so no month is wiped out; remainder rolls forward).
+ */
+function capAdvanceRecovery({ netBeforeRecovery, outstanding, capPct }) {
+  const net = Number(netBeforeRecovery) || 0;
+  const owed = Number(outstanding) || 0;
+  const pct = capPct === null || capPct === undefined ? 50 : Number(capPct);
+  if (owed <= 0 || net <= 0 || pct <= 0) return 0;
+  return round2(Math.min(owed, (net * pct) / 100));
+}
+
+/**
  * Build one payslip's figures + itemised lines.
  * earnings: { base_salary, allowances, commission, bonus, overtime, reimbursements }
  * extraDeductions: { loan_repayment, advance_recovery, other_deductions }
+ * attendance: { deduction_ngn, days_worked, working_days } — the reconciled
+ *   month's lateness/absence/unpaid-leave money (meeting §3.4: attendance is
+ *   part of the automatic calculation; upheld queries deduct from net).
+ * prorateFactor: 1 for a full-period employee; working-days fraction for
+ *   mid-period joiners/leavers (§3.5). Applied to base salary only.
  */
 function buildPayslip({
   earnings = {},
   extraDeductions = {},
   deductionConfigs = {},
   pensionableBase,
+  attendance = {},
+  prorateFactor = 1,
 }) {
+  const factor =
+    prorateFactor === null || prorateFactor === undefined || !(prorateFactor >= 0)
+      ? 1
+      : Math.min(1, Number(prorateFactor));
   const e = {
-    base_salary: round2(earnings.base_salary || 0),
+    base_salary: round2((earnings.base_salary || 0) * factor),
     allowances: round2(earnings.allowances || 0),
     commission: round2(earnings.commission || 0),
     bonus: round2(earnings.bonus || 0),
@@ -108,8 +132,16 @@ function buildPayslip({
   );
 
   const stat = computeDeductions({
+    // Omitted (undefined) or explicit null → pension/NHF base is the basic
+    // salary (the prorated base). An explicit number overrides. Without this,
+    // an omitted value passed `undefined` straight through and every statutory
+    // figure came out NaN — a latent bug that only stayed hidden while no real
+    // run executed with statutory deductions on.
     gross,
-    pensionableBase: pensionableBase === null ? e.base_salary : pensionableBase,
+    pensionableBase:
+      pensionableBase === null || pensionableBase === undefined
+        ? e.base_salary
+        : pensionableBase,
     configs: deductionConfigs,
   });
 
@@ -118,6 +150,7 @@ function buildPayslip({
     pension_employee: stat.pension_employee,
     pension_employer: stat.pension_employer,
     nhf: stat.nhf,
+    attendance_deduction: round2(attendance.deduction_ngn || 0),
     loan_repayment: round2(extraDeductions.loan_repayment || 0),
     advance_recovery: round2(extraDeductions.advance_recovery || 0),
     other_deductions: round2(extraDeductions.other_deductions || 0),
@@ -127,6 +160,7 @@ function buildPayslip({
     d.paye +
       d.pension_employee +
       d.nhf +
+      d.attendance_deduction +
       d.loan_repayment +
       d.advance_recovery +
       d.other_deductions,
@@ -138,7 +172,11 @@ function buildPayslip({
     if (amount > 0)
       lines.push({ line_type, description, amount_ngn: round2(amount) });
   };
-  push("base_salary", "Base salary", e.base_salary);
+  push(
+    "base_salary",
+    factor < 1 ? `Base salary (pro-rated ×${factor.toFixed(4)})` : "Base salary",
+    e.base_salary,
+  );
   push("transport_allowance", "Allowances", e.allowances);
   push("commission", "Commission", e.commission);
   push("bonus", "Bonus", e.bonus);
@@ -147,8 +185,13 @@ function buildPayslip({
   push("paye", "PAYE", d.paye);
   push("pension_employee", "Pension (employee)", d.pension_employee);
   push("nhf", "NHF", d.nhf);
+  push(
+    "attendance_deduction",
+    "Attendance deductions (lateness / absence / unpaid leave)",
+    d.attendance_deduction,
+  );
   push("loan_repayment", "Loan repayment", d.loan_repayment);
-  push("advance_recovery", "Advance recovery", d.advance_recovery);
+  push("advance_recovery", "Cash advance recovery", d.advance_recovery);
   push("other_deduction", "Other deductions", d.other_deductions);
   lines.forEach((l, idx) => (l.display_order = idx));
 
@@ -164,6 +207,16 @@ function buildPayslip({
     pension_employee_ngn: d.pension_employee,
     pension_employer_ngn: d.pension_employer,
     nhf_ngn: d.nhf,
+    attendance_deduction_ngn: d.attendance_deduction,
+    days_worked:
+      attendance.days_worked === null || attendance.days_worked === undefined
+        ? null
+        : Number(attendance.days_worked),
+    working_days_in_period:
+      attendance.working_days === null || attendance.working_days === undefined
+        ? null
+        : Number(attendance.working_days),
+    prorate_factor: factor,
     loan_repayment_ngn: d.loan_repayment,
     advance_recovery_ngn: d.advance_recovery,
     other_deductions_ngn: d.other_deductions,
@@ -173,4 +226,10 @@ function buildPayslip({
   };
 }
 
-module.exports = { round2, progressiveTax, computeDeductions, buildPayslip };
+module.exports = {
+  round2,
+  progressiveTax,
+  computeDeductions,
+  capAdvanceRecovery,
+  buildPayslip,
+};

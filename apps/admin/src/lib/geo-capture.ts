@@ -1,13 +1,13 @@
 /**
  * Browser geolocation capture for clock-in (HR attendance).
  *
- * Uses the W3C Geolocation API (not Google Places) for coordinates, then
- * best-effort reverse-geocodes to a human address via the already-loaded
- * Google Maps Geocoder. Coordinates are the server-side truth; the address is
- * display only. Requires a secure (HTTPS) origin in production.
+ * Uses the W3C Geolocation API for coordinates only — no client-side
+ * geocoding. The address label is derived server-side from these coordinates
+ * via Geoapify at punch time (see src/services/geoapify.service.js). This
+ * removes the Google Maps dependency from clock-in entirely. Coordinates are
+ * the server-side truth; the stored address is display only. Requires a
+ * secure (HTTPS) origin in production.
  */
-
-import { loadGoogleMaps } from "./google-maps-loader";
 
 export interface CapturedGeo {
   latitude: number | null;
@@ -32,33 +32,20 @@ function getPosition(): Promise<GeolocationPosition> {
   });
 }
 
-async function reverseGeocode(lat: number, lng: number): Promise<string | undefined> {
-  try {
-    const g = await loadGoogleMaps();
-    if (!g) return undefined;
-    const geocoder = new g.maps.Geocoder();
-    const res = await geocoder.geocode({ location: { lat, lng } });
-    return res.results?.[0]?.formatted_address;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
- * Capture the device's current location (+ address). On permission denial or
- * timeout, returns nulls with `denied: true` so the caller can decide whether
- * to proceed (remote day) or surface a "enable location" prompt (on-site).
+ * Capture the device's current location. On permission denial or timeout,
+ * returns nulls with `denied: true` so the caller can decide whether to
+ * proceed (remote day) or surface an "enable location" prompt (on-site). The
+ * server reverse-geocodes the coordinates into an address label.
  */
 export async function captureGeo(): Promise<CapturedGeo> {
   try {
     const pos = await getPosition();
     const { latitude, longitude, accuracy } = pos.coords;
-    const address = await reverseGeocode(latitude, longitude);
     return {
       latitude,
       longitude,
       accuracy_m: accuracy ?? null,
-      address,
     };
   } catch {
     return { latitude: null, longitude: null, accuracy_m: null, denied: true };

@@ -64,6 +64,13 @@ async function getAnalytics(req, res) {
 async function reconcile(req, res) {
   res.json({ data: await service.reconcileDay({ ...ctx(req), date: req.body.date }) });
 }
+async function reconcilePeriod(req, res) {
+  res.json({
+    data: await service.reconcilePeriod({
+      ...ctx(req), from: req.body.from, to: req.body.to,
+    }),
+  });
+}
 async function applyLapsedOffsite(req, res) {
   res.json({ data: await service.applyLapsedOffsite({ ...ctx(req) }) });
 }
@@ -153,6 +160,7 @@ module.exports = {
   getOverview,
   getAnalytics,
   reconcile,
+  reconcilePeriod,
   applyLapsedOffsite,
   listLeave,
   approveLeave,

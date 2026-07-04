@@ -84,6 +84,7 @@ export interface AttendanceDay {
   staff_name?: string;
   work_date: string;
   status: string;
+  first_clock_in_at: string | null;
   minutes_late: number;
   is_late: boolean;
   deduction_pct: number;
@@ -92,6 +93,10 @@ export interface AttendanceDay {
   is_offsite: boolean;
   offsite_distance_m: number | null;
   clock_in_address: string | null;
+  clock_in_lat: number | null;
+  clock_in_lng: number | null;
+  last_clock_out_at: string | null;
+  early_leave_minutes: number;
 }
 
 export interface MyHr {
@@ -151,9 +156,12 @@ export interface HrSettings {
   lateness_query_reminder_days: number;
   default_grace_minutes: number;
   default_expected_start_time: string | null;
+  default_expected_end_time: string | null;
   working_days: string[];
   leave_escalation_days: number;
   earnings_tracker_enabled: boolean;
+  statutory_deductions_enabled: boolean;
+  advance_recovery_cap_pct: number;
   geofence_enabled: boolean;
   geofence_required_on_site: boolean;
   geofence_accuracy_max_m: number;
@@ -268,6 +276,12 @@ export const reconcileDay = (date?: string) =>
   api.post<{ date: string; records_created: number; late_count: number }>(
     "/hr/attendance/reconcile",
     { date },
+  );
+
+export const reconcilePeriod = (from: string, to: string) =>
+  api.post<{ reconciled: number; dates: string[] }>(
+    "/hr/attendance/reconcile-period",
+    { from, to },
   );
 
 export const listAttendanceDays = (params: Record<string, string> = {}) =>
@@ -417,8 +431,10 @@ export interface Payslip {
   payslip_number: string;
   user_id: string;
   payroll_run_id: string;
+  staff_name?: string | null;
   job_title_snapshot: string | null;
   gross_pay_ngn: number;
+  attendance_deduction_ngn: number;
   total_deductions_ngn: number;
   net_pay_ngn: number;
   payment_status: "pending" | "queued" | "paid" | "failed" | "reversed";
@@ -448,6 +464,8 @@ export const payPayrollRun = (id: string, pin?: string) =>
   );
 export const listPayslips = (runId: string) =>
   api.get<Payslip[]>(`/hr/payslips?payroll_run_id=${encodeURIComponent(runId)}`);
+export const payslipPdf = (payslipId: string) =>
+  api.post<import("./documents-api").DocumentRow>(`/hr/payslips/${payslipId}/pdf`);
 
 // ── Performance appraisal (cycles, KPIs, reviews) ──────────
 export interface PerfCycle {

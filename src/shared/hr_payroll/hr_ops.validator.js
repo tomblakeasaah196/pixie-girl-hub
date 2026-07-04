@@ -82,9 +82,12 @@ const settingsUpdateSchema = z
     lateness_query_reminder_days: z.number().int().min(0).max(30).optional(),
     default_grace_minutes: z.number().int().min(0).max(240).optional(),
     default_expected_start_time: timeStr.nullable().optional(),
+    default_expected_end_time: timeStr.nullable().optional(),
     working_days: z.array(z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"])).max(7).optional(),
     leave_escalation_days: z.number().int().min(0).max(60).optional(),
     earnings_tracker_enabled: z.boolean().optional(),
+    statutory_deductions_enabled: z.boolean().optional(),
+    advance_recovery_cap_pct: z.number().min(0).max(100).optional(),
     geofence_enabled: z.boolean().optional(),
     geofence_required_on_site: z.boolean().optional(),
     geofence_accuracy_max_m: z.number().int().min(10).max(2000).optional(),
@@ -106,6 +109,11 @@ const payoutPinSchema = z.object({
 
 const reconcileSchema = z.object({
   date: dateStr.optional(),
+});
+
+const reconcilePeriodSchema = z.object({
+  from: dateStr,
+  to: dateStr,
 });
 
 const contractGenerateSchema = z.object({
@@ -143,6 +151,7 @@ module.exports = {
   settingsUpdate: make(settingsUpdateSchema),
   payoutPin: make(payoutPinSchema),
   reconcile: make(reconcileSchema),
+  reconcilePeriod: make(reconcilePeriodSchema),
   clock: make(clockSchema),
   contractGenerate: make(contractGenerateSchema),
 };

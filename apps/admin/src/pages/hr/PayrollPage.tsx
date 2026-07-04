@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Banknote,
   ChevronLeft,
+  Download,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
@@ -31,9 +32,29 @@ import {
   approvePayrollRun,
   payPayrollRun,
   listPayslips,
+  reconcileDay,
+  reconcilePeriod,
+  payslipPdf,
   type PayrollRun,
 } from "@/lib/hr-api";
+import { ApiError } from "@/lib/api";
+import { downloadDocument } from "@/lib/documents-api";
 import { TabBar, StatCard, SectionTitle, useNotify, errMsg, statusTone } from "./hr-shared";
+
+interface UnreconciledInfo {
+  period_start: string;
+  period_end: string;
+  dates: string[];
+}
+
+/** Read the PERIOD_UNRECONCILED payload the review guard returns (or null). */
+function unreconciledFrom(e: unknown): UnreconciledInfo | null {
+  if (e instanceof ApiError && e.code === "PERIOD_UNRECONCILED") {
+    const u = (e.body as { error?: { unreconciled?: UnreconciledInfo } })?.error?.unreconciled;
+    if (u && Array.isArray(u.dates)) return u;
+  }
+  return null;
+}
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -98,11 +119,80 @@ function PayPinModal({
   );
 }
 
+/**
+ * Reconcile-guard modal: the review step is blocked while the pay period has
+ * unreconciled working days. Rather than dead-end, list every missing day with
+ * a one-click "Reconcile" and a primary "Reconcile all & send for approval"
+ * that keeps the user in Payroll (no navigation away).
+ */
+function ReconcileGuardModal({
+  info,
+  onClose,
+  onDone,
+}: {
+  info: UnreconciledInfo | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const notify = useNotify();
+  const one = useMutation({
+    mutationFn: (date: string) => reconcileDay(date),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hr"] }),
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+  const all = useMutation({
+    mutationFn: () => reconcilePeriod(info!.period_start, info!.period_end),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["hr"] });
+      notify("Period reconciled", `${r.reconciled} day(s) computed`);
+      onDone();
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+  return (
+    <Modal
+      open={Boolean(info)}
+      onClose={onClose}
+      title="Attendance not fully reconciled"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={all.isPending}
+            onClick={() => all.mutate()}>
+            {all.isPending ? "Reconciling…" : "Reconcile all & send for approval"}
+          </Button>
+        </>
+      }
+    >
+      {info && (
+        <div className="space-y-3">
+          <p className="text-sm text-text-muted">
+            Some working days in this pay period haven't been reconciled, so the
+            attendance deductions aren't in yet. Reconcile them, then this run will
+            be sent for approval automatically.
+          </p>
+          <div className="max-h-56 space-y-1.5 overflow-y-auto">
+            {info.dates.map((d) => (
+              <div key={d} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-text-primary/[0.03] px-3 py-2">
+                <span className="text-sm text-text-primary">{d}</span>
+                <Button size="sm" disabled={one.isPending}
+                  onClick={() => one.mutate(d)}>Reconcile</Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
   const qc = useQueryClient();
   const notify = useNotify();
   const can = useAuthStore((s) => s.can);
   const [payRun, setPayRun] = useState<PayrollRun | null>(null);
+  const [unreconciled, setUnreconciled] = useState<UnreconciledInfo | null>(null);
 
   const { data: run, isLoading } = useQuery({
     queryKey: ["payroll", "run", runId],
@@ -120,8 +210,21 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
   });
   const review = useMutation({
     mutationFn: () => reviewPayrollRun(runId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["payroll"] }); notify("Sent for approval"); },
-    onError: (e) => notify("Failed", errMsg(e), "high"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["payroll"] });
+      setUnreconciled(null);
+      notify("Sent for approval");
+    },
+    onError: (e) => {
+      const u = unreconciledFrom(e);
+      if (u) setUnreconciled(u);
+      else notify("Failed", errMsg(e), "high");
+    },
+  });
+  const pdf = useMutation({
+    mutationFn: (payslipId: string) => payslipPdf(payslipId),
+    onSuccess: (doc) => downloadDocument(doc).catch(() => notify("Download failed", "", "high")),
+    onError: (e) => notify("Couldn't generate PDF", errMsg(e), "high"),
   });
   const approve = useMutation({
     mutationFn: () => approvePayrollRun(runId),
@@ -190,9 +293,15 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
             {slips.map((s) => (
               <Card key={s.payslip_id} className="flex items-center justify-between gap-3 p-3">
                 <div className="min-w-0">
-                  <span className="text-sm text-text-primary">{s.payslip_number}</span>
+                  <span className="text-sm text-text-primary">
+                    {s.staff_name || s.payslip_number}
+                  </span>
                   <div className="text-xs text-text-muted">
+                    {s.staff_name ? `${s.payslip_number} · ` : ""}
                     Gross {money(Number(s.gross_pay_ngn))} · Net {money(Number(s.net_pay_ngn))}
+                    {Number(s.attendance_deduction_ngn) > 0
+                      ? ` · −${money(Number(s.attendance_deduction_ngn))} attendance`
+                      : ""}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -200,6 +309,9 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
                   <Pill tone={statusTone(s.payment_status === "paid" ? "approved" : s.payment_status === "failed" ? "rejected" : "pending")}>
                     {s.payment_status}
                   </Pill>
+                  <Button size="sm" variant="ghost" icon={<Download className="h-3.5 w-3.5" />}
+                    disabled={pdf.isPending}
+                    onClick={() => pdf.mutate(s.payslip_id)}>PDF</Button>
                 </div>
               </Card>
             ))}
@@ -208,6 +320,11 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
       </div>
 
       <PayPinModal run={payRun} onClose={() => setPayRun(null)} />
+      <ReconcileGuardModal
+        info={unreconciled}
+        onClose={() => setUnreconciled(null)}
+        onDone={() => review.mutate()}
+      />
     </div>
   );
 }

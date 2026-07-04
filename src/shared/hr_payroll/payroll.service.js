@@ -20,6 +20,7 @@
 
 const repo = require("./payroll.repo");
 const calc = require("./payroll.calc");
+const latenessCalc = require("./lateness.calc");
 const postings = require("./payroll.postings");
 const pdf = require("../../services/pdf.service");
 const hrOps = require("./hr_ops.service");
@@ -42,7 +43,8 @@ const numbering = require("../../services/numbering.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
-const { NotFoundError, ConflictError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
+const { NotFoundError, ConflictError, AppError } = require("../../utils/errors");
 
 // Map a sales_orders.sales_channel (+ order_type) to the commission_earned
 // sale_channel vocabulary.
@@ -142,22 +144,45 @@ async function calculateRun({ brand, user, request_id, run_id }) {
 
     await repo.deletePayslipsForRun({ client, brand, run_id });
 
-    const [staff, commByUser, bonusByUser, configs] = await Promise.all([
-      repo.listActiveStaffForPayroll({
-        client,
-        brand,
-        period_end: run.period_end,
-      }),
-      repo.payableCommissionByUser({ client, brand }),
-      repo.payableBonusByUser({ client, brand }),
-      repo.activeDeductionConfigs({ client, brand, as_of: run.pay_date }),
-    ]);
+    const hrSettings = await hrOps.getSettings({ brand });
+    const cashSettings = await repo.cashRequestSettings({ client, brand });
+    const autoDeductAdvances =
+      cashSettings.auto_deduct_unsettled_via_payroll !== false; // default on
+    const [staff, commByUser, bonusByUser, configs, attendance, advances] =
+      await Promise.all([
+        repo.listActiveStaffForPayroll({
+          client,
+          brand,
+          period_end: run.period_end,
+        }),
+        repo.payableCommissionByUser({ client, brand }),
+        repo.payableBonusByUser({ client, brand }),
+        repo.activeDeductionConfigs({ client, brand, as_of: run.pay_date }),
+        // Attendance money over the period's reconciled days (audit C1).
+        repo.attendanceSummaryForPeriod({
+          client, brand, from: run.period_start, to: run.period_end,
+        }),
+        autoDeductAdvances
+          ? repo.outstandingAdvancesByUser({ client, brand })
+          : Promise.resolve({}),
+      ]);
     const commMap = Object.fromEntries(
       commByUser.map((r) => [r.user_id, Number(r.total)]),
     );
     const bonusMap = Object.fromEntries(
       bonusByUser.map((r) => [r.user_id, Number(r.total)]),
     );
+
+    // Working days across the whole pay period (denominator for pro-rating
+    // mid-period joiners/leavers — audit C2).
+    const periodWorkingDays = latenessCalc.workingDaysBetween(
+      run.period_start, run.period_end, hrSettings.working_days,
+    );
+    // Master statutory switch (decision 2026-07-04: default OFF — Faith pays
+    // simple salaries; flip on per brand when ready). Per-employee exemption
+    // overrides even when the brand switch is on.
+    const statutoryOn = Boolean(hrSettings.statutory_deductions_enabled);
+    const advanceCapPct = Number(hrSettings.advance_recovery_cap_pct);
 
     const totals = {
       total_staff: 0,
@@ -172,17 +197,70 @@ async function calculateRun({ brand, user, request_id, run_id }) {
       total_net_ngn: 0,
     };
 
+    // Advance-recovery settlements to write AFTER the run commits paid — kept
+    // out of the calculate txn; recorded when the run is actually paid.
     for (const s of staff) {
       const commission = commMap[s.user_id] || 0;
       const bonus = bonusMap[s.user_id] || 0;
-      const slip = calc.buildPayslip({
-        earnings: {
-          base_salary: Number(s.base_salary) || 0,
-          commission,
-          bonus,
-        },
-        deductionConfigs: configs,
+
+      // Statutory deductions apply only when the brand switch is on AND this
+      // employee isn't individually exempt (audit C3).
+      const deductionConfigs = statutoryOn && !s.statutory_exempt ? configs : {};
+
+      // Pro-rate the base for mid-period joiners/leavers (audit C2).
+      let prorateFactor = 1;
+      if (periodWorkingDays > 0) {
+        const empFrom =
+          s.start_date && String(s.start_date).slice(0, 10) > run.period_start
+            ? String(s.start_date).slice(0, 10)
+            : run.period_start;
+        const empTo =
+          s.end_date && String(s.end_date).slice(0, 10) < run.period_end
+            ? String(s.end_date).slice(0, 10)
+            : run.period_end;
+        if (empFrom !== run.period_start || empTo !== run.period_end) {
+          const employedDays = latenessCalc.workingDaysBetween(
+            empFrom, empTo, hrSettings.working_days,
+          );
+          prorateFactor = Math.min(1, employedDays / periodWorkingDays);
+        }
+      }
+
+      // Attendance money over the reconciled period (audit C1).
+      const att = attendance[s.profile_id] || {};
+      const attendanceInput = {
+        deduction_ngn: Number(att.deduction_ngn || 0),
+        days_worked: att.days_worked ?? null,
+        working_days: periodWorkingDays || null,
+      };
+
+      // First pass to get net BEFORE advance recovery, so the recovery cap
+      // (% of net, decision 2026-07-04) is applied to the real net.
+      const base = calc.buildPayslip({
+        earnings: { base_salary: Number(s.base_salary) || 0, commission, bonus },
+        deductionConfigs,
+        attendance: attendanceInput,
+        prorateFactor,
       });
+      const outstanding = advances[s.user_id] || 0;
+      const advanceRecovery = calc.capAdvanceRecovery({
+        netBeforeRecovery: base.net_pay_ngn,
+        outstanding,
+        capPct: advanceCapPct,
+      });
+      const slip =
+        advanceRecovery > 0
+          ? calc.buildPayslip({
+              earnings: {
+                base_salary: Number(s.base_salary) || 0, commission, bonus,
+              },
+              deductionConfigs,
+              attendance: attendanceInput,
+              prorateFactor,
+              extraDeductions: { advance_recovery: advanceRecovery },
+            })
+          : base;
+
       const payslip_number = await numbering.nextNumber(
         client,
         brand,
@@ -222,6 +300,7 @@ async function calculateRun({ brand, user, request_id, run_id }) {
       totals.total_nhf_ngn += slip.nhf_ngn;
       totals.total_other_deductions_ngn +=
         slip.other_deductions_ngn +
+        slip.attendance_deduction_ngn +
         slip.loan_repayment_ngn +
         slip.advance_recovery_ngn;
       totals.total_net_ngn += slip.net_pay_ngn;
@@ -325,7 +404,38 @@ async function transitionRun({
   return updated;
 }
 
-const reviewRun = (a) => transitionRun({ ...a, to: "reviewed" });
+/**
+ * Send a run for approval — but only once the pay period's attendance is
+ * fully reconciled (decision 2026-07-04), so no payslip is forwarded ignoring
+ * lateness/absence deductions. On a gap, throw PERIOD_UNRECONCILED with the
+ * exact days so the UI can offer "reconcile all" + per-day deep links.
+ */
+async function reviewRun(a) {
+  const run = await repo.findRun({ brand: a.brand, run_id: a.run_id });
+  if (!run) throw new NotFoundError("Payroll run");
+  const unreconciled = await hrOps.unreconciledWorkingDates({
+    brand: a.brand, from: run.period_start, to: run.period_end,
+  });
+  if (unreconciled.length) {
+    throw new AppError(
+      "PERIOD_UNRECONCILED",
+      `${unreconciled.length} working day(s) in the pay period are not reconciled`,
+      409,
+      {
+        user_message:
+          "Some working days in this pay period haven't been reconciled, so the attendance deductions aren't in yet. Reconcile them, then send for approval.",
+        metadata: {
+          unreconciled: {
+            period_start: run.period_start,
+            period_end: run.period_end,
+            dates: unreconciled,
+          },
+        },
+      },
+    );
+  }
+  return transitionRun({ ...a, to: "reviewed" });
+}
 const approveRun = (a) =>
   transitionRun({
     ...a,
@@ -410,6 +520,37 @@ async function payRun({ brand, user, request_id, run_id, pin }) {
       await repo.markBonusesPaidForUser({
         client, brand, user_id: slip.user_id, run_id, paid_at: now,
       });
+      // Settle any cash-advance recovery this slip carried against the
+      // employee's oldest open advances (audit C4). Best-effort — a settlement
+      // hiccup must not unwind the salary that already moved.
+      const recovered = Number(slip.advance_recovery_ngn || 0);
+      if (recovered > 0) {
+        try {
+          let remaining = money(recovered);
+          const open = await repo.openAdvancesForUser({
+            client, brand, user_id: slip.user_id,
+          });
+          for (const adv of open) {
+            if (!remaining.gt(0)) break;
+            const take = money(
+              Math.min(remaining.toNumber(), Number(adv.outstanding_ngn)),
+            );
+            await repo.settleAdvanceFromPayroll({
+              client,
+              cash_request_id: adv.cash_request_id,
+              amount_ngn: toCurrencyString(take),
+              description: `Payroll recovery — ${run.run_number} (${slip.payslip_number})`,
+              recorded_by: user.user_id,
+            });
+            remaining = remaining.minus(take);
+          }
+        } catch (err) {
+          logger.warn(
+            { err: err.message, payslip_id: slip.payslip_id },
+            "advance recovery settlement failed (salary still paid)",
+          );
+        }
+      }
     }
 
     // Policy Q3: clear Net-Pay Payable for the money that actually moved

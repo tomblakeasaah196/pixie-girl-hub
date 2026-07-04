@@ -23,7 +23,7 @@ function AboutPage() {
     usePageSlots("about"),
   );
   return (
-    <main className="bg-ink text-cream pt-32 md:pt-28">
+    <main className="bg-ink text-cream pt-32 lg:pt-36">
       <section className="relative h-[80vh] overflow-hidden">
         <img src={s.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-ink/40 via-ink/30 to-ink" />

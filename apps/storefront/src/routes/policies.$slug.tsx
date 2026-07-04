@@ -65,7 +65,7 @@ function PolicyPage() {
   const title = data?.title || studio.title || TITLES[slug] || slug.replace(/-/g, " ");
 
   return (
-    <main className="min-h-screen bg-ink text-cream pt-32 md:pt-28 pb-24 px-6">
+    <main className="min-h-screen bg-ink text-cream pt-32 lg:pt-36 pb-24 px-6">
       <article className="mx-auto max-w-3xl">
         <p className="text-[0.62rem] tracking-[0.5em] uppercase text-taupe">Atelier policy</p>
         <h1 className="font-display text-5xl md:text-6xl mt-3 leading-[1.05] capitalize">{title}</h1>

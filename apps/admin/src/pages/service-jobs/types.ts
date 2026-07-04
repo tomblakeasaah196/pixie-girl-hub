@@ -112,11 +112,12 @@ export interface ServiceJob {
   intercompany_amount_ngn?: string | null;
 }
 
+// {data, meta} pagination envelope. The api client auto-unwraps bare {data}
+// responses but preserves envelopes with `meta` — so this shape survives the
+// client intact (the old flat {data, page, total} shape did not).
 export interface JobPaginated {
   data: ServiceJob[];
-  page: number;
-  page_size: number;
-  total: number;
+  meta: { page: number; page_size: number; total: number; has_more: boolean };
 }
 
 export interface JobChemical {

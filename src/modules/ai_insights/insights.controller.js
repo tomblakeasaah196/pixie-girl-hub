@@ -1,5 +1,5 @@
 /**
- * AI Insights (V2.2 §6.30) — HTTP controller.
+ * AI Insights (V2.2 §6.30 / §6.31) — HTTP controller.
  */
 
 "use strict";
@@ -19,7 +19,7 @@ async function list(req, res) {
   res.json({
     data: await service.list({
       brand: req.brand,
-      category: req.params.category,
+      module: req.query.module,
       status: req.query.status || "open",
       severity: req.query.severity,
       page: req.query.page ? Number(req.query.page) : undefined,
@@ -28,27 +28,17 @@ async function list(req, res) {
   });
 }
 async function getOne(req, res) {
-  res.json({
-    data: await service.getOne({
-      category: req.params.category,
-      id: req.params.id,
-    }),
-  });
+  res.json({ data: await service.getOne({ id: req.params.id }) });
 }
 async function acknowledge(req, res) {
   res.json({
-    data: await service.acknowledge({
-      ...base(req),
-      category: req.params.category,
-      id: req.params.id,
-    }),
+    data: await service.acknowledge({ ...base(req), id: req.params.id }),
   });
 }
 async function resolve(req, res) {
   res.json({
     data: await service.resolve({
       ...base(req),
-      category: req.params.category,
       id: req.params.id,
       reason: req.body.reason,
     }),
@@ -56,15 +46,25 @@ async function resolve(req, res) {
 }
 async function dismiss(req, res) {
   res.json({
-    data: await service.dismiss({
-      ...base(req),
-      category: req.params.category,
-      id: req.params.id,
-    }),
+    data: await service.dismiss({ ...base(req), id: req.params.id }),
   });
 }
-async function sweep(req, res) {
+async function sweep(_req, res) {
   res.json({ data: await service.runDetectorSweep() });
+}
+
+// AI Control switchboard
+async function listModules(_req, res) {
+  res.json({ data: await service.listModules() });
+}
+async function updateModule(req, res) {
+  res.json({
+    data: await service.updateModule({
+      ...base(req),
+      module: req.params.module,
+      fields: req.body,
+    }),
+  });
 }
 
 module.exports = {
@@ -75,4 +75,6 @@ module.exports = {
   resolve,
   dismiss,
   sweep,
+  listModules,
+  updateModule,
 };

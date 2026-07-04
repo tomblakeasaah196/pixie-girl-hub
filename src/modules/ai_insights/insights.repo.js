@@ -1,12 +1,20 @@
 /**
- * AI Insights (V2.2 §6.30) — repository.
+ * AI Insights (V2.2 §6.30) — repository (unified store).
  *
- * SHARED tier-1 insight tables (one per category). Each shares the same
- * lifecycle shape (severity, status open→acknowledged/resolved/dismissed,
- * suppression_key UNIQUE while open). `raiseInsight` is the ingest hook
- * (ON CONFLICT DO NOTHING on the open-suppression index) so a detector sweep
- * never duplicates an open alert. Detector read-queries pull from the live
- * spine (invoices, intercompany, workflow_instances, service_jobs).
+ * All findings live in ONE table, `shared.ai_insights`, keyed by
+ * (module, detector) with a typed `context` JSONB and a drill target. The
+ * open→acknowledged/investigating/resolved/dismissed lifecycle and the
+ * idempotent `raise` (ON CONFLICT DO NOTHING on the partial-unique
+ * open-suppression index) are generic over every module — so a new module
+ * ships insights via a registry entry, not new SQL here.
+ *
+ * `shared.ai_insight_modules` is the AI Control switchboard (per-module
+ * insights_enabled / narration_enabled / frequency). The detector runner and
+ * the module-page UI slot both gate on it.
+ *
+ * The detector SOURCE reads (overdue invoices, stale intercompany, approval
+ * backlog, service-match) pull from the live spine and are unchanged from the
+ * category-table era — only the WRITE side moved to the unified store.
  */
 
 "use strict";
@@ -14,42 +22,64 @@
 const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
 
-// category → shared table (hardcoded; never interpolate user input)
-const TABLE = {
-  stock: "shared.ai_insight_stock_alerts",
-  margin: "shared.ai_insight_margin_breaches",
-  invoice: "shared.ai_insight_invoice_alerts",
-  intercompany: "shared.ai_insight_intercompany_alerts",
-  attendance: "shared.ai_insight_attendance_anomalies",
-  approval: "shared.ai_insight_approval_queue_alerts",
-  service_match: "shared.ai_insight_service_match",
-};
-function tableFor(category) {
-  const tbl = TABLE[category];
-  if (!tbl) throw new Error(`Unknown insight category: ${category}`);
-  return tbl;
+// ── Unified ingest hook (idempotent on the open-suppression index) ──
+/**
+ * Raise one finding. `insight` is the normalised shape every detector emits:
+ * { module, detector, business?, severity, title, body?, context?, amount_ngn?,
+ *   source_table?, source_id?, drill_route?, suppression_key }.
+ * Duplicate open findings for the same (module, business, suppression_key) are
+ * silently skipped, so a 30-min sweep never spams.
+ */
+async function raise({ client, insight: r }) {
+  // RETURNING with ON CONFLICT DO NOTHING yields the row ONLY when a new insight
+  // was actually inserted (suppressed duplicates return nothing) — so callers
+  // can notify/relay only on genuinely new findings.
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.ai_insights
+       (module, detector, business, severity, status, title, body, context,
+        amount_ngn, source_table, source_id, drill_route, suppression_key)
+     VALUES ($1,$2,$3,$4,'open',$5,$6,COALESCE($7::jsonb,'{}'::jsonb),
+             $8,$9,$10,$11,$12)
+     ON CONFLICT DO NOTHING
+     RETURNING *`,
+    [
+      r.module,
+      r.detector,
+      r.business || null,
+      r.severity,
+      r.title,
+      r.body || null,
+      r.context ? JSON.stringify(r.context) : null,
+      r.amount_ngn || null,
+      r.source_table || null,
+      r.source_id || null,
+      r.drill_route || null,
+      r.suppression_key,
+    ],
+  );
+  return rows[0] || null;
 }
-const OPEN_STATES = {
-  service_match: "('open','investigating')",
-  default: "('open')",
-};
 
-// ── Lifecycle read/write (generic over the category table) ──
+// ── Lifecycle read/write (generic over the unified table) ──
 async function list({
-  category,
+  module,
   business,
   status = "open",
   severity,
   page = 1,
   page_size = 50,
 }) {
-  const tbl = tableFor(category);
   const where = [];
   const params = [];
   let i = 1;
-  // intercompany has no business column (cross-brand)
-  if (business && category !== "intercompany") {
-    where.push(`business = $${i++}`);
+  if (module) {
+    where.push(`module = $${i++}`);
+    params.push(module);
+  }
+  // Cross-brand findings (business IS NULL, e.g. inter-company) show for
+  // whichever brand is asking.
+  if (business) {
+    where.push(`(business = $${i++} OR business IS NULL)`);
     params.push(business);
   }
   if (status) {
@@ -63,20 +93,20 @@ async function list({
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const offset = (page - 1) * page_size;
   const { rows } = await query(
-    `SELECT * FROM ${tbl} ${w} ORDER BY detected_at DESC LIMIT $${i++} OFFSET $${i}`,
+    `SELECT * FROM shared.ai_insights ${w}
+      ORDER BY detected_at DESC LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],
   );
   return rows;
 }
-async function getOne({ category, id }) {
-  const tbl = tableFor(category);
-  const { rows } = await query(`SELECT * FROM ${tbl} WHERE insight_id = $1`, [
-    id,
-  ]);
+async function getOne({ id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.ai_insights WHERE insight_id = $1`,
+    [id],
+  );
   return rows[0] || null;
 }
-async function setStatus({ category, id, status, fields = {} }) {
-  const tbl = tableFor(category);
+async function setStatus({ id, status, fields = {} }) {
   const sets = ["status = $2"];
   const params = [id, status];
   let i = 3;
@@ -85,172 +115,88 @@ async function setStatus({ category, id, status, fields = {} }) {
     params.push(v);
   }
   const { rows } = await query(
-    `UPDATE ${tbl} SET ${sets.join(", ")} WHERE insight_id = $1 RETURNING *`,
+    `UPDATE shared.ai_insights SET ${sets.join(", ")}
+      WHERE insight_id = $1 RETURNING *`,
     params,
   );
   return rows[0] || null;
 }
-async function openCounts({ business }) {
-  const out = {};
-  for (const [cat, tbl] of Object.entries(TABLE)) {
-    const openStates = OPEN_STATES[cat] || OPEN_STATES.default;
-    const where = [`status IN ${openStates}`];
-    const params = [];
-    if (business && cat !== "intercompany") {
-      where.push(`business = $1`);
-      params.push(business);
-    }
-    const { rows } = await query(
-      `SELECT count(*)::int AS c, count(*) FILTER (WHERE severity IN ('high','critical'))::int AS urgent
-         FROM ${tbl} WHERE ${where.join(" AND ")}`,
-      params,
-    );
-    out[cat] = { open: rows[0].c, urgent: rows[0].urgent };
+/** Per-module open counts (+ urgent = high/critical) for the summary/badges. */
+async function summary({ business }) {
+  const params = [];
+  let filter = "";
+  if (business) {
+    filter = `AND (business = $1 OR business IS NULL)`;
+    params.push(business);
   }
+  const { rows } = await query(
+    `SELECT module,
+            count(*)::int AS open,
+            count(*) FILTER (WHERE severity IN ('high','critical'))::int AS urgent
+       FROM shared.ai_insights
+      WHERE status = 'open' ${filter}
+      GROUP BY module`,
+    params,
+  );
+  const out = {};
+  for (const r of rows) out[r.module] = { open: r.open, urgent: r.urgent };
   return out;
 }
 
-// ── Ingest hook (idempotent on the open-suppression index) ──
-async function raiseStock({ client, r }) {
-  await ex(client)(
-    `INSERT INTO shared.ai_insight_stock_alerts
-       (business, product_id, variant_id, stock_location_id, current_stock,
-        reorder_point, daily_velocity, projected_days_left, severity, suppression_key)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,0),$8,$9,$10)
-     ON CONFLICT DO NOTHING`,
-    [
-      r.business,
-      r.product_id,
-      r.variant_id || null,
-      r.stock_location_id || null,
-      r.current_stock,
-      r.reorder_point,
-      r.daily_velocity,
-      r.projected_days_left || null,
-      r.severity,
-      r.suppression_key,
-    ],
+// ── AI Control switchboard (ai_insight_modules) ──
+async function listModules() {
+  const { rows } = await query(
+    `SELECT * FROM shared.ai_insight_modules ORDER BY sort_order, module`,
   );
+  return rows;
 }
-async function raiseMargin({ client, r }) {
-  await ex(client)(
-    `INSERT INTO shared.ai_insight_margin_breaches
-       (business, breach_type, product_id, variant_id, channel, current_cost_ngn,
-        current_price_ngn, current_margin_pct, floor_margin_pct, severity, suppression_key)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING`,
-    [
-      r.business,
-      r.breach_type,
-      r.product_id || null,
-      r.variant_id || null,
-      r.channel || null,
-      r.current_cost_ngn || null,
-      r.current_price_ngn || null,
-      r.current_margin_pct || null,
-      r.floor_margin_pct || null,
-      r.severity,
-      r.suppression_key,
-    ],
+async function getModule(module) {
+  const { rows } = await query(
+    `SELECT * FROM shared.ai_insight_modules WHERE module = $1`,
+    [module],
   );
+  return rows[0] || null;
 }
-async function raiseInvoice({ client, r }) {
-  await ex(client)(
-    `INSERT INTO shared.ai_insight_invoice_alerts
-       (business, alert_type, invoice_id, customer_contact_id, amount_ngn,
-        days_overdue, severity, suppression_key)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
-    [
-      r.business,
-      r.alert_type,
-      r.invoice_id || null,
-      r.customer_contact_id || null,
-      r.amount_ngn || null,
-      r.days_overdue || null,
-      r.severity,
-      r.suppression_key,
-    ],
+/** Modules with tier-1 detectors switched on. */
+async function enabledModules() {
+  const { rows } = await query(
+    `SELECT module FROM shared.ai_insight_modules WHERE insights_enabled = true`,
   );
+  return rows.map((r) => r.module);
 }
-async function raiseIntercompany({ client, r }) {
-  await ex(client)(
-    `INSERT INTO shared.ai_insight_intercompany_alerts
-       (ic_transaction_id, recon_id, alert_type, seller_brand, buyer_brand,
-        amount_ngn, age_days, severity, suppression_key)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
-    [
-      r.ic_transaction_id || null,
-      r.recon_id || null,
-      r.alert_type,
-      r.seller_brand || null,
-      r.buyer_brand || null,
-      r.amount_ngn || null,
-      r.age_days || null,
-      r.severity,
-      r.suppression_key,
-    ],
+/** Modules with tier-2 AI narration switched on (implies insights on). */
+async function narrationModules() {
+  const { rows } = await query(
+    `SELECT module FROM shared.ai_insight_modules
+      WHERE insights_enabled = true AND narration_enabled = true`,
   );
+  return rows.map((r) => r.module);
 }
-async function raiseAttendance({ client, r }) {
-  await ex(client)(
-    `INSERT INTO shared.ai_insight_attendance_anomalies
-       (business, staff_profile_id, anomaly_type, clock_event_id, anomaly_date,
-        distance_from_geofence_m, severity, suppression_key)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
-    [
-      r.business,
-      r.staff_profile_id,
-      r.anomaly_type,
-      r.clock_event_id || null,
-      r.anomaly_date,
-      r.distance_from_geofence_m || null,
-      r.severity,
-      r.suppression_key,
-    ],
+async function updateModule({ module, fields, updated_by }) {
+  const allowed = ["insights_enabled", "narration_enabled", "frequency"];
+  const sets = [];
+  const params = [module];
+  let i = 2;
+  for (const k of allowed) {
+    if (k in fields) {
+      sets.push(`${k} = $${i++}`);
+      params.push(fields[k]);
+    }
+  }
+  if (updated_by) {
+    sets.push(`updated_by = $${i++}`);
+    params.push(updated_by);
+  }
+  if (sets.length === 0) return getModule(module);
+  const { rows } = await query(
+    `UPDATE shared.ai_insight_modules SET ${sets.join(", ")}
+      WHERE module = $1 RETURNING *`,
+    params,
   );
-}
-async function raiseApproval({ client, r }) {
-  await ex(client)(
-    `INSERT INTO shared.ai_insight_approval_queue_alerts
-       (business, approver_user_id, alert_type, pending_count, oldest_age_hours,
-        workflow_instance_id, severity, suppression_key)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
-    [
-      r.business,
-      r.approver_user_id || null,
-      r.alert_type,
-      r.pending_count,
-      r.oldest_age_hours,
-      r.workflow_instance_id || null,
-      r.severity,
-      r.suppression_key,
-    ],
-  );
-}
-async function raiseServiceMatch({ client, r }) {
-  await ex(client)(
-    `INSERT INTO shared.ai_insight_service_match
-       (business, service_job_id, service_job_number, completed_by_stylist_id,
-        completed_by_user_id, alert_type, job_completed_at, expected_amount_ngn,
-        found_amount_ngn, variance_ngn, severity, suppression_key)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING`,
-    [
-      r.business,
-      r.service_job_id,
-      r.service_job_number || null,
-      r.completed_by_stylist_id || null,
-      r.completed_by_user_id || null,
-      r.alert_type,
-      r.job_completed_at,
-      r.expected_amount_ngn || null,
-      r.found_amount_ngn || null,
-      r.variance_ngn || null,
-      r.severity,
-      r.suppression_key,
-    ],
-  );
+  return rows[0] || null;
 }
 
-// ── Detector source reads (the live spine) ─────────────────
+// ── Detector SOURCE reads (the live spine) — unchanged ─────
 async function overdueInvoices({ brand, limit = 500 }) {
   const { rows } = await query(
     `SELECT invoice_id, contact_id AS customer_contact_id, balance_due_ngn AS net_due_ngn,
@@ -298,10 +244,6 @@ async function unlinkedServiceJobs({ brand, limit = 500 }) {
   );
   return rows;
 }
-// Flow-1 books integrity: a cross-entity styling job (FLH styling PXG's hair)
-// must carry its matched inter-company transaction (the FLH styling invoice).
-// Flags intercompany jobs with no link, or whose linked txn is void — once the
-// job is completed, or has been open long enough that the invoice is overdue.
 async function intercompanyJobsMissingMatch({ brand, limit = 500 }) {
   const { rows } = await query(
     `SELECT j.job_id, j.job_number, j.assigned_stylist_id, j.assigned_staff_user_id,
@@ -320,22 +262,156 @@ async function intercompanyJobsMissingMatch({ brand, limit = 500 }) {
   return rows;
 }
 
+// Attendance (shared.attendance_days carries business + is_offsite from 000234).
+async function offsiteAttendance({ within_days = 7, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT business, profile_id, work_date, offsite_distance_m
+       FROM shared.attendance_days
+      WHERE is_offsite = true
+        AND work_date >= CURRENT_DATE - ($1::int)
+      ORDER BY work_date DESC LIMIT $2`,
+    [within_days, limit],
+  );
+  return rows;
+}
+// Purchasing: POs whose expected delivery date has passed and that are not yet
+// received/closed/cancelled.
+async function overduePurchaseOrders({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT po_id, po_number, supplier_id, total_ngn,
+            (CURRENT_DATE - expected_delivery) AS days_overdue
+       FROM ${t(brand, "purchase_orders")}
+      WHERE expected_delivery IS NOT NULL
+        AND expected_delivery < CURRENT_DATE
+        AND status NOT IN ('received','closed','cancelled')
+      ORDER BY expected_delivery ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Logistics: failed/lost/damaged/returned deliveries, plus in-flight deliveries
+// past their expected time.
+async function problemDeliveries({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT delivery_id, delivery_number, order_id, status,
+            pod_amount_expected_ngn, expected_delivery_at,
+            (EXTRACT(EPOCH FROM (now() - expected_delivery_at)) / 3600)::int AS overdue_hours
+       FROM ${t(brand, "deliveries")}
+      WHERE status IN ('attempted_failed','lost','damaged','returned_to_sender')
+         OR (expected_delivery_at IS NOT NULL
+             AND expected_delivery_at < now()
+             AND status IN ('queued','booked','picked_up','in_transit',
+                            'arrived_destination_city','out_for_delivery'))
+      ORDER BY expected_delivery_at ASC NULLS LAST LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Expenses: cash advances flagged overdue for settlement, or disbursed and ageing.
+async function unsettledAdvances({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT advance_id, advance_number, purpose, status,
+            COALESCE(approved_amount_ngn, requested_amount_ngn) AS amount_ngn,
+            (CURRENT_DATE - created_at::date) AS age_days
+       FROM ${t(brand, "cash_advances")}
+      WHERE status = 'overdue_settlement'
+         OR (status = 'disbursed' AND created_at < now() - interval '14 days')
+      ORDER BY created_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
+// Sales: orders paid but not yet dispatched for too long (fulfilment delay).
+async function fulfillmentDelayedOrders({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT order_id, order_number, contact_id, total_ngn, status,
+            (EXTRACT(EPOCH FROM (now() - placed_at)) / 86400)::int AS age_days
+       FROM ${t(brand, "sales_orders")}
+      WHERE status IN ('paid','awaiting_dispatch','ready_for_dispatch')
+        AND placed_at IS NOT NULL
+        AND placed_at < now() - interval '3 days'
+      ORDER BY placed_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// CRM: open deals with no stage movement for a while (stalled).
+async function stalledDeals({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT deal_id, title, current_stage_id, expected_value_ngn,
+            (EXTRACT(EPOCH FROM (now() - stage_entered_at)) / 86400)::int AS days_in_stage
+       FROM ${t(brand, "crm_deals")}
+      WHERE status = 'open'
+        AND stage_entered_at < now() - interval '14 days'
+      ORDER BY stage_entered_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Production: runs whose expected arrival date has passed and aren't terminal.
+async function delayedProductionRuns({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT run_id, run_number, status, total_landed_cost_ngn,
+            (CURRENT_DATE - expected_arrival_date) AS days_late
+       FROM ${t(brand, "production_runs")}
+      WHERE expected_arrival_date IS NOT NULL
+        AND expected_arrival_date < CURRENT_DATE
+        AND status NOT IN ('received','styled','closed','cancelled')
+      ORDER BY expected_arrival_date ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Accounting: draft journal entries left unposted.
+async function agingDraftJournals({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT entry_id, entry_number, description,
+            (EXTRACT(EPOCH FROM (now() - created_at)) / 86400)::int AS age_days
+       FROM ${t(brand, "journal_entries")}
+      WHERE status = 'draft'
+        AND created_at < now() - interval '7 days'
+      ORDER BY created_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Retention: contacts whose current (non-superseded) churn score is high.
+async function churnRiskContacts({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT score_id, contact_id, risk_score, risk_band, computed_at
+       FROM ${t(brand, "churn_risk_scores")}
+      WHERE superseded_at IS NULL
+        AND risk_band IN ('high','critical')
+      ORDER BY risk_score DESC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
 module.exports = {
-  TABLE,
+  raise,
   list,
   getOne,
   setStatus,
-  openCounts,
-  raiseStock,
-  raiseMargin,
-  raiseInvoice,
-  raiseIntercompany,
-  raiseAttendance,
-  raiseApproval,
-  raiseServiceMatch,
+  summary,
+  listModules,
+  getModule,
+  enabledModules,
+  narrationModules,
+  updateModule,
   overdueInvoices,
   staleIntercompany,
   staleApprovals,
   unlinkedServiceJobs,
   intercompanyJobsMissingMatch,
+  offsiteAttendance,
+  overduePurchaseOrders,
+  problemDeliveries,
+  unsettledAdvances,
+  fulfillmentDelayedOrders,
+  stalledDeals,
+  delayedProductionRuns,
+  agingDraftJournals,
+  churnRiskContacts,
 };

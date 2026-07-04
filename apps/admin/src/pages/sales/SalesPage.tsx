@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { ShoppingBag, Zap, FileText, Truck, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, KpiTile } from "@/components/ui/primitives";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { money } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { useSalesKpis, useDeliveryPendingOrders } from "./hooks";
@@ -32,6 +33,7 @@ export function SalesPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="sales" />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="font-display text-2xl font-medium">Sales</h1>
         {can("sales", "export") && (

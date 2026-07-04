@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { money } from "@/lib/format";
 import {
   Button,
@@ -126,6 +127,7 @@ export function LogisticsPage() {
 
   return (
     <div className="max-w-[1180px] space-y-5">
+      <ModuleInsights module="logistics" />
       {tab !== "rates" && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center flex-1 min-w-[220px] max-w-md rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">

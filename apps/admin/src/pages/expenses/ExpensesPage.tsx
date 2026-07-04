@@ -2,6 +2,7 @@ import { useState, lazy, Suspense } from "react";
 import { Receipt, Plus, Lock } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import {
   Button,
   Card,
@@ -48,6 +49,7 @@ export default function ExpensesPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="expenses" />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-2xl font-medium">Expenses</h1>

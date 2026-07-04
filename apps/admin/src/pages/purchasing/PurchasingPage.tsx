@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import {
   Button,
   Card,
@@ -112,6 +113,7 @@ export function PurchasingPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="purchasing" />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-2xl font-medium">Purchasing</h1>

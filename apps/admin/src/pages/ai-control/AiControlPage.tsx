@@ -4,6 +4,7 @@ import {
   Sparkles,
   KeyRound,
   Gauge,
+  Lightbulb,
   ChevronRight,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -16,6 +17,13 @@ import { Card } from "@/components/ui/primitives";
  * until they ship.
  */
 const TILES = [
+  {
+    icon: Lightbulb,
+    title: "Insights",
+    body: "Pick which of the 27 modules Praxis watches — tier-1 rules (free) and AI narration (per module), with frequency.",
+    href: "/ai-control/insights",
+    ready: true,
+  },
   {
     icon: Sparkles,
     title: "Brand Voice",

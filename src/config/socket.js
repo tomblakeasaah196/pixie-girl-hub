@@ -86,6 +86,11 @@ async function initSocketIo(httpServer) {
   registerPraxisRealtime();
 
   const {
+    registerInsightsRealtime,
+  } = require("../realtime/insights-realtime");
+  registerInsightsRealtime();
+
+  const {
     registerShadeFinderRealtime,
   } = require("../realtime/shade-finder-realtime");
   registerShadeFinderRealtime();

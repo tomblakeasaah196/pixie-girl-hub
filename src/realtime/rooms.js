@@ -28,6 +28,7 @@ const ROOMS = {
   shade_session: (brand, sessionId) =>
     `brand:${brand}:shade_session:${sessionId}`,
   approvals: (brand) => `brand:${brand}:approvals`,
+  insights: (brand) => `brand:${brand}:insights`,
 
   // User-scoped push channels
   user_notifications: (userId) => `user:${userId}:notifications`,

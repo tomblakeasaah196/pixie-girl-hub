@@ -27,9 +27,11 @@ export function useCurrencyFeed(): {
     if (!list || !list.length) return;
     setCurrencyRuntime(list);
     try {
+      // Apply the GeoIP default only when the visitor hasn't already chosen this
+      // session (sessionStorage, matching the landing — re-resolves each visit).
       if (
         typeof window !== "undefined" &&
-        !window.localStorage.getItem(CURRENCY_KEY) &&
+        !window.sessionStorage.getItem(CURRENCY_KEY) &&
         q.data?.default
       ) {
         setCurrency(q.data.default);

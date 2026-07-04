@@ -123,8 +123,17 @@ async function currencies({ brand, country }) {
       settlement: !!c.is_settlement,
     });
   }
+  // Default display currency, mirroring the landing's GeoIP rule and extending
+  // it parametrically: prefer the visitor's LOCAL currency when we can display
+  // it (e.g. GB → GBP once GBP is active + rated); else fall back to USD for any
+  // non-Nigerian visitor (exactly what the landing does — non-NG → USD); else
+  // NGN. `currencyForCountry` already maps unknown non-NG countries to USD.
+  const cc = String(country || "").toUpperCase();
   const geoCur = currencyForCountry(country);
-  const def = out.some((c) => c.code === geoCur) ? geoCur : "NGN";
+  const displayable = (code) => out.some((c) => c.code === code);
+  let def = "NGN";
+  if (displayable(geoCur)) def = geoCur;
+  else if (cc && cc !== "NG" && displayable("USD")) def = "USD";
   return { base: "NGN", default: def, currencies: out };
 }
 

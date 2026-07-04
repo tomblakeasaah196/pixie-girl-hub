@@ -27,10 +27,13 @@ export function useCurrency(): [Currency, (c: Currency) => void] {
   const [, bump] = useReducer((x: number) => x + 1, 0);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(CURRENCY_KEY);
+    // PER-SESSION, matching the Sales Campaign Landing: a new visit re-resolves
+    // the GeoIP default (sessionStorage, not localStorage), so a foreign
+    // visitor is re-detected each session rather than pinned to an old choice.
+    const stored = window.sessionStorage.getItem(CURRENCY_KEY);
     if (stored) setCurrencyState(stored);
     const onChange = () => {
-      const v = window.localStorage.getItem(CURRENCY_KEY);
+      const v = window.sessionStorage.getItem(CURRENCY_KEY);
       if (v) setCurrencyState(v);
     };
     window.addEventListener(CURRENCY_EVENT, onChange);
@@ -42,7 +45,7 @@ export function useCurrency(): [Currency, (c: Currency) => void] {
   }, []);
 
   const setCurrency = useCallback((c: Currency) => {
-    window.localStorage.setItem(CURRENCY_KEY, c);
+    window.sessionStorage.setItem(CURRENCY_KEY, c);
     setCurrencyState(c);
     window.dispatchEvent(new Event(CURRENCY_EVENT));
   }, []);

@@ -16,10 +16,13 @@ decision.
 - ✅ **Wave 2 — Control + UI shell**: `insights-api.ts`, `<ModuleInsights>` slot,
   Insights Center (`/insights`), AI Control matrix (`/ai-control/insights`),
   nav + Command Center dead-end fix.
-- 🟡 **Wave 3 — Module fan-out**: detectors + slots per module (see §B).
+- ✅ **Wave 3 — Module fan-out**: detectors + slots for all 27 modules (see §B).
   - ✅ Batch 1: hr_attendance, purchasing, logistics, expenses.
   - ✅ Batch 2: sales, crm, production, accounting, retention.
-  - ⬜ Batch 3: the remaining 13 modules (see §B).
+  - ✅ Batch 3: pricing, retail_partners, tasks.
+  - ✅ Batch 4: stylist_programme, sales_campaigns, marketing, smartcomm.
+  - ✅ Batch 5: social_media, storefront, catalogue, iam_security, payroll,
+    customer_onboarding.
 - 🟡 **Wave 4 — Polish**: ✅ realtime + notification bell; ⬜ Tier-2 AI narration,
   Praxis chat query, legacy cleanup (see §C).
 
@@ -46,23 +49,27 @@ Detectors run only for modules switched **on** in AI Control → Insights
 | 12 | production | run_delayed | ✅ | ✅ |
 | 13 | accounting | journal_draft_aging | ✅ | ✅ `/accounting` |
 | 14 | retention | churn_risk | ✅ | ✅ |
-| 15 | **pricing** | margin_below_floor / price_below_cost | 🔺 deferred | ⬜ |
-| 16 | retail_partners | consignment_unsold, settlement_overdue | ⬜ | ⬜ |
-| 17 | stylist_programme | stylist_inactive, cert_expiring, payout_pending | ⬜ | ⬜ |
-| 18 | sales_campaigns | underperforming, stock_low_midcampaign | ⬜ | ⬜ |
-| 19 | marketing | spend_no_conversions, budget_exhausted | ⬜ | ⬜ |
-| 20 | social_media | scheduled_post_failed, token_expiring | ⬜ | ⬜ |
-| 21 | smartcomm | unanswered_past_sla | ⬜ | ⬜ |
-| 22 | storefront | checkout_failures, oos_high_traffic | ⬜ | ⬜ |
-| 23 | catalogue | missing_image_or_price, unpublished_active | ⬜ | ⬜ |
-| 24 | iam_security | anomalous_login, dormant_privileged | ⬜ | ⬜ |
-| 25 | tasks | overdue_task, unassigned_high_priority | ⬜ | ⬜ |
-| 26 | payroll | run_due, contract_expiring | ⬜ | ⬜ |
-| 27 | customer_onboarding | onboarding_stalled, kyc_incomplete | ⬜ | ⬜ |
+| 15 | pricing | price_below_cost / price_below_floor | ✅ | ✅ `/pricing` |
+| 16 | retail_partners | settlement_unpaid / settlement_disputed | ✅ | ✅ `/retail-partners` |
+| 17 | stylist_programme | payout_unpaid / payout_failed | ✅ | ✅ `/stylists` |
+| 18 | sales_campaigns | ended_not_closed / scheduled_not_launched | ✅ | ✅ `/sales-campaigns` |
+| 19 | marketing | ad_no_conversions | ✅ | ✅ `/marketing` |
+| 20 | social_media | post_failed / post_overdue / token_expiring | ✅ | ✅ `/social` |
+| 21 | smartcomm | unanswered | ✅ | n/a (fixed-height inbox) |
+| 22 | storefront | payment_failed | ✅ | n/a (drills to `/sales/orders`) |
+| 23 | catalogue | visible_unbuyable | ✅ | ✅ `/catalogue` |
+| 24 | iam_security | access_review_overdue | ✅ | ✅ `/iam-security` |
+| 25 | tasks | overdue | ✅ | ✅ `/workspace` |
+| 26 | payroll | contract_expiring | ✅ | ✅ `/payroll` |
+| 27 | customer_onboarding | onboarding_stalled | ✅ | n/a (no admin page) |
 
-**Detectors done:** 14 modules (16 detectors). **Remaining:** 13 modules
-(15 + pricing). Each remaining detector = verify schema → repo read → registry
-entry → unit test (the established pattern).
+**Detectors done: all 27 modules (28 detectors) — fan-out complete.** Slots
+live on every module with a suitable page; smartcomm/storefront/onboarding
+surface in the Insights Center + bell (no fitting inline home).
+Each remaining detector = verify schema → repo read → registry entry → unit
+test (the established pattern). Catalogue's "missing image/price" signal spans
+products + media + variant price across tables — left for a careful pass rather
+than a silent-wrong query.
 
 ### Slots on already-covered modules
 - ✅ `/stock`, `/service-jobs`, `/org-workflow` — done.
@@ -108,6 +115,11 @@ entry → unit test (the established pattern).
 
 ## D. Quality / hygiene
 
+- ⬜ **Auto-resolve pass** — detectors raise but never auto-close: an insight
+  stays `open` until acknowledged/resolved even once the underlying condition
+  clears (invoice paid, thread answered, campaign closed). A sweep-side reconcile
+  (resolve open findings whose detector no longer returns them) would keep the
+  list honest without manual cleanup. Applies to every detector.
 - ⬜ **Integration tests** — `/insights` routes + `runDetectorSweep` end-to-end
   against a live DB (`RUN_DB_TESTS=1`). Unit coverage exists (registry/service).
 - ⬜ **Docs** — refresh `docs/AI_PRAXIS.md` and `docs/CONFORMANCE_GAPS.md` to

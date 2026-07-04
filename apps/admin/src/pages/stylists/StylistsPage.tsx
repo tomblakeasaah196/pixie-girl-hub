@@ -15,6 +15,7 @@ import { DeniedState, ErrorState, Select } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { cn } from "@/lib/cn";
 import { usePartners, useApplications, useTiers } from "./hooks";
 import { PARTNER_STATUS_META } from "./constants";
@@ -236,6 +237,7 @@ export function StylistsPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="stylist_programme" />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiTile label="Certified partners" value={String(certified)} />
         <KpiTile

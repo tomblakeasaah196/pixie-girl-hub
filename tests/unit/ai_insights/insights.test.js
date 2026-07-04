@@ -219,6 +219,160 @@ describe("registry — Wave-3 batch 2 detectors", () => {
   });
 });
 
+describe("registry — Wave-3 batch 3 detectors", () => {
+  test("pricing/margin_breach: below cost → critical + price_below_cost", async () => {
+    repo.marginBreaches.mockResolvedValue([
+      { variant_id: "v-1", product_id: "p-1", sku: "PXG-001", variant_name: "18in", cost_price_ngn: "10000.00", min_price_ngn: "12000.00", price_storefront_ngn: "8000.00", product_name: "HD Lace" },
+    ]);
+    const [f] = await det("pricing", "margin_breach").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      module: "pricing",
+      detector: "price_below_cost",
+      severity: "critical", // 8000 < 10000*0.9
+      amount_ngn: "8000.00",
+      suppression_key: "margin:v-1",
+    });
+  });
+
+  test("pricing/margin_breach: below floor but above cost → medium", async () => {
+    repo.marginBreaches.mockResolvedValue([
+      { variant_id: "v-2", product_id: "p-2", sku: "PXG-002", cost_price_ngn: "5000.00", min_price_ngn: "9000.00", price_storefront_ngn: "8000.00", product_name: "Body Wave" },
+    ]);
+    const [f] = await det("pricing", "margin_breach").run({ brand: "pixiegirl" });
+    expect(f.detector).toBe("price_below_floor");
+    expect(f.severity).toBe("medium");
+  });
+
+  test("retail_partners/settlement_unpaid: disputed → high + disputed detector", async () => {
+    repo.unpaidPartnerSettlements.mockResolvedValue([
+      { settlement_id: "s-1", settlement_number: "PXG-SET-1", partner_id: "pt-1", status: "disputed", total_partner_share_ngn: "40000.00", age_days: 3 },
+    ]);
+    const [f] = await det("retail_partners", "settlement_unpaid").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({ detector: "settlement_disputed", severity: "high", suppression_key: "settle:s-1" });
+  });
+
+  test("tasks/overdue: urgent priority → high, per-business, /workspace drill", async () => {
+    repo.overdueTasks.mockResolvedValue([
+      { task_id: "tk-1", business: "faitlynhair", title: "Call supplier", priority: "urgent", assigned_to: "u-1", days_overdue: 2 },
+    ]);
+    const [f] = await det("tasks", "overdue").run();
+    expect(f).toMatchObject({
+      module: "tasks",
+      business: "faitlynhair",
+      severity: "high",
+      drill_route: "/workspace",
+      suppression_key: "task_overdue:tk-1",
+    });
+  });
+});
+
+describe("registry — Wave-3 batch 4 detectors", () => {
+  test("stylist_programme/payout_unpaid: failed → high, cross-brand (null business)", async () => {
+    repo.pendingStylistPayouts.mockResolvedValue([
+      { payout_id: "po-1", payout_number: "PXS-PO-1", stylist_id: "st-1", amount_ngn: "60000.00", status: "failed", age_days: 1 },
+    ]);
+    const [f] = await det("stylist_programme", "payout_unpaid").run();
+    expect(f).toMatchObject({
+      module: "stylist_programme",
+      detector: "payout_failed",
+      business: null,
+      severity: "high",
+      suppression_key: "payout:po-1",
+    });
+  });
+
+  test("sales_campaigns/campaign_stuck: live past end → ended_not_closed", async () => {
+    repo.stuckCampaigns.mockResolvedValue([
+      { campaign_id: "ca-1", name: "Black Friday", status: "live", starts_at: "x", ends_at: "y", days_past_end: 3 },
+    ]);
+    const [f] = await det("sales_campaigns", "campaign_stuck").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      detector: "ended_not_closed",
+      drill_route: "/sales-campaigns/ca-1",
+      suppression_key: "campaign:ca-1",
+    });
+  });
+
+  test("marketing/ad_no_conversions: big spend → high, carries business", async () => {
+    repo.wastefulAdCampaigns.mockResolvedValue([
+      { ad_campaign_id: "ad-1", name: "IG Retarget", business: "faitlynhair", spend_ngn: "80000.00", conversions: 0 },
+    ]);
+    const [f] = await det("marketing", "ad_no_conversions").run();
+    expect(f).toMatchObject({ business: "faitlynhair", severity: "high", amount_ngn: "80000.00", suppression_key: "ad_waste:ad-1" });
+  });
+
+  test("smartcomm/unanswered: >24h waiting → high", async () => {
+    repo.unansweredThreads.mockResolvedValue([
+      { channel_id: "ch-1", business: "pixiegirl", external_platform: "whatsapp", name: null, last_at: "x", hours_waiting: 30 },
+    ]);
+    const [f] = await det("smartcomm", "unanswered").run();
+    expect(f).toMatchObject({
+      module: "smartcomm",
+      severity: "high",
+      drill_route: "/smartcomm?channel=ch-1",
+      suppression_key: "unanswered:ch-1",
+    });
+  });
+});
+
+describe("registry — Wave-3 batch 5 detectors (final 6 modules)", () => {
+  test("social_media/post_failed: failed status", async () => {
+    repo.failedSocialPosts.mockResolvedValue([
+      { post_id: "sp-1", business: "pixiegirl", status: "failed", scheduled_for: "x" },
+    ]);
+    const [f] = await det("social_media", "post_failed").run();
+    expect(f).toMatchObject({ module: "social_media", detector: "post_failed", business: "pixiegirl", suppression_key: "post:sp-1" });
+  });
+
+  test("social_media/token_expiring: <=1 day → high", async () => {
+    repo.expiringSocialTokens.mockResolvedValue([
+      { account_id: "sa-1", business: "faitlynhair", platform: "instagram", token_expires_at: "x", days_left: 1 },
+    ]);
+    const [f] = await det("social_media", "token_expiring").run();
+    expect(f).toMatchObject({ detector: "token_expiring", severity: "high", suppression_key: "token:sa-1" });
+  });
+
+  test("storefront/payment_failed: recent → high, drills to order", async () => {
+    repo.failedStorefrontPayments.mockResolvedValue([
+      { payment_id: "pf-1", order_id: "o-1", amount_ngn: "25000.00", method: "paystack_card", failure_reason: "declined", hours_ago: 2 },
+    ]);
+    const [f] = await det("storefront", "payment_failed").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({ module: "storefront", severity: "high", amount_ngn: "25000.00", drill_route: "/sales/orders/o-1", suppression_key: "pay_fail:pf-1" });
+  });
+
+  test("iam_security/access_review_overdue: cross-brand, >=30d → high", async () => {
+    repo.overdueAccessReviews.mockResolvedValue([
+      { review_id: "ar-1", status: "open", due_date: "x", days_overdue: 45 },
+    ]);
+    const [f] = await det("iam_security", "access_review_overdue").run();
+    expect(f).toMatchObject({ business: null, severity: "high", drill_route: "/iam-security/reviews", suppression_key: "review:ar-1" });
+  });
+
+  test("payroll/contract_expiring: <=7d → high, business via join", async () => {
+    repo.expiringContracts.mockResolvedValue([
+      { contract_id: "ct-1", profile_id: "pr-1", contract_type: "full_time", effective_to: "x", business: "pixiegirl", days_left: 5 },
+    ]);
+    const [f] = await det("payroll", "contract_expiring").run();
+    expect(f).toMatchObject({ business: "pixiegirl", severity: "high", suppression_key: "contract:ct-1" });
+  });
+
+  test("customer_onboarding/onboarding_stalled: unprocessed submission", async () => {
+    repo.stalledOnboarding.mockResolvedValue([
+      { submission_id: "ob-1", business: "faitlynhair", created_at: "x", age_days: 9 },
+    ]);
+    const [f] = await det("customer_onboarding", "onboarding_stalled").run();
+    expect(f).toMatchObject({ module: "customer_onboarding", business: "faitlynhair", severity: "medium", suppression_key: "onboard:ob-1" });
+  });
+
+  test("catalogue/visible_unbuyable: visible product, no priced variant", async () => {
+    repo.unbuyableProducts.mockResolvedValue([
+      { product_id: "pd-1", name: "HD Lace 20in" },
+    ]);
+    const [f] = await det("catalogue", "visible_unbuyable").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({ module: "catalogue", drill_route: "/catalogue/styled/pd-1", suppression_key: "unbuyable:pd-1" });
+  });
+});
+
 describe("service.raise — legacy category adapter", () => {
   test("stock category maps to module stock / detector reorder_point", async () => {
     repo.raise.mockResolvedValue(undefined);

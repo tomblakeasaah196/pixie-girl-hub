@@ -52,14 +52,18 @@ modules toggled on.
   `logistics` (failed/overdue deliveries), `expenses` (unsettled advances),
   `sales` (paid-but-undispatched), `crm` (stalled deals), `production` (run
   arrival overdue), `accounting` (unposted draft journals), `retention` (high
-  churn risk).
+  churn risk), `pricing` (price below cost/floor), `retail_partners`
+  (unpaid/disputed settlements), `tasks` (overdue), `stylist_programme`
+  (unpaid/failed payouts), `sales_campaigns` (live-past-end / not-launched),
+  `marketing` (ad spend with no conversions), `smartcomm` (unanswered thread),
+  `social_media` (failed post / expiring token), `storefront` (failed payment),
+  `catalogue` (visible-but-unbuyable), `iam_security` (overdue access review),
+  `payroll` (contract expiring), `customer_onboarding` (stalled submission).
 - **`low-stock.js` scheduler** → `stock` (via the legacy `raise` adapter).
-- **Fan-out (remaining):** `pricing` (margin), `retail_partners`,
-  `stylist_programme`, `sales_campaigns`, `marketing`, `social_media`,
-  `smartcomm`, `storefront`, `catalogue`, `iam_security`, `tasks`, `payroll`,
-  `customer_onboarding` — see `docs/PRAXIS_AI_INSIGHTS_BACKLOG.md`. Detectors run
-  only for modules switched on in AI Control, so new ones ship dormant until the
-  CEO enables them.
+
+**All 27 modules now have a detector.** New detectors run only for modules
+switched on in AI Control, so they ship dormant until the CEO enables them. See
+`docs/PRAXIS_AI_INSIGHTS_BACKLOG.md` for the remaining Wave-4 polish.
 
 ## Tier-2
 

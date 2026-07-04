@@ -27,6 +27,7 @@ import {
 } from "@dnd-kit/core";
 import { cn } from "@/lib/cn";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import {
@@ -362,6 +363,7 @@ export function WorkspacePage() {
 
   return (
     <div className="animate-fade-in">
+      <ModuleInsights module="tasks" className="mb-4" />
       {/* Tab bar — top on all sizes; mobile gets shell bottom nav */}
       <div className="flex items-center gap-2 mb-6">
         <div className="flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">

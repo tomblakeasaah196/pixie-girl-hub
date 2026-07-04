@@ -33,7 +33,7 @@ function ServicesIndex() {
 
   return (
     <main className="bg-ink text-cream">
-      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-32 md:pt-28 pb-16">
+      <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pt-32 lg:pt-36 pb-16">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

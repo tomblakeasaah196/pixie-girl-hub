@@ -249,6 +249,12 @@ const schema = z.object({
   // Guest session lifetime (Redis TTL + guest-token expiry), seconds.
   SHADE_FINDER_SESSION_TTL_S: z.coerce.number().int().positive().default(7200),
 
+  // Shop AI Search (public "ask Praxis" natural-language search on the shop
+  // page). One Gemini text turn per search; the client resends recent turns
+  // as history so a follow-up ("something cheaper") needs no server session.
+  SHOP_AI_SEARCH_DAILY_LIMIT: z.coerce.number().int().positive().default(20),
+  SHOP_AI_SEARCH_IP_DAILY_LIMIT: z.coerce.number().int().positive().default(60),
+
   // Observability
   SENTRY_DSN: z.string().optional(),
   ENABLE_REQUEST_LOGGING: zBool(true),

@@ -11,6 +11,25 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-04 — Shop AI Search feature flag (public "ask Praxis" search)
+
+**Source:** Shop page search + filters build (Collection/Bundle/Shade
+dropdowns plus a Gemini-backed natural-language search box).
+
+**Files:** `000255_shared_shop_ai_search.sql` (new).
+
+**What:** Seeds one `shared.ai_feature_flags` row — `shop_ai_search`
+(gemini / gemini-2.5-flash, est ₦0.50/call). Idempotent
+`ON CONFLICT DO NOTHING`.
+
+**Why:** Same contract as Shade Finder: the public search box's Gemini calls
+meter into `shared.ai_usage_ledger` (user_id NULL — anonymous visitors) and
+must be toggleable + budget-capped from AI Governance; `feature_key` is a
+RESTRICT FK onto the flags table, so the flag row has to exist before the
+feature can record usage.
+
+---
+
 ## 2026-07-03 — Shade Finder feature flag (public Praxis shade match)
 
 **Source:** Shade Finder build (photo → shade + product recommendation on

@@ -158,18 +158,26 @@ function parseModelJson(text) {
 }
 
 function searchSchema({ slugs, collectionSlugs, bundleCodes, shadeSlugs }) {
-  return {
-    type: "OBJECT",
-    properties: {
-      message: { type: "STRING" },
-      product_slugs: { type: "ARRAY", items: { type: "STRING", enum: slugs } },
-      matched_collection_slug: { type: "STRING", enum: [...collectionSlugs, ""] },
-      matched_bundle_code: { type: "STRING", enum: [...bundleCodes, ""] },
-      matched_shade_slug: { type: "STRING", enum: [...shadeSlugs, ""] },
-      followup_question: { type: "STRING" },
-    },
-    required: ["message", "product_slugs"],
+  // Enums must stay clean, exactly like shade-finder's advise schema: no
+  // empty-string members, and a facet whose list is empty is OMITTED from
+  // the schema entirely (Gemini rejects degenerate enums with a 400). The
+  // matched_* facets aren't in `required`, so the model simply leaves them
+  // out when the ask doesn't centre on one — hydration treats absent as null.
+  const properties = {
+    message: { type: "STRING" },
+    product_slugs: { type: "ARRAY", items: { type: "STRING", enum: slugs } },
+    followup_question: { type: "STRING" },
   };
+  if (collectionSlugs.length > 0) {
+    properties.matched_collection_slug = { type: "STRING", enum: collectionSlugs };
+  }
+  if (bundleCodes.length > 0) {
+    properties.matched_bundle_code = { type: "STRING", enum: bundleCodes };
+  }
+  if (shadeSlugs.length > 0) {
+    properties.matched_shade_slug = { type: "STRING", enum: shadeSlugs };
+  }
+  return { type: "OBJECT", properties, required: ["message", "product_slugs"] };
 }
 
 function systemPrompt(brand) {
@@ -332,5 +340,12 @@ async function search({ brand, device_id, ip, query: userQuery, history = [] }) 
 module.exports = {
   search,
   // exported for unit tests
-  _internal: { lagosDay, secondsToLagosMidnight, parseModelJson, publicMatch, deviceKeyFrom },
+  _internal: {
+    lagosDay,
+    secondsToLagosMidnight,
+    parseModelJson,
+    publicMatch,
+    deviceKeyFrom,
+    searchSchema,
+  },
 };

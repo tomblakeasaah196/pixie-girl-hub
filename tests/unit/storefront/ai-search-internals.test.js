@@ -47,4 +47,40 @@ describe("shop ai search internals", () => {
     expect(a).not.toBe(c); // no device_id → falls back to ip, so keys differ
     expect(a).toHaveLength(32);
   });
+
+  // Gemini 400s on degenerate enums (empty-string members / empty lists) —
+  // the schema must stay as clean as shade-finder's advise schema, which is
+  // the known-working contract in production.
+  describe("searchSchema", () => {
+    test("omits facet matchers whose catalogue list is empty", () => {
+      const s = _internal.searchSchema({
+        slugs: ["wig-a"],
+        collectionSlugs: [],
+        bundleCodes: [],
+        shadeSlugs: ["icy"],
+      });
+      expect(s.properties.matched_collection_slug).toBeUndefined();
+      expect(s.properties.matched_bundle_code).toBeUndefined();
+      expect(s.properties.matched_shade_slug.enum).toEqual(["icy"]);
+      expect(s.required).toEqual(["message", "product_slugs"]);
+    });
+
+    test("never embeds empty-string enum members", () => {
+      const s = _internal.searchSchema({
+        slugs: ["wig-a"],
+        collectionSlugs: ["bridal"],
+        bundleCodes: ["GLOW-3PC"],
+        shadeSlugs: ["icy"],
+      });
+      for (const key of [
+        "matched_collection_slug",
+        "matched_bundle_code",
+        "matched_shade_slug",
+      ]) {
+        expect(s.properties[key].enum).not.toContain("");
+        expect(s.properties[key].enum.length).toBeGreaterThan(0);
+      }
+      expect(s.properties.product_slugs.items.enum).toEqual(["wig-a"]);
+    });
+  });
 });

@@ -22,6 +22,7 @@ import {
 import { ssrProducts } from "@/lib/server";
 import { useCurrency } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
+import { MaisonSelect } from "@/components/site/MaisonSelect";
 
 // Optional (`?:`) fields, not `string | undefined`, so every existing
 // bare `<Link to="/shop">` across the app keeps typechecking without having
@@ -207,15 +208,20 @@ function Shop() {
 
       <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pb-8">
         <div className="border-y border-taupe/15 py-6">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-            <div className="flex-1">
+          {/* Mobile: search stacked above a 3-up filter row (approved as-is).
+              Desktop (lg+): one grid row — search takes ALL remaining width,
+              each dropdown gets a fixed minmax(0,…) column so an option's
+              label length can never widen the row past the viewport. */}
+          <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,11rem))] lg:items-end lg:gap-6 xl:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,13rem))] xl:gap-8">
+            <div className="min-w-0">
               <label htmlFor="shop-search" className="text-[0.65rem] tracking-[0.35em] uppercase text-taupe">
                 Search
               </label>
               <div className="mt-2 flex items-center gap-3 border-b border-taupe/30 transition-colors focus-within:border-taupe">
                 <input
                   id="shop-search"
-                  type="search"
+                  type="text"
+                  enterKeyHint="search"
                   value={qDraft}
                   onChange={(e) => {
                     setQDraft(e.target.value);
@@ -232,7 +238,7 @@ function Shop() {
                       ? "Ask a follow-up — “something cheaper”, “warmer tones”…"
                       : "Search by name or colour — or ask, “what should I wear for a first date?”"
                   }
-                  className="w-full bg-transparent py-2 text-cream placeholder:text-cream/35 outline-none"
+                  className="w-full min-w-0 bg-transparent py-2 text-cream placeholder:text-cream/35 outline-none"
                 />
                 <button
                   type="button"
@@ -246,13 +252,15 @@ function Shop() {
                   ) : (
                     <Sparkles className="h-3.5 w-3.5" />
                   )}
-                  Ask Praxis
+                  <span className="hidden sm:inline">Ask Praxis</span>
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 sm:w-auto sm:shrink-0 sm:gap-6">
-              <FilterSelect
+            {/* lg:contents dissolves this wrapper on desktop so the three
+                selects become direct grid items of the row above. */}
+            <div className="grid grid-cols-3 gap-4 lg:contents">
+              <MaisonSelect
                 id="filter-collection"
                 label="Collection"
                 value={search.collection ?? ""}
@@ -260,7 +268,7 @@ function Shop() {
                 placeholder="All"
                 options={(collections ?? []).map((c) => ({ value: c.slug, label: c.name }))}
               />
-              <FilterSelect
+              <MaisonSelect
                 id="filter-bundle"
                 label="Bundle"
                 value={search.bundle ?? ""}
@@ -268,7 +276,7 @@ function Shop() {
                 placeholder="All"
                 options={(bundles ?? []).map((b) => ({ value: b.bundle_code, label: b.display_name }))}
               />
-              <FilterSelect
+              <MaisonSelect
                 id="filter-shade"
                 label="Shade"
                 value={search.shade ?? ""}
@@ -390,42 +398,5 @@ function Shop() {
         ) : null}
       </section>
     </main>
-  );
-}
-
-function FilterSelect({
-  id,
-  label,
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-  placeholder: string;
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className="text-[0.65rem] tracking-[0.35em] uppercase text-taupe">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="input-line mt-2 text-cream"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </div>
   );
 }

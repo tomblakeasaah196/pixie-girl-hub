@@ -167,10 +167,19 @@ async function chatCompletion({
   } catch (err) {
     const status =
       err.response && err.response.status ? err.response.status : null;
+    // Google's response body says WHY (bad schema, blocked key, quota…) —
+    // without it a 400 is undiagnosable from our logs.
+    const apiError =
+      (err.response &&
+        err.response.data &&
+        err.response.data.error &&
+        err.response.data.error.message) ||
+      null;
     logger.warn(
       {
         status,
         err: err.message,
+        api_error: apiError,
         model: modelId,
       },
       "gemini.chatCompletion failed",
@@ -178,6 +187,7 @@ async function chatCompletion({
     const e = new Error(`gemini call failed (${status || "no response"})`);
     e.code = "GEMINI_CALL_FAILED";
     e.status = status;
+    e.api_message = apiError;
     e.retryable =
       status === null || status >= 500 || status === 429 || status === 408;
     throw e;

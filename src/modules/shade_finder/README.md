@@ -23,6 +23,27 @@ separate cap on follow-up chat turns.
    LATERAL as the storefront cards) and returned with deeplinks
    (`/shades/:slug`, `/product/:slug`).
 
+## Brand Brain (conversational grounding)
+
+Praxis is the brand's **consultant**, not just a shade matcher. Every advise
+turn is grounded by `brand-brain.js`:
+
+- **Knowledge pack** assembled from LIVE, admin-managed data only —
+  `business_config` identity (support email, phone, address, payments),
+  `service_offerings`, bundle offers, collections, and published
+  `storefront_content_posts` (FAQ / guide / journal / policy). Redis-cached
+  ~5 min; sources degrade independently.
+- **Per-turn topic routing** (deterministic keywords, no extra LLM call)
+  injects only the sections relevant to what the shopper said, under a hard
+  character budget. When a topic matches but nothing is published, the
+  context says so explicitly — the model must admit the gap and hand off to
+  the contact page / support email, never guess.
+- **Closed reference registry** — `reference_keys` in the reply schema is an
+  enum of this turn's refs (real storefront routes only), re-validated
+  server-side, so a chip Praxis offers can never 404.
+- **Budget memory** — a stated price ceiling persists across turns until the
+  shopper releases it ("any price is fine").
+
 ## Privacy contract
 
 - Photo is received via multer **memoryStorage**, downscaled in memory

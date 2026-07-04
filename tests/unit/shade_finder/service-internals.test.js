@@ -99,6 +99,37 @@ describe("shade finder service internals", () => {
     expect(r("thanks!")).toBe(false);
   });
 
+  test("resolveBudget remembers, replaces and releases a stated budget", () => {
+    const rb = _internal.resolveBudget;
+    const saved = { currency: "NGN", max: 200000 };
+    // A fresh bound is applied AND saved.
+    expect(rb({ text: "under ₦200k please", saved: null })).toEqual({
+      constraint: saved,
+      save: saved,
+    });
+    // A later turn without a price keeps honouring the saved bound.
+    expect(rb({ text: "okay show me the braids", saved })).toEqual({
+      constraint: saved,
+      save: saved,
+    });
+    // A new bound replaces the old one.
+    expect(rb({ text: "make it under $150", saved }).constraint).toEqual({
+      currency: "USD",
+      max: 150,
+    });
+    // An explicit release clears both.
+    expect(rb({ text: "actually any price is fine", saved })).toEqual({
+      constraint: null,
+      save: null,
+    });
+    expect(rb({ text: "forget the budget", saved }).save).toBeNull();
+    // Nothing stated, nothing saved → no constraint.
+    expect(rb({ text: "hello", saved: null })).toEqual({
+      constraint: null,
+      save: null,
+    });
+  });
+
   test("hydrate falls back to the shade's own styles when picks are unusable", () => {
     const shades = [{ shade_id: "s1", name: "Espresso", slug: "espresso", swatches: [] }];
     const products = [

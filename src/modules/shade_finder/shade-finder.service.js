@@ -14,6 +14,12 @@
  *                  every shade/product it may name is a closed enum of live
  *                  catalogue slugs — it cannot invent inventory.
  *
+ * Praxis is also the brand's consultant, not just a shade matcher: every
+ * advise turn is grounded by the Brand Brain (brand-brain.js) — live
+ * services, bundles, collections, published FAQ/care/policy content and
+ * contact identity — under the same closed-reference rule, so it can talk
+ * about the whole brand yet can only cite pages and facts that exist.
+ *
  * Privacy: the photo is processed entirely in memory (multer memoryStorage →
  * sharp downscale → Gemini inline bytes) and never written to disk, storage,
  * or Redis. EXIF (incl. GPS) is stripped by re-encoding. Only derived colour
@@ -41,6 +47,11 @@ const governance = require("../ai_governance/governance.service");
 const repo = require("./shade-finder.repo");
 const events = require("./shade-finder.events");
 const { rankShadesByDistance } = require("./colour-distance");
+const {
+  loadBrandBrain,
+  composeBrandContext,
+  resolveReferences,
+} = require("./brand-brain");
 
 const FEATURE_KEY = "shade_finder";
 
@@ -284,7 +295,7 @@ const PERCEIVE_SYSTEM = [
   "Respond with JSON only.",
 ].join(" ");
 
-function adviseSchema({ shadeSlugs, productSlugs }) {
+function adviseSchema({ shadeSlugs, productSlugs, referenceKeys }) {
   return {
     type: "OBJECT",
     properties: {
@@ -302,6 +313,13 @@ function adviseSchema({ shadeSlugs, productSlugs }) {
         type: "ARRAY",
         items: { type: "STRING", enum: productSlugs },
       },
+      // Closed enum of THIS turn's brand-brain refs (real pages only) — the
+      // UI renders these as tappable chips, and the server re-validates, so
+      // Praxis can never offer a link that doesn't exist.
+      reference_keys: {
+        type: "ARRAY",
+        items: { type: "STRING", enum: referenceKeys },
+      },
       confidence: { type: "STRING", enum: ["low", "medium", "high"] },
       followup_question: { type: "STRING" },
     },
@@ -311,24 +329,56 @@ function adviseSchema({ shadeSlugs, productSlugs }) {
   };
 }
 
-function adviseSystem(brand) {
+function adviseSystem({ brand, brandName }) {
   const house =
-    brand === "faitlynhair"
+    brandName ||
+    (brand === "faitlynhair"
       ? "Faitlyn — a premium wig and hair brand"
-      : "Pixie Girl — a premium hair and beauty brand";
+      : "Pixie Girl — a premium hair and beauty brand");
   return [
-    `You are Praxis, the personal shade stylist for ${house}, chatting with a`,
-    "shopper on the storefront. Voice: warm, confident, personal — like a",
-    "great in-store stylist. Keep replies under 110 words, no lists unless",
-    "asked, one emoji at most.",
+    // WHO — stylist first, seller second, consultant always.
+    `You are Praxis — the personal stylist and brand consultant for ${house},`,
+    "chatting with a shopper on the storefront. You have the warmth and craft",
+    "of the best salon consultant they've ever met: you listen first, you",
+    "remember everything they tell you, and you only ever say what you'd",
+    "stake your reputation on.",
+    // HOW YOU TALK — the conversational craft.
+    "TALK LIKE A PERSON, never a bot: use contractions, mirror the shopper's",
+    "energy and length — brief when they're brief, playful when they're",
+    "playful. One clear thought per reply and at most ONE question. Never",
+    "re-introduce yourself or re-greet mid-conversation. Weave in what they",
+    "already told you (occasion, vibe, budget, their photo) instead of asking",
+    "again. No bullet lists unless they ask. Keep replies under 120 words,",
+    "one emoji at most.",
+    // HOW YOU CONSULT — the selling posture.
+    "CONSULT, don't push: understand the occasion, the vibe and the budget",
+    "before recommending. Tie every suggestion to something they actually",
+    "said. Guide the natural journey — chat, then a photo, then their shade,",
+    "then the styles that carry it, and only where it genuinely helps, a",
+    "bundle or a salon service. Never pressure, never invent urgency, never",
+    "offer a discount or promise that is not in your knowledge.",
+    // WHAT YOU KNOW — the hard grounding line.
+    "YOUR KNOWLEDGE: BRAND_KNOWLEDGE and CATALOGUE are your complete and only",
+    "knowledge of this brand. General hair wisdom — undertones, textures,",
+    "care principles — is your craft and always fine to share. But brand",
+    "specifics (prices, stock, delivery, policies, discounts, locations,",
+    "services) may ONLY come from those blocks. If the answer isn't there,",
+    "say so plainly and warmly, and point to the most relevant reference or",
+    "the support contact — never guess, never improvise a fact. Scalp or",
+    "skin conditions: recommend a professional, give no diagnosis. Off-topic",
+    "requests: one warm line steering back to hair and the brand.",
+    "REFERENCES: reference_keys may carry up to 3 keys, chosen ONLY from the",
+    "(ref …) markers and ref lists in BRAND_KNOWLEDGE, and only when tapping",
+    "through genuinely helps the shopper act on your reply.",
+    // Shade decisioning — unchanged colour logic.
     "You are given the shopper's analysed colouring, the boutique's shade",
     "families (with colour-distance hints, lower ΔE = closer to the shopper's",
     "own colouring), and the live styles in those shades with prices in NGN",
     "and USD.",
     "FIRST decide reply_kind. Set reply_kind='chat' when the shopper is just",
-    "talking — greetings, thanks, questions about you or the process, or",
-    "'can we chat' — and answer warmly in `message` with NO shade or products;",
-    "leave recommended_shade_slug and product_slugs empty. Set",
+    "talking — greetings, thanks, brand questions, care questions, or 'can we",
+    "chat' — and answer warmly in `message` with NO shade or products; leave",
+    "recommended_shade_slug and product_slugs empty. Set",
     "reply_kind='recommendation' only when they actually want a shade or",
     "styles (including a shared photo, or a refinement like 'something",
     "warmer' or 'anything cheaper').",
@@ -429,6 +479,25 @@ function parsePriceConstraint(text) {
   return { currency, max: amount };
 }
 
+const BUDGET_CLEAR_RE =
+  /\b(any (?:price|budget)|no budget|ignore (?:the |my )?budget|forget (?:the |my )?budget|remove (?:the |my )?(?:budget|limit)|price (?:doesn'?t|does not) matter|whatever it costs|no (?:price )?limit|budget'?s? (?:gone|off|removed))\b/i;
+
+/**
+ * A stated budget is a conversation fact, not a single-turn filter: "under
+ * ₦200k" then "okay show me braids" must still respect ₦200k. A newly parsed
+ * bound replaces the saved one; an explicit release ("any price is fine")
+ * clears it; otherwise the saved bound carries forward.
+ * Returns { constraint, save } — constraint applies this turn, save persists.
+ */
+function resolveBudget({ text, saved }) {
+  const parsed = parsePriceConstraint(text);
+  if (parsed) return { constraint: parsed, save: parsed };
+  if (BUDGET_CLEAR_RE.test(String(text || ""))) {
+    return { constraint: null, save: null };
+  }
+  return { constraint: saved || null, save: saved || null };
+}
+
 /** Within an upper bound in the constraint's currency. Unpriced → excluded. */
 function withinBudget(product, constraint) {
   if (!constraint) return true;
@@ -513,6 +582,7 @@ async function startSession({ brand, device_id, ip }) {
     perceived: null,
     history: [],
     last_result: null,
+    budget: null,
   });
   const used = await readCount(
     quotaKey("d", brand, deviceKey, lagosDay()),
@@ -566,9 +636,12 @@ async function adviseAndReply({
   products,
   forceRecommend = false,
 }) {
-  // Deterministic pre-processing: honour a price ceiling and know the shade we
-  // last showed so a refinement ("something warmer") is forced to move off it.
-  const constraint = parsePriceConstraint(userText);
+  // Deterministic pre-processing: honour a price ceiling (remembered across
+  // turns until released) and know the shade we last showed so a refinement
+  // ("something warmer") is forced to move off it.
+  const budget = resolveBudget({ text: userText, saved: state.budget });
+  const constraint = budget.constraint;
+  state.budget = budget.save;
   const affordable = constraint
     ? products.filter((p) => withinBudget(p, constraint))
     : products;
@@ -583,6 +656,20 @@ async function adviseAndReply({
     return !!sh && affordableShadeIds.has(sh.shade_id);
   };
 
+  // Brand brain: everything Praxis may say about the brand beyond shades —
+  // services, bundles, policies, contact, published FAQ/care content. The
+  // previous user turn rides along so follow-ups ("and how much is that?")
+  // still route to the right topic. A brain failure degrades to pages-only.
+  const brain = await loadBrandBrain({ brand });
+  const prevUser = [...(state.history || [])]
+    .reverse()
+    .find((m) => m.role === "user");
+  const brandCtx = composeBrandContext({
+    brain,
+    text: `${prevUser ? prevUser.content : ""}\n${userText}`,
+  });
+  const referenceKeys = [...brandCtx.refs.keys()];
+
   // The model may only offer styles the shopper can actually afford. Keep the
   // enum non-empty even when nothing qualifies (an empty enum is invalid) — the
   // budget hint + the hard gate below stop an over-budget style being shown.
@@ -590,10 +677,12 @@ async function adviseAndReply({
   const schema = adviseSchema({
     shadeSlugs: shades.map((s) => s.slug),
     productSlugs: (affordable.length ? affordable : products).map((p) => p.slug),
+    referenceKeys,
   });
   const hints = [
     `SHOPPER_ANALYSIS: ${JSON.stringify(state.perceived || {})}`,
     `CATALOGUE: ${catalogueContext({ shades, ranked, products: affordable })}`,
+    `BRAND_KNOWLEDGE:\n${brandCtx.block}`,
   ];
   if (currentSlug) hints.push(`CURRENT_SHADE: ${currentSlug}`);
   if (refine) {
@@ -609,9 +698,12 @@ async function adviseAndReply({
           : "; quote prices in that currency."),
     );
   }
-  const history = (state.history || []).slice(-8);
+  const history = (state.history || []).slice(-12);
   const completion = await gemini.chatCompletion({
-    system: adviseSystem(brand),
+    system: adviseSystem({
+      brand,
+      brandName: brain && brain.identity ? brain.identity.name : null,
+    }),
     messages: [
       { role: "user", content: hints.join("\n") },
       { role: "assistant", content: "Understood — I will only recommend from this catalogue." },
@@ -696,11 +788,18 @@ async function adviseAndReply({
     );
   }
 
+  // Validated brand refs (tappable chips) — only keys offered this turn
+  // survive, so a reply can never link to a page that doesn't exist.
+  result.references = resolveReferences({
+    keys: advice.reference_keys,
+    refs: brandCtx.refs,
+  });
+
   state.history = [
     ...(state.history || []),
     { role: "user", content: userText },
     { role: "assistant", content: advice.message },
-  ].slice(-12);
+  ].slice(-20);
   state.last_result = result;
   await saveSession(sid, state);
 
@@ -949,5 +1048,6 @@ module.exports = {
     parsePriceConstraint,
     withinBudget,
     isRefinement,
+    resolveBudget,
   },
 };

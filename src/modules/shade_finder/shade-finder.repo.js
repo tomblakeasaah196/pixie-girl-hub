@@ -76,4 +76,65 @@ async function listProductsForShades({ brand, shade_ids, limit = 40 }) {
   return rows;
 }
 
-module.exports = { listActiveShadesWithSwatches, listProductsForShades };
+// ── Brand-brain sources (public-safe, read-only) ────────────
+// Everything below feeds the conversational grounding pack. Only columns
+// that already render on the public storefront (or on printed receipts)
+// are selected — nothing internal ever reaches the prompt.
+
+/** Public identity of the brand — the facts Praxis may state as its own. */
+async function getBrandIdentity({ brand }) {
+  const { rows } = await query(
+    `SELECT display_name, support_email, email, phone, address, website,
+            storefront_domain, mission_statement, payment_methods
+       FROM shared.business_config
+      WHERE business_key = $1`,
+    [brand],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Published content posts of the given types (FAQ entries, care guides,
+ * journal articles, policy pages). Empty today for brands that have not
+ * published any — the brain treats absence as "say you don't have that
+ * detail", never as licence to improvise.
+ */
+async function listPublishedPosts({ brand, types, limit = 60 }) {
+  const { rows } = await query(
+    `SELECT post_id, post_type, slug, title, excerpt, body,
+            faq_category, faq_question
+       FROM ${t(brand, "storefront_content_posts")}
+      WHERE post_type = ANY($1) AND status = 'published'
+      ORDER BY display_order, published_at DESC NULLS LAST
+      LIMIT $2`,
+    [types, limit],
+  );
+  return rows;
+}
+
+/**
+ * Storefront-visible services with the public detail fields (what's
+ * included, aftercare, deposit) — all of which already render on the
+ * public /services pages.
+ */
+async function listPublicServices({ brand }) {
+  const { rows } = await query(
+    `SELECT slug, name, short_description, base_price_ngn,
+            compare_at_price_ngn, price_is_from, duration_minutes,
+            location_type, deposit_required, deposit_pct,
+            whats_included, aftercare_notes
+       FROM shared.service_offerings
+      WHERE business = $1 AND is_visible_storefront = true AND is_active = true
+      ORDER BY is_featured DESC, sort_order ASC, name ASC`,
+    [brand],
+  );
+  return rows;
+}
+
+module.exports = {
+  listActiveShadesWithSwatches,
+  listProductsForShades,
+  getBrandIdentity,
+  listPublishedPosts,
+  listPublicServices,
+};

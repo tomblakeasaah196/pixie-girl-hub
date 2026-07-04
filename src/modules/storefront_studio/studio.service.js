@@ -17,6 +17,10 @@ const storage = require("../../services/storage.service");
 const {
   normalizeImageInput,
 } = require("../../services/media-compression.service");
+const {
+  uniqueSlug,
+  buildPostFields,
+} = require("./content-helpers");
 
 const A = (
   brand,
@@ -421,6 +425,172 @@ async function rollbackRevision({ brand, user, request_id, revision_id }) {
   });
 }
 
+// ── Content posts (FAQ / care guide / journal / policy) ────
+// One row per post with its own status lifecycle (draft ↔ published). The
+// operator types a title (+ body/answer); slug, reading time and empty SEO
+// fields are derived. Praxis (Brand Brain) and the public pages read only the
+// PUBLISHED rows, so a draft is never quoted or shown.
+
+function listContentPosts({ brand, type }) {
+  return repo.listContentPosts({ brand, type });
+}
+
+async function createContentPost({ brand, user, request_id, input }) {
+  return transaction(async (client) => {
+    const fields = buildPostFields(input);
+    const slug =
+      (input.slug && input.slug.trim()) ||
+      (await uniqueSlug(fields.title, (s) =>
+        repo.slugExists({ client, brand, slug: s }),
+      ));
+    // A hand-typed slug still has to be unique for the brand.
+    if (input.slug && (await repo.slugExists({ client, brand, slug }))) {
+      throw new AppError(
+        "SLUG_TAKEN",
+        "That web address is already used by another post.",
+        409,
+      );
+    }
+    const created = await repo.insertContentPost({
+      client,
+      brand,
+      post: {
+        ...fields,
+        slug,
+        status: "draft",
+        published_at: null,
+        author_user_id: user.user_id,
+        author_display_name: user.display_name || user.full_name || null,
+      },
+    });
+    await A(
+      brand,
+      user,
+      "studio.content.create",
+      "storefront_content_post",
+      created.post_id,
+      { post_type: created.post_type, slug: created.slug },
+      request_id,
+    );
+    events.emit("content.created", { brand, post_id: created.post_id });
+    return created;
+  });
+}
+
+async function updateContentPost({ brand, user, request_id, post_id, input }) {
+  return transaction(async (client) => {
+    const existing = await repo.getContentPostById({ client, brand, post_id });
+    if (!existing) throw new NotFoundError("Content post");
+    const fields = buildPostFields(input);
+    // Keep the live URL stable unless the operator explicitly changed it.
+    let slug = existing.slug;
+    if (input.slug && input.slug.trim() && input.slug.trim() !== existing.slug) {
+      slug = input.slug.trim();
+      if (await repo.slugExists({ client, brand, slug, exclude_id: post_id })) {
+        throw new AppError(
+          "SLUG_TAKEN",
+          "That web address is already used by another post.",
+          409,
+        );
+      }
+    }
+    const updated = await repo.updateContentPost({
+      client,
+      brand,
+      post_id,
+      post: {
+        ...fields,
+        slug,
+        // Editing published copy keeps it published (and its published_at);
+        // status changes go through publish/unpublish.
+        status: existing.status,
+        published_at: existing.published_at,
+      },
+    });
+    await A(
+      brand,
+      user,
+      "studio.content.update",
+      "storefront_content_post",
+      post_id,
+      { post_type: updated.post_type, slug: updated.slug },
+      request_id,
+    );
+    events.emit("content.updated", { brand, post_id });
+    return updated;
+  });
+}
+
+async function publishContentPost({ brand, user, request_id, post_id }) {
+  return transaction(async (client) => {
+    const existing = await repo.getContentPostById({ client, brand, post_id });
+    if (!existing) throw new NotFoundError("Content post");
+    const published = await repo.setContentStatus({
+      client,
+      brand,
+      post_id,
+      status: "published",
+      // Preserve the original publish date on re-publish; stamp it the first time.
+      published_at: existing.published_at || new Date().toISOString(),
+    });
+    await A(
+      brand,
+      user,
+      "studio.content.publish",
+      "storefront_content_post",
+      post_id,
+      { slug: published.slug },
+      request_id,
+    );
+    events.emit("content.published", { brand, post_id });
+    return published;
+  });
+}
+
+async function unpublishContentPost({ brand, user, request_id, post_id }) {
+  return transaction(async (client) => {
+    const existing = await repo.getContentPostById({ client, brand, post_id });
+    if (!existing) throw new NotFoundError("Content post");
+    const draft = await repo.setContentStatus({
+      client,
+      brand,
+      post_id,
+      status: "draft",
+      published_at: null,
+    });
+    await A(
+      brand,
+      user,
+      "studio.content.unpublish",
+      "storefront_content_post",
+      post_id,
+      { slug: draft.slug },
+      request_id,
+    );
+    events.emit("content.unpublished", { brand, post_id });
+    return draft;
+  });
+}
+
+async function deleteContentPost({ brand, user, request_id, post_id }) {
+  return transaction(async (client) => {
+    const existing = await repo.getContentPostById({ client, brand, post_id });
+    if (!existing) throw new NotFoundError("Content post");
+    await repo.deleteContentPost({ client, brand, post_id });
+    await A(
+      brand,
+      user,
+      "studio.content.delete",
+      "storefront_content_post",
+      post_id,
+      { slug: existing.slug, post_type: existing.post_type },
+      request_id,
+    );
+    events.emit("content.deleted", { brand, post_id });
+    return { deleted: true, post_id };
+  });
+}
+
 module.exports = {
   getThemes,
   saveThemeDraft,
@@ -440,4 +610,10 @@ module.exports = {
   previewInfo,
   listRevisions,
   rollbackRevision,
+  listContentPosts,
+  createContentPost,
+  updateContentPost,
+  publishContentPost,
+  unpublishContentPost,
+  deleteContentPost,
 };

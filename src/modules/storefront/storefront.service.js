@@ -209,14 +209,24 @@ async function getSite({ brand, path, previewToken }) {
   return repo.getPublishedSite({ brand, path });
 }
 
-function listContent({ brand, type }) {
-  return repo.listContentPosts({ brand, type });
+// The storefront detail pages (journal, policy) render `body_md` (safe,
+// pre-wrapped) or `body_html`. Content posts store the copy in `body`, so
+// alias it to `body_md` on the way out. We never emit body_html — no raw HTML
+// is injected from operator input.
+function withRenderableBody(post) {
+  if (!post) return post;
+  return { ...post, body_md: post.body ?? null };
+}
+
+async function listContent({ brand, type }) {
+  const posts = await repo.listContentPosts({ brand, type });
+  return posts.map(withRenderableBody);
 }
 
 async function getContent({ brand, type, slug }) {
   const post = await repo.getContentPost({ brand, type, slug });
   if (!post) throw new NotFoundError("Content");
-  return post;
+  return withRenderableBody(post);
 }
 
 // ── Public Order Form ──────────────────────────────────────

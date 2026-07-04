@@ -113,6 +113,67 @@ async function deletePopup(req, res) {
 async function listSectionTemplates(_req, res) {
   res.json({ data: await service.listSectionTemplates() });
 }
+
+// ── Content posts ──────────────────────────────────────────
+async function listContent(req, res) {
+  res.json({
+    data: await service.listContentPosts({
+      brand: req.brand,
+      type: req.query.type,
+    }),
+  });
+}
+async function createContent(req, res) {
+  res.status(201).json({
+    data: await service.createContentPost({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
+    }),
+  });
+}
+async function updateContent(req, res) {
+  res.json({
+    data: await service.updateContentPost({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      post_id: req.params.postId,
+      input: req.body,
+    }),
+  });
+}
+async function publishContent(req, res) {
+  res.json({
+    data: await service.publishContentPost({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      post_id: req.params.postId,
+    }),
+  });
+}
+async function unpublishContent(req, res) {
+  res.json({
+    data: await service.unpublishContentPost({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      post_id: req.params.postId,
+    }),
+  });
+}
+async function deleteContent(req, res) {
+  res.json({
+    data: await service.deleteContentPost({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      post_id: req.params.postId,
+    }),
+  });
+}
 async function uploadImage(req, res) {
   res.json({ data: await service.uploadImage({ brand: req.brand, file: req.file }) });
 }
@@ -152,4 +213,10 @@ module.exports = {
   previewInfo,
   listRevisions,
   rollbackRevision,
+  listContent,
+  createContent,
+  updateContent,
+  publishContent,
+  unpublishContent,
+  deleteContent,
 };

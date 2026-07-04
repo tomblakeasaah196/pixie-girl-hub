@@ -59,6 +59,7 @@ import {
 } from "@/lib/storefront-studio";
 import { toast } from "@/stores/toast";
 import { describeError } from "@/lib/error-report";
+import { ContentTab } from "./ContentTab";
 
 /**
  * Run a Studio mutation with unmissable feedback. Success shows a toast (plus
@@ -91,6 +92,7 @@ type Tab =
   | "toolbar"
   | "navigation"
   | "pages"
+  | "content"
   | "popups"
   | "preview"
   | "revisions";
@@ -101,6 +103,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "toolbar", label: "Toolbar" },
   { key: "navigation", label: "Navigation" },
   { key: "pages", label: "Pages" },
+  { key: "content", label: "Content" },
   { key: "popups", label: "Popups" },
   { key: "preview", label: "Preview" },
   { key: "revisions", label: "Revisions" },
@@ -143,6 +146,7 @@ export function StorefrontStudioPage() {
         {tab === "toolbar" ? <ToolbarTab /> : null}
         {tab === "navigation" ? <NavigationTab /> : null}
         {tab === "pages" ? <PagesTab /> : null}
+        {tab === "content" ? <ContentTab /> : null}
         {tab === "popups" ? <PopupsTab /> : null}
         {tab === "preview" ? <PreviewTab /> : null}
         {tab === "revisions" ? <RevisionsTab /> : null}

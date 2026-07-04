@@ -50,6 +50,36 @@ const popupDraftSchema = z.object({
   is_active: z.boolean().default(true),
 });
 
+// Content posts (FAQ / care guide / journal / policy). Slug, reading time,
+// and blank SEO fields are derived server-side, so the editor only has to send
+// what a shop owner actually types. Extra keys from a loaded row are stripped.
+const contentPostSchema = z.object({
+  post_type: z.enum([
+    "faq",
+    "guide",
+    "journal",
+    "policy",
+    "blog",
+    "lookbook",
+    "press",
+  ]),
+  title: z.string().trim().min(1, "Give it a title").max(200),
+  slug: z.string().trim().max(200).nullish(),
+  excerpt: z.string().max(600).nullish(),
+  body: z.string().max(50000).nullish(),
+  hero_image_url: z.string().max(1000).nullish(),
+  hero_image_alt: z.string().max(300).nullish(),
+  faq_category: z
+    .enum(["shipping", "returns", "care", "payment", "sizing", "general"])
+    .nullish(),
+  faq_question: z.string().max(300).nullish(),
+  tags: z.array(z.string().max(60)).max(20).default([]),
+  meta_title: z.string().max(200).nullish(),
+  meta_description: z.string().max(500).nullish(),
+  is_featured: z.boolean().default(false),
+  display_order: z.number().int().min(0).max(9999).default(0),
+});
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -60,8 +90,10 @@ module.exports = {
   validateNavDraft: mk(navDraftSchema),
   validatePageDraft: mk(pageDraftSchema),
   validatePopupDraft: mk(popupDraftSchema),
+  validateContentPost: mk(contentPostSchema),
   themeDraftSchema,
   navDraftSchema,
   pageDraftSchema,
   popupDraftSchema,
+  contentPostSchema,
 };

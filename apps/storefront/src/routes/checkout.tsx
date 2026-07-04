@@ -244,11 +244,12 @@ function CheckoutPage() {
             ? "No delivery to this address"
             : "Select location";
 
-  // Payment rails: USD orders route through Nomba only (older campaigns offer
-  // both). Keep the selected rail valid when the currency flips.
+  // Payment rails: any FOREIGN settlement routes through Nomba only; only a NGN
+  // settlement offers the Paystack alternative. Keep the selected rail valid
+  // when the currency flips.
   const rails = useMemo(
-    () => (currency === "USD" ? ["nomba"] : ["nomba", "paystack"]),
-    [currency],
+    () => (settleCur !== "NGN" ? ["nomba"] : ["nomba", "paystack"]),
+    [settleCur],
   );
   useEffect(() => {
     if (!rails.includes(gateway)) setGateway(rails[0]);

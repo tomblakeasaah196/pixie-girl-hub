@@ -1,7 +1,8 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { getServices, fmt } from "@/lib/storefront";
+import { getServices } from "@/lib/storefront";
+import { formatFromNgn } from "@/lib/money";
 import { useCurrency } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 
@@ -82,10 +83,10 @@ function ServicesIndex() {
                       <div className="flex items-baseline gap-2">
                         {s.price_is_from ? <span className="text-[0.62rem] tracking-[0.3em] uppercase text-cream/50">From</span> : null}
                         <span className="font-display text-2xl text-taupe">
-                          {fmt(currency === "USD" ? s.base_price_usd : s.base_price_ngn, currency)}
+                          {s.base_price_ngn != null ? formatFromNgn(Number(s.base_price_ngn), currency) : "-"}
                         </span>
-                        {s.compare_at_price_ngn && currency === "NGN" ? (
-                          <span className="text-sm text-cream/40 line-through">{fmt(s.compare_at_price_ngn, "NGN")}</span>
+                        {s.compare_at_price_ngn ? (
+                          <span className="text-sm text-cream/40 line-through">{formatFromNgn(Number(s.compare_at_price_ngn), currency)}</span>
                         ) : null}
                       </div>
                       {meta ? <p className="mt-3 text-[0.58rem] tracking-[0.3em] uppercase text-cream/45">{meta}</p> : null}

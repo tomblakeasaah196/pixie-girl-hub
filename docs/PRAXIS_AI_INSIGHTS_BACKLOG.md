@@ -23,8 +23,9 @@ decision.
   - ✅ Batch 4: stylist_programme, sales_campaigns, marketing, smartcomm.
   - ✅ Batch 5: social_media, storefront, catalogue, iam_security, payroll,
     customer_onboarding.
-- 🟡 **Wave 4 — Polish**: ✅ realtime + notification bell; ⬜ Tier-2 AI narration,
-  Praxis chat query, legacy cleanup (see §C).
+- 🟡 **Wave 4 — Polish**: ✅ realtime + notification bell, auto-resolve, Tier-2
+  AI narration, Praxis chat query; ⬜ legacy-table cleanup, `ai_briefing_insight_refs`,
+  module-header badges, integration tests, docs refresh (see §C/§D).
 
 ---
 
@@ -79,13 +80,14 @@ than a silent-wrong query.
 
 ## C. Wave 4 — cross-cutting polish (the "don't leave anything out" set)
 
-1. ⬜ **Pricing / margin detector** — spans `pricing_floors` + variant cost +
-   channel prices; needs careful schema work (a wrong-but-silent query is the
-   risk). Do as a focused item, not lumped into a batch.
-2. ⬜ **Tier-2 AI narration** — per narration-enabled module, feed the summarised
-   counts to the LLM (budget-gated; deterministic text stays the fallback).
-   Populate the unused `ai_briefing_insight_refs` so a paragraph links to its
-   alerts. Meters under the `insights_briefing` feature flag.
+1. ✅ **Pricing / margin detector** — shipped in Wave 3 batch 3 using
+   `product_variants` cost/min/storefront price (no floor-table join needed).
+2. ✅ **Tier-2 AI narration** — `ai-briefing.js` narrates the summarised counts
+   with the LLM when a module opted in (`narration_enabled`), the
+   `insights_briefing` feature is usable, and a vendor is configured; degrades
+   to the deterministic text on any miss (no vendor / budget hard-cap / error).
+   Meters `call_type = 'insight_narration'` on the governance ledger.
+   (Still open: populate `ai_briefing_insight_refs` for paragraph→alert links.)
 3. ✅ **Realtime** — `insights-realtime.js` relays `sweep.completed` +
    `insight.updated` into `brand:{brand}:insights`; the client (`useInsightsRealtime`)
    joins the room and invalidates the insights keys, so the Center + every slot
@@ -93,9 +95,9 @@ than a silent-wrong query.
 4. ✅ **Notification bell** — the sweep fans genuinely-new high/critical findings
    to the CEO's notifications feed via `notifications.notify` (suppressed
    duplicates never re-ping, since `raise` returns the row only on insert).
-5. ⬜ **Praxis chat query** — add an `insights_open` entry to
-   `praxis_ai/query-catalogue.js` so the CEO can ask "what needs my attention?"
-   and get the tier-1 findings in chat.
+5. ✅ **Praxis chat query** — `insights_open` entry in
+   `praxis_ai/query-catalogue.js`; the CEO can ask "what needs my attention?"
+   and get the per-module open counts in chat (permission-scoped to ai_insights).
 6. ⬜ **Module-header badges** — small open-count badge on Stock / Invoicing /
    Service Jobs / Approvals headers from `/insights/summary`.
 7. ⬜ **Legacy cleanup** — once the unified path is verified in production, a
@@ -115,11 +117,9 @@ than a silent-wrong query.
 
 ## D. Quality / hygiene
 
-- ⬜ **Auto-resolve pass** — detectors raise but never auto-close: an insight
-  stays `open` until acknowledged/resolved even once the underlying condition
-  clears (invoice paid, thread answered, campaign closed). A sweep-side reconcile
-  (resolve open findings whose detector no longer returns them) would keep the
-  list honest without manual cleanup. Applies to every detector.
+- ✅ **Auto-resolve pass** — the sweep now closes open insights whose finding
+  no longer appears (condition cleared), scoped to modules whose detectors all
+  ran cleanly (a detector error never mass-resolves; stock is never touched).
 - ⬜ **Integration tests** — `/insights` routes + `runDetectorSweep` end-to-end
   against a live DB (`RUN_DB_TESTS=1`). Unit coverage exists (registry/service).
 - ⬜ **Docs** — refresh `docs/AI_PRAXIS.md` and `docs/CONFORMANCE_GAPS.md` to

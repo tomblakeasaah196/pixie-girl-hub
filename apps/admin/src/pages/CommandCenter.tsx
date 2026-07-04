@@ -5,7 +5,7 @@
  *   1. Hero: greeting + "craft today" headline + live clock card (business chip)
  *   2. Role KPI strip (3 cards, configurable via /dashboards/configs; role-default fallback)
  *   3. Quick Actions bar (permission-gated shortcuts)
- *   4. AI Insights alert bar (dismissible; links to /dashboard)
+ *   4. AI Insights alert bar (dismissible; links to /insights)
  *   5. AI Briefing widget (latest Praxis narrative → "Open in Praxis" link)
  *   6. App grid (drag/pin — from AppGrid component)
  *   7. Recent activity (my-feed audit trail, last 24 h — real endpoint)
@@ -352,7 +352,7 @@ function InsightsAlertBar({
         )}
       </span>
       <button
-        onClick={() => navigate("/dashboard")}
+        onClick={() => navigate("/insights")}
         className="text-[12px] text-warn underline underline-offset-2 flex items-center gap-1"
       >
         View <ArrowRight className="w-3 h-3" />

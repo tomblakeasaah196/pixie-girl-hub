@@ -2,6 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import { FileBarChart, FileText, Undo2, Settings2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useAuthStore } from "@/stores/auth";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { ArAgeingView } from "./ArAgeingView";
 import { InvoicesView } from "./InvoicesView";
 import { CreditNotesView } from "./CreditNotesView";
@@ -27,6 +28,9 @@ export function InvoicingPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="font-display text-2xl font-medium">Invoicing & Billing</h1>
       </div>
+
+      {/* Praxis proactive insights for this module (self-hides when clear/off). */}
+      <ModuleInsights module="invoicing" />
 
       <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto" role="tablist">
         {TABS.map((t) => {

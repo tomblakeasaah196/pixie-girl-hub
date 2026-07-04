@@ -949,7 +949,7 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
             className={`pill-btn ${!statusFilter ? "active" : ""}`}
             onClick={() => setStatusFilter("")}
           >
-            All ({data?.total ?? 0})
+            All ({data?.meta?.total ?? 0})
           </button>
           {BOARD_COLUMNS.map((s) => {
             const m = JOB_STATUS_META[s];

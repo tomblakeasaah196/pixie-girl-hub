@@ -16,7 +16,6 @@ export function useServiceTypes(isActive?: boolean) {
       api.listServiceTypes(
         isActive !== undefined ? { is_active: isActive } : undefined,
       ),
-    select: (r) => r.data,
   });
 }
 
@@ -48,7 +47,6 @@ export function useRecipes(isActive?: boolean) {
       api.listRecipes(
         isActive !== undefined ? { is_active: isActive } : undefined,
       ),
-    select: (r) => r.data,
   });
 }
 
@@ -58,7 +56,6 @@ export function useRecipe(id: string | null) {
     queryKey: ["service-recipe", id, brand],
     queryFn: () => api.getRecipe(id!),
     enabled: !!id,
-    select: (r) => r.data,
   });
 }
 
@@ -96,7 +93,6 @@ export function useJob(id: string | null) {
     queryKey: ["service-job", id, brand],
     queryFn: () => api.getJob(id!),
     enabled: !!id,
-    select: (r) => r.data,
   });
 }
 
@@ -158,7 +154,6 @@ export function useJobChemicals(jobId: string | null) {
     queryKey: ["job-chemicals", jobId, brand],
     queryFn: () => api.listJobChemicals(jobId!),
     enabled: !!jobId,
-    select: (r) => r.data,
   });
 }
 
@@ -182,7 +177,6 @@ export function useReconciliations(
   return useQuery({
     queryKey: ["chem-reconciliations", params, brand],
     queryFn: () => api.listReconciliations(params),
-    select: (r) => r.data,
   });
 }
 
@@ -251,7 +245,6 @@ export function useJobMaterials(jobId: string | null) {
     queryKey: ["job-materials", jobId, brand],
     queryFn: () => api.listMaterials(jobId!),
     enabled: !!jobId,
-    select: (r) => r.data,
   });
 }
 
@@ -273,7 +266,6 @@ export function useJobReferences(jobId: string | null) {
     queryKey: ["job-references", jobId, brand],
     queryFn: () => api.listReferences(jobId!),
     enabled: !!jobId,
-    select: (r) => r.data,
   });
 }
 
@@ -301,7 +293,6 @@ export function useJobTimeLogs(jobId: string | null) {
     queryKey: ["job-time-logs", jobId, brand],
     queryFn: () => api.listTimeLogs(jobId!),
     enabled: !!jobId,
-    select: (r) => r.data,
   });
 }
 
@@ -312,6 +303,5 @@ export function useAccountability() {
   return useQuery({
     queryKey: ["studio-accountability", brand],
     queryFn: () => api.getAccountability(),
-    select: (r) => r.data,
   });
 }

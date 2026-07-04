@@ -1,5 +1,14 @@
-import { useEffect, useState } from "react";
-import { Plus, Scissors, Clock, Globe, Star, Pencil } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Plus,
+  Scissors,
+  Clock,
+  Globe,
+  Star,
+  Pencil,
+  Upload,
+  Image as ImageIcon,
+} from "lucide-react";
 import {
   Button,
   Card,
@@ -24,10 +33,13 @@ import {
   useToggleService,
   useUpdateService,
   useDeleteService,
+  useUploadServiceImage,
   type ServiceOffering,
   type ServiceInput,
 } from "@/lib/catalogue";
 import { Trash2 } from "lucide-react";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { useUploadProgress } from "@/lib/use-upload";
 import { ImportExportControls } from "@/components/catalogue/ImportExportControls";
 
 /**
@@ -247,6 +259,9 @@ function ServiceModal({
   const create = useCreateService();
   const update = useUpdateService();
   const del = useDeleteService();
+  const uploadImg = useUploadServiceImage();
+  const { progress, run } = useUploadProgress();
+  const fileRef = useRef<HTMLInputElement>(null);
   const isEdit = !!service;
   const [name, setName] = useState("");
   const [shortDesc, setShortDesc] = useState("");
@@ -319,6 +334,23 @@ function ServiceModal({
       reset();
     }
   }, [service]);
+
+  const onPickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    run((onProgress) =>
+      uploadImg.mutateAsync({
+        file,
+        reference_id: service?.service_id,
+        onProgress,
+      }),
+    )
+      .then((res) => {
+        if (res.cdn_url) setImageUrl(res.cdn_url);
+      })
+      .catch(() => {});
+    e.target.value = "";
+  };
 
   const submit = () => {
     if (!name.trim()) return;
@@ -453,13 +485,66 @@ function ServiceModal({
             />
           </Field>
         </div>
-        <Field label="Image URL" hint="primary photo for the website card">
-          <input
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="https://…"
-            className={inputCls}
-          />
+        <Field
+          label="Image"
+          hint="primary photo for the website card — upload or paste a link"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-[72px] h-[72px] shrink-0 rounded-[11px] overflow-hidden bg-text-primary/[0.04] border border-line grid place-items-center">
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt="Service"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <ImageIcon className="w-5 h-5 text-text-faint" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0 space-y-2">
+              <input
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://…"
+                className={inputCls}
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Upload className="w-3.5 h-3.5" />}
+                  disabled={uploadImg.isPending}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {uploadImg.isPending ? "Uploading…" : "Upload"}
+                </Button>
+                {imageUrl && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setImageUrl("")}
+                  >
+                    Remove
+                  </Button>
+                )}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*,.heic,.heif"
+                  hidden
+                  onChange={onPickImage}
+                />
+              </div>
+              <UploadProgress value={progress} />
+              {uploadImg.isError && (
+                <p className="text-[12px] text-danger">
+                  {uploadImg.error instanceof Error
+                    ? uploadImg.error.message
+                    : "Could not upload image."}
+                </p>
+              )}
+            </div>
+          </div>
         </Field>
 
         {/* Website & booking */}

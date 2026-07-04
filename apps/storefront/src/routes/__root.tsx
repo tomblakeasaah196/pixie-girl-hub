@@ -5,6 +5,7 @@ import {
   createRootRouteWithContext,
   HeadContent,
   Scripts,
+  useRouterState,
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Toaster } from "sonner";
@@ -162,6 +163,11 @@ function RootComponent() {
   const { preview, theme, pages, popups, navigation, brand } =
     Route.useLoaderData();
   const branding = brandingFrom(theme?.tokens, brand);
+  // Immersive routes own the full viewport (Claude/Gemini-style app frame):
+  // the shared header, footer, floating toolbar and newsletter pop-up are
+  // suppressed so the page's own pinned chrome is the only scroll context.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const immersive = pathname === "/shade-finder";
   // Toolbar config lives in the theme tokens (Studio → Toolbar); fall back to
   // the brand's WhatsApp from nav socials when no number is set there.
   const navSocials = (navigation as { socials?: Record<string, string> } | null)
@@ -184,14 +190,14 @@ function RootComponent() {
             Preview — showing draft changes (not published)
           </div>
         ) : null}
-        <SiteHeader />
+        {immersive ? null : <SiteHeader />}
         <PageTransition>
           <Outlet />
         </PageTransition>
-        <SiteFooter />
-        <FloatingToolbar />
+        {immersive ? null : <SiteFooter />}
+        {immersive ? null : <FloatingToolbar />}
         <CartDrawer />
-        <NewsletterModal />
+        {immersive ? null : <NewsletterModal />}
         <Toaster position="bottom-center" theme="dark" />
       </SiteConfigProvider>
     </QueryClientProvider>

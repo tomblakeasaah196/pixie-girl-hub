@@ -7,6 +7,7 @@
 "use strict";
 
 const service = require("./storefront.service");
+const aiSearchService = require("./ai-search.service");
 
 const { VALID_BRANDS } = require("../../config/brands");
 function brandHint(req) {
@@ -16,16 +17,39 @@ function brandHint(req) {
   return VALID_BRANDS.has(h) ? h : "pixiegirl";
 }
 
+function clientIp(req) {
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
 // ── Catalogue ──────────────────────────────────────────────
 async function listProducts(req, res) {
   res.json(
     await service.listProducts({
       brand: brandHint(req),
-      filters: { category_slug: req.query.category, q: req.query.q },
+      filters: {
+        category_slug: req.query.category,
+        collection_slug: req.query.collection,
+        bundle_code: req.query.bundle,
+        shade_slug: req.query.shade,
+        q: req.query.q,
+      },
       page: parseInt(req.query.page || "1", 10),
       page_size: Math.min(parseInt(req.query.page_size || "24", 10), 60),
     }),
   );
+}
+
+// "Ask Praxis" natural-language search — plain keywords or a real-life ask.
+async function aiSearch(req, res) {
+  res.json({
+    data: await aiSearchService.search({
+      brand: brandHint(req),
+      device_id: req.headers["x-device-id"],
+      ip: clientIp(req),
+      query: req.body.query,
+      history: req.body.history,
+    }),
+  });
 }
 
 async function getProduct(req, res) {
@@ -159,6 +183,7 @@ async function getInstallHub(req, res) {
 
 module.exports = {
   listProducts,
+  aiSearch,
   getProduct,
   listCategories,
   getCollection,

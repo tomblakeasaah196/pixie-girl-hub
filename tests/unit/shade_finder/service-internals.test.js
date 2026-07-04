@@ -58,6 +58,47 @@ describe("shade finder service internals", () => {
     expect(out.products[0].deeplink).toBe("/product/wig-b");
   });
 
+  test("parsePriceConstraint reads an upper bound and its currency", () => {
+    const p = _internal.parsePriceConstraint;
+    expect(p("Any I can get less than 280 dollars?")).toEqual({
+      currency: "USD",
+      max: 280,
+    });
+    expect(p("anything below $280")).toEqual({ currency: "USD", max: 280 });
+    expect(p("under ₦200k")).toEqual({ currency: "NGN", max: 200000 });
+    expect(p("cheaper than 150000 naira")).toEqual({
+      currency: "NGN",
+      max: 150000,
+    });
+    // No explicit currency → magnitude decides (USD is the small-number range).
+    expect(p("under 300")).toEqual({ currency: "USD", max: 300 });
+    expect(p("below 250000")).toEqual({ currency: "NGN", max: 250000 });
+    // Not a price ceiling at all.
+    expect(p("something warmer please")).toBeNull();
+    expect(p("")).toBeNull();
+  });
+
+  test("withinBudget filters by the constraint's currency and excludes unpriced", () => {
+    const w = _internal.withinBudget;
+    const prod = { effective_price_usd: 281, effective_price_ngn: 420000 };
+    expect(w(prod, { currency: "USD", max: 280 })).toBe(false);
+    expect(w(prod, { currency: "USD", max: 300 })).toBe(true);
+    expect(w({ effective_price_ngn: "199000" }, { currency: "NGN", max: 200000 })).toBe(true);
+    // Unpriced in the requested currency is excluded from a budget query.
+    expect(w({ effective_price_ngn: 100 }, { currency: "USD", max: 500 })).toBe(false);
+    // No constraint → everything passes.
+    expect(w(prod, null)).toBe(true);
+  });
+
+  test("isRefinement detects requests to move off the current shade", () => {
+    const r = _internal.isRefinement;
+    expect(r("Could we try something warmer?")).toBe(true);
+    expect(r("anything different")).toBe(true);
+    expect(r("show me a cooler one")).toBe(true);
+    expect(r("What do you suggest for my skin tone?")).toBe(false);
+    expect(r("thanks!")).toBe(false);
+  });
+
   test("hydrate falls back to the shade's own styles when picks are unusable", () => {
     const shades = [{ shade_id: "s1", name: "Espresso", slug: "espresso", swatches: [] }];
     const products = [

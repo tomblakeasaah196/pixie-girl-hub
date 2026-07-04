@@ -288,6 +288,10 @@ function adviseSchema({ shadeSlugs, productSlugs }) {
   return {
     type: "OBJECT",
     properties: {
+      // "chat" = answer conversationally with NO shade card (greetings,
+      // questions, small talk). "recommendation" = the shopper wants a shade
+      // and/or styles, so name one. Only a recommendation renders a card.
+      reply_kind: { type: "STRING", enum: ["chat", "recommendation"] },
       message: { type: "STRING" },
       recommended_shade_slug: { type: "STRING", enum: shadeSlugs },
       alternate_shade_slugs: {
@@ -301,7 +305,9 @@ function adviseSchema({ shadeSlugs, productSlugs }) {
       confidence: { type: "STRING", enum: ["low", "medium", "high"] },
       followup_question: { type: "STRING" },
     },
-    required: ["message", "recommended_shade_slug", "product_slugs", "confidence"],
+    // Only the prose + kind are mandatory; a chat turn legitimately omits the
+    // shade/products so we no longer force a card onto every reply.
+    required: ["reply_kind", "message", "confidence"],
   };
 }
 
@@ -317,14 +323,31 @@ function adviseSystem(brand) {
     "asked, one emoji at most.",
     "You are given the shopper's analysed colouring, the boutique's shade",
     "families (with colour-distance hints, lower ΔE = closer to the shopper's",
-    "own colouring), and the live styles in those shades with prices in NGN.",
-    "Recommend the single most flattering shade using real colour logic:",
-    "undertone harmony first (warm undertones → warm/golden families, cool →",
-    "ash/icy/plum, neutral/olive → most ranges), then depth contrast — deep",
-    "complexions carry both rich darks and bold vivids beautifully; suggest",
-    "gentle contrast rather than an exact skin match for hair. Use the ΔE",
-    "hints to pick a natural blend when the shopper wants subtle, and to",
-    "deliberately depart from them when they ask for bold.",
+    "own colouring), and the live styles in those shades with prices in NGN",
+    "and USD.",
+    "FIRST decide reply_kind. Set reply_kind='chat' when the shopper is just",
+    "talking — greetings, thanks, questions about you or the process, or",
+    "'can we chat' — and answer warmly in `message` with NO shade or products;",
+    "leave recommended_shade_slug and product_slugs empty. Set",
+    "reply_kind='recommendation' only when they actually want a shade or",
+    "styles (including a shared photo, or a refinement like 'something",
+    "warmer' or 'anything cheaper').",
+    "When recommending, choose the single most flattering shade using real",
+    "colour logic: undertone harmony first (warm undertones → warm/golden",
+    "families, cool → ash/icy/plum, neutral/olive → most ranges), then depth",
+    "contrast — deep complexions carry both rich darks and bold vivids",
+    "beautifully; suggest gentle contrast rather than an exact skin match for",
+    "hair. Use the ΔE hints to pick a natural blend when the shopper wants",
+    "subtle, and depart from them when they ask for bold.",
+    "REFINEMENTS: if CURRENT_SHADE is given and the shopper asks for something",
+    "different (warmer, cooler, lighter, darker, richer, or just 'another'),",
+    "you MUST pick a recommended_shade_slug that is NOT CURRENT_SHADE, moving",
+    "in the direction they asked. Never re-offer the same shade you just gave.",
+    "BUDGET: the styles list already excludes anything over the shopper's",
+    "stated budget when BUDGET is present, so pick only from what is listed",
+    "and quote prices in the currency they used. If the list is empty, say so",
+    "honestly in a chat reply and offer to widen the budget or shade — do not",
+    "invent a style.",
     "Pick 2–4 specific styles from the list that best express the shade.",
     "You may ONLY reference shades and styles from the provided lists — never",
     "invent names, prices, or availability. If lighting made the analysis",
@@ -349,6 +372,7 @@ function catalogueContext({ shades, ranked, products }) {
       name: p.name,
       shade_slug: (shades.find((s) => s.shade_id === p.shade_id) || {}).slug,
       from_price_ngn: p.effective_price_ngn,
+      from_price_usd: p.effective_price_usd,
       colours: (p.colours || []).map((c) => c.name).slice(0, 8),
     })),
   });
@@ -369,6 +393,52 @@ function parseModelJson(text) {
     }
     return null;
   }
+}
+
+// ── Intent, budget & refinement (deterministic, no LLM) ─────
+
+const REFINE_RE =
+  /\b(warmer|cooler|colder|lighter|darker|richer|deeper|brighter|softer|bolder|different|another|something else|anything else|not (?:this|that)|change it)\b/i;
+
+/** True when the turn asks to move off the current recommendation. */
+function isRefinement(text) {
+  return REFINE_RE.test(String(text || ""));
+}
+
+/**
+ * Parse an upper price bound from free text, e.g. "under $280",
+ * "less than 280 dollars", "below ₦200k", "cheaper than 200000 naira".
+ * Currency is taken from an explicit marker; absent one, magnitude decides
+ * (this catalogue's NGN prices are ≫1000, USD ≪1000). Returns
+ * { currency: 'USD'|'NGN', max } or null when no bound is expressed.
+ */
+function parsePriceConstraint(text) {
+  const s = String(text || "").toLowerCase();
+  const m = s.match(
+    /(?:under|below|less than|lower than|cheaper than|max(?:imum)?|up to|within|no more than|<=?)\s*(?:of\s*)?([₦$])?\s*([0-9][0-9,.]*)\s*(k|thousand)?\s*(usd|ngn|naira|dollars?|bucks?|\$|₦)?/,
+  );
+  if (!m) return null;
+  let amount = parseFloat(m[2].replace(/,/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (m[3]) amount *= 1000; // "200k" → 200000
+  const marker = `${m[1] || ""} ${m[4] || ""}`;
+  let currency = null;
+  if (/\$|usd|dollar|buck/.test(marker)) currency = "USD";
+  else if (/₦|ngn|naira/.test(marker)) currency = "NGN";
+  if (!currency) currency = amount < 1000 ? "USD" : "NGN";
+  return { currency, max: amount };
+}
+
+/** Within an upper bound in the constraint's currency. Unpriced → excluded. */
+function withinBudget(product, constraint) {
+  if (!constraint) return true;
+  const raw =
+    constraint.currency === "USD"
+      ? product.effective_price_usd
+      : product.effective_price_ngn;
+  if (raw === null || raw === undefined) return false;
+  const n = typeof raw === "string" ? Number(raw) : raw;
+  return Number.isFinite(n) && n <= constraint.max + 1e-9;
 }
 
 // ── Result hydration ────────────────────────────────────────
@@ -494,21 +564,56 @@ async function adviseAndReply({
   shades,
   ranked,
   products,
+  forceRecommend = false,
 }) {
+  // Deterministic pre-processing: honour a price ceiling and know the shade we
+  // last showed so a refinement ("something warmer") is forced to move off it.
+  const constraint = parsePriceConstraint(userText);
+  const affordable = constraint
+    ? products.filter((p) => withinBudget(p, constraint))
+    : products;
+  const currentSlug =
+    (state.last_result && state.last_result.shade && state.last_result.shade.slug) ||
+    null;
+  const refine = !!currentSlug && isRefinement(userText);
+  const shadeBySlug = new Map(shades.map((s) => [s.slug, s]));
+  const affordableShadeIds = new Set(affordable.map((p) => p.shade_id));
+  const shadeHasAffordable = (slug) => {
+    const sh = shadeBySlug.get(slug);
+    return !!sh && affordableShadeIds.has(sh.shade_id);
+  };
+
+  // The model may only offer styles the shopper can actually afford. Keep the
+  // enum non-empty even when nothing qualifies (an empty enum is invalid) — the
+  // budget hint + the hard gate below stop an over-budget style being shown.
+  const budgetBlocksAll = !!constraint && affordable.length === 0;
   const schema = adviseSchema({
     shadeSlugs: shades.map((s) => s.slug),
-    productSlugs: products.map((p) => p.slug),
+    productSlugs: (affordable.length ? affordable : products).map((p) => p.slug),
   });
+  const hints = [
+    `SHOPPER_ANALYSIS: ${JSON.stringify(state.perceived || {})}`,
+    `CATALOGUE: ${catalogueContext({ shades, ranked, products: affordable })}`,
+  ];
+  if (currentSlug) hints.push(`CURRENT_SHADE: ${currentSlug}`);
+  if (refine) {
+    hints.push(
+      `REFINEMENT: the shopper wants a DIFFERENT shade than CURRENT_SHADE — choose another that fits their request.`,
+    );
+  }
+  if (constraint) {
+    hints.push(
+      `BUDGET: only styles at or under ${constraint.max} ${constraint.currency} are listed` +
+        (affordable.length === 0
+          ? " — none qualify, so reply as chat and say so honestly."
+          : "; quote prices in that currency."),
+    );
+  }
   const history = (state.history || []).slice(-8);
   const completion = await gemini.chatCompletion({
     system: adviseSystem(brand),
     messages: [
-      {
-        role: "user",
-        content:
-          `SHOPPER_ANALYSIS: ${JSON.stringify(state.perceived || {})}\n` +
-          `CATALOGUE: ${catalogueContext({ shades, ranked, products })}`,
-      },
+      { role: "user", content: hints.join("\n") },
       { role: "assistant", content: "Understood — I will only recommend from this catalogue." },
       ...history,
       { role: "user", content: userText },
@@ -531,7 +636,65 @@ async function adviseAndReply({
       user_message: "Praxis lost its train of thought — please try again.",
     });
   }
-  const result = hydrate({ advice, shades, products });
+
+  // A refinement must not re-serve the same shade; if the model did (or the
+  // budget wiped out its pick), deterministically move to the next viable one.
+  if (
+    advice.reply_kind === "recommendation" &&
+    refine &&
+    (advice.recommended_shade_slug === currentSlug ||
+      !shadeHasAffordable(advice.recommended_shade_slug))
+  ) {
+    const alt =
+      (advice.alternate_shade_slugs || []).find(
+        (sl) => sl && sl !== currentSlug && shadeBySlug.has(sl) && shadeHasAffordable(sl),
+      ) ||
+      ranked
+        .map((r) => r.slug)
+        .find((sl) => sl !== currentSlug && shadeBySlug.has(sl) && shadeHasAffordable(sl));
+    if (alt) {
+      advice.recommended_shade_slug = alt;
+      advice.product_slugs = []; // re-pick from the new shade's affordable styles
+      advice.alternate_shade_slugs = (advice.alternate_shade_slugs || []).filter(
+        (sl) => sl !== alt,
+      );
+    }
+  }
+
+  // A shared photo is always a match request: pin it to a recommendation and,
+  // if the model somehow named no shade, use the closest-ranked one.
+  if (forceRecommend) {
+    advice.reply_kind = "recommendation";
+    if (!advice.recommended_shade_slug || !shadeBySlug.has(advice.recommended_shade_slug)) {
+      const top = (ranked.find((r) => shadeBySlug.has(r.slug)) || {}).slug;
+      advice.recommended_shade_slug = top || shades[0].slug;
+    }
+  }
+
+  // Only a genuine recommendation with a real shade renders a card. Chat turns
+  // (greetings, questions, or an unmet budget) return prose alone.
+  const canRecommend =
+    !budgetBlocksAll &&
+    advice.reply_kind === "recommendation" &&
+    advice.recommended_shade_slug &&
+    shadeBySlug.has(advice.recommended_shade_slug);
+  const result = canRecommend
+    ? hydrate({ advice, shades, products: affordable })
+    : {
+        message: advice.message,
+        confidence: advice.confidence,
+        followup_question: advice.followup_question || null,
+        shade: null,
+        alternates: [],
+        products: [],
+      };
+  // Belt-and-braces: never let an over-budget style slip through.
+  if (constraint) {
+    const priced = new Map(products.map((p) => [p.slug, p]));
+    result.products = (result.products || []).filter((p) =>
+      withinBudget(priced.get(p.slug) || p, constraint),
+    );
+  }
 
   state.history = [
     ...(state.history || []),
@@ -680,6 +843,7 @@ async function analyzePhoto({ brand, sid, deviceKey, ip, file, message }) {
       shades,
       ranked,
       products,
+      forceRecommend: true,
     });
     const used = await readCount(dayKey);
     return {
@@ -777,5 +941,13 @@ module.exports = {
   verifyGuestToken,
   deviceKeyFrom,
   // exported for unit tests
-  _internal: { lagosDay, secondsToLagosMidnight, hydrate, parseModelJson },
+  _internal: {
+    lagosDay,
+    secondsToLagosMidnight,
+    hydrate,
+    parseModelJson,
+    parsePriceConstraint,
+    withinBudget,
+    isRefinement,
+  },
 };

@@ -18,8 +18,14 @@ jest.mock("../../../src/config/logger", () => ({
 jest.mock("../../../src/config/brands", () => ({
   listBrands: () => ["pixiegirl", "faitlynhair"],
 }));
+jest.mock("../../../src/services/notifications.service", () => ({
+  notify: jest.fn(),
+}));
+jest.mock("../../../src/config/database", () => ({ query: jest.fn() }));
 
 const repo = require("../../../src/modules/ai_insights/insights.repo");
+const notifications = require("../../../src/services/notifications.service");
+const db = require("../../../src/config/database");
 const registry = require("../../../src/modules/ai_insights/insights.registry");
 const service = require("../../../src/modules/ai_insights/insights.service");
 
@@ -270,5 +276,43 @@ describe("service.runDetectorSweep — gated by AI Control matrix", () => {
     const result = await service.runDetectorSweep();
     expect(result).toEqual({});
     expect(repo.raise).not.toHaveBeenCalled();
+  });
+
+  test("notifies the CEO's bell for a NEW urgent finding only", async () => {
+    repo.enabledModules.mockResolvedValue(["invoicing"]);
+    repo.overdueInvoices.mockResolvedValue([
+      { invoice_id: "inv-9", customer_contact_id: "c", net_due_ngn: "1.00", days_overdue: 95 }, // critical
+    ]);
+    // raise returns the inserted row (a genuinely new insight)…
+    repo.raise.mockImplementation(async ({ insight }) => ({
+      insight_id: "ins-1",
+      severity: insight.severity,
+      business: insight.business,
+      title: insight.title,
+      body: insight.body,
+      drill_route: insight.drill_route,
+    }));
+    db.query.mockResolvedValue({ rows: [{ user_id: "ceo-1" }] });
+
+    await service.runDetectorSweep();
+
+    expect(notifications.notify).toHaveBeenCalled();
+    expect(notifications.notify.mock.calls[0][0]).toMatchObject({
+      user_id: "ceo-1",
+      type: "insight",
+      priority: "urgent",
+      reference_type: "ai_insight",
+      reference_id: "ins-1",
+    });
+  });
+
+  test("does NOT notify when raise suppressed the finding (already open)", async () => {
+    repo.enabledModules.mockResolvedValue(["invoicing"]);
+    repo.overdueInvoices.mockResolvedValue([
+      { invoice_id: "inv-9", customer_contact_id: "c", net_due_ngn: "1.00", days_overdue: 95 },
+    ]);
+    repo.raise.mockResolvedValue(null); // suppressed duplicate → no new row
+    await service.runDetectorSweep();
+    expect(notifications.notify).not.toHaveBeenCalled();
   });
 });

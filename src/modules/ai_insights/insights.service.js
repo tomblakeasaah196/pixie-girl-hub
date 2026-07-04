@@ -294,6 +294,7 @@ async function runDetectorSweep() {
   const enabled = new Set(await repo.enabledModules());
   const detectors = registry.detectorsForModules(enabled);
   const result = {};
+  const created = []; // rows genuinely inserted this sweep (not suppressed)
   const bump = (module, n) => {
     result[module] = (result[module] || 0) + n;
   };
@@ -305,7 +306,10 @@ async function runDetectorSweep() {
     for (const ctx of runs) {
       try {
         const findings = await det.run(ctx);
-        for (const f of findings) await raiseInsight(f);
+        for (const f of findings) {
+          const row = await raiseInsight(f);
+          if (row) created.push(row);
+        }
         bump(det.module, findings.length);
       } catch (err) {
         logger.error(
@@ -315,10 +319,63 @@ async function runDetectorSweep() {
       }
     }
   }
+
+  // Push NEW urgent findings to the CEO's notification bell (best-effort).
+  await notifyUrgent(created);
+
   const total = Object.values(result).reduce((a, b) => a + b, 0);
-  events.emit("sweep.completed", { ...result, total });
-  logger.info({ ...result, total }, "ai insights detector sweep done");
+  events.emit("sweep.completed", { ...result, total, created: created.length });
+  logger.info(
+    { ...result, total, created: created.length },
+    "ai insights detector sweep done",
+  );
   return result;
+}
+
+/**
+ * Fan newly-raised high/critical insights to the CEO's notifications feed
+ * (lights the bell + realtime push via the notifications service). Only NEW
+ * rows reach here — suppressed duplicates return null from `raise` — so the
+ * bell never re-pings for an alert that's already open.
+ */
+async function notifyUrgent(created) {
+  const urgent = created.filter(
+    (i) => i.severity === "high" || i.severity === "critical",
+  );
+  if (urgent.length === 0) return;
+  // Lazy-require to keep this module's load graph light + cycle-free.
+  const notifications = require("../../services/notifications.service");
+  const { query } = require("../../config/database");
+  let ceoId = null;
+  try {
+    const { rows } = await query(
+      `SELECT user_id FROM shared.users WHERE is_ceo = true ORDER BY created_at LIMIT 1`,
+    );
+    ceoId = rows[0] ? rows[0].user_id : null;
+  } catch {
+    ceoId = null;
+  }
+  if (!ceoId) return;
+  for (const i of urgent) {
+    try {
+      await notifications.notify({
+        user_id: ceoId,
+        business: i.business,
+        type: "insight",
+        priority: i.severity === "critical" ? "urgent" : "high",
+        title: i.title,
+        body: i.body,
+        reference_type: "ai_insight",
+        reference_id: i.insight_id,
+        action_url: i.drill_route,
+      });
+    } catch (err) {
+      logger.warn(
+        { err: err.message, insight_id: i.insight_id },
+        "insight notify failed",
+      );
+    }
+  }
 }
 
 module.exports = {

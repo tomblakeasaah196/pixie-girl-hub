@@ -15,9 +15,11 @@
  * system-level (not brand-scoped), so its key omits the business.
  */
 
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
+import { joinRoom, leaveRoom, rooms } from "@/lib/socket";
 
 export type InsightSeverity = "low" | "medium" | "high" | "critical";
 export type InsightStatus =
@@ -195,6 +197,29 @@ export function useRunSweep() {
     mutationFn: () => insightsApi.sweep(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["insights"] }),
   });
+}
+
+/**
+ * Live updates: join the active brand's insights room and refetch on any
+ * server-pushed change (a sweep raised findings, or a lifecycle transition).
+ * Safe to mount on every surface that should feel live — the room join is
+ * idempotent and React Query dedupes the refetch.
+ */
+export function useInsightsRealtime() {
+  const qc = useQueryClient();
+  const biz = useBusinessStore((s) => s.activeKey);
+  useEffect(() => {
+    if (!biz) return;
+    const room = rooms.insights(biz);
+    joinRoom(room);
+    const onChange = () =>
+      qc.invalidateQueries({ queryKey: ["insights"] });
+    window.addEventListener("pgh:insights:changed", onChange);
+    return () => {
+      window.removeEventListener("pgh:insights:changed", onChange);
+      leaveRoom(room);
+    };
+  }, [biz, qc]);
 }
 
 /** Total open / urgent across all modules (badge helpers). */

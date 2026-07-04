@@ -25,6 +25,7 @@ import { ErrorState } from "@/components/ui/controls";
 import { DataTable } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { JobBoard } from "./JobBoard";
 import { RecipesPanel } from "./RecipesPanel";
 import { AccountabilityPanel } from "./AccountabilityPanel";
@@ -575,6 +576,7 @@ export function ServiceJobsPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-5">
+      <ModuleInsights module="service_jobs" />
       {/* KPI strip (the page title/subtitle already render in the app header) */}
       <KpiStrip />
 

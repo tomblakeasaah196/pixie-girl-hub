@@ -28,6 +28,7 @@ import {
   useInsightModules,
   useInsightsList,
   useInsightsSummary,
+  useInsightsRealtime,
   useRunSweep,
   totalOpen,
   totalUrgent,
@@ -66,6 +67,7 @@ export function InsightsPage() {
     setSp(next, { replace: true });
   };
 
+  useInsightsRealtime();
   const summary = useInsightsSummary();
   const modules = useInsightModules();
   const list = useInsightsList(

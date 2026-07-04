@@ -18,6 +18,7 @@ import { useAuthStore } from "@/stores/auth";
 import {
   useInsightModules,
   useInsightsList,
+  useInsightsRealtime,
   type InsightModule,
 } from "@/lib/insights-api";
 import { InsightRow } from "./InsightRow";
@@ -37,6 +38,7 @@ export function ModuleInsights({
   const canView = isCeo || can("ai_insights", "view");
   const canEdit = isCeo || can("ai_insights", "edit");
 
+  useInsightsRealtime();
   const modules = useInsightModules();
   const cfg: InsightModule | undefined = modules.data?.find(
     (m) => m.module === module,

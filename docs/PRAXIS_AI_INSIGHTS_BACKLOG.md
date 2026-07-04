@@ -20,7 +20,7 @@ decision.
   - ✅ Batch 1: hr_attendance, purchasing, logistics, expenses.
   - ✅ Batch 2: sales, crm, production, accounting, retention.
   - ⬜ Batch 3: the remaining 13 modules (see §B).
-- ⬜ **Wave 4 — Polish**: Tier-2 AI narration, realtime + notifications,
+- 🟡 **Wave 4 — Polish**: ✅ realtime + notification bell; ⬜ Tier-2 AI narration,
   Praxis chat query, legacy cleanup (see §C).
 
 ---
@@ -32,11 +32,11 @@ Detectors run only for modules switched **on** in AI Control → Insights
 
 | # | Module | Detector(s) | Detector | Page slot |
 |---|--------|-------------|:--------:|:---------:|
-| 1 | stock | reorder_point (low-stock scheduler) | ✅ | ⬜ `/stock` |
+| 1 | stock | reorder_point (low-stock scheduler) | ✅ | ✅ `/stock` |
 | 2 | invoicing | overdue / overdue_long | ✅ | ✅ |
 | 3 | intercompany | pending_too_long | ✅ | n/a (hidden module) |
-| 4 | approvals | queue_growing | ✅ | ⬜ `/org-workflow` |
-| 5 | service_jobs | no_sale_linked, no_intercompany_match | ✅ | ⬜ `/service-jobs` |
+| 4 | approvals | queue_growing | ✅ | ✅ `/org-workflow` |
+| 5 | service_jobs | no_sale_linked, no_intercompany_match | ✅ | ✅ `/service-jobs` |
 | 6 | hr_attendance | off_site | ✅ | ✅ `/hr` |
 | 7 | purchasing | delivery_overdue | ✅ | ✅ |
 | 8 | logistics | delivery_failed / delivery_overdue | ✅ | ✅ |
@@ -64,10 +64,8 @@ Detectors run only for modules switched **on** in AI Control → Insights
 (15 + pricing). Each remaining detector = verify schema → repo read → registry
 entry → unit test (the established pattern).
 
-### Slots still to drop on already-covered modules
-- ⬜ `/stock` → `<ModuleInsights module="stock" />`
-- ⬜ `/service-jobs` → `module="service_jobs"`
-- ⬜ `/org-workflow` → `module="approvals"`
+### Slots on already-covered modules
+- ✅ `/stock`, `/service-jobs`, `/org-workflow` — done.
 - (intercompany has no standalone page — surfaces in the Insights Center only.)
 
 ---
@@ -81,12 +79,13 @@ entry → unit test (the established pattern).
    counts to the LLM (budget-gated; deterministic text stays the fallback).
    Populate the unused `ai_briefing_insight_refs` so a paragraph links to its
    alerts. Meters under the `insights_briefing` feature flag.
-3. ⬜ **Realtime** — subscribe `insights.events` in `src/realtime/` → emit to a
-   `brand:{brand}:insights` room on `sweep.completed` + each lifecycle change;
-   client joins the room and invalidates the insights query keys so cards update
-   live (spec §6.30 "event-triggered alerts, not just the daily run").
-4. ⬜ **Notification bell** — fan **urgent** detections into the notifications
-   feed so the bell lights up (spec S3/S4).
+3. ✅ **Realtime** — `insights-realtime.js` relays `sweep.completed` +
+   `insight.updated` into `brand:{brand}:insights`; the client (`useInsightsRealtime`)
+   joins the room and invalidates the insights keys, so the Center + every slot
+   update live (spec §6.30 "event-triggered alerts, not just the daily run").
+4. ✅ **Notification bell** — the sweep fans genuinely-new high/critical findings
+   to the CEO's notifications feed via `notifications.notify` (suppressed
+   duplicates never re-ping, since `raise` returns the row only on insert).
 5. ⬜ **Praxis chat query** — add an `insights_open` entry to
    `praxis_ai/query-catalogue.js` so the CEO can ask "what needs my attention?"
    and get the tier-1 findings in chat.

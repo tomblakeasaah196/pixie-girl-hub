@@ -31,13 +31,17 @@ const { t } = require("../../config/brands");
  * silently skipped, so a 30-min sweep never spams.
  */
 async function raise({ client, insight: r }) {
-  await ex(client)(
+  // RETURNING with ON CONFLICT DO NOTHING yields the row ONLY when a new insight
+  // was actually inserted (suppressed duplicates return nothing) — so callers
+  // can notify/relay only on genuinely new findings.
+  const { rows } = await ex(client)(
     `INSERT INTO shared.ai_insights
        (module, detector, business, severity, status, title, body, context,
         amount_ngn, source_table, source_id, drill_route, suppression_key)
      VALUES ($1,$2,$3,$4,'open',$5,$6,COALESCE($7::jsonb,'{}'::jsonb),
              $8,$9,$10,$11,$12)
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT DO NOTHING
+     RETURNING *`,
     [
       r.module,
       r.detector,
@@ -53,6 +57,7 @@ async function raise({ client, insight: r }) {
       r.suppression_key,
     ],
   );
+  return rows[0] || null;
 }
 
 // ── Lifecycle read/write (generic over the unified table) ──

@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence, type Variants } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -21,7 +22,8 @@ import { BrandLogo } from "./BrandLogo";
 import { useNavigation, useBranding, useToolbar, type NavItem } from "@/lib/site-config";
 import { waDigits } from "@/lib/toolbar";
 import { SITE_IMAGES } from "@/lib/site-assets";
-import { SHADES } from "@/lib/site-data";
+import { getShades } from "@/lib/storefront";
+import { mapShades } from "@/lib/home-content";
 import { bootstrapAuth, getReferral } from "@/lib/auth";
 import type { Currency } from "@/lib/storefront";
 
@@ -632,6 +634,15 @@ function DrawerAccordion({
 // ── Shop by shade — tappable colour dots (a swatch beats a buried text link) ──
 
 function DrawerShades({ onNavigate }: { onNavigate: () => void }) {
+  // Live, parametric shades from the catalogue — the same source /shades and the
+  // homepage "Shop by shade" pull from. Shares the ["shades"] query cache, so the
+  // dots are instant once either has loaded. When the catalogue has no published
+  // shades we render nothing rather than fabricating demo swatches that would
+  // link to dead slugs.
+  const { data } = useQuery({ queryKey: ["shades"], queryFn: () => getShades() });
+  const shades = mapShades(data ?? []);
+  if (!shades.length) return null;
+
   return (
     <div className="mt-6">
       <div className="mb-3 flex items-baseline justify-between">
@@ -645,7 +656,7 @@ function DrawerShades({ onNavigate }: { onNavigate: () => void }) {
         </Link>
       </div>
       <div className="flex flex-wrap gap-3">
-        {SHADES.map((s) => (
+        {shades.map((s) => (
           <Link
             key={s.slug}
             to="/shades/$slug"
@@ -653,8 +664,12 @@ function DrawerShades({ onNavigate }: { onNavigate: () => void }) {
             onClick={onNavigate}
             aria-label={s.name}
             title={s.name}
-            className="h-9 w-9 rounded-full border border-taupe/25 shadow-sm transition-transform duration-200 hover:scale-110 hover:border-taupe"
-            style={{ background: s.swatch }}
+            className="h-9 w-9 overflow-hidden rounded-full border border-taupe/25 bg-cover bg-center shadow-sm transition-transform duration-200 hover:scale-110 hover:border-taupe"
+            style={
+              s.image
+                ? { backgroundImage: `url(${s.image})` }
+                : { background: s.swatch ?? "var(--taupe)" }
+            }
           >
             <span className="sr-only">{s.name}</span>
           </Link>

@@ -93,6 +93,72 @@ describe("registry — intercompany detector is cross-brand", () => {
   });
 });
 
+describe("registry — Wave-3 fan-out detectors", () => {
+  test("hr_attendance/off_site: high when far, per-business, dated suppression", async () => {
+    repo.offsiteAttendance.mockResolvedValue([
+      { business: "pixiegirl", profile_id: "p-1", work_date: "2026-07-01", offsite_distance_m: "1500.00" },
+    ]);
+    const [f] = await det("hr_attendance", "off_site").run();
+    expect(f).toMatchObject({
+      module: "hr_attendance",
+      business: "pixiegirl",
+      severity: "high",
+      source_id: "p-1",
+      suppression_key: "offsite:p-1:2026-07-01",
+    });
+  });
+
+  test("purchasing/delivery_overdue: severity escalates with days", async () => {
+    repo.overduePurchaseOrders.mockResolvedValue([
+      { po_id: "po-1", po_number: "PXG-PO-1", supplier_id: "s-1", total_ngn: "500000.00", days_overdue: 40 },
+    ]);
+    const [f] = await det("purchasing", "delivery_overdue").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      module: "purchasing",
+      severity: "critical",
+      amount_ngn: "500000.00",
+      drill_route: "/purchasing",
+      suppression_key: "po_overdue:po-1",
+    });
+  });
+
+  test("logistics/delivery_problem: lost → critical + failed detector key", async () => {
+    repo.problemDeliveries.mockResolvedValue([
+      { delivery_id: "d-1", delivery_number: "PXG-DEL-1", order_id: "o-1", status: "lost", pod_amount_expected_ngn: "20000.00", overdue_hours: 0 },
+    ]);
+    const [f] = await det("logistics", "delivery_problem").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      module: "logistics",
+      detector: "delivery_failed",
+      severity: "critical",
+      suppression_key: "del:d-1",
+    });
+  });
+
+  test("logistics/delivery_problem: in-flight past ETA → overdue detector key", async () => {
+    repo.problemDeliveries.mockResolvedValue([
+      { delivery_id: "d-2", delivery_number: "PXG-DEL-2", order_id: "o-2", status: "in_transit", pod_amount_expected_ngn: null, overdue_hours: 60 },
+    ]);
+    const [f] = await det("logistics", "delivery_problem").run({ brand: "pixiegirl" });
+    expect(f.detector).toBe("delivery_overdue");
+    expect(f.severity).toBe("high"); // >= 48h
+  });
+
+  test("expenses/advance_unsettled: overdue_settlement status → high + overdue key", async () => {
+    repo.unsettledAdvances.mockResolvedValue([
+      { advance_id: "a-1", advance_number: "PXG-ADV-1", purpose: "Fuel", status: "overdue_settlement", amount_ngn: "30000.00", age_days: 20 },
+    ]);
+    const [f] = await det("expenses", "advance_unsettled").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      module: "expenses",
+      detector: "advance_overdue",
+      severity: "high",
+      amount_ngn: "30000.00",
+      suppression_key: "adv:a-1",
+    });
+  });
+});
+
 describe("service.raise — legacy category adapter", () => {
   test("stock category maps to module stock / detector reorder_point", async () => {
     repo.raise.mockResolvedValue(undefined);

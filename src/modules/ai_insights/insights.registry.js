@@ -226,6 +226,152 @@ const DETECTORS = [
       });
     },
   },
+  // ── Attendance: off-site clock-in (reconciled attendance_days) ──
+  {
+    module: "hr_attendance",
+    detector: "off_site",
+    scope: "shared",
+    async run() {
+      const rows = await repo.offsiteAttendance({ within_days: 7 });
+      return rows.map((r) => {
+        const dist = Number(r.offsite_distance_m) || 0;
+        const date = new Date(r.work_date).toISOString().slice(0, 10);
+        return {
+          module: "hr_attendance",
+          detector: "off_site",
+          business: r.business,
+          severity: dist >= 1000 ? "high" : "medium",
+          title: `Off-site clock-in${dist ? ` (${Math.round(dist)}m away)` : ""}`,
+          body: `Recorded ${date}.`,
+          context: {
+            profile_id: r.profile_id,
+            work_date: date,
+            offsite_distance_m: r.offsite_distance_m,
+          },
+          amount_ngn: null,
+          source_table: "attendance_days",
+          source_id: r.profile_id,
+          drill_route: "/hr",
+          suppression_key: `offsite:${r.profile_id}:${date}`,
+        };
+      });
+    },
+  },
+
+  // ── Purchasing: PO delivery overdue ──
+  {
+    module: "purchasing",
+    detector: "delivery_overdue",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.overduePurchaseOrders({ brand });
+      return rows.map((po) => {
+        const days = Number(po.days_overdue) || 0;
+        return {
+          module: "purchasing",
+          detector: "delivery_overdue",
+          business: brand,
+          severity: days >= 30 ? "critical" : days >= 14 ? "high" : "medium",
+          title: `PO ${po.po_number} delivery overdue ${days} day${days === 1 ? "" : "s"}`,
+          body: null,
+          context: {
+            po_id: po.po_id,
+            po_number: po.po_number,
+            supplier_id: po.supplier_id,
+            days_overdue: days,
+          },
+          amount_ngn: po.total_ngn || null,
+          source_table: "purchase_orders",
+          source_id: po.po_id,
+          drill_route: "/purchasing",
+          suppression_key: `po_overdue:${po.po_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Logistics: failed / lost / overdue deliveries ──
+  {
+    module: "logistics",
+    detector: "delivery_problem",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.problemDeliveries({ brand });
+      const FAILED = new Set([
+        "attempted_failed",
+        "lost",
+        "damaged",
+        "returned_to_sender",
+      ]);
+      return rows.map((d) => {
+        const failed = FAILED.has(d.status);
+        const overdueH = Number(d.overdue_hours) || 0;
+        const severity =
+          d.status === "lost" || d.status === "damaged"
+            ? "critical"
+            : failed
+              ? "high"
+              : overdueH >= 48
+                ? "high"
+                : "medium";
+        return {
+          module: "logistics",
+          detector: failed ? "delivery_failed" : "delivery_overdue",
+          business: brand,
+          severity,
+          title: failed
+            ? `Delivery ${d.delivery_number} ${String(d.status).replace(/_/g, " ")}`
+            : `Delivery ${d.delivery_number} overdue`,
+          body: null,
+          context: {
+            delivery_id: d.delivery_id,
+            delivery_number: d.delivery_number,
+            order_id: d.order_id,
+            status: d.status,
+          },
+          amount_ngn: d.pod_amount_expected_ngn || null,
+          source_table: "deliveries",
+          source_id: d.delivery_id,
+          drill_route: "/logistics",
+          suppression_key: `del:${d.delivery_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Expenses: unsettled / overdue cash advances ──
+  {
+    module: "expenses",
+    detector: "advance_unsettled",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.unsettledAdvances({ brand });
+      return rows.map((a) => {
+        const days = Number(a.age_days) || 0;
+        const overdue = a.status === "overdue_settlement";
+        return {
+          module: "expenses",
+          detector: overdue ? "advance_overdue" : "advance_ageing",
+          business: brand,
+          severity: overdue || days >= 30 ? "high" : "medium",
+          title: `Advance ${a.advance_number} unsettled${days ? ` ${days} day${days === 1 ? "" : "s"}` : ""}`,
+          body: a.purpose ? `Purpose: ${a.purpose}.` : null,
+          context: {
+            advance_id: a.advance_id,
+            advance_number: a.advance_number,
+            purpose: a.purpose,
+            status: a.status,
+            age_days: days,
+          },
+          amount_ngn: a.amount_ngn || null,
+          source_table: "cash_advances",
+          source_id: a.advance_id,
+          drill_route: "/expenses",
+          suppression_key: `adv:${a.advance_id}`,
+        };
+      });
+    },
+  },
 ];
 
 function detectorsForModules(enabledSet) {

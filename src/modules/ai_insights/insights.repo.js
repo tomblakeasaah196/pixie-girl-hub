@@ -257,6 +257,66 @@ async function intercompanyJobsMissingMatch({ brand, limit = 500 }) {
   return rows;
 }
 
+// Attendance (shared.attendance_days carries business + is_offsite from 000234).
+async function offsiteAttendance({ within_days = 7, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT business, profile_id, work_date, offsite_distance_m
+       FROM shared.attendance_days
+      WHERE is_offsite = true
+        AND work_date >= CURRENT_DATE - ($1::int)
+      ORDER BY work_date DESC LIMIT $2`,
+    [within_days, limit],
+  );
+  return rows;
+}
+// Purchasing: POs whose expected delivery date has passed and that are not yet
+// received/closed/cancelled.
+async function overduePurchaseOrders({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT po_id, po_number, supplier_id, total_ngn,
+            (CURRENT_DATE - expected_delivery) AS days_overdue
+       FROM ${t(brand, "purchase_orders")}
+      WHERE expected_delivery IS NOT NULL
+        AND expected_delivery < CURRENT_DATE
+        AND status NOT IN ('received','closed','cancelled')
+      ORDER BY expected_delivery ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Logistics: failed/lost/damaged/returned deliveries, plus in-flight deliveries
+// past their expected time.
+async function problemDeliveries({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT delivery_id, delivery_number, order_id, status,
+            pod_amount_expected_ngn, expected_delivery_at,
+            (EXTRACT(EPOCH FROM (now() - expected_delivery_at)) / 3600)::int AS overdue_hours
+       FROM ${t(brand, "deliveries")}
+      WHERE status IN ('attempted_failed','lost','damaged','returned_to_sender')
+         OR (expected_delivery_at IS NOT NULL
+             AND expected_delivery_at < now()
+             AND status IN ('queued','booked','picked_up','in_transit',
+                            'arrived_destination_city','out_for_delivery'))
+      ORDER BY expected_delivery_at ASC NULLS LAST LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Expenses: cash advances flagged overdue for settlement, or disbursed and ageing.
+async function unsettledAdvances({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT advance_id, advance_number, purpose, status,
+            COALESCE(approved_amount_ngn, requested_amount_ngn) AS amount_ngn,
+            (CURRENT_DATE - created_at::date) AS age_days
+       FROM ${t(brand, "cash_advances")}
+      WHERE status = 'overdue_settlement'
+         OR (status = 'disbursed' AND created_at < now() - interval '14 days')
+      ORDER BY created_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
 module.exports = {
   raise,
   list,
@@ -273,4 +333,8 @@ module.exports = {
   staleApprovals,
   unlinkedServiceJobs,
   intercompanyJobsMissingMatch,
+  offsiteAttendance,
+  overduePurchaseOrders,
+  problemDeliveries,
+  unsettledAdvances,
 };

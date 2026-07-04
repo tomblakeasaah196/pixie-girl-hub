@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import {
   Card,
   EmptyState,
@@ -82,6 +83,7 @@ export function PricingPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="pricing" />
       <div>
         <h1 className="font-display text-2xl font-medium">Pricing</h1>
         <p className="text-text-muted text-sm mt-0.5">

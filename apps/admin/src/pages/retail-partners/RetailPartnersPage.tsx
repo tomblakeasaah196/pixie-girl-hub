@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { KpiTile, Skeleton } from "@/components/ui/primitives";
 import { moneyCompact } from "@/lib/format";
 import {
@@ -45,6 +46,7 @@ export function RetailPartnersPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="retail_partners" />
       <KpiStrip />
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />

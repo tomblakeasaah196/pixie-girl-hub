@@ -527,6 +527,122 @@ const DETECTORS = [
       }));
     },
   },
+
+  // ── Pricing: storefront price below cost or below floor ──
+  {
+    module: "pricing",
+    detector: "margin_breach",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.marginBreaches({ brand });
+      return rows.map((v) => {
+        const cost = money(v.cost_price_ngn || 0);
+        const price = money(v.price_storefront_ngn || 0);
+        const floor = money(v.min_price_ngn || 0);
+        const belowCost = price.lt(cost);
+        const severity = belowCost
+          ? price.lt(cost.times("0.9"))
+            ? "critical"
+            : "high"
+          : "medium";
+        return {
+          module: "pricing",
+          detector: belowCost ? "price_below_cost" : "price_below_floor",
+          business: brand,
+          severity,
+          title: `${v.sku || v.product_name} priced below ${belowCost ? "cost" : "floor"}`,
+          body: `Storefront ₦${price.toFixed(2)} vs ${belowCost ? "cost" : "floor"} ₦${(belowCost ? cost : floor).toFixed(2)}.`,
+          context: {
+            variant_id: v.variant_id,
+            product_id: v.product_id,
+            sku: v.sku,
+            cost_price_ngn: v.cost_price_ngn,
+            min_price_ngn: v.min_price_ngn,
+            price_storefront_ngn: v.price_storefront_ngn,
+          },
+          amount_ngn: v.price_storefront_ngn || null,
+          source_table: "product_variants",
+          source_id: v.variant_id,
+          drill_route: "/pricing",
+          suppression_key: `margin:${v.variant_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Retail partners: disputed / unpaid settlements ──
+  {
+    module: "retail_partners",
+    detector: "settlement_unpaid",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.unpaidPartnerSettlements({ brand });
+      return rows.map((s) => {
+        const days = Number(s.age_days) || 0;
+        const disputed = s.status === "disputed";
+        return {
+          module: "retail_partners",
+          detector: disputed ? "settlement_disputed" : "settlement_unpaid",
+          business: brand,
+          severity: disputed || days >= 30 ? "high" : "medium",
+          title: disputed
+            ? `Settlement ${s.settlement_number} disputed`
+            : `Settlement ${s.settlement_number} unpaid ${days} day${days === 1 ? "" : "s"}`,
+          body: null,
+          context: {
+            settlement_id: s.settlement_id,
+            settlement_number: s.settlement_number,
+            partner_id: s.partner_id,
+            status: s.status,
+            age_days: days,
+          },
+          amount_ngn: s.total_partner_share_ngn || null,
+          source_table: "partner_settlements",
+          source_id: s.settlement_id,
+          drill_route: "/retail-partners",
+          suppression_key: `settle:${s.settlement_id}`,
+        };
+      });
+    },
+  },
+
+  // ── Tasks: overdue open tasks ──
+  {
+    module: "tasks",
+    detector: "overdue",
+    scope: "shared",
+    async run() {
+      const rows = await repo.overdueTasks({});
+      return rows.map((tk) => {
+        const days = Number(tk.days_overdue) || 0;
+        const severity =
+          tk.priority === "urgent"
+            ? "high"
+            : tk.priority === "high" || days >= 7
+              ? "medium"
+              : "low";
+        return {
+          module: "tasks",
+          detector: "overdue",
+          business: tk.business,
+          severity,
+          title: `Task overdue ${days} day${days === 1 ? "" : "s"}: ${tk.title}`,
+          body: null,
+          context: {
+            task_id: tk.task_id,
+            priority: tk.priority,
+            assigned_to: tk.assigned_to,
+            days_overdue: days,
+          },
+          amount_ngn: null,
+          source_table: "tasks",
+          source_id: tk.task_id,
+          drill_route: "/workspace",
+          suppression_key: `task_overdue:${tk.task_id}`,
+        };
+      });
+    },
+  },
 ];
 
 function detectorsForModules(enabledSet) {

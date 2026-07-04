@@ -219,6 +219,53 @@ describe("registry — Wave-3 batch 2 detectors", () => {
   });
 });
 
+describe("registry — Wave-3 batch 3 detectors", () => {
+  test("pricing/margin_breach: below cost → critical + price_below_cost", async () => {
+    repo.marginBreaches.mockResolvedValue([
+      { variant_id: "v-1", product_id: "p-1", sku: "PXG-001", variant_name: "18in", cost_price_ngn: "10000.00", min_price_ngn: "12000.00", price_storefront_ngn: "8000.00", product_name: "HD Lace" },
+    ]);
+    const [f] = await det("pricing", "margin_breach").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      module: "pricing",
+      detector: "price_below_cost",
+      severity: "critical", // 8000 < 10000*0.9
+      amount_ngn: "8000.00",
+      suppression_key: "margin:v-1",
+    });
+  });
+
+  test("pricing/margin_breach: below floor but above cost → medium", async () => {
+    repo.marginBreaches.mockResolvedValue([
+      { variant_id: "v-2", product_id: "p-2", sku: "PXG-002", cost_price_ngn: "5000.00", min_price_ngn: "9000.00", price_storefront_ngn: "8000.00", product_name: "Body Wave" },
+    ]);
+    const [f] = await det("pricing", "margin_breach").run({ brand: "pixiegirl" });
+    expect(f.detector).toBe("price_below_floor");
+    expect(f.severity).toBe("medium");
+  });
+
+  test("retail_partners/settlement_unpaid: disputed → high + disputed detector", async () => {
+    repo.unpaidPartnerSettlements.mockResolvedValue([
+      { settlement_id: "s-1", settlement_number: "PXG-SET-1", partner_id: "pt-1", status: "disputed", total_partner_share_ngn: "40000.00", age_days: 3 },
+    ]);
+    const [f] = await det("retail_partners", "settlement_unpaid").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({ detector: "settlement_disputed", severity: "high", suppression_key: "settle:s-1" });
+  });
+
+  test("tasks/overdue: urgent priority → high, per-business, /workspace drill", async () => {
+    repo.overdueTasks.mockResolvedValue([
+      { task_id: "tk-1", business: "faitlynhair", title: "Call supplier", priority: "urgent", assigned_to: "u-1", days_overdue: 2 },
+    ]);
+    const [f] = await det("tasks", "overdue").run();
+    expect(f).toMatchObject({
+      module: "tasks",
+      business: "faitlynhair",
+      severity: "high",
+      drill_route: "/workspace",
+      suppression_key: "task_overdue:tk-1",
+    });
+  });
+});
+
 describe("service.raise — legacy category adapter", () => {
   test("stock category maps to module stock / detector reorder_point", async () => {
     repo.raise.mockResolvedValue(undefined);

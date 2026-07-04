@@ -52,14 +52,14 @@ modules toggled on.
   `logistics` (failed/overdue deliveries), `expenses` (unsettled advances),
   `sales` (paid-but-undispatched), `crm` (stalled deals), `production` (run
   arrival overdue), `accounting` (unposted draft journals), `retention` (high
-  churn risk).
+  churn risk), `pricing` (price below cost/floor), `retail_partners`
+  (unpaid/disputed settlements), `tasks` (overdue).
 - **`low-stock.js` scheduler** → `stock` (via the legacy `raise` adapter).
-- **Fan-out (remaining):** `pricing` (margin), `retail_partners`,
-  `stylist_programme`, `sales_campaigns`, `marketing`, `social_media`,
-  `smartcomm`, `storefront`, `catalogue`, `iam_security`, `tasks`, `payroll`,
-  `customer_onboarding` — see `docs/PRAXIS_AI_INSIGHTS_BACKLOG.md`. Detectors run
-  only for modules switched on in AI Control, so new ones ship dormant until the
-  CEO enables them.
+- **Fan-out (remaining):** `stylist_programme`, `sales_campaigns`, `marketing`,
+  `social_media`, `smartcomm`, `storefront`, `catalogue`, `iam_security`,
+  `payroll`, `customer_onboarding` — see `docs/PRAXIS_AI_INSIGHTS_BACKLOG.md`.
+  Detectors run only for modules switched on in AI Control, so new ones ship
+  dormant until the CEO enables them.
 
 ## Tier-2
 

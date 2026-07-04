@@ -389,6 +389,58 @@ async function churnRiskContacts({ brand, limit = 500 }) {
   return rows;
 }
 
+// Pricing: active variants whose storefront price is below cost or below their
+// own floor (min_price_ngn) — a margin breach that needs a repricing decision.
+async function marginBreaches({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT pv.variant_id, pv.product_id, pv.sku, pv.variant_name,
+            pv.cost_price_ngn, pv.min_price_ngn, pv.price_storefront_ngn,
+            p.name AS product_name
+       FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE pv.is_active = true
+        AND pv.cost_price_ngn > 0
+        AND pv.price_storefront_ngn IS NOT NULL
+        AND pv.price_storefront_ngn > 0
+        AND (pv.price_storefront_ngn < pv.cost_price_ngn
+             OR (pv.min_price_ngn IS NOT NULL AND pv.min_price_ngn > 0
+                 AND pv.price_storefront_ngn < pv.min_price_ngn))
+      ORDER BY (pv.cost_price_ngn - pv.price_storefront_ngn) DESC
+      LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Retail partners: settlements disputed, or approved/invoiced but unpaid.
+async function unpaidPartnerSettlements({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT settlement_id, settlement_number, partner_id, status,
+            total_partner_share_ngn,
+            (EXTRACT(EPOCH FROM (now() - created_at)) / 86400)::int AS age_days
+       FROM ${t(brand, "partner_settlements")}
+      WHERE status = 'disputed'
+         OR (status IN ('approved','invoiced')
+             AND created_at < now() - interval '7 days')
+      ORDER BY created_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Tasks: overdue open tasks (shared.tasks carries business).
+async function overdueTasks({ limit = 500 }) {
+  const { rows } = await query(
+    `SELECT task_id, business, title, priority, assigned_to,
+            (EXTRACT(EPOCH FROM (now() - due_at)) / 86400)::int AS days_overdue
+       FROM shared.tasks
+      WHERE due_at IS NOT NULL
+        AND due_at < now()
+        AND status NOT IN ('done','cancelled')
+      ORDER BY due_at ASC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
 module.exports = {
   raise,
   list,
@@ -414,4 +466,7 @@ module.exports = {
   delayedProductionRuns,
   agingDraftJournals,
   churnRiskContacts,
+  marginBreaches,
+  unpaidPartnerSettlements,
+  overdueTasks,
 };

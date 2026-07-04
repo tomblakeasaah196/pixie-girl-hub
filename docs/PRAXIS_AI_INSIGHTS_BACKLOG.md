@@ -46,8 +46,8 @@ Detectors run only for modules switched **on** in AI Control → Insights
 | 12 | production | run_delayed | ✅ | ✅ |
 | 13 | accounting | journal_draft_aging | ✅ | ✅ `/accounting` |
 | 14 | retention | churn_risk | ✅ | ✅ |
-| 15 | **pricing** | margin_below_floor / price_below_cost | 🔺 deferred | ⬜ |
-| 16 | retail_partners | consignment_unsold, settlement_overdue | ⬜ | ⬜ |
+| 15 | pricing | price_below_cost / price_below_floor | ✅ | ✅ `/pricing` |
+| 16 | retail_partners | settlement_unpaid / settlement_disputed | ✅ | ✅ `/retail-partners` |
 | 17 | stylist_programme | stylist_inactive, cert_expiring, payout_pending | ⬜ | ⬜ |
 | 18 | sales_campaigns | underperforming, stock_low_midcampaign | ⬜ | ⬜ |
 | 19 | marketing | spend_no_conversions, budget_exhausted | ⬜ | ⬜ |
@@ -56,13 +56,15 @@ Detectors run only for modules switched **on** in AI Control → Insights
 | 22 | storefront | checkout_failures, oos_high_traffic | ⬜ | ⬜ |
 | 23 | catalogue | missing_image_or_price, unpublished_active | ⬜ | ⬜ |
 | 24 | iam_security | anomalous_login, dormant_privileged | ⬜ | ⬜ |
-| 25 | tasks | overdue_task, unassigned_high_priority | ⬜ | ⬜ |
+| 25 | tasks | overdue | ✅ | ✅ `/workspace` |
 | 26 | payroll | run_due, contract_expiring | ⬜ | ⬜ |
 | 27 | customer_onboarding | onboarding_stalled, kyc_incomplete | ⬜ | ⬜ |
 
-**Detectors done:** 14 modules (16 detectors). **Remaining:** 13 modules
-(15 + pricing). Each remaining detector = verify schema → repo read → registry
-entry → unit test (the established pattern).
+**Detectors done:** 17 modules (19 detectors). **Remaining:** 10 modules.
+Each remaining detector = verify schema → repo read → registry entry → unit
+test (the established pattern). Catalogue's "missing image/price" signal spans
+products + media + variant price across tables — left for a careful pass rather
+than a silent-wrong query.
 
 ### Slots on already-covered modules
 - ✅ `/stock`, `/service-jobs`, `/org-workflow` — done.

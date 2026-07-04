@@ -4,6 +4,7 @@ import { GripHorizontal, HelpCircle, Moon, Sparkles, Sun, X } from "lucide-react
 import { useNavigate } from "@tanstack/react-router";
 import { useToolbar } from "@/lib/site-config";
 import { useCurrency } from "@/lib/useStore";
+import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
 import { useTheme } from "@/lib/theme";
 
 /**
@@ -34,6 +35,7 @@ export function FloatingToolbar() {
   const reduceMotion = useReducedMotion();
 
   const [currency, setCurrency] = useCurrency();
+  const { currencies } = useCurrencyFeed();
   const { toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
 
@@ -136,8 +138,15 @@ export function FloatingToolbar() {
 
   if (!cfg.enabled || !anyButton) return null;
 
-  const isUsd = currency === "USD";
-  const nextGlyph = isUsd ? "₦" : "$";
+  // Cycle through the active display currencies (falls back to a NGN/USD binary
+  // before the feed hydrates). Each tap advances to the next currency; the glyph
+  // previews the one you'll switch TO.
+  const codes = currencies.length ? currencies.map((c) => c.code) : ["NGN", "USD"];
+  const curIdx = Math.max(0, codes.indexOf(currency));
+  const nextCode = codes[(curIdx + 1) % codes.length];
+  const nextGlyph =
+    currencies.find((c) => c.code === nextCode)?.symbol ??
+    (nextCode === "NGN" ? "₦" : "$");
   const waHref = `https://wa.me/${cfg.whatsapp.number}?text=${encodeURIComponent(cfg.whatsapp.greeting)}`;
 
   return (
@@ -191,9 +200,9 @@ export function FloatingToolbar() {
         {showCurrency && (
           <button
             type="button"
-            onClick={guard(() => setCurrency(isUsd ? "NGN" : "USD"))}
-            aria-label={`Switch to ${isUsd ? "Naira" : "US dollars"}`}
-            title={`Tap for ${nextGlyph}`}
+            onClick={guard(() => setCurrency(nextCode))}
+            aria-label={`Switch currency to ${nextCode}`}
+            title={`Tap for ${nextCode}`}
             className={CIRCLE}
           >
             <span

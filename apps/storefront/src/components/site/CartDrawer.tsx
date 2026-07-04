@@ -3,8 +3,9 @@ import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { getCart, updateCartItem, removeCartItem, fmt } from "@/lib/storefront";
-import { useCartDrawer, notifyCartChanged } from "@/lib/useStore";
+import { getCart, updateCartItem, removeCartItem } from "@/lib/storefront";
+import { formatFromNgn } from "@/lib/money";
+import { useCartDrawer, useCurrency, notifyCartChanged } from "@/lib/useStore";
 
 /**
  * "Your bag" slide-over (ported to match the reference, simplified to the bag
@@ -13,6 +14,7 @@ import { useCartDrawer, notifyCartChanged } from "@/lib/useStore";
  */
 export function CartDrawer() {
   const { open, setOpen } = useCartDrawer();
+  const [currency] = useCurrency();
   const navigate = useNavigate();
 
   const { data, refetch } = useQuery({
@@ -61,8 +63,9 @@ export function CartDrawer() {
     navigate({ to: "/shop" });
   }
 
-  // Bag summary shows canonical NGN; full multi-currency settlement is at checkout.
-  const money = (ngn: number) => fmt(ngn, "NGN");
+  // Bag figures render in the active display currency (converted from the NGN
+  // anchor via the SSOT rate); full settlement-currency handling is at checkout.
+  const money = (ngn: number) => formatFromNgn(ngn, currency);
 
   return (
     <AnimatePresence>

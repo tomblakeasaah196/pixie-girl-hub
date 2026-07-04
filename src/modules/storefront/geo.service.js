@@ -16,6 +16,7 @@
 const fx = require("../../services/fx.service");
 const zones = require("../logistics/zones.service");
 const bizRepo = require("../business_setup/business-config.repo");
+const currencyService = require("../../services/currency.service");
 
 // ISO-2 country → display currency. Unknown non-NG countries default to USD.
 const CURRENCY_BY_COUNTRY = {
@@ -92,6 +93,41 @@ function geoOptions({ brand }) {
   return zones.geoOptions({ brand });
 }
 
+/**
+ * Parametric currency feed for the storefront toolbar + price display.
+ *
+ * Returns every ACTIVE currency that has a resolvable rate, each with its
+ * symbol / decimals / rounding + `rate_to_ngn` (NGN per 1 unit; display =
+ * ngn / rate) from the SSOT, and a `settlement` flag (whether the store can
+ * CHARGE in it — a Nomba/Stripe account exists and it's marked is_settlement).
+ * `default` is the geo-resolved display currency for the visitor's country,
+ * falling back to NGN. Adding a currency (GBP/EUR/…) is therefore admin-only:
+ * activate it under Settings → Currencies and set its rate under FX rates.
+ */
+async function currencies({ brand, country }) {
+  const active = await currencyService.listActiveCurrencies();
+  const out = [];
+  for (const c of active) {
+    const rate = await currencyService.systemFxRate({
+      brand,
+      currency: c.currency_code,
+    });
+    if (rate == null || !(rate > 0)) continue; // no rate → can't show a price
+    out.push({
+      code: c.currency_code,
+      name: c.display_name,
+      symbol: c.symbol,
+      decimals: Number(c.decimal_places),
+      rounding_unit: Number(c.rounding_unit) || 1,
+      rate_to_ngn: c.currency_code === "NGN" ? 1 : rate,
+      settlement: !!c.is_settlement,
+    });
+  }
+  const geoCur = currencyForCountry(country);
+  const def = out.some((c) => c.code === geoCur) ? geoCur : "NGN";
+  return { base: "NGN", default: def, currencies: out };
+}
+
 /** Business pickup address for the storefront "collect in store" option. */
 async function pickupAddress({ brand }) {
   const config = await bizRepo.findByKey(brand);
@@ -101,6 +137,7 @@ async function pickupAddress({ brand }) {
 
 module.exports = {
   resolveCurrency,
+  currencies,
   deliveryQuote,
   shippingRates,
   geoOptions,

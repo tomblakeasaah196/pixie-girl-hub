@@ -6,9 +6,9 @@ import { Check } from "lucide-react";
 import {
   getService,
   requestBooking,
-  fmt,
   type BookingInput,
 } from "@/lib/storefront";
+import { formatFromNgn } from "@/lib/money";
 import { useCurrency } from "@/lib/useStore";
 import { Section, LoadingGrid, ErrorState } from "@/components/parts";
 
@@ -92,10 +92,9 @@ function ServicePage() {
           <h1 className="text-h2 font-display">{data.name}</h1>
           <p className="mt-2 text-body-sm font-mono">
             {data.price_is_from ? "From " : ""}
-            {fmt(
-              currency === "USD" ? data.base_price_usd : data.base_price_ngn,
-              currency,
-            )}
+            {data.base_price_ngn != null
+              ? formatFromNgn(Number(data.base_price_ngn), currency)
+              : "-"}
             {data.duration_minutes ? ` - ${data.duration_minutes} min` : ""}
           </p>
           {data.long_description ? (

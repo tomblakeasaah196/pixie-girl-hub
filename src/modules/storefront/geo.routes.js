@@ -40,6 +40,19 @@ router.get("/currency", async (req, res, next) => {
   }
 });
 
+// Parametric currency feed: active display currencies + their SSOT rates +
+// settlement flags + the geo default. Drives the storefront currency toolbar
+// and price display. Country comes from ?country or the cf-ipcountry header.
+router.get("/currencies", async (req, res, next) => {
+  try {
+    const brand = resolveBrand(req);
+    const country = req.query.country || req.headers["cf-ipcountry"] || null;
+    res.json({ data: await service.currencies({ brand, country }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/shipping-rates", async (req, res, next) => {
   try {
     const brand = resolveBrand(req);

@@ -26,7 +26,7 @@ import {
   type CheckoutInput,
   type Quote,
 } from "@/lib/storefront";
-import { formatMoney } from "@/lib/currency";
+import { formatFromNgn, settlementFor } from "@/lib/money";
 import { bootstrapAuth, getMe } from "@/lib/auth";
 import { useCurrency } from "@/lib/useStore";
 import {
@@ -66,18 +66,13 @@ function CheckoutPage() {
     enabled: items.length > 0,
   });
   const n = (v: string | number | undefined | null) => Number(v ?? 0) || 0;
-  // The rate the SERVER uses to charge USD (usd_fx_rate). Using it here keeps
-  // the displayed figures in lockstep with what the gateway charges.
-  const fxRate = quoteQ.data?.fx_rate_used ?? null;
-  const hasRate = typeof fxRate === "number" && fxRate > 0;
-  const displayCurrency = currency === "USD" && hasRate ? "USD" : "NGN";
-  // Render an NGN amount in the display currency. Mirrors the landing's
-  // displayMoney math exactly: USD divides by the FX rate and ceil-rounds to a
-  // whole dollar, so every figure agrees with the server to the naira/dollar.
-  const fmt = (ngn: number) =>
-    displayCurrency === "USD" && hasRate
-      ? formatMoney(Math.ceil(n(ngn) / (fxRate as number)), "USD")
-      : formatMoney(n(ngn), "NGN");
+  // Render an NGN amount in the buyer's DISPLAY currency via the SSOT rate
+  // (lib/money) — the same rate the server settles at, so every figure agrees
+  // to the unit. Parametric: works for any active currency, not just USD.
+  const fmt = (ngn: number) => formatFromNgn(n(ngn), currency);
+  // The currency the order will actually CHARGE in: the display currency when
+  // it's settlement-enabled, else USD (buyer sees their currency, pays USD).
+  const settleCur = settlementFor(currency);
 
   const subtotalNgn = n(quoteQ.data?.subtotal_ngn);
   const discountNgn = n(quoteQ.data?.discount_ngn);
@@ -249,11 +244,12 @@ function CheckoutPage() {
             ? "No delivery to this address"
             : "Select location";
 
-  // Payment rails: USD orders route through Nomba only (older campaigns offer
-  // both). Keep the selected rail valid when the currency flips.
+  // Payment rails: any FOREIGN settlement routes through Nomba only; only a NGN
+  // settlement offers the Paystack alternative. Keep the selected rail valid
+  // when the currency flips.
   const rails = useMemo(
-    () => (currency === "USD" ? ["nomba"] : ["nomba", "paystack"]),
-    [currency],
+    () => (settleCur !== "NGN" ? ["nomba"] : ["nomba", "paystack"]),
+    [settleCur],
   );
   useEffect(() => {
     if (!rails.includes(gateway)) setGateway(rails[0]);
@@ -796,6 +792,14 @@ function CheckoutPage() {
                   ? "Secure checkout · Delivery included"
                   : "Secure checkout · Enter a deliverable address"}
             </p>
+            {/* When the display currency isn't itself a settlement currency, the
+                buyer sees their currency but is charged in the settlement one
+                (USD today). Say so plainly with the exact charged figure. */}
+            {settleCur !== currency && (
+              <p className="mt-1 text-center text-caption text-muted-foreground">
+                Charged in {settleCur}: {formatFromNgn(total, settleCur)}
+              </p>
+            )}
             <p className="mt-1 text-center text-caption text-muted-foreground">
               <CreditCard size={12} className="mr-1 inline" />
               You&apos;ll be taken to a secure payment page. Retries are safe;

@@ -120,6 +120,7 @@ function systemPrompt({ brand, contextChunks, user, queries = [] }) {
     "2. If NO tool and NO retrieved knowledge covers the question, say plainly that you don't have that data available yet — optionally that the relevant query or knowledge hasn't been configured. Do NOT fabricate an answer or describe features you're unsure exist.",
     "3. For anything that CHANGES data (create/update/delete/approve/send), do NOT claim it's done — call the matching action tool with precise arguments; a human confirms before it runs.",
     "4. Be concise and specific; prefer real figures returned by tools over prose. Cite the retrieved knowledge when you use it.",
+    "5. You know the LIVE business data and the system's CURRENT shape — you do NOT track the software project's build status. If asked how 'complete', 'finished', 'far along', or what percentage of the app/project is done, or for a roadmap, say plainly that you don't track development progress and can't give a completion figure. Never invent a percentage or progress claim.",
     "",
     "LIVE-DATA QUERIES YOU CAN CALL RIGHT NOW:",
     queryList,

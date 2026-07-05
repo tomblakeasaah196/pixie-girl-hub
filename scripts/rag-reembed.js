@@ -51,16 +51,25 @@ async function main() {
       WHERE is_active = true`,
   );
   let nChunks = 0;
+  let nFailed = 0;
   for (const c of chunks) {
-    const r = await embedOne({
-      source_table: "ai_knowledge_chunks",
-      source_id: c.chunk_id,
-      source_text: c.content,
-      business: c.business || null,
-      required_permissions: c.required_permissions || [],
-      sensitivity: c.sensitivity || "normal",
-    });
-    if (r && r.embedded) nChunks += 1;
+    try {
+      const r = await embedOne({
+        source_table: "ai_knowledge_chunks",
+        source_id: c.chunk_id,
+        source_text: c.content,
+        business: c.business || null,
+        required_permissions: c.required_permissions || [],
+        sensitivity: c.sensitivity || "normal",
+      });
+      if (r && r.embedded) nChunks += 1;
+    } catch (err) {
+      // Don't let one provider hiccup (rate limit, transient 5xx) abort the
+      // whole corpus and leave RAG half-populated — log and keep going.
+      nFailed += 1;
+      /// eslint-disable-next-line no-console
+      console.warn(`  chunk ${c.chunk_id} failed: ${err.message}`);
+    }
   }
 
   // 2) Action catalogue — so Praxis can match "what can I do" by description.
@@ -71,23 +80,37 @@ async function main() {
   );
   let nActions = 0;
   for (const a of actions) {
-    const r = await embedOne({
-      source_table: "ai_action_catalogue",
-      source_id: a.action_id,
-      source_text: `${a.title}: ${a.description}`,
-      business: null, // actions are cross-brand; entity_scope is enforced elsewhere
-      required_permissions: a.required_permission
-        ? [a.required_permission]
-        : [],
-      sensitivity: "normal",
-    });
-    if (r && r.embedded) nActions += 1;
+    try {
+      const r = await embedOne({
+        source_table: "ai_action_catalogue",
+        source_id: a.action_id,
+        source_text: `${a.title}: ${a.description}`,
+        business: null, // actions are cross-brand; entity_scope is enforced elsewhere
+        required_permissions: a.required_permission
+          ? [a.required_permission]
+          : [],
+        sensitivity: "normal",
+      });
+      if (r && r.embedded) nActions += 1;
+    } catch (err) {
+      nFailed += 1;
+      /// eslint-disable-next-line no-console
+      console.warn(`  action ${a.action_id} failed: ${err.message}`);
+    }
   }
 
   // eslint-disable-next-line no-console
   console.log(
-    `RAG corpus embedded — knowledge_chunks: ${nChunks}/${chunks.length}, actions: ${nActions}/${actions.length}`,
+    `RAG corpus embedded — knowledge_chunks: ${nChunks}/${chunks.length}, ` +
+      `actions: ${nActions}/${actions.length}, failed: ${nFailed}`,
   );
+  if (nFailed > 0) {
+    /// eslint-disable-next-line no-console
+    console.warn(
+      `${nFailed} chunk(s) failed to embed (likely rate limit / quota). ` +
+        `Re-run "npm run rag:reembed" — it's idempotent and will fill the gaps.`,
+    );
+  }
 }
 
 main()

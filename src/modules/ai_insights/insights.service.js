@@ -284,21 +284,35 @@ async function raise({ category, row: r }) {
   return raiseInsight(build());
 }
 
-// ── Detector sweep (cron) — registry-driven, gated by AI Control ──
+// ── Detector sweep — registry-driven, gated by AI Control ──
 /**
- * Run every enabled module's tier-1 detectors and raise their findings.
- * Brand-scoped detectors run once per brand; shared detectors run once.
- * A module toggled off in AI Control is skipped entirely (zero compute).
+ * Run tier-1 detectors and raise their findings. Brand-scoped detectors run
+ * once per brand; shared detectors run once.
+ *
+ * Which modules run depends on the trigger:
+ *   • trigger: 'cron'   — only modules whose frequency cadence is DUE
+ *                         (repo.dueModules: realtime every tick, daily once/24h,
+ *                         weekly once/7d, off never). This is what makes the
+ *                         per-module Frequency setting actually cut spend.
+ *   • trigger: 'manual' — every enabled module, immediately (the CEO's
+ *                         "Run scan" button — a full, on-demand refresh).
+ *
+ * Scanned modules are stamped `last_swept_at` so the cron cadence advances.
+ * Returns a summary: { by_module, findings, modules_scanned, created, resolved }.
  */
-async function runDetectorSweep() {
-  const enabled = new Set(await repo.enabledModules());
+async function runDetectorSweep({ trigger = "manual" } = {}) {
+  const modules =
+    (trigger === "cron"
+      ? await repo.dueModules()
+      : await repo.enabledModules()) || [];
+  const enabled = new Set(modules);
   const detectors = registry.detectorsForModules(enabled);
-  const result = {};
+  const byModule = {};
   const created = []; // rows genuinely inserted this sweep (not suppressed)
   const liveKeys = new Map(); // module → Set(suppression_key) seen this sweep
   const failedModules = new Set(); // modules whose detector errored (skip auto-resolve)
   const bump = (module, n) => {
-    result[module] = (result[module] || 0) + n;
+    byModule[module] = (byModule[module] || 0) + n;
   };
 
   const brands = listBrands();
@@ -341,21 +355,38 @@ async function runDetectorSweep() {
     }
   }
 
+  // Advance the cadence clock for the modules we set out to scan (clean ones
+  // included, so `last_swept_at` is honest and the next tick waits the full
+  // interval). Best-effort: a stamp failure must not fail the sweep.
+  if (modules.length) {
+    try {
+      await repo.markSwept(modules);
+    } catch (err) {
+      logger.error({ err: err.message }, "insights: markSwept failed");
+    }
+  }
+
   // Push NEW urgent findings to the CEO's notification bell (best-effort).
   await notifyUrgent(created);
 
-  const total = Object.values(result).reduce((a, b) => a + b, 0);
+  const findings = Object.values(byModule).reduce((a, b) => a + b, 0);
   events.emit("sweep.completed", {
-    ...result,
-    total,
+    ...byModule,
+    total: findings,
     created: created.length,
     resolved: autoResolved,
   });
   logger.info(
-    { ...result, total, created: created.length, resolved: autoResolved },
+    { ...byModule, total: findings, created: created.length, resolved: autoResolved, trigger },
     "ai insights detector sweep done",
   );
-  return result;
+  return {
+    by_module: byModule,
+    findings,
+    modules_scanned: modules.length,
+    created: created.length,
+    resolved: autoResolved,
+  };
 }
 
 /**

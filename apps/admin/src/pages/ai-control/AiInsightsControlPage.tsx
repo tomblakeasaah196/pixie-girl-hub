@@ -87,7 +87,11 @@ export function AiInsightsControlPage() {
           free and always safe to leave on.{" "}
           <b className="text-text-primary">Narration</b> adds an AI-written
           briefing (uses your DeepSeek budget), so it only runs where you turn it
-          on. Both stop at the monthly hard cap; the rules keep running.
+          on. <b className="text-text-primary">Frequency</b> sets how often the
+          automatic scan re-checks each module (weekly cuts spend; “Off” means
+          manual only) — the <b className="text-text-primary">Run scan</b> button
+          on Insights always checks everything now. Both stop at the monthly hard
+          cap; the rules keep running.
         </p>
       </div>
 

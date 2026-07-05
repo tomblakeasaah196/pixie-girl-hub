@@ -229,6 +229,34 @@ async function narrationModules() {
   );
   return rows.map((r) => r.module);
 }
+/**
+ * Modules whose AUTOMATIC (cron) sweep is due right now, per their frequency:
+ *   realtime → every tick · daily → once/24h · weekly → once/7d · off → never.
+ * NULL last_swept_at (never scanned) is always due. The manual Run-scan path
+ * uses `enabledModules` instead, so it always covers every enabled module.
+ */
+async function dueModules() {
+  const { rows } = await query(
+    `SELECT module FROM shared.ai_insight_modules
+      WHERE insights_enabled = true
+        AND frequency <> 'off'
+        AND (last_swept_at IS NULL
+             OR frequency = 'realtime'
+             OR (frequency = 'daily'  AND last_swept_at < now() - interval '1 day')
+             OR (frequency = 'weekly' AND last_swept_at < now() - interval '7 days'))`,
+  );
+  return rows.map((r) => r.module);
+}
+/** Stamp last_swept_at = now() for the modules a sweep just scanned (clean or not). */
+async function markSwept(modules) {
+  if (!modules || modules.length === 0) return 0;
+  const { rowCount } = await query(
+    `UPDATE shared.ai_insight_modules SET last_swept_at = now()
+      WHERE module = ANY($1::text[])`,
+    [modules],
+  );
+  return rowCount;
+}
 async function updateModule({ module, fields, updated_by }) {
   const allowed = ["insights_enabled", "narration_enabled", "frequency"];
   const sets = [];
@@ -535,6 +563,8 @@ module.exports = {
   getModule,
   enabledModules,
   narrationModules,
+  dueModules,
+  markSwept,
   updateModule,
   overdueInvoices,
   staleIntercompany,

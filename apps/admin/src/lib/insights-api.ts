@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
 import { joinRoom, leaveRoom, rooms } from "@/lib/socket";
+import { toast } from "@/stores/toast";
 
 export type InsightSeverity = "low" | "medium" | "high" | "critical";
 export type InsightStatus =
@@ -85,6 +86,20 @@ export interface InsightListParams {
   page_size?: number;
 }
 
+/** What a manual "Run scan" returns — powers the scan-complete confirmation. */
+export interface SweepResult {
+  /** Findings currently flagged, per module scanned (e.g. { stock: 3 }). */
+  by_module: Record<string, number>;
+  /** Total open conditions found across everything scanned. */
+  findings: number;
+  /** How many modules the scan actually covered. */
+  modules_scanned: number;
+  /** Genuinely-new findings raised this run. */
+  created: number;
+  /** Findings auto-resolved because their condition had cleared. */
+  resolved: number;
+}
+
 function qs(params: Record<string, string | number | undefined>): string {
   const u = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -114,7 +129,7 @@ export const insightsApi = {
   listModules: () => api.get<InsightModule[]>("/insights/modules"),
   updateModule: (module: string, fields: InsightModuleUpdate) =>
     api.patch<InsightModule>(`/insights/modules/${module}`, fields),
-  sweep: () => api.post<InsightSummary>("/insights/sweep"),
+  sweep: () => api.post<SweepResult>("/insights/sweep"),
 };
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
@@ -191,11 +206,45 @@ export function useUpdateInsightModule() {
   });
 }
 
+/**
+ * Manual "Run scan". Invalidates the insights cache AND surfaces an unmissable
+ * confirmation toast — so an empty result reads as "scanned, all clear" rather
+ * than looking like the button did nothing.
+ */
 export function useRunSweep() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => insightsApi.sweep(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["insights"] }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["insights"] });
+      const mods = res?.modules_scanned ?? 0;
+      const found = res?.findings ?? 0;
+      const resolved = res?.resolved ?? 0;
+      const s = (n: number) => (n === 1 ? "" : "s");
+      if (mods === 0) {
+        toast.info("No modules to scan", {
+          description:
+            "No modules are switched on. Enable one in AI Control, then run a scan.",
+        });
+      } else if (found === 0) {
+        toast.success("Scan complete — all clear", {
+          description: `Checked ${mods} module${s(mods)}. Nothing needs attention${
+            resolved ? ` · ${resolved} auto-resolved` : ""
+          }.`,
+        });
+      } else {
+        toast.success(`Scan complete — ${found} open item${s(found)}`, {
+          description: `Across ${mods} module${s(mods)}${
+            resolved ? ` · ${resolved} auto-resolved` : ""
+          }.`,
+        });
+      }
+    },
+    onError: () => {
+      toast.error("Scan failed", {
+        description: "Couldn't run the insight scan just now. Please try again.",
+      });
+    },
   });
 }
 

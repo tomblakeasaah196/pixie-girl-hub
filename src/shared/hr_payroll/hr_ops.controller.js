@@ -34,6 +34,14 @@ async function respondToQuery(req, res) {
 async function getMyToday(req, res) {
   res.json({ data: await service.getMyToday({ brand: req.brand, user: req.user }) });
 }
+async function toggleOnboardingItem(req, res) {
+  res.json({
+    data: await service.toggleOnboardingItem({
+      brand: req.brand, user: req.user,
+      item_key: req.body.item_key, completed: req.body.completed,
+    }),
+  });
+}
 async function selfClock(req, res) {
   res.status(201).json({
     data: await service.selfClock({
@@ -163,6 +171,7 @@ module.exports = {
   requestLeave,
   respondToQuery,
   getMyToday,
+  toggleOnboardingItem,
   selfClock,
   getOverview,
   getEmployee360,

@@ -45,6 +45,21 @@ DO NOTHING`).
 
 ---
 
+## 2026-07-05 — HR onboarding pack
+
+**Source:** Meeting transcript §3.7 + HR coverage audit (deferred item A), PR-A.
+
+**Files:** `000259_shared_hr_onboarding.sql` (new, shared).
+
+**What / why:** `shared.staff_onboarding_progress` (per-employee completion of
+each brand onboarding-checklist item, unique-keyed on `(profile_id,
+item_key)`), plus `hr_settings.onboarding_links` (JSONB — HR-maintained handy
+links) and `hr_settings.onboarding_welcome` (welcome note). Surfaces the
+existing `onboarding_checklist` as a ticked, per-employee "Getting started"
+card on My HR (always available), with SOP articles (Help Center tag
+`onboarding`), the employee's own documents, and contracts + signature status.
+Idempotent.
+
 ## 2026-07-05 — HR rewards engine
 
 **Source:** Meeting transcript §3 ("reward system") + HR coverage audit

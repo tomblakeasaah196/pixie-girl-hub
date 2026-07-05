@@ -142,9 +142,11 @@ async function updateSettings({ client, brand, patch }) {
     "payout_require_pin",
     "payout_provider",
     "onboarding_checklist",
+    "onboarding_links",
+    "onboarding_welcome",
     "contract_template_doc_id",
   ];
-  const jsonb = new Set(["lateness_tiers", "onboarding_checklist"]);
+  const jsonb = new Set(["lateness_tiers", "onboarding_checklist", "onboarding_links"]);
   const arr = new Set(["working_days"]);
   const sets = [];
   const params = [brand];
@@ -844,13 +846,80 @@ async function tasksForUser({ client, brand, userId }) {
 }
 
 async function contractsForProfile({ client, profileId }) {
+  // Left-join the latest signature-request status per contract document so the
+  // onboarding card can show "awaiting signature" / "signed".
   const { rows } = await exec(client)(
-    `SELECT contract_id, contract_type, effective_from, effective_to,
-            gross_salary, document_id
-       FROM shared.staff_contracts
-      WHERE profile_id = $1
-      ORDER BY effective_from DESC`,
+    `SELECT sc.contract_id, sc.contract_type, sc.effective_from, sc.effective_to,
+            sc.gross_salary, sc.document_id,
+            (SELECT sr.status FROM shared.signature_requests sr
+              WHERE sr.document_id = sc.document_id
+              ORDER BY sr.created_at DESC LIMIT 1) AS signature_status
+       FROM shared.staff_contracts sc
+      WHERE sc.profile_id = $1
+      ORDER BY sc.effective_from DESC`,
     [profileId],
+  );
+  return rows;
+}
+
+// ── Onboarding (meeting §3.7) ──────────────────────────────
+/** Set of onboarding item_keys this employee has completed. */
+async function onboardingProgress({ client, brand, profileId }) {
+  const { rows } = await exec(client)(
+    `SELECT item_key FROM shared.staff_onboarding_progress
+      WHERE business = $1 AND profile_id = $2 AND completed = true`,
+    [brand, profileId],
+  );
+  return new Set(rows.map((r) => r.item_key));
+}
+
+/** Tick / untick one onboarding checklist item for an employee. */
+async function setOnboardingItem({ client, brand, profileId, item_key, completed, userId }) {
+  await exec(client)(
+    `INSERT INTO shared.staff_onboarding_progress
+       (business, profile_id, item_key, completed, completed_at, completed_by)
+     VALUES ($1,$2,$3,$4, now(), $5)
+     ON CONFLICT (profile_id, item_key) DO UPDATE SET
+        completed = EXCLUDED.completed,
+        completed_at = now(),
+        completed_by = EXCLUDED.completed_by`,
+    [brand, profileId, item_key, completed !== false, userId || null],
+  );
+}
+
+/** How many onboarding items an employee has done (for HR completion view). */
+async function onboardingDoneCount({ client, brand, profileId }) {
+  const { rows } = await exec(client)(
+    `SELECT count(*)::int AS done FROM shared.staff_onboarding_progress
+      WHERE business = $1 AND profile_id = $2 AND completed = true`,
+    [brand, profileId],
+  );
+  return Number(rows[0].done || 0);
+}
+
+/** Active Help Center articles tagged 'onboarding' (SOP source). */
+async function onboardingHelpArticles({ client }) {
+  const { rows } = await exec(client)(
+    `SELECT article_id, slug, title, summary
+       FROM shared.help_articles
+      WHERE is_active = true AND 'onboarding' = ANY(tags)
+      ORDER BY sort_order ASC, title ASC
+      LIMIT 25`,
+    [],
+  );
+  return rows;
+}
+
+/** Documents attached to the employee's own record (contracts, NDA, policies). */
+async function ownDocumentsForProfile({ client, brand, profileId }) {
+  const { rows } = await exec(client)(
+    `SELECT document_id, title, document_type, created_at
+       FROM shared.documents
+      WHERE business = $1 AND reference_type = 'staff_profile'
+        AND reference_id = $2 AND is_deleted = false
+      ORDER BY created_at DESC
+      LIMIT 50`,
+    [brand, profileId],
   );
   return rows;
 }
@@ -876,6 +945,11 @@ module.exports = {
   upsertAttendanceDay,
   linkDayQuery,
   justifyDay,
+  onboardingProgress,
+  setOnboardingItem,
+  onboardingDoneCount,
+  onboardingHelpArticles,
+  ownDocumentsForProfile,
   listAttendanceDays,
   reconciledDatesInRange,
   upsertEarningsDay,

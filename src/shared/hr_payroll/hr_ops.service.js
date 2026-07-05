@@ -914,6 +914,29 @@ async function getMyHr({ brand, user }) {
     payrollRepo.listCommissions({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
     payrollRepo.listBonuses({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
   ]);
+  // Onboarding pack (§3.7): the brand checklist ticked per employee, plus the
+  // SOP articles, own documents and handy links — always available on My HR.
+  const [onboardDone, helpArticles, ownDocs] = await Promise.all([
+    repo.onboardingProgress({ brand, profileId: profile.profile_id }),
+    repo.onboardingHelpArticles({}).catch(() => []),
+    repo.ownDocumentsForProfile({ brand, profileId: profile.profile_id }).catch(() => []),
+  ]);
+  const checklist = Array.isArray(settings.onboarding_checklist)
+    ? settings.onboarding_checklist
+    : [];
+  const onboarding = {
+    welcome: settings.onboarding_welcome || null,
+    items: checklist.map((it) => ({
+      key: it.key,
+      label: it.label,
+      completed: onboardDone.has(it.key),
+    })),
+    done: checklist.filter((it) => onboardDone.has(it.key)).length,
+    total: checklist.length,
+    help_articles: helpArticles,
+    documents: ownDocs,
+    links: Array.isArray(settings.onboarding_links) ? settings.onboarding_links : [],
+  };
   // Own reward grants (self-service, not permission-gated — the motivational
   // "my rewards" card, §3 reward system).
   const rewards = await rewardsRepo
@@ -988,7 +1011,22 @@ async function getMyHr({ brand, user }) {
     payslips: payslips.data,
     accruals,
     rewards,
+    onboarding,
   };
+}
+
+/** Tick / untick one of my onboarding checklist items (self-service). */
+async function toggleOnboardingItem({ brand, user, item_key, completed }) {
+  return transaction(async (client) => {
+    const profile = await repo.profileForUser({ client, brand, userId: user.user_id });
+    if (!profile) throw new NotFoundError("Staff profile");
+    await repo.setOnboardingItem({
+      client, brand, profileId: profile.profile_id, item_key,
+      completed: completed !== false, userId: user.user_id,
+    });
+    events.emit("onboarding_item", { brand, profile_id: profile.profile_id, item_key });
+    return { item_key, completed: completed !== false };
+  });
 }
 
 // ── Employee 360 (HR dossier — audit H4) ───────────────────
@@ -1049,9 +1087,18 @@ async function getEmployee360({ brand, user, profileId }) {
   const tenureDays = startDate
     ? Math.max(0, Math.floor((Date.now() - new Date(`${startDate}T00:00:00Z`).getTime()) / 86400000))
     : null;
+  // Onboarding completion (§3.7) — how far this hire is through the checklist.
+  const onboardChecklist = Array.isArray(settings.onboarding_checklist)
+    ? settings.onboarding_checklist
+    : [];
+  const onboardDone = await repo.onboardingDoneCount({ brand, profileId }).catch(() => 0);
 
   return {
     profile,
+    onboarding: {
+      done: Math.min(onboardDone, onboardChecklist.length),
+      total: onboardChecklist.length,
+    },
     insights: {
       ...attInsights,
       tenure_days: tenureDays,
@@ -1117,5 +1164,6 @@ module.exports = {
   getOverview,
   getAnalytics,
   getMyHr,
+  toggleOnboardingItem,
   getEmployee360,
 };

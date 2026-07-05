@@ -143,6 +143,7 @@ export interface HrContract {
   effective_to: string | null;
   gross_salary: number;
   document_id: string | null;
+  signature_status?: string | null;
 }
 
 export interface MyHr {
@@ -182,6 +183,17 @@ export interface MyHr {
     bonuses: BonusRow[];
   };
   rewards: RewardGrant[];
+  onboarding: Onboarding;
+}
+
+export interface Onboarding {
+  welcome: string | null;
+  items: { key: string; label: string; completed: boolean }[];
+  done: number;
+  total: number;
+  help_articles: { article_id: string; slug: string; title: string; summary: string | null }[];
+  documents: { document_id: string; title: string | null; document_type: string; created_at: string }[];
+  links: { label: string; url: string }[];
 }
 
 /** Full (masked) staff profile as returned by GET /hr/employees/:id. */
@@ -218,6 +230,7 @@ export interface StaffProfile {
 
 export interface Employee360 {
   profile: StaffProfile;
+  onboarding?: { done: number; total: number };
   insights: AttendanceInsights & {
     tenure_days: number | null;
     target_attainment_pct: number | null;
@@ -276,6 +289,8 @@ export interface HrSettings {
   payout_provider: "nomba" | "flutterwave" | "manual";
   payout_pin_set: boolean;
   onboarding_checklist: { key: string; label: string }[];
+  onboarding_links: { label: string; url: string }[];
+  onboarding_welcome: string | null;
 }
 
 interface ListEnvelope<T> {
@@ -333,6 +348,8 @@ export interface Geofence {
 
 // ── Self-service ───────────────────────────────────────────
 export const getMyHr = () => api.get<MyHr>("/hr/me");
+export const toggleOnboardingItem = (item_key: string, completed: boolean) =>
+  api.post<{ item_key: string; completed: boolean }>("/hr/me/onboarding", { item_key, completed });
 
 export const requestLeave = (body: {
   leave_type: string;

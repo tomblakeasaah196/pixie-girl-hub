@@ -154,8 +154,21 @@ work as 6 PRs.
   (M8); **ClockWidget resilience** (M9); probation/terms surfaced (M7); Praxis
   `hr_employee_360` query. Onboarding first-login pack and P2/P3 perf batching
   roll into a later pass.
-- **PR3 (next)** — rewards engine (H2), quality→targets/appraisal (H1),
-  Messaging×HR (H6, M6).
+- **PR3 (this branch)** — **rewards engine** (H2): `reward_rules` +
+  `reward_grants` (migration 000258), metric queries (first-in / last-out /
+  punctual days / prompt data entry / jobs / sales / quality), a nightly
+  idempotent evaluator that grants rewards on threshold — monetary rewards
+  flow through the bonus → payroll pipeline, salary increases are applied
+  explicitly (base salary + amendment). HR **Rewards tab** (rule builder,
+  live leaderboard, grants) + My HR "my rewards" card. **Quality wiring**
+  (H1): real service-job QC average feeds the Employee-360 quality insight and
+  is a reward metric (appraisal auto-scoring left as a documented seam).
+  **Messaging × HR** (H6, M6): find-or-create 1:1 DM
+  (`POST /smartcomm/channels/direct`), a new-conversation employee search, and
+  `?dm_user=` deep links behind the "Message" buttons on the 360.
+- **Deferred (post-PR3, non-blocking):** onboarding first-login pack +
+  auto-provision into a brand channel; appraisal auto-population from
+  Sales/CRM/Jobs; P2/P3 query batching.
 
 ## 6. Revamp plan — "full connection & deep linking"
 

@@ -11,6 +11,21 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-05 — HR rewards engine
+
+**Source:** Meeting transcript §3 ("reward system") + HR coverage audit
+(H2), PR3.
+
+**Files:** `000258_shared_hr_rewards.sql` (new, shared).
+
+**What / why:** `shared.reward_rules` (HR-configured behaviour rewards —
+metric + comparator + threshold → fixed ₦ / % salary / salary-increase %) and
+`shared.reward_grants` (one grant per rule/employee/period, unique-keyed for
+idempotent nightly evaluation). Monetary grants create a pending-approval
+bonus (flows through the existing bonus → payroll pipeline); salary-increase
+grants stay pending until HR applies them (base salary + amendment). Shared
+tables with a `business` column, matching the HR phase-1 pattern.
+
 ## 2026-07-04 — HR payroll truth (attendance → payslip, PAYE toggle, advances)
 
 **Source:** Meeting transcript §3.4/§3.5 (SSOT) + HR coverage audit

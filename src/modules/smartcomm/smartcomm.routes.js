@@ -79,6 +79,8 @@ router.post(
   v.validateChannelCreate,
   c.createChannel,
 );
+// Find-or-create a 1:1 DM with a colleague (HR "Message" buttons + search).
+router.post("/channels/direct", can("create"), v.validateStartDirect, c.startDirect);
 router.get("/channels/:id", can("view"), c.getChannel);
 router.post(
   "/channels/:id/archive",

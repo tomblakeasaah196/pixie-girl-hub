@@ -19,6 +19,7 @@
 const { logger } = require("../../config/logger");
 const { BRANDS } = require("../../config/brands");
 const hrOps = require("../../shared/hr_payroll/hr_ops.service");
+const rewards = require("../../shared/hr_payroll/rewards.service");
 
 async function runHrAttendanceSweep() {
   for (const brand of BRANDS) {
@@ -26,6 +27,15 @@ async function runHrAttendanceSweep() {
       const rec = await hrOps.reconcileDay({ brand, user: null });
       const rem = await hrOps.bumpDueReminders({ brand });
       const lapse = await hrOps.applyLapsedOffsite({ brand, user: null });
+      // Rewards evaluation is idempotent, so running it nightly keeps grants
+      // (and the live leaderboards) current as employees cross thresholds.
+      let rewardsGranted = 0;
+      try {
+        const rw = await rewards.evaluate({ brand, user: null });
+        rewardsGranted = rw.granted;
+      } catch (err) {
+        logger.warn({ err: err.message, brand }, "reward evaluation failed for brand");
+      }
       logger.info(
         {
           brand,
@@ -34,6 +44,7 @@ async function runHrAttendanceSweep() {
           offsite: rec.offsite_count,
           reminded: rem.reminded,
           marked_absent: lapse.marked_absent,
+          rewards_granted: rewardsGranted,
         },
         "hr-attendance-sweep complete",
       );

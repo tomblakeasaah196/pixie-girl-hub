@@ -139,9 +139,9 @@ export default function EmployeeProfilePage() {
           </div>
         </div>
         <div className="ml-auto flex gap-2">
-          {p.contact_id && (
+          {p.user_id && (
             <Button icon={<MessageSquare className="h-4 w-4" />}
-              onClick={() => navigate(`/messaging?dm_profile=${p.profile_id}`)}>
+              onClick={() => navigate(`/smartcomm?dm_user=${p.user_id}`)}>
               Message
             </Button>
           )}

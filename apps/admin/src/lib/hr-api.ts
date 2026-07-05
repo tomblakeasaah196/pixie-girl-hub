@@ -181,6 +181,7 @@ export interface MyHr {
     commissions: CommissionRow[];
     bonuses: BonusRow[];
   };
+  rewards: RewardGrant[];
 }
 
 /** Full (masked) staff profile as returned by GET /hr/employees/:id. */
@@ -473,6 +474,7 @@ export const setPayoutPin = (pin: string) =>
 // ── Employees (existing endpoints, reused by onboarding) ───
 export interface StaffRow {
   profile_id: string;
+  user_id: string | null;
   employee_number: string;
   job_title: string;
   department: string | null;
@@ -635,6 +637,75 @@ export const scoreStaff = (
 ) => api.post(`/hr/performance-cycles/${cycleId}/scores`, body);
 export const generatePerfReview = (cycleId: string, user_id: string) =>
   api.post<PerfReview>(`/hr/performance-cycles/${cycleId}/reviews`, { user_id });
+
+// ── Rewards (meeting §3 reward system) ─────────────────────
+export type RewardMetric =
+  | "first_in_days" | "last_out_days" | "punctual_days" | "data_entries"
+  | "styles_completed" | "sales_count" | "quality_avg";
+export type RewardType = "fixed_ngn" | "pct_salary" | "salary_increase_pct";
+
+export interface RewardRule {
+  reward_rule_id: string;
+  name: string;
+  description: string | null;
+  metric: RewardMetric;
+  comparator: "gte" | "lte";
+  threshold: number;
+  period_type: "month";
+  reward_type: RewardType;
+  reward_value: number;
+  is_active: boolean;
+}
+
+export interface RewardGrant {
+  reward_grant_id: string;
+  staff_name?: string;
+  rule_name?: string;
+  rule_metric?: string;
+  profile_id: string;
+  period_year: number;
+  period_month: number;
+  metric: string;
+  metric_value: number;
+  reward_type: RewardType;
+  reward_value: number;
+  amount_ngn: number | null;
+  proposed_salary_ngn: number | null;
+  bonus_id: string | null;
+  status: "awarded" | "pending" | "applied" | "rejected";
+  created_at: string;
+}
+
+export interface RewardLeaderboard {
+  metric: string;
+  period: { year: number; month: number };
+  rows: { profile_id: string; staff_name: string; value: number }[];
+}
+
+export const listRewardRules = () =>
+  api.get<{ data: RewardRule[] }>("/hr/rewards/rules").then((r) => asList<RewardRule>(r));
+export const createRewardRule = (body: Partial<RewardRule>) =>
+  api.post<RewardRule>("/hr/rewards/rules", body);
+export const updateRewardRule = (id: string, patch: Partial<RewardRule>) =>
+  api.patch<RewardRule>(`/hr/rewards/rules/${id}`, patch);
+export const deleteRewardRule = (id: string) =>
+  api.delete<void>(`/hr/rewards/rules/${id}`);
+export const evaluateRewards = (body: { year?: number; month?: number } = {}) =>
+  api.post<{ granted: number; period: { year: number; month: number } }>("/hr/rewards/evaluate", body);
+export const rewardLeaderboard = (metric: RewardMetric, params: { year?: number; month?: number } = {}) =>
+  api.get<RewardLeaderboard>(
+    `/hr/rewards/leaderboard${qs({
+      metric,
+      ...(params.year ? { year: String(params.year) } : {}),
+      ...(params.month ? { month: String(params.month) } : {}),
+    })}`,
+  );
+export const listRewardGrants = (params: Record<string, string> = {}) =>
+  api.get<{ data: RewardGrant[] }>(`/hr/rewards/grants${qs(params)}`).then((r) => asList<RewardGrant>(r));
+export const applyRewardGrant = (id: string) =>
+  api.post<RewardGrant>(`/hr/rewards/grants/${id}/apply`);
+export const rejectRewardGrant = (id: string, reason?: string) =>
+  api.post<RewardGrant>(`/hr/rewards/grants/${id}/reject`, { reason });
 
 function qs(params: Record<string, string>): string {
   const entries = Object.entries(params).filter(([, v]) => v != null && v !== "");

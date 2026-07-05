@@ -23,6 +23,7 @@ import {
   Sunrise,
   Sunset,
   Download,
+  Award,
 } from "lucide-react";
 import {
   Card,
@@ -542,6 +543,30 @@ export default function MyHrPage() {
               <Card className="p-4 text-sm text-text-muted">No attendance recorded yet this month.</Card>
             )}
           </div>
+
+          {/* My rewards */}
+          {data.rewards.length > 0 && (
+            <div>
+              <SectionTitle icon={<Award className="h-4 w-4 text-accent-glow" />}>My rewards</SectionTitle>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {data.rewards.map((r) => (
+                  <Card key={r.reward_grant_id} className="flex items-center justify-between gap-3 p-3">
+                    <div className="min-w-0">
+                      <span className="text-sm text-text-primary">{r.rule_name || r.metric}</span>
+                      <div className="text-xs text-text-muted">
+                        {r.period_month}/{r.period_year}
+                        {r.amount_ngn ? ` · ${money(Number(r.amount_ngn))}` : ""}
+                        {r.proposed_salary_ngn ? ` · new salary ${money(Number(r.proposed_salary_ngn))}` : ""}
+                      </div>
+                    </div>
+                    <Pill tone={r.status === "applied" || r.status === "awarded" ? "success" : r.status === "rejected" ? "danger" : "neutral"}>
+                      {r.status === "awarded" ? "🎉 won" : r.status}
+                    </Pill>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* My payslips */}
           <div>

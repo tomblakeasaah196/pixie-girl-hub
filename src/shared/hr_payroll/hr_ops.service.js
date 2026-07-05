@@ -21,6 +21,7 @@ const argon2 = require("argon2");
 const repo = require("./hr_ops.repo");
 const payrollRepo = require("./payroll.repo");
 const appraisalRepo = require("./appraisal.repo");
+const rewardsRepo = require("./rewards.repo");
 const hrService = require("./hr.service");
 const attendanceRepo = require("../attendance/attendance.repo");
 const calc = require("./lateness.calc");
@@ -913,6 +914,11 @@ async function getMyHr({ brand, user }) {
     payrollRepo.listCommissions({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
     payrollRepo.listBonuses({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
   ]);
+  // Own reward grants (self-service, not permission-gated — the motivational
+  // "my rewards" card, §3 reward system).
+  const rewards = await rewardsRepo
+    .listGrants({ brand, filters: { profile_id: profile.profile_id } })
+    .catch(() => []);
 
   const atRisk = openQueries.reduce(
     (sum, q) => sum + Number(q.deduction_ngn || 0), 0,
@@ -981,6 +987,7 @@ async function getMyHr({ brand, user }) {
     contracts,
     payslips: payslips.data,
     accruals,
+    rewards,
   };
 }
 
@@ -1030,6 +1037,14 @@ async function getEmployee360({ brand, user, profileId }) {
     (reviews || []).find(
       (r) => r.overall_weighted_score !== null && r.overall_weighted_score !== undefined,
     ) || null;
+  // Quality prefers the real service-job QC average (the Ops-Manager ratings,
+  // §3.3); the appraisal weighted score is the fallback (audit H1 wiring).
+  let jobQuality = null;
+  try {
+    jobQuality = await rewardsRepo.qualityAvgForProfile({ brand, profileId });
+  } catch {
+    jobQuality = null;
+  }
   const startDate = profile.start_date ? String(profile.start_date).slice(0, 10) : null;
   const tenureDays = startDate
     ? Math.max(0, Math.floor((Date.now() - new Date(`${startDate}T00:00:00Z`).getTime()) / 86400000))
@@ -1043,7 +1058,12 @@ async function getEmployee360({ brand, user, profileId }) {
       target_attainment_pct: activeTargets.length || achievedTargets.length
         ? Math.round((achievedTargets.length / (activeTargets.length + achievedTargets.length)) * 100)
         : null,
-      quality_score: latestReview ? Number(latestReview.overall_weighted_score) : null,
+      quality_score:
+        jobQuality !== null && jobQuality !== undefined
+          ? jobQuality
+          : latestReview
+            ? Number(latestReview.overall_weighted_score)
+            : null,
       earned_mtd_ngn: Number(mtd.earned || 0),
       deductions_mtd_ngn: Number(mtd.deducted || 0),
     },

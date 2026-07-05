@@ -30,6 +30,7 @@ import { Card, Button, Pill, Skeleton, EmptyState, KpiTile } from "@/components/
 import { DeniedState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
 import { money } from "@/lib/format";
 import {
@@ -702,6 +703,7 @@ export default function HrStaffPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-8">
+      <ModuleInsights module="hr_attendance" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl text-text-primary">HR & Staff</h1>

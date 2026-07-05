@@ -59,6 +59,20 @@ async function deleteService(req, res) {
   res.status(204).end();
 }
 
+async function uploadImage(req, res) {
+  if (!req.file)
+    return res.status(400).json({
+      error: { code: "NO_FILE", message: "Multipart field 'file' is required" },
+      request_id: req.request_id,
+    });
+  const data = await service.uploadImage({
+    ...ctx(req),
+    file: req.file,
+    reference_id: req.body.reference_id,
+  });
+  res.status(201).json({ data });
+}
+
 // ── Import / Export ──────────────────────────────────────
 async function importTemplate(_req, res) {
   const buf = await service.importTemplate();
@@ -114,6 +128,7 @@ module.exports = {
   createService,
   updateService,
   deleteService,
+  uploadImage,
   importTemplate,
   exportServices,
   importServices,

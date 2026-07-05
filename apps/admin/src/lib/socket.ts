@@ -45,6 +45,10 @@ export function getSocket(): Socket {
       new CustomEvent("pgh:ai_pending:resolved", { detail }),
     );
   });
+  // AI insight changes (brand:{brand}:insights — §6.30 event-triggered alerts).
+  socket.on("insights:changed", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:insights:changed", { detail }));
+  });
 
   return socket;
 }
@@ -58,6 +62,7 @@ export const rooms = {
   channelTyping: (channelId: string) => `channel:${channelId}:typing`,
   brandSmartcomm: (brand: string) => `brand:${brand}:smartcomm`,
   userAiPending: (userId: string) => `user:${userId}:ai_pending`,
+  insights: (brand: string) => `brand:${brand}:insights`,
 };
 
 /** Join a Socket.io room (idempotent on the server). */

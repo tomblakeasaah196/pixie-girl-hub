@@ -9,10 +9,11 @@ import { useState } from "react";
 import { Inbox, ExternalLink, FileText } from "lucide-react";
 import { Button, Pill } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
-import { ErrorState, ConfirmDialog } from "@/components/ui/controls";
+import { ErrorState, ConfirmDialog, NumberField } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
 import { downloadDocument } from "@/lib/documents-api";
+import { useToast } from "@/lib/toast";
 import {
   useApplications,
   useApplication,
@@ -40,6 +41,7 @@ function RubricDrawer({
   stylistId: string;
   onClose: () => void;
 }) {
+  const toast = useToast();
   const { review } = useApplicationMutations(stylistId);
   const [scores, setScores] = useState<number[]>(DEFAULT_RUBRIC.map(() => 0));
   const [recommendation, setRecommendation] = useState<
@@ -70,7 +72,7 @@ function RubricDrawer({
                   s.map((x, j) => (j === i ? Number(e.target.value) : x)),
                 )
               }
-              className="w-full accent-[rgb(var(--accent))]"
+              className="range-accent"
             />
             <ScoreBar score={scores[i]} max={r.max} />
           </div>
@@ -124,7 +126,14 @@ function RubricDrawer({
                 recommendation,
                 notes: notes || undefined,
               },
-              { onSuccess: onClose },
+              {
+                onSuccess: () => {
+                  toast.success("Review recorded");
+                  onClose();
+                },
+                onError: (e) =>
+                  toast.error("Couldn't save review", (e as Error).message),
+              },
             )
           }
         >
@@ -150,6 +159,7 @@ function ApplicationDrawer({
   onOpenPartner: (id: string) => void;
 }) {
   const can = useAuthStore((s) => s.can);
+  const toast = useToast();
   const app = useApplication(stylistId);
   const { decide } = useApplicationMutations(stylistId);
   const [scoring, setScoring] = useState(false);
@@ -227,7 +237,10 @@ function ApplicationDrawer({
                       document_id: id as string,
                       title: `${a.display_name} — ${label}`,
                     } as Parameters<typeof downloadDocument>[0]).catch(() =>
-                      alert("Download failed"),
+                      toast.error(
+                        "Download failed",
+                        "The document couldn't be fetched — try again.",
+                      ),
                     )
                   }
                   className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[10px] border border-line text-[12px] font-semibold hover:border-accent/40"
@@ -323,7 +336,16 @@ function ApplicationDrawer({
                   <Button
                     size="sm"
                     disabled={decide.isPending}
-                    onClick={() => decide.mutate({ decision: "start_vetting" })}
+                    onClick={() =>
+                      decide.mutate(
+                        { decision: "start_vetting" },
+                        {
+                          onSuccess: () => toast.success("Moved to vetting"),
+                          onError: (e) =>
+                            toast.error("Action failed", (e as Error).message),
+                        },
+                      )
+                    }
                   >
                     Move to vetting
                   </Button>
@@ -379,13 +401,11 @@ function ApplicationDrawer({
             </p>
             <div>
               <label className="label">Probation (months)</label>
-              <input
-                type="number"
-                min={0}
-                max={24}
-                className="input w-24"
-                value={probationMonths}
-                onChange={(e) => setProbationMonths(Number(e.target.value))}
+              <NumberField
+                className="w-24"
+                allowDecimal={false}
+                value={String(probationMonths)}
+                onChange={(v) => setProbationMonths(Number(v || 0))}
               />
             </div>
           </div>
@@ -394,7 +414,17 @@ function ApplicationDrawer({
         onConfirm={() =>
           decide.mutate(
             { decision: "approve", probation_months: probationMonths },
-            { onSuccess: () => setConfirm(null) },
+            {
+              onSuccess: () => {
+                setConfirm(null);
+                toast.success(
+                  `${a?.display_name ?? "Applicant"} approved`,
+                  "Contract sent and portal invite emailed.",
+                );
+              },
+              onError: (e) =>
+                toast.error("Approval failed", (e as Error).message),
+            },
           )
         }
         onClose={() => setConfirm(null)}
@@ -418,7 +448,14 @@ function ApplicationDrawer({
         onConfirm={() =>
           decide.mutate(
             { decision: "reject", note: note || undefined },
-            { onSuccess: () => setConfirm(null) },
+            {
+              onSuccess: () => {
+                setConfirm(null);
+                toast.success("Application rejected");
+              },
+              onError: (e) =>
+                toast.error("Action failed", (e as Error).message),
+            },
           )
         }
         onClose={() => setConfirm(null)}

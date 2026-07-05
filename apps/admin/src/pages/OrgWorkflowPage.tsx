@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import {
   Plus,
   GitBranch,
@@ -2467,6 +2468,7 @@ export function OrgWorkflowPage() {
 
   return (
     <div>
+      <ModuleInsights module="approvals" className="mb-4" />
       <TabBar active={tab} onChange={setTab} pendingCount={pendingMeta ?? 0} />
 
       {tab === "org" && <OrgTab canEdit={canEdit} />}

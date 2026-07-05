@@ -82,9 +82,46 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
     where.push(`cat.slug = $${i++}`);
     params.push(filters.category_slug);
   }
-  if (filters.q) {
-    where.push(`(s.name ILIKE $${i} OR s.styled_code ILIKE $${i})`);
-    params.push(`%${filters.q}%`);
+  if (filters.collection_slug) {
+    where.push(`EXISTS (
+      SELECT 1 FROM ${t(brand, "product_collection_members")} pcm
+       JOIN ${t(brand, "product_collections")} pc ON pc.collection_id = pcm.collection_id
+      WHERE pcm.styled_id = s.styled_id AND pc.slug = $${i++}
+    )`);
+    params.push(filters.collection_slug);
+  }
+  if (filters.bundle_code) {
+    where.push(`EXISTS (
+      SELECT 1 FROM ${t(brand, "bundle_offer_products")} bop
+       JOIN ${t(brand, "bundle_offers")} bo ON bo.bundle_id = bop.bundle_id
+      WHERE bop.styled_id = s.styled_id AND bo.bundle_code = $${i++}
+    )`);
+    params.push(filters.bundle_code);
+  }
+  if (filters.shade_slug) {
+    where.push(`EXISTS (
+      SELECT 1 FROM ${t(brand, "styled_shades")} sh
+      WHERE sh.shade_id = s.shade_id AND sh.slug = $${i++}
+    )`);
+    params.push(filters.shade_slug);
+  }
+  // Free-text search: every whitespace-separated token must match the name,
+  // styled code, or an active colour name — in any order — so "burgundy bob"
+  // and "bob burgundy" both find a Burgundy-coloured Bob. Capped at 8 tokens
+  // so a pathological query string can't blow up the WHERE clause.
+  const tokens = String(filters.q || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8);
+  for (const token of tokens) {
+    where.push(`(
+      s.name ILIKE $${i} OR s.styled_code ILIKE $${i} OR EXISTS (
+        SELECT 1 FROM ${t(brand, "styled_product_colours")} sc
+         WHERE sc.styled_id = s.styled_id AND sc.is_active = true AND sc.name ILIKE $${i}
+      )
+    )`);
+    params.push(`%${token}%`);
     i++;
   }
   const whereSql = `WHERE ${where.join(" AND ")}`;
@@ -115,6 +152,56 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
     [...params, page_size, offset],
   );
   return { data: rows, page, page_size, total: countRows[0].total };
+}
+
+// Compact digest of the LIVE catalogue for the Shop AI Search grounding
+// context (ai-search.service.js) — one row per styled product with just the
+// fields the model needs to judge fit (name, blurb, price, shade, colours).
+// Capped so a large catalogue can't blow up the prompt's token budget.
+async function listCatalogueDigestForAI({ brand, limit = 300 }) {
+  const { rows } = await query(
+    `SELECT s.styled_id, s.name, s.slug, s.short_description,
+            COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+            cat.name AS category_name, sh.name AS shade_name, sh.slug AS shade_slug,
+            COALESCE(
+              (SELECT json_agg(DISTINCT c.name) FROM ${t(brand, "styled_product_colours")} c
+                WHERE c.styled_id = s.styled_id AND c.is_active = true),
+              '[]'
+            ) AS colour_names
+       FROM ${t(brand, "styled_products")} s
+       LEFT JOIN ${t(brand, "product_categories")} cat ON cat.category_id = s.category_id
+       LEFT JOIN ${t(brand, "styled_shades")} sh ON sh.shade_id = s.shade_id
+       ${fromPriceLateral(brand)}
+      WHERE s.status = 'live' AND s.is_visible_storefront = true AND s.is_deleted = false
+      ORDER BY s.published_at DESC NULLS LAST, s.name
+      LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
+// Full ProductCard rows for a known set of slugs (AI search result hydration
+// — same fields/pricing as listProducts). Order is NOT guaranteed to match
+// `slugs`; callers re-sort to the model's ranked order themselves.
+async function getProductCardsBySlugs({ brand, slugs }) {
+  if (!slugs || slugs.length === 0) return [];
+  const { rows } = await query(
+    `SELECT s.styled_id, s.styled_code, s.name, s.slug, s.short_description,
+            s.retail_price_ngn, s.retail_price_usd, s.compare_at_price_ngn,
+            s.published_at,
+            COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+            COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
+            (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
+              WHERE img.styled_id = s.styled_id
+              ORDER BY img.is_primary DESC, img.display_order LIMIT 1)
+              AS cover_image_url
+       FROM ${t(brand, "styled_products")} s
+       ${fromPriceLateral(brand)}
+      WHERE s.slug = ANY($1) AND s.status = 'live'
+        AND s.is_visible_storefront = true AND s.is_deleted = false`,
+    [slugs],
+  );
+  return rows;
 }
 
 // Per-colour image galleries for the detail page (swatch → swap images).
@@ -264,9 +351,13 @@ async function getShadeBySlug({ brand, slug }) {
 
 // Browse-by-collection index (the detail-by-slug lives in getCollectionBySlug).
 async function listCollections({ brand }) {
+  // The admin cover uploader writes hero_image_url; display_image_url is the
+  // optional card-specific override. Fall back to the hero so a collection with
+  // a single uploaded cover still shows an image on the storefront cards.
   const { rows } = await query(
     `SELECT collection_id, name, slug, description, hero_image_url,
-            display_image_url, display_order
+            COALESCE(display_image_url, hero_image_url) AS display_image_url,
+            display_order
        FROM ${t(brand, "product_collections")}
       WHERE is_active = true AND is_visible_storefront = true
       ORDER BY display_order, name`,
@@ -361,13 +452,16 @@ async function getPublishedSite({ brand, path }) {
   };
 }
 
-// List published content posts of a type (journal, guide, policy, …) for index
-// pages. SELECT * so callers can pick fields without coupling to the schema.
+// List PUBLISHED content posts of a type (journal, guide, policy, …) for index
+// pages. The status filter is load-bearing now that Studio can create drafts —
+// a draft or archived post must never surface publicly. Featured first, then
+// the operator's display order, then newest.
 async function listContentPosts({ brand, type, limit = 50 }) {
   const { rows } = await query(
     `SELECT * FROM ${t(brand, "storefront_content_posts")}
-      WHERE post_type = $1
-      ORDER BY created_at DESC
+      WHERE post_type = $1 AND status = 'published'
+      ORDER BY is_featured DESC, display_order ASC, published_at DESC NULLS LAST,
+               created_at DESC
       LIMIT $2`,
     [type, limit],
   );
@@ -427,10 +521,12 @@ async function getDraftSite({ brand, path }) {
   };
 }
 
+// Single PUBLISHED post by slug for a public detail page (journal / policy).
+// Drafts 404 publicly — they only exist inside Studio.
 async function getContentPost({ brand, type, slug }) {
   const { rows } = await query(
     `SELECT * FROM ${t(brand, "storefront_content_posts")}
-      WHERE post_type = $1 AND slug = $2`,
+      WHERE post_type = $1 AND slug = $2 AND status = 'published'`,
     [type, slug],
   );
   return rows[0] || null;
@@ -591,6 +687,8 @@ async function nearbyStylists({ city, limit = 3 }) {
 module.exports = {
   fromPriceLateral, // pricing SSOT — reused by shade_finder so cards never diverge
   listProducts,
+  listCatalogueDigestForAI,
+  getProductCardsBySlugs,
   getLiveStyledIdBySlug,
   listStyledGallery,
   listColourGalleries,

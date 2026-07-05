@@ -43,18 +43,29 @@ async function updateServiceType(req, res) {
 // ── Jobs ───────────────────────────────────────────────────
 async function listJobs(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.listJobs({
-      brand: req.brand,
-      status: req.query.status,
-      assigned_staff_user_id: req.query.assigned_staff_user_id,
-      assigned_stylist_id: req.query.assigned_stylist_id,
-      customer_contact_id: req.query.customer_contact_id,
-      sales_order_id: req.query.sales_order_id,
-      page,
-      page_size,
-    }),
-  );
+  const r = await service.listJobs({
+    brand: req.brand,
+    status: req.query.status,
+    assigned_staff_user_id: req.query.assigned_staff_user_id,
+    assigned_stylist_id: req.query.assigned_stylist_id,
+    customer_contact_id: req.query.customer_contact_id,
+    sales_order_id: req.query.sales_order_id,
+    page,
+    page_size,
+  });
+  // House pagination envelope ({data, meta} — see docs/API_CONVENTIONS). The
+  // admin api client auto-unwraps bare {data} payloads but PRESERVES envelopes
+  // carrying `meta`; the old flat {data, page, total} shape was unwrapped to a
+  // bare array in the browser, which blinded the whole Studio board.
+  res.json({
+    data: r.data,
+    meta: {
+      page: r.page,
+      page_size: r.page_size,
+      total: r.total,
+      has_more: r.page * r.page_size < r.total,
+    },
+  });
 }
 async function getJob(req, res) {
   res.json({

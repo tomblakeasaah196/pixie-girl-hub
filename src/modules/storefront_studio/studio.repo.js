@@ -10,6 +10,7 @@
 "use strict";
 
 const { ex } = require("../../config/database");
+const { t } = require("../../config/brands");
 // ── Themes (singleton per brand) ───────────────────────────
 async function getThemes({ client, brand }) {
   const { rows } = await ex(client)(
@@ -311,6 +312,143 @@ async function getRevision({ client, brand, revision_id }) {
   return rows[0] || null;
 }
 
+// ── Content posts (per-brand table) ────────────────────────
+// Unlike theme/nav/pages (one draft + one published row in SHARED tables),
+// a content post is a SINGLE row in the brand schema with its own `status`
+// lifecycle column — so "publish" just flips status, no row duplication.
+
+const CONTENT_COLS = `post_id, post_type, slug, title, excerpt, body,
+  hero_image_url, hero_image_alt, faq_category, faq_question, tags,
+  meta_title, meta_description, status, published_at, is_featured,
+  display_order, reading_time_minutes, author_display_name,
+  created_at, updated_at`;
+
+// Admin list: all statuses (the operator manages drafts too). Optional type
+// filter drives the CMS "kind" tabs.
+async function listContentPosts({ client, brand, type }) {
+  const params = [];
+  let where = "TRUE";
+  if (type) {
+    params.push(type);
+    where += ` AND post_type = $${params.length}`;
+  }
+  const { rows } = await ex(client)(
+    `SELECT ${CONTENT_COLS} FROM ${t(brand, "storefront_content_posts")}
+      WHERE ${where}
+      ORDER BY post_type, display_order, updated_at DESC`,
+    params,
+  );
+  return rows;
+}
+
+async function getContentPostById({ client, brand, post_id }) {
+  const { rows } = await ex(client)(
+    `SELECT ${CONTENT_COLS} FROM ${t(brand, "storefront_content_posts")}
+      WHERE post_id = $1`,
+    [post_id],
+  );
+  return rows[0] || null;
+}
+
+async function slugExists({ client, brand, slug, exclude_id }) {
+  const params = [slug];
+  let sql = `SELECT 1 FROM ${t(brand, "storefront_content_posts")} WHERE slug = $1`;
+  if (exclude_id) {
+    params.push(exclude_id);
+    sql += ` AND post_id <> $${params.length}`;
+  }
+  const { rows } = await ex(client)(`${sql} LIMIT 1`, params);
+  return rows.length > 0;
+}
+
+async function insertContentPost({ client, brand, post }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "storefront_content_posts")}
+       (post_type, slug, title, excerpt, body, hero_image_url, hero_image_alt,
+        faq_category, faq_question, tags, meta_title, meta_description,
+        status, published_at, is_featured, display_order,
+        reading_time_minutes, author_user_id, author_display_name)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+     RETURNING ${CONTENT_COLS}`,
+    [
+      post.post_type,
+      post.slug,
+      post.title,
+      post.excerpt,
+      post.body,
+      post.hero_image_url,
+      post.hero_image_alt,
+      post.faq_category,
+      post.faq_question,
+      post.tags || [],
+      post.meta_title,
+      post.meta_description,
+      post.status,
+      post.published_at,
+      post.is_featured,
+      post.display_order,
+      post.reading_time_minutes,
+      post.author_user_id,
+      post.author_display_name,
+    ],
+  );
+  return rows[0];
+}
+
+async function updateContentPost({ client, brand, post_id, post }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "storefront_content_posts")} SET
+       post_type = $2, slug = $3, title = $4, excerpt = $5, body = $6,
+       hero_image_url = $7, hero_image_alt = $8, faq_category = $9,
+       faq_question = $10, tags = $11, meta_title = $12, meta_description = $13,
+       status = $14, published_at = $15, is_featured = $16, display_order = $17,
+       reading_time_minutes = $18, updated_at = now()
+      WHERE post_id = $1
+      RETURNING ${CONTENT_COLS}`,
+    [
+      post_id,
+      post.post_type,
+      post.slug,
+      post.title,
+      post.excerpt,
+      post.body,
+      post.hero_image_url,
+      post.hero_image_alt,
+      post.faq_category,
+      post.faq_question,
+      post.tags || [],
+      post.meta_title,
+      post.meta_description,
+      post.status,
+      post.published_at,
+      post.is_featured,
+      post.display_order,
+      post.reading_time_minutes,
+    ],
+  );
+  return rows[0] || null;
+}
+
+// Flip only the lifecycle fields (publish / unpublish), leaving copy intact.
+async function setContentStatus({ client, brand, post_id, status, published_at }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "storefront_content_posts")}
+        SET status = $2, published_at = $3, updated_at = now()
+      WHERE post_id = $1
+      RETURNING ${CONTENT_COLS}`,
+    [post_id, status, published_at],
+  );
+  return rows[0] || null;
+}
+
+async function deleteContentPost({ client, brand, post_id }) {
+  await ex(client)(
+    `DELETE FROM ${t(brand, "storefront_content_posts")} WHERE post_id = $1`,
+    [post_id],
+  );
+  return { deleted: true };
+}
+
 module.exports = {
   getThemes,
   getThemeDraft,
@@ -334,4 +472,11 @@ module.exports = {
   listRevisions,
   getRevision,
   publish,
+  listContentPosts,
+  getContentPostById,
+  slugExists,
+  insertContentPost,
+  updateContentPost,
+  setContentStatus,
+  deleteContentPost,
 };

@@ -7,10 +7,10 @@ import {
   quoteCart,
   updateCartItem,
   removeCartItem,
-  fmt,
   type Cart,
   type Quote,
 } from "@/lib/storefront";
+import { formatFromNgn, settlementFor } from "@/lib/money";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { Section, EmptyState, ErrorState } from "@/components/parts";
 
@@ -32,7 +32,7 @@ function CartPage() {
   });
 
   const items = cartQ.data?.items ?? [];
-  const useUsd = currency === "USD";
+  const num = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
 
   async function mutate(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -73,7 +73,7 @@ function CartPage() {
     );
 
   const q = quoteQ.data;
-  const total = q ? (useUsd ? q.total_display : q.total_ngn) : null;
+  const total = q ? formatFromNgn(num(q.total_ngn), currency) : null;
 
   return (
     <Section className="grid gap-10 md:grid-cols-[1fr_360px]">
@@ -119,7 +119,7 @@ function CartPage() {
                 </div>
               </div>
               <div className="font-mono text-body-sm">
-                {fmt(it.unit_price_ngn, "NGN")}
+                {formatFromNgn(num(it.unit_price_ngn), currency)}
               </div>
             </li>
           ))}
@@ -133,14 +133,14 @@ function CartPage() {
           <div className="flex justify-between">
             <dt className="text-muted-foreground">Subtotal</dt>
             <dd className="font-mono">
-              {q ? (useUsd ? q.subtotal_display : q.subtotal_ngn) ?? "-" : "..."}
+              {q ? formatFromNgn(num(q.subtotal_ngn), currency) : "..."}
             </dd>
           </div>
           {q && Number(q.discount_ngn || 0) > 0 ? (
             <div className="flex justify-between text-rose">
               <dt>Discount</dt>
               <dd className="font-mono">
-                -{useUsd ? q.discount_display : q.discount_ngn}
+                −{formatFromNgn(num(q.discount_ngn), currency)}
               </dd>
             </div>
           ) : null}
@@ -160,7 +160,7 @@ function CartPage() {
           Checkout
         </button>
         <p className="mt-3 text-center text-body-sm text-muted-foreground">
-          {useUsd ? "Charged in USD" : "Charged in NGN"}
+          Charged in {settlementFor(currency)}
         </p>
       </aside>
     </Section>

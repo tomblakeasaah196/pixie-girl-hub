@@ -112,8 +112,10 @@ function AccountPage() {
               </div>
               <div className="flex items-center gap-4">
                 <span className="font-mono text-body-sm">
-                  {o.display_currency === "USD" && o.display_total
-                    ? fmt(o.display_total, "USD")
+                  {o.display_currency &&
+                  o.display_currency !== "NGN" &&
+                  o.display_total
+                    ? fmt(o.display_total, o.display_currency)
                     : fmt(o.total_ngn, "NGN")}
                 </span>
                 {o.public_tracking_token ? (

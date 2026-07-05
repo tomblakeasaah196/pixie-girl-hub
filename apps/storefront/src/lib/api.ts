@@ -30,6 +30,8 @@ export interface ApiContext {
   cookie?: string;
   /** AbortSignal for cancellation. */
   signal?: AbortSignal;
+  /** Extra headers to merge in (e.g. X-Device-Id for public AI features). */
+  headers?: Record<string, string>;
 }
 
 function baseUrl(): string {
@@ -63,6 +65,7 @@ async function request<T>(
   const headers: Record<string, string> = {
     Accept: "application/json",
     "X-Brand-Context": brand ?? "pixiegirl",
+    ...ctx.headers,
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (ctx.cookie) headers["Cookie"] = ctx.cookie;

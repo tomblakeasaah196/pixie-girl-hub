@@ -11,8 +11,10 @@ const {
   buildWorkbook,
   parseWorkbook,
 } = require("../../services/spreadsheet.service");
+const documents = require("../../shared/documents/documents.service");
+const { compressUpload } = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
-const { NotFoundError } = require("../../utils/errors");
+const { NotFoundError, AppError } = require("../../utils/errors");
 
 function slugify(s) {
   return String(s)
@@ -119,6 +121,34 @@ async function deleteService({ brand, user, request_id, id }) {
     target_id: id,
     request_id,
   });
+}
+
+/**
+ * Upload a service photo. Compresses + stores the file and hands back a CDN
+ * url — the caller saves it onto the service's image_url. Mirrors the generic
+ * catalogue cover-image upload, but gated on the `service_catalogue`
+ * permission so service editors don't need base-catalogue edit rights.
+ */
+async function uploadImage({ brand, user, request_id, file, reference_id }) {
+  if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
+    throw new AppError("IMAGE_TOO_LARGE", "Image exceeds the 10 MB limit", 413, {
+      user_message: "Images must be 10 MB or smaller.",
+    });
+  }
+  const shrunk = await compressUpload(file);
+  const doc = await documents.store({
+    brand,
+    user_id: user.user_id,
+    buffer: shrunk.buffer,
+    filename: shrunk.filename,
+    mime_type: shrunk.mime_type,
+    document_type: "service_image",
+    title: file.originalname,
+    reference_type: "service_offering",
+    reference_id: reference_id || null,
+    request_id,
+  });
+  return { cdn_url: doc.url, document_id: doc.document_id };
 }
 
 // ── Storefront (public) ──────────────────────────────────
@@ -257,6 +287,7 @@ module.exports = {
   createService,
   updateService,
   deleteService,
+  uploadImage,
   listStorefront,
   getStorefront,
   submitBooking,

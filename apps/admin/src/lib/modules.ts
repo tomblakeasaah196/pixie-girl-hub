@@ -33,6 +33,7 @@ import {
   Palette,
   ArrowLeftRight,
   Gauge,
+  Lightbulb,
   type LucideIcon,
 } from "lucide-react";
 
@@ -132,6 +133,14 @@ export const MODULES: AppModule[] = [
     group: "run",
     route: "/workspace",
     icon: CalendarDays,
+  },
+  {
+    key: "insights",
+    label: "Insights",
+    description: "Praxis proactive alerts",
+    group: "run",
+    route: "/insights",
+    icon: Lightbulb,
   },
   {
     key: "stock",

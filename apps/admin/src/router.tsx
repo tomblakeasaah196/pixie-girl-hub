@@ -228,6 +228,16 @@ const WorkspacePage = lazyWithRetry(() =>
   })),
 );
 const PraxisPage = lazyWithRetry(() => import("@/pages/praxis/PraxisPage"));
+const InsightsPage = lazyWithRetry(() =>
+  import("@/pages/insights/InsightsPage").then((m) => ({
+    default: m.InsightsPage,
+  })),
+);
+const AiInsightsControlPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/AiInsightsControlPage").then((m) => ({
+    default: m.AiInsightsControlPage,
+  })),
+);
 const InvoicingPage = lazyWithRetry(() =>
   import("@/pages/invoicing/InvoicingPage").then((m) => ({
     default: m.InvoicingPage,
@@ -345,6 +355,14 @@ export const router = createBrowserRouter(
           children: [
             { index: true, element: <CommandCenter /> },
             { path: "dashboard", element: <DashboardPage /> },
+            {
+              path: "insights",
+              element: (
+                <Suspense fallback={null}>
+                  <InsightsPage />
+                </Suspense>
+              ),
+            },
             { path: "sales", element: <SalesPage /> },
             { path: "sales/orders/:orderId", element: <OrderDetailPage /> },
             // Storefront Studio - renders inside the app shell like other modules.
@@ -719,6 +737,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <BrandVoicePage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/insights",
+              element: (
+                <Suspense fallback={null}>
+                  <AiInsightsControlPage />
                 </Suspense>
               ),
             },

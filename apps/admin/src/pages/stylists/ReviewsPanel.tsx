@@ -8,14 +8,16 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
 import { Button, Pill } from "@/components/ui/primitives";
-import { ErrorState } from "@/components/ui/controls";
+import { ErrorState, Toggle } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
+import { useToast } from "@/lib/toast";
 import { useVerifiedReviews, useReviewVisibilityMutation } from "./hooks";
 import type { VerifiedReview } from "./types";
 
 export function ReviewsPanel() {
   const can = useAuthStore((s) => s.can);
+  const toast = useToast();
   const [showHidden, setShowHidden] = useState(false);
   const reviews = useVerifiedReviews({ hidden: showHidden || undefined });
   const visibility = useReviewVisibilityMutation();
@@ -78,7 +80,16 @@ export function ReviewsPanel() {
             size="sm"
             variant={r.review_hidden ? "secondary" : "ghost"}
             disabled={visibility.isPending}
-            onClick={() => visibility.mutate([r.assignment_id, !r.review_hidden])}
+            onClick={() =>
+              visibility.mutate([r.assignment_id, !r.review_hidden], {
+                onSuccess: () =>
+                  toast.success(
+                    r.review_hidden ? "Review is public again" : "Review hidden",
+                  ),
+                onError: (e) =>
+                  toast.error("Couldn't update review", (e as Error).message),
+              })
+            }
           >
             {r.review_hidden ? "Unhide" : "Hide"}
           </Button>
@@ -101,14 +112,11 @@ export function ReviewsPanel() {
       rowKey={(r) => r.assignment_id}
       loading={reviews.isLoading}
       toolbar={
-        <label className="flex items-center gap-2 text-[12.5px] text-text-muted cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showHidden}
-            onChange={(e) => setShowHidden(e.target.checked)}
-          />
-          Include hidden
-        </label>
+        <Toggle
+          checked={showHidden}
+          onChange={setShowHidden}
+          label="Include hidden"
+        />
       }
       empty={{
         icon: <Star className="w-6 h-6" />,

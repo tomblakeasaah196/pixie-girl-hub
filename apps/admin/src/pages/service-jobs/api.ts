@@ -1,3 +1,11 @@
+/**
+ * NOTE on response typing: the api client (lib/api.ts) auto-unwraps bare
+ * `{data: X}` payloads to `X`, and only preserves envelopes that carry `meta`
+ * (paginated lists). So every type parameter below is the INNER value — never
+ * `{data: X}`. Typing the envelope here silently breaks consumers: the hooks'
+ * old `select: r => r.data` on already-unwrapped values returned undefined,
+ * which is exactly the bug that blinded the whole Studio board.
+ */
 import { api } from "@/lib/api";
 import type {
   ServiceType,
@@ -25,7 +33,7 @@ export function listServiceTypes(params?: { is_active?: boolean }) {
   if (params?.is_active !== undefined)
     qs.set("is_active", String(params.is_active));
   const q = qs.toString();
-  return api.get<{ data: ServiceType[] }>(`${BASE}/types${q ? `?${q}` : ""}`);
+  return api.get<ServiceType[]>(`${BASE}/types${q ? `?${q}` : ""}`);
 }
 
 export function createServiceType(input: {
@@ -36,7 +44,7 @@ export function createServiceType(input: {
   standard_turnaround_days?: number;
   display_order?: number;
 }) {
-  return api.post<{ data: ServiceType }>(`${BASE}/types`, input);
+  return api.post<ServiceType>(`${BASE}/types`, input);
 }
 
 export function updateServiceType(
@@ -50,7 +58,7 @@ export function updateServiceType(
     is_active: boolean;
   }>,
 ) {
-  return api.patch<{ data: ServiceType }>(`${BASE}/types/${id}`, patch);
+  return api.patch<ServiceType>(`${BASE}/types/${id}`, patch);
 }
 
 // ── Chemical recipes ───────────────────────────────────────
@@ -60,21 +68,21 @@ export function listRecipes(params?: { is_active?: boolean }) {
   if (params?.is_active !== undefined)
     qs.set("is_active", String(params.is_active));
   const q = qs.toString();
-  return api.get<{ data: ChemicalRecipe[] }>(
+  return api.get<ChemicalRecipe[]>(
     `${BASE}/recipes${q ? `?${q}` : ""}`,
   );
 }
 
 export function getRecipe(id: string) {
-  return api.get<{ data: ChemicalRecipe }>(`${BASE}/recipes/${id}`);
+  return api.get<ChemicalRecipe>(`${BASE}/recipes/${id}`);
 }
 
 export function createRecipe(input: CreateRecipeInput) {
-  return api.post<{ data: ChemicalRecipe }>(`${BASE}/recipes`, input);
+  return api.post<ChemicalRecipe>(`${BASE}/recipes`, input);
 }
 
 export function updateRecipe(id: string, patch: Partial<CreateRecipeInput>) {
-  return api.patch<{ data: ChemicalRecipe }>(`${BASE}/recipes/${id}`, patch);
+  return api.patch<ChemicalRecipe>(`${BASE}/recipes/${id}`, patch);
 }
 
 // ── Jobs ───────────────────────────────────────────────────
@@ -102,11 +110,11 @@ export function listJobs(params?: {
 }
 
 export function getJob(id: string) {
-  return api.get<{ data: ServiceJob }>(`${BASE}/${id}`);
+  return api.get<ServiceJob>(`${BASE}/${id}`);
 }
 
 export function createJob(input: CreateJobInput) {
-  return api.post<{ data: ServiceJob }>(BASE, input);
+  return api.post<ServiceJob>(BASE, input);
 }
 
 export function updateJob(
@@ -124,7 +132,7 @@ export function updateJob(
     agreed_cost_ngn: number;
   }>,
 ) {
-  return api.patch<{ data: ServiceJob }>(`${BASE}/${id}`, patch);
+  return api.patch<ServiceJob>(`${BASE}/${id}`, patch);
 }
 
 export function advanceJob(
@@ -132,14 +140,14 @@ export function advanceJob(
   status: string,
   actual_cost_ngn?: number,
 ) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/advance`, {
+  return api.post<ServiceJob>(`${BASE}/${id}/advance`, {
     status,
     actual_cost_ngn,
   });
 }
 
 export function assignStaff(id: string, assigned_staff_user_id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/assign`, {
+  return api.post<ServiceJob>(`${BASE}/${id}/assign`, {
     assigned_staff_user_id,
   });
 }
@@ -153,13 +161,13 @@ export function recordOutcome(
     customer_feedback?: string;
   },
 ) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/outcome`, input);
+  return api.post<ServiceJob>(`${BASE}/${id}/outcome`, input);
 }
 
 // ── Job chemicals ──────────────────────────────────────────
 
 export function listJobChemicals(jobId: string) {
-  return api.get<{ data: JobChemical[] }>(`${BASE}/${jobId}/chemicals`);
+  return api.get<JobChemical[]>(`${BASE}/${jobId}/chemicals`);
 }
 
 export function recordJobChemical(
@@ -174,7 +182,7 @@ export function recordJobChemical(
     notes?: string;
   },
 ) {
-  return api.post<{ data: JobChemical }>(`${BASE}/${jobId}/chemicals`, input);
+  return api.post<JobChemical>(`${BASE}/${jobId}/chemicals`, input);
 }
 
 // ── Chemical reconciliation ────────────────────────────────
@@ -189,13 +197,13 @@ export function listReconciliations(params?: {
   if (params?.variance_status)
     qs.set("variance_status", params.variance_status);
   const q = qs.toString();
-  return api.get<{ data: ChemicalReconciliation[] }>(
+  return api.get<ChemicalReconciliation[]>(
     `${BASE}/chemical-reconciliations${q ? `?${q}` : ""}`,
   );
 }
 
 export function runReconciliation(periodId: string) {
-  return api.post<{ data: { reconciled: number; flagged: number } }>(
+  return api.post<{ reconciled: number; flagged: number }>(
     `${BASE}/periods/${periodId}/chemical-reconciliation`,
   );
 }
@@ -203,33 +211,33 @@ export function runReconciliation(periodId: string) {
 // ── Stylist Studio lifecycle (PR4) ─────────────────────────
 
 export function startJob(id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/start`, {});
+  return api.post<ServiceJob>(`${BASE}/${id}/start`, {});
 }
 export function pauseJob(id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/pause`, {});
+  return api.post<ServiceJob>(`${BASE}/${id}/pause`, {});
 }
 export function resumeJob(id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/resume`, {});
+  return api.post<ServiceJob>(`${BASE}/${id}/resume`, {});
 }
 export function returnJob(id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/return`, {});
+  return api.post<ServiceJob>(`${BASE}/${id}/return`, {});
 }
 export function qcJob(id: string, input: QcInput) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/qc`, input);
+  return api.post<ServiceJob>(`${BASE}/${id}/qc`, input);
 }
 export function dispatchJob(id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/dispatch`, {});
+  return api.post<ServiceJob>(`${BASE}/${id}/dispatch`, {});
 }
 export function handToSales(id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/hand-to-sales`, {});
+  return api.post<ServiceJob>(`${BASE}/${id}/hand-to-sales`, {});
 }
 export function linkIntercompany(id: string, ic_transaction_id: string) {
-  return api.post<{ data: ServiceJob }>(`${BASE}/${id}/intercompany-link`, {
+  return api.post<ServiceJob>(`${BASE}/${id}/intercompany-link`, {
     ic_transaction_id,
   });
 }
 export function writeOffWig(id: string, reason: string) {
-  return api.post<{ data: CustodyEntry }>(`${BASE}/${id}/write-off`, {
+  return api.post<CustodyEntry>(`${BASE}/${id}/write-off`, {
     reason,
   });
 }
@@ -237,7 +245,7 @@ export function writeOffWig(id: string, reason: string) {
 // ── Materials / references / time logs ─────────────────────
 
 export function listMaterials(jobId: string) {
-  return api.get<{ data: JobMaterial[] }>(`${BASE}/${jobId}/materials`);
+  return api.get<JobMaterial[]>(`${BASE}/${jobId}/materials`);
 }
 export function logMaterial(
   jobId: string,
@@ -249,10 +257,10 @@ export function logMaterial(
     usage_note?: string;
   },
 ) {
-  return api.post<{ data: JobMaterial[] }>(`${BASE}/${jobId}/materials`, input);
+  return api.post<JobMaterial[]>(`${BASE}/${jobId}/materials`, input);
 }
 export function listReferences(jobId: string) {
-  return api.get<{ data: JobReference[] }>(`${BASE}/${jobId}/references`);
+  return api.get<JobReference[]>(`${BASE}/${jobId}/references`);
 }
 export function addReference(
   jobId: string,
@@ -263,24 +271,24 @@ export function addReference(
     body?: string;
   },
 ) {
-  return api.post<{ data: JobReference[] }>(
+  return api.post<JobReference[]>(
     `${BASE}/${jobId}/references`,
     input,
   );
 }
 export function deleteReference(jobId: string, refId: string) {
-  return api.delete<{ data: JobReference[] }>(
+  return api.delete<JobReference[]>(
     `${BASE}/${jobId}/references/${refId}`,
   );
 }
 export function listTimeLogs(jobId: string) {
-  return api.get<{ data: JobTimeLog[] }>(`${BASE}/${jobId}/time-logs`);
+  return api.get<JobTimeLog[]>(`${BASE}/${jobId}/time-logs`);
 }
 
 // ── Wig accountability ─────────────────────────────────────
 
 export function getAccountability() {
-  return api.get<{ data: Accountability }>(`${BASE}/accountability`);
+  return api.get<Accountability>(`${BASE}/accountability`);
 }
 export function listCustodyLedger(params?: {
   job_id?: string;
@@ -291,7 +299,7 @@ export function listCustodyLedger(params?: {
   if (params?.stylist_user_id)
     qs.set("stylist_user_id", params.stylist_user_id);
   const q = qs.toString();
-  return api.get<{ data: CustodyEntry[] }>(
+  return api.get<CustodyEntry[]>(
     `${BASE}/accountability/ledger${q ? `?${q}` : ""}`,
   );
 }

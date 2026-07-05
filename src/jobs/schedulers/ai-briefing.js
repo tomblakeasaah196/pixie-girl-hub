@@ -17,22 +17,36 @@ const insights = require("../../modules/ai_insights/insights.service");
 
 const { BRANDS } = require("../../config/brands");
 
+// Keyed by unified-store module (shared.ai_insight_modules). Any module the
+// summary reports that isn't listed here still counts toward the totals via
+// the fallback in buildBriefing.
 const LABELS = {
-  invoice: "overdue invoice(s)",
+  invoicing: "overdue invoice(s)",
   stock: "low-stock alert(s)",
-  margin: "margin breach(es)",
+  pricing: "margin breach(es)",
   intercompany: "stale inter-company item(s)",
-  attendance: "attendance anomaly(ies)",
-  approval: "pending approval(s)",
-  service_match: "service-match flag(s)",
+  hr_attendance: "attendance anomaly(ies)",
+  approvals: "pending approval(s)",
+  service_jobs: "service-match flag(s)",
+  sales: "sales alert(s)",
+  crm: "CRM alert(s)",
+  purchasing: "purchasing alert(s)",
+  logistics: "logistics alert(s)",
+  expenses: "expense/cash alert(s)",
+  production: "production alert(s)",
+  retention: "retention alert(s)",
+  accounting: "accounting alert(s)",
 };
 
 function buildBriefing(brand, counts) {
   const lines = [];
   let total = 0;
   let urgent = 0;
-  for (const [cat, label] of Object.entries(LABELS)) {
-    const c = counts[cat] || { open: 0, urgent: 0 };
+  // Iterate whatever modules the summary reported (not a fixed list), so a
+  // newly-enabled module shows up without editing this job. Fall back to a
+  // readable label derived from the module key.
+  for (const [mod, c] of Object.entries(counts || {})) {
+    const label = LABELS[mod] || `${mod.replace(/_/g, " ")} alert(s)`;
     total += c.open;
     urgent += c.urgent;
     if (c.open > 0) {

@@ -23,6 +23,7 @@ const cartRepo = require("./cart.repo");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const zonesService = require("../logistics/zones.service");
 const paymentLink = require("../sales/payment-link.service");
+const currencyService = require("../../services/currency.service");
 const { transaction, query } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -209,14 +210,24 @@ async function getSite({ brand, path, previewToken }) {
   return repo.getPublishedSite({ brand, path });
 }
 
-function listContent({ brand, type }) {
-  return repo.listContentPosts({ brand, type });
+// The storefront detail pages (journal, policy) render `body_md` (safe,
+// pre-wrapped) or `body_html`. Content posts store the copy in `body`, so
+// alias it to `body_md` on the way out. We never emit body_html — no raw HTML
+// is injected from operator input.
+function withRenderableBody(post) {
+  if (!post) return post;
+  return { ...post, body_md: post.body ?? null };
+}
+
+async function listContent({ brand, type }) {
+  const posts = await repo.listContentPosts({ brand, type });
+  return posts.map(withRenderableBody);
 }
 
 async function getContent({ brand, type, slug }) {
   const post = await repo.getContentPost({ brand, type, slug });
   if (!post) throw new NotFoundError("Content");
-  return post;
+  return withRenderableBody(post);
 }
 
 // ── Public Order Form ──────────────────────────────────────
@@ -712,16 +723,27 @@ async function checkout({ brand, cart_id, input = {} }) {
     },
   });
 
-  // 5. Metadata + currency snapshot (storefront uses catalogue_config.usd_fx_rate).
-  const cfg = await styledVariantsRepo.getConfig({ brand }).catch(() => null);
+  // 5. Metadata + currency snapshot. The buyer picks a DISPLAY currency; we
+  //    settle in the currency that has a gateway account (currency.service):
+  //    NGN → NGN; a settlement-enabled currency (e.g. GBP once its Nomba account
+  //    is linked) → itself; any other foreign display → USD (they see their
+  //    currency, pay USD, exactly as today). The rate is the SSOT rate for the
+  //    SETTLEMENT currency (USD → catalogue tool, unchanged; GBP/EUR/… → the
+  //    admin-set shared.currency_rates), so display and charge always agree.
   const displayCurrency = String(input.display_currency || "NGN").toUpperCase();
+  const settlementCurrency = await currencyService.resolveSettlementCurrency({
+    displayCurrency,
+  });
   const fxRate =
-    cfg && cfg.usd_fx_rate !== null && cfg.usd_fx_rate !== undefined
-      ? Number(cfg.usd_fx_rate)
-      : null;
+    settlementCurrency === "NGN"
+      ? null
+      : await currencyService.systemFxRate({
+          brand,
+          currency: settlementCurrency,
+        });
   let displayTotal = null;
   let fxRateUsed = null;
-  if (displayCurrency !== "NGN" && fxRate && fxRate > 0) {
+  if (settlementCurrency !== "NGN" && fxRate && fxRate > 0) {
     displayTotal = toCurrencyString(
       money(order.total_ngn).dividedBy(money(fxRate)).ceil(),
     );
@@ -775,7 +797,7 @@ async function checkout({ brand, cart_id, input = {} }) {
         deliveryAddress ? deliveryAddress.address_id : null,
         addressSnapshot ? JSON.stringify(addressSnapshot) : null,
         order.order_id,
-        displayCurrency,
+        settlementCurrency,
         displayTotal,
         fxRateUsed,
       ],
@@ -797,11 +819,14 @@ async function checkout({ brand, cart_id, input = {} }) {
     logger.warn({ err, cart_id }, "cart convert flag skipped");
   }
 
-  // 7. Initiate payment. NGN → buyer's pick (Nomba default, Paystack); USD → Nomba.
-  const checkoutCurrency = displayCurrency;
+  // 7. Initiate payment on the SETTLEMENT currency. NGN → buyer's pick (Nomba
+  //    default, Paystack); any foreign currency → Nomba (the foreign rail). The
+  //    gateway chain + Nomba integration + webhook are unchanged — they already
+  //    route by the order's settlement currency.
+  const checkoutCurrency = settlementCurrency;
   const allowed = ["nomba", "paystack"];
   const preferredProvider =
-    checkoutCurrency === "USD"
+    checkoutCurrency !== "NGN"
       ? "nomba"
       : input.payment_gateway && allowed.includes(input.payment_gateway)
         ? input.payment_gateway
@@ -937,14 +962,16 @@ async function quoteCart({
   }
 
   const totalNgn = subtotal.minus(discountNgn).plus(money(deliveryNgn));
-  const cfg = await styledVariantsRepo.getConfig({ brand }).catch(() => null);
-  const fxRate =
-    cfg && cfg.usd_fx_rate !== null && cfg.usd_fx_rate !== undefined
-      ? Number(cfg.usd_fx_rate)
-      : null;
+  // Convert to whatever DISPLAY currency the buyer picked (the toolbar value),
+  // via the SSOT rate for that currency (USD → catalogue tool, unchanged;
+  // GBP/EUR/… → admin-set shared.currency_rates). NGN needs no conversion.
   const cur = String(display_currency || "NGN").toUpperCase();
+  const fxRate =
+    cur === "NGN"
+      ? null
+      : await currencyService.systemFxRate({ brand, currency: cur });
   const toDisplay = (m) =>
-    cur === "USD" && fxRate && fxRate > 0
+    cur !== "NGN" && fxRate && fxRate > 0
       ? toCurrencyString(m.dividedBy(money(fxRate)).ceil())
       : null;
 

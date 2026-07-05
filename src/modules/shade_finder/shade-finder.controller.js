@@ -15,7 +15,9 @@ const service = require("./shade-finder.service");
 function brandHint(req) {
   const h = req.brand || req.headers["x-brand-context"] || req.query.brand;
   const brand = String(h || "pixiegirl").toLowerCase();
-  if (!VALID_BRANDS.includes(brand)) {
+  // VALID_BRANDS is a live Set (config/brands) — membership is .has(), not
+  // .includes(). Using .includes here threw on every call → 500 on /session.
+  if (!VALID_BRANDS.has(brand)) {
     throw new AppError("INVALID_BRAND", `unknown brand ${brand}`, 400, {
       user_message: "Unknown storefront.",
     });
@@ -81,4 +83,12 @@ async function chat(req, res) {
   res.json({ data });
 }
 
-module.exports = { startSession, getSession, endSession, analyze, chat };
+module.exports = {
+  startSession,
+  getSession,
+  endSession,
+  analyze,
+  chat,
+  // exported for unit tests
+  _internal: { brandHint },
+};

@@ -11,6 +11,55 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-04 — Unified AI Insights store + per-module control matrix
+
+**Source:** Praxis AI insights expansion (V2.2 §6.30/§6.31) — scale insights
+from 7 hardcoded category tables to all 27 modules, each gated from AI Control
+and surfaced by one reusable UI slot on the module's own page.
+
+**Files:** `000256_shared_ai_insights_unified.sql` (new).
+
+**What:** Adds two tables. `shared.ai_insights` — a single unified finding
+store (module + detector + severity + status + typed `context` JSONB + drill
+target + open→resolved lifecycle + partial-unique suppression on
+`(module, COALESCE(business,'*'), suppression_key)` while open).
+`shared.ai_insight_modules` — the AI Control switchboard: one row per module
+with `insights_enabled` (tier-1 rules), `narration_enabled` (tier-2 AI
+briefing) and `frequency`; seeded with all 27 candidate modules
+(`insights_enabled = true` for the 5 already live, false otherwise;
+`narration_enabled = false` for all).
+
+**Why:** The concrete-table-per-category pattern (000012) does not scale to 27
+modules (≈20 more tables + repos + raise fns). One unified store gives a single
+list/summary/lifecycle path and lets a new module ship insights via a registry
+entry + a UI slot, not new plumbing. ADDITIVE: the legacy 000012 category
+tables are untouched; because tier-1 detectors are idempotent and re-run every
+30 min, open findings re-materialise into `ai_insights` on the next sweep, so
+no backfill is needed and the legacy tables can be dropped in a later cleanup
+once the unified path is verified. `narration_enabled` defaults off so enabling
+a module never triggers surprise DeepSeek spend — tier-1 rules stay free.
+
+---
+
+## 2026-07-04 — Shop AI Search feature flag (public "ask Praxis" search)
+
+**Source:** Shop page search + filters build (Collection/Bundle/Shade
+dropdowns plus a Gemini-backed natural-language search box).
+
+**Files:** `000255_shared_shop_ai_search.sql` (new).
+
+**What:** Seeds one `shared.ai_feature_flags` row — `shop_ai_search`
+(gemini / gemini-2.5-flash, est ₦0.50/call). Idempotent
+`ON CONFLICT DO NOTHING`.
+
+**Why:** Same contract as Shade Finder: the public search box's Gemini calls
+meter into `shared.ai_usage_ledger` (user_id NULL — anonymous visitors) and
+must be toggleable + budget-capped from AI Governance; `feature_key` is a
+RESTRICT FK onto the flags table, so the flag row has to exist before the
+feature can record usage.
+
+---
+
 ## 2026-07-03 — Shade Finder feature flag (public Praxis shade match)
 
 **Source:** Shade Finder build (photo → shade + product recommendation on

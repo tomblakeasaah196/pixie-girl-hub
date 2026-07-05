@@ -89,12 +89,21 @@ function CurrenciesSection() {
     {
       key: "settlement",
       header: "Settlement",
-      render: (r) =>
-        r.is_settlement ? (
-          <Pill tone="info">Settlement</Pill>
-        ) : (
-          <span className="text-text-faint">—</span>
-        ),
+      // Toggle whether the store can CHARGE in this currency. Flip it on once a
+      // Nomba/Stripe account exists for it — the storefront then settles orders
+      // in this currency instead of falling back to USD.
+      render: (r) => (
+        <Toggle
+          checked={r.is_settlement}
+          disabled={update.isPending}
+          onChange={(v) =>
+            update.mutate({
+              code: r.currency_code,
+              patch: { is_settlement: v },
+            })
+          }
+        />
+      ),
     },
     {
       key: "active",

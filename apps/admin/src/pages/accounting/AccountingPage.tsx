@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { EmptyState } from "@/components/ui/primitives";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { cn } from "@/lib/cn";
 
 // Tabs are imported statically ON PURPOSE: the page itself is already a
@@ -48,6 +49,7 @@ export default function AccountingPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="accounting" />
       <div>
         <h1 className="font-display text-2xl font-medium">Accounting</h1>
         <p className="text-text-muted text-sm mt-0.5">

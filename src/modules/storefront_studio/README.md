@@ -9,6 +9,23 @@
 - `storefront_pages`
 - `storefront_navigation`
 - `storefront_revisions`
+- `<brand>.storefront_content_posts` (per-brand — the Content CMS)
+
+## Content CMS (FAQ / care guide / journal / policy)
+
+The **Content** tab manages `storefront_content_posts` — the shop's public
+words. Unlike theme/nav/pages (one draft + one published row in shared
+tables), a content post is a **single per-brand row** with its own `status`
+lifecycle, so publish/unpublish just flip `status` (no row duplication, no
+revision snapshot).
+
+Published posts do double duty: they render on the storefront (journal,
+policy, care pages) **and** feed Praxis's Brand Brain, so a shop grows what
+its AI stylist can talk about just by writing here. The public reads and the
+Brand Brain both filter `status = 'published'`, so a **draft is never shown
+or quoted** — which is what lets Praxis stay honest. The editor derives the
+slug, reading time and empty SEO fields (see `content-helpers.js`), so an
+operator only types a title and the answer/body.
 
 ## Files
 
@@ -20,6 +37,7 @@
 | `studio.repo.js`       | Parameterised SQL only               |
 | `studio.validator.js`  | Zod input schemas                    |
 | `studio.events.js`     | Domain events for realtime + AI      |
+| `content-helpers.js`   | Pure slug / reading-time / SEO derivation (unit-tested) |
 
 ## TODOs
 

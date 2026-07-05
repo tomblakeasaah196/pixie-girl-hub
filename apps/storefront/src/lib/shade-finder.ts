@@ -1,5 +1,6 @@
 import { io, type Socket } from "socket.io-client";
 import { clientBrand } from "./brand";
+import { deviceId } from "./device";
 import type { ProductCard } from "./storefront";
 
 /**
@@ -44,6 +45,14 @@ export interface ShadeQuota {
   resets_in_seconds: number;
 }
 
+/** A validated brand reference — always a real storefront route. */
+export interface ShadeReference {
+  key: string;
+  label: string;
+  href: string;
+  kind: string;
+}
+
 export interface ShadeResult {
   message: string;
   confidence: "low" | "medium" | "high";
@@ -51,6 +60,7 @@ export interface ShadeResult {
   shade: ShadeRef | null;
   alternates: ShadeRef[];
   products: ShadeProduct[];
+  references?: ShadeReference[];
   perceived?: { undertone: string; depth: number; lighting: string };
   quota: ShadeQuota;
   privacy: string;
@@ -81,19 +91,6 @@ export type ShadeStage =
   | "done"
   | "error"
   | "ended";
-
-// ── Device id (anonymous quota key; not tracking) ───────────
-
-const DEVICE_KEY = "sf_device_id";
-export function deviceId(): string {
-  if (typeof window === "undefined") return "ssr";
-  let id = localStorage.getItem(DEVICE_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(DEVICE_KEY, id);
-  }
-  return id;
-}
 
 // ── Raw fetch (multipart needs its own path; api.ts is JSON-only) ──
 

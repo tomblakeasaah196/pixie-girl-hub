@@ -77,6 +77,30 @@ router.post(
   controller.uploadImage,
 );
 
+// Content posts (FAQ / care guide / journal / policy) — the storefront CMS
+// that also feeds Praxis's Brand Brain. Single-row status lifecycle, so
+// publish/unpublish flip status rather than duplicating a draft.
+router.get("/content", can("view"), controller.listContent);
+router.post(
+  "/content",
+  can("edit"),
+  validator.validateContentPost,
+  controller.createContent,
+);
+router.put(
+  "/content/:postId",
+  can("edit"),
+  validator.validateContentPost,
+  controller.updateContent,
+);
+router.post("/content/:postId/publish", can("approve"), controller.publishContent);
+router.post(
+  "/content/:postId/unpublish",
+  can("approve"),
+  controller.unpublishContent,
+);
+router.delete("/content/:postId", can("approve"), controller.deleteContent);
+
 // Section template library for the page composer.
 router.get("/section-templates", can("view"), controller.listSectionTemplates);
 

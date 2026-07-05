@@ -33,6 +33,39 @@ function isConfigured() {
   return !!config.GEMINI_API_KEY;
 }
 
+// The public Generative Language API lives ONLY at this host. A .env that
+// overrides GEMINI_BASE_URL with a plausible-but-wrong host (e.g.
+// gemini.api.google.com) makes every call die with getaddrinfo ENOTFOUND
+// before it leaves the box — an invisible, uniform 503 across every AI
+// feature (Shade Finder, Shop AI Search, Praxis). This surfaces that at
+// boot instead. Warning-only: never take the whole backend down over a
+// misconfigured optional AI host. Called once from server bootstrap.
+const EXPECTED_GEMINI_HOSTS = new Set([
+  "generativelanguage.googleapis.com",
+]);
+function checkConfigAtBoot() {
+  if (!isConfigured()) {
+    logger.warn("GEMINI_API_KEY is not set — Gemini-backed AI features are disabled");
+    return;
+  }
+  let host = null;
+  try {
+    host = new URL(config.GEMINI_BASE_URL).hostname;
+  } catch {
+    logger.error(
+      { GEMINI_BASE_URL: config.GEMINI_BASE_URL },
+      "GEMINI_BASE_URL is not a valid URL — every Gemini call will fail; expected https://generativelanguage.googleapis.com",
+    );
+    return;
+  }
+  if (!EXPECTED_GEMINI_HOSTS.has(host)) {
+    logger.error(
+      { host, GEMINI_BASE_URL: config.GEMINI_BASE_URL },
+      "GEMINI_BASE_URL points at an unexpected host — Gemini calls will likely fail with ENOTFOUND; expected generativelanguage.googleapis.com (unset GEMINI_BASE_URL to use the correct default)",
+    );
+  }
+}
+
 /**
  * Translate our generic message array into Gemini's `contents` shape.
  *
@@ -80,6 +113,10 @@ function toGeminiContents({ system, messages }) {
  * @param {number} [args.maxOutputTokens]
  * @param {object} [args.responseSchema] Gemini structured-output schema; when
  *                 set the response is forced to application/json.
+ * @param {number} [args.thinkingBudget] Max thinking tokens (Gemini 2.5).
+ *                 Pass 0 to disable thinking — otherwise thought tokens are
+ *                 billed against maxOutputTokens and can leave no room for
+ *                 the actual answer. Omit to keep the model default.
  */
 async function chatCompletion({
   system,
@@ -89,6 +126,7 @@ async function chatCompletion({
   maxOutputTokens = 1024,
   timeoutMs = 30000,
   responseSchema,
+  thinkingBudget,
 }) {
   if (!isConfigured()) {
     const err = new Error("GEMINI_NOT_CONFIGURED");
@@ -112,6 +150,14 @@ async function chatCompletion({
       ...(responseSchema
         ? { responseMimeType: "application/json", responseSchema }
         : {}),
+      // Gemini 2.5 models "think" by default and the thought tokens come out
+      // of maxOutputTokens — a tight budget can be consumed entirely by
+      // thinking, returning HTTP 200 with finishReason=MAX_TOKENS and NO text
+      // parts. Callers that want fast deterministic output (e.g. structured
+      // JSON extraction) pass thinkingBudget: 0 to disable thinking.
+      ...(thinkingBudget !== undefined
+        ? { thinkingConfig: { thinkingBudget } }
+        : {}),
     },
   };
   try {
@@ -123,6 +169,26 @@ async function chatCompletion({
       .map((p) => (typeof p.text === "string" ? p.text : ""))
       .join("")
       .trim();
+    // An empty reply on HTTP 200 is otherwise invisible — surface WHY
+    // (MAX_TOKENS = thinking ate the budget, SAFETY/blockReason = filtered).
+    if (!text) {
+      logger.warn(
+        {
+          model: modelId,
+          finish_reason: (candidate && candidate.finishReason) || null,
+          block_reason:
+            (data && data.promptFeedback && data.promptFeedback.blockReason) ||
+            null,
+          parts_count: parts.length,
+          thoughts_token_count:
+            (data &&
+              data.usageMetadata &&
+              data.usageMetadata.thoughtsTokenCount) ||
+            0,
+        },
+        "gemini.chatCompletion returned no text",
+      );
+    }
     const usage = data && data.usageMetadata;
     return {
       text,
@@ -134,10 +200,19 @@ async function chatCompletion({
   } catch (err) {
     const status =
       err.response && err.response.status ? err.response.status : null;
+    // Google's response body says WHY (bad schema, blocked key, quota…) —
+    // without it a 400 is undiagnosable from our logs.
+    const apiError =
+      (err.response &&
+        err.response.data &&
+        err.response.data.error &&
+        err.response.data.error.message) ||
+      null;
     logger.warn(
       {
         status,
         err: err.message,
+        api_error: apiError,
         model: modelId,
       },
       "gemini.chatCompletion failed",
@@ -145,10 +220,11 @@ async function chatCompletion({
     const e = new Error(`gemini call failed (${status || "no response"})`);
     e.code = "GEMINI_CALL_FAILED";
     e.status = status;
+    e.api_message = apiError;
     e.retryable =
       status === null || status >= 500 || status === 429 || status === 408;
     throw e;
   }
 }
 
-module.exports = { isConfigured, chatCompletion };
+module.exports = { isConfigured, checkConfigAtBoot, chatCompletion };

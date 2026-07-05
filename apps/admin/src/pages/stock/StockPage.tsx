@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { Tabs } from "./parts";
 import OverviewTab from "./OverviewTab";
 import ReceiveTab from "./ReceiveTab";
@@ -34,6 +35,7 @@ export function StockPage() {
 
   return (
     <div className="space-y-5">
+      <ModuleInsights module="stock" />
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
       {tab === "overview" && <OverviewTab />}
       {tab === "receive" && <ReceiveTab />}

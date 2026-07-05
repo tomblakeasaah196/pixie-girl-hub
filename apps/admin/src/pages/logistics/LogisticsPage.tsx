@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Truck,
   Plus,
@@ -13,9 +14,12 @@ import {
   Clock,
   CircleAlert,
   Trash2,
+  Scissors,
+  ExternalLink,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { money } from "@/lib/format";
 import {
   Button,
@@ -51,6 +55,34 @@ import { ShippingRatesTab } from "./ShippingRates";
  * Logistics (`/logistics`) — dispatch queue, tracking and proof of delivery.
  * Ports the hub-system UX onto this backend's delivery state machine.
  */
+
+// Studio job status → short label + tone, so dispatchers see at a glance
+// whether the wig is still being styled (and can pre-arrange the courier).
+// `ready`/`handed`/`completed` mean the piece is out of the studio.
+type StudioTone = "success" | "warn" | "info" | "danger" | "neutral";
+const STUDIO_STATUS: Record<string, { label: string; tone: StudioTone }> = {
+  pending: { label: "Studio: awaiting stylist", tone: "warn" },
+  assigned: { label: "Studio: assigned", tone: "info" },
+  in_progress: { label: "Studio: styling", tone: "info" },
+  on_hold: { label: "Studio: on hold", tone: "warn" },
+  returned_for_qc: { label: "Studio: in QC", tone: "warn" },
+  qc_passed: { label: "Studio: QC passed", tone: "success" },
+  rework: { label: "Studio: rework", tone: "warn" },
+  ready_for_dispatch: { label: "Studio: ready ✓", tone: "success" },
+  handed_to_sales: { label: "Studio: handed over ✓", tone: "success" },
+  completed: { label: "Studio: done ✓", tone: "success" },
+  rejected: { label: "Studio: rejected", tone: "danger" },
+  cancelled: { label: "Studio: cancelled", tone: "neutral" },
+};
+// Whether the wig is still physically in the studio (dispatch must wait).
+const STUDIO_IN_PROGRESS = new Set([
+  "pending",
+  "assigned",
+  "in_progress",
+  "on_hold",
+  "returned_for_qc",
+  "rework",
+]);
 
 type Tab = "queue" | "active" | "delivered" | "issues" | "all" | "rates";
 
@@ -95,6 +127,7 @@ export function LogisticsPage() {
 
   return (
     <div className="max-w-[1180px] space-y-5">
+      <ModuleInsights module="logistics" />
       {tab !== "rates" && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center flex-1 min-w-[220px] max-w-md rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">
@@ -190,6 +223,17 @@ export function LogisticsPage() {
                     </Pill>
                   )}
                   {d.is_pay_on_delivery && <Pill tone="warn" dot={false}>POD</Pill>}
+                  {/* Styling status — dispatchers can see whether the wig is
+                      still in the studio before booking a courier. */}
+                  {d.service_job_status && STUDIO_STATUS[d.service_job_status] && (
+                    <Pill
+                      tone={STUDIO_STATUS[d.service_job_status].tone}
+                      dot={false}
+                    >
+                      <Scissors className="w-3 h-3 inline mr-1" />
+                      {STUDIO_STATUS[d.service_job_status].label}
+                    </Pill>
+                  )}
                 </div>
                 <div className="text-[13px] mt-0.5 truncate">
                   {d.customer_name || d.recipient_name_snapshot || d.delivery_address_snapshot?.recipient_name || "—"}
@@ -228,6 +272,7 @@ export function LogisticsPage() {
 
 function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { can } = useAuthStore();
+  const navigate = useNavigate();
   const detailQ = useDelivery(id);
   const book = useBookDelivery();
   const advance = useAdvanceDelivery();
@@ -260,9 +305,66 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
         </div>
       ) : (
         <div className="space-y-4 p-1">
-          <Pill tone={STATUS_META[d.status]?.tone ?? "neutral"}>
-            {STATUS_META[d.status]?.label ?? d.status}
-          </Pill>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Pill tone={STATUS_META[d.status]?.tone ?? "neutral"}>
+              {STATUS_META[d.status]?.label ?? d.status}
+            </Pill>
+            {d.order_number && (
+              <button
+                type="button"
+                onClick={() => navigate(`/sales/orders/${d.order_id}`)}
+                className="font-mono text-[11px] text-accent hover:underline inline-flex items-center gap-1"
+              >
+                <Package className="w-3 h-3" />
+                {d.order_number}
+              </button>
+            )}
+          </div>
+
+          {/* Styling status — the wig may still be in the studio. Dispatch can
+              see the stage and jump to the exact job to pre-arrange a courier
+              (or hold off booking until it's out of QC). */}
+          {d.service_job_status && (
+            <div
+              className={`rounded-xl border p-3 flex items-center justify-between gap-2 ${
+                STUDIO_IN_PROGRESS.has(d.service_job_status)
+                  ? "border-warn/30 bg-warn/[0.05]"
+                  : "border-success/25 bg-success/[0.05]"
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Scissors className="w-4 h-4 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold">
+                    {STUDIO_STATUS[d.service_job_status]?.label ??
+                      `Studio: ${d.service_job_status}`}
+                  </div>
+                  {d.service_job_number && (
+                    <div className="text-[11px] text-text-faint font-mono">
+                      {d.service_job_number}
+                      {STUDIO_IN_PROGRESS.has(d.service_job_status)
+                        ? " · still in studio"
+                        : " · out of studio"}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {d.service_job_id && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<ExternalLink className="w-3.5 h-3.5" />}
+                  onClick={() =>
+                    navigate(
+                      `/service-jobs?tab=board&job=${d.service_job_id}`,
+                    )
+                  }
+                >
+                  Studio
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Recipient + address */}
           <div className="rounded-xl border border-line p-3 space-y-1.5">

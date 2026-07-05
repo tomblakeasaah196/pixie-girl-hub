@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
+  ArrowUpRight,
   Camera,
   ImagePlus,
   Loader2,
@@ -13,7 +15,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { Section, ProductCardLink } from "@/components/parts";
+import { priceFor } from "@/lib/storefront";
 import { useCurrency } from "@/lib/useStore";
 import {
   analyzePhoto,
@@ -26,6 +28,7 @@ import {
   startShadeSession,
   type ShadeQuota,
   type ShadeRef,
+  type ShadeReference,
   type ShadeResult,
   type ShadeSession,
   type ShadeStage,
@@ -47,7 +50,13 @@ export const Route = createFileRoute("/shade-finder")({
 type ChatItem =
   | { id: string; role: "user"; kind: "text"; text: string }
   | { id: string; role: "user"; kind: "photo"; photoUrl: string; caption?: string }
-  | { id: string; role: "praxis"; kind: "text"; text: string }
+  | {
+      id: string;
+      role: "praxis";
+      kind: "text";
+      text: string;
+      references?: ShadeReference[];
+    }
   | {
       id: string;
       role: "praxis";
@@ -72,9 +81,20 @@ const FALLBACK_STAGES: ShadeStage[] = [
 ];
 
 const WELCOME =
-  "Hi, I'm Praxis — your personal shade stylist. Share a clear photo of yourself in natural light and I'll read your undertone and depth, find the shade family made for you, and pull the exact styles that carry it. You can also just chat to me about what you're after.";
+  "Hi, I'm Praxis — your personal stylist and concierge. Share a clear photo in natural light and I'll read your undertone, find your shade, and pull the exact styles that carry it. Or just talk to me — the occasion you're dressing for, wig care, our salon services, delivery, anything about the brand.";
 
 const SESSION_KEY = "sf_session";
+
+// Tap-to-start prompts (Gemini/Claude-style) — cut typing and aimless
+// scrolling by handing the visitor a clear first move. Spans the full
+// consultant range, not just shade tweaks.
+const SUGGESTIONS = [
+  "Something warmer",
+  "Deep & rich",
+  "Under ₦200k",
+  "How do I care for my wig?",
+  "Delivery & returns",
+];
 
 // ── Page ────────────────────────────────────────────────────
 
@@ -115,14 +135,28 @@ function ShadeFinderPage() {
         };
         try {
           const state = await getShadeSession(sid, token);
+          const history = state.history.map(
+            (h): ChatItem =>
+              h.role === "user"
+                ? { id: cid(), role: "user", kind: "text", text: h.content }
+                : { id: cid(), role: "praxis", kind: "text", text: h.content },
+          );
+          // The result card carries its own message, so drop the trailing
+          // assistant text bubble that would otherwise duplicate it on restore.
+          if (state.last_result?.shade) {
+            for (let i = history.length - 1; i >= 0; i--) {
+              const h = history[i];
+              if (h.role === "praxis") {
+                if (h.kind === "text" && h.text === state.last_result.message) {
+                  history.splice(i, 1);
+                }
+                break;
+              }
+            }
+          }
           const restored: ChatItem[] = [
             { id: cid(), role: "praxis", kind: "text", text: WELCOME },
-            ...state.history.map(
-              (h): ChatItem =>
-                h.role === "user"
-                  ? { id: cid(), role: "user", kind: "text", text: h.content }
-                  : { id: cid(), role: "praxis", kind: "text", text: h.content },
-            ),
+            ...history,
           ];
           if (state.last_result?.shade) {
             restored.push({
@@ -171,6 +205,16 @@ function ShadeFinderPage() {
   useEffect(() => {
     void boot();
   }, [boot]);
+
+  // Immersive frame: the page owns the viewport, so lock the body scroll
+  // while it's mounted — no rubber-band page scroll fighting the thread.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
 
   // ── Live socket (stages only; HTTP carries the answer) ────
   useEffect(() => {
@@ -243,7 +287,13 @@ function ShadeFinderPage() {
       ...it,
       r.shade
         ? { id: cid(), role: "praxis", kind: "result", result: r }
-        : { id: cid(), role: "praxis", kind: "text", text: r.message },
+        : {
+            id: cid(),
+            role: "praxis",
+            kind: "text",
+            text: r.message,
+            references: r.references,
+          },
     ]);
   };
 
@@ -276,10 +326,8 @@ function ShadeFinderPage() {
     }
   };
 
-  const sendText = async () => {
-    const message = input.trim();
-    if (!session || !message || busy) return;
-    if (pendingFile) return void sendPhoto();
+  const ask = async (message: string) => {
+    if (!session || !message.trim() || busy) return;
     setItems((it) => [...it, { id: cid(), role: "user", kind: "text", text: message }]);
     setInput("");
     setBusy(true);
@@ -293,6 +341,11 @@ function ShadeFinderPage() {
       setBusy(false);
       stopStages();
     }
+  };
+
+  const sendText = () => {
+    if (pendingFile) return void sendPhoto();
+    void ask(input.trim());
   };
 
   const finish = async () => {
@@ -311,13 +364,17 @@ function ShadeFinderPage() {
   };
 
   // ── Render ────────────────────────────────────────────────
+  // Immersive, single-scroll app frame (Claude/Gemini-style): a quiet pinned
+  // top bar, the conversation as the ONLY scroll region, and a composer welded
+  // to the bottom. Site header/footer are suppressed for this route in
+  // __root.tsx so nothing competes for the scroll.
 
   if (phase === "boot") return <BootSkeleton />;
   if (phase === "error")
     return (
-      <Section>
-        <div className="mx-auto max-w-md py-24 text-center">
-          <p className="text-body text-destructive">
+      <FrameShell>
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+          <p className="max-w-md text-body text-destructive">
             {bootError || "Praxis couldn't come to the phone — please try again."}
           </p>
           <button
@@ -327,15 +384,15 @@ function ShadeFinderPage() {
             <RefreshCcw className="h-4 w-4" /> Retry
           </button>
         </div>
-      </Section>
+      </FrameShell>
     );
   if (ended)
     return (
-      <Section>
-        <div className="mx-auto max-w-xl py-24 text-center">
-          <ShieldCheck className="mx-auto h-8 w-8 text-champagne" />
+      <FrameShell>
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+          <ShieldCheck className="h-8 w-8 text-champagne" />
           <h1 className="mt-4 text-h2 font-couture">All cleared away</h1>
-          <p className="mt-3 text-body text-muted-foreground">
+          <p className="mt-3 max-w-md text-body text-muted-foreground">
             Your chat and colour notes are deleted. Photos were never stored in
             the first place.
           </p>
@@ -346,61 +403,70 @@ function ShadeFinderPage() {
             Start a new session
           </button>
         </div>
-      </Section>
+      </FrameShell>
     );
 
   const exhausted = (quota?.remaining ?? 1) <= 0;
+  const showSuggestions = items.length <= 1 && !busy && !exhausted && !pendingUrl;
 
   return (
-    <Section className="max-w-3xl">
-      {/* Header */}
-      <div className="text-center">
-        <p className="text-caption uppercase tracking-[0.2em] text-muted-foreground">
-          Praxis · AI stylist
-        </p>
-        <h1 className="mt-2 text-h1 font-couture">Find your shade</h1>
-        <p className="mx-auto mt-3 max-w-xl text-body text-muted-foreground">
-          One photo. Your undertone, your depth, your shade family — and the
-          exact styles that carry it.
-        </p>
-      </div>
-
-      {/* Chat card */}
-      <div className="mt-10 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        {/* Bar */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-3 md:px-5">
-          <div className="flex items-center gap-2.5">
-            <PraxisAvatar />
-            <div>
-              <p className="text-body-sm font-medium">Praxis</p>
-              <p className="text-caption text-muted-foreground">Shade stylist</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {quota ? (
-              <span
-                className={`rounded-full border px-3 py-1 text-caption ${
-                  exhausted
-                    ? "border-destructive/40 text-destructive"
-                    : "border-border text-muted-foreground"
-                }`}
-                title="Photo analyses reset at midnight"
-              >
-                {quota.remaining} of {quota.limit} looks left today
-              </span>
-            ) : null}
-            <button
-              onClick={() => void finish()}
-              className="inline-flex items-center gap-1.5 text-caption text-muted-foreground transition-colors hover:text-destructive"
-              title="End the session and delete everything now"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> End &amp; delete
-            </button>
+    <FrameShell>
+      {/* Pinned top bar */}
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background/80 px-3 py-2.5 backdrop-blur-md md:px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Link
+            to="/shop"
+            aria-label="Back to store"
+            className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <ArrowLeft className="h-4.5 w-4.5" />
+          </Link>
+          <PraxisAvatar />
+          <div className="min-w-0">
+            <p className="truncate text-body-sm font-medium">Praxis</p>
+            <p className="text-caption text-muted-foreground">
+              Stylist &amp; concierge
+            </p>
           </div>
         </div>
+        <div className="flex items-center gap-2.5">
+          {quota ? (
+            <span
+              className={`hidden rounded-full border px-3 py-1 text-caption sm:inline ${
+                exhausted
+                  ? "border-destructive/40 text-destructive"
+                  : "border-border text-muted-foreground"
+              }`}
+              title="Photo analyses reset at midnight"
+            >
+              {quota.remaining} of {quota.limit} looks left today
+            </span>
+          ) : null}
+          <button
+            onClick={() => void finish()}
+            className="inline-flex items-center gap-1.5 text-caption text-muted-foreground transition-colors hover:text-destructive"
+            title="End the session and delete everything now"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">End &amp; delete</span>
+          </button>
+        </div>
+      </header>
 
-        {/* Messages */}
-        <div className="max-h-[60vh] min-h-[320px] overflow-y-auto px-4 py-6 md:px-6">
+      {/* The one scroll region — the conversation itself */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto flex min-h-full max-w-2xl flex-col px-4 pb-4 pt-6 md:px-6">
+          {/* Title lives at the top of the thread, so it scrolls away and
+              never permanently eats the viewport. */}
+          <div className="pb-4 text-center">
+            <p className="text-caption text-muted-foreground">Praxis · AI stylist</p>
+            <h1 className="mt-2 text-h3 font-couture md:text-h2">Find your shade</h1>
+            <p className="mx-auto mt-2 max-w-md text-body-sm text-muted-foreground">
+              One photo finds your shade — and I'm here for everything else
+              too: styles, care, services, delivery.
+            </p>
+          </div>
+
           <AnimatePresence initial={false}>
             {items.map((item) => (
               <motion.div
@@ -415,62 +481,83 @@ function ShadeFinderPage() {
                 ) : item.kind === "result" ? (
                   <ResultBubble result={item.result} currency={currency} />
                 ) : (
-                  <PraxisBubble text={item.text} />
+                  <PraxisBubble text={item.text} references={item.references} />
                 )}
               </motion.div>
             ))}
           </AnimatePresence>
 
+          {/* Tap-to-start prompts (only before the conversation gets going) */}
+          {showSuggestions ? (
+            <div className="mb-2 flex flex-wrap gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-3.5 py-2 text-body-sm text-foreground transition-colors hover:bg-secondary"
+              >
+                <Camera className="h-3.5 w-3.5" /> Share a photo
+              </button>
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => void ask(s)}
+                  className="rounded-full border border-border bg-card/60 px-3.5 py-2 text-body-sm text-foreground transition-colors hover:bg-secondary"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {busy ? <ThinkingBubble stage={stage} /> : null}
           <div ref={bottomRef} />
         </div>
+      </div>
 
-        {/* Pending photo tray */}
-        {pendingUrl ? (
-          <div className="flex items-center gap-4 border-t border-border bg-secondary/50 px-4 py-3 md:px-5">
-            <img
-              src={pendingUrl}
-              alt="Your photo, ready to analyse"
-              className="h-16 w-16 rounded-md object-cover"
+      {/* Pending photo tray (pinned above the composer) */}
+      {pendingUrl ? (
+        <div className="flex shrink-0 items-center gap-3 border-t border-border bg-secondary/50 px-4 py-3 md:px-6">
+          <img
+            src={pendingUrl}
+            alt="Your photo, ready to analyse"
+            className="h-14 w-14 rounded-md object-cover"
+          />
+          <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-caption normal-case tracking-normal text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              className="mt-0.5 accent-current"
             />
-            <div className="min-w-0 flex-1">
-              <label className="flex cursor-pointer items-start gap-2 text-caption text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-0.5 accent-current"
-                />
-                <span>
-                  I'm happy for Praxis to analyse this photo. It's never saved —
-                  discarded the moment the analysis ends.
-                </span>
-              </label>
-            </div>
-            <button
-              onClick={() => pickFile(null)}
-              aria-label="Remove photo"
-              className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => void sendPhoto()}
-              disabled={!consent || busy || exhausted}
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-body-sm text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              Analyse
-            </button>
-          </div>
-        ) : null}
+            <span className="text-[0.72rem] leading-snug">
+              I'm happy for Praxis to analyse this photo. It's never saved —
+              discarded the moment the analysis ends.
+            </span>
+          </label>
+          <button
+            onClick={() => pickFile(null)}
+            aria-label="Remove photo"
+            className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => void sendPhoto()}
+            disabled={!consent || busy || exhausted}
+            className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-body-sm text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            Analyse
+          </button>
+        </div>
+      ) : null}
 
-        {/* Composer */}
-        <div className="border-t border-border px-4 py-3 md:px-5">
+      {/* Pinned composer */}
+      <div className="shrink-0 border-t border-border bg-background/85 px-4 pb-4 pt-3 backdrop-blur-md md:px-6">
+        <div className="mx-auto max-w-2xl">
           {exhausted ? (
             <p className="py-1 text-center text-body-sm text-muted-foreground">
               You've used today's free looks — Praxis resets at midnight ✨ You
@@ -494,7 +581,7 @@ function ShadeFinderPage() {
                 disabled={busy}
                 aria-label="Add a photo"
                 title="Add a photo"
-                className="rounded-full border border-border p-2.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+                className="shrink-0 rounded-full border border-border p-2.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
               >
                 {pendingFile ? (
                   <ImagePlus className="h-4.5 w-4.5" />
@@ -508,37 +595,43 @@ function ShadeFinderPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    void sendText();
+                    sendText();
                   }
                 }}
                 placeholder={
                   pendingFile
                     ? "Add a note with your photo (optional)…"
-                    : "Ask Praxis anything — “something warmer?”, “under ₦200k?”…"
+                    : "Ask Praxis anything — shades, care, delivery…"
                 }
                 disabled={busy}
-                className="min-w-0 flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-body-sm outline-none placeholder:text-muted-foreground/70 focus:border-ring"
+                className="min-w-0 flex-1 rounded-full border border-border bg-card px-4 py-2.5 text-body-sm outline-none placeholder:text-muted-foreground/70 focus:border-ring"
               />
               <button
-                onClick={() => void sendText()}
+                onClick={() => sendText()}
                 disabled={busy || (!input.trim() && !pendingFile)}
                 aria-label="Send"
-                className="rounded-full bg-primary p-2.5 text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+                className="shrink-0 rounded-full bg-primary p-2.5 text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
               >
                 <Send className="h-4.5 w-4.5" />
               </button>
             </div>
           )}
+          <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[0.68rem] text-muted-foreground">
+            <ShieldCheck className="h-3 w-3 shrink-0" />
+            Photos are analysed in memory and never saved.
+          </p>
         </div>
       </div>
+    </FrameShell>
+  );
+}
 
-      {/* Privacy line */}
-      <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-caption text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-        Photos are analysed in memory and never saved — everything is deleted
-        when your session ends.
-      </p>
-    </Section>
+/** Full-viewport column: pinned bars top & bottom, one scroll in between. */
+function FrameShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-background">
+      {children}
+    </div>
   );
 }
 
@@ -552,7 +645,13 @@ function PraxisAvatar() {
   );
 }
 
-function PraxisBubble({ text }: { text: string }) {
+function PraxisBubble({
+  text,
+  references,
+}: {
+  text: string;
+  references?: ShadeReference[];
+}) {
   return (
     <div className="flex max-w-[85%] items-end gap-2.5">
       <div className="hidden shrink-0 md:block">
@@ -560,19 +659,43 @@ function PraxisBubble({ text }: { text: string }) {
       </div>
       <div className="rounded-2xl rounded-bl-md bg-secondary px-4 py-3 text-body-sm leading-relaxed">
         {text}
+        <ReferenceChips references={references} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Tappable brand references under a Praxis reply. Every href is validated
+ * server-side against a closed registry of real storefront routes, so a
+ * chip can never 404. Plain anchors: each destination leaves the chat frame.
+ */
+function ReferenceChips({ references }: { references?: ShadeReference[] }) {
+  if (!references || references.length === 0) return null;
+  return (
+    <span className="mt-2.5 flex flex-wrap gap-2">
+      {references.map((r) => (
+        <a
+          key={r.key}
+          href={r.href}
+          className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 px-3 py-1 text-caption text-foreground transition-colors hover:bg-card"
+        >
+          {r.label}
+          <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
+        </a>
+      ))}
+    </span>
   );
 }
 
 function UserBubble({ item }: { item: Extract<ChatItem, { role: "user" }> }) {
   if (item.kind === "photo") {
     return (
-      <div className="max-w-[70%]">
+      <div className="max-w-[60%]">
         <img
           src={item.photoUrl}
           alt="The photo you shared"
-          className="max-h-56 rounded-2xl rounded-br-md object-cover"
+          className="max-h-40 max-w-[9rem] rounded-2xl rounded-br-md object-cover"
         />
         {item.caption ? (
           <p className="mt-1.5 text-right text-caption text-muted-foreground">
@@ -675,7 +798,7 @@ function ResultBubble({
                 <img
                   src={shade.cover_image_url}
                   alt={shade.name}
-                  className="h-28 w-24 shrink-0 object-cover transition-transform duration-500 group-hover:scale-105 md:h-32 md:w-32"
+                  className="h-20 w-16 shrink-0 object-cover transition-transform duration-500 group-hover:scale-105 md:h-24 md:w-20"
                 />
               ) : null}
               <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5 px-4 py-3">
@@ -694,11 +817,11 @@ function ResultBubble({
             </div>
           </Link>
 
-          {/* Product picks */}
+          {/* Product picks — compact swipe rail, not a heavy grid */}
           {result.products.length > 0 ? (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
               {result.products.map((p) => (
-                <ProductCardLink key={p.styled_id} p={p} currency={currency} />
+                <PickCard key={p.styled_id} p={p} currency={currency} />
               ))}
             </div>
           ) : null}
@@ -727,33 +850,69 @@ function ResultBubble({
               {result.followup_question}
             </p>
           ) : null}
+
+          <ReferenceChips references={result.references} />
         </div>
       </div>
     </div>
   );
 }
 
+/** Compact product pick — a slim card for the result rail (not the big grid). */
+function PickCard({
+  p,
+  currency,
+}: {
+  p: { styled_id: string; name: string; slug: string; cover_image_url?: string | null } & Parameters<typeof priceFor>[0];
+  currency: ReturnType<typeof useCurrency>[0];
+}) {
+  return (
+    <Link
+      to="/product/$slug"
+      params={{ slug: p.slug }}
+      className="group block w-24 shrink-0"
+    >
+      <div className="aspect-[3/4] w-24 overflow-hidden rounded-lg bg-card">
+        {p.cover_image_url ? (
+          <img
+            src={p.cover_image_url}
+            alt={p.name}
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[0.6rem] text-muted-foreground">
+            No image
+          </div>
+        )}
+      </div>
+      <p className="mt-1.5 truncate text-[0.72rem] leading-tight">{p.name}</p>
+      <p className="mt-0.5 font-mono text-[0.68rem] text-muted-foreground">
+        {priceFor(p, currency)}
+      </p>
+    </Link>
+  );
+}
+
 function BootSkeleton() {
   return (
-    <Section className="max-w-3xl">
-      <div className="animate-pulse text-center">
-        <div className="mx-auto h-3 w-32 rounded bg-secondary" />
-        <div className="mx-auto mt-4 h-10 w-64 rounded bg-secondary" />
-        <div className="mx-auto mt-4 h-4 w-80 rounded bg-secondary" />
+    <FrameShell>
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-border px-4 py-3 md:px-5">
+        <div className="h-9 w-9 animate-pulse rounded-full bg-secondary" />
+        <div className="h-8 w-28 animate-pulse rounded bg-secondary" />
       </div>
-      <div className="mt-10 animate-pulse rounded-xl border border-border">
-        <div className="border-b border-border px-5 py-4">
-          <div className="h-9 w-40 rounded-full bg-secondary" />
-        </div>
-        <div className="space-y-4 px-6 py-8">
-          <div className="h-16 w-3/4 rounded-2xl bg-secondary" />
-          <div className="ml-auto h-10 w-1/2 rounded-2xl bg-secondary" />
+      <div className="flex-1 overflow-hidden">
+        <div className="mx-auto max-w-2xl animate-pulse space-y-5 px-4 pt-10 md:px-6">
+          <div className="mx-auto h-8 w-56 rounded bg-secondary" />
+          <div className="mx-auto h-4 w-72 rounded bg-secondary" />
+          <div className="mt-8 h-16 w-3/4 rounded-2xl bg-secondary" />
+          <div className="ml-auto h-24 w-32 rounded-2xl bg-secondary" />
           <div className="h-16 w-2/3 rounded-2xl bg-secondary" />
         </div>
-        <div className="border-t border-border px-5 py-4">
-          <div className="h-10 w-full rounded-full bg-secondary" />
-        </div>
       </div>
-    </Section>
+      <div className="shrink-0 border-t border-border px-4 py-4 md:px-6">
+        <div className="mx-auto h-11 w-full max-w-2xl animate-pulse rounded-full bg-secondary" />
+      </div>
+    </FrameShell>
   );
 }

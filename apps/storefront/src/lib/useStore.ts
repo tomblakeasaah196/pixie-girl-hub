@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useReducer, useState, useCallback } from "react";
 import { getCart, type Currency } from "./storefront";
 
 /**
@@ -8,9 +8,12 @@ import { getCart, type Currency } from "./storefront";
  * SSR-safe: defaults on the server, hydrates on the client.
  */
 
-const CURRENCY_KEY = "sf_currency";
+export const CURRENCY_KEY = "sf_currency";
 const CART_EVENT = "sf:cart-changed";
 const CURRENCY_EVENT = "sf:currency-changed";
+// Fired by lib/money when the currency runtime (rates/symbols) hydrates from the
+// server feed. useCurrency re-renders on it so prices convert once rates land.
+const CURRENCY_RUNTIME_EVENT = "sf:currency-runtime";
 
 export function notifyCartChanged() {
   if (typeof window !== "undefined")
@@ -19,16 +22,23 @@ export function notifyCartChanged() {
 
 export function useCurrency(): [Currency, (c: Currency) => void] {
   const [currency, setCurrencyState] = useState<Currency>("NGN");
+  // Re-render when the currency runtime hydrates so module-cached rates take
+  // effect on already-mounted price components (priceFor reads that cache).
+  const [, bump] = useReducer((x: number) => x + 1, 0);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(CURRENCY_KEY) as Currency | null;
-    if (stored === "NGN" || stored === "USD") setCurrencyState(stored);
+    const stored = window.localStorage.getItem(CURRENCY_KEY);
+    if (stored) setCurrencyState(stored);
     const onChange = () => {
-      const v = window.localStorage.getItem(CURRENCY_KEY) as Currency | null;
-      if (v === "NGN" || v === "USD") setCurrencyState(v);
+      const v = window.localStorage.getItem(CURRENCY_KEY);
+      if (v) setCurrencyState(v);
     };
     window.addEventListener(CURRENCY_EVENT, onChange);
-    return () => window.removeEventListener(CURRENCY_EVENT, onChange);
+    window.addEventListener(CURRENCY_RUNTIME_EVENT, bump);
+    return () => {
+      window.removeEventListener(CURRENCY_EVENT, onChange);
+      window.removeEventListener(CURRENCY_RUNTIME_EVENT, bump);
+    };
   }, []);
 
   const setCurrency = useCallback((c: Currency) => {

@@ -5,6 +5,7 @@ import {
   createRootRouteWithContext,
   HeadContent,
   Scripts,
+  useRouterState,
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Toaster } from "sonner";
@@ -20,6 +21,7 @@ import { CartDrawer } from "@/components/site/CartDrawer";
 import { FloatingToolbar } from "@/components/site/FloatingToolbar";
 import { SiteConfigProvider, type StudioPage } from "@/lib/site-config";
 import { resolveToolbar } from "@/lib/toolbar";
+import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
 
 /*
  * SSR shell for the Storefront Website (dark-first maison).
@@ -157,11 +159,23 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Loads the currency feed + hydrates the client currency runtime. Renders
+ *  nothing; lives inside the QueryClientProvider so useQuery has its context. */
+function CurrencyFeedBoot() {
+  useCurrencyFeed();
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const { preview, theme, pages, popups, navigation, brand } =
     Route.useLoaderData();
   const branding = brandingFrom(theme?.tokens, brand);
+  // Immersive routes own the full viewport (Claude/Gemini-style app frame):
+  // the shared header, footer, floating toolbar and newsletter pop-up are
+  // suppressed so the page's own pinned chrome is the only scroll context.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const immersive = pathname === "/shade-finder";
   // Toolbar config lives in the theme tokens (Studio → Toolbar); fall back to
   // the brand's WhatsApp from nav socials when no number is set there.
   const navSocials = (navigation as { socials?: Record<string, string> } | null)
@@ -179,19 +193,22 @@ function RootComponent() {
         branding={branding}
         toolbar={toolbar}
       >
+        {/* Hydrate the currency runtime (rates/symbols) + apply the geo default
+            once, globally — even on immersive routes that hide the header. */}
+        <CurrencyFeedBoot />
         {preview ? (
           <div className="bg-primary py-1.5 text-center text-[0.62rem] tracking-[0.4em] uppercase text-primary-foreground">
             Preview — showing draft changes (not published)
           </div>
         ) : null}
-        <SiteHeader />
+        {immersive ? null : <SiteHeader />}
         <PageTransition>
           <Outlet />
         </PageTransition>
-        <SiteFooter />
-        <FloatingToolbar />
+        {immersive ? null : <SiteFooter />}
+        {immersive ? null : <FloatingToolbar />}
         <CartDrawer />
-        <NewsletterModal />
+        {immersive ? null : <NewsletterModal />}
         <Toaster position="bottom-center" theme="dark" />
       </SiteConfigProvider>
     </QueryClientProvider>

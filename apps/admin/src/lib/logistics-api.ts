@@ -103,6 +103,7 @@ export interface DeliveryProof {
 export interface Delivery {
   delivery_id: string;
   delivery_number: string;
+  order_id?: string | null;
   status: DeliveryStatus;
   delivery_type?: string | null;
   reference_type?: string | null;
@@ -137,6 +138,11 @@ export interface Delivery {
   order_shipping_fee_ngn?: number | string | null; // customer-billed delivery fee
   order_status?: string | null;
   customer_name?: string | null;
+  // Styling status for the order (joined list + detail). Lets dispatch see
+  // whether the wig is still in the studio and deep-link to the exact job.
+  service_job_id?: string | null;
+  service_job_number?: string | null;
+  service_job_status?: string | null;
   items?: DeliveryItem[];
   attempts?: DeliveryAttempt[];
   proofs?: DeliveryProof[];

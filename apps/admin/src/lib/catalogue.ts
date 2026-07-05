@@ -1063,6 +1063,32 @@ export function useUploadCoverImage() {
 // ════════════════════════════════════════════════════════════
 // Service Catalogue (revamps, installs, repairs) — /service-catalogue
 // ════════════════════════════════════════════════════════════
+
+/** Upload a service photo → returns its CDN url. The caller saves the url
+ *  onto the service's image_url. Gated on `service_catalogue` edit. */
+export function useUploadServiceImage() {
+  return useMutation({
+    mutationFn: ({
+      file,
+      reference_id,
+      onProgress,
+    }: {
+      file: File;
+      reference_id?: string;
+      onProgress?: (percent: number) => void;
+    }) => {
+      const form = new FormData();
+      form.append("file", file);
+      if (reference_id) form.append("reference_id", reference_id);
+      return api.postForm<{ cdn_url: string; document_id: string }>(
+        "/service-catalogue/image",
+        form,
+        { onProgress },
+      );
+    },
+  });
+}
+
 export interface ServiceInput {
   name: string;
   slug: string;

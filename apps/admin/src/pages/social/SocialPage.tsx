@@ -19,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
 import {
   Button,
@@ -89,6 +90,7 @@ export function SocialPage() {
 
   return (
     <div className="max-w-[1180px] space-y-5">
+      <ModuleInsights module="social_media" />
       <div className="flex items-end justify-between gap-3 border-b border-line">
         <nav className="flex items-center gap-1">
           <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} icon={<CalendarDays className="w-4 h-4" />}>

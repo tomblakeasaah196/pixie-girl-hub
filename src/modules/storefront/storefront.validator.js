@@ -113,6 +113,23 @@ const funnelSchema = z
   })
   .strict();
 
+// Shop AI Search ("ask Praxis") — free-text query + the last few turns the
+// client already displayed, so a follow-up can refine without a session.
+const aiSearchSchema = z
+  .object({
+    query: z.string().trim().min(1).max(300),
+    history: z
+      .array(
+        z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string().max(500),
+        }),
+      )
+      .max(6)
+      .optional(),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -123,8 +140,10 @@ module.exports = {
   validateSession: mk(sessionSchema),
   validatePageView: mk(pageViewSchema),
   validateFunnel: mk(funnelSchema),
+  validateAiSearch: mk(aiSearchSchema),
   orderFormSchema,
   sessionSchema,
   pageViewSchema,
   funnelSchema,
+  aiSearchSchema,
 };

@@ -15,6 +15,8 @@ const router = express.Router();
 
 // Catalogue reads
 router.get("/products", controller.listProducts);
+// "Ask Praxis" natural-language shop search — plain keywords or a question.
+router.post("/search/ai", validator.validateAiSearch, controller.aiSearch);
 router.get("/products/:slug", controller.getProduct);
 router.get("/categories", controller.listCategories);
 // Browse-by-shade (000062) — index + shade page with its styled products.

@@ -198,6 +198,7 @@ export function InsightsPage() {
         <Select<string>
           value={severity ?? ""}
           onChange={(v) => setParam({ severity: v || null })}
+          ariaLabel="Filter by severity"
           className="w-[150px]"
           options={[
             { value: "", label: "All severities" },
@@ -271,6 +272,7 @@ function Chip({
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
         "px-3.5 h-10 rounded-full text-[12.5px] whitespace-nowrap transition-colors border shrink-0 inline-flex items-center gap-2",
         active

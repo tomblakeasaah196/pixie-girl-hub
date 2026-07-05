@@ -23,9 +23,12 @@ decision.
   - ✅ Batch 4: stylist_programme, sales_campaigns, marketing, smartcomm.
   - ✅ Batch 5: social_media, storefront, catalogue, iam_security, payroll,
     customer_onboarding.
-- 🟡 **Wave 4 — Polish**: ✅ realtime + notification bell, auto-resolve, Tier-2
-  AI narration, Praxis chat query; ⬜ legacy-table cleanup, `ai_briefing_insight_refs`,
-  module-header badges, integration tests, docs refresh (see §C/§D).
+- ✅ **Wave 4 — Polish**: realtime + notification bell, auto-resolve (sweep +
+  stock scheduler), Tier-2 AI narration with `ai_briefing_insight_refs`, Praxis
+  chat query, legacy-table cleanup (000257), App-Grid badges + alert-bar
+  breakdown, a11y pass, docs refresh, and the full Help Center guide (000258).
+  Depth: stock ×2 signals, purchasing ×2, pricing across all channels.
+  The single remaining item is live-DB integration tests (see §D).
 
 ---
 
@@ -36,13 +39,13 @@ Detectors run only for modules switched **on** in AI Control → Insights
 
 | # | Module | Detector(s) | Detector | Page slot |
 |---|--------|-------------|:--------:|:---------:|
-| 1 | stock | reorder_point (low-stock scheduler) | ✅ | ✅ `/stock` |
+| 1 | stock | reorder_point + negative_stock (scheduler, ×2) | ✅ | ✅ `/stock` |
 | 2 | invoicing | overdue / overdue_long | ✅ | ✅ |
 | 3 | intercompany | pending_too_long | ✅ | n/a (hidden module) |
 | 4 | approvals | queue_growing | ✅ | ✅ `/org-workflow` |
 | 5 | service_jobs | no_sale_linked, no_intercompany_match | ✅ | ✅ `/service-jobs` |
 | 6 | hr_attendance | off_site | ✅ | ✅ `/hr` |
-| 7 | purchasing | delivery_overdue | ✅ | ✅ |
+| 7 | purchasing | delivery_overdue + approval_stalled (×2) | ✅ | ✅ |
 | 8 | logistics | delivery_failed / delivery_overdue | ✅ | ✅ |
 | 9 | expenses | advance_overdue / advance_ageing | ✅ | ✅ |
 | 10 | sales | fulfillment_delayed | ✅ | ✅ |
@@ -50,7 +53,7 @@ Detectors run only for modules switched **on** in AI Control → Insights
 | 12 | production | run_delayed | ✅ | ✅ |
 | 13 | accounting | journal_draft_aging | ✅ | ✅ `/accounting` |
 | 14 | retention | churn_risk | ✅ | ✅ |
-| 15 | pricing | price_below_cost / price_below_floor | ✅ | ✅ `/pricing` |
+| 15 | pricing | price_below_cost (all channels) / price_below_floor (storefront) | ✅ | ✅ `/pricing` |
 | 16 | retail_partners | settlement_unpaid / settlement_disputed | ✅ | ✅ `/retail-partners` |
 | 17 | stylist_programme | payout_unpaid / payout_failed | ✅ | ✅ `/stylists` |
 | 18 | sales_campaigns | ended_not_closed / scheduled_not_launched | ✅ | ✅ `/sales-campaigns` |
@@ -64,13 +67,12 @@ Detectors run only for modules switched **on** in AI Control → Insights
 | 26 | payroll | contract_expiring | ✅ | ✅ `/payroll` |
 | 27 | customer_onboarding | onboarding_stalled | ✅ | n/a (no admin page) |
 
-**Detectors done: all 27 modules (28 detectors) — fan-out complete.** Slots
-live on every module with a suitable page; smartcomm/storefront/onboarding
-surface in the Insights Center + bell (no fitting inline home).
-Each remaining detector = verify schema → repo read → registry entry → unit
-test (the established pattern). Catalogue's "missing image/price" signal spans
-products + media + variant price across tables — left for a careful pass rather
-than a silent-wrong query.
+**Detectors done: all 27 modules, 31 tier-1 signals (29 registry detectors +
+the stock scheduler's 2) — fan-out complete.** Slots live on every module with
+a suitable page; smartcomm/storefront/onboarding surface in the Insights
+Center + bell (no fitting inline home). Adding another signal anywhere follows
+the established pattern: verify schema → repo read → registry entry → unit
+test.
 
 ### Slots on already-covered modules
 - ✅ `/stock`, `/service-jobs`, `/org-workflow` — done.
@@ -86,8 +88,9 @@ than a silent-wrong query.
    with the LLM when a module opted in (`narration_enabled`), the
    `insights_briefing` feature is usable, and a vendor is configured; degrades
    to the deterministic text on any miss (no vendor / budget hard-cap / error).
-   Meters `call_type = 'insight_narration'` on the governance ledger.
-   (Still open: populate `ai_briefing_insight_refs` for paragraph→alert links.)
+   Meters `call_type = 'insight_narration'` on the governance ledger, and every
+   briefing records its top open findings in `ai_briefing_insight_refs`
+   (paragraph → alert links; CHECK unlocked by 000257).
 3. ✅ **Realtime** — `insights-realtime.js` relays `sweep.completed` +
    `insight.updated` into `brand:{brand}:insights`; the client (`useInsightsRealtime`)
    joins the room and invalidates the insights keys, so the Center + every slot
@@ -98,37 +101,49 @@ than a silent-wrong query.
 5. ✅ **Praxis chat query** — `insights_open` entry in
    `praxis_ai/query-catalogue.js`; the CEO can ask "what needs my attention?"
    and get the per-module open counts in chat (permission-scoped to ai_insights).
-6. ⬜ **Module-header badges** — small open-count badge on Stock / Invoicing /
-   Service Jobs / Approvals headers from `/insights/summary`.
-7. ⬜ **Legacy cleanup** — once the unified path is verified in production, a
-   migration to drop the 7 old `ai_insight_*` category tables (000012). Keep
-   until then (they're harmless and un-referenced).
-8. 🔺 **Default-on policy** — currently only the original 5 modules ship
-   `insights_enabled = true`; the other 22 are off pending a CEO toggle. Decide
-   whether any of the new detectors should default on.
-9. ⬜ **Weekly auto-reports (§6.30)** — verify `jobs/schedulers/weekly-reports.js`
-   content matches the spec template (leads by channel, quotes, orders
-   confirmed/fulfilled, deals lost w/ reasons, complaints, open follow-ups) and
-   that "staff review & confirm" is a real state.
-10. ⬜ **Command Center** — optionally surface a per-module urgent breakdown in
-    the alert bar (today it sums).
+6. ✅ **Module badges** — the App Grid now shows per-module **urgent** counts
+   (insight module → nav tile, with a total on the Insights tile), fed from
+   `/insights/summary`; each module page's `<ModuleInsights>` slot already
+   carries the open/urgent counts inline.
+7. ✅ **Legacy cleanup** — migration 000257 drops the 7 old `ai_insight_*`
+   category tables (unified path verified in production post-#324) and unlocks
+   `ai_briefing_insight_refs.insight_category` for unified module keys.
+8. ✅ **Default-on policy** — resolved by design (owner decision): the AI
+   Control matrix IS the mechanism — the CEO activates/deactivates insights per
+   module to control spend; new detectors ship off.
+9. ✅ **Weekly auto-reports (§6.30)** — verified: `weekly-reports.js` runs
+   Sat 20:00 Lagos, generates deterministically from logged data into
+   `report_runs` in `needs_confirmation` (the review-then-confirm step),
+   idempotent per template+week.
+10. ✅ **Command Center** — the alert bar now shows the top-3 modules by
+    urgent count under the headline, and the urgent badge routes to /insights.
 
 ---
 
 ## D. Quality / hygiene
 
-- ✅ **Auto-resolve pass** — the sweep now closes open insights whose finding
-  no longer appears (condition cleared), scoped to modules whose detectors all
-  ran cleanly (a detector error never mass-resolves; stock is never touched).
+- ✅ **Auto-resolve pass** — the sweep closes open insights whose finding no
+  longer appears (condition cleared), scoped to modules whose detectors all ran
+  cleanly (a detector error never mass-resolves). Stock — owned by its own
+  scheduler — auto-resolves per brand with the same live-key pattern, skipping
+  any brand whose query failed.
 - ⬜ **Integration tests** — `/insights` routes + `runDetectorSweep` end-to-end
-  against a live DB (`RUN_DB_TESTS=1`). Unit coverage exists (registry/service).
-- ⬜ **Docs** — refresh `docs/AI_PRAXIS.md` and `docs/CONFORMANCE_GAPS.md` to
-  describe the unified store + per-module matrix (they still describe the
-  category-table era).
-- ⬜ **Frontend states audit** — confirm the four states on the Insights Center
-  and the slot under both light/dark themes on mobile (canon §6 DoD).
-- ⬜ **a11y** — keyboard + ARIA on the AI Control matrix toggles and the
-  InsightRow actions.
+  against a live DB (`RUN_DB_TESTS=1`). Unit coverage is strong (57 tests:
+  registry, service, sweep gating, auto-resolve, stock scheduler, briefing
+  narration + refs), but detector SQL has only been verified against migration
+  schemas, not executed. The one remaining honest gap — needs a DB environment.
+- ✅ **Docs** — `docs/AI_PRAXIS.md` rewritten for the unified store +
+  per-module matrix + auto-resolve + narration + refs; module README current;
+  `CONFORMANCE_GAPS.md` checked (it carried no insights entries to update).
+  Full user-facing documentation seeded into the Help Center (000258).
+- ✅ **Frontend states** — Insights Center ships skeleton / empty / error /
+  permission-denied; the slot is self-effacing (renders nothing when off,
+  clear, loading or errored); AI Control matrix has denied/loading/error/empty
+  paths. Token-driven throughout (both themes).
+- ✅ **a11y** — matrix toggles carry per-module `aria-label`s (role=switch was
+  already present), the frequency Select and severity filter have accessible
+  names + `aria-haspopup`/`aria-expanded`, filter chips expose `aria-pressed`,
+  and the resolution-note input is labelled. Action buttons have visible text.
 
 ---
 

@@ -79,6 +79,7 @@ export function InsightRow({
                 autoFocus
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
+                aria-label="Resolution note"
                 placeholder="Resolution note (optional)"
                 className="flex-1 h-8 px-2.5 rounded-lg text-[12px] bg-text-primary/[0.05] border hairline focus:border-accent/40 outline-none"
                 onKeyDown={(e) => {

@@ -33,7 +33,12 @@ const pool = new Pool({
 //     column only (sales_orders.stylist_referral_code), no new table.
 //   - Unified AI Insights store (000256): +2 shared tables (ai_insights,
 //     ai_insight_modules) → shared 178 + 2 = 180.
-const EXPECTED_SHARED = 180;
+//   - HR rewards engine (000258_shared_hr_rewards): +2 shared tables
+//     (reward_rules, reward_grants) → shared 180 + 2 = 182.
+//   - Insights legacy cleanup (000257_shared_ai_insights_cleanup): −7 shared
+//     tables (the per-category ai_insight_* tables from 000012, superseded by
+//     the unified store) → shared 182 − 7 = 175.
+const EXPECTED_SHARED = 175;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

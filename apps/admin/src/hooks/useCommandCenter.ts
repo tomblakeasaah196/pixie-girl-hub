@@ -33,15 +33,7 @@ export interface DashboardOverview {
     deliveries_active: number;
     deliveries_failed: number;
   };
-  insights: {
-    stock: { open: number; urgent: number };
-    margin: { open: number; urgent: number };
-    invoice: { open: number; urgent: number };
-    intercompany: { open: number; urgent: number };
-    attendance: { open: number; urgent: number };
-    approval: { open: number; urgent: number };
-    service_match: { open: number; urgent: number };
-  };
+  insights: InsightSummary;
   latest_briefing: {
     briefing_id: string;
     briefing_text: string;
@@ -51,15 +43,12 @@ export interface DashboardOverview {
   } | null;
 }
 
-export interface InsightSummary {
-  stock: { open: number; urgent: number };
-  margin: { open: number; urgent: number };
-  invoice: { open: number; urgent: number };
-  intercompany: { open: number; urgent: number };
-  attendance: { open: number; urgent: number };
-  approval: { open: number; urgent: number };
-  service_match: { open: number; urgent: number };
-}
+/** Per-module open/urgent counts from the unified insights store — keyed by
+ *  whichever modules currently report (e.g. invoicing, stock, purchasing…). */
+export type InsightSummary = Record<
+  string,
+  { open: number; urgent: number }
+>;
 
 export interface AppNotification {
   notification_id: string;

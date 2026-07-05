@@ -415,6 +415,7 @@ module.exports = {
   updateModule,
   raise,
   raiseInsight,
+  notifyUrgent,
   runDetectorSweep,
   MODULE_KEYS: registry.MODULE_KEYS,
 };

@@ -150,7 +150,16 @@ async function summary({ business }) {
  * Returns the count resolved. Only ever called for modules whose detectors all
  * ran cleanly this sweep, so a detector error never mass-resolves live findings.
  */
-async function autoResolveStale({ module, liveKeys }) {
+async function autoResolveStale({ module, liveKeys, business }) {
+  // Optional business scope: per-brand producers (the stock scheduler) resolve
+  // only their own brand's stale findings, so one brand's failed run can never
+  // wipe another brand's live alerts. Sweep detectors resolve module-wide.
+  const params = [module, liveKeys];
+  let scope = "";
+  if (business) {
+    scope = "AND business = $3";
+    params.push(business);
+  }
   const { rows } = await query(
     `UPDATE shared.ai_insights
         SET status = 'resolved', resolved_at = now(),
@@ -158,10 +167,37 @@ async function autoResolveStale({ module, liveKeys }) {
       WHERE module = $1
         AND status IN ('open','acknowledged','investigating')
         AND NOT (suppression_key = ANY($2::text[]))
+        ${scope}
       RETURNING insight_id`,
-    [module, liveKeys],
+    params,
   );
   return rows.length;
+}
+/** Top open findings for a business, worst first — feeds briefing refs. */
+async function topOpenInsights({ business, limit = 10 }) {
+  const { rows } = await query(
+    `SELECT insight_id, module, title, severity
+       FROM shared.ai_insights
+      WHERE status = 'open' AND (business = $1 OR business IS NULL)
+      ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1
+                             WHEN 'medium' THEN 2 ELSE 3 END,
+               detected_at DESC
+      LIMIT $2`,
+    [business, limit],
+  );
+  return rows;
+}
+/** Link a briefing to the findings it covered (paragraph → alert refs). */
+async function insertBriefingRefs({ briefing_id, refs }) {
+  for (let i = 0; i < refs.length; i++) {
+    const r = refs[i];
+    await query(
+      `INSERT INTO shared.ai_briefing_insight_refs
+         (briefing_id, insight_category, insight_id, excerpt, display_order)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [briefing_id, r.module, r.insight_id, r.title || null, i],
+    );
+  }
 }
 
 // ── AI Control switchboard (ai_insight_modules) ──
@@ -410,24 +446,47 @@ async function churnRiskContacts({ brand, limit = 500 }) {
   return rows;
 }
 
-// Pricing: active variants whose storefront price is below cost or below their
-// own floor (min_price_ngn) — a margin breach that needs a repricing decision.
+// Pricing: margin breaches per (variant, channel). Below COST flags on every
+// sales channel — selling under cost is always wrong. Below FLOOR
+// (min_price_ngn) flags on the storefront only, since wholesale/partner
+// channels legitimately price under the retail floor.
 async function marginBreaches({ brand, limit = 500 }) {
   const { rows } = await query(
     `SELECT pv.variant_id, pv.product_id, pv.sku, pv.variant_name,
-            pv.cost_price_ngn, pv.min_price_ngn, pv.price_storefront_ngn,
-            p.name AS product_name
+            pv.cost_price_ngn, pv.min_price_ngn, p.name AS product_name,
+            ch.channel, ch.price_ngn
        FROM ${t(brand, "product_variants")} pv
        JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      CROSS JOIN LATERAL (VALUES
+        ('storefront', pv.price_storefront_ngn),
+        ('pos',        pv.price_pos_ngn),
+        ('wholesale',  pv.price_wholesale_ngn),
+        ('partner',    pv.price_partner_ngn)
+      ) AS ch(channel, price_ngn)
       WHERE pv.is_active = true
         AND pv.cost_price_ngn > 0
-        AND pv.price_storefront_ngn IS NOT NULL
-        AND pv.price_storefront_ngn > 0
-        AND (pv.price_storefront_ngn < pv.cost_price_ngn
-             OR (pv.min_price_ngn IS NOT NULL AND pv.min_price_ngn > 0
-                 AND pv.price_storefront_ngn < pv.min_price_ngn))
-      ORDER BY (pv.cost_price_ngn - pv.price_storefront_ngn) DESC
+        AND ch.price_ngn IS NOT NULL
+        AND ch.price_ngn > 0
+        AND (ch.price_ngn < pv.cost_price_ngn
+             OR (ch.channel = 'storefront'
+                 AND pv.min_price_ngn IS NOT NULL AND pv.min_price_ngn > 0
+                 AND ch.price_ngn < pv.min_price_ngn))
+      ORDER BY (pv.cost_price_ngn - ch.price_ngn) DESC
       LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+// Purchasing: POs submitted for approval but untouched (second purchasing
+// signal — the first is delivery_overdue).
+async function stalledPurchaseApprovals({ brand, limit = 500 }) {
+  const { rows } = await query(
+    `SELECT po_id, po_number, supplier_id, total_ngn,
+            (EXTRACT(EPOCH FROM (now() - updated_at)) / 86400)::int AS days_waiting
+       FROM ${t(brand, "purchase_orders")}
+      WHERE status = 'submitted'
+        AND updated_at < now() - interval '7 days'
+      ORDER BY updated_at ASC LIMIT $1`,
     [limit],
   );
   return rows;
@@ -469,6 +528,9 @@ module.exports = {
   setStatus,
   summary,
   autoResolveStale,
+  topOpenInsights,
+  insertBriefingRefs,
+  stalledPurchaseApprovals,
   listModules,
   getModule,
   enabledModules,

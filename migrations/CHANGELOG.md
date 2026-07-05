@@ -11,6 +11,40 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-05 — AI Insights: legacy cleanup + briefing refs unlock + Help Center guide
+
+**Source:** Praxis Insights Wave 4 (V2.2 §6.30/§6.31) — finish the unified-store
+transition and ship the complete user documentation.
+
+**Files:** `000257_shared_ai_insights_cleanup.sql`,
+`000258_shared_help_insights.sql` (both new; the numbers are shared with the
+HR payroll-truth / HR-rewards migrations below — duplicate numbers are
+established precedent here and the pairs touch unrelated tables).
+
+**What (000257):** Drops the seven legacy per-category tier-1 tables from
+000012 (`ai_insight_stock_alerts`, `ai_insight_margin_breaches`,
+`ai_insight_invoice_alerts`, `ai_insight_intercompany_alerts`,
+`ai_insight_attendance_anomalies`, `ai_insight_approval_queue_alerts`,
+`ai_insight_service_match`) — the unified `shared.ai_insights` store has been
+the only write path since the Wave-1 cutover and is live in production; no code
+references remain. Also drops the stale `insight_category` CHECK on
+`shared.ai_briefing_insight_refs` (it enumerated the six original category
+names and would reject unified module keys like `purchasing`), since the
+briefing generator now populates that table with paragraph→alert links keyed by
+unified module. `scripts/verify-schema.js` shared count brought current: 178
+baseline + 2 (insights 000256) + 2 (HR rewards 000258) − 7 (this cleanup) =
+**175**.
+
+**What (000258):** Seeds the DB-backed Help Center with the full Praxis
+Insights guide — a new `insights` category and seven articles (overview,
+per-module enable/disable + spend, the Insights Center, AI Control & budget,
+the complete 27-module detector reference with thresholds, briefings & asking
+Praxis, FAQ/troubleshooting). Articles are `praxis_indexed`, so Praxis chat can
+answer insights questions from this content. Idempotent (`ON CONFLICT (slug)
+DO NOTHING`).
+
+---
+
 ## 2026-07-05 — HR rewards engine
 
 **Source:** Meeting transcript §3 ("reward system") + HR coverage audit

@@ -187,13 +187,14 @@ async function runDailyAiBriefing() {
       const ai = await narrate({ brand, counts, total, ceoId: recipient });
       if (ai) narrated += 1;
 
-      await query(
+      const { rows: inserted } = await query(
         `INSERT INTO shared.ai_briefings
            (business, schedule_type, scheduled_for, window_start, window_end,
             recipient_user_id, source_summary, briefing_text, insight_count,
             provider, model, tokens_used, cost_ngn, status, generated_at)
          VALUES ($1,'daily', now(), now() - interval '24 hours', now(),
-                 $2, $3::jsonb, $4, $5, $6, $7, $8, $9, 'generated', now())`,
+                 $2, $3::jsonb, $4, $5, $6, $7, $8, $9, 'generated', now())
+         RETURNING briefing_id`,
         [
           brand,
           recipient,
@@ -207,6 +208,25 @@ async function runDailyAiBriefing() {
         ],
       );
       made += 1;
+
+      // Link the briefing to the findings behind it (paragraph → alert refs,
+      // top open items by severity at generation time). Best-effort.
+      if (total > 0 && inserted[0]) {
+        try {
+          const top = await insightsRepo.topOpenInsights({
+            business: brand,
+            limit: 10,
+          });
+          if (top.length) {
+            await insightsRepo.insertBriefingRefs({
+              briefing_id: inserted[0].briefing_id,
+              refs: top,
+            });
+          }
+        } catch (err) {
+          logger.warn({ err: err.message, brand }, "briefing refs failed");
+        }
+      }
     } catch (err) {
       logger.error({ err: err.message, brand }, "daily briefing failed");
     }

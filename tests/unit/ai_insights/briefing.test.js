@@ -18,6 +18,8 @@ jest.mock("../../../src/modules/ai_insights/insights.service", () => ({
 }));
 jest.mock("../../../src/modules/ai_insights/insights.repo", () => ({
   narrationModules: jest.fn(),
+  topOpenInsights: jest.fn(),
+  insertBriefingRefs: jest.fn(),
 }));
 jest.mock("../../../src/modules/ai_governance/governance.service", () => ({
   canUseFeature: jest.fn(),
@@ -106,4 +108,29 @@ test("budget hard-capped → deterministic (tier-1 keeps running)", async () => 
   expect(res.narrated).toBe(0);
   expect(insertCall()[1][5]).toBe("deterministic");
   expect(llm.resolveVendor).not.toHaveBeenCalled();
+});
+
+test("links the briefing to its top open findings (paragraph → alert refs)", async () => {
+  insightsRepo.narrationModules.mockResolvedValue([]);
+  db.query.mockImplementation((sql) => {
+    if (String(sql).includes("FROM shared.users"))
+      return Promise.resolve({ rows: [{ user_id: "ceo-1" }] });
+    if (String(sql).includes("INSERT INTO shared.ai_briefings"))
+      return Promise.resolve({ rows: [{ briefing_id: "b-1" }] });
+    return Promise.resolve({ rows: [] });
+  });
+  insightsRepo.topOpenInsights.mockResolvedValue([
+    { insight_id: "i-1", module: "invoicing", title: "Invoice overdue 12 days", severity: "high" },
+  ]);
+  await runDailyAiBriefing();
+  expect(insightsRepo.topOpenInsights).toHaveBeenCalledWith({
+    business: "pixiegirl",
+    limit: 10,
+  });
+  expect(insightsRepo.insertBriefingRefs).toHaveBeenCalledWith({
+    briefing_id: "b-1",
+    refs: [
+      { insight_id: "i-1", module: "invoicing", title: "Invoice overdue 12 days", severity: "high" },
+    ],
+  });
 });

@@ -75,17 +75,21 @@ export function Toggle({
   onChange,
   label,
   disabled,
+  ariaLabel,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label?: ReactNode;
   disabled?: boolean;
+  /** Accessible name when no visible label is rendered. */
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
@@ -118,12 +122,15 @@ export function Select<T extends string>({
   options,
   className,
   disabled,
+  ariaLabel,
 }: {
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
   className?: string;
   disabled?: boolean;
+  /** Accessible name for the listbox trigger. */
+  ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -169,6 +176,9 @@ export function Select<T extends string>({
       <button
         type="button"
         disabled={disabled}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => !disabled && setOpen((o) => !o)}
         onKeyDown={handleKey}
         className="w-full h-[42px] px-[11px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus-visible:border-accent/50 disabled:opacity-50 flex items-center justify-between gap-2 text-left transition-colors"

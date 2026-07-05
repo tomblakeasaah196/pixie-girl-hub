@@ -56,6 +56,7 @@ import {
   type HrSettings,
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
+import { RewardsTab } from "./RewardsTab";
 import {
   StatCard,
   SectionTitle,
@@ -931,6 +932,7 @@ export default function HrStaffPage() {
           { key: "attendance", label: "Attendance" },
           { key: "queries", label: "Queries", badge: c?.open_queries || undefined },
           { key: "targets", label: "Targets" },
+          { key: "rewards", label: "Rewards" },
           { key: "analytics", label: "Analytics" },
           { key: "settings", label: "Settings" },
         ]}
@@ -986,6 +988,7 @@ export default function HrStaffPage() {
         </div>
       )}
       {tab === "targets" && <TargetsTab onAdd={() => setTargetOpen(true)} />}
+      {tab === "rewards" && <RewardsTab />}
       {tab === "analytics" && <AnalyticsTab />}
       {tab === "settings" && (
         can("hr_payroll", "edit")

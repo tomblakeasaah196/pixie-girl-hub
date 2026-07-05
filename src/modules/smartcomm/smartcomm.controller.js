@@ -43,6 +43,14 @@ async function createChannel(req, res) {
   res.status(201).json(data);
 }
 
+async function startDirect(req, res) {
+  const data = await service.getOrCreateDirect({
+    ...ctx(req),
+    target_user_id: req.body.target_user_id,
+  });
+  res.status(201).json(data);
+}
+
 async function archiveChannel(req, res) {
   const data = await service.archiveChannel({
     ...ctx(req),
@@ -324,6 +332,7 @@ async function getCustomer360(req, res) {
 }
 
 module.exports = {
+  startDirect,
   listChannels,
   getChannel,
   createChannel,

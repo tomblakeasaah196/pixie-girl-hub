@@ -19,7 +19,7 @@ const events = require("./smartcomm.events");
 const { enqueue } = require("../../jobs/queue-producer");
 const { audit } = require("../../middleware/audit");
 const { transaction, query } = require("../../config/database");
-const { NotFoundError, AppError } = require("../../utils/errors");
+const { NotFoundError, AppError, ValidationError } = require("../../utils/errors");
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -164,6 +164,26 @@ async function createChannel({ brand, user, request_id, input }) {
     });
     events.emit("channel.created", { channel_id: channel.channel_id });
     return channel;
+  });
+}
+
+/**
+ * Find-or-create a 1:1 internal DM between the caller and a colleague (used by
+ * "Message" buttons across HR — Employee 360, directory, contact profile — and
+ * the new-conversation search). Idempotent: returns the existing direct
+ * channel if one already exists so repeated clicks don't spawn duplicates.
+ */
+async function getOrCreateDirect({ brand, user, request_id, target_user_id }) {
+  if (!target_user_id || target_user_id === user.user_id) {
+    throw new ValidationError("A valid colleague is required to start a chat");
+  }
+  const existing = await repo.findDirectChannel({
+    brand, userA: user.user_id, userB: target_user_id,
+  });
+  if (existing) return existing;
+  return createChannel({
+    brand, user, request_id,
+    input: { channel_type: "direct", member_user_ids: [target_user_id] },
   });
 }
 
@@ -1061,6 +1081,7 @@ module.exports = {
   listChannels,
   getChannel,
   createChannel,
+  getOrCreateDirect,
   archiveChannel,
   resolveThread,
   assignThread,

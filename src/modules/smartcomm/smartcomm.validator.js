@@ -27,6 +27,10 @@ const channelCreate = z
   })
   .strict();
 
+const startDirect = z
+  .object({ target_user_id: z.string().uuid() })
+  .strict();
+
 const archiveChannel = z.object({ archived: z.boolean().optional() }).strict();
 
 const assignThread = z
@@ -208,6 +212,7 @@ const mk = (schema) => (req, _res, next) => {
 
 module.exports = {
   validateChannelCreate: mk(channelCreate),
+  validateStartDirect: mk(startDirect),
   validateArchiveChannel: mk(archiveChannel),
   validateAssignThread: mk(assignThread),
   validateMemberAdd: mk(memberAdd),

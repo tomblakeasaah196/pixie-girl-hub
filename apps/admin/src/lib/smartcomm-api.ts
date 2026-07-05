@@ -53,6 +53,10 @@ export const smartcommApi = {
     metadata?: Record<string, unknown>;
   }) => api.post<Channel>("/smartcomm/channels", input),
 
+  /** Find-or-create a 1:1 DM with a colleague (HR "Message" + search). */
+  startDirect: (target_user_id: string) =>
+    api.post<Channel>("/smartcomm/channels/direct", { target_user_id }),
+
   archiveChannel: (id: string, archived = true) =>
     api.post<Channel>(`/smartcomm/channels/${id}/archive`, { archived }),
   resolveThread: (id: string) =>

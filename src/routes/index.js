@@ -44,6 +44,7 @@ const hrOpsRouter = require("../shared/hr_payroll/hr_ops.routes");
 // mounted under /hr — was previously defined but never wired, so every
 // /hr/payroll-runs, /hr/payslips, /hr/commissions and /hr/bonuses call 404'd.
 const payrollRouter = require("../shared/hr_payroll/payroll.routes");
+const rewardsRouter = require("../shared/hr_payroll/rewards.routes");
 const attendanceRouter = require("../shared/attendance/attendance.routes");
 const contactsRouter = require("../shared/contacts/contacts.routes");
 const documentsRouter = require("../shared/documents/documents.routes");
@@ -324,7 +325,7 @@ function mountRoutes(app) {
     ["/purchasing", purchasingRouter],
     ["/stock", stockRouter],
     ["/logistics", logisticsRouter],
-    ["/hr", [hrOpsRouter, hrPayrollRouter, payrollRouter]],
+    ["/hr", [hrOpsRouter, hrPayrollRouter, payrollRouter, rewardsRouter]],
     ["/staff-invitations", staffInvitationsAdminRouter],
     ["/walk-in", walkinAdminRouter],
     ["/attendance", attendanceRouter],

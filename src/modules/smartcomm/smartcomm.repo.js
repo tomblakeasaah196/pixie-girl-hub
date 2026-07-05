@@ -183,6 +183,23 @@ async function createChannel({ client, channel }) {
   return rows[0];
 }
 
+/** Existing 1:1 internal DM between two users in a brand, if any. */
+async function findDirectChannel({ client, brand, userA, userB }) {
+  const { rows } = await ex(client)(
+    `SELECT c.*
+       FROM shared.message_channels c
+       JOIN shared.channel_members m1 ON m1.channel_id = c.channel_id AND m1.user_id = $2
+       JOIN shared.channel_members m2 ON m2.channel_id = c.channel_id AND m2.user_id = $3
+      WHERE c.channel_type = 'direct' AND c.business = $1
+        AND (SELECT count(*) FROM shared.channel_members mm
+              WHERE mm.channel_id = c.channel_id AND mm.user_id IS NOT NULL) = 2
+      ORDER BY c.created_at ASC
+      LIMIT 1`,
+    [brand, userA, userB],
+  );
+  return rows[0] || null;
+}
+
 async function setChannelArchived({ id, archived }) {
   const { rows } = await query(
     `UPDATE shared.message_channels SET is_archived = $2, updated_at = now()
@@ -974,6 +991,7 @@ module.exports = {
   findCustomerThread,
   findCustomerThreadByExternalRef,
   createChannel,
+  findDirectChannel,
   setChannelArchived,
   setChannelStatus,
   // Members

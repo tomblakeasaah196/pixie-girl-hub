@@ -27,6 +27,8 @@ const embeddings = require("../../services/embeddings.service");
 const llm = require("../../services/llm.service");
 const gemini = require("../../services/gemini.service");
 const queryAgent = require("./query-agent");
+const queryCatalogue = require("./query-catalogue");
+const sqlAgent = require("./sql-agent");
 const { money, toCurrencyString } = require("../../utils/money");
 const { logger } = require("../../config/logger");
 const { config } = require("../../config/env");
@@ -77,17 +79,53 @@ function buildTools(actions) {
   return { tools, byName };
 }
 
-function systemPrompt({ brand, contextChunks }) {
+// A compact, static map of the platform so the model always knows the shape of
+// the system even before RAG has any corpus. Keep it terse — it's prepended to
+// every turn. (Deeper, retrievable detail comes from the embeddings corpus.)
+const SYSTEM_MAP = [
+  "Pixie Girl Hub is a multi-entity ERP/CRM/e-commerce platform serving two Nigerian beauty businesses — Pixie Girl Global (pixiegirl) and Faitlynhair (faitlynhair) — from one system. Data is isolated per business. Core modules:",
+  "• Sales — orders, quotations, POS/quick-sale, revenue.",
+  "• Catalogue — products, variants, styled products, pricing.",
+  "• Stock — inventory levels, movements, transfers, adjustments.",
+  "• CRM — contacts (clients/suppliers/staff), deals/pipeline, activities, 360 timeline.",
+  "• Invoicing — invoices, receipts, credit notes, AR ageing.",
+  "• Retention — loyalty tiers/points, rewards, earn rules, referrals, coupons, bundles, strategies.",
+  "• Purchasing — suppliers, purchase orders (China imports), GRNs, supplier invoices.",
+  "• Logistics — deliveries (dispatch vs pickup), couriers, proof of delivery.",
+  "• Production / Stylist Studio — in-house service jobs, QC, wig accountability, chemical reconciliation.",
+  "• HR & Payroll — staff, attendance, leave, queries, performance, payroll runs, commissions.",
+  "• Cash Requests — staff cash/advance requests with finance→CEO approval and disbursement.",
+  "• Accounting, Expenses, Pricing, Intercompany, Retail Partners, Storefront Studio, Campaigns, Praxis AI.",
+].join("\n");
+
+function systemPrompt({ brand, contextChunks, user, queries = [] }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const role = user?.is_ceo
+    ? "the CEO / owner (full access)"
+    : "a staff member (scoped to their own permissions)";
   const ctx = contextChunks.length
-    ? "Relevant knowledge:\n" +
+    ? "RETRIEVED KNOWLEDGE (use this — it is authoritative):\n" +
       contextChunks.map((c, i) => `[${i + 1}] ${c.source_text}`).join("\n\n")
-    : "No specific knowledge was retrieved for this query.";
+    : "RETRIEVED KNOWLEDGE: none matched this question in the knowledge base.";
+  const queryList = queries.length
+    ? queries.map((q) => `• ${q.title} — ${q.description}`).join("\n")
+    : "(no live-data queries are configured yet)";
   return [
-    `You are Praxis, the AI operations assistant for the ${brand} business in Pixie Girl Hub.`,
-    "Answer read/lookup questions directly and concisely using the knowledge below.",
-    "For questions about CURRENT business data (sales, revenue, orders, stock, operations, KPIs), call the matching `query_*` tool to fetch LIVE figures — never guess or invent numbers.",
-    "For any action that CHANGES data (create/update/delete/approve/send), DO NOT claim it is done — instead call the matching tool with precise arguments. A human must confirm before it runs.",
-    "Never invent IDs or amounts. If you lack a required value, ask for it.",
+    `You are Praxis, the AI operations assistant inside Pixie Girl Hub. You are acting for the "${brand}" business on behalf of ${role}. Today is ${today}.`,
+    "",
+    SYSTEM_MAP,
+    "",
+    "HOW TO ANSWER — READ THIS CAREFULLY:",
+    "1. For any CURRENT business figure (sales, revenue, stock, HR, cash, KPIs, counts, statuses…), you MUST call the matching query_* tool to fetch LIVE data. NEVER guess, estimate, average, or invent numbers, names, IDs, dates or statuses.",
+    "2. If NO tool and NO retrieved knowledge covers the question, say plainly that you don't have that data available yet — optionally that the relevant query or knowledge hasn't been configured. Do NOT fabricate an answer or describe features you're unsure exist.",
+    "3. For anything that CHANGES data (create/update/delete/approve/send), do NOT claim it's done — call the matching action tool with precise arguments; a human confirms before it runs.",
+    "4. Be concise and specific; prefer real figures returned by tools over prose. Cite the retrieved knowledge when you use it.",
+    "",
+    "LIVE-DATA QUERIES YOU CAN CALL RIGHT NOW:",
+    queryList,
+    user?.is_ceo
+      ? "\nGENERIC DATABASE ACCESS: for anything the queries above don't cover, you also have `sql_schema` (list/describe tables) and `sql_query` (run a single read-only SELECT). Prefer a curated query when one fits; otherwise call `sql_schema` to find the right tables/columns, then `sql_query`. Reads only, scoped to this business."
+      : "",
     "",
     ctx,
   ].join("\n");
@@ -160,8 +198,12 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
   // §8.2 Query Agent: expose the read-only query catalogue as tools too, so the
   // model can answer questions about LIVE data (not just embedded docs).
   // Dedup by function name across both sets — a repeated tool name 400s the API.
+  // Generic read-only SQL agent — only for the CEO (see sql-agent safety note).
+  // This is what lets Praxis answer ANY live-data question without a curated
+  // catalogue entry, so it scales as new tables/features are added.
+  const sqlTools = user && user.is_ceo === true ? sqlAgent.tools() : [];
   const seenTool = new Set();
-  const allTools = [...tools, ...queryAgent.tools()]
+  const allTools = [...tools, ...queryAgent.tools(), ...sqlTools]
     .filter((t) => {
       const n = t?.function?.name;
       if (!n || seenTool.has(n)) return false;
@@ -178,7 +220,15 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
       },
     }));
   const messages = [
-    { role: "system", content: systemPrompt({ brand, contextChunks }) },
+    {
+      role: "system",
+      content: systemPrompt({
+        brand,
+        contextChunks,
+        user,
+        queries: queryCatalogue.list(),
+      }),
+    },
     ...history,
     { role: "user", content: userText },
   ];
@@ -260,9 +310,16 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
     } catch {
       args = {};
     }
-    if (queryAgent.isQueryTool(toolCall.function.name)) {
-      // §8.2 Query Agent — permission-scoped live-data read + summary (no write).
-      const qr = await queryAgent.run({
+    const isRead =
+      queryAgent.isQueryTool(toolCall.function.name) ||
+      sqlAgent.isSqlTool(toolCall.function.name);
+    if (isRead) {
+      // Read path — curated Query Catalogue OR the generic SQL agent (CEO).
+      // Both return { replyText, usage } and never write.
+      const agent = sqlAgent.isSqlTool(toolCall.function.name)
+        ? sqlAgent
+        : queryAgent;
+      const qr = await agent.run({
         vendor,
         user,
         brand,
@@ -289,7 +346,10 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
           agent: "orchestrator",
           step_number: ++step,
           step_type: "call_action",
-          output: { query: qr.queryKey || null, denied: qr.denied || false },
+          output: {
+            query: qr.queryKey || (qr.sql ? "sql-agent" : null),
+            denied: qr.denied || false,
+          },
           status: "completed",
         },
       });

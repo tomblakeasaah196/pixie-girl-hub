@@ -20,6 +20,9 @@ import {
   FileText,
   MessageSquareWarning,
   TriangleAlert,
+  Sunrise,
+  Sunset,
+  Download,
 } from "lucide-react";
 import {
   Card,
@@ -36,15 +39,21 @@ import {
   getMyHr,
   requestLeave,
   respondToQuery,
+  payslipPdf,
   type HrQuery,
   type PerformanceTarget,
 } from "@/lib/hr-api";
+import { downloadDocument } from "@/lib/documents-api";
 import {
   WeekScheduleView,
   SectionTitle,
   QueryStatusPill,
+  ClockLocationLink,
+  clockTime,
+  minutesLabel,
   useNotify,
   errMsg,
+  statusTone,
 } from "./hr-shared";
 
 function TargetCountdown({ t }: { t: PerformanceTarget }) {
@@ -244,6 +253,7 @@ function RequestLeaveModal({ open, onClose }: { open: boolean; onClose: () => vo
 
 export default function MyHrPage() {
   useBreadcrumbs([{ label: "My HR" }]);
+  const notify = useNotify();
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [respondQuery, setRespondQuery] = useState<HrQuery | null>(null);
 
@@ -251,6 +261,12 @@ export default function MyHrPage() {
     queryKey: ["my-hr"],
     queryFn: getMyHr,
     retry: false,
+  });
+
+  const pdf = useMutation({
+    mutationFn: (id: string) => payslipPdf(id),
+    onSuccess: (doc) => downloadDocument(doc).catch(() => notify("Download failed", "", "high")),
+    onError: (e) => notify("Couldn't generate PDF", errMsg(e), "high"),
   });
 
   if (isError) {
@@ -310,6 +326,40 @@ export default function MyHrPage() {
               />
             </div>
           )}
+
+          {/* Accruals building toward this month's pay */}
+          {(data.accruals.commission_pending_ngn > 0 || data.accruals.bonus_pending_ngn > 0) && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <KpiTile label="Commission accruing" value={money(data.accruals.commission_pending_ngn)} tone="accent" />
+              <KpiTile label="Bonus accruing" value={money(data.accruals.bonus_pending_ngn)} tone="accent" />
+            </div>
+          )}
+
+          {/* Attendance insights — earliest/latest, punctuality, at-risk days */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card className="p-4">
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <Sunrise className="h-4 w-4 text-accent-glow" /> Earliest in
+              </div>
+              <div className="mt-1 font-display text-lg text-text-primary">
+                {minutesLabel(data.insights.earliest_arrival?.local_minutes ?? null)}
+              </div>
+              <div className="text-xs text-text-faint">{data.insights.earliest_arrival?.work_date || "—"}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <Sunset className="h-4 w-4 text-accent-glow" /> Latest out
+              </div>
+              <div className="mt-1 font-display text-lg text-text-primary">
+                {minutesLabel(data.insights.latest_departure?.local_minutes ?? null)}
+              </div>
+              <div className="text-xs text-text-faint">{data.insights.latest_departure?.work_date || "—"}</div>
+            </Card>
+            <KpiTile label="Punctuality" value={`${data.insights.punctuality_pct}%`}
+              tone={data.insights.punctuality_pct >= 90 ? "accent" : "warn"} />
+            <KpiTile label="Days at risk of query" value={String(data.insights.at_risk_days)}
+              tone={data.insights.at_risk_days ? "danger" : "accent"} />
+          </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             {/* Schedule */}
@@ -455,6 +505,68 @@ export default function MyHrPage() {
                 </Card>
               )}
             </div>
+          </div>
+
+          {/* Attendance this month */}
+          <div>
+            <SectionTitle icon={<CalendarDays className="h-4 w-4 text-accent-glow" />}>
+              This month's attendance
+            </SectionTitle>
+            {data.attendance.length ? (
+              <div className="space-y-2">
+                {data.attendance.slice(0, 31).map((d) => (
+                  <Card key={d.day_id} className="flex items-center justify-between gap-3 p-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-text-primary">{d.work_date}</span>
+                        <span className="text-xs text-text-faint">
+                          In {clockTime(d.first_clock_in_at)}
+                          {d.last_clock_out_at ? ` · Out ${clockTime(d.last_clock_out_at)}` : ""}
+                        </span>
+                      </div>
+                      <ClockLocationLink day={d} />
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {d.is_late && <span className="text-xs text-warn">{d.minutes_late}m late</span>}
+                      {d.early_leave_minutes > 0 && (
+                        <span className="text-xs text-warn">{d.early_leave_minutes}m early</span>
+                      )}
+                      <Pill tone={d.is_offsite ? "warn" : statusTone(d.status)}>
+                        {d.status.replace("_", " ")}
+                      </Pill>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="p-4 text-sm text-text-muted">No attendance recorded yet this month.</Card>
+            )}
+          </div>
+
+          {/* My payslips */}
+          <div>
+            <SectionTitle icon={<Wallet className="h-4 w-4 text-accent-glow" />}>My payslips</SectionTitle>
+            {data.payslips.length ? (
+              <div className="space-y-2">
+                {data.payslips.map((s) => (
+                  <Card key={s.payslip_id} className="flex items-center justify-between gap-3 p-3">
+                    <div className="min-w-0">
+                      <span className="text-sm text-text-primary">{s.payslip_number}</span>
+                      <div className="text-xs text-text-muted">Net {money(Number(s.net_pay_ngn))}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Pill tone={statusTone(s.payment_status === "paid" ? "approved" : s.payment_status === "failed" ? "rejected" : "pending")}>
+                        {s.payment_status}
+                      </Pill>
+                      <Button size="sm" variant="ghost" icon={<Download className="h-3.5 w-3.5" />}
+                        disabled={pdf.isPending} onClick={() => pdf.mutate(s.payslip_id)}>PDF</Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="p-4 text-sm text-text-muted">No payslips yet.</Card>
+            )}
           </div>
         </>
       )}

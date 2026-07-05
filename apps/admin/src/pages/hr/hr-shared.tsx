@@ -89,6 +89,16 @@ export function clockTime(iso: string | null): string {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/** "8:10 AM" from minutes-since-midnight (workplace-local, from insights). */
+export function minutesLabel(local: number | null | undefined): string {
+  if (local == null) return "—";
+  const h24 = Math.floor(local / 60);
+  const m = local % 60;
+  const period = h24 < 12 ? "AM" : "PM";
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 /**
  * Clock-in location cell shared by the HR/manager attendance list and the
  * My-HR self view: shows the stored (Geoapify) address, links the stored

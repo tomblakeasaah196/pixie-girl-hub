@@ -45,10 +45,24 @@ const requestCreate = z
   .strict();
 
 const voidBody = z.object({ reason: z.string().max(500).optional() }).strict();
+// Signing page payload: a drawn signature (base64 PNG/JPEG data URL) and/or a
+// PIN. Anyone can sign by drawing; supplying a PIN either unlocks a saved
+// signature (returning signer) or, with save_signature, stores the drawn one.
 const signBody = z
   .object({
-    captured_signature_path: z.string().max(500).optional(),
-    signature_image_byte_size: z.coerce.number().int().positive().optional(),
+    signature_data_url: z
+      .string()
+      .max(2_000_000)
+      .regex(
+        /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=\s]+$/,
+        "Signature must be a PNG or JPEG image",
+      )
+      .optional(),
+    pin: z
+      .string()
+      .regex(/^\d{4,6}$/, "PIN must be 4 to 6 digits")
+      .optional(),
+    save_signature: z.boolean().optional(),
   })
   .strict();
 const declineBody = z

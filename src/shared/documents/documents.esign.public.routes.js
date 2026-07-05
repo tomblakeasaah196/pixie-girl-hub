@@ -12,7 +12,12 @@ const validator = require("./documents.esign.validator");
 
 const router = express.Router();
 
+// Public verification by short code — declared before "/:token" so the
+// literal "verify" segment isn't captured as a token.
+router.get("/verify/:code", controller.verifyByCode);
+
 router.get("/:token", controller.viewByToken);
+router.get("/:token/document", controller.previewDocument);
 router.post("/:token/sign", validator.validateSign, controller.signByToken);
 router.post(
   "/:token/decline",

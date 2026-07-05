@@ -11,6 +11,31 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-05 — Signer page: PIN-protected signature on file
+
+**Source:** HR system audit follow-up — the public signer page (`/sign/:token`)
+the e-signature backend was missing a frontend for.
+
+**Files:** `000260_shared_esign_signer_pin.sql` (new).
+
+**What:** Adds `shared.signer_signatures` — a reusable "signature on file"
+protected by an argon2 PIN and keyed by the signer's email (works for staff,
+contacts, and external signers). The model: anyone can sign, but to *store* a
+signature (so it isn't re-drawn on every future document) you set a PIN; later
+documents only need the PIN and the saved signature is applied. Also adds
+`signature_request_signers.signature_data_url` (the drawn signature captured
+inline as a base64 PNG) and `.verification_code` (a short, human-verifiable code
+derived from the tamper-evident `audit_hash`, printed on the document and
+resolvable on the public verify page). The `signer_signed_consistency` CHECK is
+relaxed to accept an inline data-URL signature as proof (the original required a
+media `captured_signature_path`).
+
+**Count:** `scripts/verify-schema.js` shared count 175 → **177**: +1 for
+`signer_signatures` (this migration) and +1 correcting `staff_onboarding_progress`
+(000259), whose table was added without a matching count bump.
+
+---
+
 ## 2026-07-05 — AI Insights: legacy cleanup + briefing refs unlock + Help Center guide
 
 **Source:** Praxis Insights Wave 4 (V2.2 §6.30/§6.31) — finish the unified-store

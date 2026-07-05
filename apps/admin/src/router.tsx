@@ -154,6 +154,16 @@ const OrderCapturePublic = lazyWithRetry(() =>
     default: m.OrderCapturePublic,
   })),
 );
+const SignDocumentPage = lazyWithRetry(() =>
+  import("@/pages/sign/SignDocumentPage").then((m) => ({
+    default: m.SignDocumentPage,
+  })),
+);
+const VerifyDocumentPage = lazyWithRetry(() =>
+  import("@/pages/sign/VerifyDocumentPage").then((m) => ({
+    default: m.VerifyDocumentPage,
+  })),
+);
 const AiControlPage = lazyWithRetry(() =>
   import("@/pages/ai-control/AiControlPage").then((m) => ({
     default: m.AiControlPage,
@@ -324,6 +334,25 @@ export const router = createBrowserRouter(
       element: (
         <Suspense fallback={null}>
           <OrderCapturePublic />
+        </Suspense>
+      ),
+    },
+    // Public document signing (emailed token link; no auth). Draw a signature
+    // or unlock a saved one with a PIN.
+    {
+      path: "/sign/:token",
+      element: (
+        <Suspense fallback={null}>
+          <SignDocumentPage />
+        </Suspense>
+      ),
+    },
+    // Public signature verification (the code printed on a signed document).
+    {
+      path: "/verify/:code",
+      element: (
+        <Suspense fallback={null}>
+          <VerifyDocumentPage />
         </Suspense>
       ),
     },

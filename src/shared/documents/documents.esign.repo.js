@@ -186,6 +186,78 @@ async function countSigners({ client, request_id }) {
   return rows[0];
 }
 
+// ── Signature on file (PIN-protected, email-keyed) ────────
+/** Fetch a signer's saved signature profile by email (or null). */
+async function getSignerSignatureByEmail({ client, email }) {
+  if (!email) return null;
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.signer_signatures WHERE signer_email = $1`,
+    [email],
+  );
+  return rows[0] || null;
+}
+/** Create or replace a signer's saved signature + PIN, keyed by email. */
+async function upsertSignerSignature({
+  client,
+  email,
+  user_id,
+  signature_data_url,
+  pin_hash,
+}) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.signer_signatures
+       (signer_email, user_id, signature_data_url, pin_hash, pin_set_at, pin_failed_count)
+     VALUES ($1,$2,$3,$4, now(), 0)
+     ON CONFLICT (signer_email) DO UPDATE
+        SET user_id = COALESCE(EXCLUDED.user_id, shared.signer_signatures.user_id),
+            signature_data_url = EXCLUDED.signature_data_url,
+            pin_hash = EXCLUDED.pin_hash,
+            pin_set_at = now(),
+            pin_failed_count = 0,
+            pin_locked_until = NULL
+     RETURNING *`,
+    [email, user_id || null, signature_data_url, pin_hash],
+  );
+  return rows[0];
+}
+/** Record a failed PIN attempt; lock the saved signature for a cool-off at 5 strikes. */
+async function recordSignerPinFail({ client, email }) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.signer_signatures
+        SET pin_failed_count = pin_failed_count + 1,
+            pin_locked_until = CASE WHEN pin_failed_count + 1 >= 5
+                                    THEN now() + interval '15 minutes'
+                                    ELSE pin_locked_until END
+      WHERE signer_email = $1
+      RETURNING pin_failed_count, pin_locked_until`,
+    [email],
+  );
+  return rows[0] || null;
+}
+/** Record a successful PIN use; clear the strike counter + lock, stamp last_used_at. */
+async function recordSignerPinSuccess({ client, email }) {
+  await ex(client)(
+    `UPDATE shared.signer_signatures
+        SET pin_failed_count = 0,
+            pin_locked_until = NULL,
+            last_used_at = now()
+      WHERE signer_email = $1`,
+    [email],
+  );
+}
+/** Resolve a signer row by its public verification code (for the verify page). */
+async function getSignerByVerificationCode({ client, code }) {
+  const { rows } = await ex(client)(
+    `SELECT s.*, r.business, r.document_id, r.subject, r.request_type
+       FROM shared.signature_request_signers s
+       JOIN shared.signature_requests r ON r.request_id = s.request_id
+      WHERE s.verification_code = $1
+      LIMIT 1`,
+    [code],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   createRequest,
   addSigner,
@@ -198,4 +270,9 @@ module.exports = {
   lastAuditHash,
   addAuditEvent,
   countSigners,
+  getSignerSignatureByEmail,
+  upsertSignerSignature,
+  recordSignerPinFail,
+  recordSignerPinSuccess,
+  getSignerByVerificationCode,
 };

@@ -295,12 +295,15 @@ async function runDetectorSweep() {
   const detectors = registry.detectorsForModules(enabled);
   const result = {};
   const created = []; // rows genuinely inserted this sweep (not suppressed)
+  const liveKeys = new Map(); // module → Set(suppression_key) seen this sweep
+  const failedModules = new Set(); // modules whose detector errored (skip auto-resolve)
   const bump = (module, n) => {
     result[module] = (result[module] || 0) + n;
   };
 
   const brands = listBrands();
   for (const det of detectors) {
+    if (!liveKeys.has(det.module)) liveKeys.set(det.module, new Set());
     const runs =
       det.scope === "brand" ? brands.map((b) => ({ brand: b })) : [{}];
     for (const ctx of runs) {
@@ -309,9 +312,11 @@ async function runDetectorSweep() {
         for (const f of findings) {
           const row = await raiseInsight(f);
           if (row) created.push(row);
+          liveKeys.get(det.module).add(f.suppression_key);
         }
         bump(det.module, findings.length);
       } catch (err) {
+        failedModules.add(det.module);
         logger.error(
           { err: err.message, module: det.module, detector: det.detector, brand: ctx.brand },
           "insights: detector failed",
@@ -320,13 +325,34 @@ async function runDetectorSweep() {
     }
   }
 
+  // Auto-resolve: for every module whose detectors ALL ran cleanly, close open
+  // insights whose finding no longer appears (the condition has cleared). A
+  // module with a failed detector is skipped so a transient error never
+  // mass-resolves still-valid findings; stock (raised by its own scheduler, not
+  // in this sweep) is never in `liveKeys`, so it's never touched.
+  let autoResolved = 0;
+  for (const [module, keys] of liveKeys) {
+    if (failedModules.has(module)) continue;
+    try {
+      autoResolved +=
+        (await repo.autoResolveStale({ module, liveKeys: [...keys] })) || 0;
+    } catch (err) {
+      logger.error({ err: err.message, module }, "insights: auto-resolve failed");
+    }
+  }
+
   // Push NEW urgent findings to the CEO's notification bell (best-effort).
   await notifyUrgent(created);
 
   const total = Object.values(result).reduce((a, b) => a + b, 0);
-  events.emit("sweep.completed", { ...result, total, created: created.length });
+  events.emit("sweep.completed", {
+    ...result,
+    total,
+    created: created.length,
+    resolved: autoResolved,
+  });
   logger.info(
-    { ...result, total, created: created.length },
+    { ...result, total, created: created.length, resolved: autoResolved },
     "ai insights detector sweep done",
   );
   return result;
@@ -389,6 +415,7 @@ module.exports = {
   updateModule,
   raise,
   raiseInsight,
+  notifyUrgent,
   runDetectorSweep,
   MODULE_KEYS: registry.MODULE_KEYS,
 };

@@ -145,6 +145,7 @@ export function AiInsightsControlPage() {
                   <Toggle
                     checked={m.insights_enabled}
                     disabled={!canEdit || update.isPending}
+                    ariaLabel={`Tier-1 insights for ${m.display_name}`}
                     onChange={(v) => setField(m, { insights_enabled: v })}
                   />
                 </div>
@@ -154,6 +155,7 @@ export function AiInsightsControlPage() {
                   <Toggle
                     checked={m.narration_enabled}
                     disabled={!canEdit || !m.insights_enabled || update.isPending}
+                    ariaLabel={`AI narration for ${m.display_name}`}
                     onChange={(v) => setField(m, { narration_enabled: v })}
                   />
                 </div>
@@ -162,6 +164,7 @@ export function AiInsightsControlPage() {
                   <Select<InsightFrequency>
                     value={m.frequency}
                     disabled={!canEdit || !m.insights_enabled}
+                    ariaLabel={`Briefing frequency for ${m.display_name}`}
                     options={FREQ_OPTIONS}
                     onChange={(v) => setField(m, { frequency: v })}
                   />

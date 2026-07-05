@@ -290,6 +290,38 @@ const DETECTORS = [
     },
   },
 
+  // ── Purchasing: PO submitted for approval but untouched ──
+  {
+    module: "purchasing",
+    detector: "approval_stalled",
+    scope: "brand",
+    async run({ brand }) {
+      const rows = await repo.stalledPurchaseApprovals({ brand });
+      return rows.map((po) => {
+        const days = Number(po.days_waiting) || 0;
+        return {
+          module: "purchasing",
+          detector: "approval_stalled",
+          business: brand,
+          severity: days >= 14 ? "high" : "medium",
+          title: `PO ${po.po_number} awaiting approval ${days} day${days === 1 ? "" : "s"}`,
+          body: null,
+          context: {
+            po_id: po.po_id,
+            po_number: po.po_number,
+            supplier_id: po.supplier_id,
+            days_waiting: days,
+          },
+          amount_ngn: po.total_ngn || null,
+          source_table: "purchase_orders",
+          source_id: po.po_id,
+          drill_route: "/purchasing",
+          suppression_key: `po_approval:${po.po_id}`,
+        };
+      });
+    },
+  },
+
   // ── Logistics: failed / lost / overdue deliveries ──
   {
     module: "logistics",
@@ -528,7 +560,10 @@ const DETECTORS = [
     },
   },
 
-  // ── Pricing: storefront price below cost or below floor ──
+  // ── Pricing: price below cost (any channel) / below floor (storefront) ──
+  // One finding per (variant, channel). Superseded storefront-only findings
+  // (old `margin:<variant>` keys) auto-resolve on the first sweep after this
+  // ships and re-raise channel-scoped.
   {
     module: "pricing",
     detector: "margin_breach",
@@ -537,7 +572,7 @@ const DETECTORS = [
       const rows = await repo.marginBreaches({ brand });
       return rows.map((v) => {
         const cost = money(v.cost_price_ngn || 0);
-        const price = money(v.price_storefront_ngn || 0);
+        const price = money(v.price_ngn || 0);
         const floor = money(v.min_price_ngn || 0);
         const belowCost = price.lt(cost);
         const severity = belowCost
@@ -550,21 +585,22 @@ const DETECTORS = [
           detector: belowCost ? "price_below_cost" : "price_below_floor",
           business: brand,
           severity,
-          title: `${v.sku || v.product_name} priced below ${belowCost ? "cost" : "floor"}`,
-          body: `Storefront ₦${price.toFixed(2)} vs ${belowCost ? "cost" : "floor"} ₦${(belowCost ? cost : floor).toFixed(2)}.`,
+          title: `${v.sku || v.product_name} below ${belowCost ? "cost" : "floor"} on ${v.channel}`,
+          body: `${v.channel} ₦${price.toFixed(2)} vs ${belowCost ? "cost" : "floor"} ₦${(belowCost ? cost : floor).toFixed(2)}.`,
           context: {
             variant_id: v.variant_id,
             product_id: v.product_id,
             sku: v.sku,
+            channel: v.channel,
             cost_price_ngn: v.cost_price_ngn,
             min_price_ngn: v.min_price_ngn,
-            price_storefront_ngn: v.price_storefront_ngn,
+            price_ngn: v.price_ngn,
           },
-          amount_ngn: v.price_storefront_ngn || null,
+          amount_ngn: v.price_ngn || null,
           source_table: "product_variants",
           source_id: v.variant_id,
           drill_route: "/pricing",
-          suppression_key: `margin:${v.variant_id}`,
+          suppression_key: `margin:${v.variant_id}:${v.channel}`,
         };
       });
     },

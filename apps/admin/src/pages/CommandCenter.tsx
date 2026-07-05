@@ -21,7 +21,7 @@
  * MoneyText, tokens only, mobile-first.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -125,6 +125,29 @@ const NOTIF_PRIORITY_TONE: Record<string, string> = {
   normal: "bg-info/[0.14] text-info",
   low: "bg-text-primary/[0.06] text-text-muted",
 };
+
+/** Insight module → nav module key, where the two differ (identity otherwise).
+ *  Feeds the App Grid urgent badges. Modules with no nav home (storefront,
+ *  customer_onboarding, intercompany) are deliberately absent — their findings
+ *  count toward the Insights tile only. */
+const INSIGHT_NAV_KEY: Record<string, string> = {
+  approvals: "orgworkflow",
+  sales_campaigns: "campaigns",
+  social_media: "social",
+  tasks: "workspace",
+  retail_partners: "retail",
+  stylist_programme: "stylists",
+  hr_attendance: "hr",
+  storefront: "insights",
+  customer_onboarding: "insights",
+  intercompany: "insights",
+};
+
+/** "hr_attendance" → "Hr attendance" → readable label for the alert bar. */
+function moduleLabel(key: string): string {
+  const s = key.replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -336,6 +359,12 @@ function InsightsAlertBar({
   const open = openCount(summary.data);
   if (urgent === 0 && open === 0) return null;
 
+  // Top offenders by urgent count — tells the CEO WHERE before they click.
+  const topModules = Object.entries(summary.data ?? {})
+    .filter(([, c]) => (c?.urgent ?? 0) > 0)
+    .sort((a, b) => b[1].urgent - a[1].urgent)
+    .slice(0, 3);
+
   return (
     <div className="flex items-center gap-3 rounded-[14px] p-[12px_16px] mb-5 border border-warn/30 bg-warn/[0.08] animate-rise-in">
       <AlertTriangle className="w-4 h-4 text-warn shrink-0" />
@@ -349,6 +378,13 @@ function InsightsAlertBar({
         {urgent > 0 && open > urgent && " · "}
         {open > urgent && (
           <span className="opacity-75">{open - urgent} other open</span>
+        )}
+        {topModules.length > 0 && (
+          <span className="block text-[11.5px] opacity-75 mt-0.5">
+            {topModules
+              .map(([m, c]) => `${moduleLabel(m)} ${c.urgent}`)
+              .join(" · ")}
+          </span>
         )}
       </span>
       <button
@@ -705,6 +741,22 @@ export function CommandCenter() {
   const myFeed = useMyAuditFeed();
   const notifs = useRecentNotifications();
 
+  // Urgent-insight badges for the App Grid: one per module tile (mapped to its
+  // nav key) plus the total on the Insights tile itself.
+  const insightBadges = useMemo(() => {
+    const out: Record<string, number> = {};
+    let totalUrgent = 0;
+    for (const [mod, c] of Object.entries(insights.data ?? {})) {
+      const u = c?.urgent ?? 0;
+      if (!u) continue;
+      totalUrgent += u;
+      const nav = INSIGHT_NAV_KEY[mod] ?? mod;
+      if (nav !== "insights") out[nav] = (out[nav] ?? 0) + u;
+    }
+    if (totalUrgent > 0) out.insights = totalUrgent;
+    return out;
+  }, [insights.data]);
+
   const hh = time.toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -828,7 +880,7 @@ export function CommandCenter() {
         {/* App grid — promoted to first on mobile */}
         <div className="max-md:order-1">
           <SectionHead title="Your apps" />
-          <AppGrid />
+          <AppGrid badges={insightBadges} />
         </div>
 
         {/* Activity + Notifications — last on mobile */}

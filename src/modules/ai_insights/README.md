@@ -18,9 +18,12 @@ a registry entry + toggling it on in AI Control (no new tables/repos/routes).
 The detector sweep (`runDetectorSweep`, cron every 30 min) runs **only** the
 modules toggled on.
 
-> The legacy per-category tables from migration 000012 are retained but no
-> longer written; open findings re-materialise into `ai_insights` on the next
-> sweep. They can be dropped in a later cleanup once verified in production.
+> The legacy per-category tables from migration 000012 were dropped by
+> migration 000257 once the unified path was verified in production.
+> **Auto-resolve:** after each clean detector pass the sweep closes open
+> findings whose condition no longer appears ("Auto-resolved: condition
+> cleared"); a failed detector never mass-resolves, and the stock scheduler
+> auto-resolves its own brand's findings the same way.
 
 ## Files
 
@@ -52,21 +55,36 @@ modules toggled on.
   `logistics` (failed/overdue deliveries), `expenses` (unsettled advances),
   `sales` (paid-but-undispatched), `crm` (stalled deals), `production` (run
   arrival overdue), `accounting` (unposted draft journals), `retention` (high
-  churn risk), `pricing` (price below cost/floor), `retail_partners`
-  (unpaid/disputed settlements), `tasks` (overdue), `stylist_programme`
-  (unpaid/failed payouts), `sales_campaigns` (live-past-end / not-launched),
-  `marketing` (ad spend with no conversions), `smartcomm` (unanswered thread),
-  `social_media` (failed post / expiring token), `storefront` (failed payment),
-  `catalogue` (visible-but-unbuyable), `iam_security` (overdue access review),
-  `payroll` (contract expiring), `customer_onboarding` (stalled submission).
-- **`low-stock.js` scheduler** → `stock` (via the legacy `raise` adapter).
+  churn risk), `pricing` (below cost on any channel + below floor on the
+  storefront, per (variant, channel)), `retail_partners` (unpaid/disputed
+  settlements), `tasks` (overdue), `stylist_programme` (unpaid/failed payouts),
+  `sales_campaigns` (live-past-end / not-launched), `marketing` (ad spend with
+  no conversions), `smartcomm` (unanswered thread), `social_media` (failed post
+  / expiring token), `storefront` (failed payment), `catalogue`
+  (visible-but-unbuyable), `iam_security` (overdue access review), `payroll`
+  (contract expiring), `customer_onboarding` (stalled submission), and
+  `purchasing` again (`approval_stalled` — PO submitted but untouched 7+ days).
+- **`low-stock.js` scheduler** → `stock` (×2 — reorder point + negative-stock
+  count integrity), writing unified insights directly with per-brand
+  auto-resolve, urgent notify and a realtime nudge.
 
-**All 27 modules now have a detector.** New detectors run only for modules
-switched on in AI Control, so they ship dormant until the CEO enables them. See
-`docs/PRAXIS_AI_INSIGHTS_BACKLOG.md` for the remaining Wave-4 polish.
+**All 27 modules have a detector (29 in total).** New detectors run only for
+modules switched on in AI Control, so they ship dormant until the CEO enables
+them. See `docs/PRAXIS_AI_INSIGHTS_BACKLOG.md` for programme status.
 
 ## Tier-2
 
 The daily briefing (`jobs/schedulers/ai-briefing.js`) narrates the per-module
 summary. AI (paid) narration runs only where the CEO flips `narration_enabled`
-on for a module; otherwise the deterministic text is the always-on baseline.
+on for a module — metered as `insight_narration` on the governance ledger —
+otherwise the deterministic text is the always-on baseline. Each briefing
+records the top open findings it covered in `shared.ai_briefing_insight_refs`
+(paragraph → alert links).
+
+## User documentation
+
+The Help Center ships a full **Praxis Insights** category (migration 000258):
+overview, per-module enable/disable & spend, the Insights Center, AI Control &
+budget, the complete 27-module detector reference, briefings & asking Praxis,
+and an FAQ. Articles are `praxis_indexed`, so Praxis chat answers insights
+questions from them.

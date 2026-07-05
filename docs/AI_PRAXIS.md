@@ -98,9 +98,49 @@ Every AI call MUST go through `src/ai/usage-meter.js`:
 
 Budgets are per calendar month, with **soft** and **hard** caps. Soft cap → notification to CEO. Hard cap → AI pauses gracefully; deterministic Tier-1 insights keep running.
 
-## Tier-1 vs Tier-2 insights (§6.30)
+## Insights (§6.30 / §6.31) — the unified engine
 
-- **Tier 1 — deterministic** (always on, zero AI cost): SQL rules against module data. E.g., stock under reorder point, margin under floor, invoice overdue, off-site clock-in.
-- **Tier 2 — AI narration** (scheduled, low cost): once a day, DeepSeek reads the SUMMARISED Tier-1 findings (not raw data) and writes the CEO a plain-language briefing.
+All tier-1 findings live in ONE store, `shared.ai_insights` (module + detector +
+severity + status + typed `context` JSONB + drill target), written through the
+declarative detector registry in `src/modules/ai_insights/insights.registry.js`.
+**Every one of the 27 modules has at least one detector**; several carry two or
+more (stock: reorder + negative count; purchasing: delivery overdue + stalled
+approval; pricing: below-cost on every sales channel + below-floor on the
+storefront).
 
-When the AI budget hard-caps, Tier 2 pauses. Tier 1 keeps running. Insights cards on the dashboard never go blank.
+**The CEO's switchboard** is `shared.ai_insight_modules`, edited at
+AI Control → Insights (`/ai-control/insights`): per module,
+`insights_enabled` (tier-1 rules), `narration_enabled` (tier-2 AI), and
+`frequency`. The sweep (`runDetectorSweep`, cron every 30 min; stock via its own
+scheduler at 08:00/14:00) runs **only enabled modules** — a disabled module
+costs zero compute. This is the "activate/deactivate insights per module to cut
+spend" control.
+
+**Lifecycle**: open → acknowledged / investigating → resolved / dismissed, all
+audited. Findings are idempotent on a partial-unique `(module, business,
+suppression_key)` index while open — one condition, one flag. **Auto-resolve**:
+after each clean detector pass, open findings whose condition no longer appears
+are closed with "Auto-resolved: condition cleared" (a failed detector never
+mass-resolves; the stock scheduler auto-resolves its own brand's findings).
+
+**Delivery**: `brand:{brand}:insights` Socket.io room (live cards + Center),
+CEO notification bell for genuinely-new high/critical findings (suppressed
+duplicates never re-ping), the `<ModuleInsights>` slot on every fitting module
+page, the Insights Center at `/insights`, App-Grid urgent badges, and the
+`insights_open` Praxis query ("what needs my attention?").
+
+- **Tier 1 — deterministic** (always on, zero AI cost): SQL rules over the
+  live spine — everything above.
+- **Tier 2 — AI narration** (opt-in per module, low cost): the 07:00 daily
+  briefing narrates the SUMMARISED counts (never raw rows) when at least one
+  module has narration on, the `insights_briefing` feature is usable, and a
+  vendor is configured; metered as `insight_narration` on the governance
+  ledger, with `ai_briefing_insight_refs` linking each briefing to the top
+  open findings it covered.
+
+When the AI budget hard-caps, Tier 2 pauses and the briefing falls back to the
+deterministic text. Tier 1 keeps running. Insight surfaces never go blank.
+
+User documentation: the Help Center's **Praxis Insights** category (7 seeded
+articles, `related_module = 'ai_insights'`) covers the full system, including
+the 27-module detector reference and FAQ.

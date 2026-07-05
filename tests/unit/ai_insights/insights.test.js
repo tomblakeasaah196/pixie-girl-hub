@@ -220,9 +220,9 @@ describe("registry — Wave-3 batch 2 detectors", () => {
 });
 
 describe("registry — Wave-3 batch 3 detectors", () => {
-  test("pricing/margin_breach: below cost → critical + price_below_cost", async () => {
+  test("pricing/margin_breach: below cost on wholesale → critical, channel-scoped key", async () => {
     repo.marginBreaches.mockResolvedValue([
-      { variant_id: "v-1", product_id: "p-1", sku: "PXG-001", variant_name: "18in", cost_price_ngn: "10000.00", min_price_ngn: "12000.00", price_storefront_ngn: "8000.00", product_name: "HD Lace" },
+      { variant_id: "v-1", product_id: "p-1", sku: "PXG-001", variant_name: "18in", cost_price_ngn: "10000.00", min_price_ngn: "12000.00", channel: "wholesale", price_ngn: "8000.00", product_name: "HD Lace" },
     ]);
     const [f] = await det("pricing", "margin_breach").run({ brand: "pixiegirl" });
     expect(f).toMatchObject({
@@ -230,17 +230,33 @@ describe("registry — Wave-3 batch 3 detectors", () => {
       detector: "price_below_cost",
       severity: "critical", // 8000 < 10000*0.9
       amount_ngn: "8000.00",
-      suppression_key: "margin:v-1",
+      suppression_key: "margin:v-1:wholesale",
     });
+    expect(f.context.channel).toBe("wholesale");
   });
 
-  test("pricing/margin_breach: below floor but above cost → medium", async () => {
+  test("pricing/margin_breach: storefront below floor but above cost → medium", async () => {
     repo.marginBreaches.mockResolvedValue([
-      { variant_id: "v-2", product_id: "p-2", sku: "PXG-002", cost_price_ngn: "5000.00", min_price_ngn: "9000.00", price_storefront_ngn: "8000.00", product_name: "Body Wave" },
+      { variant_id: "v-2", product_id: "p-2", sku: "PXG-002", cost_price_ngn: "5000.00", min_price_ngn: "9000.00", channel: "storefront", price_ngn: "8000.00", product_name: "Body Wave" },
     ]);
     const [f] = await det("pricing", "margin_breach").run({ brand: "pixiegirl" });
     expect(f.detector).toBe("price_below_floor");
     expect(f.severity).toBe("medium");
+    expect(f.suppression_key).toBe("margin:v-2:storefront");
+  });
+
+  test("purchasing/approval_stalled: submitted PO untouched 14+ days → high", async () => {
+    repo.stalledPurchaseApprovals.mockResolvedValue([
+      { po_id: "po-9", po_number: "PXG-PO-9", supplier_id: "s-1", total_ngn: "750000.00", days_waiting: 15 },
+    ]);
+    const [f] = await det("purchasing", "approval_stalled").run({ brand: "pixiegirl" });
+    expect(f).toMatchObject({
+      module: "purchasing",
+      detector: "approval_stalled",
+      severity: "high",
+      amount_ngn: "750000.00",
+      suppression_key: "po_approval:po-9",
+    });
   });
 
   test("retail_partners/settlement_unpaid: disputed → high + disputed detector", async () => {
@@ -312,6 +328,31 @@ describe("registry — Wave-3 batch 4 detectors", () => {
       drill_route: "/smartcomm?channel=ch-1",
       suppression_key: "unanswered:ch-1",
     });
+  });
+});
+
+describe("service.runDetectorSweep — auto-resolve (Wave 4)", () => {
+  test("resolves stale insights for a module that ran cleanly, using its live keys", async () => {
+    repo.enabledModules.mockResolvedValue(["invoicing"]);
+    repo.overdueInvoices.mockResolvedValue([
+      { invoice_id: "inv-1", customer_contact_id: "c", net_due_ngn: "1.00", days_overdue: 5 },
+    ]);
+    repo.raise.mockResolvedValue(null);
+    repo.autoResolveStale.mockResolvedValue(2);
+    await service.runDetectorSweep();
+    // invoicing is brand-scoped (runs per brand) but the mock returns the same
+    // invoice, so the live-key set dedupes to one.
+    expect(repo.autoResolveStale).toHaveBeenCalledWith({
+      module: "invoicing",
+      liveKeys: ["overdue:inv-1"],
+    });
+  });
+
+  test("skips auto-resolve for a module whose detector errored", async () => {
+    repo.enabledModules.mockResolvedValue(["invoicing"]);
+    repo.overdueInvoices.mockRejectedValue(new Error("boom"));
+    await service.runDetectorSweep();
+    expect(repo.autoResolveStale).not.toHaveBeenCalled();
   });
 });
 

@@ -65,7 +65,7 @@ export function AppGrid({ badges = {} }: { badges?: Record<string, number> }) {
               <AppTile
                 module={m}
                 index={i}
-                badge={m.badgeKey ? badges[m.badgeKey] : undefined}
+                badge={badges[m.badgeKey ?? m.key]}
                 pin={
                   anchor
                     ? undefined
@@ -115,9 +115,7 @@ export function AppGrid({ badges = {} }: { badges?: Record<string, number> }) {
                     module={MODULE_BY_KEY[key]!}
                     index={i}
                     badge={
-                      MODULE_BY_KEY[key]!.badgeKey
-                        ? badges[MODULE_BY_KEY[key]!.badgeKey!]
-                        : undefined
+                      badges[MODULE_BY_KEY[key]!.badgeKey ?? key]
                     }
                     pin={{ mode: "pin", onClick: () => pin(key) }}
                   />

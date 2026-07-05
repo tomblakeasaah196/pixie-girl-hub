@@ -74,16 +74,63 @@ function resolveWorkingDay({ dateStr, workSchedule, brandWorkingDays }) {
  * @param firstClockInAt ISO timestamp of the first accepted clock-in, or null
  * @param graceMinutes minutes of grace before lateness counts
  * @param dateStr the working date 'YYYY-MM-DD' the clock-in belongs to
+ * @param tzOffsetMinutes local-time UTC offset of the workplace (60 for
+ *        Africa/Lagos). expectedStart is wall-clock local time; the clock-in
+ *        timestamp is a UTC instant, so the expected instant must be shifted.
  */
-function minutesLate({ expectedStart, firstClockInAt, graceMinutes = 0, dateStr }) {
+function minutesLate({
+  expectedStart,
+  firstClockInAt,
+  graceMinutes = 0,
+  dateStr,
+  tzOffsetMinutes = 0,
+}) {
   if (!expectedStart || !firstClockInAt) return 0;
   const m = /^(\d{1,2}):(\d{2})/.exec(expectedStart);
   if (!m) return 0;
   const expected = new Date(`${dateStr}T00:00:00Z`);
-  expected.setUTCHours(Number(m[1]), Number(m[2]) + Number(graceMinutes || 0), 0, 0);
+  expected.setUTCHours(
+    Number(m[1]),
+    Number(m[2]) + Number(graceMinutes || 0) - Number(tzOffsetMinutes || 0),
+    0, 0,
+  );
   const actual = new Date(firstClockInAt);
   const diffMin = Math.floor((actual.getTime() - expected.getTime()) / 60000);
   return diffMin > 0 ? diffMin : 0;
+}
+
+/**
+ * Minutes left early = (expected end) − (last clock-out), floored at 0.
+ * 0 when there is no expected end or no clock-out (open days / forgot to
+ * punch out are not penalised here — reconcile just records what it has).
+ */
+function minutesEarly({ expectedEnd, lastClockOutAt, dateStr, tzOffsetMinutes = 0 }) {
+  if (!expectedEnd || !lastClockOutAt) return 0;
+  const m = /^(\d{1,2}):(\d{2})/.exec(expectedEnd);
+  if (!m) return 0;
+  const expected = new Date(`${dateStr}T00:00:00Z`);
+  expected.setUTCHours(Number(m[1]), Number(m[2]) - Number(tzOffsetMinutes || 0), 0, 0);
+  const actual = new Date(lastClockOutAt);
+  const diffMin = Math.floor((expected.getTime() - actual.getTime()) / 60000);
+  return diffMin > 0 ? diffMin : 0;
+}
+
+/**
+ * Inclusive count of working days between two 'YYYY-MM-DD' dates for a
+ * working-day set (used to pro-rate mid-period joiners/leavers).
+ */
+function workingDaysBetween(startStr, endStr, workingDays) {
+  const set = new Set((workingDays || []).map((d) => d.toLowerCase()));
+  const start = new Date(`${startStr}T00:00:00Z`);
+  const end = new Date(`${endStr}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return 0;
+  }
+  let count = 0;
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    if (set.has(WEEKDAY_KEYS[d.getUTCDay()])) count++;
+  }
+  return count;
 }
 
 /**
@@ -120,8 +167,10 @@ function reconcileDay({
   graceMinutes,
   firstClockInAt,
   isOnLeave = false,
+  isUnpaidLeave = false,
   isWorkingDay = true,
   tiers,
+  tzOffsetMinutes = 0,
 }) {
   const rate = dailyRate(baseSalaryNgn, workingDaysCount);
 
@@ -130,15 +179,22 @@ function reconcileDay({
       daily_rate_ngn: rate, earned_ngn: 0, worked: false };
   }
   if (isOnLeave) {
-    return { status: "on_leave", minutes_late: 0, deduction_pct: 0, deduction_ngn: 0,
-      daily_rate_ngn: rate, earned_ngn: rate, worked: false };
+    // Paid leave earns the day; unpaid leave shows the day's rate as a
+    // deduction so the tracker and the payslip agree (§3.5).
+    return isUnpaidLeave
+      ? { status: "on_leave", minutes_late: 0, deduction_pct: 100, deduction_ngn: rate,
+          daily_rate_ngn: rate, earned_ngn: 0, worked: false }
+      : { status: "on_leave", minutes_late: 0, deduction_pct: 0, deduction_ngn: 0,
+          daily_rate_ngn: rate, earned_ngn: rate, worked: false };
   }
   if (!firstClockInAt) {
     return { status: "absent", minutes_late: 0, deduction_pct: 0, deduction_ngn: 0,
       daily_rate_ngn: rate, earned_ngn: 0, worked: false };
   }
 
-  const mins = minutesLate({ expectedStart, firstClockInAt, graceMinutes, dateStr });
+  const mins = minutesLate({
+    expectedStart, firstClockInAt, graceMinutes, dateStr, tzOffsetMinutes,
+  });
   const pct = deductionPctForMinutes(mins, tiers);
   const ded = deductionAmount(rate, pct);
   return {
@@ -156,9 +212,11 @@ module.exports = {
   round2,
   weekdayKey,
   workingDaysInMonth,
+  workingDaysBetween,
   dailyRate,
   resolveWorkingDay,
   minutesLate,
+  minutesEarly,
   deductionPctForMinutes,
   deductionAmount,
   reconcileDay,

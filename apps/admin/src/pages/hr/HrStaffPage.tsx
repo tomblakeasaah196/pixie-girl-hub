@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   MapPin,
   FileText,
+  Wallet,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState, KpiTile } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
@@ -60,6 +61,8 @@ import {
   SectionTitle,
   QueryStatusPill,
   TabBar,
+  ClockLocationLink,
+  clockTime,
   useNotify,
   errMsg,
   statusTone,
@@ -500,6 +503,40 @@ function SettingsTab() {
       </Card>
 
       <Card className="p-5 lg:col-span-2">
+        <SectionTitle icon={<Wallet className="h-4 w-4 text-accent-glow" />}>
+          Payroll
+        </SectionTitle>
+        <p className="mb-3 text-xs text-text-muted">
+          Attendance deductions (lateness, absence, unpaid leave) always flow into net pay.
+          Statutory tax is optional — leave it off to pay simple salaries.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={data.statutory_deductions_enabled}
+            onChange={(e) => save.mutate({ statutory_deductions_enabled: e.target.checked })} />
+          Apply PAYE, pension &amp; NHF (full statutory mode)
+        </label>
+        <p className="ml-6 mt-1 text-[11px] text-text-faint">
+          Off = gross salary is the net (minus attendance &amp; advances). Individual staff can be
+          exempted on their profile even when this is on.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-xs font-medium text-text-muted">
+            Cash-advance recovery cap (% of net per run)
+            <input type="number" min={0} max={100} defaultValue={data.advance_recovery_cap_pct}
+              onBlur={(e) => save.mutate({ advance_recovery_cap_pct: Number(e.target.value) })}
+              className="mt-1 w-24 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+            <span className="ml-2 text-[11px] text-text-faint">remainder rolls to next month</span>
+          </label>
+          <label className="block text-xs font-medium text-text-muted">
+            Default closing time (for early-departure tracking)
+            <input type="time" defaultValue={data.default_expected_end_time || "18:00"}
+              onBlur={(e) => save.mutate({ default_expected_end_time: e.target.value || null })}
+              className="mt-1 block w-32 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+          </label>
+        </div>
+      </Card>
+
+      <Card className="p-5 lg:col-span-2">
         <SectionTitle>Working week</SectionTitle>
         <div className="flex flex-wrap gap-2">
           {["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => {
@@ -534,9 +571,23 @@ function AttendanceTab() {
   const qc = useQueryClient();
   const notify = useNotify();
   const today = new Date().toISOString().slice(0, 10);
+  const monthStart = today.slice(0, 8) + "01";
+  const [from, setFrom] = useState(today);
+  const [to, setTo] = useState(today);
+  const [staffId, setStaffId] = useState("");
+
+  const { data: staff } = useQuery({
+    queryKey: ["hr", "staff", "for-attendance"],
+    queryFn: () => listStaff({ page_size: "200" }),
+  });
   const { data, isLoading } = useQuery({
-    queryKey: ["hr", "attendance-days", today],
-    queryFn: () => listAttendanceDays({ from: today, to: today }),
+    queryKey: ["hr", "attendance-days", from, to, staffId],
+    queryFn: () =>
+      listAttendanceDays({
+        from,
+        to,
+        ...(staffId ? { profile_id: staffId } : {}),
+      }),
   });
   const lapse = useMutation({
     mutationFn: () => applyLapsedOffsite(),
@@ -546,44 +597,86 @@ function AttendanceTab() {
     },
     onError: (e) => notify("Failed", errMsg(e), "high"),
   });
-  if (isLoading) return <Skeleton className="h-40 rounded-[var(--radius)]" />;
-  if (!data?.length)
-    return <EmptyState icon={<CalendarCheck className="h-6 w-6" />} title="Nothing reconciled for today yet"
-      message="Run “Reconcile today” to compute attendance, lateness, off-site flags and deductions." />;
+
+  const inputCls =
+    "rounded-lg border border-line bg-text-primary/[0.04] p-2 text-xs text-text-primary";
+
   return (
-    <div className="space-y-2">
-      <div className="flex justify-end">
-        <Button size="sm" icon={<MapPin className="h-3.5 w-3.5" />} disabled={lapse.isPending}
-          onClick={() => lapse.mutate()}>
-          Apply lapsed off-site penalties
-        </Button>
+    <div className="space-y-3">
+      {/* Filters */}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-[11px] text-text-muted">
+          From
+          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)}
+            className={`mt-1 block ${inputCls}`} />
+        </label>
+        <label className="text-[11px] text-text-muted">
+          To
+          <input type="date" value={to} min={from} max={today} onChange={(e) => setTo(e.target.value)}
+            className={`mt-1 block ${inputCls}`} />
+        </label>
+        <label className="text-[11px] text-text-muted">
+          Employee
+          <select value={staffId} onChange={(e) => setStaffId(e.target.value)}
+            className={`mt-1 block min-w-[10rem] ${inputCls}`}>
+            <option value="">All staff</option>
+            {staff?.data?.map((s) => (
+              <option key={s.profile_id} value={s.profile_id}>{s.display_name}</option>
+            ))}
+          </select>
+        </label>
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" onClick={() => { setFrom(monthStart); setTo(today); }}>This month</Button>
+          <Button size="sm" icon={<MapPin className="h-3.5 w-3.5" />} disabled={lapse.isPending}
+            onClick={() => lapse.mutate()}>
+            Apply lapsed off-site penalties
+          </Button>
+        </div>
       </div>
-      {data.map((d) => (
-        <Card key={d.day_id} className="flex items-center justify-between gap-3 p-3">
-          <div className="min-w-0">
-            <span className="text-sm text-text-primary">{d.staff_name || "Staff"}</span>
-            {d.clock_in_address && (
-              <div className="flex items-center gap-1 text-xs text-text-muted">
-                <MapPin className="h-3 w-3" /> {d.clock_in_address}
+
+      {isLoading ? (
+        <Skeleton className="h-40 rounded-[var(--radius)]" />
+      ) : !data?.length ? (
+        <EmptyState icon={<CalendarCheck className="h-6 w-6" />} title="Nothing reconciled for this range"
+          message="Run “Reconcile today” (or the nightly sweep) to compute attendance, lateness, off-site flags and deductions." />
+      ) : (
+        <div className="space-y-2">
+          {data.map((d) => (
+            <Card key={d.day_id} className="flex items-center justify-between gap-3 p-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-text-primary">{d.staff_name || "Staff"}</span>
+                  <span className="text-xs text-text-faint">{d.work_date}</span>
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                  <span className="text-xs text-text-muted">
+                    In {clockTime(d.first_clock_in_at)}
+                    {d.last_clock_out_at ? ` · Out ${clockTime(d.last_clock_out_at)}` : ""}
+                  </span>
+                  <ClockLocationLink day={d} />
+                </div>
               </div>
-            )}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {d.is_offsite && (
-              <span className="text-xs text-warn">
-                off-site{d.offsite_distance_m ? ` ${Math.round(Number(d.offsite_distance_m))}m` : ""}
-              </span>
-            )}
-            {d.is_late && <span className="text-xs text-warn">{d.minutes_late}m late</span>}
-            {d.deduction_ngn > 0 && !d.justified && (
-              <span className="text-xs text-warn">−{money(Number(d.deduction_ngn))}</span>
-            )}
-            <Pill tone={d.is_offsite ? "warn" : statusTone(d.status)}>
-              {d.status.replace("_", " ")}
-            </Pill>
-          </div>
-        </Card>
-      ))}
+              <div className="flex shrink-0 items-center gap-2">
+                {d.is_offsite && (
+                  <span className="text-xs text-warn">
+                    off-site{d.offsite_distance_m ? ` ${Math.round(Number(d.offsite_distance_m))}m` : ""}
+                  </span>
+                )}
+                {d.is_late && <span className="text-xs text-warn">{d.minutes_late}m late</span>}
+                {d.early_leave_minutes > 0 && (
+                  <span className="text-xs text-warn">{d.early_leave_minutes}m early</span>
+                )}
+                {d.deduction_ngn > 0 && !d.justified && (
+                  <span className="text-xs text-warn">−{money(Number(d.deduction_ngn))}</span>
+                )}
+                <Pill tone={d.is_offsite ? "warn" : statusTone(d.status)}>
+                  {d.status.replace("_", " ")}
+                </Pill>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

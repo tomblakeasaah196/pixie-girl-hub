@@ -446,6 +446,11 @@ CREATE TABLE {{BUSINESS}}.payslips (
   nhf_ngn               NUMERIC(14,2) NOT NULL DEFAULT 0,
   loan_repayment_ngn    NUMERIC(14,2) NOT NULL DEFAULT 0,
   advance_recovery_ngn  NUMERIC(14,2) NOT NULL DEFAULT 0,
+  -- Attendance money (lateness/absence/unpaid-leave from the reconciled days)
+  attendance_deduction_ngn NUMERIC(14,2) NOT NULL DEFAULT 0,
+  days_worked           SMALLINT,
+  working_days_in_period SMALLINT,
+  prorate_factor        NUMERIC(6,4) NOT NULL DEFAULT 1,        -- joiners/leavers
   other_deductions_ngn  NUMERIC(14,2) NOT NULL DEFAULT 0,
   total_deductions_ngn  NUMERIC(14,2) NOT NULL DEFAULT 0,
   -- Net
@@ -483,6 +488,7 @@ CREATE TABLE {{BUSINESS}}.payslip_lines (
                         CHECK (line_type IN ('base_salary','housing_allowance','transport_allowance',
                                              'commission','bonus','overtime','reimbursement','other_earning',
                                              'paye','pension_employee','pension_employer','nhf','nsitf',
+                                             'attendance_deduction',
                                              'loan_repayment','advance_recovery','other_deduction')),
   description           TEXT        NOT NULL,
   -- Amount (positive for earning, positive for deduction — the line_type drives sign)

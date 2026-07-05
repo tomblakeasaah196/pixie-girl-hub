@@ -23,22 +23,20 @@ const attendanceRepo = require("../attendance/attendance.repo");
 const calc = require("./lateness.calc");
 const geo = require("../attendance/geo.calc");
 const events = require("./hr.events");
+const { reverseGeocode } = require("../../services/geoapify.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, ConflictError, ValidationError } =
   require("../../utils/errors");
+// Day boundaries + lateness math are pinned to Africa/Lagos (both businesses
+// operate there); UTC would shift the working day by an hour.
+const { LAGOS_UTC_OFFSET_MIN, todayStr, ym, addDays } = require("./lagos-time");
 
-function ym(dateStr) {
-  const d = dateStr ? new Date(`${dateStr}T00:00:00Z`) : new Date();
-  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
-}
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-function addDays(dateStr, n) {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
+/** Is `dateStr` within the employee's employment window? */
+function isEmployedOn(dateStr, startDate, endDate) {
+  if (startDate && dateStr < String(startDate).slice(0, 10)) return false;
+  if (endDate && dateStr > String(endDate).slice(0, 10)) return false;
+  return true;
 }
 
 // ── HR Settings ────────────────────────────────────────────
@@ -404,23 +402,31 @@ async function reconcileDay({ brand, user, date }) {
     const workingDaysCount = calc.workingDaysInMonth(year, month, settings.working_days);
 
     const clockIns = await repo.firstClockInsForDate({ client, profileIds, dateStr });
+    const clockOuts = await repo.lastClockOutsForDate({ client, profileIds, dateStr });
     const leaves = await repo.approvedLeaveForDate({ client, profileIds, dateStr });
 
     let records = 0;
     let lateCount = 0;
     let offsiteCount = 0;
     for (const s of staff) {
-      const wd = calc.resolveWorkingDay({
+      // A day outside the employment window is treated as a non-working day so
+      // it never becomes a spurious absence (payroll pro-rates the base for
+      // joiners/leavers instead — §3.5).
+      const employed = isEmployedOn(dateStr, s.start_date, s.end_date);
+      const wdRaw = calc.resolveWorkingDay({
         dateStr,
         workSchedule: s.work_schedule,
         brandWorkingDays: settings.working_days,
       });
+      const wd = employed ? wdRaw : { working: false, mode: "off" };
       const expectedStart = s.work_expected_start_time || settings.default_expected_start_time;
+      const expectedEnd = s.work_expected_end_time || settings.default_expected_end_time;
       const grace = s.work_grace_minutes !== null && s.work_grace_minutes !== undefined
         ? s.work_grace_minutes
         : settings.default_grace_minutes;
       const clock = clockIns[s.profile_id];
-      const leaveId = leaves[s.profile_id];
+      const clockOut = clockOuts[s.profile_id];
+      const leave = leaves[s.profile_id];
 
       const r = calc.reconcileDay({
         dateStr,
@@ -429,9 +435,11 @@ async function reconcileDay({ brand, user, date }) {
         expectedStart,
         graceMinutes: grace,
         firstClockInAt: clock ? clock.occurred_at : null,
-        isOnLeave: Boolean(leaveId),
+        isOnLeave: Boolean(leave),
+        isUnpaidLeave: Boolean(leave && leave.is_unpaid),
         isWorkingDay: wd.working,
         tiers: settings.lateness_enabled ? settings.lateness_tiers : [],
+        tzOffsetMinutes: LAGOS_UTC_OFFSET_MIN,
       });
 
       // Off-site only matters on an on-site working day with a real clock-in
@@ -442,6 +450,17 @@ async function reconcileDay({ brand, user, date }) {
         wd.mode === "on_site" &&
         clock &&
         clock.is_offsite === true;
+
+      // Early departure / last-out (audit H3): only meaningful on a worked day.
+      const earlyLeaveMinutes =
+        wd.working && clockOut
+          ? calc.minutesEarly({
+              expectedEnd,
+              lastClockOutAt: clockOut.occurred_at,
+              dateStr,
+              tzOffsetMinutes: LAGOS_UTC_OFFSET_MIN,
+            })
+          : 0;
 
       const day = await repo.upsertAttendanceDay({
         client, brand,
@@ -457,13 +476,15 @@ async function reconcileDay({ brand, user, date }) {
           deduction_pct: r.deduction_pct,
           deduction_ngn: r.deduction_ngn,
           clock_event_id: clock ? clock.event_id : null,
-          leave_id: leaveId || null,
+          leave_id: leave ? leave.leave_id : null,
           reconciled_by: user ? user.user_id : null,
           is_offsite: Boolean(offsite),
           offsite_distance_m: clock ? clock.distance_m : null,
           clock_in_address: clock ? clock.formatted_address : null,
           clock_in_lat: clock ? clock.latitude : null,
           clock_in_lng: clock ? clock.longitude : null,
+          last_clock_out_at: clockOut ? clockOut.occurred_at : null,
+          early_leave_minutes: earlyLeaveMinutes,
         },
       });
 
@@ -541,6 +562,39 @@ async function reconcileDay({ brand, user, date }) {
       offsite_count: offsiteCount,
     };
   });
+}
+
+/**
+ * Brand working days in [from, to] (never future) that have NO reconciled
+ * attendance rows yet — the pre-review payroll guard (decision 2026-07-04:
+ * block "Send for approval" until the period is reconciled, with a one-click
+ * "reconcile all" and per-day deep links). Uses the brand working-day set as
+ * the proxy for "a day attendance should exist".
+ */
+async function unreconciledWorkingDates({ brand, from, to }) {
+  const settings = await repo.getSettings({ brand });
+  const today = todayStr();
+  const end = to > today ? today : to;
+  if (!from || !end || from > end) return [];
+  const done = await repo.reconciledDatesInRange({ brand, from, to: end });
+  const workingSet = new Set((settings.working_days || []).map((d) => d.toLowerCase()));
+  const out = [];
+  for (let d = from; d <= end; d = addDays(d, 1)) {
+    const key = calc.weekdayKey(d);
+    if (workingSet.has(key) && !done.has(d)) out.push(d);
+  }
+  return out;
+}
+
+/** Reconcile every still-unreconciled working day in a period (guard fixer). */
+async function reconcilePeriod({ brand, user, from, to }) {
+  const dates = await unreconciledWorkingDates({ brand, from, to });
+  let reconciled = 0;
+  for (const date of dates) {
+    await reconcileDay({ brand, user, date });
+    reconciled++;
+  }
+  return { reconciled, dates };
 }
 
 /**
@@ -654,9 +708,22 @@ async function getMyToday({ brand, user }) {
  * Self clock-in / clock-out from the top-bar widget. Records the coordinates
  * + IP as evidence; flags (does not reject) an off-site point; blocks only
  * when location is missing on an on-site day where it's required.
- * `address` is the client-side reverse-geocoded display string.
+ *
+ * The stored address label is derived server-side from the coordinates via
+ * Geoapify (audit H7 — replaces the flaky client-side Google geocode). The
+ * geocode runs BEFORE the DB transaction opens so a slow/failed lookup never
+ * holds a connection and can never block clock-in (best-effort → may be null).
+ * A client-supplied `address` still wins when present (offline fallback).
  */
 async function selfClock({ brand, user, input, requestMeta = {} }) {
+  const hasPointPre =
+    input.latitude !== null && input.latitude !== undefined &&
+    input.longitude !== null && input.longitude !== undefined;
+  let addressLabel = input.address || null;
+  if (!addressLabel && hasPointPre) {
+    addressLabel = await reverseGeocode(input.latitude, input.longitude);
+  }
+
   return transaction(async (client) => {
     const profile = await repo.profileForUser({ client, brand, userId: user.user_id });
     if (!profile) throw new NotFoundError("Staff profile");
@@ -705,7 +772,7 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
         accepted: true, // recorded; off-site is flagged, not rejected
         rejection_reason: decision.reason,
         is_offsite: decision.is_offsite,
-        formatted_address: input.address || null,
+        formatted_address: addressLabel,
         occurred_at: null,
       },
     });
@@ -724,6 +791,7 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
         firstClockInAt: event.occurred_at,
         graceMinutes: grace,
         dateStr: todayStr(),
+        tzOffsetMinutes: LAGOS_UTC_OFFSET_MIN,
       });
     }
 
@@ -888,6 +956,8 @@ module.exports = {
   bumpTargetProgress,
   removeTarget,
   reconcileDay,
+  reconcilePeriod,
+  unreconciledWorkingDates,
   applyLapsedOffsite,
   bumpDueReminders,
   getMyToday,

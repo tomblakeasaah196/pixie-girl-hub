@@ -89,6 +89,8 @@ function errorHandler(err, req, res, _next) {
         ...(meta.support ? { support: meta.support } : {}),
         // POTENTIAL_DUPLICATE: let the frontend show the existing orders.
         ...(meta.existing_orders ? { existing_orders: meta.existing_orders } : {}),
+        // PERIOD_UNRECONCILED: let the payroll UI list/deep-link the days.
+        ...(meta.unreconciled ? { unreconciled: meta.unreconciled } : {}),
       },
       request_id,
     });

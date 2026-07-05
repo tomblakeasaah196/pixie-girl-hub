@@ -11,6 +11,30 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-04 — HR payroll truth (attendance → payslip, PAYE toggle, advances)
+
+**Source:** Meeting transcript §3.4/§3.5 (SSOT) + HR coverage audit
+(`docs/HR_FULL_COVERAGE_AUDIT_2026-07-04.md`), PR1.
+
+**Files:** `000257_shared_hr_payroll_truth.sql` (new, shared),
+`template/000027_business_payroll.sql.template` (fresh-provisioning parity).
+
+**What / why:**
+- `hr_settings`: `statutory_deductions_enabled` (default **false** — both
+  brands pay simple salaries today; flip on for full PAYE/pension/NHF),
+  `advance_recovery_cap_pct` (default 50 — max % of net one run recovers
+  against cash advances), `default_expected_end_time` (default 18:00 — drives
+  early-departure / last-out tracking).
+- `staff_profiles`: `statutory_exempt` (per-employee override) and
+  `work_expected_end_time` (personal closing time).
+- `attendance_days`: `last_clock_out_at` + `early_leave_minutes` (clock-out
+  reconciliation — §6.11 early departures + "last to leave").
+- Brand `payslips`: `attendance_deduction_ngn`, `days_worked`,
+  `working_days_in_period`, `prorate_factor`; `payslip_lines.line_type` gains
+  `attendance_deduction`. Attendance deductions and mid-period pro-rating now
+  reach net pay (audit C1/C2); cash-advance recovery uses the existing
+  `advance_recovery_ngn` column (audit C4).
+
 ## 2026-07-04 — Unified AI Insights store + per-module control matrix
 
 **Source:** Praxis AI insights expansion (V2.2 §6.30/§6.31) — scale insights

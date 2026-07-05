@@ -99,6 +99,52 @@ export interface AttendanceDay {
   early_leave_minutes: number;
 }
 
+export interface ArrivalPoint {
+  work_date: string;
+  at: string;
+  local_minutes: number;
+}
+
+export interface AttendanceInsights {
+  present_days: number;
+  late_days: number;
+  absent_days: number;
+  offsite_days: number;
+  at_risk_days: number;
+  punctuality_pct: number;
+  avg_late_minutes: number;
+  earliest_arrival: ArrivalPoint | null;
+  latest_arrival: ArrivalPoint | null;
+  earliest_departure: ArrivalPoint | null;
+  latest_departure: ArrivalPoint | null;
+}
+
+export interface CommissionRow {
+  earning_id: string;
+  commission_amount_ngn: number;
+  sale_channel: string | null;
+  status: string;
+  earned_at: string;
+}
+
+export interface BonusRow {
+  bonus_id: string;
+  amount_ngn: number;
+  bonus_type?: string | null;
+  reason?: string | null;
+  status: string;
+  awarded_at: string;
+}
+
+export interface HrContract {
+  contract_id: string;
+  contract_type: string;
+  effective_from: string;
+  effective_to: string | null;
+  gross_salary: number;
+  document_id: string | null;
+}
+
 export interface MyHr {
   profile: {
     profile_id: string;
@@ -115,6 +161,7 @@ export interface MyHr {
   earnings: MyHrEarnings;
   targets: PerformanceTarget[];
   attendance: AttendanceDay[];
+  insights: AttendanceInsights;
   open_queries: HrQuery[];
   leave_balance: { leave_type: string; days_taken: number }[];
   leave_requests: LeaveRequest[];
@@ -126,14 +173,71 @@ export interface MyHr {
     priority: string;
     due_at: string | null;
   }[];
-  contracts: {
-    contract_id: string;
-    contract_type: string;
-    effective_from: string;
-    effective_to: string | null;
-    gross_salary: number;
-    document_id: string | null;
-  }[];
+  contracts: HrContract[];
+  payslips: Payslip[];
+  accruals: {
+    commission_pending_ngn: number;
+    bonus_pending_ngn: number;
+    commissions: CommissionRow[];
+    bonuses: BonusRow[];
+  };
+}
+
+/** Full (masked) staff profile as returned by GET /hr/employees/:id. */
+export interface StaffProfile {
+  profile_id: string;
+  user_id: string | null;
+  contact_id: string | null;
+  display_name: string;
+  primary_phone?: string | null;
+  contact_email?: string | null;
+  employee_number: string;
+  job_title: string | null;
+  department: string | null;
+  employment_type: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  base_salary: number;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  work_schedule: WorkSchedule | null;
+  work_expected_start_time: string | null;
+  work_expected_end_time: string | null;
+  probation_status: string;
+  probation_start_date: string | null;
+  probation_end_date: string | null;
+  probation_outcome: string | null;
+  annual_leave_days_entitled: number;
+  annual_leave_days_remaining: number;
+  non_solicit_months: number | null;
+  non_solicit_until: string | null;
+  statutory_exempt?: boolean;
+  [key: string]: unknown;
+}
+
+export interface Employee360 {
+  profile: StaffProfile;
+  insights: AttendanceInsights & {
+    tenure_days: number | null;
+    target_attainment_pct: number | null;
+    quality_score: number | null;
+    earned_mtd_ngn: number;
+    deductions_mtd_ngn: number;
+  };
+  schedule: {
+    work_schedule: WorkSchedule;
+    expected_start_time: string | null;
+    expected_end_time: string | null;
+  };
+  attendance: AttendanceDay[];
+  targets: PerformanceTarget[];
+  queries: HrQuery[];
+  leave_requests: LeaveRequest[];
+  contracts: HrContract[];
+  payslips: Payslip[];
+  commissions: CommissionRow[];
+  bonuses: BonusRow[];
+  reviews: PerfReview[];
 }
 
 export interface HrOverview {
@@ -270,7 +374,13 @@ export interface HrAnalytics {
   targets: { active: number; achieved: number };
   earned_mtd_ngn: number;
 }
-export const getAnalytics = () => api.get<HrAnalytics>("/hr/analytics");
+export const getAnalytics = (params: { year?: number; month?: number } = {}) =>
+  api.get<HrAnalytics>(
+    `/hr/analytics${qs({
+      ...(params.year ? { year: String(params.year) } : {}),
+      ...(params.month ? { month: String(params.month) } : {}),
+    })}`,
+  );
 
 export const reconcileDay = (date?: string) =>
   api.post<{ date: string; records_created: number; late_count: number }>(
@@ -381,6 +491,8 @@ export const listStaff = async (params: Record<string, string> = {}) => {
   );
   return { data: asList<StaffRow>(r) };
 };
+export const getEmployee360 = (profileId: string) =>
+  api.get<Employee360>(`/hr/employees/${profileId}/dossier`);
 export const createStaff = (body: Record<string, unknown>) =>
   api.post<StaffRow>("/hr/employees", body);
 export const updateStaff = (id: string, patch: Record<string, unknown>) =>

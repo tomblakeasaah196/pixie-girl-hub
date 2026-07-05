@@ -52,6 +52,13 @@ async function selfClock(req, res) {
 async function getOverview(req, res) {
   res.json({ data: await service.getOverview({ brand: req.brand }) });
 }
+async function getEmployee360(req, res) {
+  res.json({
+    data: await service.getEmployee360({
+      brand: req.brand, user: req.user, profileId: req.params.id,
+    }),
+  });
+}
 async function getAnalytics(req, res) {
   res.json({
     data: await service.getAnalytics({
@@ -158,6 +165,7 @@ module.exports = {
   getMyToday,
   selfClock,
   getOverview,
+  getEmployee360,
   getAnalytics,
   reconcile,
   reconcilePeriod,

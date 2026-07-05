@@ -137,6 +137,26 @@ work as 6 PRs.
 
 ---
 
+## 5.5 Delivery status
+
+- **PR1 (merged)** — payroll truth (C1–C4), reconcile guard, Geoapify
+  server-side geocoding + backfill, clock-out/early-leave, Lagos TZ, HR
+  Attendance overhaul + map links, payslip names + PDF, HR Settings payroll
+  card. (P1/P2 sargability/batching deferred; the date filters already use
+  `work_date >=/<=` in the new period queries.)
+- **PR2 (this branch)** — the connected employee: **Employee 360**
+  (`/hr/employees/:id` + `GET /hr/employees/:id/dossier`) with the insights
+  header (earliest/latest arrival & departure, punctuality, tenure, target
+  attainment, quality), **HR Directory** tab, fixed `/hr?contact=` deep link
+  (H4); **My HR completion** — attendance history with map links,
+  earliest/latest chips, days-at-risk, own payslips + PDF, commission/bonus
+  accruals (H5, M3, M5); **Analytics month picker** (M4); **leave → Calendar**
+  (M8); **ClockWidget resilience** (M9); probation/terms surfaced (M7); Praxis
+  `hr_employee_360` query. Onboarding first-login pack and P2/P3 perf batching
+  roll into a later pass.
+- **PR3 (next)** — rewards engine (H2), quality→targets/appraisal (H1),
+  Messaging×HR (H6, M6).
+
 ## 6. Revamp plan — "full connection & deep linking"
 
 Sequenced so money-correctness lands first, then the connective tissue, then

@@ -17,7 +17,7 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
   const toast = useToastStore();
   const [elapsed, setElapsed] = useState(0);
 
-  const { data, isError } = useQuery({
+  const { data, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["hr", "me", "today"],
     queryFn: getMyToday,
     retry: false,
@@ -88,8 +88,25 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
     onError: (e) => notify("Clock-in failed", e instanceof Error ? e.message : "", "high"),
   });
 
-  // Not a staff member (or endpoint unavailable) — render nothing.
-  if (isError || !data) return null;
+  // A 404 means this account isn't linked to a staff profile — render nothing.
+  // Any other failure is transient (a 500/network blip); keep a retry
+  // affordance rather than silently removing the clock (audit M9).
+  if (isError) {
+    const status = (error as { status?: number } | null)?.status;
+    if (status === 404) return null;
+    return (
+      <button
+        onClick={() => refetch()}
+        disabled={isFetching}
+        title="Couldn't load your clock status — tap to retry"
+        className="inline-flex items-center gap-2 h-[38px] px-[13px] rounded-[11px] border border-warn/40 bg-warn/10 font-semibold text-xs text-warn transition-all"
+      >
+        {isFetching ? <Loader2 className="w-[15px] animate-spin" /> : <AlertTriangle className="w-[15px]" />}
+        {!compact && <span>Retry clock</span>}
+      </button>
+    );
+  }
+  if (!data) return null;
   // Day off and not currently clocked in — no control needed.
   if (data.expected_mode === "off" && !data.clocked_in) return null;
 

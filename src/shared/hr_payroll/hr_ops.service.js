@@ -19,6 +19,9 @@
 
 const argon2 = require("argon2");
 const repo = require("./hr_ops.repo");
+const payrollRepo = require("./payroll.repo");
+const appraisalRepo = require("./appraisal.repo");
+const hrService = require("./hr.service");
 const attendanceRepo = require("../attendance/attendance.repo");
 const calc = require("./lateness.calc");
 const geo = require("../attendance/geo.calc");
@@ -153,6 +156,29 @@ async function decideLeave({ brand, user, request_id, id, status, reason }) {
       after: updated,
       request_id,
     });
+    // Approved leave shows on the shared Calendar (§6.11 module wiring / audit
+    // M8). Best-effort — a calendar hiccup must not fail the approval.
+    if (status === "approved" && updated && updated.start_date && updated.end_date) {
+      try {
+        const calendar = require("../calendar/calendar.service");
+        const who = updated.staff_name || "Staff";
+        await calendar.createForReference({
+          brand,
+          title: `${who} — ${updated.leave_type} leave`,
+          event_type: "leave",
+          start_at: `${String(updated.start_date).slice(0, 10)}T00:00:00Z`,
+          end_at: `${String(updated.end_date).slice(0, 10)}T23:59:59Z`,
+          reference_type: "leave_request",
+          reference_id: id,
+          created_by: user.user_id,
+        });
+      } catch (err) {
+        require("../../config/logger").logger.warn(
+          { err: err.message, leave_id: id },
+          "leave→calendar sync failed (approval stands)",
+        );
+      }
+    }
     events.emit("leave_decided", { brand, leave_id: id, status });
     return updated;
   });
@@ -864,27 +890,44 @@ async function getMyHr({ brand, user }) {
   const dailyRate = calc.dailyRate(Number(profile.base_salary || 0), workingDaysCount);
   const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
 
-  const [mtd, attendance, openQueries, targets, leaveRows, tasks, contracts] =
-    await Promise.all([
-      repo.earningsMonthToDate({ brand, profileId: profile.profile_id, year, month }),
-      repo.listAttendanceDays({
-        brand, filters: { profile_id: profile.profile_id, from: monthStart },
-      }),
-      repo.listQueries({
-        brand, filters: { profile_id: profile.profile_id, open: true },
-      }),
-      repo.listTargets({
-        brand,
-        filters: { profile_id: profile.profile_id, status: "active", period_year: year, period_month: month },
-      }),
-      repo.listLeave({ brand, filters: { profile_id: profile.profile_id } }),
-      repo.tasksForUser({ brand, userId: user.user_id }),
-      repo.contractsForProfile({ profileId: profile.profile_id }),
-    ]);
+  const [
+    mtd, attendance, openQueries, targets, leaveRows, tasks, contracts,
+    payslips, commissions, bonuses,
+  ] = await Promise.all([
+    repo.earningsMonthToDate({ brand, profileId: profile.profile_id, year, month }),
+    repo.listAttendanceDays({
+      brand, filters: { profile_id: profile.profile_id, from: monthStart },
+    }),
+    repo.listQueries({
+      brand, filters: { profile_id: profile.profile_id, open: true },
+    }),
+    repo.listTargets({
+      brand,
+      filters: { profile_id: profile.profile_id, status: "active", period_year: year, period_month: month },
+    }),
+    repo.listLeave({ brand, filters: { profile_id: profile.profile_id } }),
+    repo.tasksForUser({ brand, userId: user.user_id }),
+    repo.contractsForProfile({ profileId: profile.profile_id }),
+    // Own pay artefacts (§3.4 end product + accruals as they build — audit M3/M5).
+    payrollRepo.listPayslips({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 12 }),
+    payrollRepo.listCommissions({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
+    payrollRepo.listBonuses({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
+  ]);
 
   const atRisk = openQueries.reduce(
     (sum, q) => sum + Number(q.deduction_ngn || 0), 0,
   );
+  const insights = calc.computeAttendanceInsights(attendance, LAGOS_UTC_OFFSET_MIN);
+  const accruals = {
+    commission_pending_ngn: commissions.data
+      .filter((c) => ["accrued", "approved"].includes(c.status))
+      .reduce((s, c) => s + Number(c.commission_amount_ngn || 0), 0),
+    bonus_pending_ngn: bonuses.data
+      .filter((b) => ["pending_approval", "approved"].includes(b.status))
+      .reduce((s, b) => s + Number(b.amount_ngn || 0), 0),
+    commissions: commissions.data.slice(0, 10),
+    bonuses: bonuses.data.slice(0, 10),
+  };
 
   // Leave taken this year, grouped by type.
   const balanceMap = {};
@@ -927,6 +970,7 @@ async function getMyHr({ brand, user }) {
         : 0,
     })),
     attendance,
+    insights,
     open_queries: openQueries,
     leave_balance: Object.entries(balanceMap).map(([leave_type, days_taken]) => ({
       leave_type, days_taken,
@@ -935,6 +979,94 @@ async function getMyHr({ brand, user }) {
     annual_leave_days_remaining: Number(profile.annual_leave_days_remaining || 0),
     tasks,
     contracts,
+    payslips: payslips.data,
+    accruals,
+  };
+}
+
+// ── Employee 360 (HR dossier — audit H4) ───────────────────
+/**
+ * The everything-view of one employee: masked profile (probation, terms,
+ * schedule, bank), attendance history + insights (earliest/latest arrival,
+ * punctuality, days at risk), earnings/payslips, targets & bonuses, queries &
+ * leave, contracts, and appraisal reviews. Permission-gated the same as the
+ * employee record; PII masking is inherited from hr.service.getStaff.
+ */
+async function getEmployee360({ brand, user, profileId }) {
+  const profile = await hrService.getStaff({ brand, user, id: profileId });
+  const settings = await repo.getSettings({ brand });
+  const { year, month } = ym();
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const userId = profile.user_id || null;
+
+  const [
+    mtd, attendance, targets, queries, leaveRows, contracts,
+    payslips, commissions, bonuses, reviews,
+  ] = await Promise.all([
+    repo.earningsMonthToDate({ brand, profileId, year, month }),
+    repo.listAttendanceDays({ brand, filters: { profile_id: profileId, from: monthStart } }),
+    repo.listTargets({ brand, filters: { profile_id: profileId, period_year: year, period_month: month } }),
+    repo.listQueries({ brand, filters: { profile_id: profileId } }),
+    repo.listLeave({ brand, filters: { profile_id: profileId } }),
+    repo.contractsForProfile({ profileId }),
+    userId
+      ? payrollRepo.listPayslips({ brand, filters: { user_id: userId }, page: 1, page_size: 12 })
+      : Promise.resolve({ data: [] }),
+    userId
+      ? payrollRepo.listCommissions({ brand, filters: { user_id: userId }, page: 1, page_size: 25 })
+      : Promise.resolve({ data: [] }),
+    userId
+      ? payrollRepo.listBonuses({ brand, filters: { user_id: userId }, page: 1, page_size: 25 })
+      : Promise.resolve({ data: [] }),
+    userId
+      ? appraisalRepo.listReviews({ brand, user_id: userId })
+      : Promise.resolve([]),
+  ]);
+
+  const attInsights = calc.computeAttendanceInsights(attendance, LAGOS_UTC_OFFSET_MIN);
+  const activeTargets = targets.filter((t) => t.status === "active");
+  const achievedTargets = targets.filter((t) => t.status === "achieved");
+  const latestReview =
+    (reviews || []).find(
+      (r) => r.overall_weighted_score !== null && r.overall_weighted_score !== undefined,
+    ) || null;
+  const startDate = profile.start_date ? String(profile.start_date).slice(0, 10) : null;
+  const tenureDays = startDate
+    ? Math.max(0, Math.floor((Date.now() - new Date(`${startDate}T00:00:00Z`).getTime()) / 86400000))
+    : null;
+
+  return {
+    profile,
+    insights: {
+      ...attInsights,
+      tenure_days: tenureDays,
+      target_attainment_pct: activeTargets.length || achievedTargets.length
+        ? Math.round((achievedTargets.length / (activeTargets.length + achievedTargets.length)) * 100)
+        : null,
+      quality_score: latestReview ? Number(latestReview.overall_weighted_score) : null,
+      earned_mtd_ngn: Number(mtd.earned || 0),
+      deductions_mtd_ngn: Number(mtd.deducted || 0),
+    },
+    schedule: {
+      work_schedule: profile.work_schedule || {},
+      expected_start_time: profile.work_expected_start_time || settings.default_expected_start_time,
+      expected_end_time: profile.work_expected_end_time || settings.default_expected_end_time,
+    },
+    attendance,
+    targets: targets.map((t) => ({
+      ...t,
+      remaining: Math.max(0, Number(t.target_value) - Number(t.current_value)),
+      progress_pct: Number(t.target_value) > 0
+        ? Math.min(100, Math.round((Number(t.current_value) / Number(t.target_value)) * 100))
+        : 0,
+    })),
+    queries,
+    leave_requests: leaveRows,
+    contracts,
+    payslips: payslips.data,
+    commissions: commissions.data,
+    bonuses: bonuses.data,
+    reviews: reviews || [],
   };
 }
 
@@ -965,4 +1097,5 @@ module.exports = {
   getOverview,
   getAnalytics,
   getMyHr,
+  getEmployee360,
 };

@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Users,
   UserPlus,
@@ -724,13 +724,94 @@ function TargetsTab({ onAdd }: { onAdd: () => void }) {
   );
 }
 
+// ── Directory tab ──────────────────────────────────────────
+function DirectoryTab() {
+  const navigate = useNavigate();
+  const [q, setQ] = useState("");
+  const { data, isLoading } = useQuery({
+    queryKey: ["hr", "staff", "directory"],
+    queryFn: () => listStaff({ page_size: "200" }),
+  });
+  const rows = (data?.data || []).filter(
+    (s) =>
+      !q ||
+      s.display_name?.toLowerCase().includes(q.toLowerCase()) ||
+      s.job_title?.toLowerCase().includes(q.toLowerCase()) ||
+      s.employee_number?.toLowerCase().includes(q.toLowerCase()),
+  );
+  return (
+    <div className="space-y-3">
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search employees by name, role or number…"
+        className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary"
+      />
+      {isLoading ? (
+        <Skeleton className="h-40 rounded-[var(--radius)]" />
+      ) : !rows.length ? (
+        <EmptyState icon={<Users className="h-6 w-6" />} title="No employees found" />
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {rows.map((s) => {
+            const initials = (s.display_name || "?")
+              .split(" ").map((x) => x[0]).slice(0, 2).join("").toUpperCase();
+            return (
+              <button
+                key={s.profile_id}
+                onClick={() => navigate(`/hr/employees/${s.profile_id}`)}
+                className="flex items-center gap-3 rounded-xl border border-line bg-text-primary/[0.02] p-3 text-left transition-colors hover:border-accent/30 hover:bg-accent/[0.04]"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent/15 font-display text-sm text-accent-glow">
+                  {initials}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm text-text-primary">{s.display_name}</span>
+                  <span className="block truncate text-xs text-text-muted">
+                    {s.job_title || "—"}{s.department ? ` · ${s.department}` : ""}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Analytics tab ──────────────────────────────────────────
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function AnalyticsTab() {
-  const { data, isLoading } = useQuery({ queryKey: ["hr", "analytics"], queryFn: getAnalytics });
-  if (isLoading || !data) return <Skeleton className="h-48 rounded-[var(--radius)]" />;
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const { data, isLoading } = useQuery({
+    queryKey: ["hr", "analytics", year, month],
+    queryFn: () => getAnalytics({ year, month }),
+  });
+  const picker = (
+    <div className="flex items-center gap-2">
+      <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
+        className="rounded-lg border border-line bg-text-primary/[0.04] p-2 text-xs text-text-primary">
+        {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+      </select>
+      <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))}
+        className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-2 text-xs text-text-primary" />
+    </div>
+  );
+  if (isLoading || !data) {
+    return (
+      <div className="space-y-3">
+        <div className="flex justify-end">{picker}</div>
+        <Skeleton className="h-48 rounded-[var(--radius)]" />
+      </div>
+    );
+  }
   const a = data.attendance;
   return (
     <div className="space-y-5">
+      <div className="flex justify-end">{picker}</div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <KpiTile label="Headcount" value={String(data.headcount)} />
         <KpiTile label="Punctuality (MTD)" value={`${a.punctuality_pct}%`}
@@ -769,6 +850,26 @@ export default function HrStaffPage() {
   const [contractOpen, setContractOpen] = useState(false);
 
   const allowed = can("hr_payroll", "view");
+  // Deep link from a contact's Employment tab (/hr?contact=<contact_id>):
+  // resolve the staff profile and forward to the Employee 360 (audit H4).
+  const [params, setParams] = useSearchParams();
+  const contactParam = params.get("contact");
+  useQuery({
+    queryKey: ["hr", "resolve-contact", contactParam],
+    enabled: allowed && Boolean(contactParam),
+    retry: false,
+    queryFn: async () => {
+      const staff = await listStaff({ contact_id: contactParam as string });
+      const match = staff.data?.[0];
+      const next = new URLSearchParams(params);
+      next.delete("contact");
+      setParams(next, { replace: true });
+      if (match) navigate(`/hr/employees/${match.profile_id}`, { replace: true });
+      else setTab("directory");
+      return match ?? null;
+    },
+  });
+
   const { data: overview, isLoading } = useQuery({
     queryKey: ["hr", "overview"],
     queryFn: getOverview,
@@ -805,7 +906,7 @@ export default function HrStaffPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button icon={<Users className="h-4 w-4" />} onClick={() => navigate("/contacts?tab=staff")}>
+          <Button icon={<Users className="h-4 w-4" />} onClick={() => setTab("directory")}>
             Directory
           </Button>
           {can("hr_payroll", "edit") && (
@@ -825,6 +926,7 @@ export default function HrStaffPage() {
         onChange={setTab}
         tabs={[
           { key: "overview", label: "Overview" },
+          { key: "directory", label: "Directory" },
           { key: "leave", label: "Leave", badge: c?.pending_leave || undefined },
           { key: "attendance", label: "Attendance" },
           { key: "queries", label: "Queries", badge: c?.open_queries || undefined },
@@ -863,6 +965,7 @@ export default function HrStaffPage() {
           </div>
         ))}
 
+      {tab === "directory" && <DirectoryTab />}
       {tab === "leave" && <LeaveInbox />}
       {tab === "attendance" && (
         <div className="space-y-3">

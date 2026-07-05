@@ -56,6 +56,7 @@ router.patch("/targets/:id/progress", P("edit"), v.targetProgress, c.updateTarge
 router.delete("/targets/:id", P("delete"), c.removeTarget);
 
 // ── Contracts (generate PDF + record; route to e-sign separately) ──
+router.get("/employees/:id/dossier", P("view"), c.getEmployee360);
 router.get("/employees/:id/contracts", P("view"), c.listContracts);
 router.post("/employees/:id/contract", P("edit"), v.contractGenerate, c.generateContract);
 

@@ -208,6 +208,63 @@ function reconcileDay({
   };
 }
 
+/** Local minutes-since-midnight for an ISO instant at a fixed UTC offset. */
+function localMinutesOfDay(iso, tzOffsetMinutes = 0) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const shifted = new Date(d.getTime() + Number(tzOffsetMinutes || 0) * 60000);
+  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+}
+
+/**
+ * Employee attendance insights over a set of reconciled `attendance_days`
+ * rows (PURE). Powers the Employee 360 + My HR headers: punctuality, the
+ * earliest/latest arrival & departure the boss asked about, days liable to a
+ * query, and average lateness. Times are read at the workplace offset
+ * (Africa/Lagos = 60).
+ */
+function computeAttendanceInsights(days, tzOffsetMinutes = 0) {
+  let present = 0, late = 0, absent = 0, offsite = 0, atRisk = 0, lateSum = 0;
+  let earliestArrival = null, latestArrival = null;
+  let earliestDeparture = null, latestDeparture = null;
+
+  for (const d of days || []) {
+    if (d.status === "present" || d.status === "late") present++;
+    if (d.is_late) { late++; lateSum += Number(d.minutes_late || 0); }
+    if (d.status === "absent") absent++;
+    if (d.is_offsite) offsite++;
+    if ((d.is_late || d.is_offsite) && !d.justified) atRisk++;
+
+    const inMin = localMinutesOfDay(d.first_clock_in_at, tzOffsetMinutes);
+    if (inMin !== null) {
+      const rec = { work_date: d.work_date, at: d.first_clock_in_at, local_minutes: inMin };
+      if (!earliestArrival || inMin < earliestArrival.local_minutes) earliestArrival = rec;
+      if (!latestArrival || inMin > latestArrival.local_minutes) latestArrival = rec;
+    }
+    const outMin = localMinutesOfDay(d.last_clock_out_at, tzOffsetMinutes);
+    if (outMin !== null) {
+      const rec = { work_date: d.work_date, at: d.last_clock_out_at, local_minutes: outMin };
+      if (!earliestDeparture || outMin < earliestDeparture.local_minutes) earliestDeparture = rec;
+      if (!latestDeparture || outMin > latestDeparture.local_minutes) latestDeparture = rec;
+    }
+  }
+
+  return {
+    present_days: present,
+    late_days: late,
+    absent_days: absent,
+    offsite_days: offsite,
+    at_risk_days: atRisk,
+    punctuality_pct: present > 0 ? Math.round(((present - late) / present) * 100) : 0,
+    avg_late_minutes: late > 0 ? round2(lateSum / late) : 0,
+    earliest_arrival: earliestArrival,
+    latest_arrival: latestArrival,
+    earliest_departure: earliestDeparture,
+    latest_departure: latestDeparture,
+  };
+}
+
 module.exports = {
   round2,
   weekdayKey,
@@ -220,4 +277,6 @@ module.exports = {
   deductionPctForMinutes,
   deductionAmount,
   reconcileDay,
+  localMinutesOfDay,
+  computeAttendanceInsights,
 };

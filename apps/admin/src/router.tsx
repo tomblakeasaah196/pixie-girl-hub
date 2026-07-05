@@ -280,6 +280,7 @@ const RetailPartnersPage = lazyWithRetry(() =>
 );
 const MyHrPage = lazyWithRetry(() => import("@/pages/hr/MyHrPage"));
 const HrStaffPage = lazyWithRetry(() => import("@/pages/hr/HrStaffPage"));
+const EmployeeProfilePage = lazyWithRetry(() => import("@/pages/hr/EmployeeProfilePage"));
 const PayrollPage = lazyWithRetry(() => import("@/pages/hr/PayrollPage"));
 const PerformancePage = lazyWithRetry(() => import("@/pages/hr/PerformancePage"));
 
@@ -391,6 +392,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <HrStaffPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "hr/employees/:profileId",
+              element: (
+                <Suspense fallback={null}>
+                  <EmployeeProfilePage />
                 </Suspense>
               ),
             },

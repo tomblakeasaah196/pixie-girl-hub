@@ -131,6 +131,24 @@ const QUERIES = [
     },
   },
   {
+    key: "hr_employee_360",
+    title: "Employee 360 (dossier)",
+    description:
+      "Everything about one employee: profile & employment terms, attendance insights (earliest/latest arrival, punctuality, days at risk), earnings & payslips, targets & bonuses, queries, leave, contracts and appraisals. Requires the employee's profile_id.",
+    module: "hr_payroll",
+    parameters: {
+      type: "object",
+      properties: {
+        profile_id: { type: "string", description: "The employee's staff profile_id (UUID)." },
+      },
+      required: ["profile_id"],
+    },
+    // user is threaded through so PII masking is inherited (non-CEO callers
+    // still get bank/NIN masked).
+    run: ({ brand, args, user }) =>
+      hrService.getEmployee360({ brand, user, profileId: args.profile_id }),
+  },
+  {
     key: "stock_alerts",
     title: "Stock alerts (low / out of stock)",
     description:

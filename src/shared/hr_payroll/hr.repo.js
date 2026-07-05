@@ -106,6 +106,10 @@ async function findAll({
     where.push(`sp.probation_status = $${i++}`);
     params.push(filters.probation_status);
   }
+  if (filters.contact_id) {
+    where.push(`sp.contact_id = $${i++}`);
+    params.push(filters.contact_id);
+  }
   if (filters.q) {
     where.push(
       `(c.display_name ILIKE $${i} OR sp.employee_number ILIKE $${i} OR sp.job_title ILIKE $${i})`,

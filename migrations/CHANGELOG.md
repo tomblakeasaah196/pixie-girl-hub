@@ -11,6 +11,34 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-05 — AI Insights: honour the per-module frequency cadence
+
+**Source:** Praxis Insights follow-up (V2.2 §6.31) — make the AI Control
+Frequency control actually do something.
+
+**Files:** `000259_shared_ai_insight_frequency.sql` (new).
+
+**What:** Adds a nullable `last_swept_at TIMESTAMPTZ` column to
+`shared.ai_insight_modules`. The AI Control matrix already stored a `frequency`
+per module (realtime/daily/weekly/off), but the 30-minute cron sweep ignored it
+and re-scanned every enabled module on every tick — so setting a module to
+"weekly" to cut spend had no effect. The sweep now records when it last ran a
+module (`repo.markSwept`) and the cron path only scans modules whose cadence is
+due (`repo.dueModules`): realtime → every tick, daily → once/24h, weekly →
+once/7d, off → never auto-run. The manual "Run scan" button is unchanged — it
+still scans every enabled module immediately.
+
+**Why:** The Frequency dropdown was a no-op, which read as "insights don't
+work" when a lone module was enabled and nothing surfaced. Honouring the
+cadence makes the spend control real and the behaviour predictable.
+
+**Verify:** Column add only — no new table, so `scripts/verify-schema.js`
+shared count is unchanged (**175**). NULL `last_swept_at` = never swept = due
+on the next tick, so enabled modules keep scanning after deploy with no
+backfill.
+
+---
+
 ## 2026-07-05 — AI Insights: legacy cleanup + briefing refs unlock + Help Center guide
 
 **Source:** Praxis Insights Wave 4 (V2.2 §6.30/§6.31) — finish the unified-store

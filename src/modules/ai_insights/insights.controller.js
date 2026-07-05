@@ -50,7 +50,9 @@ async function dismiss(req, res) {
   });
 }
 async function sweep(_req, res) {
-  res.json({ data: await service.runDetectorSweep() });
+  // Manual "Run scan": full on-demand refresh across every enabled module,
+  // regardless of each module's automatic frequency cadence.
+  res.json({ data: await service.runDetectorSweep({ trigger: "manual" }) });
 }
 
 // AI Control switchboard

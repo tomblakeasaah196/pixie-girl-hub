@@ -15,8 +15,19 @@ via `shared.ai_insight_modules` (per-module `insights_enabled` /
 Tier-1 detectors are declared in **`insights.registry.js`** — each returns
 normalised findings from a brand-scoped repo read. Adding a module's insights =
 a registry entry + toggling it on in AI Control (no new tables/repos/routes).
-The detector sweep (`runDetectorSweep`, cron every 30 min) runs **only** the
-modules toggled on.
+
+The detector sweep (`runDetectorSweep`) takes a `trigger`:
+
+- **`cron`** (every 30 min) honours each module's **frequency** cadence via
+  `repo.dueModules` (realtime → every tick, daily → once/24h, weekly → once/7d,
+  off → never) and stamps `last_swept_at` (migration 000259) on the modules it
+  scans. This is what makes the Frequency control cut spend.
+- **`manual`** (the "Run scan" button) scans **every enabled module**
+  immediately — a full on-demand refresh — and returns
+  `{ by_module, findings, modules_scanned, created, resolved }` so the UI can
+  confirm "scanned N modules, found M".
+
+Either way, a module toggled off in AI Control is skipped entirely.
 
 > The legacy per-category tables from migration 000012 were dropped by
 > migration 000257 once the unified path was verified in production.

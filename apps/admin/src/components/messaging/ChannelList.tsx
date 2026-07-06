@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Pin, BellOff, Plus } from "lucide-react";
+import { Search, Pin, BellOff, Plus, Settings2 } from "lucide-react";
 import {
   fmtRelativeTime,
   getAvatarColour,
@@ -13,6 +13,7 @@ import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
 import type { Channel, ExternalPlatform } from "@/lib/smartcomm-types";
 import { PlatformPill } from "./PlatformPill";
+import { WhatsAppConfigModal } from "./WhatsAppConfigModal";
 
 interface Props {
   activeChannelId?: string | null;
@@ -58,10 +59,16 @@ export function ChannelList({
   compact,
 }: Props) {
   const user = useAuthStore((s) => s.user);
+  const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
+  const [configOpen, setConfigOpen] = useState(false);
   const params = paramsForTab(tab);
   const { data, isLoading } = useChannels({ ...params, q: q || undefined });
+
+  // RBAC — the gear icon is invisible to users without messaging_accounts.
+  // edit (or CEO / super-admin, which resolve to "*" in the auth store).
+  const canConfigureIntegrations = can("messaging_accounts", "edit");
 
   const channels = (data ?? []).filter((c) =>
     tab === "unread" ? (c.unread_count ?? 0) > 0 : true,
@@ -83,16 +90,35 @@ export function ChannelList({
             </span>
           )}
         </div>
-        {onNewChannel && (
-          <button
-            onClick={onNewChannel}
-            className="text-text-muted hover:text-text-primary"
-            title="New conversation"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {canConfigureIntegrations && (
+            <button
+              onClick={() => setConfigOpen(true)}
+              className="text-text-muted hover:text-accent-glow transition-colors"
+              title="Messaging integrations (WhatsApp, Instagram, …)"
+              aria-label="Messaging integrations"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          )}
+          {onNewChannel && (
+            <button
+              onClick={onNewChannel}
+              className="text-text-muted hover:text-text-primary"
+              title="New conversation"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
+
+      {canConfigureIntegrations && (
+        <WhatsAppConfigModal
+          open={configOpen}
+          onClose={() => setConfigOpen(false)}
+        />
+      )}
 
       {/* Search */}
       <div className="px-3 py-2">

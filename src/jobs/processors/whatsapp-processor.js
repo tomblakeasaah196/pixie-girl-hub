@@ -6,9 +6,14 @@
  * hiccup is retried by BullMQ instead of lost inline.
  *
  * Expected job.data — free-text:
- *   { to, body }
+ *   { brand, to, body }
  * or template:
- *   { to, template_name, language_code?, components? }
+ *   { brand, to, template_name, language_code?, components? }
+ *
+ * `brand` is REQUIRED as of 000289 — every send resolves the per-brand
+ * token from shared.messaging_accounts. A job missing brand fails fast
+ * (surfaced to the queue's dead-letter view rather than silently sending
+ * from the wrong number).
  *
  * Returns the provider message id. Throws on failure → BullMQ retries.
  */
@@ -24,9 +29,26 @@ module.exports = async function process(job) {
     logger.warn({ jobId: job.id }, "whatsapp-send: missing 'to' — skipping");
     return { skipped: true };
   }
+  if (!data.brand) {
+    logger.error(
+      { jobId: job.id },
+      "whatsapp-send: missing 'brand' — every send needs a brand context",
+    );
+    throw new Error("WA_SEND_BRAND_REQUIRED");
+  }
   const res = data.template_name
-    ? await whatsapp.sendTemplate(data)
-    : await whatsapp.sendText({ to: data.to, body: data.body });
+    ? await whatsapp.sendTemplate({
+        brand: data.brand,
+        to: data.to,
+        template_name: data.template_name,
+        language_code: data.language_code,
+        components: data.components,
+      })
+    : await whatsapp.sendText({
+        brand: data.brand,
+        to: data.to,
+        body: data.body,
+      });
   const messageId =
     res && res.data && res.data.messages && res.data.messages[0]
       ? res.data.messages[0].id
@@ -43,6 +65,9 @@ module.exports = async function process(job) {
       logger.warn({ e: e.message }, "whatsapp-send: external_ref stamp failed");
     }
   }
-  logger.info({ jobId: job.id, to: data.to, messageId }, "whatsapp sent");
+  logger.info(
+    { jobId: job.id, brand: data.brand, to: data.to, messageId },
+    "whatsapp sent",
+  );
   return { messageId };
 };

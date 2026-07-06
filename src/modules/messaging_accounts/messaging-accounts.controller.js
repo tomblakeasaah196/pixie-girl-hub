@@ -37,6 +37,19 @@ async function removeAccount(req, res) {
 async function testAccount(req, res) {
   res.json(await service.testAccount({ id: req.params.id }));
 }
+async function revealSecret(req, res) {
+  const result = await service.revealSecret({
+    ...ctx(req),
+    id: req.params.id,
+    field: req.body.field,
+    password: req.body.password,
+    source_ip: req.ip,
+  });
+  res.json(result);
+}
+async function listReveals(req, res) {
+  res.json({ data: await service.listReveals({ id: req.params.id }) });
+}
 
 module.exports = {
   listAccounts,
@@ -45,4 +58,6 @@ module.exports = {
   setActive,
   removeAccount,
   testAccount,
+  revealSecret,
+  listReveals,
 };

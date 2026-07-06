@@ -755,6 +755,7 @@ async function enqueueOutboundForChannel({
     const to = c.whatsapp_number || c.primary_phone;
     if (!to) return; // marked queued; ops will see it failed.
     await enqueue("whatsapp-send", "customer-whatsapp", {
+      brand: channel.business,
       to,
       body: content,
       smartcomm_message_id: message.message_id,

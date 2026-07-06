@@ -39,6 +39,10 @@ const METADATA_WHITELIST = {
     "due_date",
     "url",
   ],
+  // Instagram story surfaces — the ingester stamps these so the UI
+  // can render a story-preview card in the inbox.
+  ig_story_mention: ["story_url", "story_id"],
+  ig_story_reply:   ["story_url", "story_id"],
 };
 
 function sanitiseMessageMetadata(messageType, metadata) {
@@ -376,6 +380,23 @@ async function postMessage({ brand, user, request_id, id, input }) {
         throw new AppError(
           "WA_WINDOW_CLOSED",
           "WhatsApp 24-hour service window has expired. Send an approved template instead.",
+          409,
+        );
+      }
+      // Instagram 24-hour service window — free-form only inside; outside
+      // the window Meta only accepts messages tagged HUMAN_AGENT (which
+      // your Meta app must be approved for). `is_human_agent` on the
+      // input signals "operator explicitly approved a HUMAN_AGENT reply".
+      if (
+        channel.external_platform === "instagram" &&
+        channel.ig_window_expires_at &&
+        new Date(channel.ig_window_expires_at) < new Date() &&
+        input.message_type !== "system" &&
+        !input.is_human_agent
+      ) {
+        throw new AppError(
+          "IG_WINDOW_CLOSED",
+          "Instagram 24-hour service window has expired. Reply with a HUMAN_AGENT-tagged message (needs Meta app approval).",
           409,
         );
       }
@@ -765,9 +786,18 @@ async function enqueueOutboundForChannel({
   } else if (platform === "instagram") {
     const recipient_id = c.ig_user_id || meta.ig_user_id;
     if (!recipient_id) return;
+    // The 24h-window guard in postMessage marks the message with
+    // is_template === true when the operator has opted into a
+    // HUMAN_AGENT-tagged reply outside the window — pass that
+    // through to the processor so it stamps the Meta MESSAGE_TAG.
+    const outsideWindow =
+      channel.ig_window_expires_at &&
+      new Date(channel.ig_window_expires_at) < new Date();
     await enqueue("instagram-send", "customer-ig", {
+      brand: channel.business,
       recipient_id,
       text: content,
+      tag: outsideWindow ? "HUMAN_AGENT" : undefined,
       smartcomm_message_id: message.message_id,
       channel_id: channel.channel_id,
     });
@@ -880,12 +910,23 @@ async function recordInboundFromCustomer({
       platform: platform || "instagram",
       external_thread_ref,
     });
+    // Story-preview metadata belongs on the message row (so the inbox
+    // can render a card next to that specific message). Email's
+    // subject / in_reply_to belongs on the channel (so replies thread
+    // correctly). Split accordingly.
+    const messageMetadata = sanitiseMessageMetadata(message_type, metadata);
+    const channelMetadataDelta = {};
     if (metadata) {
+      if (metadata.subject) channelMetadataDelta.subject = metadata.subject;
+      if (metadata.in_reply_to)
+        channelMetadataDelta.in_reply_to = metadata.in_reply_to;
+    }
+    if (Object.keys(channelMetadataDelta).length) {
       await client.query(
         `UPDATE shared.message_channels
             SET metadata = shared.message_channels.metadata || $2::jsonb
           WHERE channel_id = $1`,
-        [thread.channel_id, JSON.stringify(metadata)],
+        [thread.channel_id, JSON.stringify(channelMetadataDelta)],
       );
     }
     const msg = await repo.insertMessage({
@@ -897,6 +938,7 @@ async function recordInboundFromCustomer({
         content: body,
         external_ref,
         delivery_status: "delivered",
+        metadata: messageMetadata,
       },
     });
     events.emit("customer.message_received", {

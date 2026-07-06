@@ -78,6 +78,9 @@ const postMessage = z
       )
       .optional(),
     is_template: z.boolean().optional(),
+    // Instagram-outside-window escape hatch: operator explicitly opts
+    // into a HUMAN_AGENT-tagged Meta send (requires Meta app approval).
+    is_human_agent: z.boolean().optional(),
     // Card payloads for `product_share` (carousel of products/services) and
     // `send_invoice` (a card linking a posted invoice into the thread). The
     // service whitelists keys before persisting.

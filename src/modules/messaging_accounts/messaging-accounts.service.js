@@ -362,6 +362,34 @@ async function resolveWhatsAppSendConfig({ brand }) {
 }
 
 /**
+ * Resolve a brand's active Instagram config for outbound sends.
+ * Returns { access_token, ig_business_account_id } or throws
+ * IG_NOT_CONFIGURED. Internal only — never over HTTP.
+ */
+async function resolveInstagramSendConfig({ brand }) {
+  const row = await repo.findActiveByBrand({ brand, platform: "instagram" });
+  if (!row) {
+    throw new AppError(
+      "IG_NOT_CONFIGURED",
+      `Instagram isn't configured for ${brand}. Open Messaging → Settings and connect the IG Business Account.`,
+      412,
+    );
+  }
+  if (!row.access_token_enc) {
+    throw new AppError(
+      "IG_NO_TOKEN",
+      `Instagram for ${brand} has no access token on file. Rotate the token in Messaging → Settings.`,
+      412,
+    );
+  }
+  return {
+    account_id: row.account_id,
+    ig_business_account_id: row.external_account_id,
+    access_token: crypto.decrypt(row.access_token_enc),
+  };
+}
+
+/**
  * Resolve inbound WhatsApp secrets from an incoming payload's
  * phone_number_id — used by the webhook signature verifier + the
  * GET verify handshake.
@@ -394,4 +422,6 @@ module.exports = {
   // internal — for whatsapp.service + webhooks:
   resolveWhatsAppSendConfig,
   resolveWhatsAppInboundSecrets,
+  // internal — for instagram.service:
+  resolveInstagramSendConfig,
 };

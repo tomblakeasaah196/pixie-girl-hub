@@ -244,7 +244,9 @@ export function CommandPalette() {
       })
         .then((res) => {
           if (ctrl.signal.aborted) return;
-          setRemoteGroups(res.groups);
+          // Guard against an unexpected response shape — never let the palette
+          // crash on a malformed / envelope-wrapped payload.
+          setRemoteGroups(Array.isArray(res?.groups) ? res.groups : []);
         })
         .catch(() => {
           if (!ctrl.signal.aborted) setRemoteGroups([]);

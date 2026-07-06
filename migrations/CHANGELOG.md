@@ -11,6 +11,35 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-06 — Help Center content: Run & Operate modules (PR1 of 3)
+
+**Source:** Help Center completeness pass — every module gets a full guide set
+(overview + task how-tos + FAQ), written in plain English and grounded in the
+shipped routes/services/pages (built-and-wired only, no spec-ahead content).
+
+**Files (new):** `000262_shared_help_dashboard.sql`,
+`000263_shared_help_sales.sql`, `000264_shared_help_crm.sql`,
+`000265_shared_help_stylist_studio.sql`, `000266_shared_help_workspace.sql`,
+`000267_shared_help_stock.sql`, `000268_shared_help_catalogue.sql`,
+`000269_shared_help_logistics.sql`, `000270_shared_help_purchasing.sql`,
+`000271_shared_help_production.sql`, `000272_shared_help_retail_partners.sql`,
+`000273_shared_help_stylists.sql`, `000274_shared_help_praxis_mirror.sql`.
+
+**What:** Seeds `shared.help_categories` / `shared.help_articles` with **59
+articles across 12 Run + Operate modules** (Dashboard, Sales, CRM, Stylist
+Studio, Workspace, Stock, Catalogue, Logistics, Purchasing, Production, Retail
+Partners, Stylists). Reuses the existing `sales` and `catalogue` categories;
+adds ten new categories. All inserts are idempotent (`ON CONFLICT (slug) DO
+NOTHING`). `000274` re-runs the generic `ai_knowledge_chunks` mirror from
+000214 so **every** active, `praxis_indexed` help article is grounded for
+Praxis — this self-heals the previously-unmirrored attendance (000235) and
+insights (000258) sets, which the one-time 000214 sweep never captured.
+
+**Count:** No table created or dropped — rows only. Shared (**177**) and
+per-brand table counts are unchanged.
+
+---
+
 ## 2026-07-06 — Appraisal auto-scoring: brand-schema parity
 
 **Source:** HR system audit follow-up (PR-B) — auto-populate appraisal KPI

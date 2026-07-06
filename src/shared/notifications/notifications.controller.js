@@ -10,15 +10,28 @@ const { parsePagination } = require("../../utils/pagination");
 
 async function list(req, res) {
   const { page, page_size } = parsePagination(req.query);
-  res.json(
-    await service.list({
-      user_id: req.user.user_id,
-      only_unread: req.query.unread === "true",
-      business: req.query.business || req.brand || null,
-      page,
-      page_size,
-    }),
-  );
+  const r = await service.list({
+    user_id: req.user.user_id,
+    only_unread: req.query.unread === "true",
+    business: req.query.business || req.brand || null,
+    page,
+    page_size,
+  });
+  // House pagination envelope ({data, meta} — see docs/API_CONVENTIONS). The
+  // admin api client auto-unwraps bare {data} payloads but PRESERVES envelopes
+  // carrying `meta`; the old flat {data, page, total} shape was unwrapped to a
+  // bare array in the browser, so the bell dropdown, the notifications page and
+  // the Command Center all rendered empty even while the unread badge showed a
+  // count (the /unread-count endpoint is already {data:{unread}}).
+  res.json({
+    data: r.data,
+    meta: {
+      page: r.page,
+      page_size: r.page_size,
+      total: r.total,
+      has_more: r.page * r.page_size < r.total,
+    },
+  });
 }
 
 async function unreadCount(req, res) {

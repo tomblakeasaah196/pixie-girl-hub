@@ -49,9 +49,12 @@ export interface AppNotification {
 
 export interface NotifList {
   data: AppNotification[];
-  page: number;
-  page_size: number;
-  total: number;
+  meta: {
+    page: number;
+    page_size: number;
+    total: number;
+    has_more: boolean;
+  };
 }
 
 export interface NotifPref {

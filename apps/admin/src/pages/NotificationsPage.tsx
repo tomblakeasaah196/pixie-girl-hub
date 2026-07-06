@@ -271,7 +271,7 @@ export function NotificationsPage() {
       ? all
       : all.filter((n) => filterMatches(n, filter));
 
-  const totalPages = Math.ceil((query.data?.total ?? 0) / PAGE_SIZE);
+  const totalPages = Math.ceil((query.data?.meta?.total ?? 0) / PAGE_SIZE);
   const unreadCount = (query.data?.data ?? []).filter((n) => !n.is_read).length;
   const selAll =
     visible.length > 0 && visible.every((n) => selected.has(n.notification_id));
@@ -477,7 +477,7 @@ export function NotificationsPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-3 text-[12px] text-text-muted">
             <span>
-              Page {page} of {totalPages} · {query.data?.total ?? 0}{" "}
+              Page {page} of {totalPages} · {query.data?.meta?.total ?? 0}{" "}
               notifications
             </span>
             <div className="flex items-center gap-1">

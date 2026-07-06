@@ -10,29 +10,38 @@ import { useNavigate } from "react-router-dom";
 import { Plus, Sparkles, MessageCircle, HelpCircle, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
-import { useUnreadCount } from "@/hooks/useCommandCenter";
 import { useChatDockStore } from "@/stores/chat-dock";
 import { usePraxisDockStore } from "@/stores/praxis-dock";
 import { useUnreadMessages } from "@/hooks/useSmartcomm";
 
 /**
  * Floating launcher (canon §3.4) — fans to Praxis · Messages · Help.
- * HOVER to expand on desktop; TAP on mobile. Carries the unread badge.
+ * HOVER to expand on desktop; TAP on mobile. Carries the unread-messages badge.
  *
- * Draggable: click-and-drag on desktop, or long-press ~2s then drag on mobile.
- * A short tap (or click without drag) still triggers the fan / Praxis, so we
- * don't lose the fast path. Position is clamped to the viewport and persisted
- * per-device in localStorage; the default corner is used until the user moves
- * it, so nothing regresses for people who don't touch it.
+ * Draggable anywhere, on any device: press-and-move relocates it; a short tap
+ * (movement under DRAG_THRESHOLD) still fires the fan / Praxis, so the fast path
+ * is intact. There is no long-press gate — drag is instant, identical on touch
+ * and mouse.
+ *
+ * The launcher is anchored to the *button*, not its container: the fan is
+ * rendered as an absolutely-positioned overlay, so opening/closing it never
+ * shifts the button. Combined with a fixed pointer→button offset captured on
+ * press, the icon lands exactly where you drop it. Position is clamped to the
+ * viewport and persisted per-device in localStorage; the default corner is used
+ * until the user moves it, so nothing regresses for people who don't touch it.
+ *
+ * A small grip mark sits at the top of the icon and a one-time "dance" plays on
+ * first loads to advertise that it can be moved.
  */
 
 const POSITION_KEY = "pgh:floating-launcher:pos";
+const HINT_KEY = "pgh:floating-launcher:hint-count";
+const HINT_MAX = 3; // dance on the first few visits, then stop nagging
 const DRAG_THRESHOLD = 6;
-const LONG_PRESS_MS = 2000;
-const BUTTON = 58;
+const BUTTON = 52;
 const EDGE_PAD = 12;
 const MOBILE_BOTTOM_RESERVE = 68;
-const FAN_HEIGHT = 190; // three 48px minis + gaps
+const FAN_HEIGHT = 176; // three 44px minis + gaps
 
 interface Pos {
   left: number;
@@ -70,24 +79,42 @@ export function FloatingLauncher() {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<Pos | null>(() => loadPos());
   const [dragging, setDragging] = useState(false);
-  const [armed, setArmed] = useState(false); // mobile long-press satisfied
-  const { data } = useUnreadCount();
+  const [dance, setDance] = useState(false);
   const { data: messagesUnread } = useUnreadMessages();
   const openDock = useChatDockStore((s) => s.openDock);
   const openPraxis = usePraxisDockStore((s) => s.openDock);
-  const unread = (data?.unread ?? 0) + (messagesUnread?.unread_count ?? 0);
+  const unread = messagesUnread?.unread_count ?? 0;
   const ref = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
   const drag = useRef<{
     startX: number;
     startY: number;
-    baseLeft: number;
-    baseTop: number;
+    grabX: number; // pointer offset inside the button, so the grab point is kept
+    grabY: number;
     moved: boolean;
     pointerId: number;
-    longPressTimer: number | null;
   } | null>(null);
   const latestPos = useRef<Pos | null>(pos);
+
+  // One-time "I can be dragged" dance on the first few visits — only while the
+  // user hasn't already positioned it themselves.
+  useEffect(() => {
+    if (loadPos()) return;
+    let shown = 0;
+    try {
+      shown = Number(localStorage.getItem(HINT_KEY) || "0");
+    } catch {
+      /* ignore */
+    }
+    if (shown >= HINT_MAX) return;
+    const t = window.setTimeout(() => setDance(true), 900);
+    try {
+      localStorage.setItem(HINT_KEY, String(shown + 1));
+    } catch {
+      /* ignore */
+    }
+    return () => window.clearTimeout(t);
+  }, []);
 
   // Close the fan when tapping outside on mobile.
   useEffect(() => {
@@ -114,30 +141,18 @@ export function FloatingLauncher() {
 
   function onPointerDown(e: ReactPointerEvent<HTMLButtonElement>) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    const container = ref.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
+    setDance(false); // any interaction retires the hint
+    suppressClick.current = false;
+    const rect = e.currentTarget.getBoundingClientRect();
     e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = {
       startX: e.clientX,
       startY: e.clientY,
-      baseLeft: rect.left,
-      baseTop: rect.top,
+      grabX: e.clientX - rect.left,
+      grabY: e.clientY - rect.top,
       moved: false,
       pointerId: e.pointerId,
-      longPressTimer: null,
     };
-    if (!isDesktop) {
-      const state = drag.current;
-      state.longPressTimer = window.setTimeout(() => {
-        setArmed(true);
-        try {
-          navigator.vibrate?.(40);
-        } catch {
-          /* no-op */
-        }
-      }, LONG_PRESS_MS);
-    }
   }
 
   function onPointerMove(e: ReactPointerEvent<HTMLButtonElement>) {
@@ -145,21 +160,13 @@ export function FloatingLauncher() {
     if (!state || e.pointerId !== state.pointerId) return;
     const dx = e.clientX - state.startX;
     const dy = e.clientY - state.startY;
-    const dist = Math.hypot(dx, dy);
-    if (!state.moved && dist < DRAG_THRESHOLD) return;
-    if (!isDesktop && !armed) {
-      // Finger moved before the 2s hold — cancel long-press, let the tap pass.
-      if (state.longPressTimer != null) {
-        clearTimeout(state.longPressTimer);
-        state.longPressTimer = null;
-      }
-      return;
-    }
+    if (!state.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
     state.moved = true;
     if (!dragging) setDragging(true);
     if (open) setOpen(false);
+    // Anchor the button so the exact point grabbed stays under the pointer.
     const next = clampPos(
-      { left: state.baseLeft + dx, top: state.baseTop + dy },
+      { left: e.clientX - state.grabX, top: e.clientY - state.grabY },
       isDesktop,
     );
     latestPos.current = next;
@@ -169,13 +176,11 @@ export function FloatingLauncher() {
   function onPointerUp(e: ReactPointerEvent<HTMLButtonElement>) {
     const state = drag.current;
     if (!state || e.pointerId !== state.pointerId) return;
-    if (state.longPressTimer != null) clearTimeout(state.longPressTimer);
     const moved = state.moved;
     drag.current = null;
-    setArmed(false);
     setDragging(false);
     if (moved) {
-      suppressClick.current = true;
+      suppressClick.current = true; // swallow the click this drag would emit
       if (latestPos.current) {
         try {
           localStorage.setItem(
@@ -190,11 +195,8 @@ export function FloatingLauncher() {
   }
 
   function onPointerCancel() {
-    const state = drag.current;
-    if (!state) return;
-    if (state.longPressTimer != null) clearTimeout(state.longPressTimer);
+    if (!drag.current) return;
     drag.current = null;
-    setArmed(false);
     setDragging(false);
   }
 
@@ -224,11 +226,11 @@ export function FloatingLauncher() {
         onClick();
       }}
       className={cn(
-        "relative grid place-items-center w-12 h-12 rounded-full dropglass shadow-[0_8px_22px_rgb(0_0_0/0.4)] transition-all hover:scale-110 hover:border-accent/40",
+        "relative grid place-items-center w-11 h-11 rounded-full dropglass shadow-[0_8px_22px_rgb(0_0_0/0.4)] transition-all hover:scale-110 hover:border-accent/40",
         accent ? "text-accent-glow" : "text-text-primary",
       )}
     >
-      <span className="absolute right-[60px] whitespace-nowrap dropglass px-2.5 py-1.5 rounded-[9px] text-[11px] font-semibold opacity-0 translate-x-1.5 transition-all peer-hover:opacity-100 group-hover/m:opacity-100 group-hover/m:translate-x-0">
+      <span className="absolute right-[54px] whitespace-nowrap dropglass px-2.5 py-1.5 rounded-[9px] text-[11px] font-semibold opacity-0 translate-x-1.5 transition-all peer-hover:opacity-100 group-hover/m:opacity-100 group-hover/m:translate-x-0">
         {label}
       </span>
       {icon}
@@ -238,25 +240,23 @@ export function FloatingLauncher() {
   return (
     <div
       ref={ref}
-      style={containerStyle}
+      style={{ width: BUTTON, height: BUTTON, ...containerStyle }}
       className={cn(
-        "fixed z-[70] flex items-center gap-2.5",
+        "fixed z-[70]",
         !pos &&
           "right-6 bottom-6 max-lg:bottom-[calc(68px+max(env(safe-area-inset-bottom,0px),8px))]",
-        fanBelow ? "flex-col-reverse" : "flex-col",
       )}
-      onMouseEnter={
-        isDesktop && !dragging ? () => setOpen(true) : undefined
-      }
-      onMouseLeave={
-        isDesktop && !dragging ? () => setOpen(false) : undefined
-      }
+      onMouseEnter={isDesktop && !dragging ? () => setOpen(true) : undefined}
+      onMouseLeave={isDesktop && !dragging ? () => setOpen(false) : undefined}
     >
+      {/* Fan is an overlay anchored to the button so its open/close never moves
+          the icon. Padding bridges the visual gap so desktop hover doesn't drop
+          while the pointer travels between button and minis. */}
       {open && !dragging && (
         <div
           className={cn(
-            "flex items-center gap-2.5 animate-fade-in",
-            fanBelow ? "flex-col-reverse" : "flex-col",
+            "absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-2.5 animate-fade-in",
+            fanBelow ? "top-full pt-2.5 flex-col-reverse" : "bottom-full pb-2.5",
           )}
         >
           <div className="group/m">
@@ -287,29 +287,34 @@ export function FloatingLauncher() {
         onClick={onFabClick}
         onContextMenu={(e) => e.preventDefault()}
         aria-label="Quick actions (drag to move)"
-        title={
-          isDesktop
-            ? "Quick actions — drag to move"
-            : "Quick actions — hold 2s to drag"
-        }
-        style={{ touchAction: "none" }}
+        title="Quick actions — drag to move"
+        style={{ touchAction: "none", width: BUTTON, height: BUTTON }}
         className={cn(
-          "relative grid place-items-center w-[58px] h-[58px] rounded-[20px] text-[#F4E9D9] border border-white/10 shadow-[0_12px_30px_rgb(var(--accent-deep)/0.5)] transition-transform",
+          "relative grid place-items-center rounded-[18px] text-[#F4E9D9] border border-white/10 shadow-[0_12px_30px_rgb(var(--accent-deep)/0.5)] transition-transform",
           "bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))]",
-          !dragging && "hover:-translate-y-0.5 hover:scale-105",
+          !dragging && !dance && "hover:-translate-y-0.5 hover:scale-105",
           dragging
             ? "cursor-grabbing scale-110"
             : isDesktop
               ? "cursor-grab"
               : "",
-          armed && !dragging && "ring-2 ring-accent-glow ring-offset-2 ring-offset-bg",
+          dance && !dragging && "animate-fab-dance",
           open && !dragging && "rotate-45",
         )}
+        onAnimationEnd={() => setDance(false)}
       >
+        {/* Grip affordance — signals the icon is draggable. Hidden while the fan
+            is open (the icon becomes a close ✕) or during a drag. */}
+        {!open && !dragging && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-[5px] left-1/2 -translate-x-1/2 h-[3px] w-4 rounded-full bg-white/40"
+          />
+        )}
         {open && !dragging ? (
-          <X className="w-6 h-6" />
+          <X className="w-5 h-5" />
         ) : (
-          <Plus className="w-6 h-6" />
+          <Plus className="w-5 h-5" />
         )}
         {unread > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1.5 rounded-[10px] bg-danger text-white text-[10px] font-bold grid place-items-center border-2 border-bg">

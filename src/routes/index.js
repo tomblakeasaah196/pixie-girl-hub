@@ -89,6 +89,7 @@ const accessRouter = require("../shared/access/access.routes");
 const iamRouter = require("../shared/iam/iam.routes");
 const notificationsRouter = require("../shared/notifications/notifications.routes");
 const pushRouter = require("../shared/push/push.routes");
+const searchRouter = require("../modules/search/search.routes");
 
 const {
   cartRouter,
@@ -369,6 +370,7 @@ function mountRoutes(app) {
     ["/iam", iamRouter],
     ["/notifications", notificationsRouter],
     ["/push", pushRouter],
+    ["/search", searchRouter],
     ["/cart", cartRouter],
     ["/wishlist", wishlistRouter],
   ];

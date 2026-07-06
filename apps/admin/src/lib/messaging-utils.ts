@@ -57,6 +57,28 @@ export function getChannelPlatform(c: Channel): string {
   return c.external_platform || "whatsapp";
 }
 
+// ── Map a chat platform → approved sales_channel enum value ─────────
+//
+// The messaging composer's Order Capture / Catalogue picker mints a link
+// that stamps the resulting order's sales_channel. That value has to be one
+// of the six approved channels in constants.ts (V2.2 §6.4) so downstream
+// attribution + revenue-by-channel reports stay coherent.
+//
+// Rep-initiated messaging conversations only ever map to WhatsApp or
+// Instagram — the two approved messaging buckets. Facebook Messenger,
+// website chat widgets, email threads, and internal channels all fall to
+// WhatsApp (the primary messaging channel for both brands); an Instagram
+// DM correctly rides `instagram` so commission attribution + reports stay
+// clean. Website conversions that don't come through messaging go through
+// the storefront checkout path directly, so this resolver deliberately
+// never emits `storefront`.
+export type MessagingSalesChannel = "whatsapp" | "instagram";
+export function resolveMessagingSalesChannel(
+  platform: string | null | undefined,
+): MessagingSalesChannel {
+  return platform === "instagram" ? "instagram" : "whatsapp";
+}
+
 // ── Channel display name ─────────────────────────────────
 
 export function getDirectPeer(

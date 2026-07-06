@@ -13,6 +13,7 @@ import {
 import { Modal } from "@/components/ui/Modal";
 import { smartcommApi } from "@/lib/smartcomm-api";
 import { useBaseProducts } from "@/lib/catalogue";
+import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
 import type { Channel } from "@/lib/smartcomm-types";
 
 interface Props {
@@ -107,7 +108,7 @@ export function OrderCaptureModal({
           qty: i.qty,
           note: i.note,
         })),
-        sales_channel: platform === "internal" ? "whatsapp" : platform,
+        sales_channel: resolveMessagingSalesChannel(platform),
         notes: notes || undefined,
       });
       setGeneratedUrl(r.url);

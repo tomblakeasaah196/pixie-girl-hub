@@ -31,6 +31,8 @@ import {
   TextInput,
   InfoBanner,
   Pagination,
+  ProductsSummary,
+  ProductCell,
 } from "./parts";
 import { GoodsReceptionImportModal } from "./GoodsReceptionImportModal";
 import type { InboundShipment, ShipmentLine, StockLocation } from "./types";
@@ -160,6 +162,9 @@ interface ReceiveLine {
   qty_expected: number;
   qty_received: string;
   qty_rejected: string;
+  sku?: string;
+  variant_name?: string;
+  product_name?: string;
 }
 
 /* ── Component ── */
@@ -326,6 +331,9 @@ export default function ReceiveTab() {
         qty_expected: l.qty_expected,
         qty_received: String(l.qty_expected),
         qty_rejected: "0",
+        sku: l.sku,
+        variant_name: l.variant_name,
+        product_name: l.product_name,
       })),
     );
   }, []);
@@ -341,6 +349,9 @@ export default function ReceiveTab() {
           qty_expected: l.qty_expected,
           qty_received: String(l.qty_expected),
           qty_rejected: "0",
+          sku: l.sku,
+          variant_name: l.variant_name,
+          product_name: l.product_name,
         })),
       );
     }
@@ -418,6 +429,11 @@ export default function ReceiveTab() {
           })}
         </span>
       ),
+    },
+    {
+      key: "products",
+      header: "Products",
+      render: (r) => <ProductsSummary lines={r.lines ?? []} />,
     },
     {
       key: "location",
@@ -854,7 +870,7 @@ export default function ReceiveTab() {
                   key={line.id}
                   className="grid grid-cols-[1fr_100px_120px_36px] gap-2 items-end"
                 >
-                  <div>
+                  <div className="min-w-0">
                     {idx === 0 && (
                       <span className="text-[10px] text-text-faint uppercase">
                         Product / Variant
@@ -959,7 +975,7 @@ export default function ReceiveTab() {
           {receiveLines.length > 0 && (
             <div className="flex flex-col gap-3">
               <div className="grid grid-cols-[1fr_90px_90px_90px] gap-2 text-[10px] text-text-faint uppercase font-semibold">
-                <span>Variant</span>
+                <span>Product</span>
                 <span className="text-right">Expected</span>
                 <span className="text-right">Received</span>
                 <span className="text-right">Rejected</span>
@@ -970,9 +986,7 @@ export default function ReceiveTab() {
                   key={line.line_id}
                   className="grid grid-cols-[1fr_90px_90px_90px] gap-2 items-center"
                 >
-                  <span className="font-mono text-[12px] text-text-muted truncate">
-                    {line.variant_id.slice(0, 12)}...
-                  </span>
+                  <ProductCell line={line} variantId={line.variant_id} />
                   <span className="text-right tabular-nums text-[13px] font-semibold">
                     {line.qty_expected}
                   </span>

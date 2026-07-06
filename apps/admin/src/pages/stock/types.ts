@@ -46,6 +46,7 @@ export interface StockMovement {
   performed_at: string;
   sku?: string;
   variant_name?: string;
+  product_name?: string;
   location_name?: string;
 }
 
@@ -73,6 +74,9 @@ export interface AdjustmentLine {
   delta: number;
   unit_cost_ngn?: string | null;
   notes?: string | null;
+  sku?: string;
+  variant_name?: string;
+  product_name?: string;
 }
 
 export interface StockTransfer {
@@ -101,6 +105,9 @@ export interface TransferLine {
   qty_received?: number | null;
   variance?: number | null;
   notes?: string | null;
+  sku?: string;
+  variant_name?: string;
+  product_name?: string;
 }
 
 export interface StockAlert {
@@ -173,6 +180,9 @@ export interface ShipmentLine {
   fx_rate_used?: number | null;
   unit_weight_g?: number | null;
   notes?: string | null;
+  sku?: string;
+  variant_name?: string;
+  product_name?: string;
 }
 
 export interface Paginated<T> {

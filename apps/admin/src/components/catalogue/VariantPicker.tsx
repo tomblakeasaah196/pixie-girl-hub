@@ -53,8 +53,15 @@ export function VariantPicker({
     variantName: string | null,
     sku: string | null,
   ) => {
+    // Variants are often named identically to the product they belong to
+    // (a size-only variant) — only append the variant name when it actually
+    // adds information, otherwise the chip reads as an odd duplicate.
+    const distinctVariant =
+      variantName && variantName.trim() !== pendingProduct?.name.trim()
+        ? variantName
+        : null;
     const full = pendingProduct
-      ? `${pendingProduct.name}${variantName ? ` — ${variantName}` : ""}${sku ? ` (${sku})` : ""}`
+      ? `${pendingProduct.name}${distinctVariant ? ` — ${distinctVariant}` : ""}${sku ? ` (${sku})` : ""}`
       : (variantName ?? sku ?? variantId);
     onChange(variantId, full);
     setLabel(full);
@@ -79,9 +86,9 @@ export function VariantPicker({
   // Selected, not actively searching → show a confirmation chip.
   if (value && label && !open) {
     return (
-      <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line">
+      <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line w-full min-w-0">
         <Check className="w-4 h-4 text-success shrink-0" />
-        <span className="text-[13px] truncate flex-1">{label}</span>
+        <span className="text-[13px] truncate flex-1 min-w-0">{label}</span>
         {!disabled && (
           <button
             onClick={() => setOpen(true)}
@@ -107,16 +114,16 @@ export function VariantPicker({
   if (pendingProduct) {
     const variants = (variantsQ.data ?? []).filter((v) => v.is_active !== false);
     return (
-      <div ref={ref} className="relative">
-        <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line">
+      <div ref={ref} className="relative w-full min-w-0">
+        <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line min-w-0">
           <button
             onClick={() => setPendingProduct(null)}
-            className="text-text-faint hover:text-text-primary"
+            className="text-text-faint hover:text-text-primary shrink-0"
             aria-label="Back"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-[13px] truncate flex-1">
+          <span className="text-[13px] truncate flex-1 min-w-0">
             {pendingProduct.name}
           </span>
         </div>
@@ -155,7 +162,7 @@ export function VariantPicker({
 
   // Step 1 — search base products by name.
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative w-full min-w-0">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint pointer-events-none" />
         <input

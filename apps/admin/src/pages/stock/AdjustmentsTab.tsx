@@ -35,6 +35,7 @@ import {
   InfoBanner,
   Pagination,
   TableSkeleton,
+  ProductsSummary,
 } from "./parts";
 
 /* ─── Constants ─── */
@@ -181,6 +182,11 @@ export default function AdjustmentsTab() {
       ),
     },
     {
+      key: "products",
+      header: "Products",
+      render: (r) => <ProductsSummary lines={r.lines ?? []} />,
+    },
+    {
       key: "location_id",
       header: "Location",
       render: (r) => (
@@ -269,6 +275,7 @@ export default function AdjustmentsTab() {
                   >
                     {adj.adjustment_type.replace(/_/g, " ")}
                   </Pill>
+                  <ProductsSummary lines={adj.lines ?? []} />
                   <span className="text-[12px] text-text-muted truncate">
                     {locationMap[adj.location_id] ?? adj.location_id}
                   </span>

@@ -33,6 +33,7 @@ export interface SignRequestView {
   };
   has_saved_signature: boolean;
   saved_signature_locked: boolean;
+  signed_document_ready: boolean;
 }
 
 export interface SignResult {
@@ -43,6 +44,7 @@ export interface SignResult {
     display_name: string;
     signer_role: string;
     saved_signature: boolean;
+    signed_document_ready?: boolean;
   };
 }
 
@@ -71,4 +73,7 @@ export const signApi = {
     api.get<VerifyResult>(`/sign/verify/${encodeURIComponent(code)}`, "public"),
   /** Same-origin URL the backend streams the document from (token-scoped). */
   documentUrl: (token: string) => `/api/public/sign/${token}/document`,
+  /** Same-origin URL for the signed document (original + signature certificate). */
+  signedDocumentUrl: (token: string) =>
+    `/api/public/sign/${token}/signed-document`,
 };

@@ -17,6 +17,7 @@ const argon2 = require("argon2");
 const { transaction: withTransaction, query } = require("../../config/database");
 const repo = require("./documents.esign.repo");
 const documentsEvents = require("./documents.events");
+const { logger } = require("../../config/logger");
 const { audit } = require("../../middleware/audit");
 const {
   NotFoundError,
@@ -206,7 +207,7 @@ async function signByToken({
   // Post-commit domain event so cross-module reactions (e.g. the Stylist
   // Programme issuing a badge when the partner contract is fully signed)
   // never act on an uncommitted signature.
-  if (result && result.status === "fully_signed")
+  if (result && result.status === "fully_signed") {
     documentsEvents.emit("signature.fully_signed", {
       request_id: result.request_id,
       business: result.business,
@@ -214,6 +215,23 @@ async function signByToken({
       reference_type: result.reference_type,
       reference_id: result.reference_id,
     });
+    // Stamp the signature certificate onto the document (post-commit,
+    // non-fatal — a PDF-render outage must never unwind a completed signature).
+    try {
+      const signedPdf = require("./documents.esign.signed-pdf");
+      const out = await signedPdf.generateSignedDocument({
+        brand: result.business,
+        request_id: result.request_id,
+      });
+      if (result.signed && out && out.signed_document_id)
+        result.signed.signed_document_ready = true;
+    } catch (err) {
+      logger.warn(
+        { err: err.message, request_id: result.request_id },
+        "esign: signed-document generation failed (non-fatal)",
+      );
+    }
+  }
   return result;
 }
 
@@ -621,6 +639,7 @@ const viewByToken = async ({ token, ip, ua }) => {
   const { rows } = await query(
     `SELECT r.request_id, r.business, r.subject, r.message, r.status,
             r.request_type, r.expires_at, r.signing_order, r.document_id,
+            r.signed_document_id,
             d.title AS document_title, d.document_number, d.mime_type
        FROM shared.signature_requests r
        LEFT JOIN shared.documents d ON d.document_id = r.document_id
@@ -680,6 +699,7 @@ const viewByToken = async ({ token, ip, ua }) => {
       saved.pin_locked_until &&
       new Date(saved.pin_locked_until) > new Date()
     ),
+    signed_document_ready: !!request.signed_document_id,
   };
 };
 
@@ -731,6 +751,25 @@ const documentForToken = async ({ token }) => {
   });
 };
 
+/** Resolve the signed document (original + signature certificate) for a token. */
+const signedDocumentForToken = async ({ token }) => {
+  const signer = await repo.getSignerByToken({ client: null, token });
+  if (!signer) throw new NotFoundError("Invalid signing link");
+  const { rows } = await query(
+    `SELECT business, signed_document_id FROM shared.signature_requests WHERE request_id = $1`,
+    [signer.request_id],
+  );
+  if (!rows[0]) throw new NotFoundError("Signature request not found");
+  if (!rows[0].signed_document_id)
+    throw new ConflictError(
+      "Your signed copy is still being prepared — check back in a moment.",
+    );
+  return require("./documents.service").download({
+    brand: rows[0].business,
+    id: rows[0].signed_document_id,
+  });
+};
+
 module.exports = {
   createRequest,
   sendRequest,
@@ -744,6 +783,7 @@ module.exports = {
   viewByToken,
   verifyByCode,
   documentForToken,
+  signedDocumentForToken,
   // Pure helpers exported for unit tests / reuse (e.g. PDF stamping, verify tooling).
   codeFromHash,
   signatureHash,

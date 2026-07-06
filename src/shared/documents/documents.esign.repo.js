@@ -245,6 +245,13 @@ async function recordSignerPinSuccess({ client, email }) {
     [email],
   );
 }
+/** Link the generated signed document to the request. */
+async function setSignedDocument({ client, request_id, document_id }) {
+  await ex(client)(
+    `UPDATE shared.signature_requests SET signed_document_id = $2 WHERE request_id = $1`,
+    [request_id, document_id],
+  );
+}
 /** Resolve a signer row by its public verification code (for the verify page). */
 async function getSignerByVerificationCode({ client, code }) {
   const { rows } = await ex(client)(
@@ -275,4 +282,5 @@ module.exports = {
   recordSignerPinFail,
   recordSignerPinSuccess,
   getSignerByVerificationCode,
+  setSignedDocument,
 };

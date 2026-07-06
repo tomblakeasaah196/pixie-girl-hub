@@ -18,6 +18,7 @@ router.get("/verify/:code", controller.verifyByCode);
 
 router.get("/:token", controller.viewByToken);
 router.get("/:token/document", controller.previewDocument);
+router.get("/:token/signed-document", controller.signedDocument);
 router.post("/:token/sign", validator.validateSign, controller.signByToken);
 router.post(
   "/:token/decline",

@@ -105,6 +105,19 @@ const previewDocument = async (req, res) => {
   res.send(doc.buffer);
 };
 
+// Token-scoped download of the signed document (original + signature
+// certificate). 409 while the signed copy is still being prepared.
+const signedDocument = async (req, res) => {
+  const doc = await service.signedDocumentForToken({ token: req.params.token });
+  res.setHeader("Content-Type", doc.mime_type || "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${(doc.filename || "signed-document.pdf").replace(/["\\]/g, "")}"`,
+  );
+  res.setHeader("Cache-Control", "private, no-store");
+  res.send(doc.buffer);
+};
+
 // Public verification by short code — proves a signature is genuine + intact.
 const verifyByCode = async (req, res) =>
   res.json({
@@ -123,5 +136,6 @@ module.exports = {
   signByToken,
   declineByToken,
   previewDocument,
+  signedDocument,
   verifyByCode,
 };

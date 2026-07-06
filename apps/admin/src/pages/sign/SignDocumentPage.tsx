@@ -11,6 +11,7 @@ import {
   Lock,
   Clock,
   ExternalLink,
+  Download,
 } from "lucide-react";
 import {
   signApi,
@@ -34,6 +35,7 @@ interface SignedInfo {
   display_name: string;
   signer_role: string;
   saved_signature?: boolean;
+  signed_document_ready?: boolean;
 }
 
 const brandName = (b?: string | null) =>
@@ -236,7 +238,7 @@ export function SignDocumentPage() {
   if (stage === "signed" && signed) {
     return (
       <Shell brand={view?.request.business}>
-        <SignedConfirmation signed={signed} view={view} />
+        <SignedConfirmation signed={signed} view={view} token={token} />
       </Shell>
     );
   }
@@ -463,10 +465,15 @@ export function SignDocumentPage() {
 function SignedConfirmation({
   signed,
   view,
+  token,
 }: {
   signed: SignedInfo;
   view: SignRequestView | null;
+  token: string;
 }) {
+  const signedReady =
+    signed.signed_document_ready || view?.signed_document_ready;
+  const isFullySigned = view?.request.status === "fully_signed" || signedReady;
   return (
     <div>
       <div className="text-center py-4">
@@ -509,6 +516,25 @@ function SignedConfirmation({
           Verify this signature
         </a>
       </div>
+
+      {/* Signed copy — appears once the whole document is fully signed. */}
+      {isFullySigned &&
+        (signedReady ? (
+          <a
+            href={signApi.signedDocumentUrl(token)}
+            className="mt-4 w-full grid place-items-center rounded-xl bg-accent text-bg font-semibold py-3 text-[14px] hover:bg-accent-glow transition-all"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Download className="w-4 h-4" />
+              Download signed copy
+            </span>
+          </a>
+        ) : (
+          <p className="mt-4 flex items-center justify-center gap-1.5 text-[11.5px] text-text-faint text-center">
+            <FileText className="w-3.5 h-3.5 shrink-0" />
+            Your signed copy is being prepared — we’ll email it to you shortly.
+          </p>
+        ))}
 
       {signed.saved_signature && (
         <p className="mt-3 flex items-center justify-center gap-1.5 text-[11.5px] text-text-faint">

@@ -110,6 +110,7 @@ function listChannels({
     brand,
     channel_type,
     external_platform: platform === "internal" ? null : platform,
+    internal_only: platform === "internal",
     status,
     assigned_to_me,
     q,

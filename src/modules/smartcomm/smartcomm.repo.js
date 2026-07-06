@@ -29,6 +29,7 @@ function mediaUrl(filePath) {
  *
  *   filters: business, channel_type, external_platform, status,
  *            assigned_to_me, q (text search across name + preview),
+ *            internal_only (external_platform IS NULL — team/DM chats),
  *            include_archived (default false)
  */
 async function listChannelsForUser({
@@ -36,6 +37,7 @@ async function listChannelsForUser({
   brand,
   channel_type,
   external_platform,
+  internal_only,
   status,
   assigned_to_me,
   q,
@@ -55,7 +57,9 @@ async function listChannelsForUser({
     where.push(`c.channel_type = $${i++}`);
     params.push(channel_type);
   }
-  if (external_platform) {
+  if (internal_only) {
+    where.push("c.external_platform IS NULL");
+  } else if (external_platform) {
     where.push(`c.external_platform = $${i++}`);
     params.push(external_platform);
   }

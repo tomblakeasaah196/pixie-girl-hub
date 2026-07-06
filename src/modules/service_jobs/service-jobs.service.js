@@ -220,11 +220,15 @@ async function assignStaff({
 }) {
   const before = await repo.getServiceJob({ brand, id });
   if (!before) throw new NotFoundError("Service job");
-  const job = await repo.updateServiceJob({
-    brand,
-    id,
-    patch: { assigned_staff_user_id },
-  });
+  // Merge the staffer assignment with a move to 'assigned' so the DB task
+  // trigger fires, the stylist gets the push notification, and the drawer
+  // stops showing "Unassigned" — one call, one status transition.
+  const patch = { assigned_staff_user_id };
+  if (before.status === "pending") {
+    patch.status = "assigned";
+    patch.assigned_at = new Date().toISOString();
+  }
+  const job = await repo.updateServiceJob({ brand, id, patch });
   await A(
     brand,
     user,
@@ -236,6 +240,16 @@ async function assignStaff({
   );
   events.emit("assigned", { brand, job_id: id });
   return job;
+}
+
+/**
+ * List staff who can be picked as the assignee on a service-job drawer.
+ * Frontend uses this to populate the stylist chooser; each row carries the
+ * live open-jobs count + on-leave-today flag so the picker can balance load
+ * and grey out anyone away.
+ */
+async function listAssignableStylists({ brand }) {
+  return repo.listAssignableStylists({ brand });
 }
 
 async function recordOutcome({ brand, user, request_id, id, input }) {
@@ -1296,6 +1310,7 @@ module.exports = {
   advanceJob,
   assignStaff,
   assignStylist,
+  listAssignableStylists,
   startWork,
   pauseWork,
   resumeWork,

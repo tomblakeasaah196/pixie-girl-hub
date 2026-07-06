@@ -128,13 +128,18 @@ export function ChannelList({
       {/* Search */}
       <div className="px-3 py-2">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
           <input
-            type="text"
+            type="search"
+            name="conversation-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search conversations…"
-            className="w-full pl-8 pr-3 py-2 rounded-xl bg-panel-2 border hairline text-[12.5px] focus:outline-none focus:border-accent/40 placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 placeholder:text-text-faint"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
         </div>
       </div>

@@ -72,6 +72,34 @@ function brandContext(): string | null {
   }
 }
 
+/** True if this device believes it has (or just had) a live session — either
+ *  an in-memory access token or a persisted profile from a prior sign-in.
+ *  Used to decide whether a failed silent-refresh is a real session expiry
+ *  (worth surfacing) versus just an anonymous 401. */
+function hadKnownSession(): boolean {
+  if (accessToken) return true;
+  if (typeof localStorage === "undefined") return false;
+  try {
+    const raw = localStorage.getItem("pgh-auth");
+    const parsed = raw ? JSON.parse(raw) : null;
+    return !!parsed?.state?.user;
+  } catch {
+    return false;
+  }
+}
+
+/** Broadcasts that a previously-authed session just failed to refresh (the
+ *  refresh cookie itself has expired or been revoked — typically after long
+ *  inactivity). A root-level listener (SessionExpiredOverlay) blurs the app
+ *  and prompts for password/PIN re-entry rather than letting every in-flight
+ *  call fail silently with its own error. */
+export const SESSION_EXPIRED_EVENT = "pgh:session-expired";
+function notifySessionExpired() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+}
+
 /** Exchange the refresh cookie for a new access token. Returns true on
  *  success. Kept out of `request` so it never recurses into itself. */
 export async function refreshAccessToken(): Promise<boolean> {
@@ -122,9 +150,11 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
   // every subsequent request with a header-less "Authorization header missing"
   // 401 and no recovery until a full page reload.
   if (res.status === 401 && scope === "v1" && !isAuthRoute && !_retried) {
+    const hadSession = hadKnownSession();
     const ok = await refreshAccessToken();
     if (ok) return request<T>(path, { ...opts, _retried: true });
     accessToken = null;
+    if (hadSession) notifySessionExpired();
   }
 
   const text = await res.text();
@@ -218,11 +248,13 @@ function postForm<T>(
 
       // Silent-refresh-and-retry once on a 401 (token expired mid-session).
       if (xhr.status === 401 && !opts._retried && accessToken !== null) {
+        const hadSession = hadKnownSession();
         refreshAccessToken().then((ok) => {
           if (ok) {
             resolve(postForm<T>(path, form, { ...opts, _retried: true }));
           } else {
             accessToken = null;
+            if (hadSession) notifySessionExpired();
             reject(new ApiError(401, parsed, "Unauthorized"));
           }
         });
@@ -304,9 +336,11 @@ async function getBlob(
   }
   const res = await fetch(`${base}${path}`, { headers, credentials: "include" });
   if (res.status === 401 && scope === "v1" && !_retried) {
+    const hadSession = hadKnownSession();
     const ok = await refreshAccessToken();
     if (ok) return getBlob(path, scope, true);
     accessToken = null;
+    if (hadSession) notifySessionExpired();
   }
   if (!res.ok) throw new ApiError(res.status, null, `HTTP ${res.status}`);
   return res.blob();

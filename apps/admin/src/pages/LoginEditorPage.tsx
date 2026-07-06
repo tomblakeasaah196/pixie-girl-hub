@@ -109,6 +109,7 @@ export function LoginEditorPage() {
   const initial: LoginConfig = useMemo(() => {
     const c = platform.data?.login_config ?? {};
     return {
+      splash: { ...LOGIN_CONFIG_FALLBACK.splash, ...(c.splash ?? {}) },
       hero: { ...LOGIN_CONFIG_FALLBACK.hero, ...(c.hero ?? {}) },
       quotes: c.quotes?.length ? c.quotes : LOGIN_CONFIG_FALLBACK.quotes,
       standards: c.standards?.length
@@ -159,6 +160,29 @@ export function LoginEditorPage() {
           redeploy.
         </p>
       </div>
+
+      {/* Splash screen */}
+      <Card className="p-5 space-y-4">
+        <div className="micro">Splash screen</div>
+        <p className="text-text-faint text-[12px] -mt-2">
+          Shown while the app loads and while a session is restored. The logo
+          and app name come from{" "}
+          <Link to="/settings/appearance" className="underline hover:text-text-muted">
+            Appearance
+          </Link>
+          ; the line below is set here.
+        </p>
+        <Field label="Subline">
+          <input
+            className={input}
+            placeholder="Your command center"
+            value={cfg.splash?.subline ?? ""}
+            onChange={(e) =>
+              patch({ splash: { ...cfg.splash, subline: e.target.value } })
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+          />
+        </Field>
+      </Card>
 
       {/* Hero copy */}
       <Card className="p-5 space-y-4">

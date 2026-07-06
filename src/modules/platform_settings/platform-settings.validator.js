@@ -161,6 +161,16 @@ const backgroundSchema = z
   .partial()
   .passthrough();
 
+// The boot/login splash's caption line, under the app name. Logo + app
+// name themselves come from platform_settings directly (logo_dark_url /
+// logo_light_url / product_name) — only the caption is configured here.
+const splashSchema = z
+  .object({
+    subline: z.string().max(200).optional(),
+  })
+  .partial()
+  .passthrough();
+
 const loginConfigSchema = z
   .object({
     hero: heroSchema.optional(),
@@ -169,6 +179,7 @@ const loginConfigSchema = z
     region_messages: z.record(regionMessageSchema).optional(),
     toggles: z.record(z.boolean()).optional(),
     background: backgroundSchema.optional(),
+    splash: splashSchema.optional(),
   })
   .partial()
   .passthrough();

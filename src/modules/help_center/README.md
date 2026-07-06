@@ -21,9 +21,16 @@ sources for cost-strategy questions. One table satisfies all three.
 - `shared.ai_knowledge_chunks` — mirrored from help_articles. Seeded in
   bulk by the `*_shared_help_praxis_mirror*` migrations, and kept in step
   **live** by the editor: every article create/update/retire calls
-  `repo.resyncArticleChunk`, which delete-then-inserts the chunk for
-  `help_article:<slug>`. A retired or de-indexed article leaves no chunk,
-  so Praxis stops citing it immediately.
+  `repo.resyncArticleChunk`, which **upserts the chunk in place** (stable
+  `chunk_id`) for `help_article:<slug>`. A retired or de-indexed article
+  leaves no chunk, so Praxis stops citing it immediately.
+- `shared.ai_embeddings` — the RAG vectors Praxis actually searches, keyed
+  by `source_id = chunk_id`. On save the service enqueues the shared
+  `ai-embed` worker to (re)embed the chunk (best-effort; the worker no-ops
+  when no embeddings provider is configured). On retire, the chunk's
+  embedding is deleted. Keeping `chunk_id` stable across edits is why the
+  embedding upserts the same row instead of orphaning a stale copy.
+  Backfill existing chunks with `npm run rag:reembed:missing`.
 
 ## Files
 

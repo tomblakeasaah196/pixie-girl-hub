@@ -127,6 +127,20 @@ router.post(
   validate.appraisal.score,
   controller.appraisal.score,
 );
+// Auto-score a cycle from real HR data (attendance, sales, quality, ratings).
+router.post(
+  "/performance-cycles/:cycleId/auto-score",
+  P("edit"),
+  validate.appraisal.autoScore,
+  controller.appraisal.autoScore,
+);
+// Manager calibration of a single score (overrides + shields from auto-refresh).
+router.post(
+  "/performance-cycles/:cycleId/scores/:scoreId/calibrate",
+  P("edit"),
+  validate.appraisal.calibrate,
+  controller.appraisal.calibrate,
+);
 router.post(
   "/performance-cycles/:cycleId/reviews",
   P("edit"),

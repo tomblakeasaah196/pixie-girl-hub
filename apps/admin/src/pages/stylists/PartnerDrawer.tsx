@@ -36,7 +36,7 @@ export function PartnerDrawer({
   onClose: () => void;
 }) {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Partner");
   const partner = usePartner(stylistId);
   const tiers = useTiers();
   const m = usePartnerMutations(stylistId);

@@ -37,6 +37,7 @@ import { Timeline } from "@/components/ui/Timeline";
 import { OrgGraph } from "@/components/hub/OrgGraph";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import {
   orgApi,
   type OrgUnit,
@@ -1166,6 +1167,7 @@ function NewRoleDrawer({
       });
       onCreated(role);
     } catch (e: unknown) {
+      toastReport("Org & Workflow → Roles", "Create role", e);
       setError(e instanceof Error ? e.message : "Failed to create role");
     } finally {
       setSaving(false);
@@ -1776,6 +1778,7 @@ function WorkflowBuilderDrawer({
       }
       onSaved();
     } catch (e: unknown) {
+      toastReport("Org & Workflow → Workflow definition", "Save", e);
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
@@ -2129,6 +2132,7 @@ function ApprovalDrawer({
       );
       onActed();
     } catch (e: unknown) {
+      toastReport("Org & Workflow → Workflow instance", "Act on request", e);
       setError(e instanceof Error ? e.message : "Action failed");
     } finally {
       setActing(false);

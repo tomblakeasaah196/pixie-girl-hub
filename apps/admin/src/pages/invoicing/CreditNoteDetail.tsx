@@ -5,6 +5,7 @@ import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ErrorState, ConfirmDialog } from "@/components/ui/controls";
 import { FormGrid } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { useCreditNote, useIssueCreditNote } from "./hooks";
 import { CREDIT_NOTE_STATUS, CREDIT_NOTE_REASON_OPTIONS } from "./constants";
 
@@ -15,6 +16,10 @@ export function CreditNoteDetail({ creditNoteId, onClose }: { creditNoteId: stri
 
   const toast = useToastStore();
   const fireToast = (title: string, body: string, priority: "normal" | "high" = "normal") => {
+    if (priority === "high") {
+      toastReport("Invoicing → Credit note", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBusinessStore } from "@/stores/business";
+import { toastReport } from "@/lib/error-report";
 import {
   useLandingStudio,
   useSaveLandingDraft,
@@ -212,6 +213,7 @@ export function LandingStudioPage() {
       setCampaignDirty(false);
       flash("Draft saved");
     } catch (e) {
+      toastReport("Sales Campaigns → Landing Studio", "Save draft", e);
       flash(e instanceof Error ? e.message : "Couldn't save — please try again");
     }
   }
@@ -224,6 +226,7 @@ export function LandingStudioPage() {
       setDirty(false);
       flash("Published live");
     } catch (e) {
+      toastReport("Sales Campaigns → Landing Studio", "Publish", e);
       flash(e instanceof Error ? e.message : "Couldn't publish — please try again");
     }
   }
@@ -1510,6 +1513,7 @@ function Img({ label, value, onChange }: { label: string; value: string | null; 
     try {
       onChange(await run((onProgress) => uploadLandingImage(file, onProgress)));
     } catch (e) {
+      toastReport("Sales Campaigns → Landing Studio", "Upload image", e);
       setErr(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setBusy(false);
@@ -1555,6 +1559,7 @@ function OgImageField({ value, onChange }: { value: string | null; onChange: (v:
         await run((onProgress) => uploadLandingOgBanner(file, onProgress)),
       );
     } catch (e) {
+      toastReport("Sales Campaigns → Landing Studio", "Build share image", e);
       setErr(e instanceof Error ? e.message : "Couldn't build the share image");
     } finally {
       setBusy(false);

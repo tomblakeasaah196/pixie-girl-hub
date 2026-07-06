@@ -11,6 +11,7 @@ import { Button, Card, Pill, MoneyText } from "@/components/ui/primitives";
 import { Field } from "@/components/ui/Form";
 import { NumberField, Select } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import type { BaseProduct, Variant } from "@/lib/catalogue";
 import {
   ProductVariantPicker,
@@ -141,11 +142,13 @@ export function AdvisorTab({
             });
           }
         },
-        onError: (e) =>
+        onError: (e) => {
+          toastReport("Pricing → Advisor", "Apply price", e);
           setApplyMsg({
             kind: "error",
             text: e instanceof Error ? e.message : "Could not apply.",
-          }),
+          });
+        },
       },
     );
   };

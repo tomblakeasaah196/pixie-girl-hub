@@ -11,6 +11,7 @@ import {
   getInitials,
 } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import type { Message } from "@/lib/smartcomm-types";
 import { PlatformPill } from "./PlatformPill";
 
@@ -63,6 +64,7 @@ export function ForwardModal({
       onDone();
       onClose();
     } catch (e: unknown) {
+      toastReport("Messaging → Forward", "Forward message", e);
       setError(e instanceof Error ? e.message : "Could not forward");
     } finally {
       setBusy(false);

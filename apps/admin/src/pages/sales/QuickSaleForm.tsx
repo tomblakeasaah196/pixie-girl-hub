@@ -29,6 +29,7 @@ import {
 } from "./constants";
 import { useCreateOrder, useOrderPaymentWatch } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { onboardingApi } from "@/lib/smartcomm-api";
 import { useBusinessStore } from "@/stores/business";
 import * as salesApi from "./api";
@@ -119,6 +120,10 @@ export function QuickSaleForm() {
     type = "order",
     priority: "normal" | "high" = "normal",
   ) => {
+    if (priority === "high") {
+      toastReport("Sales → Quick sale", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",

@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { getMyToday, clock as clockApi } from "@/lib/hr-api";
 import { captureGeo } from "@/lib/geo-capture";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 
 /**
  * Top-bar clock in/out (canon §3.2). Captures the device location + reverse-
@@ -36,7 +37,11 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
     return () => clearInterval(id);
   }, [data?.clocked_in, data?.clocked_in_at]);
 
-  const notify = (title: string, body = "", priority: "low" | "normal" | "high" = "normal") =>
+  const notify = (title: string, body = "", priority: "low" | "normal" | "high" = "normal") => {
+    if (priority === "high") {
+      toastReport("HR → Clock in/out", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",
@@ -52,6 +57,7 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
       read_at: null,
       created_at: new Date().toISOString(),
     });
+  };
 
   const punch = useMutation({
     mutationFn: async (event_type: "clock_in" | "clock_out") => {

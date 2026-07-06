@@ -34,6 +34,7 @@ import { DeniedState, ErrorState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
 import { money, moneyCompact } from "@/lib/format";
+import { toastReport } from "@/lib/error-report";
 import {
   useCouponList,
   useCreateCoupon,
@@ -108,6 +109,7 @@ export function SpecialCodesPage() {
       await del.mutateAsync(toDelete.coupon_id);
       setToDelete(null);
     } catch (e: unknown) {
+      toastReport("Sales Campaigns → Special codes", "Delete code", e);
       setDeleteError((e as Error)?.message || "Couldn't delete this code.");
     }
   }
@@ -409,6 +411,9 @@ function CreateCodeModal({
     } catch (e: unknown) {
       const msg = (e as Error)?.message || "Couldn't create this code.";
       // The engine returns 409 COUPON_EXISTS for a duplicate code.
+      if (!/exist/i.test(msg)) {
+        toastReport("Sales Campaigns → Special codes", "Create code", e);
+      }
       setError(
         /exist/i.test(msg)
           ? "That code already exists — pick a different one."

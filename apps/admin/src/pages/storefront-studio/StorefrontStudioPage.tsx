@@ -644,7 +644,7 @@ function ThemeTab() {
       <div className="flex gap-2">
         <Button
           variant="primary"
-          disabled={save.isPending}
+          disabled={save.isPending || publish.isPending}
           onClick={() =>
             runStudio(() => save.mutateAsync(tokens), {
               area: `${STUDIO_AREA} → Theme`,
@@ -658,14 +658,20 @@ function ThemeTab() {
         </Button>
         <Button
           variant="secondary"
-          disabled={publish.isPending}
+          disabled={save.isPending || publish.isPending}
           onClick={() =>
-            runStudio(() => publish.mutateAsync(), {
-              area: `${STUDIO_AREA} → Theme`,
-              action: "Publish theme",
-              success: "Theme published — it's live now.",
-              onOk: () => setMsg("Theme published."),
-            })
+            runStudio(
+              async () => {
+                await save.mutateAsync(tokens);
+                await publish.mutateAsync();
+              },
+              {
+                area: `${STUDIO_AREA} → Theme`,
+                action: "Publish theme",
+                success: "Theme published — it's live now.",
+                onOk: () => setMsg("Theme published."),
+              },
+            )
           }
         >
           Publish
@@ -742,7 +748,7 @@ function BrandingTab() {
       <div className="flex gap-2">
         <Button
           variant="primary"
-          disabled={save.isPending}
+          disabled={save.isPending || publish.isPending}
           onClick={() =>
             runStudio(() => save.mutateAsync(tokens), {
               area: `${STUDIO_AREA} → Branding`,
@@ -756,14 +762,20 @@ function BrandingTab() {
         </Button>
         <Button
           variant="secondary"
-          disabled={publish.isPending}
+          disabled={save.isPending || publish.isPending}
           onClick={() =>
-            runStudio(() => publish.mutateAsync(), {
-              area: `${STUDIO_AREA} → Branding`,
-              action: "Publish branding",
-              success: "Branding published — it's live now.",
-              onOk: () => setMsg("Branding published."),
-            })
+            runStudio(
+              async () => {
+                await save.mutateAsync(tokens);
+                await publish.mutateAsync();
+              },
+              {
+                area: `${STUDIO_AREA} → Branding`,
+                action: "Publish branding",
+                success: "Branding published — it's live now.",
+                onOk: () => setMsg("Branding published."),
+              },
+            )
           }
         >
           Publish
@@ -967,7 +979,7 @@ function ToolbarTab() {
       <div className="flex gap-2">
         <Button
           variant="primary"
-          disabled={save.isPending}
+          disabled={save.isPending || publish.isPending}
           onClick={() =>
             runStudio(() => save.mutateAsync(nextTokens), {
               area: `${STUDIO_AREA} → Toolbar`,
@@ -981,14 +993,20 @@ function ToolbarTab() {
         </Button>
         <Button
           variant="secondary"
-          disabled={publish.isPending}
+          disabled={save.isPending || publish.isPending}
           onClick={() =>
-            runStudio(() => publish.mutateAsync(), {
-              area: `${STUDIO_AREA} → Toolbar`,
-              action: "Publish toolbar",
-              success: "Toolbar published — it's live now.",
-              onOk: () => setMsg("Toolbar published."),
-            })
+            runStudio(
+              async () => {
+                await save.mutateAsync(nextTokens);
+                await publish.mutateAsync();
+              },
+              {
+                area: `${STUDIO_AREA} → Toolbar`,
+                action: "Publish toolbar",
+                success: "Toolbar published — it's live now.",
+                onOk: () => setMsg("Toolbar published."),
+              },
+            )
           }
         >
           Publish
@@ -1034,18 +1052,32 @@ function NavigationTab() {
     }
   }, [active]);
 
+  function buildNav(): NavRow {
+    return { header_items: header, footer_columns: footer, socials };
+  }
+
   async function onSave() {
-    const nav: NavRow = {
-      header_items: header,
-      footer_columns: footer,
-      socials,
-    };
-    await runStudio(() => save.mutateAsync(nav), {
+    await runStudio(() => save.mutateAsync(buildNav()), {
       area: `${STUDIO_AREA} → Navigation`,
       action: "Save navigation draft",
       success: "Draft saved.",
       onOk: () => setMsg("Draft saved."),
     });
+  }
+
+  async function onPublish() {
+    await runStudio(
+      async () => {
+        await save.mutateAsync(buildNav());
+        await publish.mutateAsync();
+      },
+      {
+        area: `${STUDIO_AREA} → Navigation`,
+        action: "Publish navigation",
+        success: "Navigation published — it's live now.",
+        onOk: () => setMsg("Navigation published."),
+      },
+    );
   }
 
   if (isLoading)
@@ -1253,20 +1285,17 @@ function NavigationTab() {
       </Section>
 
       <div className="flex gap-2">
-        <Button variant="primary" disabled={save.isPending} onClick={onSave}>
+        <Button
+          variant="primary"
+          disabled={save.isPending || publish.isPending}
+          onClick={onSave}
+        >
           Save draft
         </Button>
         <Button
           variant="secondary"
-          disabled={publish.isPending}
-          onClick={() =>
-            runStudio(() => publish.mutateAsync(), {
-              area: `${STUDIO_AREA} → Navigation`,
-              action: "Publish navigation",
-              success: "Navigation published — it's live now.",
-              onOk: () => setMsg("Navigation published."),
-            })
-          }
+          disabled={save.isPending || publish.isPending}
+          onClick={onPublish}
         >
           Publish
         </Button>
@@ -1312,26 +1341,45 @@ function PagesTab() {
     setMsg(null);
   }
 
-  async function onSave() {
-    if (!sel) return;
-    // Send ONLY the editable fields — never spread the loaded row, whose DB-only
-    // keys (page_id, business, status, timestamps) tripped the backend validator
-    // with "Invalid input" and blocked every save.
-    const payload = {
-      page_key: sel.page_key,
-      template_key: sel.template_key,
-      url_path: sel.url_path,
-      meta_title: sel.meta_title ?? undefined,
-      meta_description: sel.meta_description ?? undefined,
-      og_image_url: sel.og_image_url ?? undefined,
+  // Send ONLY the editable fields — never spread the loaded row, whose DB-only
+  // keys (page_id, business, status, timestamps) tripped the backend validator
+  // with "Invalid input" and blocked every save.
+  function buildPagePayload(p: PageRow) {
+    return {
+      page_key: p.page_key,
+      template_key: p.template_key,
+      url_path: p.url_path,
+      meta_title: p.meta_title ?? undefined,
+      meta_description: p.meta_description ?? undefined,
+      og_image_url: p.og_image_url ?? undefined,
       slots,
     };
-    await runStudio(() => save.mutateAsync(payload), {
+  }
+
+  async function onSave() {
+    if (!sel) return;
+    await runStudio(() => save.mutateAsync(buildPagePayload(sel)), {
       area: `${STUDIO_AREA} → Pages (${sel.page_key || "new"})`,
       action: "Save page draft",
       success: "Draft saved.",
       onOk: () => setMsg("Draft saved."),
     });
+  }
+
+  async function onPublish() {
+    if (!sel) return;
+    await runStudio(
+      async () => {
+        await save.mutateAsync(buildPagePayload(sel));
+        await publish.mutateAsync(sel.page_key);
+      },
+      {
+        area: `${STUDIO_AREA} → Pages (${sel.page_key})`,
+        action: "Publish page",
+        success: "Page published — it's live now.",
+        onOk: () => setMsg("Page published."),
+      },
+    );
   }
 
   if (isLoading)
@@ -1415,20 +1463,17 @@ function PagesTab() {
           </div>
 
           <div className="flex gap-2 pt-1">
-            <Button variant="primary" disabled={save.isPending} onClick={onSave}>
+            <Button
+              variant="primary"
+              disabled={save.isPending || publish.isPending}
+              onClick={onSave}
+            >
               Save draft
             </Button>
             <Button
               variant="secondary"
-              disabled={!sel.page_key || publish.isPending}
-              onClick={() =>
-                runStudio(() => publish.mutateAsync(sel.page_key), {
-                  area: `${STUDIO_AREA} → Pages (${sel.page_key})`,
-                  action: "Publish page",
-                  success: "Page published — it's live now.",
-                  onOk: () => setMsg("Page published."),
-                })
-              }
+              disabled={!sel.page_key || save.isPending || publish.isPending}
+              onClick={onPublish}
             >
               Publish
             </Button>
@@ -1782,6 +1827,22 @@ function PopupsTab() {
     });
   }
 
+  async function onPublish() {
+    if (!sel) return;
+    await runStudio(
+      async () => {
+        await save.mutateAsync(sel);
+        await publish.mutateAsync(sel.popup_key);
+      },
+      {
+        area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
+        action: "Publish popup",
+        success: "Popup published — it's live now.",
+        onOk: () => setMsg("Popup published."),
+      },
+    );
+  }
+
   if (isLoading)
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
@@ -1925,20 +1986,17 @@ function PopupsTab() {
           </Section>
 
           <div className="flex gap-2 pt-1">
-            <Button variant="primary" disabled={save.isPending} onClick={onSave}>
+            <Button
+              variant="primary"
+              disabled={save.isPending || publish.isPending}
+              onClick={onSave}
+            >
               Save draft
             </Button>
             <Button
               variant="secondary"
-              disabled={!sel.popup_key || publish.isPending}
-              onClick={() =>
-                runStudio(() => publish.mutateAsync(sel.popup_key), {
-                  area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
-                  action: "Publish popup",
-                  success: "Popup published — it's live now.",
-                  onOk: () => setMsg("Popup published."),
-                })
-              }
+              disabled={!sel.popup_key || save.isPending || publish.isPending}
+              onClick={onPublish}
             >
               Publish
             </Button>

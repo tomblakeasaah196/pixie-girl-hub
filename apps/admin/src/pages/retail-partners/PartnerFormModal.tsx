@@ -4,6 +4,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { Select, NumberField } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import { rpApi } from "./api";
 import { useRpMutations } from "./hooks";
 import { FieldLabel, TextInput, TextArea, InfoBanner } from "./parts";
@@ -174,6 +175,7 @@ export function PartnerFormModal({
       };
       createPartner.mutate(input, { onSuccess: onClose });
     } catch (err) {
+      toastReport("Retail Partners → Partner form", "Create contact", err);
       setContactError(
         (err as Error)?.message || "Could not create the contact",
       );

@@ -37,7 +37,7 @@ function OfficeModal({
   editing: Geofence | null;
 }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Geofence: office");
   const [form, setForm] = useState({
     name: "",
     latitude: LAGOS.lat,
@@ -150,7 +150,7 @@ function OfficeModal({
 
 export function OfficeGeofenceSettings() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Geofence settings");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Geofence | null>(null);
 

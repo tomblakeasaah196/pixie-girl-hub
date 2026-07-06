@@ -9,6 +9,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useAddBundleToCampaign, type Campaign } from "@/lib/campaigns";
+import { toastReport } from "@/lib/error-report";
 import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
 import { cn } from "@/lib/cn";
 import {
@@ -363,6 +364,7 @@ function BundleEditorModal({
           setTimeout(() => setCampaignFeedback(null), 3000);
         },
         onError: (err) => {
+          toastReport("Catalogue → Bundles", "Add to campaign", err);
           setCampaignFeedback(
             err instanceof Error ? err.message : "Could not add to campaign.",
           );

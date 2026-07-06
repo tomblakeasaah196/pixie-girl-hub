@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { money } from "@/lib/format";
+import { toastReport } from "@/lib/error-report";
 import {
   Button,
   Card,
@@ -200,7 +201,10 @@ export function ShippingRatesTab() {
           `Import complete: ${result.created ?? 0} created, ${result.updated ?? 0} updated, ${result.skipped ?? 0} skipped.`,
         );
       },
-      onError: () => setImportError("Import failed. Check the file format and try again."),
+      onError: (err) => {
+        toastReport("Logistics → Shipping rates", "Import rates", err);
+        setImportError("Import failed. Check the file format and try again.");
+      },
     });
     e.target.value = "";
   }

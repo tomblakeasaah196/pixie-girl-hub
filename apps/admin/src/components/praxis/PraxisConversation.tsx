@@ -26,6 +26,7 @@ import {
   praxisKeys,
 } from "@/lib/praxis-api";
 import { ApiError } from "@/lib/api";
+import { toastReport } from "@/lib/error-report";
 
 type SendInput = {
   content: string;
@@ -94,6 +95,7 @@ export function PraxisConversation({
       } else if (err instanceof ApiError && err.status === 403) {
         setNotice("You don't have access to Praxis. Ask the CEO to grant it.");
       } else {
+        toastReport("Praxis AI → Conversation", "Send message", err);
         setNotice("That didn't go through — you can retry below.");
       }
     }

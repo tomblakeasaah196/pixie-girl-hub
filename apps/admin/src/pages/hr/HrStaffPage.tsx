@@ -73,7 +73,7 @@ import {
 // ── Leave inbox ────────────────────────────────────────────
 function LeaveInbox() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: leave inbox");
   const { data, isLoading } = useQuery({
     queryKey: ["hr", "leave", "pending"],
     queryFn: () => listLeave({ status: "pending" }),
@@ -125,7 +125,7 @@ function LeaveInbox() {
 // ── Queries panel (with waive/uphold) ──────────────────────
 function QueriesPanel() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: queries");
   const { data, isLoading } = useQuery({
     queryKey: ["hr", "queries", "open"],
     queryFn: () => listQueries({ open: "true" }),
@@ -181,7 +181,7 @@ function QueriesPanel() {
 // ── Raise-query modal ──────────────────────────────────────
 function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: raise query");
   const { data: staff } = useQuery({
     queryKey: ["hr", "staff", "for-query"],
     queryFn: () => listStaff({ page_size: "200" }),
@@ -241,7 +241,7 @@ function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void
 // ── Set-target modal ───────────────────────────────────────
 function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: set target");
   const now = new Date();
   const { data: staff } = useQuery({
     queryKey: ["hr", "staff", "for-target"],
@@ -327,7 +327,7 @@ function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void 
 
 // ── Generate-contract modal ────────────────────────────────
 function GenerateContractModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: contract");
   const { data: staff } = useQuery({
     queryKey: ["hr", "staff", "for-contract"],
     queryFn: () => listStaff({ page_size: "200" }),
@@ -390,7 +390,7 @@ function GenerateContractModal({ open, onClose }: { open: boolean; onClose: () =
 // ── Settings tab ───────────────────────────────────────────
 function SettingsTab() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: settings");
   const { data, isLoading } = useQuery({ queryKey: ["hr", "settings"], queryFn: getSettings });
   const [pin, setPin] = useState("");
   const save = useMutation({
@@ -573,7 +573,7 @@ function SettingsTab() {
 // ── Attendance tab ─────────────────────────────────────────
 function AttendanceTab() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: attendance");
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = today.slice(0, 8) + "01";
   const [from, setFrom] = useState(today);
@@ -846,7 +846,7 @@ export default function HrStaffPage() {
   useBreadcrumbs([{ label: "HR & Staff" }]);
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: analytics");
   const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState("overview");
   const [raiseOpen, setRaiseOpen] = useState(false);

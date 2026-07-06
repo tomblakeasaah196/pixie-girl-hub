@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
+import { toastReport } from "@/lib/error-report";
 import {
   Button,
   Card,
@@ -678,6 +679,7 @@ function BriefStep({
       setSavedAt(Date.now());
       if (advance) onNext?.();
     } catch (e: unknown) {
+      toastReport("Sales Campaigns → Campaign builder", "Save brief", e);
       setError(
         (e as Error)?.message ||
           "Couldn't save the brief. Check the highlighted fields and try again.",
@@ -1389,6 +1391,7 @@ function BundlesStep({
     try {
       await importBundle.mutateAsync(offerId);
     } catch (e) {
+      toastReport("Sales Campaigns → Campaign builder", "Import bundle", e);
       describeError(
         e,
         "Couldn't import that bundle. Please try again.",

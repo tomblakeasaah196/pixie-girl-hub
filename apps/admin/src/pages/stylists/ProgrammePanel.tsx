@@ -33,7 +33,7 @@ function ConfigCard({ title, children }: { title: string; children: React.ReactN
 
 export function ProgrammePanel() {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Programme");
   const config = useProgrammeConfig();
   const tiers = useTiers();
   const questions = useQuestions();

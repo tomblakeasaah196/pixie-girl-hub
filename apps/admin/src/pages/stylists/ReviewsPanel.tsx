@@ -17,7 +17,7 @@ import type { VerifiedReview } from "./types";
 
 export function ReviewsPanel() {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Reviews");
   const [showHidden, setShowHidden] = useState(false);
   const reviews = useVerifiedReviews({ hidden: showHidden || undefined });
   const visibility = useReviewVisibilityMutation();

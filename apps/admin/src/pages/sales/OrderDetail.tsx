@@ -30,6 +30,7 @@ import {
 } from "./hooks";
 import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
 import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
 import type { OrderPayment } from "./types";
@@ -135,6 +136,10 @@ export function OrderDetail({
     type = "order",
     priority: "normal" | "high" = "normal",
   ) => {
+    if (priority === "high") {
+      toastReport("Sales → Order", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",

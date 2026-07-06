@@ -19,7 +19,7 @@ const slug = (s: string) =>
 
 export function OnboardingSettings({ settings }: { settings: HrSettings }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Onboarding settings");
   const [items, setItems] = useState<Item[]>([]);
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [welcome, setWelcome] = useState("");

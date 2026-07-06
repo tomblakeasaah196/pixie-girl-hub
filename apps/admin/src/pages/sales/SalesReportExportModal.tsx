@@ -4,6 +4,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { exportSalesReport } from "./api";
+import { toastReport } from "@/lib/error-report";
 import { ORDER_STATUS_OPTIONS, SALES_CHANNELS } from "./constants";
 
 type Preset = "this_month" | "last_month" | "this_year" | "last_30" | "all" | "custom";
@@ -98,6 +99,7 @@ export function SalesReportExportModal({
       });
       onClose();
     } catch (e) {
+      toastReport("Sales → Report export", "Generate report", e);
       setError(
         e instanceof Error
           ? e.message

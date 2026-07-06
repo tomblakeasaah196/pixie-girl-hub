@@ -31,7 +31,7 @@ function fmtDay(v: string): string {
 }
 
 function GenerateDrawer({ onClose }: { onClose: () => void }) {
-  const toast = useToast();
+  const toast = useToast("Stylists → Generate payouts");
   const partners = usePartners({ status: "certified" });
   const { generate } = usePayoutMutations();
   const [stylistId, setStylistId] = useState("");
@@ -127,7 +127,7 @@ function PayoutDrawer({
   onClose: () => void;
 }) {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Payout");
   const detail = usePayout(payoutId);
   const m = usePayoutMutations();
   const [paying, setPaying] = useState(false);

@@ -18,6 +18,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { toastReport } from "@/lib/error-report";
 import { useAuthStore } from "@/stores/auth";
 import { joinRoom, leaveRoom, rooms } from "@/lib/socket";
 
@@ -234,7 +235,10 @@ export function useConfirmAction() {
     mutationFn: (id: string) =>
       api.post<PendingAction>(`/praxis/pending-actions/${id}/confirm`),
     onSuccess: (updated) => patchPendingEverywhere(qc, updated),
-    onError: () => qc.invalidateQueries({ queryKey: ["praxis"] }),
+    onError: (err) => {
+      toastReport("Praxis AI → Pending action", "Confirm action", err);
+      qc.invalidateQueries({ queryKey: ["praxis"] });
+    },
   });
 }
 
@@ -246,6 +250,10 @@ export function useRejectAction() {
         reason,
       }),
     onSuccess: (updated) => patchPendingEverywhere(qc, updated),
+    onError: (err) => {
+      toastReport("Praxis AI → Pending action", "Reject action", err);
+      qc.invalidateQueries({ queryKey: ["praxis"] });
+    },
   });
 }
 

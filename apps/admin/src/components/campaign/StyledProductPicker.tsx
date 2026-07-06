@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/cn";
 import { Button, MoneyText, Pill } from "@/components/ui/primitives";
 import { useStyledProducts, type StyledProduct } from "@/lib/catalogue";
+import { toastReport } from "@/lib/error-report";
 
 const PAGE_SIZE = 100;
 
@@ -84,6 +85,7 @@ export function StyledProductPicker({
       await onAdd(Array.from(selected.values()));
       onClose();
     } catch (e: unknown) {
+      toastReport("Campaigns → Product picker", "Add selected products", e);
       setError(
         (e as Error)?.message ||
           "Couldn't add the selected products. Nothing was saved — please try again.",

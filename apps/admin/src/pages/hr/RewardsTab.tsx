@@ -45,7 +45,7 @@ const REWARD_TYPES: { value: RewardType; label: string }[] = [
 
 function RuleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Rewards: rule");
   const [form, setForm] = useState({
     name: "First at work",
     metric: "first_in_days" as RewardMetric,
@@ -158,7 +158,7 @@ function Leaderboard() {
 
 function GrantsPanel() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Rewards: grants");
   const { data, isLoading } = useQuery({
     queryKey: ["hr", "rewards", "grants"],
     queryFn: () => listRewardGrants(),
@@ -209,7 +209,7 @@ function GrantsPanel() {
 
 export function RewardsTab() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Rewards");
   const [ruleOpen, setRuleOpen] = useState(false);
   const { data: rules, isLoading } = useQuery({
     queryKey: ["hr", "rewards", "rules"],

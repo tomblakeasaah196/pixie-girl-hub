@@ -99,7 +99,7 @@ function RespondModal({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → My HR: respond to query");
   const [text, setText] = useState("");
   const mut = useMutation({
     mutationFn: () => respondToQuery(query!.query_id, text),
@@ -157,7 +157,7 @@ function RespondModal({
 
 function RequestLeaveModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → My HR: request leave");
   const [form, setForm] = useState({
     leave_type: "annual",
     start_date: "",
@@ -255,7 +255,7 @@ function RequestLeaveModal({ open, onClose }: { open: boolean; onClose: () => vo
 
 export default function MyHrPage() {
   useBreadcrumbs([{ label: "My HR" }]);
-  const notify = useNotify();
+  const notify = useNotify("HR → My HR");
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [respondQuery, setRespondQuery] = useState<HrQuery | null>(null);
 

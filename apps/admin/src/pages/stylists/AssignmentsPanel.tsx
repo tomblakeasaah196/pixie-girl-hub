@@ -54,7 +54,7 @@ function SuggestDrawer({
     city: city || undefined,
     country_code: country || undefined,
   });
-  const toast = useToast();
+  const toast = useToast("Stylists → Suggest stylists");
   const { addOffers } = useAssignmentMutations(assignmentId);
   const [picked, setPicked] = useState<string[]>([]);
   const topN = suggest.data?.offer_top_n ?? 3;
@@ -204,7 +204,7 @@ function AssignmentDrawer({
   onClose: () => void;
 }) {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Assignment");
   const detail = useAssignment(assignmentId);
   const m = useAssignmentMutations(assignmentId);
   const [suggesting, setSuggesting] = useState(false);

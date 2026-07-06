@@ -8,6 +8,7 @@ import {
   uploadBrandingLogo,
   type LogoUploadResult,
 } from "@/lib/branding";
+import { toastReport } from "@/lib/error-report";
 
 /**
  * Dual image field: upload a file (→ /media/branding/…) OR paste a URL.
@@ -62,6 +63,7 @@ export function ImageUpload({
         );
       }
     } catch (e) {
+      toastReport("Branding → " + label, "Upload image", e);
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setBusy(false);

@@ -5,6 +5,7 @@ import { Button, Card, MoneyText } from "@/components/ui/primitives";
 import { NumberField, Select } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput, FormSection } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { useCreateCreditNote } from "./hooks";
 import { listInvoices } from "./api";
 import { CREDIT_NOTE_REASON_OPTIONS } from "./constants";
@@ -54,6 +55,10 @@ export function CreditNoteCreateDrawer({
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
 
   const fireToast = (title: string, body: string, priority: "normal" | "high" = "normal") => {
+    if (priority === "high") {
+      toastReport("Invoicing → New credit note", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",

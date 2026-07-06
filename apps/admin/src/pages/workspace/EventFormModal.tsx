@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/primitives";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { Select, Toggle } from "@/components/ui/controls";
 import { useCreateEvent, useUpdateEvent } from "./hooks";
+import { toastReport } from "@/lib/error-report";
 import { EVENT_TYPE_OPTIONS } from "./constants";
 import type { CalendarEvent, EventCreateInput } from "./types";
 
@@ -118,6 +119,7 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
       }
       onClose();
     } catch (err: unknown) {
+      toastReport("Workspace → Event", "Save event", err);
       setError(
         err instanceof Error
           ? err.message

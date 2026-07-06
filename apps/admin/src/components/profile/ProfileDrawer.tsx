@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import { initials } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -94,6 +95,7 @@ function EditableField({
       await onSave(val);
       setEditing(false);
     } catch (e) {
+      toastReport("Account → Profile", "Save profile field", e);
       setErr(e instanceof Error ? e.message : "Could not save.");
     } finally {
       setSaving(false);
@@ -199,6 +201,7 @@ function EmailField({
       await requestEmailChange(password, newEmail);
       setStage("otp");
     } catch (e) {
+      toastReport("Account → Profile", "Send email-change code", e);
       setErr(e instanceof Error ? e.message : "Could not send code.");
     } finally {
       setLoading(false);

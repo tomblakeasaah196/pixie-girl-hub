@@ -17,6 +17,7 @@ import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, Pill, Skeleton } from "@/components/ui/primitives";
 import { Select, NumberField, ErrorState, DeniedState } from "@/components/ui/controls";
+import { toastReport } from "@/lib/error-report";
 import {
   useStrategy,
   useStrategyCatalogue,
@@ -141,6 +142,7 @@ export function StrategyBuilderPage() {
       navigate(`/retention/strategies/${created.strategy_id}/edit`, { replace: true });
       return created.strategy_id;
     } catch (e) {
+      toastReport("Retention → Strategy builder", "Save strategy", e);
       setSaveError(e instanceof Error ? e.message : "Could not save");
       return undefined;
     }

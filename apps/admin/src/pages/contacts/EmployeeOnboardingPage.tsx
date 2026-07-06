@@ -13,6 +13,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { toastReport } from "@/lib/error-report";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Button } from "@/components/ui/primitives";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
@@ -285,6 +286,7 @@ export function EmployeeOnboardingPage() {
         credentials,
       });
     } catch (e) {
+      toastReport("Contacts → Employee onboarding", "Onboard employee", e);
       setError(
         e instanceof Error ? e.message : "Could not onboard. Please try again.",
       );

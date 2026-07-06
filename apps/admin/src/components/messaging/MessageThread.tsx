@@ -52,6 +52,7 @@ import { useActiveBusiness } from "@/stores/business";
 import { smartcommApi, onboardingApi } from "@/lib/smartcomm-api";
 import { emitTyping } from "@/lib/socket";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import { useUploadProgress } from "@/lib/use-upload";
 import { isHeicFile } from "@/lib/heic";
 import { UploadProgress } from "@/components/ui/UploadProgress";
@@ -204,6 +205,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       setPraxisDrafted(false);
       invalidate();
     } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Send message", e);
       setError(e instanceof Error ? e.message : "Could not send");
     } finally {
       setBusy(null);
@@ -334,6 +336,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       resetTextarea();
       invalidate();
     } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Upload attachment", e);
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setBusy(null);
@@ -378,6 +381,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       });
       invalidate();
     } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Send onboarding link", e);
       setError(
         e instanceof Error ? e.message : "Could not send onboarding link",
       );
@@ -403,6 +407,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         }
       });
     } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Draft reply with Praxis", e);
       setError(
         e instanceof Error ? e.message : "Praxis couldn't draft a reply",
       );

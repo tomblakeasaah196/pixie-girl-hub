@@ -44,7 +44,7 @@ export function OnboardingCard({
   contracts: HrContract[];
 }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Onboarding");
   const toggle = useMutation({
     mutationFn: ({ key, completed }: { key: string; completed: boolean }) =>
       toggleOnboardingItem(key, completed),

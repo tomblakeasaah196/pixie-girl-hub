@@ -20,6 +20,7 @@ import {
   type Tone,
 } from "@/components/ui/primitives";
 import { StaticMapImage } from "@/components/ui/AddressAutocomplete";
+import { toastReport } from "@/lib/error-report";
 import {
   useContact,
   useContactSummary,
@@ -1096,6 +1097,7 @@ function ProgrammeTab({ contact }: { contact: Contact }) {
                 city: city.trim(),
               });
             } catch (e) {
+              toastReport("Contacts → Contact detail", "Enrol stylist", e);
               setErr(e instanceof Error ? e.message : "Could not enrol stylist.");
             }
           }}
@@ -1298,6 +1300,7 @@ function AmbassadorTab({ contact }: { contact: Contact }) {
           : {}),
       });
     } catch (e) {
+      toastReport("Contacts → Contact detail", "Save ambassador", e);
       setErr(e instanceof Error ? e.message : "Could not save ambassador.");
     }
   };

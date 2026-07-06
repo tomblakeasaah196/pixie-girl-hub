@@ -5,6 +5,7 @@ import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
 import { Toggle } from "@/components/ui/controls";
 import { useCreateTask, useUpdateTask } from "./hooks";
+import { toastReport } from "@/lib/error-report";
 import {
   TASK_STATUS_OPTIONS,
   TASK_PRIORITY_OPTIONS,
@@ -101,6 +102,7 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
       }
       onClose();
     } catch (err: unknown) {
+      toastReport("Workspace → Task", "Save task", err);
       setError(
         err instanceof Error
           ? err.message

@@ -165,6 +165,12 @@ router.post(
   validate.appraisal.reviewAdvance,
   controller.appraisal.advanceReview,
 );
+// Export the review as a stored PDF (sets performance_reviews.document_id).
+router.post(
+  "/performance-reviews/:id/pdf",
+  P("edit"),
+  controller.appraisal.exportPdf,
+);
 router.post(
   "/performance-reviews/:id/acknowledge",
   P("edit"),

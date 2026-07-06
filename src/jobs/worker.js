@@ -176,6 +176,7 @@ async function startWorkers() {
   const {
     runAppraisalAutoScore,
   } = require("./schedulers/hr-appraisal-autoscore");
+  const { runEsignReminderSweep } = require("./schedulers/esign-reminders");
   const {
     runStylistOfferSweep,
     runStylistCertificationSweep,
@@ -227,6 +228,7 @@ async function startWorkers() {
   // Nightly HR attendance: reconcile + query reminders + lapsed off-site (23:30 Lagos).
   scheduleCron("hr-attendance-sweep", "30 23 * * *", runHrAttendanceSweep);
   scheduleCron("hr-appraisal-autoscore", "30 2 * * *", runAppraisalAutoScore);
+  scheduleCron("esign-reminder-sweep", "0 9 * * *", runEsignReminderSweep);
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);

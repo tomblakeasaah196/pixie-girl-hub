@@ -5,7 +5,7 @@
  * Cleanliness 15). Permission-gated on hr_payroll; CEO bypasses.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Gauge,
@@ -16,6 +16,9 @@ import {
   Sparkles,
   Table2,
   Pencil,
+  Trash2,
+  FileDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
@@ -29,6 +32,10 @@ import {
   listPerfReviews,
   advancePerfReview,
   listKpiDefinitions,
+  createKpiDefinition,
+  updateKpiDefinition,
+  deleteKpiDefinition,
+  exportReviewPdf,
   scoreStaff,
   generatePerfReview,
   autoScoreCycle,
@@ -37,8 +44,22 @@ import {
   listStaff,
   type PerfCycle,
   type PerfScore,
+  type KpiDef,
+  type ScoreSource,
 } from "@/lib/hr-api";
+import { downloadDocumentById } from "@/lib/documents-api";
 import { TabBar, statusTone, useNotify, errMsg } from "./hr-shared";
+
+const SCORE_SOURCE_OPTIONS: { value: ScoreSource; label: string; hint: string }[] = [
+  { value: "manual", label: "Manual", hint: "Scored by hand each cycle." },
+  { value: "clock_in_data", label: "Attendance / punctuality", hint: "On-time % → banded 1–5." },
+  { value: "sales_data", label: "Sales target attainment", hint: "Attainment % → banded 1–5." },
+  { value: "service_job_ratings", label: "Work quality", hint: "Avg quality rating, used directly." },
+  { value: "customer_ratings", label: "Customer feedback", hint: "Avg customer rating, used directly." },
+  { value: "crm_data", label: "CRM data", hint: "Not auto-wired yet — scored manually." },
+  { value: "custom", label: "Custom", hint: "Scored manually." },
+];
+const BANDED: ScoreSource[] = ["clock_in_data", "sales_data"];
 
 const SCORABLE = ["open", "scoring", "calibration"];
 
@@ -396,6 +417,16 @@ function ReviewsTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["perf", "reviews"] }); notify("Review advanced"); },
     onError: (e) => notify("Failed", errMsg(e), "high"),
   });
+  const [pdfId, setPdfId] = useState<string | null>(null);
+  const pdf = useMutation({
+    mutationFn: (id: string) => exportReviewPdf(id),
+    onSuccess: async (r) => {
+      await downloadDocumentById(r.document_id, r.title);
+      notify("PDF ready", "The appraisal has been downloaded.");
+      setPdfId(null);
+    },
+    onError: (e) => { notify("Failed", errMsg(e), "high"); setPdfId(null); },
+  });
   if (isLoading) return <Skeleton className="h-40 rounded-[var(--radius)]" />;
   if (!data?.length)
     return <EmptyState icon={<ScrollText className="h-6 w-6" />} title="No reviews yet"
@@ -416,16 +447,217 @@ function ReviewsTab() {
                 Score {Number(r.overall_weighted_score).toFixed(2)} · {r.overall_rating_band.replace("_", " ")}
               </div>
             </div>
-            {next && can("hr_payroll", "approve") && (
-              <Button size="sm" variant="primary" icon={<CheckCircle2 className="h-3.5 w-3.5" />}
-                disabled={advance.isPending} onClick={() => advance.mutate({ id: r.review_id, status: next })}>
-                Mark {next}
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {can("hr_payroll", "edit") && (
+                <Button size="sm" variant="ghost" icon={<FileDown className="h-3.5 w-3.5" />}
+                  disabled={pdf.isPending && pdfId === r.review_id}
+                  onClick={() => { setPdfId(r.review_id); pdf.mutate(r.review_id); }}>
+                  {pdf.isPending && pdfId === r.review_id ? "Preparing…" : "PDF"}
+                </Button>
+              )}
+              {next && can("hr_payroll", "approve") && (
+                <Button size="sm" variant="primary" icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                  disabled={advance.isPending} onClick={() => advance.mutate({ id: r.review_id, status: next })}>
+                  Mark {next}
+                </Button>
+              )}
+            </div>
           </Card>
         );
       })}
     </div>
+  );
+}
+
+function KpisTab() {
+  const can = useAuthStore((s) => s.can);
+  const notify = useNotify();
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["perf", "kpis"], queryFn: listKpiDefinitions });
+  const [editor, setEditor] = useState<{ open: boolean; kpi: KpiDef | null }>({ open: false, kpi: null });
+  const canEdit = can("hr_payroll", "edit");
+
+  const del = useMutation({
+    mutationFn: (id: string) => deleteKpiDefinition(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["perf"] }); notify("KPI removed"); },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-text-muted">
+          Configure the weighted KPIs and pick where each score comes from. Weights should total 100%.
+        </p>
+        {canEdit && (
+          <Button variant="primary" icon={<Plus className="h-4 w-4" />}
+            onClick={() => setEditor({ open: true, kpi: null })}>
+            Add KPI
+          </Button>
+        )}
+      </div>
+      {isLoading ? (
+        <Skeleton className="h-32 rounded-[var(--radius)]" />
+      ) : !data?.length ? (
+        <EmptyState icon={<SlidersHorizontal className="h-6 w-6" />} title="No KPIs yet"
+          message="Add the weighted KPIs staff are appraised against." />
+      ) : (
+        <div className="space-y-2">
+          {data.map((k) => {
+            const src = SCORE_SOURCE_OPTIONS.find((o) => o.value === (k.score_source ?? "manual"));
+            const auto = (k.score_source ?? "manual") !== "manual" && k.score_source !== "crm_data" && k.score_source !== "custom";
+            return (
+              <Card key={k.kpi_id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-primary">{k.display_name}</span>
+                    <Pill tone="neutral">{k.weight_pct}%</Pill>
+                    {auto ? <Pill tone="success">Auto</Pill> : <Pill tone="neutral">Manual</Pill>}
+                  </div>
+                  <div className="text-xs text-text-muted">{src?.label ?? k.score_source} · scale {k.min_score}–{k.max_score}</div>
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" icon={<Pencil className="h-3.5 w-3.5" />}
+                      onClick={() => setEditor({ open: true, kpi: k })}>
+                      Edit
+                    </Button>
+                    <Button size="sm" variant="ghost" icon={<Trash2 className="h-3.5 w-3.5" />}
+                      disabled={del.isPending} onClick={() => del.mutate(k.kpi_id)}>
+                      Remove
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+      {editor.open && (
+        <KpiEditorModal kpi={editor.kpi} onClose={() => setEditor({ open: false, kpi: null })} />
+      )}
+    </div>
+  );
+}
+
+function KpiEditorModal({ kpi, onClose }: { kpi: KpiDef | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const notify = useNotify();
+  const editing = !!kpi;
+  const [form, setForm] = useState({
+    kpi_key: "",
+    display_name: "",
+    weight_pct: "20",
+    min_score: "1",
+    max_score: "5",
+    score_source: "manual" as ScoreSource,
+  });
+  const [bands, setBands] = useState<{ gte: string; score: string }[]>([]);
+
+  useEffect(() => {
+    if (kpi) {
+      setForm({
+        kpi_key: kpi.kpi_key,
+        display_name: kpi.display_name,
+        weight_pct: String(kpi.weight_pct),
+        min_score: String(kpi.min_score ?? 1),
+        max_score: String(kpi.max_score ?? 5),
+        score_source: kpi.score_source ?? "manual",
+      });
+      const b = (kpi.auto_score_config as { bands?: { gte: number; score: number }[] } | null)?.bands;
+      setBands(b ? b.map((x) => ({ gte: String(x.gte), score: String(x.score) })) : []);
+    }
+  }, [kpi]);
+
+  const showBands = BANDED.includes(form.score_source);
+  const currentHint = SCORE_SOURCE_OPTIONS.find((o) => o.value === form.score_source)?.hint;
+
+  const save = useMutation({
+    mutationFn: () => {
+      const auto_score_config =
+        showBands && bands.length
+          ? { bands: bands.filter((b) => b.gte !== "" && b.score !== "").map((b) => ({ gte: Number(b.gte), score: Number(b.score) })) }
+          : null;
+      const body = {
+        kpi_key: form.kpi_key || form.display_name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+        display_name: form.display_name,
+        weight_pct: Number(form.weight_pct),
+        min_score: Number(form.min_score),
+        max_score: Number(form.max_score),
+        score_source: form.score_source,
+        auto_score_config,
+      };
+      return editing ? updateKpiDefinition(kpi!.kpi_id, body) : createKpiDefinition(body);
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["perf"] }); notify(editing ? "KPI updated" : "KPI added"); onClose(); },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  const inputCls = "w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary";
+  return (
+    <Modal open onClose={onClose} title={editing ? "Edit KPI" : "Add KPI"}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!form.display_name || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? "Saving…" : "Save KPI"}
+          </Button>
+        </>
+      }>
+      <div className="space-y-3">
+        <input value={form.display_name} placeholder="KPI name (e.g. Punctuality)"
+          onChange={(e) => setForm({ ...form, display_name: e.target.value })} className={inputCls} />
+        <div className="grid grid-cols-3 gap-3">
+          <label className="text-xs text-text-muted">Weight %
+            <input type="number" min={0} max={100} value={form.weight_pct}
+              onChange={(e) => setForm({ ...form, weight_pct: e.target.value })} className={inputCls} />
+          </label>
+          <label className="text-xs text-text-muted">Min
+            <input type="number" value={form.min_score}
+              onChange={(e) => setForm({ ...form, min_score: e.target.value })} className={inputCls} />
+          </label>
+          <label className="text-xs text-text-muted">Max
+            <input type="number" value={form.max_score}
+              onChange={(e) => setForm({ ...form, max_score: e.target.value })} className={inputCls} />
+          </label>
+        </div>
+        <label className="block text-xs text-text-muted">Score source
+          <select value={form.score_source}
+            onChange={(e) => setForm({ ...form, score_source: e.target.value as ScoreSource })} className={inputCls}>
+            {SCORE_SOURCE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+          </select>
+        </label>
+        {currentHint && <p className="text-[11px] text-text-faint">{currentHint}</p>}
+
+        {showBands && (
+          <div className="rounded-xl border border-line p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-medium text-text-primary">Auto-score bands (optional)</span>
+              <button className="text-xs text-accent-glow hover:underline"
+                onClick={() => setBands([...bands, { gte: "", score: "" }])}>+ Add band</button>
+            </div>
+            <p className="mb-2 text-[11px] text-text-faint">
+              Metric ≥ value → score. Leave empty to use the sensible defaults.
+            </p>
+            {bands.map((b, i) => (
+              <div key={i} className="mb-2 flex items-center gap-2">
+                <span className="text-xs text-text-muted">≥</span>
+                <input type="number" value={b.gte} placeholder="%"
+                  onChange={(e) => setBands(bands.map((x, j) => (j === i ? { ...x, gte: e.target.value } : x)))}
+                  className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" />
+                <span className="text-xs text-text-muted">→ score</span>
+                <input type="number" step="0.1" value={b.score}
+                  onChange={(e) => setBands(bands.map((x, j) => (j === i ? { ...x, score: e.target.value } : x)))}
+                  className="w-16 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" />
+                <button className="text-text-faint hover:text-danger" onClick={() => setBands(bands.filter((_, j) => j !== i))}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -448,11 +680,16 @@ export default function PerformancePage() {
       </div>
 
       <TabBar active={tab} onChange={setTab}
-        tabs={[{ key: "cycles", label: "Cycles" }, { key: "reviews", label: "Reviews" }]} />
+        tabs={[
+          { key: "cycles", label: "Cycles" },
+          { key: "kpis", label: "KPIs" },
+          { key: "reviews", label: "Reviews" },
+        ]} />
 
       {tab === "cycles" && (
         <CyclesTab onCreate={() => setCreateOpen(true)} onScore={() => setScoreOpen(true)} />
       )}
+      {tab === "kpis" && <KpisTab />}
       {tab === "reviews" && <ReviewsTab />}
 
       <CreateCycleModal open={createOpen} onClose={() => setCreateOpen(false)} />

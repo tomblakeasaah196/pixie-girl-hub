@@ -271,8 +271,9 @@ async function acknowledgeReview({ brand, user, request_id, id, input }) {
   return r;
 }
 
-// ── Auto-scoring ───────────────────────────────────────────
+// ── Auto-scoring + PDF ─────────────────────────────────────
 const { autoScoreCycle } = require("./appraisal.autoscore");
+const { exportReviewPdf } = require("./appraisal.review-pdf");
 
 /**
  * Manager calibration of a (usually auto-derived) score. Records the override
@@ -312,4 +313,5 @@ module.exports = {
   acknowledgeReview,
   autoScoreCycle,
   calibrateScore,
+  exportReviewPdf,
 };

@@ -18,6 +18,8 @@ const { transaction: withTransaction, query } = require("../../config/database")
 const repo = require("./documents.esign.repo");
 const documentsEvents = require("./documents.events");
 const { logger } = require("../../config/logger");
+const { config } = require("../../config/env");
+const emailService = require("../../services/email.service");
 const { audit } = require("../../middleware/audit");
 const {
   NotFoundError,
@@ -770,6 +772,84 @@ const signedDocumentForToken = async ({ token }) => {
   });
 };
 
+// ── Reminders + expiry (cron-driven) ──────────────────────
+const escHtml = (s) =>
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+const signLink = (token) =>
+  `${config.APP_URL.replace(/\/$/, "")}/sign/${token}`;
+
+/** Email a reminder to every pending signer due for one; stamp + audit each. */
+async function runReminders({ gapHours = 48 } = {}) {
+  const due = await repo.dueForReminder({ client: null, gapHours });
+  let sent = 0;
+  for (const s of due) {
+    const link = signLink(s.signing_token);
+    try {
+      await emailService.send({
+        brand: s.business,
+        to: s.display_email_snapshot,
+        subject: `Reminder: please sign "${s.subject}"`,
+        html: `<p>Hi ${escHtml(s.display_name_snapshot || "there")},</p>
+               <p>This is a friendly reminder to sign <b>${escHtml(s.subject)}</b>.</p>
+               <p><a href="${link}">Open and sign the document</a></p>
+               ${s.expires_at ? `<p>This link expires on ${new Date(s.expires_at).toDateString()}.</p>` : ""}`,
+        text: `Reminder to sign "${s.subject}": ${link}`,
+      });
+    } catch (err) {
+      logger.warn(
+        { err: err.message, signer_id: s.signer_id },
+        "esign: reminder email failed",
+      );
+      continue; // don't stamp — retry on the next sweep
+    }
+    await withTransaction(async (client) => {
+      await repo.markReminded({ client, signer_id: s.signer_id });
+      await appendEvent(client, s.request_id, "reminder_sent", {
+        signer_id: s.signer_id,
+      });
+    });
+    sent += 1;
+  }
+  return { candidates: due.length, sent };
+}
+
+/** Expire requests past their deadline; notify each creator. */
+async function runExpiry() {
+  const overdue = await repo.overdueRequests({ client: null });
+  let expired = 0;
+  for (const r of overdue) {
+    await withTransaction(async (client) => {
+      await repo.expireRequest({ client, request_id: r.request_id });
+      await appendEvent(client, r.request_id, "expired", {
+        metadata: { expires_at: r.expires_at },
+      });
+    });
+    expired += 1;
+    if (r.creator_email) {
+      try {
+        await emailService.send({
+          brand: r.business,
+          to: r.creator_email,
+          subject: `Signature request expired: "${r.subject}"`,
+          html: `<p>Hi ${escHtml(r.creator_name || "there")},</p>
+                 <p>The signature request <b>${escHtml(r.subject)}</b> expired on ${new Date(r.expires_at).toDateString()} before all parties signed.</p>
+                 <p>You can send a fresh request from Documents → E-signatures.</p>`,
+          text: `Signature request "${r.subject}" expired before completion.`,
+        });
+      } catch (err) {
+        logger.warn(
+          { err: err.message, request_id: r.request_id },
+          "esign: expiry email failed",
+        );
+      }
+    }
+  }
+  return { expired };
+}
+
 module.exports = {
   createRequest,
   sendRequest,
@@ -784,6 +864,8 @@ module.exports = {
   verifyByCode,
   documentForToken,
   signedDocumentForToken,
+  runReminders,
+  runExpiry,
   // Pure helpers exported for unit tests / reuse (e.g. PDF stamping, verify tooling).
   codeFromHash,
   signatureHash,

@@ -245,6 +245,68 @@ async function recordSignerPinSuccess({ client, email }) {
     [email],
   );
 }
+// ── Reminders + expiry ─────────────────────────────────────
+/** Pending signers whose turn it is and who are due a reminder email. */
+async function dueForReminder({ client, gapHours = 48 }) {
+  const { rows } = await ex(client)(
+    `SELECT s.signer_id, s.signing_token, s.display_name_snapshot, s.display_email_snapshot,
+            s.reminder_count, r.request_id, r.business, r.subject, r.expires_at
+       FROM shared.signature_request_signers s
+       JOIN shared.signature_requests r ON r.request_id = s.request_id
+      WHERE s.status IN ('sent','viewed')
+        AND r.status IN ('sent','partially_signed')
+        AND (s.signing_token_expires_at IS NULL OR s.signing_token_expires_at > now())
+        AND (r.expires_at IS NULL OR r.expires_at > now())
+        AND (s.last_reminder_sent_at IS NULL
+             OR s.last_reminder_sent_at < now() - make_interval(hours => $1))
+        AND s.display_email_snapshot IS NOT NULL
+        AND s.display_email_snapshot <> ''
+      ORDER BY r.created_at
+      LIMIT 500`,
+    [gapHours],
+  );
+  return rows;
+}
+
+/** Stamp a reminder as sent (bumps the count for cadence + display). */
+async function markReminded({ client, signer_id }) {
+  await ex(client)(
+    `UPDATE shared.signature_request_signers
+        SET last_reminder_sent_at = now(), reminder_count = reminder_count + 1
+      WHERE signer_id = $1`,
+    [signer_id],
+  );
+}
+
+/** Requests that have passed their expiry and are still awaiting signatures. */
+async function overdueRequests({ client }) {
+  const { rows } = await ex(client)(
+    `SELECT r.request_id, r.business, r.subject, r.created_by, r.expires_at,
+            u.email AS creator_email, u.display_name AS creator_name
+       FROM shared.signature_requests r
+       LEFT JOIN shared.users u ON u.user_id = r.created_by
+      WHERE r.status IN ('draft','sent','partially_signed')
+        AND r.expires_at IS NOT NULL
+        AND r.expires_at < now()
+      ORDER BY r.expires_at
+      LIMIT 500`,
+  );
+  return rows;
+}
+
+/** Mark a request and its unsigned signers expired. */
+async function expireRequest({ client, request_id }) {
+  await ex(client)(
+    `UPDATE shared.signature_requests SET status = 'expired' WHERE request_id = $1`,
+    [request_id],
+  );
+  await ex(client)(
+    `UPDATE shared.signature_request_signers SET status = 'expired'
+      WHERE request_id = $1 AND status IN ('pending','sent','viewed')`,
+    [request_id],
+  );
+}
+
 /** Link the generated signed document to the request. */
 async function setSignedDocument({ client, request_id, document_id }) {
   await ex(client)(
@@ -283,4 +345,8 @@ module.exports = {
   recordSignerPinSuccess,
   getSignerByVerificationCode,
   setSignedDocument,
+  dueForReminder,
+  markReminded,
+  overdueRequests,
+  expireRequest,
 };

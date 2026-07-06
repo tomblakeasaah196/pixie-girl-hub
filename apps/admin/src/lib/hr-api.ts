@@ -642,12 +642,39 @@ export interface KpiDef {
   kpi_id: string;
   kpi_key: string;
   display_name: string;
+  description?: string | null;
   weight_pct: number;
   min_score: number;
   max_score: number;
+  score_source?: ScoreSource;
+  auto_score_config?: Record<string, unknown> | null;
+  display_order?: number;
+  is_active?: boolean;
+}
+export interface KpiDefInput {
+  kpi_key: string;
+  display_name: string;
+  description?: string;
+  weight_pct: number;
+  min_score?: number;
+  max_score?: number;
+  score_source?: ScoreSource;
+  auto_score_config?: Record<string, unknown> | null;
+  display_order?: number;
+  is_active?: boolean;
 }
 export const listKpiDefinitions = () =>
   api.get<KpiDef[]>("/hr/kpi-definitions");
+export const createKpiDefinition = (body: KpiDefInput) =>
+  api.post<KpiDef>("/hr/kpi-definitions", body);
+export const updateKpiDefinition = (id: string, body: Partial<KpiDefInput>) =>
+  api.patch<KpiDef>(`/hr/kpi-definitions/${id}`, body);
+export const deleteKpiDefinition = (id: string) =>
+  api.delete(`/hr/kpi-definitions/${id}`);
+export const exportReviewPdf = (reviewId: string) =>
+  api.post<{ document_id: string; title: string }>(
+    `/hr/performance-reviews/${reviewId}/pdf`,
+  );
 export const scoreStaff = (
   cycleId: string,
   body: { user_id: string; scores: { kpi_id: string; raw_score: number; comments?: string }[] },

@@ -491,6 +491,15 @@ function buildSmartcommPrompt(ctx) {
     `You are drafting a customer-service reply on behalf of the ${ctx.brand} business.`,
     "Write ONE concise message ready to send — no preamble, no quotation marks, no 'Sure, here is...'. Just the reply text.",
   );
+  // Name the recipient explicitly. Without this the model can only guess from
+  // the transcript and may greet a staff member by name instead of the
+  // customer. "Staff" turns in the transcript are the business, not the person
+  // being written to.
+  if (ctx.customer_name && ctx.customer_name !== "the customer") {
+    lines.push(
+      `You are writing to the customer, ${ctx.customer_name}. If you address them by name, use theirs — never a staff member's name.`,
+    );
+  }
   if (ctx.tone) lines.push(`Tone: ${ctx.tone}.`);
   if (ctx.voice_summary) lines.push(`Voice: ${ctx.voice_summary}`);
   if (ctx.platform && ctx.platform !== "internal") {

@@ -389,10 +389,16 @@ export function QuickSaleForm() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
                 <input
+                  type="search"
+                  name="customer-search"
                   placeholder="Search by name, email, or phone…"
                   value={contactSearch}
                   onChange={(e) => handleContactSearch(e.target.value)}
-                  className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                 />
                 {contactResults.length > 0 && (
                   <div className="absolute z-40 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] dropglass overflow-hidden py-1 max-h-[240px] overflow-y-auto">

@@ -80,12 +80,16 @@ async function draftReply({ brand, user, request_id, channel_id }) {
   const transcript = messages
     .filter((m) => m.message_type !== "system" || m.content)
     .map((m) => {
+      // Label our own side generically as "Staff" — never the sender's
+      // personal name. Leaking a staff display name (e.g. "Tom-Blake") into
+      // the transcript makes the model mistake it for the customer and greet
+      // the wrong person ("Hey Tom-Blake" when replying to Samuel).
       const speaker =
         m.sender_kind === "customer"
           ? "Customer"
           : m.sender_kind === "system"
             ? "System"
-            : m.sender_name || "Staff";
+            : "Staff";
       return `${speaker}: ${m.content || `[${m.message_type}]`}`;
     })
     .join("\n");

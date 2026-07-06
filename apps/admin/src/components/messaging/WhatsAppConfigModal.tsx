@@ -583,7 +583,14 @@ function SecretField({
             value={valueDraft}
             onChange={(e) => onDraftChange(e.target.value)}
             placeholder={placeholder}
-            autoComplete="off"
+            // "new-password" (not "off", which Chrome ignores for credential
+            // fill) — stops Chrome treating this API-secret field as a login
+            // password and pairing it with a "username" field elsewhere on
+            // the page (it was autofilling the login email into the inbox
+            // search box).
+            autoComplete="new-password"
+            data-lpignore="true"
+            data-1p-ignore=""
             className="flex-1 rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] font-mono focus:outline-none focus:border-accent/40"
           />
         ) : (

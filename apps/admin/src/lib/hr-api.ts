@@ -392,6 +392,37 @@ export interface HrAnalytics {
   targets: { active: number; achieved: number };
   earned_mtd_ngn: number;
 }
+export interface HrTrendPoint {
+  year: number;
+  month: number;
+  label: string;
+  headcount: number;
+  new_hires: number;
+  attrition: number;
+  punctuality_pct: number;
+  payroll_ngn: number;
+}
+export interface HrTrends {
+  months: number;
+  series: HrTrendPoint[];
+}
+export const getAnalyticsTrends = (months = 12) =>
+  api.get<HrTrends>(`/hr/analytics/trends?months=${months}`);
+
+export interface ProbationItem {
+  profile_id: string;
+  user_id: string | null;
+  display_name: string;
+  job_title: string;
+  probation_status: string;
+  probation_end_date: string;
+  days_left: number;
+}
+export const getProbationEndingSoon = (days = 30) =>
+  api.get<{ days: number; items: ProbationItem[] }>(
+    `/hr/probation/ending-soon?days=${days}`,
+  );
+
 export const getAnalytics = (params: { year?: number; month?: number } = {}) =>
   api.get<HrAnalytics>(
     `/hr/analytics${qs({
@@ -631,6 +662,8 @@ export const createPerfCycle = (body: {
   starts_on: string;
   ends_on: string;
 }) => api.post<PerfCycle>("/hr/performance-cycles", body);
+export const updatePerfCycle = (id: string, body: { status?: string; cycle_name?: string; notes?: string }) =>
+  api.patch<PerfCycle>(`/hr/performance-cycles/${id}`, body);
 export const kpiWeightSummary = () =>
   api.get<KpiWeightSummary>("/hr/kpi-definitions/weight-summary");
 export const listPerfReviews = (params: Record<string, string> = {}) =>

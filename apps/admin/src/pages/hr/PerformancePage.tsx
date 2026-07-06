@@ -28,6 +28,7 @@ import { useAuthStore } from "@/stores/auth";
 import {
   listPerfCycles,
   createPerfCycle,
+  updatePerfCycle,
   kpiWeightSummary,
   listPerfReviews,
   advancePerfReview,
@@ -62,6 +63,15 @@ const SCORE_SOURCE_OPTIONS: { value: ScoreSource; label: string; hint: string }[
 const BANDED: ScoreSource[] = ["clock_in_data", "sales_data"];
 
 const SCORABLE = ["open", "scoring", "calibration"];
+
+// The cycle lifecycle: a cycle must be moved off 'upcoming' before it accepts
+// scores. Each step exposes the next transition.
+const CYCLE_NEXT: Record<string, { status: string; label: string } | undefined> = {
+  upcoming: { status: "open", label: "Open for scoring" },
+  open: { status: "scoring", label: "Move to scoring" },
+  scoring: { status: "calibration", label: "Move to calibration" },
+  calibration: { status: "closed", label: "Close cycle" },
+};
 
 /** How a score was arrived at — badge label + tone. */
 function sourceInfo(s: PerfScore): { label: string; tone: "success" | "info" | "warn" | "neutral" } {
@@ -152,7 +162,7 @@ function ScoreStaffModal({ open, onClose }: { open: boolean; onClose: () => void
   const [userId, setUserId] = useState("");
   const [scores, setScores] = useState<Record<string, number>>({});
 
-  const openCycles = (cycles || []).filter((c) => ["open", "scoring", "upcoming"].includes(c.status));
+  const openCycles = (cycles || []).filter((c) => SCORABLE.includes(c.status));
   const staffWithUser = (staff?.data || []).filter((s) => (s as { user_id?: string }).user_id);
 
   const submit = useMutation({
@@ -192,6 +202,11 @@ function ScoreStaffModal({ open, onClose }: { open: boolean; onClose: () => void
           <option value="">— select cycle —</option>
           {openCycles.map((c) => (<option key={c.cycle_id} value={c.cycle_id}>{c.cycle_name}</option>))}
         </select>
+        {!openCycles.length && (
+          <p className="text-xs text-warn">
+            No cycle is open for scoring. On the Cycles tab, use “Open for scoring” on a cycle first.
+          </p>
+        )}
         <select value={userId} onChange={(e) => setUserId(e.target.value)}
           className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
           <option value="">— select staff —</option>
@@ -240,6 +255,11 @@ function CyclesTab({ onCreate, onScore }: { onCreate: () => void; onScore: () =>
     },
     onError: (e) => notify("Auto-score failed", errMsg(e), "high"),
   });
+  const advance = useMutation({
+    mutationFn: (v: { id: string; status: string }) => updatePerfCycle(v.id, { status: v.status }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["perf"] }); notify("Cycle updated"); },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
   const canEdit = can("hr_payroll", "edit");
 
   return (
@@ -266,12 +286,16 @@ function CyclesTab({ onCreate, onScore }: { onCreate: () => void; onScore: () =>
         <div className="space-y-2">
           {data.map((c: PerfCycle) => {
             const scorable = SCORABLE.includes(c.status);
+            const nextStep = CYCLE_NEXT[c.status];
             return (
               <Card key={c.cycle_id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-text-primary">{c.cycle_name}</span>
                     <Pill tone={statusTone(c.status === "closed" ? "approved" : "pending")}>{c.status}</Pill>
+                    {c.status === "upcoming" && (
+                      <span className="text-[11px] text-text-faint">— open it before scoring</span>
+                    )}
                   </div>
                   <div className="text-xs text-text-muted">{c.starts_on} – {c.ends_on} · {c.cycle_type.replace("_", " ")}</div>
                 </div>
@@ -285,6 +309,13 @@ function CyclesTab({ onCreate, onScore }: { onCreate: () => void; onScore: () =>
                       disabled={auto.isPending}
                       onClick={() => auto.mutate(c.cycle_id)}>
                       {auto.isPending ? "Scoring…" : "Auto-score"}
+                    </Button>
+                  )}
+                  {nextStep && canEdit && (
+                    <Button size="sm" variant={c.status === "upcoming" ? "primary" : "ghost"}
+                      disabled={advance.isPending}
+                      onClick={() => advance.mutate({ id: c.cycle_id, status: nextStep.status })}>
+                      {nextStep.label}
                     </Button>
                   )}
                 </div>

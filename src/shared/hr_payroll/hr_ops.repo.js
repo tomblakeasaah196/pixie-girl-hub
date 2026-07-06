@@ -56,6 +56,62 @@ async function analytics({ client, brand, year, month }) {
   return rows[0];
 }
 
+/**
+ * Month-over-month HR trends for the last `months` months: headcount (active at
+ * month-end), new hires, attrition (leavers), punctuality %, and payroll cost
+ * (summed daily earnings). One row per month, oldest first.
+ */
+async function analyticsTrends({ client, brand, months = 12 }) {
+  const { rows } = await exec(client)(
+    `WITH m AS (
+       SELECT (date_trunc('month', CURRENT_DATE) - make_interval(months => gs))::date AS ms
+         FROM generate_series($2 - 1, 0, -1) AS gs
+     )
+     SELECT
+       date_part('year', ms)::int AS year,
+       date_part('month', ms)::int AS month,
+       (SELECT count(*) FROM shared.staff_profiles sp
+          WHERE sp.business = $1 AND sp.is_deleted = false
+            AND sp.start_date <= (ms + interval '1 month' - interval '1 day')
+            AND (sp.end_date IS NULL OR sp.end_date > (ms + interval '1 month' - interval '1 day')))::int AS headcount,
+       (SELECT count(*) FROM shared.staff_profiles sp
+          WHERE sp.business = $1 AND sp.is_deleted = false
+            AND sp.start_date >= ms AND sp.start_date < ms + interval '1 month')::int AS new_hires,
+       (SELECT count(*) FROM shared.staff_profiles sp
+          WHERE sp.business = $1
+            AND sp.end_date >= ms AND sp.end_date < ms + interval '1 month')::int AS attrition,
+       (SELECT COALESCE(ROUND(100.0 * count(*) FILTER (WHERE status = 'present' AND is_late = false)
+              / NULLIF(count(*) FILTER (WHERE status IN ('present','late')), 0), 1), 0)
+          FROM shared.attendance_days ad
+         WHERE ad.business = $1 AND ad.work_date >= ms AND ad.work_date < ms + interval '1 month')::numeric AS punctuality_pct,
+       (SELECT COALESCE(SUM(earned_ngn), 0) FROM shared.staff_earnings_daily e
+         WHERE e.business = $1 AND e.work_date >= ms AND e.work_date < ms + interval '1 month')::numeric AS payroll_ngn
+     FROM m ORDER BY ms`,
+    [brand, months],
+  );
+  return rows;
+}
+
+/** Staff on active probation whose probation ends within `days` days. */
+async function probationEndingSoon({ client, brand, days = 30 }) {
+  const { rows } = await exec(client)(
+    `SELECT sp.profile_id, sp.job_title, sp.probation_status, sp.probation_end_date,
+            sp.start_date, c.display_name,
+            (sp.probation_end_date - CURRENT_DATE)::int AS days_left,
+            (SELECT u.user_id FROM shared.users u WHERE u.staff_profile_id = sp.profile_id
+              ORDER BY u.is_active DESC LIMIT 1) AS user_id
+       FROM shared.staff_profiles sp
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE sp.business = $1 AND sp.is_deleted = false
+        AND sp.probation_status IN ('active','pending','extended')
+        AND sp.probation_end_date IS NOT NULL
+        AND sp.probation_end_date <= CURRENT_DATE + make_interval(days => $2)
+      ORDER BY sp.probation_end_date ASC`,
+    [brand, days],
+  );
+  return rows;
+}
+
 // ── identity ───────────────────────────────────────────────
 /** Resolve the staff profile linked to a user, if visible to the brand. */
 async function profileForUser({ client, brand, userId }) {
@@ -680,6 +736,34 @@ async function incrementActiveTarget({ client, brand, profileId, metric, delta, 
   return rows[0] || null;
 }
 
+/**
+ * Set an active target's current_value to an absolute number (idempotent —
+ * used by the quality-gated recompute path). Returns the row plus prev_value so
+ * the caller can detect a fresh goal crossing.
+ */
+async function setActiveTargetValue({ client, brand, profileId, metric, value, year, month }) {
+  const { rows } = await exec(client)(
+    `WITH cur AS (
+       SELECT target_id, current_value AS prev_value
+         FROM shared.performance_targets
+        WHERE business = $1 AND profile_id = $2 AND metric = $3
+          AND period_year = $5 AND period_month = $6
+          AND status IN ('active','achieved'))
+     UPDATE shared.performance_targets p
+        SET current_value = $4,
+            last_progress_at = now(),
+            status = CASE WHEN $4 >= p.target_value AND p.status = 'active'
+                          THEN 'achieved' ELSE p.status END,
+            achieved_at = CASE WHEN $4 >= p.target_value AND p.achieved_at IS NULL
+                               THEN now() ELSE p.achieved_at END
+       FROM cur
+      WHERE p.target_id = cur.target_id
+      RETURNING p.*, cur.prev_value`,
+    [brand, profileId, metric, value, year, month],
+  );
+  return rows[0] || null;
+}
+
 // ── reconcile inputs (clock-ins + approved leave for a date) ──
 /** First accepted clock-in per profile on a date, for all brand staff. */
 async function firstClockInsForDate({ client, profileIds, dateStr }) {
@@ -926,6 +1010,8 @@ async function ownDocumentsForProfile({ client, brand, profileId }) {
 
 module.exports = {
   analytics,
+  analyticsTrends,
+  probationEndingSoon,
   profileForUser,
   profileById,
   activeStaff,
@@ -959,6 +1045,7 @@ module.exports = {
   createTarget,
   updateTargetProgress,
   incrementActiveTarget,
+  setActiveTargetValue,
   profileIdForUser,
   deleteTarget,
   overviewCounts,

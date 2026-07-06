@@ -808,8 +808,32 @@ async function listAssignableStylists({ brand }) {
   return rows;
 }
 
+/**
+ * Count a staffer's done, quality-passing jobs in a month — the quality-gated
+ * numerator for the `styles_completed` / `services_completed` target progress.
+ */
+async function countCompletedQualityForUser({ client, brand, userId, year, month, minQuality }) {
+  const run = client ? client.query.bind(client) : query;
+  const from = `${year}-${String(month).padStart(2, "0")}-01`;
+  const to =
+    month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const { rows } = await run(
+    `SELECT count(*)::int AS n
+       FROM ${t(brand, "service_jobs")}
+      WHERE assigned_staff_user_id = $1
+        AND completed_at IS NOT NULL
+        AND quality_rating IS NOT NULL AND quality_rating >= $2
+        AND completed_at >= $3 AND completed_at < $4`,
+    [userId, minQuality, from, to],
+  );
+  return rows[0] ? rows[0].n : 0;
+}
+
 module.exports = {
   nextNumber,
+  countCompletedQualityForUser,
   listServiceTypes,
   listAssignableStylists,
   getDefaultServiceType,

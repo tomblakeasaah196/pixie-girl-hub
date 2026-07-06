@@ -54,6 +54,9 @@ import {
   listStaff,
   generateContract,
   type HrSettings,
+  getAnalyticsTrends,
+  getProbationEndingSoon,
+  type HrTrendPoint,
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
 import { OnboardingSettings } from "./OnboardingSettings";
@@ -837,6 +840,93 @@ function AnalyticsTab() {
         Month-to-date for the current brand. Run “Reconcile today” (or the nightly sweep)
         to keep attendance figures current.
       </p>
+
+      <TrendsSection />
+      <ProbationWatchlist />
+    </div>
+  );
+}
+
+/** Tiny inline sparkline bars — no chart dependency. */
+function Sparkbars({ points, color = "accent" }: { points: number[]; color?: "accent" | "success" | "danger" | "warn" }) {
+  const max = Math.max(1, ...points);
+  const bg = { accent: "bg-accent", success: "bg-success", danger: "bg-danger", warn: "bg-warn" }[color];
+  return (
+    <div className="flex h-10 items-end gap-[3px]">
+      {points.map((p, i) => (
+        <div key={i} className={`w-full ${bg} rounded-sm opacity-80`}
+          style={{ height: `${Math.max(6, (p / max) * 100)}%` }} title={String(p)} />
+      ))}
+    </div>
+  );
+}
+
+function TrendCard({ title, series, pick, value, color }: {
+  title: string; series: HrTrendPoint[]; pick: (p: HrTrendPoint) => number; value: string; color?: "accent" | "success" | "danger" | "warn";
+}) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs uppercase tracking-wide text-text-faint">{title}</span>
+        <span className="font-mono text-sm text-text-primary">{value}</span>
+      </div>
+      <div className="mt-2"><Sparkbars points={series.map(pick)} color={color} /></div>
+      <div className="mt-1 flex justify-between text-[10px] text-text-faint">
+        <span>{series[0]?.label}</span><span>{series[series.length - 1]?.label}</span>
+      </div>
+    </Card>
+  );
+}
+
+function TrendsSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["hr", "analytics", "trends"],
+    queryFn: () => getAnalyticsTrends(12),
+  });
+  if (isLoading) return <Skeleton className="h-40 rounded-[var(--radius)]" />;
+  const s = data?.series ?? [];
+  if (!s.length) return null;
+  const last = s[s.length - 1];
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold text-text-primary">12-month trends</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <TrendCard title="Headcount" series={s} pick={(p) => p.headcount} value={String(last.headcount)} />
+        <TrendCard title="New hires" series={s} pick={(p) => p.new_hires} value={String(last.new_hires)} color="success" />
+        <TrendCard title="Attrition" series={s} pick={(p) => p.attrition} value={String(last.attrition)} color="danger" />
+        <TrendCard title="Punctuality %" series={s} pick={(p) => p.punctuality_pct} value={`${last.punctuality_pct}%`} color="warn" />
+        <TrendCard title="Payroll cost (₦)" series={s} pick={(p) => p.payroll_ngn} value={money(last.payroll_ngn)} />
+      </div>
+      <p className="mt-1 text-[10px] text-text-faint">
+        Attrition = leavers that month. Payroll cost = summed daily earnings. Hover a bar for its value.
+      </p>
+    </div>
+  );
+}
+
+function ProbationWatchlist() {
+  const { data } = useQuery({
+    queryKey: ["hr", "probation", "ending-soon"],
+    queryFn: () => getProbationEndingSoon(30),
+  });
+  const items = data?.items ?? [];
+  if (!items.length) return null;
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold text-text-primary">Probation ending soon (30 days)</div>
+      <div className="space-y-2">
+        {items.map((p) => (
+          <Card key={p.profile_id} className="flex items-center justify-between gap-3 p-3">
+            <div>
+              <div className="text-sm text-text-primary">{p.display_name}</div>
+              <div className="text-xs text-text-muted">{p.job_title} · ends {p.probation_end_date}</div>
+            </div>
+            <Pill tone={p.days_left <= 7 ? "warn" : "info"}>
+              {p.days_left <= 0 ? "due" : `${p.days_left}d left`}
+            </Pill>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

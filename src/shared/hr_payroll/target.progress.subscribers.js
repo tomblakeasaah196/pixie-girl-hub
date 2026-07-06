@@ -30,6 +30,9 @@ const serviceJobEvents = require("../../modules/service_jobs/service-jobs.events
 const hrOps = require("./hr_ops.service");
 const { logger } = require("../../config/logger");
 
+// A service job must be QC-rated at or above this to count toward a target.
+const QUALITY_GATE = 3;
+
 // ── Sales → sales targets (outbox, post-commit) ───────────
 async function bumpSalesTargets({ brand, order_id }) {
   const order = await salesRepo.findById({ brand, id: order_id });
@@ -45,17 +48,25 @@ async function bumpSalesTargets({ brand, order_id }) {
   }
 }
 
-// ── Service jobs → stylist targets (in-process event) ─────
-async function bumpStylistTargets({ brand, job_id }) {
+// ── Service jobs → stylist targets (in-process event, quality-gated) ──
+// Recompute (not increment) the staffer's styling targets for the job's
+// completion month from the count of quality-passing jobs. Idempotent, so it's
+// safe to fire on completion AND on a later QC rating — and only work rated
+// >= QUALITY_GATE counts (meeting §3.6: quality-gated progress).
+async function recomputeStylistTargets({ brand, job_id }) {
   try {
     const job = await serviceJobsRepo.getServiceJob({ brand, id: job_id });
     const userId = job && job.assigned_staff_user_id;
-    if (!userId) return;
-    // Bump both styling metrics; only the one with an active target moves.
-    await hrOps.bumpTargetProgress({ brand, userId, metric: "styles_completed", delta: 1 });
-    await hrOps.bumpTargetProgress({ brand, userId, metric: "services_completed", delta: 1 });
+    if (!userId || !job.completed_at) return;
+    const d = new Date(job.completed_at);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const count = await serviceJobsRepo.countCompletedQualityForUser({
+      brand, userId, year, month, minQuality: QUALITY_GATE,
+    });
+    await hrOps.recomputeServiceTargets({ brand, userId, year, month, count });
   } catch (err) {
-    logger.error({ err, brand, job_id }, "stylist target progress failed");
+    logger.error({ err, brand, job_id }, "service-job target progress failed");
   }
 }
 
@@ -64,10 +75,12 @@ function register() {
   if (registered) return;
   registered = true;
   outbox.register("order.paid", "hr_sales_target", bumpSalesTargets);
-  serviceJobEvents.on("completed", bumpStylistTargets);
-  logger.info("hr_payroll target-progress subscribers registered (sales + service jobs)");
+  // 'completed' = job done; 'advanced' catches a later QC rating change.
+  serviceJobEvents.on("completed", recomputeStylistTargets);
+  serviceJobEvents.on("advanced", recomputeStylistTargets);
+  logger.info("hr_payroll target-progress subscribers registered (sales + service jobs, quality-gated)");
 }
 
 register();
 
-module.exports = { register, bumpSalesTargets, bumpStylistTargets };
+module.exports = { register, bumpSalesTargets, recomputeStylistTargets };

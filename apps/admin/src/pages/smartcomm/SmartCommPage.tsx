@@ -26,7 +26,7 @@ export function SmartCommPage() {
   const channelId = params.get("channel");
   const dmUser = params.get("dm_user");
   const [mobileShowThread, setMobileShowThread] = useState(false);
-  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newChat, setNewChat] = useState<null | "chat" | "group">(null);
   useInboxRealtime(user?.id);
 
   const { data: channel } = useChannel(channelId);
@@ -82,7 +82,7 @@ export function SmartCommPage() {
               select(c.channel_id);
               setMobileShowThread(true);
             }}
-            onNewChannel={() => setNewChatOpen(true)}
+            onNewChannel={(mode) => setNewChat(mode ?? "chat")}
           />
         </div>
 
@@ -107,10 +107,11 @@ export function SmartCommPage() {
       </div>
 
       <NewChatModal
-        open={newChatOpen}
-        onClose={() => setNewChatOpen(false)}
+        open={newChat !== null}
+        initialMode={newChat ?? "chat"}
+        onClose={() => setNewChat(null)}
         onStarted={(id) => {
-          setNewChatOpen(false);
+          setNewChat(null);
           select(id);
           setMobileShowThread(true);
         }}

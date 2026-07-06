@@ -174,6 +174,9 @@ async function startWorkers() {
   } = require("./schedulers/catalogue-trash-purge");
   const { runHrAttendanceSweep } = require("./schedulers/hr-attendance");
   const {
+    runAppraisalAutoScore,
+  } = require("./schedulers/hr-appraisal-autoscore");
+  const {
     runStylistOfferSweep,
     runStylistCertificationSweep,
   } = require("./schedulers/stylist-programme-sweep");
@@ -223,6 +226,7 @@ async function startWorkers() {
   scheduleCron("layaway-reminders", "*/30 * * * *", runLayawayReminders);
   // Nightly HR attendance: reconcile + query reminders + lapsed off-site (23:30 Lagos).
   scheduleCron("hr-attendance-sweep", "30 23 * * *", runHrAttendanceSweep);
+  scheduleCron("hr-appraisal-autoscore", "30 2 * * *", runAppraisalAutoScore);
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);

@@ -7,7 +7,16 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Gauge, Plus, ScrollText, CheckCircle2, ClipboardCheck } from "lucide-react";
+import {
+  Gauge,
+  Plus,
+  ScrollText,
+  CheckCircle2,
+  ClipboardCheck,
+  Sparkles,
+  Table2,
+  Pencil,
+} from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
@@ -22,10 +31,38 @@ import {
   listKpiDefinitions,
   scoreStaff,
   generatePerfReview,
+  autoScoreCycle,
+  listPerfScores,
+  calibratePerfScore,
   listStaff,
   type PerfCycle,
+  type PerfScore,
 } from "@/lib/hr-api";
 import { TabBar, statusTone, useNotify, errMsg } from "./hr-shared";
+
+const SCORABLE = ["open", "scoring", "calibration"];
+
+/** How a score was arrived at — badge label + tone. */
+function sourceInfo(s: PerfScore): { label: string; tone: "success" | "info" | "warn" | "neutral" } {
+  if (s.is_calibrated) return { label: "Calibrated", tone: "info" };
+  if (s.score_source === "manual") return { label: "Manual", tone: "neutral" };
+  return { label: "Auto", tone: "success" };
+}
+
+/** One-line human summary of the evidence behind an auto score. */
+function evidenceSummary(s: PerfScore): string | null {
+  const e = s.evidence as Record<string, number | string> | null;
+  if (!e) return null;
+  if (e.metric === "on_time_pct")
+    return `On-time ${e.on_time_pct}% (${e.punctual_days}/${e.present_days} days)`;
+  if (e.metric === "attainment_pct")
+    return `Target attainment ${e.attainment_pct}% (${e.targets} target${e.targets === 1 ? "" : "s"})`;
+  if (e.metric === "quality_rating_avg")
+    return `Avg quality ${e.average} from ${e.sample_size} job${e.sample_size === 1 ? "" : "s"}`;
+  if (e.metric === "customer_rating_avg")
+    return `Avg customer rating ${e.average} from ${e.sample_size} rating${e.sample_size === 1 ? "" : "s"}`;
+  return null;
+}
 
 const NEXT_STATUS: Record<string, string | undefined> = {
   draft: "submitted",
@@ -164,8 +201,26 @@ function ScoreStaffModal({ open, onClose }: { open: boolean; onClose: () => void
 }
 
 function CyclesTab({ onCreate, onScore }: { onCreate: () => void; onScore: () => void }) {
+  const qc = useQueryClient();
+  const notify = useNotify();
+  const can = useAuthStore((s) => s.can);
   const { data, isLoading } = useQuery({ queryKey: ["perf", "cycles"], queryFn: listPerfCycles });
   const { data: kpi } = useQuery({ queryKey: ["perf", "kpi-weights"], queryFn: kpiWeightSummary });
+  const [scoresCycle, setScoresCycle] = useState<PerfCycle | null>(null);
+
+  const auto = useMutation({
+    mutationFn: (cycleId: string) => autoScoreCycle(cycleId),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["perf"] });
+      notify(
+        "Auto-scored from data",
+        `${r.scored} scored · ${r.no_data} no data · ${r.skipped} manager scores kept`,
+      );
+    },
+    onError: (e) => notify("Auto-score failed", errMsg(e), "high"),
+  });
+  const canEdit = can("hr_payroll", "edit");
+
   return (
     <div className="space-y-4">
       {kpi && (
@@ -188,20 +243,146 @@ function CyclesTab({ onCreate, onScore }: { onCreate: () => void; onScore: () =>
           message="Create a quarterly cycle to score staff against the weighted KPIs." />
       ) : (
         <div className="space-y-2">
-          {data.map((c: PerfCycle) => (
-            <Card key={c.cycle_id} className="flex items-center justify-between gap-3 p-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-text-primary">{c.cycle_name}</span>
-                  <Pill tone={statusTone(c.status === "closed" ? "approved" : "pending")}>{c.status}</Pill>
+          {data.map((c: PerfCycle) => {
+            const scorable = SCORABLE.includes(c.status);
+            return (
+              <Card key={c.cycle_id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-primary">{c.cycle_name}</span>
+                    <Pill tone={statusTone(c.status === "closed" ? "approved" : "pending")}>{c.status}</Pill>
+                  </div>
+                  <div className="text-xs text-text-muted">{c.starts_on} – {c.ends_on} · {c.cycle_type.replace("_", " ")}</div>
                 </div>
-                <div className="text-xs text-text-muted">{c.starts_on} – {c.ends_on} · {c.cycle_type.replace("_", " ")}</div>
-              </div>
-            </Card>
-          ))}
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="ghost" icon={<Table2 className="h-3.5 w-3.5" />}
+                    onClick={() => setScoresCycle(c)}>
+                    Scores
+                  </Button>
+                  {scorable && canEdit && (
+                    <Button size="sm" icon={<Sparkles className="h-3.5 w-3.5" />}
+                      disabled={auto.isPending}
+                      onClick={() => auto.mutate(c.cycle_id)}>
+                      {auto.isPending ? "Scoring…" : "Auto-score"}
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
+      <ScoresModal cycle={scoresCycle} onClose={() => setScoresCycle(null)} canEdit={canEdit} />
     </div>
+  );
+}
+
+function ScoresModal({
+  cycle,
+  onClose,
+  canEdit,
+}: {
+  cycle: PerfCycle | null;
+  onClose: () => void;
+  canEdit: boolean;
+}) {
+  const qc = useQueryClient();
+  const notify = useNotify();
+  const open = !!cycle;
+  const { data: staff } = useQuery({
+    queryKey: ["hr", "staff", "for-scores"],
+    queryFn: () => listStaff({ page_size: "200" }),
+    enabled: open,
+  });
+  const [userId, setUserId] = useState("");
+  const staffWithUser = (staff?.data || []).filter((s) => (s as { user_id?: string }).user_id);
+  const { data: scores, isLoading } = useQuery({
+    queryKey: ["perf", "scores", cycle?.cycle_id, userId],
+    queryFn: () => listPerfScores(cycle!.cycle_id, userId),
+    enabled: open && !!userId,
+  });
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState("");
+  const calib = useMutation({
+    mutationFn: (v: { score_id: string; raw_score: number }) =>
+      calibratePerfScore(cycle!.cycle_id, v.score_id, { raw_score: v.raw_score }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["perf", "scores", cycle?.cycle_id, userId] });
+      notify("Score calibrated");
+      setEditing(null);
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Scores — ${cycle?.cycle_name ?? ""}`}
+      footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
+      <div className="space-y-3">
+        <select value={userId} onChange={(e) => setUserId(e.target.value)}
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
+          <option value="">— select staff —</option>
+          {staffWithUser.map((s) => (
+            <option key={s.profile_id} value={(s as { user_id?: string }).user_id}>{s.display_name}</option>
+          ))}
+        </select>
+        {!userId ? (
+          <p className="text-xs text-text-faint">Pick a staff member to see their KPI scores and the evidence behind each auto score.</p>
+        ) : isLoading ? (
+          <Skeleton className="h-32 rounded-xl" />
+        ) : !scores?.length ? (
+          <p className="text-xs text-text-faint">No scores yet. Use “Auto-score” on the cycle, or score manually.</p>
+        ) : (
+          <div className="space-y-2">
+            {scores.map((sc) => {
+              const src = sourceInfo(sc);
+              const ev = evidenceSummary(sc);
+              return (
+                <div key={sc.score_id} className="rounded-xl border border-line p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-text-primary">
+                      {sc.kpi_name} <span className="text-xs text-text-faint">({sc.weight_pct_snapshot}%)</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm text-text-primary">{Number(sc.raw_score).toFixed(1)}</span>
+                      <Pill tone={src.tone}>{src.label}</Pill>
+                    </div>
+                  </div>
+                  {ev && <div className="mt-1 text-xs text-text-muted">{ev}</div>}
+                  {sc.last_auto_score_status === "no_data" && !ev && (
+                    <div className="mt-1 text-xs text-warn">No data in this period — score manually.</div>
+                  )}
+                  {sc.is_calibrated && sc.pre_calibration_score != null && (
+                    <div className="mt-1 text-[11px] text-text-faint">
+                      Was {Number(sc.pre_calibration_score).toFixed(1)} before calibration
+                    </div>
+                  )}
+                  {canEdit && (
+                    editing === sc.score_id ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input type="number" step="0.1" value={editVal}
+                          onChange={(e) => setEditVal(e.target.value)}
+                          className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" />
+                        <Button size="sm" variant="primary" disabled={calib.isPending || editVal === ""}
+                          onClick={() => calib.mutate({ score_id: sc.score_id, raw_score: Number(editVal) })}>
+                          Save
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <button
+                        className="mt-2 inline-flex items-center gap-1 text-xs text-accent-glow hover:underline"
+                        onClick={() => { setEditing(sc.score_id); setEditVal(String(sc.raw_score)); }}>
+                        <Pencil className="h-3 w-3" /> Calibrate
+                      </button>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

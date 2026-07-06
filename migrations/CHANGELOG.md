@@ -11,6 +11,30 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-06 — Appraisal auto-scoring: brand-schema parity
+
+**Source:** HR system audit follow-up (PR-B) — auto-populate appraisal KPI
+scores from real HR data (attendance, sales targets, service-job quality,
+customer ratings).
+
+**Files:** `000261_shared_appraisal_autoscore.sql` (new).
+
+**What:** The per-brand appraisal tables (`performance_scores`,
+`performance_kpi_definitions`) live in the template and already carry the
+auto-score fields (`auto_score_config`, `evidence`, the auto-score health
+columns, and the calibration columns). This migration idempotently brings any
+existing brand schema up to parity — `ADD COLUMN IF NOT EXISTS` for those
+fields — and reconciles the `score_source` CHECK on both tables to the full
+source list (`manual`, `customer_ratings`, `sales_data`, `crm_data`,
+`service_job_ratings`, `clock_in_data`, `custom`) plus the
+`last_auto_score_status` CHECK (`ok`/`no_data`/`error`/`skipped`/NULL), so the
+auto-score engine can write on any brand regardless of when it was provisioned.
+
+**Count:** No table created or dropped — columns/constraints only — so the
+shared (**177**) and per-brand table counts are unchanged.
+
+---
+
 ## 2026-07-05 — Signer page: PIN-protected signature on file
 
 **Source:** HR system audit follow-up — the public signer page (`/sign/:token`)

@@ -655,6 +655,58 @@ export const scoreStaff = (
 export const generatePerfReview = (cycleId: string, user_id: string) =>
   api.post<PerfReview>(`/hr/performance-cycles/${cycleId}/reviews`, { user_id });
 
+// ── Appraisal auto-scoring (PR-B) ──────────────────────────
+export type ScoreSource =
+  | "manual"
+  | "customer_ratings"
+  | "sales_data"
+  | "crm_data"
+  | "service_job_ratings"
+  | "clock_in_data"
+  | "custom";
+
+export interface PerfScore {
+  score_id: string;
+  cycle_id: string;
+  user_id: string;
+  kpi_id: string;
+  kpi_name: string;
+  kpi_key: string;
+  raw_score: number;
+  weight_pct_snapshot: number;
+  weighted_score: number;
+  score_source: ScoreSource;
+  evidence: Record<string, unknown> | null;
+  is_calibrated: boolean;
+  pre_calibration_score: number | null;
+  last_auto_scored_at: string | null;
+  last_auto_score_status: "ok" | "no_data" | "error" | "skipped" | null;
+}
+
+export interface AutoScoreResult {
+  scored: number;
+  no_data: number;
+  skipped: number;
+  kpis: number;
+  staff: number;
+}
+
+export const listPerfScores = (cycleId: string, userId?: string) =>
+  api.get<PerfScore[]>(
+    `/hr/performance-cycles/${cycleId}/scores${userId ? `?user_id=${userId}` : ""}`,
+  );
+export const autoScoreCycle = (cycleId: string, body: { user_id?: string } = {}) =>
+  api.post<AutoScoreResult>(`/hr/performance-cycles/${cycleId}/auto-score`, body);
+export const calibratePerfScore = (
+  cycleId: string,
+  scoreId: string,
+  body: { raw_score: number; reason?: string },
+) =>
+  api.post<PerfScore>(
+    `/hr/performance-cycles/${cycleId}/scores/${scoreId}/calibrate`,
+    body,
+  );
+
 // ── Rewards (meeting §3 reward system) ─────────────────────
 export type RewardMetric =
   | "first_in_days" | "last_out_days" | "punctual_days" | "data_entries"

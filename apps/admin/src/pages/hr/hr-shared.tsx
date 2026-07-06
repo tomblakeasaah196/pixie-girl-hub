@@ -8,16 +8,26 @@ import { MapPin } from "lucide-react";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { Card, Pill, type Tone } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import type { AttendanceDay, WorkSchedule } from "@/lib/hr-api";
 
-/** Minimal toast helper — the store wants a full notification shape. */
-export function useNotify() {
+/**
+ * Minimal toast helper — the store wants a full notification shape.
+ * "high"/"urgent" priority (the module's convention for a failure) routes to
+ * the reportable toast instead, so HR failures carry the one-tap "Contact
+ * System Admin" (screenshot + pre-filled WhatsApp/email) action.
+ */
+export function useNotify(area = "HR") {
   const toast = useToastStore();
   return (
     title: string,
     body = "",
     priority: "low" | "normal" | "high" | "urgent" = "normal",
-  ) =>
+  ) => {
+    if (priority === "high" || priority === "urgent") {
+      toastReport(area, title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",
@@ -33,6 +43,7 @@ export function useNotify() {
       read_at: null,
       created_at: new Date().toISOString(),
     });
+  };
 }
 
 export function errMsg(e: unknown): string {

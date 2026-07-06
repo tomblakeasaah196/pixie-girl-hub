@@ -8,6 +8,7 @@ import { ProductPicker } from "@/components/catalogue/ProductPicker";
 import { resolvePick, type ProductHit } from "@/lib/product-search";
 import { useCreateQuotation } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import * as salesApi from "./api";
 import { FULFILMENT_OPTIONS } from "./constants";
 import type { FulfilmentType, QuotationCreateInput } from "./types";
@@ -42,6 +43,10 @@ export function QuoteFormModal({
     type = "order",
     priority: "normal" | "high" = "normal",
   ) => {
+    if (priority === "high") {
+      toastReport("Sales → Quotation", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",

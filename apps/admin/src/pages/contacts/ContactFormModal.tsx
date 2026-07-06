@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/primitives";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
 import { useCreateContact, useUpdateContact } from "./hooks";
+import { toastReport } from "@/lib/error-report";
 import type {
   Contact,
   ContactType,
@@ -385,6 +386,7 @@ export function ContactFormModal({
         onClose();
       }
     } catch (err: unknown) {
+      toastReport("Contacts → Contact form", "Save contact", err);
       setError(
         err instanceof Error
           ? err.message

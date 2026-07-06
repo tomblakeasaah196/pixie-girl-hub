@@ -41,7 +41,7 @@ function RubricDrawer({
   stylistId: string;
   onClose: () => void;
 }) {
-  const toast = useToast();
+  const toast = useToast("Stylists → Application rubric");
   const { review } = useApplicationMutations(stylistId);
   const [scores, setScores] = useState<number[]>(DEFAULT_RUBRIC.map(() => 0));
   const [recommendation, setRecommendation] = useState<
@@ -159,7 +159,7 @@ function ApplicationDrawer({
   onOpenPartner: (id: string) => void;
 }) {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Applications");
   const app = useApplication(stylistId);
   const { decide } = useApplicationMutations(stylistId);
   const [scoring, setScoring] = useState(false);

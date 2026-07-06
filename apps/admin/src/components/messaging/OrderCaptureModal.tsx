@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { toastReport } from "@/lib/error-report";
 import { smartcommApi } from "@/lib/smartcomm-api";
 import { useBaseProducts } from "@/lib/catalogue";
 import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
@@ -113,6 +114,7 @@ export function OrderCaptureModal({
       });
       setGeneratedUrl(r.url);
     } catch (e: unknown) {
+      toastReport("Messaging → Order capture", "Create order link", e);
       setError(
         e instanceof Error
           ? e.message

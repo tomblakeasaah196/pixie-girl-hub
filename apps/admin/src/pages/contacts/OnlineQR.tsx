@@ -5,6 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { useActiveBusiness } from "@/stores/business";
 import { onboardingApi } from "@/lib/smartcomm-api";
+import { toastReport } from "@/lib/error-report";
 
 interface Props {
   onClose: () => void;
@@ -49,6 +50,7 @@ export function OnlineQR({ onClose }: Props) {
       });
       setUrl(toAbsoluteUrl(res.url));
     } catch (e: unknown) {
+      toastReport("Contacts → Online QR", "Generate link", e);
       setError(e instanceof Error ? e.message : "Could not generate a link");
     } finally {
       setLoading(false);

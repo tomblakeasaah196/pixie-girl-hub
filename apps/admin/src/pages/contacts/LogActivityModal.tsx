@@ -14,6 +14,7 @@ import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
 import * as contactsApi from "./api";
+import { toastReport } from "@/lib/error-report";
 import type { ActivityType, ActivityOutcome } from "./types";
 
 const ACTIVITY_TYPES: {
@@ -112,6 +113,7 @@ export function LogActivityModal({
       onClose();
     },
     onError: (err: unknown) => {
+      toastReport("Contacts → Log activity", "Log activity", err);
       setError(err instanceof Error ? err.message : "Failed to log activity.");
     },
   });

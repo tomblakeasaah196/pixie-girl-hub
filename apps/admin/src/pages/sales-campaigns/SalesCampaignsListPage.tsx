@@ -12,6 +12,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
+import { toastReport } from "@/lib/error-report";
 import {
   Button,
   Card,
@@ -459,6 +460,7 @@ function CreateCampaignModal({
       });
       onCreated(created.campaign_id);
     } catch (e: unknown) {
+      toastReport("Sales Campaigns → List", "Create campaign", e);
       setError((e as Error)?.message || "Failed to create campaign");
     }
   }

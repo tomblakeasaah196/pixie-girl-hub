@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { useRpMutations } from "./hooks";
+import { toastReport } from "@/lib/error-report";
 import { FieldLabel, TextInput, InfoBanner } from "./parts";
 import type { RetailPartner } from "./types";
 
@@ -80,6 +81,7 @@ export function LocationFormModal({
       });
       onClose();
     } catch (err) {
+      toastReport("Retail Partners → Location form", "Save location", err);
       setError(
         (err as Error)?.message ||
           "Could not save the location — try again to finish linking.",

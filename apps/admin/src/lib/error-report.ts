@@ -12,7 +12,7 @@
  * brand, time, user-agent) so QA can triage even without the image.
  */
 
-import type { ErrorReportContext } from "@/stores/toast";
+import { toast, type ErrorReportContext } from "@/stores/toast";
 
 /** JBS Praxis support channels (the people to contact on failure). */
 export const JBS_WHATSAPP = "2348169789106";
@@ -36,6 +36,26 @@ export function describeError(err: unknown): { message: string; detail?: string 
     };
   }
   return { message: typeof err === "string" ? err : "Something went wrong." };
+}
+
+/**
+ * Fire a failure toast with the "Contact System Admin" report action wired
+ * up in one call — the single entry point every catch block / onError
+ * handler in the STAFF-FACING admin should use instead of a bare toast or
+ * silent console.error. Not for public/unauthenticated pages (sign links,
+ * order-capture, onboarding forms, login) — those shouldn't surface an
+ * internal support WhatsApp number to outside visitors.
+ */
+export function toastReport(
+  area: string,
+  action: string,
+  err: unknown,
+): void {
+  const { message, detail } = describeError(err);
+  toast.error(action, {
+    description: message,
+    report: { area, action, message, detail },
+  });
 }
 
 /** Best-effort read of the active brand + signed-in user for the report. */

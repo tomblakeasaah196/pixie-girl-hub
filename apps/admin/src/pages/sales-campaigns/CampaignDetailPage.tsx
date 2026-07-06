@@ -27,6 +27,7 @@ import {
 import { DeniedState, ErrorState } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import type { AppNotification } from "@/lib/notifications-api";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
@@ -391,15 +392,12 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
             );
           }
         },
-        onError: () => {
-          toast.add(
-            toastNotif(
-              "Could not compute VIP gifts",
-              "Something went wrong while computing the top spenders. Please try again.",
-              "high",
-            ),
-          );
-        },
+        onError: (err) =>
+          toastReport(
+            "Sales Campaigns → VIP gifts",
+            "Could not compute VIP gifts",
+            err,
+          ),
       },
     );
   }

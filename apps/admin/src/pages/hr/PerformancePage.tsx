@@ -73,7 +73,7 @@ const NEXT_STATUS: Record<string, string | undefined> = {
 
 function CreateCycleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Performance: new cycle");
   const now = new Date();
   const [form, setForm] = useState({
     cycle_name: `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`,
@@ -119,7 +119,7 @@ function CreateCycleModal({ open, onClose }: { open: boolean; onClose: () => voi
 
 function ScoreStaffModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Performance: score staff");
   const { data: cycles } = useQuery({ queryKey: ["perf", "cycles"], queryFn: listPerfCycles, enabled: open });
   const { data: kpis } = useQuery({ queryKey: ["perf", "kpis"], queryFn: listKpiDefinitions, enabled: open });
   const { data: staff } = useQuery({
@@ -202,7 +202,7 @@ function ScoreStaffModal({ open, onClose }: { open: boolean; onClose: () => void
 
 function CyclesTab({ onCreate, onScore }: { onCreate: () => void; onScore: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Performance: cycles");
   const can = useAuthStore((s) => s.can);
   const { data, isLoading } = useQuery({ queryKey: ["perf", "cycles"], queryFn: listPerfCycles });
   const { data: kpi } = useQuery({ queryKey: ["perf", "kpi-weights"], queryFn: kpiWeightSummary });
@@ -287,7 +287,7 @@ function ScoresModal({
   canEdit: boolean;
 }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Performance: scores");
   const open = !!cycle;
   const { data: staff } = useQuery({
     queryKey: ["hr", "staff", "for-scores"],
@@ -388,7 +388,7 @@ function ScoresModal({
 
 function ReviewsTab() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Performance: reviews");
   const can = useAuthStore((s) => s.can);
   const { data, isLoading } = useQuery({ queryKey: ["perf", "reviews"], queryFn: () => listPerfReviews() });
   const advance = useMutation({

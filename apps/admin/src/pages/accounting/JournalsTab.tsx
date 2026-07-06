@@ -20,6 +20,7 @@ import {
   useReverseJournal,
 } from "./hooks";
 import type { JournalEntry, ManualJournalLineInput } from "./types";
+import { toastReport } from "@/lib/error-report";
 
 const STATUS_TONE: Record<string, Tone> = {
   posted: "success",
@@ -218,8 +219,10 @@ function ManualJournalDrawer({ opening, onClose }: { opening: boolean; onClose: 
       { input: { description, posting_date: postingDate, lines: payload }, opening },
       {
         onSuccess: onClose,
-        onError: (e: unknown) =>
-          setError(e instanceof Error ? e.message : "The journal was rejected."),
+        onError: (e: unknown) => {
+          toastReport("Accounting → Journals", "Create journal", e);
+          setError(e instanceof Error ? e.message : "The journal was rejected.");
+        },
       },
     );
   };

@@ -5,6 +5,7 @@ import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ErrorState, ConfirmDialog, Select, NumberField } from "@/components/ui/controls";
 import { FormGrid, Field } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
 import {
   useInvoice,
@@ -47,6 +48,10 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
 
   const toast = useToastStore();
   const fireToast = (title: string, body: string, priority: "normal" | "high" = "normal") => {
+    if (priority === "high") {
+      toastReport("Invoicing → Invoice", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",

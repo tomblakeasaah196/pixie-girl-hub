@@ -21,6 +21,7 @@ import {
 import { smartcommApi } from "@/lib/smartcomm-api";
 import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import type { ProductCard, Channel } from "@/lib/smartcomm-types";
 
 // The in-chat picker offers services too (the ERP-wide PRODUCT_KINDS does not).
@@ -194,6 +195,7 @@ export function CataloguePickerModal({
       onSent();
       onClose();
     } catch (e: unknown) {
+      toastReport("Messaging → Catalogue picker", "Send catalogue", e);
       setError(e instanceof Error ? e.message : "Could not send catalogue");
     } finally {
       setBusy(false);

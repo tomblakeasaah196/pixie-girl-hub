@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { KeyRound, Eye, EyeOff, Loader2, CheckCircle2, X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import { checkPassword, passwordScore } from "@/lib/password";
 import { changePassword } from "@/lib/auth-api";
 
@@ -62,6 +63,7 @@ export function ChangePasswordModal({
       await changePassword(current, newPw);
       setDone(true);
     } catch (e) {
+      toastReport("Account → Change password", "Change password", e);
       setError(e instanceof Error ? e.message : "Could not change password.");
     } finally {
       setLoading(false);

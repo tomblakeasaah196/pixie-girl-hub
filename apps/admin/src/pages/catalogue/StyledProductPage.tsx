@@ -29,6 +29,7 @@ import {
 import { useAddStyledToCampaign, type Campaign } from "@/lib/campaigns";
 import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { AvailabilityPill, StyledStatusBadge } from "./parts";
 import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
@@ -310,24 +311,7 @@ function StyledEditor({
         });
       },
       onError: (err) =>
-        toast.add({
-          notification_id: crypto.randomUUID(),
-          user_id: "",
-          business: null,
-          type: "catalogue",
-          priority: "high",
-          title: "Could not save",
-          body:
-            err instanceof Error
-              ? err.message
-              : "Something went wrong saving your changes.",
-          reference_type: null,
-          reference_id: null,
-          action_url: null,
-          is_read: false,
-          read_at: null,
-          created_at: new Date().toISOString(),
-        }),
+        toastReport("Catalogue → Styled product", "Could not save", err),
     });
   };
 
@@ -340,6 +324,11 @@ function StyledEditor({
           setTimeout(() => setCampaignFeedback(null), 3000);
         },
         onError: (err) => {
+          toastReport(
+            "Catalogue → Styled product",
+            "Could not add to campaign",
+            err,
+          );
           setCampaignFeedback(
             err instanceof Error ? err.message : "Could not add to campaign.",
           );

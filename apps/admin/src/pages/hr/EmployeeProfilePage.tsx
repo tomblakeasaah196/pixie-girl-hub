@@ -60,7 +60,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 export default function EmployeeProfilePage() {
   const { profileId = "" } = useParams();
   const navigate = useNavigate();
-  const notify = useNotify();
+  const notify = useNotify("HR → Employee profile");
   const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState("overview");
   useBreadcrumbs([{ label: "HR & Staff", href: "/hr" }, { label: "Employee" }]);

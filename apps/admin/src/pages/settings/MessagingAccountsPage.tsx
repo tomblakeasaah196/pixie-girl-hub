@@ -21,6 +21,7 @@ import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useActiveBusiness } from "@/stores/business";
 import { Card } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
+import { toastReport } from "@/lib/error-report";
 import {
   messagingAccountsApi,
   PLATFORM_META,
@@ -247,6 +248,7 @@ function AccountRow({
           : "Provider responded.";
       setTestStatus({ stage: "ok", message: msg });
     } catch (e: unknown) {
+      toastReport("Settings → Messaging accounts", "Test connection", e);
       setTestStatus({
         stage: "fail",
         message: e instanceof Error ? e.message : "Test failed.",

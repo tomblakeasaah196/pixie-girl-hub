@@ -52,7 +52,7 @@ export function HelpEditorPage() {
     { label: "Editor" },
   ]);
   const qc = useQueryClient();
-  const toast = useToast();
+  const toast = useToast("Help Center");
   const can = useAuthStore((s) => s.can);
   const canCreate = can("help_center", "create");
   const canDelete = can("help_center", "delete");
@@ -230,7 +230,7 @@ function ArticleModal({
   onSaved: () => void;
 }) {
   const isEdit = !!article;
-  const toast = useToast();
+  const toast = useToast("Help Center → Article");
 
   // On edit we fetch the full row (body_markdown isn't in the list payload).
   const fullQ = useQuery({

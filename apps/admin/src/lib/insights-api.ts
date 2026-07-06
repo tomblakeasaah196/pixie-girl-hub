@@ -21,6 +21,7 @@ import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
 import { joinRoom, leaveRoom, rooms } from "@/lib/socket";
 import { toast } from "@/stores/toast";
+import { toastReport } from "@/lib/error-report";
 
 export type InsightSeverity = "low" | "medium" | "high" | "critical";
 export type InsightStatus =
@@ -240,11 +241,7 @@ export function useRunSweep() {
         });
       }
     },
-    onError: () => {
-      toast.error("Scan failed", {
-        description: "Couldn't run the insight scan just now. Please try again.",
-      });
-    },
+    onError: (err) => toastReport("AI Control → Insights sweep", "Scan failed", err),
   });
 }
 

@@ -16,6 +16,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
+import { toastReport } from "@/lib/error-report";
 import { Select } from "@/components/ui/controls";
 import {
   aiGovernanceApi,
@@ -341,8 +342,10 @@ function VendorEditor({
       }
     },
     onSuccess: onSaved,
-    onError: (e) =>
-      setErr(e instanceof Error ? e.message : "Couldn’t save vendor."),
+    onError: (e) => {
+      toastReport("AI Control → Models & vendors", "Save vendor", e);
+      setErr(e instanceof Error ? e.message : "Couldn’t save vendor.");
+    },
   });
 
   return (

@@ -289,38 +289,78 @@ async function getCategoryById(id) {
 // ── Praxis knowledge sync ────────────────────────────────
 // Keep shared.ai_knowledge_chunks in step with an article, live. Mirrors
 // the seed logic in migration 000214/000274: source_type='custom',
-// source_ref='help_article:<slug>', sensitivity='public'. There is no
-// unique constraint on source_ref, so we delete-then-insert (an upsert).
+// source_ref='help_article:<slug>', sensitivity='public'.
+//
+// The chunk is upserted IN PLACE (keyed on source_ref, keeping a stable
+// chunk_id) rather than delete-then-insert. That stability matters because
+// the RAG vector in shared.ai_embeddings is keyed by source_id = chunk_id:
+// a fresh chunk_id on every save would orphan the old vector and leave a
+// second, stale copy in retrieval. Keeping chunk_id stable means the
+// downstream ai-embed job upserts the SAME embedding row.
+//
 // A retired (is_active=false) or de-indexed (praxis_indexed=false) article
-// leaves no chunk, so Praxis stops citing it the moment it's retired.
+// leaves no chunk AND no embedding, so Praxis stops citing it immediately.
+//
+// Returns { chunk_id, content } when a chunk is present (so the caller can
+// enqueue the embed job), or null when the article was removed from the
+// corpus.
 
 async function resyncArticleChunk({ article, actorId = null }) {
-  await query(
-    `DELETE FROM shared.ai_knowledge_chunks
+  const sourceRef = `help_article:${article.slug}`;
+  const { rows: existingRows } = await query(
+    `SELECT chunk_id FROM shared.ai_knowledge_chunks
       WHERE source_type = 'custom' AND source_ref = $1`,
-    [`help_article:${article.slug}`],
+    [sourceRef],
   );
-  if (!article.is_active || !article.praxis_indexed) return;
-  await query(
+  const existingId = existingRows[0]?.chunk_id || null;
+
+  // Retired / de-indexed → drop the chunk and its embedding, if any.
+  if (!article.is_active || !article.praxis_indexed) {
+    if (existingId) {
+      await query(
+        `DELETE FROM shared.ai_embeddings
+          WHERE source_table = 'ai_knowledge_chunks' AND source_id = $1`,
+        [existingId],
+      );
+      await query(`DELETE FROM shared.ai_knowledge_chunks WHERE chunk_id = $1`, [
+        existingId,
+      ]);
+    }
+    return null;
+  }
+
+  const metadata = JSON.stringify({
+    article_id: article.article_id,
+    slug: article.slug,
+    audience: article.audience,
+    related_module: article.related_module,
+    tags: article.tags,
+  });
+
+  if (existingId) {
+    // In-place update — chunk_id (and thus the embedding key) is preserved.
+    await query(
+      `UPDATE shared.ai_knowledge_chunks
+          SET title = $2, content = $3,
+              token_count = GREATEST(1, LENGTH($3) / 4),
+              content_hash = md5($3), metadata = $4,
+              sensitivity = 'public', business = NULL, is_active = true
+        WHERE chunk_id = $1`,
+      [existingId, article.title, article.body_markdown, metadata],
+    );
+    return { chunk_id: existingId, content: article.body_markdown };
+  }
+
+  const { rows } = await query(
     `INSERT INTO shared.ai_knowledge_chunks
        (source_type, source_ref, business, title, content, token_count,
         sensitivity, content_hash, metadata, ingested_by)
      VALUES ('custom', $1, NULL, $2, $3,
-             GREATEST(1, LENGTH($3) / 4), 'public', md5($3), $4, $5)`,
-    [
-      `help_article:${article.slug}`,
-      article.title,
-      article.body_markdown,
-      JSON.stringify({
-        article_id: article.article_id,
-        slug: article.slug,
-        audience: article.audience,
-        related_module: article.related_module,
-        tags: article.tags,
-      }),
-      actorId,
-    ],
+             GREATEST(1, LENGTH($3) / 4), 'public', md5($3), $4, $5)
+     RETURNING chunk_id`,
+    [sourceRef, article.title, article.body_markdown, metadata, actorId],
   );
+  return { chunk_id: rows[0].chunk_id, content: article.body_markdown };
 }
 
 module.exports = {

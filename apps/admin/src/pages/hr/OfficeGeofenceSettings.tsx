@@ -1,22 +1,20 @@
-/// <reference types="@types/google.maps" />
 /**
  * Office geofence settings (HR attendance). HR sets each office's location and
  * a clock-in perimeter (radius). Clock-ins outside every active office on an
- * on-site day are flagged and queried. Uses the already-loaded Google Maps for
- * the map UI only — the perimeter check is server-side haversine math.
+ * on-site day are flagged and queried.
  *
- * Degrades to manual lat/lng/radius inputs when Google Maps isn't configured.
+ * The location is picked with GeoapifyOfficePicker — an interactive Geoapify
+ * static map + address search, no browser Maps SDK (replacing the Google Maps
+ * picker that hung on "Loading map…" / "t.maps.Map is not a constructor"). The
+ * perimeter check itself is server-side haversine math; coordinates are the
+ * truth, the reverse-geocoded address is a stored display label.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, Plus, Trash2, Crosshair } from "lucide-react";
+import { MapPin, Plus, Trash2 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
-import {
-  loadGoogleMaps,
-  isGoogleMapsConfigured,
-} from "@/lib/google-maps-loader";
 import {
   listGeofences,
   createGeofence,
@@ -25,79 +23,9 @@ import {
   type Geofence,
 } from "@/lib/hr-api";
 import { SectionTitle, useNotify, errMsg } from "./hr-shared";
+import { GeoapifyOfficePicker } from "./GeoapifyOfficePicker";
 
 const LAGOS = { lat: 6.5244, lng: 3.3792 };
-
-function MapEditor({
-  initial,
-  onPick,
-}: {
-  initial: { lat: number; lng: number; radius: number };
-  onPick: (lat: number, lng: number) => void;
-}) {
-  const mapEl = useRef<HTMLDivElement>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
-  const circleRef = useRef<google.maps.Circle | null>(null);
-  const [ready, setReady] = useState(false);
-
-  // Init map once.
-  useEffect(() => {
-    let cancelled = false;
-    loadGoogleMaps().then((g) => {
-      if (cancelled || !g || !mapEl.current) return;
-      const center = { lat: initial.lat, lng: initial.lng };
-      const map = new g.maps.Map(mapEl.current, {
-        center,
-        zoom: 16,
-        disableDefaultUI: true,
-        zoomControl: true,
-      });
-      const marker = new g.maps.Marker({ position: center, map, draggable: true });
-      const circle = new g.maps.Circle({
-        map,
-        center,
-        radius: initial.radius,
-        fillColor: "#690909",
-        fillOpacity: 0.12,
-        strokeColor: "#690909",
-        strokeOpacity: 0.5,
-        strokeWeight: 1,
-      });
-      markerRef.current = marker;
-      circleRef.current = circle;
-      setReady(true);
-
-      const move = (pos: google.maps.LatLng | null | undefined) => {
-        if (!pos) return;
-        marker.setPosition(pos);
-        circle.setCenter(pos);
-        onPick(pos.lat(), pos.lng());
-      };
-      marker.addListener("dragend", () => move(marker.getPosition()));
-      map.addListener("click", (e: google.maps.MapMouseEvent) => move(e.latLng));
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Reflect radius changes.
-  useEffect(() => {
-    if (circleRef.current) circleRef.current.setRadius(initial.radius);
-  }, [initial.radius]);
-
-  return (
-    <div className="relative h-64 w-full overflow-hidden rounded-xl border border-line">
-      <div ref={mapEl} className="h-full w-full" />
-      {!ready && (
-        <div className="absolute inset-0 grid place-items-center text-xs text-text-muted">
-          Loading map…
-        </div>
-      )}
-    </div>
-  );
-}
 
 function OfficeModal({
   open,
@@ -110,19 +38,12 @@ function OfficeModal({
 }) {
   const qc = useQueryClient();
   const notify = useNotify();
-  // isGoogleMapsConfigured() is async (resolves the key loader), so resolve it
-  // into state rather than branching on the Promise directly.
-  const [mapsOk, setMapsOk] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    isGoogleMapsConfigured().then((ok) => { if (alive) setMapsOk(ok); });
-    return () => { alive = false; };
-  }, []);
   const [form, setForm] = useState({
     name: "",
     latitude: LAGOS.lat,
     longitude: LAGOS.lng,
     radius_m: 150,
+    address: "",
   });
 
   useEffect(() => {
@@ -134,27 +55,32 @@ function OfficeModal({
               latitude: Number(editing.latitude),
               longitude: Number(editing.longitude),
               radius_m: editing.radius_m,
+              address: editing.address ?? "",
             }
-          : { name: "", latitude: LAGOS.lat, longitude: LAGOS.lng, radius_m: 150 },
+          : {
+              name: "",
+              latitude: LAGOS.lat,
+              longitude: LAGOS.lng,
+              radius_m: 150,
+              address: "",
+            },
       );
     }
   }, [open, editing]);
 
   const save = useMutation({
-    mutationFn: () =>
-      editing
-        ? updateGeofence(editing.geofence_id, {
-            name: form.name,
-            latitude: form.latitude,
-            longitude: form.longitude,
-            radius_m: form.radius_m,
-          })
-        : createGeofence({
-            name: form.name,
-            latitude: form.latitude,
-            longitude: form.longitude,
-            radius_m: form.radius_m,
-          }),
+    mutationFn: () => {
+      const payload = {
+        name: form.name.trim(),
+        latitude: form.latitude,
+        longitude: form.longitude,
+        radius_m: form.radius_m,
+        address: form.address.trim() || undefined,
+      };
+      return editing
+        ? updateGeofence(editing.geofence_id, payload)
+        : createGeofence(payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["hr", "geofences"] });
       notify(editing ? "Office updated" : "Office added");
@@ -163,17 +89,11 @@ function OfficeModal({
     onError: (e) => notify("Failed", errMsg(e), "high"),
   });
 
-  const useMyLocation = () => {
-    if (!("geolocation" in navigator)) return;
-    navigator.geolocation.getCurrentPosition((p) =>
-      setForm((f) => ({ ...f, latitude: p.coords.latitude, longitude: p.coords.longitude })),
-    );
-  };
-
   return (
     <Modal
       open={open}
       onClose={onClose}
+      size="md"
       title={editing ? "Edit office" : "Add office"}
       footer={
         <>
@@ -193,34 +113,20 @@ function OfficeModal({
           className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary"
         />
 
-        {mapsOk ? (
-          <MapEditor
-            initial={{ lat: form.latitude, lng: form.longitude, radius: form.radius_m }}
-            onPick={(lat, lng) => setForm((f) => ({ ...f, latitude: lat, longitude: lng }))}
-          />
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <input type="number" step="0.0000001" value={form.latitude}
-              onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })}
-              placeholder="Latitude"
-              className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
-            <input type="number" step="0.0000001" value={form.longitude}
-              onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })}
-              placeholder="Longitude"
-              className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
-          </div>
-        )}
-
-        <div className="flex items-center justify-between gap-3">
-          <Button size="sm" icon={<Crosshair className="h-3.5 w-3.5" />} onClick={useMyLocation}>
-            Use my location
-          </Button>
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            <span className="font-mono">
-              {form.latitude.toFixed(5)}, {form.longitude.toFixed(5)}
-            </span>
-          </div>
-        </div>
+        <GeoapifyOfficePicker
+          lat={form.latitude}
+          lng={form.longitude}
+          radius={form.radius_m}
+          address={form.address}
+          onChange={(patch) =>
+            setForm((f) => ({
+              ...f,
+              ...(patch.lat !== undefined ? { latitude: patch.lat } : {}),
+              ...(patch.lng !== undefined ? { longitude: patch.lng } : {}),
+              ...(patch.address !== undefined ? { address: patch.address } : {}),
+            }))
+          }
+        />
 
         <label className="block text-xs font-medium text-text-muted">
           Clock-in radius: <span className="text-text-primary">{form.radius_m} m</span>
@@ -298,7 +204,10 @@ export function OfficeGeofenceSettings() {
                   <span className="text-sm text-text-primary">{g.name}</span>
                   <Pill tone={g.is_active ? "success" : "neutral"}>{g.radius_m} m</Pill>
                 </div>
-                <div className="font-mono text-xs text-text-muted">
+                {g.address && (
+                  <div className="mt-0.5 truncate text-xs text-text-muted">{g.address}</div>
+                )}
+                <div className="font-mono text-[11px] text-text-faint">
                   {Number(g.latitude).toFixed(5)}, {Number(g.longitude).toFixed(5)}
                 </div>
               </div>

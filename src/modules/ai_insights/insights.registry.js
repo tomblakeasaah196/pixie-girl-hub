@@ -418,7 +418,10 @@ const DETECTORS = [
           module: "sales",
           detector: "fulfillment_delayed",
           business: brand,
-          severity: days >= 14 ? "critical" : days >= 7 ? "high" : "medium",
+          // A paid order that hasn't shipped is a customer-facing problem, so
+          // it escalates faster than a back-office backlog: 5+ days is already
+          // high (the customer is chasing), 10+ is critical.
+          severity: days >= 10 ? "critical" : days >= 5 ? "high" : "medium",
           title: `Order ${o.order_number} paid but not dispatched (${days}d)`,
           body: null,
           context: {

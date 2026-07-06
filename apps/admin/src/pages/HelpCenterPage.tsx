@@ -11,6 +11,32 @@ import {
   Wallet,
   ShieldCheck,
   BookOpen,
+  LayoutDashboard,
+  Users,
+  Scissors,
+  CalendarDays,
+  Boxes,
+  Truck,
+  Factory,
+  Store,
+  Contact,
+  Lightbulb,
+  Megaphone,
+  MapPin,
+  GitBranch,
+  Heart,
+  Mail,
+  Share2,
+  Bell,
+  FolderArchive,
+  Palette,
+  Gauge,
+  Receipt,
+  Tag,
+  FileText,
+  UserCog,
+  ArrowLeftRight,
+  Globe,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
@@ -24,6 +50,9 @@ import { helpApi, type HelpArticleSummary } from "@/lib/help-api";
  * CEO sees here and what Praxis cites are the same source of truth.
  */
 
+// Maps the `icon` name stored on shared.help_categories to a Lucide
+// component. Keep this in step with the icons chosen in the help-content
+// seed migrations (000214 onward) so no category silently falls back.
 const ICONS: Record<string, typeof HelpCircle> = {
   Sparkles,
   MessageSquare,
@@ -33,6 +62,32 @@ const ICONS: Record<string, typeof HelpCircle> = {
   ShieldCheck,
   BookOpen,
   HelpCircle,
+  LayoutDashboard,
+  Users,
+  Scissors,
+  CalendarDays,
+  Boxes,
+  Truck,
+  Factory,
+  Store,
+  Contact,
+  Lightbulb,
+  Megaphone,
+  MapPin,
+  GitBranch,
+  Heart,
+  Mail,
+  Share2,
+  Bell,
+  FolderArchive,
+  Palette,
+  Gauge,
+  Receipt,
+  Tag,
+  FileText,
+  UserCog,
+  ArrowLeftRight,
+  Globe,
 };
 
 export function HelpCenterPage() {

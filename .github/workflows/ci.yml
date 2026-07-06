@@ -123,6 +123,18 @@ jobs:
             NODE_ENV=production node scripts/migrate-shared.js run
             NODE_ENV=production node scripts/repair-business-schema.js --all run
 
+            # ── Praxis AI knowledge refresh ────────────────────────
+            # Rebuild Praxis's RAG corpus AFTER migrations so its knowledge of the
+            # system (docs + LIVE database schema) matches this deploy — this is
+            # what keeps it from answering from a stale/half-built model as the
+            # project grows. Best-effort: an embeddings hiccup (rate limit,
+            # missing/empty EMBEDDINGS key) must NOT fail a production deploy —
+            # the app runs fine without RAG, and ai:reindex is idempotent so it
+            # can be re-run by hand. Skips cleanly if no embeddings provider.
+            echo "--- Refreshing Praxis AI knowledge (docs + live schema → embeddings)"
+            NODE_ENV=production npm run ai:reindex \
+              || echo "WARNING: ai:reindex did not complete — Praxis RAG corpus may be stale. Re-run 'npm run ai:reindex' on the VPS."
+
             echo "--- Zero-downtime reload backend"
             pm2 reload pixie-girl-hub || pm2 start ecosystem.config.js --only pixie-girl-hub --env production
 

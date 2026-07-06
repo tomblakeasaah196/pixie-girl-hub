@@ -11,7 +11,10 @@ const insights = require("../../modules/ai_insights/insights.service");
 
 async function runAiInsightsSweep() {
   try {
-    return await insights.runDetectorSweep();
+    // Cron path: honour each module's frequency cadence (daily/weekly/off) so a
+    // module set to "weekly" isn't re-scanned every 30 min. The manual Run-scan
+    // button in the UI uses the 'manual' trigger and scans everything enabled.
+    return await insights.runDetectorSweep({ trigger: "cron" });
   } catch (err) {
     logger.error({ err: err.message }, "ai insights sweep failed");
     return null;

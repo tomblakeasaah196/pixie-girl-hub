@@ -32,7 +32,37 @@ media `captured_signature_path`).
 
 **Count:** `scripts/verify-schema.js` shared count 175 → **177**: +1 for
 `signer_signatures` (this migration) and +1 correcting `staff_onboarding_progress`
-(000259), whose table was added without a matching count bump.
+(000259), whose table was added without a matching count bump. (The AI-insight
+frequency migration below is a duplicate `000259` number — established precedent
+for pairs touching unrelated tables — and is column-only, so it doesn't affect
+the count.)
+
+---
+
+## 2026-07-05 — AI Insights: honour the per-module frequency cadence
+
+**Source:** Praxis Insights follow-up (V2.2 §6.31) — make the AI Control
+Frequency control actually do something.
+
+**Files:** `000259_shared_ai_insight_frequency.sql` (new).
+
+**What:** Adds a nullable `last_swept_at TIMESTAMPTZ` column to
+`shared.ai_insight_modules`. The AI Control matrix already stored a `frequency`
+per module (realtime/daily/weekly/off), but the 30-minute cron sweep ignored it
+and re-scanned every enabled module on every tick — so setting a module to
+"weekly" to cut spend had no effect. The sweep now records when it last ran a
+module (`repo.markSwept`) and the cron path only scans modules whose cadence is
+due (`repo.dueModules`): realtime → every tick, daily → once/24h, weekly →
+once/7d, off → never auto-run. The manual "Run scan" button is unchanged — it
+still scans every enabled module immediately.
+
+**Why:** The Frequency dropdown was a no-op, which read as "insights don't
+work" when a lone module was enabled and nothing surfaced. Honouring the
+cadence makes the spend control real and the behaviour predictable.
+
+**Verify:** Column add only — no new table, so it doesn't change the shared
+table count. NULL `last_swept_at` = never swept = due on the next tick, so
+enabled modules keep scanning after deploy with no backfill.
 
 ---
 

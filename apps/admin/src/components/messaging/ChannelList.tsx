@@ -68,6 +68,11 @@ export function ChannelList({
   const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
+  // Autofill shield: Chrome never writes into a readOnly input, so the search
+  // stays readOnly until the user actually focuses it. Belt-and-braces on top
+  // of not mounting hidden password fields — holds even if a future modal
+  // reintroduces one.
+  const [searchArmed, setSearchArmed] = useState(false);
   const params = paramsForTab(tab);
   const { data, isLoading } = useChannels({ ...params, q: q || undefined });
 
@@ -118,11 +123,15 @@ export function ChannelList({
         </div>
       </div>
 
-      {canConfigureIntegrations && (
-        <WhatsAppConfigModal
-          open={configOpen}
-          onClose={() => setConfigOpen(false)}
-        />
+      {/* Mount the config modal ONLY while it is open. The Modal primitive
+          keeps its children in the DOM when closed (hidden via CSS for the
+          animation), so an always-mounted vault means invisible
+          type="password" inputs sit on the page the moment the inbox loads.
+          Chrome then classifies "search input + password input" as a login
+          form and autofills the saved login email into the search box —
+          ignoring autocomplete="off". No password field in the DOM, no bait. */}
+      {canConfigureIntegrations && configOpen && (
+        <WhatsAppConfigModal open onClose={() => setConfigOpen(false)} />
       )}
 
       {/* Search */}
@@ -135,6 +144,8 @@ export function ChannelList({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search conversations…"
+            readOnly={!searchArmed}
+            onFocus={() => setSearchArmed(true)}
             className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 placeholder:text-text-faint"
             autoComplete="off"
             data-lpignore="true"

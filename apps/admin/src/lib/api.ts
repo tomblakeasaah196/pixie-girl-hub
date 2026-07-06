@@ -282,6 +282,37 @@ async function download(path: string, fallbackName = "download"): Promise<void> 
 }
 
 /**
+ * Authenticated binary GET → Blob (no download prompt).
+ *
+ * For bytes we want to render in-page rather than save — e.g. the Geoapify
+ * static map image behind the office-location picker. An <img src> can't carry
+ * the in-memory bearer token, so we fetch here with the auth + brand headers
+ * and hand back a Blob the caller turns into an object URL. Mirrors `request`'s
+ * silent-refresh-and-retry once on a 401.
+ */
+async function getBlob(
+  path: string,
+  scope: Options["scope"] = "v1",
+  _retried = false,
+): Promise<Blob> {
+  const base = scope === "public" ? `${API_ROOT}/public` : API_BASE;
+  const headers: Record<string, string> = {};
+  if (scope === "v1") {
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    const brand = brandContext();
+    if (brand) headers["X-Brand-Context"] = brand;
+  }
+  const res = await fetch(`${base}${path}`, { headers, credentials: "include" });
+  if (res.status === 401 && scope === "v1" && !_retried) {
+    const ok = await refreshAccessToken();
+    if (ok) return getBlob(path, scope, true);
+    accessToken = null;
+  }
+  if (!res.ok) throw new ApiError(res.status, null, `HTTP ${res.status}`);
+  return res.blob();
+}
+
+/**
  * Save a file the backend has already generated and stored (e.g. an invoice or
  * receipt PDF served from /media). Fetches the bytes same-origin and saves them
  * via an <a download>, which reliably triggers a download.
@@ -318,6 +349,7 @@ export async function saveFileFromUrl(
 export const api = {
   get: <T>(path: string, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "GET", scope }),
+  getBlob,
   postForm,
   download,
   post: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>

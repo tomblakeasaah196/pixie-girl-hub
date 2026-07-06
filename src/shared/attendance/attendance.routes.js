@@ -11,6 +11,15 @@ const { requirePermission } = require("../../middleware/rbac");
 const router = express.Router();
 const P = (a) => requirePermission("attendance", a);
 
+// ── Geoapify proxy for the office-location picker ──────────
+// The Geoapify key is server-only; the admin picker calls these instead of
+// Geoapify directly. Declared before /geofences/:id so the /geo/* literals
+// win over the :id param route.
+router.get("/geo/status", P("view"), c.geoStatus);
+router.get("/geo/search", P("view"), c.geoSearch);
+router.get("/geo/reverse", P("view"), c.geoReverse);
+router.get("/geo/staticmap", P("view"), c.geoStaticMap);
+
 // ── Geofences (admin CRUD) ─────────────────────────────────
 router.get("/geofences", P("view"), c.listGeofences);
 router.post("/geofences", P("create"), v.geofenceCreate, c.createGeofence);

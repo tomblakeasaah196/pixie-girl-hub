@@ -166,18 +166,34 @@ describe("registry — Wave-3 fan-out detectors", () => {
 });
 
 describe("registry — Wave-3 batch 2 detectors", () => {
-  test("sales/fulfillment_delayed: paid+undispatched escalates by age", async () => {
+  test("sales/fulfillment_delayed: paid+undispatched maps to a finding", async () => {
     repo.fulfillmentDelayedOrders.mockResolvedValue([
       { order_id: "o-1", order_number: "PXG-SO-1", contact_id: "c-1", total_ngn: "90000.00", status: "paid", age_days: 15 },
     ]);
     const [f] = await det("sales", "fulfillment_delayed").run({ brand: "pixiegirl" });
     expect(f).toMatchObject({
       module: "sales",
-      severity: "critical", // >= 14d
+      severity: "critical", // >= 10d
       amount_ngn: "90000.00",
       drill_route: "/sales/orders/o-1",
       suppression_key: "fulfil:o-1",
     });
+  });
+
+  // A paid order sitting undispatched is customer-facing, so it escalates
+  // fast: the 6-day-old orders that prompted this fix now read as HIGH.
+  test.each([
+    [4, "medium"],
+    [5, "high"],
+    [6, "high"],
+    [9, "high"],
+    [10, "critical"],
+  ])("sales/fulfillment_delayed: %id undispatched → %s", async (days, severity) => {
+    repo.fulfillmentDelayedOrders.mockResolvedValue([
+      { order_id: "o", order_number: "PXG-SO-9", contact_id: "c", total_ngn: "1.00", status: "paid", age_days: days },
+    ]);
+    const [f] = await det("sales", "fulfillment_delayed").run({ brand: "pixiegirl" });
+    expect(f.severity).toBe(severity);
   });
 
   test("crm/deal_stalled: >=30d in stage → high", async () => {

@@ -18,7 +18,9 @@ import { WhatsAppConfigModal } from "./WhatsAppConfigModal";
 interface Props {
   activeChannelId?: string | null;
   onSelect: (channel: Channel) => void;
-  onNewChannel?: () => void;
+  /** The Groups empty state passes "group" so the modal opens straight into
+   *  multi-select. Header + In-house CTA leave it undefined ("chat" default). */
+  onNewChannel?: (mode?: "chat" | "group") => void;
   /** Compact = drawer; default = full page. */
   compact?: boolean;
 }
@@ -106,9 +108,9 @@ export function ChannelList({
           )}
           {onNewChannel && (
             <button
-              onClick={onNewChannel}
+              onClick={() => onNewChannel(tab === "groups" ? "group" : "chat")}
               className="text-text-muted hover:text-text-primary"
-              title="New conversation"
+              title={tab === "groups" ? "New group" : "New conversation"}
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -173,15 +175,26 @@ export function ChannelList({
                 ? "All caught up."
                 : tab === "inhouse"
                   ? "No in-house chats yet."
-                  : "No conversations yet"}
+                  : tab === "groups"
+                    ? "No groups yet — start one with your team."
+                    : "No conversations yet"}
             </p>
             {tab === "inhouse" && onNewChannel && (
               <button
-                onClick={onNewChannel}
+                onClick={() => onNewChannel("chat")}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/[0.08] px-3 py-1.5 text-[11.5px] font-medium text-accent-glow hover:bg-accent/[0.14]"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Message a colleague
+              </button>
+            )}
+            {tab === "groups" && onNewChannel && (
+              <button
+                onClick={() => onNewChannel("group")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/[0.08] px-3 py-1.5 text-[11.5px] font-medium text-accent-glow hover:bg-accent/[0.14]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                New group
               </button>
             )}
           </div>

@@ -26,7 +26,8 @@ export function ChatDock() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const ref = useRef<HTMLDivElement>(null);
-  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newChat, setNewChat] = useState<null | "chat" | "group">(null);
+  const newChatOpen = newChat !== null;
   useInboxRealtime(user?.id);
 
   // Hide on the full /smartcomm page (would be a duplicate).
@@ -90,7 +91,7 @@ export function ChatDock() {
         <p className="flex-1 truncate font-display text-[14px]">Messages</p>
         {!channelId && (
           <button
-            onClick={() => setNewChatOpen(true)}
+            onClick={() => setNewChat("chat")}
             title="New conversation"
             className="text-text-muted hover:text-text-primary"
           >
@@ -122,16 +123,17 @@ export function ChatDock() {
           <ChannelList
             activeChannelId={null}
             onSelect={(c) => setChannel(c.channel_id)}
-            onNewChannel={() => setNewChatOpen(true)}
+            onNewChannel={(mode) => setNewChat(mode ?? "chat")}
             compact
           />
         )}
       </div>
       <NewChatModal
         open={newChatOpen}
-        onClose={() => setNewChatOpen(false)}
+        initialMode={newChat ?? "chat"}
+        onClose={() => setNewChat(null)}
         onStarted={(id) => {
-          setNewChatOpen(false);
+          setNewChat(null);
           setChannel(id);
         }}
       />

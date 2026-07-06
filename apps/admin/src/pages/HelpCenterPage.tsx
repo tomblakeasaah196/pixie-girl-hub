@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useAuthStore } from "@/stores/auth";
 import {
   HelpCircle,
+  PencilLine,
   Search,
   Sparkles,
   MessageSquare,
@@ -37,6 +39,7 @@ import {
   UserCog,
   ArrowLeftRight,
   Globe,
+  Settings,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
@@ -88,11 +91,13 @@ const ICONS: Record<string, typeof HelpCircle> = {
   UserCog,
   ArrowLeftRight,
   Globe,
+  Settings,
 };
 
 export function HelpCenterPage() {
   useBreadcrumbs([{ label: "Help Center" }]);
   const [q, setQ] = useState("");
+  const canEdit = useAuthStore((s) => s.can)("help_center", "edit");
 
   const categoriesQ = useQuery({
     queryKey: ["help", "categories"],
@@ -126,6 +131,14 @@ export function HelpCenterPage() {
             Guides, FAQs, and the &ldquo;why&rdquo; behind how the Hub runs.
           </p>
         </div>
+        {canEdit && (
+          <Link
+            to="/help/editor"
+            className="ml-auto inline-flex items-center gap-1.5 text-[12.5px] font-medium px-3 py-1.5 rounded-lg bg-panel-2 border hairline hover:border-accent/40 text-text-muted hover:text-text-primary"
+          >
+            <PencilLine className="w-3.5 h-3.5" /> Manage
+          </Link>
+        )}
       </div>
 
       <div className="relative mt-5">

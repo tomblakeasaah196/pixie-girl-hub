@@ -63,9 +63,56 @@ function qs(params: ArticleQuery) {
   return s ? `?${s}` : "";
 }
 
+/** Admin (editor) shapes — the list includes retired/inactive rows. */
+export interface HelpArticleAdmin extends HelpArticleSummary {
+  praxis_indexed: boolean;
+  is_active: boolean;
+}
+
+export interface ArticleWriteInput {
+  slug?: string; // required on create, immutable on update
+  title: string;
+  summary?: string | null;
+  body_markdown: string;
+  audience: HelpAudience;
+  category_slug: string;
+  related_module?: string | null;
+  tags?: string[];
+  sort_order?: number;
+  praxis_indexed?: boolean;
+  is_active?: boolean;
+}
+
+export interface CategoryWriteInput {
+  slug?: string; // required on create
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
+}
+
 export const helpApi = {
   listCategories: () => api.get<HelpCategory[]>("/help/categories"),
   listArticles: (params: ArticleQuery = {}) =>
     api.get<HelpArticleSummary[]>(`/help/articles${qs(params)}`),
   getArticle: (slug: string) => api.get<HelpArticle>(`/help/articles/${slug}`),
+
+  // ── Editor (needs help_center edit/create/delete) ──
+  admin: {
+    listArticles: (params: ArticleQuery = {}) =>
+      api.get<HelpArticleAdmin[]>(`/help/admin/articles${qs(params)}`),
+    getArticle: (id: string) =>
+      api.get<HelpArticle>(`/help/admin/articles/${id}`),
+    listCategories: () => api.get<HelpCategory[]>("/help/admin/categories"),
+    createArticle: (input: ArticleWriteInput) =>
+      api.post<HelpArticle>("/help/articles", input),
+    updateArticle: (id: string, patch: Partial<ArticleWriteInput>) =>
+      api.patch<HelpArticle>(`/help/articles/${id}`, patch),
+    retireArticle: (id: string) => api.delete<HelpArticle>(`/help/articles/${id}`),
+    createCategory: (input: CategoryWriteInput) =>
+      api.post<HelpCategory>("/help/categories", input),
+    updateCategory: (id: string, patch: Partial<CategoryWriteInput>) =>
+      api.patch<HelpCategory>(`/help/categories/${id}`, patch),
+  },
 };

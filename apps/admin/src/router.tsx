@@ -53,6 +53,7 @@ import { NotificationsPage } from "@/pages/NotificationsPage";
 // Other module placeholders
 import { HelpCenterPage } from "@/pages/HelpCenterPage";
 import { HelpArticlePage } from "@/pages/HelpArticlePage";
+import { HelpEditorPage } from "@/pages/HelpEditorPage";
 
 
 /**
@@ -749,6 +750,7 @@ export const router = createBrowserRouter(
 
             // Help Center.
             { path: "help", element: <HelpCenterPage /> },
+            { path: "help/editor", element: <HelpEditorPage /> },
             { path: "help/:slug", element: <HelpArticlePage /> },
 
             // Smart Comm (Messaging).

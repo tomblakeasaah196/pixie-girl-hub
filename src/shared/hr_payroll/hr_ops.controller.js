@@ -76,6 +76,22 @@ async function getAnalytics(req, res) {
     }),
   });
 }
+async function getAnalyticsTrends(req, res) {
+  res.json({
+    data: await service.getAnalyticsTrends({
+      brand: req.brand,
+      months: req.query.months,
+    }),
+  });
+}
+async function getProbationEndingSoon(req, res) {
+  res.json({
+    data: await service.getProbationEndingSoon({
+      brand: req.brand,
+      days: req.query.days,
+    }),
+  });
+}
 async function reconcile(req, res) {
   res.json({ data: await service.reconcileDay({ ...ctx(req), date: req.body.date }) });
 }
@@ -176,6 +192,8 @@ module.exports = {
   getOverview,
   getEmployee360,
   getAnalytics,
+  getAnalyticsTrends,
+  getProbationEndingSoon,
   reconcile,
   reconcilePeriod,
   applyLapsedOffsite,

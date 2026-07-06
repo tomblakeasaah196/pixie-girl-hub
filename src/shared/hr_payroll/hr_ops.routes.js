@@ -34,6 +34,8 @@ router.post("/me/onboarding", v.onboardingToggle, c.toggleOnboardingItem);
 // ── Overview + analytics + reconcile ───────────────────────
 router.get("/overview", P("view"), c.getOverview);
 router.get("/analytics", P("view"), c.getAnalytics);
+router.get("/analytics/trends", P("view"), c.getAnalyticsTrends);
+router.get("/probation/ending-soon", P("view"), c.getProbationEndingSoon);
 router.post("/attendance/reconcile", P("edit"), v.reconcile, c.reconcile);
 router.post("/attendance/reconcile-period", P("edit"), v.reconcilePeriod, c.reconcilePeriod);
 router.post("/attendance/apply-lapsed-offsite", P("edit"), c.applyLapsedOffsite);

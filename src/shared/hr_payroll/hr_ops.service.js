@@ -392,6 +392,32 @@ async function bumpTargetProgress({ brand, userId, metric, delta }) {
   return row;
 }
 
+/**
+ * Quality-gated recompute of a staffer's service-job targets for a period.
+ * Sets `styles_completed` / `services_completed` to an absolute count (of jobs
+ * that passed the quality gate), so re-firing on completion or a later QC
+ * rating is idempotent and only quality-passing work counts. Emits
+ * target_achieved on a fresh crossing.
+ */
+async function recomputeServiceTargets({ brand, userId, year, month, count }) {
+  if (!userId) return;
+  const profileId = await repo.profileIdForUser({ brand, userId });
+  if (!profileId) return;
+  for (const metric of ["styles_completed", "services_completed"]) {
+    const row = await repo.setActiveTargetValue({
+      brand, profileId, metric, value: count, year, month,
+    });
+    if (!row) continue;
+    events.emit("target_progress", { brand, target_id: row.target_id, status: row.status });
+    if (
+      Number(row.prev_value) < Number(row.target_value) &&
+      Number(row.current_value) >= Number(row.target_value)
+    ) {
+      events.emit("target_achieved", { brand, target_id: row.target_id });
+    }
+  }
+}
+
 async function removeTarget({ brand, user, request_id, id }) {
   await transaction(async (client) => {
     const before = await repo.findTarget({ client, brand, id });
@@ -880,6 +906,43 @@ async function getAnalytics({ brand, year, month }) {
   };
 }
 
+/** Month-over-month HR trends (headcount, hires, attrition, punctuality, cost). */
+async function getAnalyticsTrends({ brand, months }) {
+  const n = Math.min(24, Math.max(3, Number(months) || 12));
+  const rows = await repo.analyticsTrends({ brand, months: n });
+  return {
+    months: n,
+    series: rows.map((r) => ({
+      year: Number(r.year),
+      month: Number(r.month),
+      label: `${String(r.month).padStart(2, "0")}/${String(r.year).slice(2)}`,
+      headcount: Number(r.headcount || 0),
+      new_hires: Number(r.new_hires || 0),
+      attrition: Number(r.attrition || 0),
+      punctuality_pct: Number(r.punctuality_pct || 0),
+      payroll_ngn: Number(r.payroll_ngn || 0),
+    })),
+  };
+}
+
+/** Staff whose probation ends within `days` days — for the HR watch-list. */
+async function getProbationEndingSoon({ brand, days }) {
+  const d = Math.min(120, Math.max(1, Number(days) || 30));
+  const rows = await repo.probationEndingSoon({ brand, days: d });
+  return {
+    days: d,
+    items: rows.map((r) => ({
+      profile_id: r.profile_id,
+      user_id: r.user_id,
+      display_name: r.display_name,
+      job_title: r.job_title,
+      probation_status: r.probation_status,
+      probation_end_date: r.probation_end_date,
+      days_left: Number(r.days_left),
+    })),
+  };
+}
+
 // ── My HR (self-service dashboard) ─────────────────────────
 async function getMyHr({ brand, user }) {
   const profile = await repo.profileForUser({ brand, userId: user.user_id });
@@ -1153,6 +1216,7 @@ module.exports = {
   setTarget,
   updateTargetProgress,
   bumpTargetProgress,
+  recomputeServiceTargets,
   removeTarget,
   reconcileDay,
   reconcilePeriod,
@@ -1163,6 +1227,8 @@ module.exports = {
   selfClock,
   getOverview,
   getAnalytics,
+  getAnalyticsTrends,
+  getProbationEndingSoon,
   getMyHr,
   toggleOnboardingItem,
   getEmployee360,

@@ -11,6 +11,38 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-06 — Help Center content: Grow & System modules + in-app editor (PR3 of 3)
+
+**Source:** Help Center completeness pass — final batch, plus the DB-driven
+in-app Help Editor (the "add the editor" follow-up noted in the module README).
+
+**Files (new):** `000288_shared_help_social.sql`,
+`000289_shared_help_marketing.sql`, `000290_shared_help_praxis.sql`,
+`000291_shared_help_settings.sql`, `000292_shared_help_iam_security.sql`,
+`000293_shared_help_documents.sql`, `000294_shared_help_ai_control.sql`,
+`000295_shared_help_storefront_studio.sql`,
+`000296_shared_help_notifications.sql`, `000297_shared_help_help_center.sql`,
+`000298_shared_help_getting_started.sql`,
+`000299_shared_help_praxis_mirror_pr3.sql`.
+
+**What:** Seeds **42 articles across 11 Grow + System modules** (Social,
+Marketing, Praxis AI, Settings, IAM & Security, Documents, AI Control,
+Storefront Studio, Notifications, Help Center, Getting Started). This fills the
+last previously-empty seeded categories — `praxis`, `security` and
+`getting-started` — so the Help Center landing has **no empty categories left**.
+`000299` re-runs the generic `ai_knowledge_chunks` mirror for the PR3 set.
+
+**No schema change:** the in-app Help Editor (help_center create/edit/delete
+endpoints + admin editor page) reuses the existing `help_articles` /
+`help_categories` / `ai_knowledge_chunks` tables and the `help_center`
+permission grants seeded in 000214 — no migration needed. Article writes resync
+`ai_knowledge_chunks` live, so Praxis is grounded the moment content is saved.
+
+**Count:** No table created or dropped — rows only. Shared (**177**) and
+per-brand table counts are unchanged.
+
+---
+
 ## 2026-07-06 — Help Center content: Finance & People modules (PR2 of 3)
 
 **Source:** Help Center completeness pass — same full guide sets (overview +

@@ -200,6 +200,10 @@ const appraisalH = {
         reason: req.body.reason,
       }),
     }),
+  exportPdf: async (req, res) =>
+    res.json({
+      data: await appraisal.exportReviewPdf({ ...ctx(req), id: req.params.id }),
+    }),
 };
 
 module.exports = {

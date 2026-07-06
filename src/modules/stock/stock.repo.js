@@ -186,25 +186,29 @@ async function listMovements({
   const params = [];
   let i = 1;
   if (filters.variant_id) {
-    where.push(`variant_id = $${i++}`);
+    where.push(`sm.variant_id = $${i++}`);
     params.push(filters.variant_id);
   }
   if (filters.movement_type) {
-    where.push(`movement_type = $${i++}`);
+    where.push(`sm.movement_type = $${i++}`);
     params.push(filters.movement_type);
   }
   if (filters.reference_id) {
-    where.push(`reference_id = $${i++}`);
+    where.push(`sm.reference_id = $${i++}`);
     params.push(filters.reference_id);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "stock_movements")} ${w}`,
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "stock_movements")} sm ${w}`,
     params,
   );
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "stock_movements")} ${w} ORDER BY performed_at DESC LIMIT $${i++} OFFSET $${i++}`,
+    `SELECT sm.*, pv.sku, pv.variant_name, p.name AS product_name
+       FROM ${t(brand, "stock_movements")} sm
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       ${w} ORDER BY sm.performed_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {
@@ -330,10 +334,34 @@ async function addAdjustmentLine({ client, brand, adjustment_id, line }) {
 }
 async function listAdjustmentLines({ client, brand, adjustment_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "stock_adjustment_lines")} WHERE adjustment_id = $1`,
+    `SELECT sal.*, pv.sku, pv.variant_name, p.name AS product_name
+       FROM ${t(brand, "stock_adjustment_lines")} sal
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sal.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE sal.adjustment_id = $1`,
     [adjustment_id],
   );
   return rows;
+}
+async function listAdjustmentLinesForAdjustments({
+  client,
+  brand,
+  adjustment_ids,
+}) {
+  if (!adjustment_ids.length) return {};
+  const { rows } = await ex(client)(
+    `SELECT sal.*, pv.sku, pv.variant_name, p.name AS product_name
+       FROM ${t(brand, "stock_adjustment_lines")} sal
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sal.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE sal.adjustment_id = ANY($1::uuid[])`,
+    [adjustment_ids],
+  );
+  const byAdjustment = {};
+  for (const line of rows) {
+    (byAdjustment[line.adjustment_id] ??= []).push(line);
+  }
+  return byAdjustment;
 }
 async function getAdjustment({ client, brand, id }) {
   const { rows } = await ex(client)(
@@ -377,6 +405,14 @@ async function listAdjustments({
     `SELECT * FROM ${t(brand, "stock_adjustments")} ${w} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
+  const linesByAdjustment = await listAdjustmentLinesForAdjustments({
+    client,
+    brand,
+    adjustment_ids: rows.map((r) => r.adjustment_id),
+  });
+  rows.forEach((r) => {
+    r.lines = linesByAdjustment[r.adjustment_id] ?? [];
+  });
   return {
     data: rows,
     meta: {
@@ -432,10 +468,30 @@ async function addTransferLine({ client, brand, transfer_id, line }) {
 }
 async function listTransferLines({ client, brand, transfer_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "stock_transfer_lines")} WHERE transfer_id = $1`,
+    `SELECT stl.*, pv.sku, pv.variant_name, p.name AS product_name
+       FROM ${t(brand, "stock_transfer_lines")} stl
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = stl.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE stl.transfer_id = $1`,
     [transfer_id],
   );
   return rows;
+}
+async function listTransferLinesForTransfers({ client, brand, transfer_ids }) {
+  if (!transfer_ids.length) return {};
+  const { rows } = await ex(client)(
+    `SELECT stl.*, pv.sku, pv.variant_name, p.name AS product_name
+       FROM ${t(brand, "stock_transfer_lines")} stl
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = stl.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE stl.transfer_id = ANY($1::uuid[])`,
+    [transfer_ids],
+  );
+  const byTransfer = {};
+  for (const line of rows) {
+    (byTransfer[line.transfer_id] ??= []).push(line);
+  }
+  return byTransfer;
 }
 async function getTransfer({ client, brand, id }) {
   const { rows } = await ex(client)(
@@ -471,6 +527,14 @@ async function listTransfers({
     `SELECT * FROM ${t(brand, "stock_transfers")} ${w} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
+  const linesByTransfer = await listTransferLinesForTransfers({
+    client,
+    brand,
+    transfer_ids: rows.map((r) => r.transfer_id),
+  });
+  rows.forEach((r) => {
+    r.lines = linesByTransfer[r.transfer_id] ?? [];
+  });
   return {
     data: rows,
     meta: {
@@ -651,10 +715,30 @@ async function addShipmentLine({ client, brand, shipment_id, line }) {
 }
 async function listShipmentLines({ client, brand, shipment_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "inbound_shipment_lines")} WHERE shipment_id = $1`,
+    `SELECT isl.*, pv.sku, pv.variant_name, p.name AS product_name
+       FROM ${t(brand, "inbound_shipment_lines")} isl
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = isl.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE isl.shipment_id = $1`,
     [shipment_id],
   );
   return rows;
+}
+async function listShipmentLinesForShipments({ client, brand, shipment_ids }) {
+  if (!shipment_ids.length) return {};
+  const { rows } = await ex(client)(
+    `SELECT isl.*, pv.sku, pv.variant_name, p.name AS product_name
+       FROM ${t(brand, "inbound_shipment_lines")} isl
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = isl.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE isl.shipment_id = ANY($1::uuid[])`,
+    [shipment_ids],
+  );
+  const byShipment = {};
+  for (const line of rows) {
+    (byShipment[line.shipment_id] ??= []).push(line);
+  }
+  return byShipment;
 }
 async function getShipment({ client, brand, id }) {
   const { rows } = await ex(client)(
@@ -701,6 +785,14 @@ async function listShipments({
       ORDER BY s.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
+  const linesByShipment = await listShipmentLinesForShipments({
+    client,
+    brand,
+    shipment_ids: rows.map((r) => r.shipment_id),
+  });
+  rows.forEach((r) => {
+    r.lines = linesByShipment[r.shipment_id] ?? [];
+  });
   return {
     data: rows,
     meta: {

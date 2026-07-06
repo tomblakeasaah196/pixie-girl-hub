@@ -161,6 +161,75 @@ export function SeverityPill({ severity }: { severity: string }) {
   return <Pill tone={tone}>{severity}</Pill>;
 }
 
+interface ProductIdentity {
+  product_name?: string | null;
+  variant_name?: string | null;
+  sku?: string | null;
+}
+
+/** Renders "Product Name" bold on top, "Variant · SKU" muted underneath —
+ *  the one place a variant_id/UUID falls back into view, and only as a last
+ *  resort when the backend has no name/SKU to show (e.g. a deleted product). */
+export function ProductCell({
+  line,
+  variantId,
+  className,
+}: {
+  line: ProductIdentity;
+  variantId: string;
+  className?: string;
+}) {
+  const product = line.product_name?.trim();
+  const variant = line.variant_name?.trim();
+  const sku = line.sku?.trim();
+  const primary = product || variant || `Variant ${variantId.slice(0, 8)}`;
+  const secondaryParts = [
+    variant && variant !== primary ? variant : null,
+    sku,
+  ].filter(Boolean);
+
+  return (
+    <div className={cn("flex flex-col gap-0.5 min-w-0", className)}>
+      <span className="text-[13px] text-text-primary font-medium truncate">
+        {primary}
+      </span>
+      {secondaryParts.length > 0 && (
+        <span className="text-[11px] text-text-faint font-mono truncate">
+          {secondaryParts.join(" · ")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Compact "N product names" summary for register rows carrying multiple
+ *  lines (a transfer, adjustment, or shipment) — never just an ID list. */
+export function ProductsSummary({
+  lines,
+  emptyLabel = "—",
+}: {
+  lines: ProductIdentity[];
+  emptyLabel?: string;
+}) {
+  if (lines.length === 0) {
+    return <span className="text-[12px] text-text-faint">{emptyLabel}</span>;
+  }
+  const names = lines.map(
+    (l) => l.product_name?.trim() || l.variant_name?.trim() || "Unnamed product",
+  );
+  const unique = Array.from(new Set(names));
+  const shown = unique.slice(0, 2).join(", ");
+  const extra = unique.length - 2;
+  return (
+    <span className="text-[13px] text-text-primary truncate block max-w-[260px]">
+      {shown}
+      {extra > 0 && (
+        <span className="text-text-faint"> +{extra} more</span>
+      )}
+    </span>
+  );
+}
+
 export function FieldLabel({ children }: { children: ReactNode }) {
   return (
     <label className="block text-[12px] font-semibold text-text-muted uppercase tracking-wide mb-1.5">

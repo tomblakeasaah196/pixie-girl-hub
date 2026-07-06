@@ -57,11 +57,12 @@ describe("messaging_accounts validator", () => {
   });
 
   test("rejects oversize access_token", () => {
+    // Cap widened to 4000 in 000289 to fit Meta system-user tokens.
     const { error } = run(v.validateUpsert, {
       platform: "whatsapp",
       external_account_id: "1",
       display_name: "x",
-      access_token: "A".repeat(3000),
+      access_token: "A".repeat(5000),
     });
     expect(error).toBeDefined();
   });

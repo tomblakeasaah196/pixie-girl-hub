@@ -120,19 +120,53 @@ function verifyStripe(rawBody, headers) {
 
 // Meta payload signature — both WhatsApp Cloud and Instagram Messenger
 // sign with the App Secret via HMAC-SHA256 over the raw body and put the
-// hex digest in `x-hub-signature-256: sha256=<hex>`. Same algo for both,
-// different env vars holding the App Secret per integration.
-function verifyMeta(secretEnvKey) {
-  return (rawBody, headers) => {
-    const secret = config[secretEnvKey];
-    if (!secret) return null;
-    const sig = (headers || {})["x-hub-signature-256"];
-    if (!sig) return false;
-    const expected =
-      "sha256=" +
-      crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-    return safeEqual(expected, sig);
-  };
+// hex digest in `x-hub-signature-256: sha256=<hex>`. Same algo for both.
+//
+// As of 000289 the App Secret is stored per-brand on
+// shared.messaging_accounts (encrypted) — no more env fallback. We
+// extract the phone_number_id (WA) or IG business account id from the
+// payload, look up the matching messaging_accounts row, and verify
+// HMAC against that row's app_secret.
+function extractMetaExternalId(source, payload) {
+  if (source === "meta_whatsapp") {
+    for (const entry of (payload && payload.entry) || []) {
+      for (const change of entry.changes || []) {
+        const id =
+          change.value &&
+          change.value.metadata &&
+          change.value.metadata.phone_number_id;
+        if (id) return String(id);
+      }
+    }
+  }
+  if (source === "meta_instagram") {
+    for (const entry of (payload && payload.entry) || []) {
+      if (entry.id) return String(entry.id);
+    }
+  }
+  return null;
+}
+
+async function resolveMetaAppSecret(source, payload) {
+  const external_account_id = extractMetaExternalId(source, payload);
+  if (!external_account_id) return null;
+  const platform = source === "meta_whatsapp" ? "whatsapp" : "instagram";
+  const maRepo = require("../messaging_accounts/messaging-accounts.repo");
+  const crypto2 = require("../../services/encryption.service");
+  const row = await maRepo.findByExternalId({ platform, external_account_id });
+  if (!row || !row.app_secret_enc) return null;
+  return { app_secret: crypto2.decrypt(row.app_secret_enc), row };
+}
+
+async function verifyMetaHmac(source, rawBody, headers, parsedPayload) {
+  const resolved = await resolveMetaAppSecret(source, parsedPayload);
+  if (!resolved) return null; // no per-brand config → cannot verify
+  const sig = (headers || {})["x-hub-signature-256"];
+  if (!sig) return false;
+  const expected =
+    "sha256=" +
+    crypto.createHmac("sha256", resolved.app_secret).update(rawBody).digest("hex");
+  return safeEqual(expected, sig);
 }
 
 // Cloudflare Email Routing posts to the inbound webhook via an Email
@@ -149,15 +183,17 @@ function verifyCloudflareEmail(rawBody, headers) {
   return safeEqual(expected, sig);
 }
 
+// Sync verifiers only. Meta verifiers are async (require a DB lookup
+// to resolve per-brand secrets) and are dispatched separately below.
 const VERIFIERS = {
   paystack: verifyPaystack,
   opay: verifyOpay,
   nomba: verifyNomba,
   stripe: verifyStripe,
-  meta_whatsapp: verifyMeta("META_WA_APP_SECRET"),
-  meta_instagram: verifyMeta("META_IG_APP_SECRET"),
   cloudflare_email: verifyCloudflareEmail,
 };
+
+const META_SOURCES = new Set(["meta_whatsapp", "meta_instagram"]);
 
 function extractExternalId(source, payload) {
   if (source === "paystack") {
@@ -212,27 +248,44 @@ function extractExternalId(source, payload) {
 
 /**
  * Meta GET verification handshake. Echo hub.challenge iff the verify token
- * matches the configured token for the channel.
+ * matches the token configured for the destination phone/IG account.
+ *
+ * Meta's GET handshake carries no phone_number_id in the query, so we
+ * accept any configured messaging_accounts row for the given platform:
+ * a match on ANY active row wins. This is fine because verify_token is
+ * chosen by us (the CEO), not by Meta — brand isolation happens later
+ * at message-routing time.
  */
-function metaChallenge(source, q) {
-  const token =
-    source === "meta_whatsapp"
-      ? config.META_WA_VERIFY_TOKEN
-      : config.META_GRAPH_VERIFY_TOKEN;
-  if (
-    token &&
-    q["hub.mode"] === "subscribe" &&
-    q["hub.verify_token"] === token
-  ) {
-    return { ok: true, challenge: q["hub.challenge"] };
+async function metaChallenge(source, q) {
+  if (q["hub.mode"] !== "subscribe" || !q["hub.verify_token"]) {
+    return { ok: false };
+  }
+  const platform = source === "meta_whatsapp" ? "whatsapp" : "instagram";
+  const maRepo = require("../messaging_accounts/messaging-accounts.repo");
+  const crypto2 = require("../../services/encryption.service");
+  // Pull every row for the platform and try to match. Small table
+  // (a handful of rows), no need to index this path.
+  const rows = await maRepo.list({ brand: null });
+  for (const r of rows) {
+    if (r.platform !== platform) continue;
+    // The list() projection strips ciphertext — pull the raw row.
+    const raw = await maRepo.getRaw({ id: r.account_id });
+    let token = null;
+    if (raw && raw.verify_token_enc) {
+      token = crypto2.decrypt(raw.verify_token_enc);
+    } else if (raw && raw.webhook_verify_token) {
+      token = raw.webhook_verify_token;
+    }
+    if (token && token === q["hub.verify_token"]) {
+      return { ok: true, challenge: q["hub.challenge"] };
+    }
   }
   return { ok: false };
 }
 
 async function receive(source, { rawBody, headers, ip }) {
-  const verifier = VERIFIERS[source];
-  const verdict = verifier ? verifier(rawBody, headers || {}) : null;
-
+  // Parse first so Meta verifiers can extract the phone_number_id /
+  // IG business id needed to resolve the per-brand app secret.
   let payload = {};
   try {
     payload = JSON.parse((rawBody && rawBody.toString("utf8")) || "{}");
@@ -241,13 +294,26 @@ async function receive(source, { rawBody, headers, ip }) {
       raw: (rawBody && rawBody.toString("utf8").slice(0, 5000)) || "",
     };
   }
+
+  let verdict = null;
+  let verifierPresent = false;
+  if (META_SOURCES.has(source)) {
+    verifierPresent = true;
+    verdict = await verifyMetaHmac(source, rawBody, headers || {}, payload);
+  } else {
+    const verifier = VERIFIERS[source];
+    if (verifier) {
+      verifierPresent = true;
+      verdict = verifier(rawBody, headers || {});
+    }
+  }
   // Nomba uses `event_type`; Stripe/others use `type`; Paystack uses `event`.
   const event_type =
     payload.event || payload.type || payload.event_type || null;
   const external_id = extractExternalId(source, payload);
 
   // Verifier exists and the signature is invalid → reject, log for audit.
-  if (verifier && verdict === false) {
+  if (verifierPresent && verdict === false) {
     await repo.insertLog(null, {
       source,
       event_type,

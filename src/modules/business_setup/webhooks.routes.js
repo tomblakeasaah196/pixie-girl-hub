@@ -49,17 +49,25 @@ router.post("/stripe", receiver("stripe"));
 router.post("/nomba", receiver("nomba"));
 
 // ── Meta (WhatsApp / Instagram): GET verify handshake + POST payload ──
-router.get("/meta/whatsapp", (req, res) => {
-  const c = service.metaChallenge("meta_whatsapp", req.query);
-  if (c.ok) return res.status(200).send(String(c.challenge));
-  return res.sendStatus(403);
+router.get("/meta/whatsapp", async (req, res, next) => {
+  try {
+    const c = await service.metaChallenge("meta_whatsapp", req.query);
+    if (c.ok) return res.status(200).send(String(c.challenge));
+    return res.sendStatus(403);
+  } catch (err) {
+    next(err);
+  }
 });
 router.post("/meta/whatsapp", receiver("meta_whatsapp"));
 
-router.get("/meta/instagram", (req, res) => {
-  const c = service.metaChallenge("meta_instagram", req.query);
-  if (c.ok) return res.status(200).send(String(c.challenge));
-  return res.sendStatus(403);
+router.get("/meta/instagram", async (req, res, next) => {
+  try {
+    const c = await service.metaChallenge("meta_instagram", req.query);
+    if (c.ok) return res.status(200).send(String(c.challenge));
+    return res.sendStatus(403);
+  } catch (err) {
+    next(err);
+  }
 });
 router.post("/meta/instagram", receiver("meta_instagram"));
 

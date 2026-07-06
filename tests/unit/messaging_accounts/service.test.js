@@ -60,25 +60,35 @@ describe("messaging_accounts.service", () => {
       },
     });
     expect(crypto.encrypt).toHaveBeenCalledWith("EAA-supersecret");
+    // Encrypted secrets are grouped under `secrets` (000289 contract):
+    // the repo COALESCEs each field against the existing row so we can
+    // rotate one secret without re-sending the others.
     expect(repo.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        access_token_enc: "enc:EAA-supersecret",
+        secrets: expect.objectContaining({
+          access_token_enc: "enc:EAA-supersecret",
+          access_token_first4: "EAA-",
+        }),
       }),
     );
     expect(result).not.toHaveProperty("access_token_enc");
     expect(result.has_access_token).toBe(true);
   });
 
-  test("getAccount strips the access_token_enc field", async () => {
+  test("getAccount never surfaces the access_token_enc column", async () => {
+    // repo.get() now projects only PUBLIC_COLUMNS (no *_enc). The
+    // service just passes the row through; the strip lives in SQL.
     repo.get.mockResolvedValue({
       account_id: "id-1",
       platform: "whatsapp",
       external_account_id: "PHONE1",
       display_name: "x",
-      access_token_enc: "should-not-leak",
+      has_access_token: true,
+      access_token_first4: "EAA-",
     });
     const r = await service.getAccount({ id: "id-1" });
     expect(r.access_token_enc).toBeUndefined();
+    expect(r.access_token_first4).toBe("EAA-");
   });
 
   test("testAccount calls Meta Graph for WhatsApp", async () => {

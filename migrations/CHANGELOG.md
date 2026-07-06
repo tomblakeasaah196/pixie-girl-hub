@@ -11,6 +11,35 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-06 — Help Center content: Finance & People modules (PR2 of 3)
+
+**Source:** Help Center completeness pass — same full guide sets (overview +
+task how-tos + FAQ), grounded in shipped routes/services/pages (built-and-wired
+only).
+
+**Files (new):** `000275_shared_help_invoicing.sql`,
+`000276_shared_help_accounting.sql`, `000277_shared_help_expenses.sql`,
+`000278_shared_help_pricing.sql`, `000279_shared_help_cash_requests.sql`,
+`000280_shared_help_my_hr.sql`, `000281_shared_help_hr.sql`,
+`000282_shared_help_payroll.sql`, `000283_shared_help_performance.sql`,
+`000284_shared_help_contacts.sql`, `000285_shared_help_retention.sql`,
+`000286_shared_help_org_workflow.sql`,
+`000287_shared_help_praxis_mirror_pr2.sql`.
+
+**What:** Seeds **54 articles across 12 Finance + People modules** (Invoicing,
+Accounting, Expenses, Pricing, Cash Requests, My HR, HR & Staff, Payroll,
+Performance, Contacts, Retention, Org & Workflow). Accounting populates the
+existing (previously-empty) `finance` category; the rest add their own
+categories. HR cross-links to the existing `attendance` category (000235)
+rather than duplicating it. All inserts idempotent (`ON CONFLICT (slug) DO
+NOTHING`). `000287` re-runs the generic `ai_knowledge_chunks` mirror so the PR2
+articles are grounded for Praxis (the one-time 000274 sweep couldn't see them).
+
+**Count:** No table created or dropped — rows only. Shared (**177**) and
+per-brand table counts are unchanged.
+
+---
+
 ## 2026-07-06 — Help Center content: Run & Operate modules (PR1 of 3)
 
 **Source:** Help Center completeness pass — every module gets a full guide set

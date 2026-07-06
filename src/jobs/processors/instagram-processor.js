@@ -6,9 +6,14 @@
  * losing the message inline.
  *
  * Expected job.data:
- *   { recipient_id, text }                               — free-form (in 24-hr window)
- *   { recipient_id, text, tag: 'HUMAN_AGENT' }           — outside-window
- *   { recipient_id, image_url }                          — image attachment
+ *   { brand, recipient_id, text }                          — free-form (in 24h window)
+ *   { brand, recipient_id, text, tag: 'HUMAN_AGENT' }      — outside-window
+ *   { brand, recipient_id, image_url }                     — image attachment
+ *
+ * `brand` is REQUIRED — every send resolves the per-brand IG token
+ * from shared.messaging_accounts. A job missing brand fails fast
+ * (surfaced to the queue's dead-letter view rather than silently
+ * sending from the wrong account).
  *
  * The processor stamps the provider mid back onto the smartcomm row
  * and flips delivery_status from queued → sent.
@@ -29,16 +34,30 @@ module.exports = async function process(job) {
     );
     return { skipped: true };
   }
-  if (!instagram.isConfigured()) {
-    logger.warn(
+  if (!data.brand) {
+    logger.error(
       { jobId: job.id },
-      "instagram-send: META_IG_ACCESS_TOKEN not set — skipping",
+      "instagram-send: missing 'brand' — every send needs a brand context",
     );
     if (data.smartcomm_message_id) {
       await repo.setMessageDelivery({
         message_id: data.smartcomm_message_id,
         delivery_status: "failed",
-        delivery_error: "INSTAGRAM_NOT_CONFIGURED",
+        delivery_error: "IG_SEND_BRAND_REQUIRED",
+      });
+    }
+    throw new Error("IG_SEND_BRAND_REQUIRED");
+  }
+  if (!(await instagram.isConfigured({ brand: data.brand }))) {
+    logger.warn(
+      { jobId: job.id, brand: data.brand },
+      "instagram-send: brand has no IG config on file — skipping",
+    );
+    if (data.smartcomm_message_id) {
+      await repo.setMessageDelivery({
+        message_id: data.smartcomm_message_id,
+        delivery_status: "failed",
+        delivery_error: "IG_NOT_CONFIGURED",
       });
     }
     return { skipped: true };
@@ -46,11 +65,13 @@ module.exports = async function process(job) {
   try {
     const res = data.image_url
       ? await instagram.sendImage({
+          brand: data.brand,
           recipient_id: data.recipient_id,
           image_url: data.image_url,
           tag: data.tag,
         })
       : await instagram.sendText({
+          brand: data.brand,
           recipient_id: data.recipient_id,
           text: data.text,
           tag: data.tag,
@@ -64,7 +85,7 @@ module.exports = async function process(job) {
       });
     }
     logger.info(
-      { jobId: job.id, recipient: data.recipient_id, mid },
+      { jobId: job.id, brand: data.brand, recipient: data.recipient_id, mid },
       "instagram sent",
     );
     return { mid };

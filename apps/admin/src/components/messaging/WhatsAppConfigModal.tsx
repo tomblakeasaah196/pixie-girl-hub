@@ -871,13 +871,100 @@ function InstagramGuide() {
       <div className="px-4 py-3 border-b hairline flex items-start gap-2">
         <Info className="w-4 h-4 mt-[2px] text-accent-glow" />
         <div>
-          <h4 className="text-[13px] font-medium">Instagram integration</h4>
+          <h4 className="text-[13px] font-medium">
+            How to get your Instagram API keys
+          </h4>
           <p className="text-[11.5px] text-text-faint mt-0.5">
-            Steps coming next — same Meta app, different product. For now save
-            the IG Business Account ID + a Page access token above.
+            Instagram Messenger rides the same Meta app as WhatsApp — you just
+            add the <strong>Instagram</strong> and <strong>Messenger</strong>{" "}
+            products. Your brand's IG account must be a{" "}
+            <em>Business</em> account linked to the Facebook Page that owns it.
           </p>
         </div>
       </div>
+      <ol className="p-4 space-y-3 text-[12.5px] text-text-muted list-decimal ml-5">
+        <li>
+          On the IG mobile app, switch the account to{" "}
+          <strong>Business</strong> and connect it to your brand's Facebook
+          Page — this is the only combination the Graph API accepts. If you
+          already did this, skip.
+        </li>
+        <li>
+          Go to your Meta app at{" "}
+          <a
+            href="https://developers.facebook.com/apps/"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-accent-glow underline underline-offset-2 inline-flex items-center gap-0.5"
+          >
+            developers.facebook.com/apps <ExternalLink className="w-3 h-3" />
+          </a>{" "}
+          → add the <strong>Instagram</strong> and <strong>Messenger</strong>{" "}
+          products. Under Instagram → API Setup, pick the connected IG Business
+          Account and copy the{" "}
+          <span className="font-mono text-accent-glow">
+            Instagram Business Account ID
+          </span>
+          . Paste it into the ID field above.
+        </li>
+        <li>
+          Generate a permanent{" "}
+          <span className="font-mono text-accent-glow">Page Access Token</span>
+          . In{" "}
+          <a
+            href="https://business.facebook.com/settings/system-users"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-accent-glow underline underline-offset-2 inline-flex items-center gap-0.5"
+          >
+            Business Manager → System Users <ExternalLink className="w-3 h-3" />
+          </a>{" "}
+          create a system user, assign the Page owning your IG to it, and
+          generate a token with{" "}
+          <strong>instagram_manage_messages</strong>,{" "}
+          <strong>instagram_manage_comments</strong>, and{" "}
+          <strong>pages_messaging</strong> scopes. Paste it above.
+        </li>
+        <li>
+          In the Meta app's <strong>Settings → Basic</strong>, copy the{" "}
+          <span className="font-mono text-accent-glow">App Secret</span> and
+          paste it above. We use it to verify inbound webhook signatures
+          (HMAC-SHA256, same as WhatsApp).
+        </li>
+        <li>
+          Under <strong>Instagram → Configuration → Webhooks</strong>, set the{" "}
+          <span className="font-mono text-accent-glow">Callback URL</span> to{" "}
+          <span className="font-mono text-text-primary">
+            https://your-domain/api/webhooks/meta/instagram
+          </span>{" "}
+          and set the{" "}
+          <span className="font-mono text-accent-glow">Verify Token</span> to
+          any random string — put the same string in the "Webhook Verify Token"
+          field above.
+        </li>
+        <li>
+          Subscribe the webhook to these fields:{" "}
+          <span className="font-mono">messages</span>,{" "}
+          <span className="font-mono">messaging_seen</span>,{" "}
+          <span className="font-mono">message_reactions</span>. To ingest{" "}
+          <strong>story mentions</strong> and{" "}
+          <strong>replies to your stories</strong>, also subscribe{" "}
+          <span className="font-mono">messaging_postbacks</span> and{" "}
+          <span className="font-mono">messaging_referral</span>. Hit{" "}
+          <em>Verify and save</em>.
+        </li>
+        <li>
+          For replies <strong>outside the 24-hour service window</strong>, your
+          Meta app must be approved for the{" "}
+          <span className="font-mono text-accent-glow">HUMAN_AGENT</span> tag
+          (App Review → Standard Access). Until it's approved, expect a
+          "24-hour window expired" error on late replies.
+        </li>
+        <li>
+          Come back and hit <strong>Test</strong>. A green pill confirms the
+          token authenticates as your IG Business Account against Meta Graph.
+        </li>
+      </ol>
     </div>
   );
 }

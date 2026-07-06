@@ -145,17 +145,53 @@ function parseMetaInstagram(payload) {
     for (const m of entry.messaging || []) {
       const msg = m.message || {};
       if (msg.is_echo) continue;
+      const senderId = m.sender && m.sender.id;
+
+      // Meta signals story mentions + story replies through the
+      // `attachments[]` array on a normal messaging event:
+      //   attachments[0].type === 'story_mention' | 'share'
+      //   attachments[0].payload.url  — the story media URL
+      //   msg.reply_to.story          — the story we're being replied
+      //                                 to (present on reply-to-story)
+      // Route them into the inbox as first-class events so the
+      // operator sees them alongside DMs.
+      const att = Array.isArray(msg.attachments) ? msg.attachments[0] : null;
+      const isStoryMention = att && att.type === "story_mention";
+      const isStoryReply = !!(msg.reply_to && msg.reply_to.story);
+
+      const messageType = isStoryMention
+        ? "ig_story_mention"
+        : isStoryReply
+          ? "ig_story_reply"
+          : "text";
+
+      // Metadata carries the story URL + id so the UI can render a
+      // preview card. The service whitelists card metadata by
+      // message_type so this stays safe.
+      const metadata = {};
+      if (isStoryMention) {
+        metadata.story_url = att.payload && att.payload.url;
+      }
+      if (isStoryReply) {
+        metadata.story_id = msg.reply_to.story.id;
+        metadata.story_url = msg.reply_to.story.url;
+      }
+
       events.push({
         platform: META_IG_PLATFORM,
         external_account_id: externalAccountId,
         external_ref: msg.mid,
-        external_thread_ref: m.sender && m.sender.id, // IGSID = thread
+        external_thread_ref: senderId, // IGSID = thread
         sender: {
-          external_user_id: m.sender && m.sender.id,
+          external_user_id: senderId,
           display_name: null,
         },
-        body: msg.text || "",
-        message_type: msg.text ? "text" : "text",
+        body:
+          msg.text ||
+          (isStoryMention ? "(mentioned you in a story)" : "") ||
+          (isStoryReply ? "(replied to your story)" : ""),
+        message_type: messageType,
+        metadata: Object.keys(metadata).length ? metadata : undefined,
       });
     }
   }
@@ -306,6 +342,15 @@ async function ingestInbound(evt) {
       platform: evt.platform,
       sender: evt.sender,
     });
+    // Merge parser-supplied metadata (story mentions/replies carry
+    // story_url/story_id) with email's subject/in_reply_to bits.
+    let metadata;
+    if (evt.metadata) metadata = { ...evt.metadata };
+    if (evt.subject) {
+      metadata = metadata || {};
+      metadata.subject = evt.subject;
+      metadata.in_reply_to = evt.in_reply_to;
+    }
     await service.recordInboundFromCustomer({
       brand,
       contact_id: contact.contact_id,
@@ -314,9 +359,7 @@ async function ingestInbound(evt) {
       message_type: evt.message_type,
       external_ref: evt.external_ref,
       external_thread_ref: evt.external_thread_ref,
-      metadata: evt.subject
-        ? { subject: evt.subject, in_reply_to: evt.in_reply_to }
-        : undefined,
+      metadata,
     });
   });
 }

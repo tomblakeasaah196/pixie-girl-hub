@@ -89,6 +89,7 @@ async function listChannelsForUser({
       c.assigned_to,
       c.assigned_at,
       c.wa_window_expires_at,
+      c.ig_window_expires_at,
       c.metadata,
       c.is_archived,
       c.last_message_at,

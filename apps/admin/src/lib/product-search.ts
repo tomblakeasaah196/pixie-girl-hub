@@ -17,14 +17,15 @@ import type { Paginated } from "@/lib/catalogue";
 export type ProductKind = "base" | "styled" | "bundle" | "service";
 
 // The ERP-wide sellable kinds the shared ProductPicker offers (orders,
-// quotations, invoices). Services are sold through their own job flow, so
-// they are NOT in this list — the in-chat catalogue picker adds "service"
-// on its own (see CataloguePickerModal). resolvePick() intentionally has no
-// service branch for the same reason.
+// quotations, invoices, Quick Sale). Services are sold as a first-class kind
+// alongside products — the picker returns a hit with kind='service' and
+// resolvePick() lowers it into a service order line (service_offering_id +
+// line_kind='service'). Retained in the in-chat catalogue picker too.
 export const PRODUCT_KINDS: { key: ProductKind; label: string }[] = [
   { key: "base", label: "Base Product" },
   { key: "styled", label: "Styled Product" },
   { key: "bundle", label: "Bundle" },
+  { key: "service", label: "Service" },
 ];
 
 /** A search result the picker renders. `id` is the kind's primary key.
@@ -41,6 +42,9 @@ export interface ProductHit {
 
 /** A concrete, sellable line resolved from a pick — ready for any cart. */
 export interface ResolvedLine {
+  // Empty string when the line is a service (no stock variant); the cart's
+  // sameness check keeps working because "" === "" merges services by
+  // service_offering_id below.
   variant_id: string;
   label: string;
   sku: string;
@@ -49,6 +53,9 @@ export interface ResolvedLine {
   // Set when the pick was a styled product. Sales pricing reads this to stamp
   // line_kind='styled' so Stylist Studio auto-opens a job on order.paid.
   styled_id?: string;
+  // Set when the pick was a service. Sales writes line_kind='service' and skips
+  // stock reservation; the customer pays the service's base price up-front.
+  service_offering_id?: string;
 }
 
 export interface ResolvedPick {
@@ -250,6 +257,23 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
           unit_price: num(sp.retail_price_ngn),
           quantity: 1,
           styled_id: sp.styled_id,
+        },
+      ],
+    };
+  }
+
+  if (hit.kind === "service") {
+    // A service pick is one line — no variant lookup, no stock reservation.
+    // Priced at the service's base_price_ngn (already carried on the hit).
+    return {
+      lines: [
+        {
+          variant_id: "",
+          service_offering_id: hit.id,
+          label: hit.label,
+          sku: "Service",
+          unit_price: num(hit.price ?? 0),
+          quantity: 1,
         },
       ],
     };

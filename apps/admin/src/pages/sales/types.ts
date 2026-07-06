@@ -35,7 +35,9 @@ export type SalesChannel =
   | "public_form"
   | "facebook"
   | "tiktok"
-  | "intercompany";
+  | "intercompany"
+  | "sales_campaign"
+  | "walk_in";
 
 export type FulfilmentType = "walk_in" | "dispatch" | "digital" | "collection";
 

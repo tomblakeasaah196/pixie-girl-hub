@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Package } from "lucide-react";
+import { Package, UserCheck, UserPlus, User } from "lucide-react";
 import {
   Button,
   Pill,
@@ -22,6 +22,7 @@ import {
   useRecipes,
   useRecipe,
   useCreateJob,
+  useAssignableStylists,
 } from "./hooks";
 import {
   JOB_STATUS_META,
@@ -550,6 +551,185 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
   );
 }
 
+// ── Stylist assignment panel ───────────────────────────────
+//
+// Two visual states:
+//   1. Already assigned → show the stylist's name + avatar + a "Change" chip
+//      that reopens the picker (re-assignment is legal but requires the wig
+//      to be returned first — the backend enforces that).
+//   2. Unassigned → show the picker. Selecting a row calls POST /:id/assign,
+//      which sets assigned_staff_user_id and moves the job to 'assigned'; the
+//      DB trigger raises shared.tasks, the service layer sends a push, and
+//      the target-progress subscriber will bump the stylist's monthly count
+//      once the job completes.
+//
+// Nothing here is decorative — the entire HR + tasks + performance chain
+// waits on the assignment happening through the /assign route rather than
+// through a bare status advance.
+function AssignmentPanel({
+  job,
+  jobId,
+}: {
+  job: ServiceJob;
+  jobId: string;
+}) {
+  const [picking, setPicking] = useState(false);
+  const assigned = !!job.assigned_staff_user_id;
+  const showPicker = !assigned || picking;
+
+  return (
+    <div className="border-t border-line pt-4 space-y-2">
+      <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">
+        Assignment
+      </p>
+      {assigned && !picking && (
+        <AssignedRow job={job} onChange={() => setPicking(true)} />
+      )}
+      {showPicker && (
+        <StylistPicker
+          jobId={jobId}
+          currentUserId={job.assigned_staff_user_id}
+          onDone={() => setPicking(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AssignedRow({
+  job,
+  onChange,
+}: {
+  job: ServiceJob;
+  onChange: () => void;
+}) {
+  const { data: stylists = [] } = useAssignableStylists(true);
+  const current = stylists.find(
+    (s) => s.user_id === job.assigned_staff_user_id,
+  );
+  return (
+    <div className="glass p-3 rounded-lg flex items-center gap-3">
+      <div className="w-9 h-9 rounded-full bg-accent/[0.12] grid place-items-center overflow-hidden shrink-0">
+        {current?.avatar_url ? (
+          // eslint-disable-next-line jsx-a11y/img-redundant-alt
+          <img
+            src={current.avatar_url}
+            alt={current.full_name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <UserCheck className="w-4 h-4 text-accent-glow" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold truncate">
+          {current?.full_name ?? "Assigned stylist"}
+        </div>
+        <div className="text-[11px] text-text-muted truncate">
+          {current?.job_title ?? "Stylist"}
+        </div>
+      </div>
+      <Button variant="ghost" size="sm" onClick={onChange}>
+        Change
+      </Button>
+    </div>
+  );
+}
+
+function StylistPicker({
+  jobId,
+  currentUserId,
+  onDone,
+}: {
+  jobId: string;
+  currentUserId: string | null;
+  onDone: () => void;
+}) {
+  const { assign } = useJobActions(jobId);
+  const { data: stylists = [], isLoading } = useAssignableStylists(true);
+
+  if (isLoading) {
+    return (
+      <div className="glass p-3 rounded-lg text-sm text-text-muted">
+        Loading stylists…
+      </div>
+    );
+  }
+  if (stylists.length === 0) {
+    return (
+      <div className="glass p-3 rounded-lg text-sm text-text-muted">
+        No active stylists in this business yet. Add an employee whose title
+        contains &ldquo;Stylist&rdquo; in HR to populate this list.
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass p-2 rounded-lg space-y-1">
+      {stylists.map((s) => {
+        const isCurrent = s.user_id === currentUserId;
+        const disabled = s.on_leave_today || assign.isPending;
+        return (
+          <button
+            key={s.user_id}
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              assign.mutate(s.user_id, {
+                onSuccess: () => onDone(),
+              });
+            }}
+            className={
+              "w-full flex items-center gap-3 px-2.5 py-2 rounded-md text-left transition-colors " +
+              (disabled
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:bg-text-primary/[0.05]") +
+              (isCurrent ? " bg-accent/[0.06]" : "")
+            }
+          >
+            <div className="w-8 h-8 rounded-full bg-accent/[0.1] grid place-items-center overflow-hidden shrink-0">
+              {s.avatar_url ? (
+                <img
+                  src={s.avatar_url}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <User className="w-4 h-4 text-accent-glow" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold truncate flex items-center gap-2">
+                {s.full_name}
+                {isCurrent && <Pill tone="accent">Current</Pill>}
+              </div>
+              <div className="text-[11px] text-text-muted truncate">
+                {s.job_title} · {s.open_jobs_count} open
+                {s.on_leave_today ? " · on leave today" : ""}
+              </div>
+            </div>
+            {!isCurrent && !disabled && (
+              <UserPlus className="w-4 h-4 text-text-muted shrink-0" />
+            )}
+          </button>
+        );
+      })}
+      {assign.isError && (
+        <p className="text-xs text-danger px-2 pt-1">
+          {(assign.error as Error)?.message ?? "Could not assign — try again."}
+        </p>
+      )}
+      {currentUserId && (
+        <div className="pt-1 flex justify-end">
+          <Button variant="ghost" size="sm" onClick={onDone}>
+            Cancel
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Job detail drawer ──────────────────────────────────────
 
 function JobDetailDrawer({
@@ -673,7 +853,7 @@ function JobDetailDrawer({
                   </span>
                 </>
               )}
-              {job.agreed_cost_ngn && (
+              {job.agreed_cost_ngn && !job.sales_order_id && (
                 <>
                   <span className="text-text-muted">Agreed cost</span>
                   <MoneyText ngn={parseFloat(job.agreed_cost_ngn)} />
@@ -693,6 +873,26 @@ function JobDetailDrawer({
               )}
             </div>
 
+            {/* Order-sourced jobs: styling is prepaid via the sale. Show as
+                context, not as an outstanding charge. */}
+            {job.sales_order_id && job.agreed_cost_ngn && (
+              <div className="rounded-[11px] border border-line/60 bg-accent/[0.04] px-3 py-2.5 flex items-center gap-2 text-[12px]">
+                <Package className="w-3.5 h-3.5 text-accent-glow shrink-0" />
+                <span className="text-text-muted">
+                  Styling <span className="text-accent-glow font-semibold">included</span> in{" "}
+                  {job.sales_order_number
+                    ? `Order ${job.sales_order_number}`
+                    : "the source order"}{" "}
+                  · internal labour{" "}
+                  <MoneyText ngn={parseFloat(job.agreed_cost_ngn)} />
+                </span>
+              </div>
+            )}
+
+            {/* Assignment card — the DB task trigger + push + HR target
+                countdown all wait on assigned_staff_user_id being set. */}
+            <AssignmentPanel job={job} jobId={jobId} />
+
             {job.recipe_id && (
               <div>
                 <p className="text-xs text-text-muted mb-1.5 uppercase tracking-wide font-semibold">
@@ -706,46 +906,52 @@ function JobDetailDrawer({
               <IntercompanyPanel job={job} />
             )}
 
-            {nextStates.length > 0 && (
-              <div className="border-t border-line pt-4 space-y-2">
-                <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">
-                  Advance status
-                </p>
-                {nextStates.includes("completed") && (
-                  <input
-                    className="input w-full text-sm"
-                    type="number"
-                    min="0"
-                    placeholder="Actual cost NGN (optional)"
-                    value={costInput}
-                    onChange={(e) => setCostInput(e.target.value)}
-                  />
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {nextStates.map((s) => {
-                    const m = JOB_STATUS_META[s];
-                    return (
-                      <Button
-                        key={s}
-                        variant="secondary"
-                        disabled={actions.advance.isPending}
-                        onClick={() =>
-                          actions.advance.mutate({
-                            status: s,
-                            actual_cost_ngn:
-                              s === "completed" && costInput
-                                ? parseFloat(costInput)
-                                : undefined,
-                          })
-                        }
-                      >
-                        → {m.label}
-                      </Button>
-                    );
-                  })}
+            {(() => {
+              // 'assigned' has its own picker (AssignmentPanel) — hide the raw
+              // advance button so the operator can't skip picking a stylist.
+              const buttons = nextStates.filter((s) => s !== "assigned");
+              if (buttons.length === 0) return null;
+              return (
+                <div className="border-t border-line pt-4 space-y-2">
+                  <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">
+                    Advance status
+                  </p>
+                  {buttons.includes("completed") && (
+                    <input
+                      className="input w-full text-sm"
+                      type="number"
+                      min="0"
+                      placeholder="Actual cost NGN (optional)"
+                      value={costInput}
+                      onChange={(e) => setCostInput(e.target.value)}
+                    />
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {buttons.map((s) => {
+                      const m = JOB_STATUS_META[s];
+                      return (
+                        <Button
+                          key={s}
+                          variant="secondary"
+                          disabled={actions.advance.isPending}
+                          onClick={() =>
+                            actions.advance.mutate({
+                              status: s,
+                              actual_cost_ngn:
+                                s === "completed" && costInput
+                                  ? parseFloat(costInput)
+                                  : undefined,
+                            })
+                          }
+                        >
+                          → {m.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 

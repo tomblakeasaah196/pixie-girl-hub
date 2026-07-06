@@ -19,6 +19,7 @@ import {
   type ProductHit,
 } from "@/lib/product-search";
 import { smartcommApi } from "@/lib/smartcomm-api";
+import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
 import type { ProductCard, Channel } from "@/lib/smartcomm-types";
 
@@ -163,7 +164,7 @@ export function CataloguePickerModal({
           qty: c.qty,
           price_ngn: c.price != null ? String(c.price) : undefined,
         })),
-        sales_channel: channel.external_platform ?? undefined,
+        sales_channel: resolveMessagingSalesChannel(channel.external_platform),
       });
       return r.url;
     } catch {

@@ -106,6 +106,19 @@ export function useCreateJob() {
   });
 }
 
+// Drives the drawer's "Assign to" picker. Kept scoped to brand so a business
+// switch re-fetches; short stale time is fine because the picker opens on
+// user gesture and workload changes only when a job moves.
+export function useAssignableStylists(enabled = true) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["service-jobs-stylists", brand],
+    queryFn: api.listAssignableStylists,
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
 export function useJobActions(jobId: string) {
   const qc = useQueryClient();
   const brand = useBrand();

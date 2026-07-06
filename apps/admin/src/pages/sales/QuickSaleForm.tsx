@@ -22,13 +22,16 @@ import {
 } from "@/components/ui/AddressAutocomplete";
 import { ProductPicker } from "@/components/catalogue/ProductPicker";
 import { resolvePick, type ProductHit } from "@/lib/product-search";
-import { SALES_CHANNELS, FULFILMENT_OPTIONS } from "./constants";
+import {
+  SALES_CHANNELS,
+  SALES_CHANNEL_GROUPS,
+  FULFILMENT_OPTIONS,
+} from "./constants";
 import { useCreateOrder, useOrderPaymentWatch } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { onboardingApi } from "@/lib/smartcomm-api";
 import { useBusinessStore } from "@/stores/business";
 import * as salesApi from "./api";
-import { ServiceQuickAdd, type ServiceOffering } from "./ServiceQuickAdd";
 import { api } from "@/lib/api";
 import type { SalesChannel, FulfilmentType, OrderCreateInput } from "./types";
 
@@ -191,12 +194,15 @@ export function QuickSaleForm() {
       setCart((prev) => {
         const next = [...prev];
         for (const l of lines) {
-          // Merge only when both variant AND styled provenance match — a base
-          // wig and its styled sibling share a variant but are different lines.
-          const i = next.findIndex(
-            (c) =>
-              c.variant_id === l.variant_id &&
-              (c.styled_id || null) === (l.styled_id || null),
+          // Merge on the strongest identity for this kind: service_offering_id
+          // for services (variant_id is "" for every service so it can't be the
+          // key), else variant_id + styled provenance (a base wig and its
+          // styled sibling share a variant but are different lines).
+          const i = next.findIndex((c) =>
+            l.service_offering_id
+              ? c.service_offering_id === l.service_offering_id
+              : c.variant_id === l.variant_id &&
+                (c.styled_id || null) === (l.styled_id || null),
           );
           if (i >= 0)
             next[i] = { ...next[i], quantity: next[i].quantity + l.quantity };
@@ -208,28 +214,6 @@ export function QuickSaleForm() {
       fireToast("Error", "Failed to add product", "order", "high");
     }
   };
-
-  // ── Add a service (walk-in revamp/install) to the cart ──
-  const addService = (s: ServiceOffering) =>
-    setCart((prev) => {
-      const i = prev.findIndex((c) => c.service_offering_id === s.service_id);
-      if (i >= 0)
-        return prev.map((c, j) =>
-          j === i ? { ...c, quantity: c.quantity + 1 } : c,
-        );
-      return [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          variant_id: "",
-          service_offering_id: s.service_id,
-          label: s.name,
-          sku: "Service",
-          unit_price: Number(s.base_price_ngn) || 0,
-          quantity: 1,
-        },
-      ];
-    });
 
   const removeLine = (id: string) =>
     setCart((prev) => prev.filter((l) => l.id !== id));
@@ -335,27 +319,36 @@ export function QuickSaleForm() {
   // ── Render ───────────────────────────────────────────────
   return (
     <div className="max-w-3xl space-y-4">
-      {/* Step 1: Channel */}
+      {/* Step 1: Channel — grouped Digital / Physical per V2.2 §6.4 */}
       <Card className="p-5">
         <div className="micro mb-3">Sales Channel</div>
-        <div className="flex flex-wrap gap-1.5">
-          {SALES_CHANNELS.map((ch) => (
-            <button
-              key={ch.value}
-              type="button"
-              onClick={() => {
-                setChannel(ch.value as SalesChannel);
-                if (step < 2) setStep(2);
-              }}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors",
-                ch.value === channel
-                  ? "border-accent/50 text-accent-glow bg-accent/[0.1]"
-                  : "border-line text-text-muted hover:text-text-primary",
-              )}
-            >
-              {ch.label}
-            </button>
+        <div className="space-y-4">
+          {SALES_CHANNEL_GROUPS.map((group) => (
+            <div key={group.key}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-text-faint mb-2">
+                {group.label}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {group.channels.map((ch) => (
+                  <button
+                    key={ch.value}
+                    type="button"
+                    onClick={() => {
+                      setChannel(ch.value as SalesChannel);
+                      if (step < 2) setStep(2);
+                    }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors",
+                      ch.value === channel
+                        ? "border-accent/50 text-accent-glow bg-accent/[0.1]"
+                        : "border-line text-text-muted hover:text-text-primary",
+                    )}
+                  >
+                    {ch.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </Card>
@@ -488,11 +481,6 @@ export function QuickSaleForm() {
 
           <div className="mb-3">
             <ProductPicker onPick={handlePick} />
-          </div>
-
-          {/* Sell a service beside any retail item (Stylist Studio) */}
-          <div className="mb-4">
-            <ServiceQuickAdd onAdd={addService} />
           </div>
 
           {/* Own-wig check-in — only when a service is being sold */}

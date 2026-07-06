@@ -48,6 +48,8 @@ const orderCreate = z
       "facebook",
       "tiktok",
       "intercompany",
+      "sales_campaign",
+      "walk_in",
     ]),
     order_type: z
       .enum(["walk_in", "dispatch", "digital", "collection"])
@@ -161,6 +163,8 @@ const quotationConvert = z
         "facebook",
         "tiktok",
         "intercompany",
+        "sales_campaign",
+        "walk_in",
       ])
       .optional(),
   })

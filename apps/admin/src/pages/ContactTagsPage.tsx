@@ -142,7 +142,7 @@ function TagRow({ tag, allTags, onDelete, onMergeStart }: TagRowProps) {
               if (e.key === "Escape") handleCancel();
             }}
             maxLength={40}
-            className="flex-1 h-[32px] px-2 rounded-[8px] bg-text-primary/[0.08] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/40 transition-colors"
+            className="flex-1 h-[32px] px-2 rounded-[8px] bg-text-primary/[0.08] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/40 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
 
           {/* Preview */}
@@ -408,7 +408,7 @@ export function ContactTagsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search tags…"
-            className="w-full h-[38px] pl-8 pr-3 rounded-[11px] bg-text-primary/[0.05] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors"
+            className="w-full h-[38px] pl-8 pr-3 rounded-[11px] bg-text-primary/[0.05] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       </div>

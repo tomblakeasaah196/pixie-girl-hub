@@ -87,7 +87,7 @@ function BaseCreate() {
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={inputCls}
+              className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field label="Product code" hint="generated automatically">
@@ -102,14 +102,14 @@ function BaseCreate() {
               <input
                 value={texture}
                 onChange={(e) => setTexture(e.target.value)}
-                className={inputCls}
+                className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </Field>
             <Field label="Lace" hint="optional">
               <input
                 value={lace}
                 onChange={(e) => setLace(e.target.value)}
-                className={inputCls}
+                className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </Field>
           </div>
@@ -300,7 +300,7 @@ function BaseEditor({
                   value={name}
                   disabled={!canEdit}
                   onChange={(e) => setName(e.target.value)}
-                  className={inputCls}
+                  className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
               <div className="grid grid-cols-2 gap-3">
@@ -309,7 +309,7 @@ function BaseEditor({
                     value={texture}
                     disabled={!canEdit}
                     onChange={(e) => setTexture(e.target.value)}
-                    className={inputCls}
+                    className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                 </Field>
                 <Field label="Lace" hint="optional">
@@ -317,7 +317,7 @@ function BaseEditor({
                     value={lace}
                     disabled={!canEdit}
                     onChange={(e) => setLace(e.target.value)}
-                    className={inputCls}
+                    className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                 </Field>
               </div>
@@ -642,14 +642,14 @@ function AddVariantModal({
             <input
               value={sku}
               onChange={(e) => setSku(e.target.value)}
-              className={`${inputCls} font-mono`}
+              className={`${inputCls} font-mono`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field label="Variant name">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={inputCls}
+              className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>

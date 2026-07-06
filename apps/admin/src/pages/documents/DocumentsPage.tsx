@@ -155,7 +155,7 @@ function VaultTab() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search by title or document number…"
-            className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none"
+            className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <div className="w-48">
@@ -839,7 +839,7 @@ function TextInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 ${mono ? "font-mono text-[12px]" : ""}`}
+      className={`w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 ${mono ? "font-mono text-[12px]" : ""}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
     />
   );
 }

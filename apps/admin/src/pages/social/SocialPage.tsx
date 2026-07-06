@@ -899,7 +899,7 @@ function TextInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`w-full bg-transparent px-3 h-[42px] text-[13px] outline-none ${mono ? "font-mono text-[12px]" : ""}`}
+        className={`w-full bg-transparent px-3 h-[42px] text-[13px] outline-none ${mono ? "font-mono text-[12px]" : ""}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
     </div>
   );

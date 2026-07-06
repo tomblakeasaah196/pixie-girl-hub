@@ -232,7 +232,7 @@ function LaceLadderCard({
                   disabled={!canEdit}
                   onChange={(e) => patch(i, { lace_code: e.target.value })}
                   placeholder="13X4"
-                  className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] uppercase outline-none focus:border-accent/50"
+                  className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] uppercase outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
               <Field label="Label">
@@ -241,7 +241,7 @@ function LaceLadderCard({
                   disabled={!canEdit}
                   onChange={(e) => patch(i, { label: e.target.value })}
                   placeholder="13×4 Frontal"
-                  className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                  className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
               <Field label="Premium (₦)">

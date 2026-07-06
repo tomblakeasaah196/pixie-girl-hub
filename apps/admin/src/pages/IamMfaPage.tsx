@@ -236,7 +236,7 @@ export function IamMfaPage() {
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleVerify();
-                }}
+                }} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <button
                 onClick={handleVerify}

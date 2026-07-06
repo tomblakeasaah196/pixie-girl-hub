@@ -432,7 +432,7 @@ function CreateCodeModal({
             placeholder="VVIP-AMARA"
             required
             autoFocus
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[14px] tracking-wide uppercase"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[14px] tracking-wide uppercase" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Discount amount" hint="Flat ₦ taken off the order">
@@ -448,7 +448,7 @@ function CreateCodeModal({
               inputMode="decimal"
               placeholder="20000"
               required
-              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
         </Field>
@@ -457,7 +457,7 @@ function CreateCodeModal({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Amara — loyal client"
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Expires" hint="Optional · leave blank for no expiry">

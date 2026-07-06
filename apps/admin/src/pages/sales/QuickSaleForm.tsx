@@ -392,7 +392,7 @@ export function QuickSaleForm() {
                   placeholder="Search by name, email, or phone…"
                   value={contactSearch}
                   onChange={(e) => handleContactSearch(e.target.value)}
-                  className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                  className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 {contactResults.length > 0 && (
                   <div className="absolute z-40 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] dropglass overflow-hidden py-1 max-h-[240px] overflow-y-auto">
@@ -501,7 +501,7 @@ export function QuickSaleForm() {
                   className="mt-2 w-full rounded-lg border border-line bg-white/5 px-3 py-2 text-sm outline-none focus:border-accent"
                   value={wigCondition}
                   onChange={(e) => setWigCondition(e.target.value)}
-                  placeholder="Condition on arrival (e.g. lace intact, slight shedding)"
+                  placeholder="Condition on arrival (e.g. lace intact, slight shedding)" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               )}
             </div>

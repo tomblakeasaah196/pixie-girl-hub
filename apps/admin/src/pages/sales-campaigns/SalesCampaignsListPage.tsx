@@ -203,7 +203,7 @@ export function SalesCampaignsListPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search name or slug…"
-              className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+              className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           <div className="md:w-[220px]">
@@ -477,7 +477,7 @@ function CreateCampaignModal({
             }}
             placeholder="Black Friday Drop 2026"
             required
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="URL slug" hint={`/sale/${slug || "your-slug"}`}>
@@ -489,7 +489,7 @@ function CreateCampaignModal({
             }}
             placeholder="black-friday-2026"
             required
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px]"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">
@@ -543,7 +543,7 @@ function CreateCampaignModal({
               onChange={(e) => setDiscountValue(e.target.value)}
               disabled={!discountType}
               placeholder={discountType ? "" : "—"}
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-40"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>
@@ -564,7 +564,7 @@ function CreateCampaignModal({
               }
               inputMode="decimal"
               placeholder="1310"
-              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
             <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
               NGN

@@ -101,8 +101,8 @@ export function CouponsTab() {
         }
       >
         <div className="space-y-3.5">
-          <L label="Code"><input value={form.coupon_code ?? ""} onChange={(e) => setForm((f) => ({ ...f, coupon_code: e.target.value.toUpperCase() }))} placeholder="WELCOME10" className={INPUT} /></L>
-          <L label="Name"><input value={form.display_name ?? ""} onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))} className={INPUT} /></L>
+          <L label="Code"><input value={form.coupon_code ?? ""} onChange={(e) => setForm((f) => ({ ...f, coupon_code: e.target.value.toUpperCase() }))} placeholder="WELCOME10" className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" /></L>
+          <L label="Name"><input value={form.display_name ?? ""} onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))} className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" /></L>
           <L label="Discount type">
             <Select
               value={form.discount_type}
@@ -331,9 +331,9 @@ function MaintenanceDrawer({
     >
       <div className="space-y-3.5">
         {isNew && (
-          <L label="Key (no spaces)"><input value={form.plan_key ?? ""} onChange={(e) => set("plan_key", e.target.value)} placeholder="basic_monthly" className={INPUT} /></L>
+          <L label="Key (no spaces)"><input value={form.plan_key ?? ""} onChange={(e) => set("plan_key", e.target.value)} placeholder="basic_monthly" className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" /></L>
         )}
-        <L label="Name"><input value={form.display_name ?? ""} onChange={(e) => set("display_name", e.target.value)} className={INPUT} /></L>
+        <L label="Name"><input value={form.display_name ?? ""} onChange={(e) => set("display_name", e.target.value)} className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" /></L>
         <L label="Billing cycle">
           <Select
             value={form.billing_cycle ?? "monthly"}

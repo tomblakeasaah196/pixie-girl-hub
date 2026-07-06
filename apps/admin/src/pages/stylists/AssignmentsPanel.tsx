@@ -72,13 +72,13 @@ function SuggestDrawer({
             className="input h-9 w-40"
             placeholder="Customer city"
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => setCity(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <input
             className="input h-9 w-20 font-mono uppercase"
             maxLength={3}
             value={country}
-            onChange={(e) => setCountry(e.target.value.toUpperCase())}
+            onChange={(e) => setCountry(e.target.value.toUpperCase())} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
 

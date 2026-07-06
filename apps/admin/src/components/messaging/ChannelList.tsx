@@ -134,7 +134,7 @@ export function ChannelList({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search conversations…"
-            className="w-full pl-8 pr-3 py-2 rounded-xl bg-panel-2 border hairline text-[12.5px] focus:outline-none focus:border-accent/40 placeholder:text-text-faint"
+            className="w-full pl-8 pr-3 py-2 rounded-xl bg-panel-2 border hairline text-[12.5px] focus:outline-none focus:border-accent/40 placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       </div>
@@ -248,12 +248,20 @@ function ChannelRow({
       )}
     >
       <div className="relative shrink-0">
-        <div
-          className="grid place-items-center w-10 h-10 rounded-full text-[12px] font-semibold text-white"
-          style={{ backgroundColor: getAvatarColour(name) }}
-        >
-          {getInitials(name)}
-        </div>
+        {channel.peer_avatar_url ? (
+          <img
+            src={channel.peer_avatar_url}
+            alt=""
+            className="w-10 h-10 rounded-full object-cover"
+          />
+        ) : (
+          <div
+            className="grid place-items-center w-10 h-10 rounded-full text-[12px] font-semibold text-white"
+            style={{ backgroundColor: getAvatarColour(name) }}
+          >
+            {getInitials(name)}
+          </div>
+        )}
         {platform !== "internal" && (
           <span className="absolute -bottom-0.5 -right-0.5">
             <PlatformPill platform={platform} />

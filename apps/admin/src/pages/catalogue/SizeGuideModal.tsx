@@ -188,7 +188,7 @@ export function SizeGuideModal({
                           patch(r.size_code, "_tip", e.target.value)
                         }
                         placeholder="e.g. Average — fits most heads."
-                        className="w-full h-[36px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[12.5px] outline-none focus:border-accent/50"
+                        className="w-full h-[36px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[12.5px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                       />
                     </td>
                   </tr>
@@ -208,7 +208,7 @@ export function SizeGuideModal({
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 mb-3"
+              className="w-full h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 mb-3" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
             <label className="micro block mb-1">
               How-to guide (Markdown · shows on the website · emojis welcome 📏)
@@ -232,7 +232,7 @@ export function SizeGuideModal({
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
               placeholder="https://www.youtube.com/watch?v=…"
-              className="w-full h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 font-mono"
+              className="w-full h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 font-mono" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
             <p className="text-[11px] text-text-faint mt-1.5">
               YouTube share URL, Shorts, or any direct video link. Shown on

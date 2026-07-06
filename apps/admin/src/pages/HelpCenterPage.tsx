@@ -148,7 +148,7 @@ export function HelpCenterPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search guides — e.g. 'WhatsApp', 'costs', 'layaway'…"
-          className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-panel-2 border hairline text-[13.5px] focus:outline-none focus:border-accent/40"
+          className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-panel-2 border hairline text-[13.5px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
 

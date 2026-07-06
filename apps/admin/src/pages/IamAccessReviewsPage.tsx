@@ -293,7 +293,7 @@ function CreateReviewModal({
             className="w-full px-3 py-2 rounded-xl bg-panel border border-border-c text-[13px]"
             placeholder="Q2 2026 Access Review"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => setTitle(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <div>

@@ -109,7 +109,7 @@ function ConversationList({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search conversations"
-            className="w-full h-9 pl-9 pr-3 rounded-xl bg-text-primary/[0.04] border border-line text-[12.5px] outline-none focus:border-accent/45 no-min-h"
+            className="w-full h-9 pl-9 pr-3 rounded-xl bg-text-primary/[0.04] border border-line text-[12.5px] outline-none focus:border-accent/45 no-min-h" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       </div>

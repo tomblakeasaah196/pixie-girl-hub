@@ -525,7 +525,7 @@ function Field({
         className={
           "w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40 disabled:opacity-60 " +
           (mono ? "font-mono" : "")
-        }
+        } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
       {hint && <p className="text-[10.5px] text-text-faint mt-1">{hint}</p>}
     </label>

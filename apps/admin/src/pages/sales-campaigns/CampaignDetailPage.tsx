@@ -562,7 +562,7 @@ function PraxisPanel({ campaignId }: { campaignId: string }) {
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="Which bundle sold most yesterday?"
-            className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <Button
             variant="primary"

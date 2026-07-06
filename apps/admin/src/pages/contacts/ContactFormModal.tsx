@@ -133,7 +133,7 @@ function SocialHandleField({
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          className="flex-1 bg-transparent text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none pr-3"
+          className="flex-1 bg-transparent text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none pr-3" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
     </Field>

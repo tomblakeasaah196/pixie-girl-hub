@@ -247,7 +247,7 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
                   placeholder="e.g. ko"
                   maxLength={5}
                   value={code}
-                  onChange={(e) => setCode(e.target.value.toLowerCase())}
+                  onChange={(e) => setCode(e.target.value.toLowerCase())} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 <p className="text-text-faint text-[11px] mt-1">
                   2-5 lowercase letters (ISO 639-1)
@@ -259,7 +259,7 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
                   className="input w-full"
                   placeholder="e.g. 한국어"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => setName(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 <p className="text-text-faint text-[11px] mt-1">
                   Name in the native language

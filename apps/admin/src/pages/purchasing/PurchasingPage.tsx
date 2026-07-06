@@ -904,7 +904,7 @@ function CreatePoDrawer({
                   value={line.description}
                   onChange={(e) => setLineF(i, "description", e.target.value)}
                   placeholder="Product / item description"
-                  className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                  className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
               <div className="grid grid-cols-3 gap-2">
@@ -914,7 +914,7 @@ function CreatePoDrawer({
                     min="1"
                     value={line.quantity}
                     onChange={(e) => setLineF(i, "quantity", e.target.value)}
-                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
+                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                 </Field>
                 <Field label="Unit Price">
@@ -927,7 +927,7 @@ function CreatePoDrawer({
                       setLineF(i, "unit_price_original", e.target.value)
                     }
                     placeholder="0.00"
-                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
+                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                 </Field>
                 <Field label="Currency">
@@ -1024,7 +1024,7 @@ function CreatePoDrawer({
                         setLineF(i, "hair_color", e.target.value)
                       }
                       placeholder="e.g. Natural Black, #1B"
-                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </Field>
                   <Field label="Length (inches)">
@@ -1035,7 +1035,7 @@ function CreatePoDrawer({
                         setLineF(i, "hair_length", e.target.value)
                       }
                       placeholder='e.g. 18"'
-                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </Field>
                 </div>
@@ -1210,7 +1210,7 @@ function SuppliersTab({ canCreate }: { canCreate: boolean }) {
               onChange={(e) =>
                 setForm((p) => ({ ...p, supplier_name: e.target.value }))
               }
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field label="Country">
@@ -1221,7 +1221,7 @@ function SuppliersTab({ canCreate }: { canCreate: boolean }) {
                 setForm((p) => ({ ...p, country: e.target.value }))
               }
               placeholder="e.g. China, Vietnam"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field label="Email">

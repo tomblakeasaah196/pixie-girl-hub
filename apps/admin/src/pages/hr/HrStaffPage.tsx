@@ -229,7 +229,7 @@ function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void
         </div>
         <input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}
           placeholder="Subject"
-          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         <textarea value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })}
           rows={4} placeholder="Describe what needs explaining…"
           className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
@@ -299,11 +299,11 @@ function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void 
           <input type="number" value={form.target_value}
             onChange={(e) => setForm({ ...form, target_value: Number(e.target.value) })}
             placeholder="Target"
-            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </div>
         <input value={form.metric_label} onChange={(e) => setForm({ ...form, metric_label: e.target.value })}
           placeholder="Label shown to employee"
-          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         <div className="grid grid-cols-2 gap-3">
           <select value={form.reward_type} onChange={(e) => setForm({ ...form, reward_type: e.target.value })}
             className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
@@ -314,7 +314,7 @@ function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void 
           <input type="number" value={form.reward_value}
             onChange={(e) => setForm({ ...form, reward_value: Number(e.target.value) })}
             placeholder="Reward"
-            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </div>
         <p className="text-xs text-text-faint">
           Progress is auto-counted from {form.source === "sales" ? "Sales" : "Operations"} as work
@@ -526,7 +526,7 @@ function SettingsTab() {
             Cash-advance recovery cap (% of net per run)
             <input type="number" min={0} max={100} defaultValue={data.advance_recovery_cap_pct}
               onBlur={(e) => save.mutate({ advance_recovery_cap_pct: Number(e.target.value) })}
-              className="mt-1 w-24 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+              className="mt-1 w-24 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
             <span className="ml-2 text-[11px] text-text-faint">remainder rolls to next month</span>
           </label>
           <label className="block text-xs font-medium text-text-muted">
@@ -560,7 +560,7 @@ function SettingsTab() {
           Leave needing CEO approval (days)
           <input type="number" min={0} max={60} defaultValue={data.leave_escalation_days}
             onBlur={(e) => save.mutate({ leave_escalation_days: Number(e.target.value) })}
-            className="ml-2 w-20 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+            className="ml-2 w-20 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           <span className="ml-2 text-[11px] text-text-faint">0 = HR/managers can approve any length</span>
         </label>
       </Card>
@@ -749,7 +749,7 @@ function DirectoryTab() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search employees by name, role or number…"
-        className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary"
+        className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
       {isLoading ? (
         <Skeleton className="h-40 rounded-[var(--radius)]" />
@@ -801,7 +801,7 @@ function AnalyticsTab() {
         {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
       </select>
       <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))}
-        className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-2 text-xs text-text-primary" />
+        className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-2 text-xs text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
     </div>
   );
   if (isLoading || !data) {

@@ -31,6 +31,8 @@ import {
   Search,
   Users,
   Package,
+  Phone,
+  MessageCircle,
 } from "lucide-react";
 import {
   fmtDayLabel,
@@ -436,6 +438,29 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const displayName = getChannelDisplayName(channel, user?.id);
   const isCustomerThread = channel.channel_type === "customer_thread";
   const isResolved = channel.status === "resolved";
+  // Peer info powers avatar + the call menu. For direct chats it's the
+  // other user; for customer threads it's the customer contact.
+  const peer =
+    channel.channel_type === "direct"
+      ? (channel.members ?? []).find(
+          (m) => m.user_id && m.user_id !== user?.id,
+        )
+      : channel.channel_type === "customer_thread"
+        ? (channel.members ?? []).find((m) => m.contact_id)
+        : undefined;
+  const peerAvatarUrl = peer?.user_avatar_url ?? channel.peer_avatar_url ?? null;
+  const peerPhoneRaw =
+    peer?.primary_phone ??
+    peer?.user_phone ??
+    channel.peer_phone ??
+    null;
+  const peerWhatsAppRaw =
+    peer?.whatsapp_number ??
+    peer?.primary_phone ??
+    peer?.user_phone ??
+    channel.peer_whatsapp_number ??
+    channel.peer_phone ??
+    null;
 
   const typingNames = typingUserIds
     .map(
@@ -486,12 +511,20 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
             <ChevronLeft className="w-4 h-4" />
           </button>
         )}
-        <div
-          className="grid place-items-center w-9 h-9 rounded-full text-[12px] font-semibold text-white shrink-0"
-          style={{ backgroundColor: getAvatarColour(displayName) }}
-        >
-          {getInitials(displayName)}
-        </div>
+        {peerAvatarUrl ? (
+          <img
+            src={peerAvatarUrl}
+            alt=""
+            className="w-9 h-9 rounded-full object-cover shrink-0"
+          />
+        ) : (
+          <div
+            className="grid place-items-center w-9 h-9 rounded-full text-[12px] font-semibold text-white shrink-0"
+            style={{ backgroundColor: getAvatarColour(displayName) }}
+          >
+            {getInitials(displayName)}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 truncate text-[13.5px] font-medium">
             <span className="truncate">{displayName}</span>
@@ -507,6 +540,13 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           </p>
         </div>
 
+        {(peerPhoneRaw || peerWhatsAppRaw) && (
+          <CallMenu
+            phone={peerPhoneRaw}
+            whatsapp={peerWhatsAppRaw}
+            name={displayName}
+          />
+        )}
         <button
           onClick={() => setSearchOpen((v) => !v)}
           title="Search in conversation"
@@ -951,6 +991,96 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
 }
 
 // ── Header dropdown menu ──────────────────────────────────
+
+/** Popover next to the search icon: reach the peer on WhatsApp or the
+ *  phone dialer. Since /calls was cut from scope, this is the parachute:
+ *  we hand off to WhatsApp (wa.me — which opens the chat, not a call) or
+ *  tel: (device dialer). */
+function CallMenu({
+  phone,
+  whatsapp,
+  name,
+}: {
+  phone?: string | null;
+  whatsapp?: string | null;
+  name: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const cleanWa = digitsOnly(whatsapp);
+  const telHref = phone ? `tel:${phone}` : null;
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-text-muted hover:text-text-primary"
+        title={`Reach ${name}`}
+      >
+        <Phone className="w-4 h-4" />
+      </button>
+      {open && (
+        <>
+          <button
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-10"
+          />
+          <div className="absolute right-0 top-full mt-1 z-20 w-56 rounded-xl bg-panel border hairline shadow-xl overflow-hidden text-[12.5px]">
+            {cleanWa ? (
+              <a
+                href={`https://wa.me/${cleanWa}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setOpen(false)}
+                className="flex items-start gap-2 w-full px-3 py-2 hover:bg-panel-2 text-text-primary"
+              >
+                <MessageCircle className="w-3.5 h-3.5 mt-0.5 text-[#25D366] shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block">Message on WhatsApp</span>
+                  <span className="block text-[10.5px] text-text-faint">
+                    wa.me opens the chat — not a call.
+                  </span>
+                </span>
+              </a>
+            ) : (
+              <div className="flex items-start gap-2 px-3 py-2 text-text-faint">
+                <MessageCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span className="flex-1">No WhatsApp number on file</span>
+              </div>
+            )}
+            {telHref ? (
+              <a
+                href={telHref}
+                onClick={() => setOpen(false)}
+                className="flex items-start gap-2 w-full px-3 py-2 hover:bg-panel-2 text-text-primary border-t hairline"
+              >
+                <Phone className="w-3.5 h-3.5 mt-0.5 text-accent-glow shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block">Call {phone}</span>
+                  <span className="block text-[10.5px] text-text-faint">
+                    Opens your device dialer.
+                  </span>
+                </span>
+              </a>
+            ) : (
+              <div className="flex items-start gap-2 px-3 py-2 text-text-faint border-t hairline">
+                <Phone className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span className="flex-1">No phone number on file</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// wa.me expects digits only, no +, spaces, or dashes.
+function digitsOnly(v?: string | null): string | null {
+  if (!v) return null;
+  const d = v.replace(/\D+/g, "");
+  return d.length >= 6 ? d : null;
+}
 
 function ThreadMenu({
   channel,

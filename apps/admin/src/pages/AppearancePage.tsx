@@ -680,7 +680,7 @@ function ColourField({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="flex-1 bg-transparent text-[12.5px] font-mono focus:outline-none"
+          className="flex-1 bg-transparent text-[12.5px] font-mono focus:outline-none" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
     </label>
@@ -859,7 +859,7 @@ function FontUrlField({
         className={cn(
           "w-full bg-text-primary/[0.04] hairline border rounded-[10px] px-3 py-2 text-[12.5px] font-mono focus:outline-none",
           valid ? "focus:border-accent/50" : "border-danger/50",
-        )}
+        )} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
       {!valid && (
         <p className="text-[11px] text-danger mt-1">

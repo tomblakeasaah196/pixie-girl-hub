@@ -86,7 +86,7 @@ export function InsightRow({
                   if (e.key === "Enter")
                     resolve.mutate({ id: insight.insight_id, reason });
                   if (e.key === "Escape") setResolving(false);
-                }}
+                }} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <button
                 onClick={() => resolve.mutate({ id: insight.insight_id, reason })}

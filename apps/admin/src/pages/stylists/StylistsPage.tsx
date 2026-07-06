@@ -186,7 +186,7 @@ function DirectoryPanel({
               className="input !pl-9"
               placeholder="Search name, code or city…"
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => setQ(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           <span className="ml-auto micro">

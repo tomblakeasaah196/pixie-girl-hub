@@ -72,7 +72,7 @@ export function OnboardingSettings({ settings }: { settings: HrSettings }) {
               <input value={it.label}
                 onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
                 placeholder="e.g. Read the staff handbook"
-                className={`flex-1 ${input}`} />
+                className={`flex-1 ${input}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
               <Button size="sm" variant="ghost" icon={<Trash2 className="h-3.5 w-3.5" />}
                 onClick={() => setItems(items.filter((_, j) => j !== i))}>Remove</Button>
             </div>
@@ -90,10 +90,10 @@ export function OnboardingSettings({ settings }: { settings: HrSettings }) {
             <div key={i} className="flex items-center gap-2">
               <input value={l.label}
                 onChange={(e) => setLinks(links.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
-                placeholder="Label" className={`w-40 ${input}`} />
+                placeholder="Label" className={`w-40 ${input}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
               <input value={l.url}
                 onChange={(e) => setLinks(links.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))}
-                placeholder="https://…" className={`flex-1 ${input}`} />
+                placeholder="https://…" className={`flex-1 ${input}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
               <Button size="sm" variant="ghost" icon={<Trash2 className="h-3.5 w-3.5" />}
                 onClick={() => setLinks(links.filter((_, j) => j !== i))}>Remove</Button>
             </div>

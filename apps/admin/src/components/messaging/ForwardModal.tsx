@@ -117,7 +117,7 @@ export function ForwardModal({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search conversations…"
-          className="w-full bg-transparent py-2 text-[12.5px] focus:outline-none placeholder:text-text-faint"
+          className="w-full bg-transparent py-2 text-[12.5px] focus:outline-none placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
 

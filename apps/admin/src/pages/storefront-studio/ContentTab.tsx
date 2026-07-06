@@ -449,7 +449,7 @@ function FaqFields({
           placeholder="How long does delivery take?"
           onChange={(e) =>
             setDraft({ ...draft, faq_question: e.target.value, title: e.target.value })
-          }
+          } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </label>
       <label className="block">
@@ -504,7 +504,7 @@ function ArticleFields({
           placeholder={
             draft.post_type === "policy" ? "Shipping Policy" : "Wash day, done right"
           }
-          onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+          onChange={(e) => setDraft({ ...draft, title: e.target.value })} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </label>
       <label className="block">
@@ -513,7 +513,7 @@ function ArticleFields({
           className={inputCls}
           value={draft.excerpt || ""}
           placeholder="One line shown on cards and in previews."
-          onChange={(e) => setDraft({ ...draft, excerpt: e.target.value })}
+          onChange={(e) => setDraft({ ...draft, excerpt: e.target.value })} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </label>
       <label className="block">

@@ -255,7 +255,7 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by name, role, or department…"
-              className="w-full rounded-xl border border-line bg-text-primary/[0.04] py-2.5 pl-9 pr-3 text-sm text-text-primary outline-none focus-visible:border-accent/50"
+              className="w-full rounded-xl border border-line bg-text-primary/[0.04] py-2.5 pl-9 pr-3 text-sm text-text-primary outline-none focus-visible:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
 
@@ -418,7 +418,7 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
               onChange={(e) => setGroupName(e.target.value)}
               placeholder="e.g. Operations · Faitlyn Hair"
               maxLength={200}
-              className="w-full rounded-xl border border-line bg-text-primary/[0.04] px-3 py-2.5 text-sm text-text-primary outline-none focus-visible:border-accent/50"
+              className="w-full rounded-xl border border-line bg-text-primary/[0.04] px-3 py-2.5 text-sm text-text-primary outline-none focus-visible:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </label>
 

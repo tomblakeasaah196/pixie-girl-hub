@@ -136,7 +136,7 @@ export function LogisticsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search deliveries (number, recipient)…"
-              className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none"
+              className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -707,7 +707,7 @@ function CreateDeliveryDrawer({ onClose }: { onClose: () => void }) {
                   setItems((arr) => arr.map((x, j) => (j === i ? { ...x, quantity: e.target.value.replace(/[^0-9]/g, "") } : x)))
                 }
                 className="w-16 h-[42px] px-2 text-center rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] outline-none focus:border-accent/50 tabular-nums"
-                placeholder="1"
+                placeholder="1" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               {items.length > 1 && (
                 <button
@@ -787,7 +787,7 @@ function Input({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 ${mono ? "font-mono text-[12px]" : ""}`}
+      className={`w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 ${mono ? "font-mono text-[12px]" : ""}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
     />
   );
 }

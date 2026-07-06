@@ -100,7 +100,7 @@ function StyledCreate() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Bardot Bob — Bridal Edit"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field
@@ -422,7 +422,7 @@ function StyledEditor({
                 value={name}
                 disabled={!canEdit}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 disabled:opacity-60"
+                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 disabled:opacity-60" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </Field>
             <Field label="Short description" hint="storefront teaser">

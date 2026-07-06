@@ -276,7 +276,7 @@ export function CataloguePickerModal({
               ? "Find a service (revamp, install, repair…)"
               : "Find a product (min 2 chars)…"
           }
-          className="w-full bg-transparent py-2 text-[12.5px] focus:outline-none placeholder:text-text-faint"
+          className="w-full bg-transparent py-2 text-[12.5px] focus:outline-none placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         {loading && (
           <Loader2 className="w-3.5 h-3.5 animate-spin text-text-faint" />

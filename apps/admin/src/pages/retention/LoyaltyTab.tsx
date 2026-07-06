@@ -204,15 +204,15 @@ function TierDrawer({
     >
       <div className="space-y-3.5">
         {isNew && (
-          <L label="Key (no spaces)"><input value={form.tier_key ?? ""} onChange={(e) => set("tier_key", e.target.value)} placeholder="gold" className={INPUT} /></L>
+          <L label="Key (no spaces)"><input value={form.tier_key ?? ""} onChange={(e) => set("tier_key", e.target.value)} placeholder="gold" className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" /></L>
         )}
-        <L label="Name"><input value={form.tier_name ?? ""} onChange={(e) => set("tier_name", e.target.value)} className={INPUT} /></L>
+        <L label="Name"><input value={form.tier_name ?? ""} onChange={(e) => set("tier_name", e.target.value)} className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" /></L>
         <div className="grid grid-cols-2 gap-3">
           <L label="Min lifetime points"><NumberField value={String(form.min_lifetime_points ?? "")} onChange={(v) => set("min_lifetime_points", Number(v) as LoyaltyTier["min_lifetime_points"])} allowDecimal={false} /></L>
           <L label="Max (blank = top)"><NumberField value={form.max_lifetime_points != null ? String(form.max_lifetime_points) : ""} onChange={(v) => set("max_lifetime_points", (v ? Number(v) : null) as LoyaltyTier["max_lifetime_points"])} allowDecimal={false} /></L>
         </div>
         <L label="Earning multiplier"><NumberField value={String(form.earning_multiplier ?? "")} onChange={(v) => set("earning_multiplier", Number(v) as LoyaltyTier["earning_multiplier"])} /></L>
-        <L label="Colour (hex)"><input value={form.colour ?? ""} onChange={(e) => set("colour", e.target.value)} placeholder="#690909" className={INPUT} /></L>
+        <L label="Colour (hex)"><input value={form.colour ?? ""} onChange={(e) => set("colour", e.target.value)} placeholder="#690909" className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" /></L>
         <Toggle checked={form.is_active ?? true} onChange={(v) => set("is_active", v)} label="Active" />
       </div>
     </Drawer>
@@ -265,12 +265,12 @@ function EarnRuleDrawer({
               value={form.rule_key ?? ""}
               onChange={(e) => set("rule_key", e.target.value)}
               placeholder="review_points"
-              className={INPUT}
+              className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </L>
         )}
         <L label="Name">
-          <input value={form.display_name ?? ""} onChange={(e) => set("display_name", e.target.value)} className={INPUT} />
+          <input value={form.display_name ?? ""} onChange={(e) => set("display_name", e.target.value)} className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </L>
         <L label="Earn action">
           <Select

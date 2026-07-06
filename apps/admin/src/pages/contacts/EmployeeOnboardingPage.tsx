@@ -134,7 +134,6 @@ export function EmployeeOnboardingPage() {
 
   // ── Employment ──────────────────────────────────────────
   const [business, setBusiness] = useState(activeKey);
-  const [employeeNumber, setEmployeeNumber] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [department, setDepartment] = useState("");
   const [employmentType, setEmploymentType] = useState("full_time");
@@ -195,7 +194,6 @@ export function EmployeeOnboardingPage() {
     }
     if (step === 1) {
       if (!business) return "Pick a primary business.";
-      if (!employeeNumber.trim()) return "Employee number is required.";
       if (!jobTitle.trim()) return "Job title is required.";
       if (!startDate) return "Start date is required.";
     }
@@ -240,7 +238,6 @@ export function EmployeeOnboardingPage() {
       // 2. Create the HR employee profile (incl. work schedule).
       const profile = await api.post<StaffProfileResult>("/hr/employees", {
         contact_id: contactId,
-        employee_number: employeeNumber.trim(),
         job_title: jobTitle.trim(),
         employment_type: employmentType,
         start_date: startDate,
@@ -407,13 +404,6 @@ export function EmployeeOnboardingPage() {
                       value: b.key,
                       label: b.name,
                     }))}
-                  />
-                </Field>
-                <Field label="Employee number *">
-                  <TextInput
-                    value={employeeNumber}
-                    onChange={(e) => setEmployeeNumber(e.target.value)}
-                    placeholder="e.g. PXG-0007"
                   />
                 </Field>
                 <Field label="Job title *">

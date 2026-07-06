@@ -35,7 +35,6 @@ const SALE_CHANNELS = [
 
 const staffCreateSchema = z.object({
   contact_id: uuid,
-  employee_number: z.string().min(1).max(40),
   job_title: z.string().min(1).max(120),
   employment_type: z.enum(["full_time", "part_time", "contract", "intern"]),
   start_date: dateStr,
@@ -79,7 +78,7 @@ const staffCreateSchema = z.object({
   work_grace_minutes: z.number().int().min(0).max(240).optional(),
 });
 const staffUpdateSchema = staffCreateSchema
-  .omit({ contact_id: true, employee_number: true })
+  .omit({ contact_id: true })
   .partial()
   .refine((o) => Object.keys(o).length > 0, "No fields to update");
 

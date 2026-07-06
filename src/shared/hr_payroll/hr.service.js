@@ -18,6 +18,7 @@ const events = require("./hr.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, ConflictError } = require("../../utils/errors");
+const numbering = require("../../services/numbering.service");
 
 const canSee = (user) => Boolean(user && user.is_ceo);
 
@@ -36,7 +37,14 @@ async function getStaff({ brand, user, id }) {
 
 async function createStaff({ brand, user, request_id, input }) {
   return transaction(async (client) => {
-    const created = await hrRepo.create({ client, brand, input });
+    const employee_number = await numbering.nextNumber(client, brand, "employee", {
+      suffix: "EMP",
+    });
+    const created = await hrRepo.create({
+      client,
+      brand,
+      input: { ...input, employee_number },
+    });
     await audit({
       business: brand,
       user_id: user.user_id,

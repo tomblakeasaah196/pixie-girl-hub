@@ -91,7 +91,9 @@ BEGIN
     ('{{BUSINESS}}', 'tax_filing',                    v_prefix || '-TAX',  4, 1),
     ('{{BUSINESS}}', 'supplier',                      v_prefix || '-SUP',  4, 1),
     -- Generic registry for every uploaded/generated file routed through the Documents module (6.13)
-    ('{{BUSINESS}}', 'document',                      v_prefix || '-DOC',  6, 1)
+    ('{{BUSINESS}}', 'document',                      v_prefix || '-DOC',  6, 1),
+    -- System-generated, chronological employee number assigned at onboarding
+    ('{{BUSINESS}}', 'employee',                      v_prefix || '-EMP',  4, 1)
   ON CONFLICT (business, document_type) DO NOTHING;
 END;
 $$;

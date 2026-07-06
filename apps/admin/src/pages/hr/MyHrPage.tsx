@@ -56,6 +56,7 @@ import {
   errMsg,
   statusTone,
 } from "./hr-shared";
+import { OnboardingCard } from "./OnboardingCard";
 
 function TargetCountdown({ t }: { t: PerformanceTarget }) {
   const done = t.status === "achieved";
@@ -304,6 +305,9 @@ export default function MyHrPage() {
         </div>
       ) : (
         <>
+          {/* Getting started (onboarding pack — always available) */}
+          <OnboardingCard onboarding={data.onboarding} contracts={data.contracts} />
+
           {/* Earnings tracker hero */}
           {data.earnings.tracker_enabled && (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -29,6 +29,7 @@ router.get("/me/today", c.getMyToday);
 router.post("/me/clock", v.clock, c.selfClock);
 router.post("/me/leave", v.leaveRequest, c.requestLeave);
 router.post("/me/queries/:id/respond", v.queryRespond, c.respondToQuery);
+router.post("/me/onboarding", v.onboardingToggle, c.toggleOnboardingItem);
 
 // ── Overview + analytics + reconcile ───────────────────────
 router.get("/overview", P("view"), c.getOverview);

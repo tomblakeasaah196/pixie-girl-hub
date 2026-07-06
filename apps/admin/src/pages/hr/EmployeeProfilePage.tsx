@@ -163,6 +163,10 @@ export default function EmployeeProfilePage() {
         <StatCard label="Tenure (days)" value={ins.tenure_days ?? "—"} />
         <StatCard label="Quality" value={ins.quality_score != null ? ins.quality_score.toFixed(1) : "—"}
           tone="accent" />
+        {data.onboarding && data.onboarding.total > 0 && (
+          <StatCard label="Onboarding" value={`${data.onboarding.done}/${data.onboarding.total}`}
+            tone={data.onboarding.done >= data.onboarding.total ? "success" : "warn"} />
+        )}
       </div>
 
       {/* Earliest / latest — the boss's ask */}

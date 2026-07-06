@@ -78,8 +78,9 @@ const signByToken = async (req, res) =>
     data: await service.signByToken({
       token: req.params.token,
       ...reqMeta(req),
-      captured_signature_path: req.body?.captured_signature_path,
-      signature_image_byte_size: req.body?.signature_image_byte_size,
+      signature_data_url: req.body?.signature_data_url,
+      pin: req.body?.pin,
+      save_signature: req.body?.save_signature,
     }),
   });
 const declineByToken = async (req, res) =>
@@ -89,6 +90,38 @@ const declineByToken = async (req, res) =>
       ...reqMeta(req),
       reason: req.body?.reason,
     }),
+  });
+
+// Token-scoped document preview — streams the PDF the signer is being asked
+// to sign. The unguessable token is the authorisation.
+const previewDocument = async (req, res) => {
+  const doc = await service.documentForToken({ token: req.params.token });
+  res.setHeader("Content-Type", doc.mime_type || "application/octet-stream");
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="${(doc.filename || "document").replace(/["\\]/g, "")}"`,
+  );
+  res.setHeader("Cache-Control", "private, no-store");
+  res.send(doc.buffer);
+};
+
+// Token-scoped download of the signed document (original + signature
+// certificate). 409 while the signed copy is still being prepared.
+const signedDocument = async (req, res) => {
+  const doc = await service.signedDocumentForToken({ token: req.params.token });
+  res.setHeader("Content-Type", doc.mime_type || "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${(doc.filename || "signed-document.pdf").replace(/["\\]/g, "")}"`,
+  );
+  res.setHeader("Cache-Control", "private, no-store");
+  res.send(doc.buffer);
+};
+
+// Public verification by short code — proves a signature is genuine + intact.
+const verifyByCode = async (req, res) =>
+  res.json({
+    data: await service.verifyByCode({ code: req.params.code }),
   });
 
 module.exports = {
@@ -102,4 +135,7 @@ module.exports = {
   viewByToken,
   signByToken,
   declineByToken,
+  previewDocument,
+  signedDocument,
+  verifyByCode,
 };

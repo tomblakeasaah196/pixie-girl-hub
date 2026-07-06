@@ -99,6 +99,11 @@ const settingsUpdateSchema = z
       .array(z.object({ key: z.string().max(60), label: z.string().max(200) }))
       .max(50)
       .optional(),
+    onboarding_links: z
+      .array(z.object({ label: z.string().max(120), url: z.string().max(500) }))
+      .max(30)
+      .optional(),
+    onboarding_welcome: z.string().max(2000).nullable().optional(),
     contract_template_doc_id: uuid.nullable().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, "No fields to update");
@@ -114,6 +119,11 @@ const reconcileSchema = z.object({
 const reconcilePeriodSchema = z.object({
   from: dateStr,
   to: dateStr,
+});
+
+const onboardingToggleSchema = z.object({
+  item_key: z.string().min(1).max(60),
+  completed: z.boolean().optional(),
 });
 
 const contractGenerateSchema = z.object({
@@ -152,6 +162,7 @@ module.exports = {
   payoutPin: make(payoutPinSchema),
   reconcile: make(reconcileSchema),
   reconcilePeriod: make(reconcilePeriodSchema),
+  onboardingToggle: make(onboardingToggleSchema),
   clock: make(clockSchema),
   contractGenerate: make(contractGenerateSchema),
 };

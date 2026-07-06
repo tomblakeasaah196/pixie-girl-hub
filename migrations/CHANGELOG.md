@@ -11,6 +11,34 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-05 — Signer page: PIN-protected signature on file
+
+**Source:** HR system audit follow-up — the public signer page (`/sign/:token`)
+the e-signature backend was missing a frontend for.
+
+**Files:** `000260_shared_esign_signer_pin.sql` (new).
+
+**What:** Adds `shared.signer_signatures` — a reusable "signature on file"
+protected by an argon2 PIN and keyed by the signer's email (works for staff,
+contacts, and external signers). The model: anyone can sign, but to *store* a
+signature (so it isn't re-drawn on every future document) you set a PIN; later
+documents only need the PIN and the saved signature is applied. Also adds
+`signature_request_signers.signature_data_url` (the drawn signature captured
+inline as a base64 PNG) and `.verification_code` (a short, human-verifiable code
+derived from the tamper-evident `audit_hash`, printed on the document and
+resolvable on the public verify page). The `signer_signed_consistency` CHECK is
+relaxed to accept an inline data-URL signature as proof (the original required a
+media `captured_signature_path`).
+
+**Count:** `scripts/verify-schema.js` shared count 175 → **177**: +1 for
+`signer_signatures` (this migration) and +1 correcting `staff_onboarding_progress`
+(000259), whose table was added without a matching count bump. (The AI-insight
+frequency migration below is a duplicate `000259` number — established precedent
+for pairs touching unrelated tables — and is column-only, so it doesn't affect
+the count.)
+
+---
+
 ## 2026-07-05 — AI Insights: honour the per-module frequency cadence
 
 **Source:** Praxis Insights follow-up (V2.2 §6.31) — make the AI Control
@@ -32,10 +60,9 @@ still scans every enabled module immediately.
 work" when a lone module was enabled and nothing surfaced. Honouring the
 cadence makes the spend control real and the behaviour predictable.
 
-**Verify:** Column add only — no new table, so `scripts/verify-schema.js`
-shared count is unchanged (**175**). NULL `last_swept_at` = never swept = due
-on the next tick, so enabled modules keep scanning after deploy with no
-backfill.
+**Verify:** Column add only — no new table, so it doesn't change the shared
+table count. NULL `last_swept_at` = never swept = due on the next tick, so
+enabled modules keep scanning after deploy with no backfill.
 
 ---
 
@@ -72,6 +99,21 @@ answer insights questions from this content. Idempotent (`ON CONFLICT (slug)
 DO NOTHING`).
 
 ---
+
+## 2026-07-05 — HR onboarding pack
+
+**Source:** Meeting transcript §3.7 + HR coverage audit (deferred item A), PR-A.
+
+**Files:** `000259_shared_hr_onboarding.sql` (new, shared).
+
+**What / why:** `shared.staff_onboarding_progress` (per-employee completion of
+each brand onboarding-checklist item, unique-keyed on `(profile_id,
+item_key)`), plus `hr_settings.onboarding_links` (JSONB — HR-maintained handy
+links) and `hr_settings.onboarding_welcome` (welcome note). Surfaces the
+existing `onboarding_checklist` as a ticked, per-employee "Getting started"
+card on My HR (always available), with SOP articles (Help Center tag
+`onboarding`), the employee's own documents, and contracts + signature status.
+Idempotent.
 
 ## 2026-07-05 — HR rewards engine
 

@@ -56,6 +56,7 @@ import {
   type HrSettings,
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
+import { OnboardingSettings } from "./OnboardingSettings";
 import { RewardsTab } from "./RewardsTab";
 import {
   StatCard,
@@ -563,6 +564,8 @@ function SettingsTab() {
           <span className="ml-2 text-[11px] text-text-faint">0 = HR/managers can approve any length</span>
         </label>
       </Card>
+
+      <OnboardingSettings settings={data} />
     </div>
   );
 }

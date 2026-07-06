@@ -23,19 +23,19 @@ function IngredientRow({
           className="input col-span-2"
           placeholder="Chemical name *"
           value={ing.chemical_name}
-          onChange={(e) => onChange({ chemical_name: e.target.value })}
+          onChange={(e) => onChange({ chemical_name: e.target.value })} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         <input
           className="input"
           placeholder="Brand"
           value={ing.brand ?? ""}
-          onChange={(e) => onChange({ brand: e.target.value || undefined })}
+          onChange={(e) => onChange({ brand: e.target.value || undefined })} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         <input
           className="input"
           placeholder="Role (e.g. developer)"
           value={ing.role ?? ""}
-          onChange={(e) => onChange({ role: e.target.value || undefined })}
+          onChange={(e) => onChange({ role: e.target.value || undefined })} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         <input
           className="input"
@@ -48,7 +48,7 @@ function IngredientRow({
             onChange({
               qty_ml: e.target.value ? parseFloat(e.target.value) : undefined,
             })
-          }
+          } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         <input
           className="input"
@@ -61,7 +61,7 @@ function IngredientRow({
             onChange({
               qty_g: e.target.value ? parseFloat(e.target.value) : undefined,
             })
-          }
+          } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
       <button
@@ -136,7 +136,7 @@ function RecipeForm({
             value={form.recipe_key}
             onChange={(e) =>
               setForm((f) => ({ ...f, recipe_key: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <div>
@@ -147,7 +147,7 @@ function RecipeForm({
             value={form.display_name}
             onChange={(e) =>
               setForm((f) => ({ ...f, display_name: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       </div>
@@ -160,7 +160,7 @@ function RecipeForm({
           value={form.target_shade}
           onChange={(e) =>
             setForm((f) => ({ ...f, target_shade: e.target.value }))
-          }
+          } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
 

@@ -61,7 +61,7 @@ export function ThreadSearch({
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && onClose()}
           placeholder="Search in this conversation…"
-          className="w-full bg-transparent py-1 text-[13px] focus:outline-none placeholder:text-text-faint"
+          className="w-full bg-transparent py-1 text-[13px] focus:outline-none placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         {loading && (
           <Loader2 className="w-3.5 h-3.5 animate-spin text-text-faint" />

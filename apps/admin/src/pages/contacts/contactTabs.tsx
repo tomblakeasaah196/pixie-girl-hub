@@ -159,7 +159,7 @@ export function TasksTab({ contactId }: { contactId: string; contactName?: strin
           placeholder="Add a task…"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && title.trim() && add.mutate()}
+          onKeyDown={(e) => e.key === "Enter" && title.trim() && add.mutate()} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         <input
           type="date"

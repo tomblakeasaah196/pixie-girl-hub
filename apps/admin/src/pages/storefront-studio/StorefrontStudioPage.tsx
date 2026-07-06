@@ -208,7 +208,7 @@ function TextField({
         className={inputCls}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
     </label>
   );
@@ -295,7 +295,7 @@ function ColorField({
         <input
           className={cn(inputCls, "font-mono uppercase")}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
     </label>
@@ -438,7 +438,7 @@ function ImageField({
             className={inputCls}
             value={value}
             placeholder="...or paste an image URL"
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => onChange(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           {err ? <p className="text-[11px] text-danger">{err}</p> : null}
         </div>
@@ -1592,7 +1592,7 @@ function StringListField({
               value={it}
               onChange={(e) =>
                 onChange(items.map((x, j) => (j === i ? e.target.value : x)))
-              }
+              } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
             <Button
               variant="ghost"
@@ -1746,7 +1746,7 @@ function SlotsEditor({
             className={inputCls}
             value={newKey}
             placeholder="e.g. heading"
-            onChange={(e) => setNewKey(e.target.value)}
+            onChange={(e) => setNewKey(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </label>
         <Button
@@ -1954,7 +1954,7 @@ function PopupsTab() {
                       ...sel,
                       trigger_value: parseInt(e.target.value, 10) || 0,
                     })
-                  }
+                  } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </label>
             </div>

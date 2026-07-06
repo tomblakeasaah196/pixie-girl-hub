@@ -169,7 +169,7 @@ export function LoginEditorPage() {
             value={cfg.hero?.eyebrow ?? ""}
             onChange={(e) =>
               patch({ hero: { ...cfg.hero, eyebrow: e.target.value } })
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Headline">
@@ -178,7 +178,7 @@ export function LoginEditorPage() {
             value={cfg.hero?.headline ?? ""}
             onChange={(e) =>
               patch({ hero: { ...cfg.hero, headline: e.target.value } })
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Subline">
@@ -196,7 +196,7 @@ export function LoginEditorPage() {
             value={cfg.hero?.cta_label ?? ""}
             onChange={(e) =>
               patch({ hero: { ...cfg.hero, cta_label: e.target.value } })
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
       </Card>
@@ -312,7 +312,7 @@ export function LoginEditorPage() {
                     const next = [...cfg.quotes!];
                     next[i] = { ...q, text: e.target.value };
                     patch({ quotes: next });
-                  }}
+                  }} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 <input
                   className={cn(input, "max-w-[280px]")}
@@ -322,7 +322,7 @@ export function LoginEditorPage() {
                     const next = [...cfg.quotes!];
                     next[i] = { ...q, author: e.target.value };
                     patch({ quotes: next });
-                  }}
+                  }} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </div>
               <button
@@ -391,7 +391,7 @@ export function LoginEditorPage() {
                     const next = [...cfg.standards!];
                     next[i] = { ...s, title: e.target.value };
                     patch({ standards: next });
-                  }}
+                  }} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 <input
                   className={input}
@@ -401,7 +401,7 @@ export function LoginEditorPage() {
                     const next = [...cfg.standards!];
                     next[i] = { ...s, body: e.target.value };
                     patch({ standards: next });
-                  }}
+                  }} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </div>
               <button
@@ -448,7 +448,7 @@ export function LoginEditorPage() {
                           [code]: { ...rm, welcome: e.target.value },
                         },
                       })
-                    }
+                    } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                   <input
                     className={input}
@@ -461,7 +461,7 @@ export function LoginEditorPage() {
                           [code]: { ...rm, note: e.target.value },
                         },
                       })
-                    }
+                    } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                 </div>
               </div>

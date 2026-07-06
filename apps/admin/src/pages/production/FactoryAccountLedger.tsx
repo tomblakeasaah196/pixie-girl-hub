@@ -445,7 +445,7 @@ function AddEntryDrawer({
             value={form.paid_by}
             onChange={(e) => setField("paid_by", e.target.value)}
             placeholder={t("paidByPlaceholder")}
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 
@@ -455,7 +455,7 @@ function AddEntryDrawer({
             value={form.description}
             onChange={(e) => setField("description", e.target.value)}
             placeholder={t("descriptionPlaceholder")}
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
       </div>

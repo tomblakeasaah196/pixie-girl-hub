@@ -45,6 +45,8 @@ export interface ChannelMember {
   notification_pref?: "all" | "mentions_only" | "none";
   // Joined columns
   user_display_name?: string | null;
+  user_avatar_url?: string | null;
+  user_phone?: string | null;
   contact_display_name?: string | null;
   primary_phone?: string | null;
   whatsapp_number?: string | null;
@@ -80,6 +82,17 @@ export interface Channel {
   muted_until?: string | null;
   my_role?: ParticipantRole | null;
   members?: ChannelMember[] | null;
+  /** Counterpart on this row: the other user for direct chats, the
+   *  customer for customer_thread chats. Sent by the list endpoint so
+   *  the inbox can render the correct name/avatar without a second
+   *  round trip. Absent for group channels. */
+  peer_display_name?: string | null;
+  peer_avatar_url?: string | null;
+  peer_phone?: string | null;
+  peer_whatsapp_number?: string | null;
+  peer_email?: string | null;
+  peer_user_id?: string | null;
+  peer_contact_id?: string | null;
 }
 
 export interface MessageReaction {

@@ -197,7 +197,7 @@ export function TagPicker({ contactId }: Props) {
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       placeholder="Search or create tag…"
-                      className="w-full h-[32px] px-3 rounded-[8px] bg-text-primary/[0.06] border border-line text-[12px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors"
+                      className="w-full h-[32px] px-3 rounded-[8px] bg-text-primary/[0.06] border border-line text-[12px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </div>
 
@@ -263,7 +263,7 @@ export function TagPicker({ contactId }: Props) {
                     onKeyDown={(e) => e.key === "Enter" && handleCreateNew()}
                     placeholder="Tag name"
                     maxLength={40}
-                    className="w-full h-[34px] px-3 rounded-[9px] bg-text-primary/[0.06] border border-line text-[12px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors mb-3"
+                    className="w-full h-[34px] px-3 rounded-[9px] bg-text-primary/[0.06] border border-line text-[12px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors mb-3" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
 
                   {/* Colour swatches */}

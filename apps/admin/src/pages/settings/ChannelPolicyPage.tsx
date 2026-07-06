@@ -463,7 +463,7 @@ function CostProjector({ policies }: { policies: OutboundPolicy[] }) {
                       [p.event_key]: Math.max(0, Number(e.target.value) || 0),
                     }))
                   }
-                  className="w-20 rounded-md bg-panel-2 border hairline px-2 py-1 text-[12px] text-right focus:outline-none focus:border-accent/40"
+                  className="w-20 rounded-md bg-panel-2 border hairline px-2 py-1 text-[12px] text-right focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 <span className="w-24 text-right font-mono text-text-primary">
                   ₦{(vol * rate).toLocaleString()}

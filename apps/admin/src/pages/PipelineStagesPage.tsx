@@ -60,7 +60,7 @@ function ColorInput({
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 bg-transparent text-[12.5px] font-mono outline-none min-w-0"
+        className="flex-1 bg-transparent text-[12.5px] font-mono outline-none min-w-0" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
     </div>
   );

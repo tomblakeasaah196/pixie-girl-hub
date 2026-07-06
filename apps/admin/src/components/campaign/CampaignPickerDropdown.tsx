@@ -137,7 +137,7 @@ export function CampaignPickerDropdown({
               placeholder="Search campaigns…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              className="w-full h-9 px-3 mb-2 rounded-[9px] bg-text-primary/[0.06] border border-line text-[13px] text-text-primary outline-none focus:border-accent/50 shrink-0"
+              className="w-full h-9 px-3 mb-2 rounded-[9px] bg-text-primary/[0.06] border border-line text-[13px] text-text-primary outline-none focus:border-accent/50 shrink-0" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
 
             {campaigns.isLoading ? (

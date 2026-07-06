@@ -125,7 +125,7 @@ export function ImageUpload({
               value={value ?? ""}
               placeholder="…or paste an image URL"
               onChange={(e) => onChange(e.target.value || null)}
-              className="w-full bg-text-primary/[0.04] hairline border rounded-[9px] pl-8 pr-2 py-1.5 text-[12px] focus:outline-none focus:border-accent/50"
+              className="w-full bg-text-primary/[0.04] hairline border rounded-[9px] pl-8 pr-2 py-1.5 text-[12px] focus:outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           <UploadProgress value={progress} />

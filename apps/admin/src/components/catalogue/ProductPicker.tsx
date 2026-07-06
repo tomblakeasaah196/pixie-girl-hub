@@ -128,7 +128,7 @@ export function ProductPicker({
           placeholder={
             kind ? `Search ${KIND_NOUN[kind]}…` : "Pick a product type first…"
           }
-          className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         {open && kind && q.trim().length >= 2 && (
           <div className="absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] dropglass overflow-hidden py-1 max-h-[260px] overflow-y-auto">

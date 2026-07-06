@@ -229,7 +229,7 @@ export function GooglePlacesAutocomplete({
                     : "Start typing your address…"
                 }
                 required={required}
-                className="w-full pl-9 pr-9 py-2 rounded-xl bg-panel-2 border hairline text-[13.5px] focus:outline-none focus:border-accent/40"
+                className="w-full pl-9 pr-9 py-2 rounded-xl bg-panel-2 border hairline text-[13.5px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               {status === "loading" && (
                 <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-text-faint" />

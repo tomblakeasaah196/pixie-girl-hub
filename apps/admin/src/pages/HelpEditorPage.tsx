@@ -338,7 +338,7 @@ function ArticleModal({
               setTitle(e.target.value);
               if (!isEdit && !slugTouched) setSlug(slugify(e.target.value));
             }}
-            placeholder="e.g. Taking a Quick Sale"
+            placeholder="e.g. Taking a Quick Sale" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 
@@ -351,7 +351,7 @@ function ArticleModal({
                 setSlugTouched(true);
                 setSlug(slugify(e.target.value));
               }}
-              placeholder="taking-a-quick-sale"
+              placeholder="taking-a-quick-sale" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         )}
@@ -404,7 +404,7 @@ function ArticleModal({
               type="number"
               className={inputCls}
               value={sortOrder}
-              onChange={(e) => setSortOrder(Number(e.target.value) || 0)}
+              onChange={(e) => setSortOrder(Number(e.target.value) || 0)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>
@@ -414,7 +414,7 @@ function ArticleModal({
             className={inputCls}
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
-            placeholder="A short, plain-English summary."
+            placeholder="A short, plain-English summary." autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 
@@ -436,7 +436,7 @@ function ArticleModal({
             className={inputCls}
             value={tags}
             onChange={(e) => setTags(e.target.value)}
-            placeholder="sales, quick-sale, receipt"
+            placeholder="sales, quick-sale, receipt" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 

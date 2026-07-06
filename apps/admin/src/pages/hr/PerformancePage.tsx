@@ -120,7 +120,7 @@ function CreateCycleModal({ open, onClose }: { open: boolean; onClose: () => voi
       <div className="space-y-3">
         <input value={form.cycle_name} onChange={(e) => setForm({ ...form, cycle_name: e.target.value })}
           placeholder="Cycle name"
-          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         <select value={form.cycle_type} onChange={(e) => setForm({ ...form, cycle_type: e.target.value })}
           className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
           {["monthly", "quarterly", "semi_annual", "annual", "ad_hoc"].map((t) => (
@@ -209,7 +209,7 @@ function ScoreStaffModal({ open, onClose }: { open: boolean; onClose: () => void
                 value={scores[k.kpi_id] ?? ""}
                 placeholder={`${k.min_score}–${k.max_score}`}
                 onChange={(e) => setScores({ ...scores, [k.kpi_id]: Number(e.target.value) })}
-                className="w-24 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+                className="w-24 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
             </div>
           ))}
           {!(kpis || []).length && (
@@ -382,7 +382,7 @@ function ScoresModal({
                       <div className="mt-2 flex items-center gap-2">
                         <input type="number" step="0.1" value={editVal}
                           onChange={(e) => setEditVal(e.target.value)}
-                          className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" />
+                          className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
                         <Button size="sm" variant="primary" disabled={calib.isPending || editVal === ""}
                           onClick={() => calib.mutate({ score_id: sc.score_id, raw_score: Number(editVal) })}>
                           Save
@@ -606,19 +606,19 @@ function KpiEditorModal({ kpi, onClose }: { kpi: KpiDef | null; onClose: () => v
       }>
       <div className="space-y-3">
         <input value={form.display_name} placeholder="KPI name (e.g. Punctuality)"
-          onChange={(e) => setForm({ ...form, display_name: e.target.value })} className={inputCls} />
+          onChange={(e) => setForm({ ...form, display_name: e.target.value })} className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         <div className="grid grid-cols-3 gap-3">
           <label className="text-xs text-text-muted">Weight %
             <input type="number" min={0} max={100} value={form.weight_pct}
-              onChange={(e) => setForm({ ...form, weight_pct: e.target.value })} className={inputCls} />
+              onChange={(e) => setForm({ ...form, weight_pct: e.target.value })} className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           </label>
           <label className="text-xs text-text-muted">Min
             <input type="number" value={form.min_score}
-              onChange={(e) => setForm({ ...form, min_score: e.target.value })} className={inputCls} />
+              onChange={(e) => setForm({ ...form, min_score: e.target.value })} className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           </label>
           <label className="text-xs text-text-muted">Max
             <input type="number" value={form.max_score}
-              onChange={(e) => setForm({ ...form, max_score: e.target.value })} className={inputCls} />
+              onChange={(e) => setForm({ ...form, max_score: e.target.value })} className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           </label>
         </div>
         <label className="block text-xs text-text-muted">Score source
@@ -644,11 +644,11 @@ function KpiEditorModal({ kpi, onClose }: { kpi: KpiDef | null; onClose: () => v
                 <span className="text-xs text-text-muted">≥</span>
                 <input type="number" value={b.gte} placeholder="%"
                   onChange={(e) => setBands(bands.map((x, j) => (j === i ? { ...x, gte: e.target.value } : x)))}
-                  className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" />
+                  className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
                 <span className="text-xs text-text-muted">→ score</span>
                 <input type="number" step="0.1" value={b.score}
                   onChange={(e) => setBands(bands.map((x, j) => (j === i ? { ...x, score: e.target.value } : x)))}
-                  className="w-16 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" />
+                  className="w-16 rounded-lg border border-line bg-text-primary/[0.04] p-1.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
                 <button className="text-text-faint hover:text-danger" onClick={() => setBands(bands.filter((_, j) => j !== i))}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

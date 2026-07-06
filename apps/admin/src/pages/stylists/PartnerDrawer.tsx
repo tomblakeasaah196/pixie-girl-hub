@@ -290,7 +290,7 @@ export function PartnerDrawer({
                       className="input h-9 w-32 font-mono"
                       placeholder="install"
                       value={newSpec.service_key}
-                      onChange={(e) => setNewSpec((f) => ({ ...f, service_key: e.target.value }))}
+                      onChange={(e) => setNewSpec((f) => ({ ...f, service_key: e.target.value }))} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </div>
                   <div>
@@ -299,7 +299,7 @@ export function PartnerDrawer({
                       className="input h-9 w-40"
                       placeholder="Wig Install"
                       value={newSpec.display_name}
-                      onChange={(e) => setNewSpec((f) => ({ ...f, display_name: e.target.value }))}
+                      onChange={(e) => setNewSpec((f) => ({ ...f, display_name: e.target.value }))} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </div>
                   <div>

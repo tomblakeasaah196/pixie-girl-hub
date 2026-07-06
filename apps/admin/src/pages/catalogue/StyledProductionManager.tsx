@@ -180,7 +180,7 @@ export function StyledProductionManager({
                 disabled={!canEdit}
                 value={turnaround}
                 onChange={(e) => setTurnaround(e.target.value)}
-                placeholder="e.g. 5"
+                placeholder="e.g. 5" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </label>
           </div>
@@ -202,7 +202,7 @@ export function StyledProductionManager({
                     next[i] = e.target.value;
                     setSteps(next);
                   }}
-                  placeholder="Describe this step…"
+                  placeholder="Describe this step…" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 {canEdit && (
                   <button
@@ -270,7 +270,7 @@ export function StyledProductionManager({
                       addMaterial.mutate(newMaterial.trim());
                     }
                   }}
-                  placeholder="Add a chemical (e.g. Toner 6.1) and press Enter"
+                  placeholder="Add a chemical (e.g. Toner 6.1) and press Enter" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 <Button
                   size="sm"

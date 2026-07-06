@@ -140,10 +140,10 @@ function RewardDrawer({
       <div className="space-y-3.5">
         {isNew && (
           <L label="Key (no spaces)">
-            <input value={form.reward_key ?? ""} onChange={(e) => set("reward_key", e.target.value)} placeholder="discount_2000" className={INPUT} />
+            <input value={form.reward_key ?? ""} onChange={(e) => set("reward_key", e.target.value)} placeholder="discount_2000" className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           </L>
         )}
-        <L label="Name"><input value={form.display_name ?? ""} onChange={(e) => set("display_name", e.target.value)} className={INPUT} /></L>
+        <L label="Name"><input value={form.display_name ?? ""} onChange={(e) => set("display_name", e.target.value)} className={INPUT} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" /></L>
         <L label="Type">
           <Select
             value={form.reward_type ?? "order_discount"}

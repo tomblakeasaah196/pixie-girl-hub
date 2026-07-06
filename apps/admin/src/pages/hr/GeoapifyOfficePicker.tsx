@@ -230,7 +230,7 @@ export function GeoapifyOfficePicker({ lat, lng, radius, address, onChange }: Pr
           step="0.0000001"
           value={lat}
           onChange={(e) => onChange({ lat: Number(e.target.value) })}
-          className="mt-1 w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 font-mono text-sm text-text-primary"
+          className="mt-1 w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 font-mono text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </label>
       <label className="block text-[11px] font-medium text-text-muted">
@@ -240,7 +240,7 @@ export function GeoapifyOfficePicker({ lat, lng, radius, address, onChange }: Pr
           step="0.0000001"
           value={lng}
           onChange={(e) => onChange({ lng: Number(e.target.value) })}
-          className="mt-1 w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 font-mono text-sm text-text-primary"
+          className="mt-1 w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 font-mono text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </label>
     </div>
@@ -292,7 +292,7 @@ export function GeoapifyOfficePicker({ lat, lng, radius, address, onChange }: Pr
             }
           }}
           placeholder="Search the office address (e.g. 15 Adeola Odeku, Victoria Island)…"
-          className="w-full rounded-xl border border-line bg-text-primary/[0.04] py-2.5 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-faint focus:border-accent/50 focus:outline-none"
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] py-2.5 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-faint focus:border-accent/50 focus:outline-none" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         {open && results.length > 0 && (
           <ul className="dropglass absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-line py-1 shadow-glass">

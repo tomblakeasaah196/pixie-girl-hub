@@ -154,7 +154,7 @@ export function PendingActionCard({
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     placeholder="Why reject? (optional)"
-                    className="w-full h-9 px-3 rounded-xl bg-black/25 border border-line text-[13px] outline-none focus:border-accent/50"
+                    className="w-full h-9 px-3 rounded-xl bg-black/25 border border-line text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                   <div className="flex gap-2">
                     <Button

@@ -335,7 +335,7 @@ export default function TaskDetailPanel({
                   onKeyDown={handleAddKeyDown}
                   placeholder="Subtask title..."
                   className="flex-1 bg-transparent border-b border-line text-[13px] text-text-primary placeholder:text-text-faint py-1.5 outline-none focus:border-accent-glow transition-colors"
-                  disabled={addSubtask.isPending}
+                  disabled={addSubtask.isPending} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </div>
             )}

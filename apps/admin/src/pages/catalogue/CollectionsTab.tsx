@@ -290,14 +290,14 @@ function CollectionEditorModal({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Description" hint="optional">
           <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 
@@ -422,14 +422,14 @@ function CreateCollectionModal({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Description" hint="optional">
           <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         {create.isError && (

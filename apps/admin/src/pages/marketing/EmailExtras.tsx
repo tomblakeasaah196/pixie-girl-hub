@@ -511,7 +511,7 @@ function BlockFields({ block, onChange }: { block: EmailBlock; onChange: (p: Par
           onChange={(e) => onChange({ height: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
           inputMode="numeric"
           className="w-28 rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[40px] text-[13px] outline-none focus:border-accent/50 tabular-nums"
-          placeholder="Height px"
+          placeholder="Height px" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       )}
       {t === "footer" && (
@@ -778,7 +778,7 @@ function SegmentCreate({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setMinSpend(digits(e.target.value))}
                 placeholder="0"
                 inputMode="numeric"
-                className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 tabular-nums"
+                className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </Field>
           </div>
@@ -788,7 +788,7 @@ function SegmentCreate({ onClose }: { onClose: () => void }) {
               onChange={(e) => setBirthdayDays(digits(e.target.value))}
               placeholder="e.g. 7"
               inputMode="numeric"
-              className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 tabular-nums"
+              className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>
@@ -957,7 +957,7 @@ export function CampaignSaleSection({ campaign }: { campaign: EmailCampaign }) {
                 onChange={(e) => setDiscount(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
                 inputMode="numeric"
                 placeholder="30"
-                className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 tabular-nums"
+                className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </Field>
             <Field label="Ends at">
@@ -1080,7 +1080,7 @@ export function CampaignVariantsSection({ campaign }: { campaign: EmailCampaign 
                 value={alloc}
                 onChange={(e) => setAlloc(e.target.value.replace(/[^0-9]/g, ""))}
                 placeholder="Allocation %"
-                className="w-28 h-[38px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[13px] outline-none focus:border-accent/50 tabular-nums"
+                className="w-28 h-[38px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[13px] outline-none focus:border-accent/50 tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <span className="text-[12px] text-text-faint">% of audience</span>
               <div className="flex-1" />
@@ -1135,7 +1135,7 @@ function Input({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50"
+      className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
     />
   );
 }

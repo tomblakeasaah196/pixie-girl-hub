@@ -98,12 +98,17 @@ export function getChannelDisplayName(
   selfUserId?: string,
 ): string {
   if (channel.name) return channel.name;
+  // The list endpoint already resolves the counterpart (peer_*) so the
+  // inbox row shows a real name even without the full member payload.
+  if (channel.peer_display_name) return channel.peer_display_name;
   if (channel.channel_type === "customer_thread") {
     const customer = (channel.members ?? []).find((m) => m.contact_id);
     return (
       customer?.contact_display_name ||
       customer?.primary_phone ||
       customer?.email ||
+      channel.peer_phone ||
+      channel.peer_email ||
       "Customer"
     );
   }

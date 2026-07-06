@@ -364,7 +364,7 @@ function CreateRunModal({ open, onClose }: { open: boolean; onClose: () => void 
         </label>
         <label className="text-xs text-text-muted">Year
           <input type="number" value={form.pay_year} onChange={(e) => setForm({ ...form, pay_year: Number(e.target.value) })}
-            className="mt-1 w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+            className="mt-1 w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </label>
         <label className="text-xs text-text-muted">Period start
           <input type="date" value={form.period_start} onChange={(e) => setForm({ ...form, period_start: e.target.value })}

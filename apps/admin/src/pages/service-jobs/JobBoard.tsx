@@ -317,7 +317,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             value={form.chemical_name}
             onChange={(e) =>
               setForm((f) => ({ ...f, chemical_name: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <input
             className="input"
@@ -325,13 +325,13 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             value={form.chemical_brand}
             onChange={(e) =>
               setForm((f) => ({ ...f, chemical_brand: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <input
             className="input"
             placeholder="Notes"
             value={form.notes}
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <input
             className="input"
@@ -342,7 +342,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             value={form.qty_used}
             onChange={(e) =>
               setForm((f) => ({ ...f, qty_used: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <Select
             value={form.unit}
@@ -357,7 +357,7 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             value={form.cost_ngn}
             onChange={(e) =>
               setForm((f) => ({ ...f, cost_ngn: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <Button
@@ -529,7 +529,7 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
               className="input flex-1 text-sm font-mono"
               placeholder="Intercompany transaction ID"
               value={icId}
-              onChange={(e) => setIcId(e.target.value)}
+              onChange={(e) => setIcId(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
             <Button
               size="sm"
@@ -923,7 +923,7 @@ function JobDetailDrawer({
                       min="0"
                       placeholder="Actual cost NGN (optional)"
                       value={costInput}
-                      onChange={(e) => setCostInput(e.target.value)}
+                      onChange={(e) => setCostInput(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   )}
                   <div className="flex flex-wrap gap-2">
@@ -1022,7 +1022,7 @@ function CreateJobDrawer({
             value={form.hair_description}
             onChange={(e) =>
               setForm((f) => ({ ...f, hair_description: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
 
@@ -1081,7 +1081,7 @@ function CreateJobDrawer({
             value={form.agreed_cost_ngn}
             onChange={(e) =>
               setForm((f) => ({ ...f, agreed_cost_ngn: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
 

@@ -226,7 +226,7 @@ export function ShippingRatesTab() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search zones…"
-            className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none"
+            className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -483,7 +483,7 @@ function RateQuoteDrawer({ onClose }: { onClose: () => void }) {
             min={1}
             value={qty}
             onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ""))}
-            className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] font-mono outline-none focus:border-accent/50"
+            className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] font-mono outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 
@@ -893,7 +893,7 @@ function ZInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 ${mono ? "font-mono text-[12px]" : ""}`}
+      className={`w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 ${mono ? "font-mono text-[12px]" : ""}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
     />
   );
 }

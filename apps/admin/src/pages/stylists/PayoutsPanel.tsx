@@ -273,7 +273,7 @@ function PayoutDrawer({
               className="input w-full font-mono"
               placeholder="Transfer reference (e.g. TRF-…)"
               value={transferCode}
-              onChange={(e) => setTransferCode(e.target.value)}
+              onChange={(e) => setTransferCode(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
         }

@@ -196,7 +196,7 @@ export function StrategyBuilderPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Win back quiet customers"
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50"
+                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </Field>
             <Field label="Trigger">
@@ -251,7 +251,7 @@ export function StrategyBuilderPage() {
                           value={r.value}
                           onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}
                           placeholder="value"
-                          className="w-28 h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                          className="w-28 h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                         />
                       )}
                       <button
@@ -424,7 +424,7 @@ function StepEditor({
             value={cfg.subject ?? ""}
             onChange={(e) => setCfg("subject", e.target.value)}
             placeholder="Email subject — use {{first_name}}, {{brand_name}}"
-            className="w-full h-[40px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            className="w-full h-[40px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <textarea
             value={cfg.html ?? ""}
@@ -443,14 +443,14 @@ function StepEditor({
           value={cfg.tag ?? ""}
           onChange={(e) => setCfg("tag", e.target.value)}
           placeholder="Tag to apply (e.g. vip)"
-          className="w-full h-[40px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+          className="w-full h-[40px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       ) : (
         <input
           value={cfg.title ?? ""}
           onChange={(e) => setCfg("title", e.target.value)}
           placeholder="Title / note"
-          className="w-full h-[40px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+          className="w-full h-[40px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       )}
     </div>

@@ -902,7 +902,7 @@ function ContactPicker({
             setQ(e.target.value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => setOpen(true)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
       {open && q.trim().length >= 2 && results.length > 0 && (

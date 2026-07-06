@@ -94,7 +94,7 @@ function ServiceTypeDrawer({
               onChange={(e) =>
                 setForm((f) => ({ ...f, service_key: e.target.value }))
               }
-              disabled={!!initial}
+              disabled={!!initial} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           <div>
@@ -105,7 +105,7 @@ function ServiceTypeDrawer({
               value={form.display_name}
               onChange={(e) =>
                 setForm((f) => ({ ...f, display_name: e.target.value }))
-              }
+              } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
         </div>
@@ -131,7 +131,7 @@ function ServiceTypeDrawer({
               value={form.standard_cost_ngn}
               onChange={(e) =>
                 setForm((f) => ({ ...f, standard_cost_ngn: e.target.value }))
-              }
+              } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           <div>
@@ -146,7 +146,7 @@ function ServiceTypeDrawer({
                   ...f,
                   standard_turnaround_days: e.target.value,
                 }))
-              }
+              } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
         </div>
@@ -159,7 +159,7 @@ function ServiceTypeDrawer({
             value={form.display_order}
             onChange={(e) =>
               setForm((f) => ({ ...f, display_order: e.target.value }))
-            }
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
 
@@ -355,7 +355,7 @@ function ReconciliationTab() {
             className="input text-sm w-56"
             placeholder="Fiscal period ID"
             value={periodId}
-            onChange={(e) => setPeriodId(e.target.value)}
+            onChange={(e) => setPeriodId(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <Button
             variant="secondary"

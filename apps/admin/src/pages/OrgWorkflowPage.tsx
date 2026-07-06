@@ -171,7 +171,7 @@ function UnitForm({
                   .replace(/[^a-z0-9_]/g, ""),
               );
           }}
-          placeholder="e.g. Marketing"
+          placeholder="e.g. Marketing" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
       <div>
@@ -180,7 +180,7 @@ function UnitForm({
           className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] font-mono focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
           value={unitKey || autoKey}
           onChange={(e) => setUnitKey(e.target.value)}
-          placeholder="marketing"
+          placeholder="marketing" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
       <div>
@@ -293,7 +293,7 @@ function PositionForm({
                   .replace(/[^a-z0-9_]/g, ""),
               );
           }}
-          placeholder="e.g. Head of Finance"
+          placeholder="e.g. Head of Finance" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
       <div>
@@ -302,7 +302,7 @@ function PositionForm({
           className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] font-mono focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
           value={posKey || autoKey}
           onChange={(e) => setPosKey(e.target.value)}
-          placeholder="head_of_finance"
+          placeholder="head_of_finance" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
       <div>
@@ -351,7 +351,7 @@ function PositionForm({
             className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl pl-7 pr-3.5 py-2.5 text-[13px] font-mono focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
             value={threshold}
             onChange={(e) => setThreshold(e.target.value)}
-            placeholder="e.g. 200000"
+            placeholder="e.g. 200000" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       </div>
@@ -1126,7 +1126,7 @@ function RoleEditorDrawer({
                                     "view",
                                     e.target.value,
                                   )
-                                }
+                                } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                               />
                             </div>
                           </div>
@@ -1183,7 +1183,7 @@ function NewRoleDrawer({
             className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] font-mono focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
             value={roleName}
             onChange={(e) => setRoleName(e.target.value)}
-            placeholder="sales_manager"
+            placeholder="sales_manager" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <div>
@@ -1518,7 +1518,7 @@ function StageEditor({
           onChange={(e) =>
             onChange({ ...stage, name: e.target.value || undefined })
           }
-          placeholder="e.g. Manager approval"
+          placeholder="e.g. Manager approval" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
 
@@ -1555,7 +1555,7 @@ function StageEditor({
                     : app.type === "position"
                       ? "e.g. head_of_finance"
                       : "user_id"
-                }
+                } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <button
                 onClick={() => removeApprover(i)}
@@ -1614,7 +1614,7 @@ function StageEditor({
                       threshold_ngn_lte:
                         parseFloat(e.target.value) || undefined,
                     })
-                  }
+                  } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </div>
             )}
@@ -1634,7 +1634,7 @@ function StageEditor({
                       threshold_field: "total_ngn",
                       threshold_ngn_gt: parseFloat(e.target.value) || undefined,
                     })
-                  }
+                  } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </div>
             )}
@@ -1658,7 +1658,7 @@ function StageEditor({
                 timeout_hours: parseInt(e.target.value) || undefined,
               })
             }
-            placeholder="48"
+            placeholder="48" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <div>
@@ -1825,7 +1825,7 @@ function WorkflowBuilderDrawer({
               className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Expense approval"
+              placeholder="e.g. Expense approval" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           <div>
@@ -1863,7 +1863,7 @@ function WorkflowBuilderDrawer({
               className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="When does this trigger?"
+              placeholder="When does this trigger?" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
         </div>

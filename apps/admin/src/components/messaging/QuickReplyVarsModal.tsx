@@ -71,7 +71,7 @@ export function QuickReplyVarsModal({
                 setValues((prev) => ({ ...prev, [v]: e.target.value }))
               }
               placeholder={`{{${v}}}`}
-              className="w-full rounded-lg border hairline bg-panel-2 px-2.5 py-2 text-[13px] focus:outline-none placeholder:text-text-faint"
+              className="w-full rounded-lg border hairline bg-panel-2 px-2.5 py-2 text-[13px] focus:outline-none placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
         ))}

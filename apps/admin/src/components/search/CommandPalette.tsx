@@ -398,7 +398,7 @@ export function CommandPalette() {
                         ? "Jump to a page…"
                         : "Search anything — records, actions, help…"
             }
-            className="flex-1 bg-transparent border-0 outline-none text-base text-text-primary min-w-0"
+            className="flex-1 bg-transparent border-0 outline-none text-base text-text-primary min-w-0" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           {canCrossBrand && (
             <button

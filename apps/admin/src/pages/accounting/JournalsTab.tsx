@@ -256,7 +256,7 @@ function ManualJournalDrawer({ opening, onClose }: { opening: boolean; onClose: 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[12px] font-semibold text-text-muted mb-1.5">Description</label>
-            <input className={inputCls} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <input className={inputCls} value={description} onChange={(e) => setDescription(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           </div>
           <div>
             <label className="block text-[12px] font-semibold text-text-muted mb-1.5">Posting date</label>
@@ -278,7 +278,7 @@ function ManualJournalDrawer({ opening, onClose }: { opening: boolean; onClose: 
                 inputMode="decimal"
                 placeholder="0.00"
                 value={l.amount}
-                onChange={(e) => setLine(i, { amount: e.target.value.replace(/[^\d.]/g, "") })}
+                onChange={(e) => setLine(i, { amount: e.target.value.replace(/[^\d.]/g, "") })} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <button
                 className="text-text-faint hover:text-danger disabled:opacity-30"

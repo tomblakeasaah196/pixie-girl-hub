@@ -87,10 +87,17 @@ export function PaletteEmpty({
     setLoading(true);
     fetchSuggestions()
       .then((s) => {
-        if (!cancelled) setSuggested(s);
+        if (cancelled) return;
+        // Never trust an unexpected shape — the api client's unwrap contract
+        // has bitten us before (crashed the whole app on open). Coerce every
+        // bucket to a real array here.
+        setSuggested({
+          orders: Array.isArray(s?.orders) ? s.orders : [],
+          contacts: Array.isArray(s?.contacts) ? s.contacts : [],
+          invoices: Array.isArray(s?.invoices) ? s.invoices : [],
+        });
       })
       .catch(() => {
-        // Non-fatal: the palette still works without server suggestions.
         if (!cancelled) setSuggested({ orders: [], contacts: [], invoices: [] });
       })
       .finally(() => {

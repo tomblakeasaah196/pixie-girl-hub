@@ -22,11 +22,12 @@ interface Props {
   compact?: boolean;
 }
 
-type Tab = "all" | "unread" | "groups" | "wa" | "ig" | "email";
+type Tab = "all" | "unread" | "inhouse" | "groups" | "wa" | "ig" | "email";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
+  { key: "inhouse", label: "In-house" },
   { key: "groups", label: "Groups" },
   { key: "wa", label: "WhatsApp" },
   { key: "ig", label: "Instagram" },
@@ -38,6 +39,8 @@ function paramsForTab(tab: Tab): {
   platform?: "internal" | ExternalPlatform;
 } {
   switch (tab) {
+    case "inhouse":
+      return { platform: "internal" };
     case "groups":
       return { channel_type: "group" };
     case "wa":
@@ -138,8 +141,23 @@ export function ChannelList({
             ))}
           </div>
         ) : channels.length === 0 ? (
-          <div className="py-12 text-center text-[12.5px] text-text-faint">
-            {tab === "unread" ? "All caught up 🎉" : "No conversations yet"}
+          <div className="py-12 px-4 text-center text-[12.5px] text-text-faint space-y-3">
+            <p>
+              {tab === "unread"
+                ? "All caught up."
+                : tab === "inhouse"
+                  ? "No in-house chats yet."
+                  : "No conversations yet"}
+            </p>
+            {tab === "inhouse" && onNewChannel && (
+              <button
+                onClick={onNewChannel}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/[0.08] px-3 py-1.5 text-[11.5px] font-medium text-accent-glow hover:bg-accent/[0.14]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Message a colleague
+              </button>
+            )}
           </div>
         ) : (
           <div className="px-2 pb-3 space-y-px">

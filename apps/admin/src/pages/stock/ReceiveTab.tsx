@@ -18,6 +18,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/stores/auth";
 import { BaseProductPicker } from "@/pages/catalogue/BaseProductPicker";
+import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import {
   useInboundShipments,
   useInboundShipment,
@@ -856,13 +857,12 @@ export default function ReceiveTab() {
                   <div>
                     {idx === 0 && (
                       <span className="text-[10px] text-text-faint uppercase">
-                        Variant ID
+                        Product / Variant
                       </span>
                     )}
-                    <TextInput
+                    <VariantPicker
                       value={line.variant_id}
-                      onChange={(v) => updateLine(line.id, "variant_id", v)}
-                      placeholder="variant UUID"
+                      onChange={(id) => updateLine(line.id, "variant_id", id)}
                     />
                   </div>
                   <div>

@@ -4,6 +4,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/primitives";
 import { ErrorState, Select, NumberField } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
+import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import { useAuthStore } from "@/stores/auth";
 import {
   useStockMovements,
@@ -170,12 +171,10 @@ function LogMovementModal({
           />
         </div>
         <div>
-          <FieldLabel>Variant ID</FieldLabel>
-          <TextInput
+          <FieldLabel>Product</FieldLabel>
+          <VariantPicker
             value={variantId}
-            onChange={setVariantId}
-            placeholder="UUID of the variant"
-            required
+            onChange={(id) => setVariantId(id)}
           />
         </div>
         <div>

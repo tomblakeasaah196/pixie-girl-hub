@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
+import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import { useAuthStore } from "@/stores/auth";
 import {
   useStockTransfers,
@@ -212,13 +213,12 @@ function CreateTransferDrawer({
                 <div className="flex-1">
                   {idx === 0 && (
                     <span className="block text-[11px] text-text-faint mb-1">
-                      Variant ID
+                      Product / Variant
                     </span>
                   )}
-                  <TextInput
+                  <VariantPicker
                     value={line.variant_id}
-                    onChange={(v) => updateLine(idx, { variant_id: v })}
-                    placeholder="UUID"
+                    onChange={(id) => updateLine(idx, { variant_id: id })}
                   />
                 </div>
                 <div className="w-[100px]">

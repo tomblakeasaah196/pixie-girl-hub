@@ -282,7 +282,16 @@ async function testAccount({ id }) {
           422,
         );
       }
-      const url = `https://graph.facebook.com/${v}/${encodeURIComponent(row.external_account_id)}?fields=id,name`;
+      // Field sets differ per Graph node type: the WhatsApp phone-number
+      // node has no `name` field (asking for it 400s with error #100 —
+      // "nonexistent field"), it exposes `verified_name` instead. The IG
+      // business-account node uses `username`.
+      const FIELDS = {
+        whatsapp: "id,verified_name,display_phone_number",
+        instagram: "id,username",
+        facebook: "id,name",
+      };
+      const url = `https://graph.facebook.com/${v}/${encodeURIComponent(row.external_account_id)}?fields=${FIELDS[row.platform]}`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 15000,
@@ -291,7 +300,8 @@ async function testAccount({ id }) {
         ok: true,
         platform: row.platform,
         provider_id: data && data.id,
-        provider_name: data && data.name,
+        provider_name:
+          (data && (data.verified_name || data.username || data.name)) || null,
       };
     }
     if (row.platform === "email") {

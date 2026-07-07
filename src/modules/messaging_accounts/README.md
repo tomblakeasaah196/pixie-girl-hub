@@ -50,5 +50,7 @@ the ciphertext never leaves the backend.
 
 `/:id/test` calls the provider with the saved token to verify config:
 
-- WhatsApp/Instagram/Facebook → Meta Graph `GET /{external_account_id}?fields=id,name`
+- WhatsApp → Meta Graph `GET /{phone_number_id}?fields=id,verified_name,display_phone_number`
+- Instagram → Meta Graph `GET /{ig_business_id}?fields=id,username`
+- Facebook → Meta Graph `GET /{page_id}?fields=id,name`
 - Email → DNS MX record lookup on the inbound domain

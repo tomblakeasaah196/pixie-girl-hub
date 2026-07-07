@@ -15,7 +15,7 @@ const meta = (req) => ({
 
 // ── Self-service (My HR) ───────────────────────────────────
 async function listMyDevices(req, res) {
-  res.json(await service.listMyDevices({ brand: req.brand, user: req.user }));
+  res.json({ data: await service.listMyDevices({ brand: req.brand, user: req.user }) });
 }
 
 async function startEnrollment(req, res) {
@@ -69,6 +69,11 @@ async function listAllDevices(req, res) {
 async function listChangeFeed(req, res) {
   res.json(await service.listChangeFeed({ brand: req.brand, limit: req.query.limit }));
 }
+
+// listAllDevices / listChangeFeed already return { data: [...] } from the
+// service; the client's api.get unwraps single-`data` envelopes so those two
+// arrive correctly. listMyDevices returns { data, max_devices, can_add } which
+// would collapse to just the array without the extra wrap above.
 
 module.exports = {
   listMyDevices,

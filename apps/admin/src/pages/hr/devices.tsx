@@ -431,6 +431,9 @@ export function MyDevicesSection() {
   const [removing, setRemoving] = useState<StaffDevice | null>(null);
   const thisFp = getDeviceFingerprint();
 
+  // Be tolerant of shape drift: earlier server builds returned a bare array
+  // here, so `data.data` was undefined and `.length` blew up the whole page.
+  const devices: StaffDevice[] = Array.isArray(data?.data) ? data.data : [];
   const cap = data?.max_devices;
   const canAdd = data?.can_add ?? true;
 
@@ -451,12 +454,12 @@ export function MyDevicesSection() {
           </Button>
         }
       >
-        My devices{cap != null ? ` (${data?.data.length ?? 0}/${cap})` : ""}
+        My devices{cap != null ? ` (${devices.length}/${cap})` : ""}
       </SectionTitle>
 
       {isLoading ? (
         <Skeleton className="h-24 rounded-[var(--radius)]" />
-      ) : !data?.data.length ? (
+      ) : !devices.length ? (
         <EmptyState
           icon={<Smartphone className="h-6 w-6" />}
           title="No devices enrolled yet"
@@ -464,7 +467,7 @@ export function MyDevicesSection() {
         />
       ) : (
         <div className="space-y-2">
-          {data.data.map((d) => {
+          {devices.map((d) => {
             const isThis = d.device_fingerprint === thisFp;
             return (
               <Card key={d.device_id} className="flex items-center justify-between gap-3 p-3">

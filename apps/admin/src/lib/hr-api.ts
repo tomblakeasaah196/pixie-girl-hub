@@ -97,6 +97,13 @@ export interface AttendanceDay {
   clock_in_lng: number | null;
   last_clock_out_at: string | null;
   early_leave_minutes: number;
+  clock_out_address: string | null;
+  clock_out_lat: number | null;
+  clock_out_lng: number | null;
+  clock_out_is_offsite: boolean;
+  clock_out_distance_m: number | null;
+  clock_in_ip: string | null;
+  clock_out_ip: string | null;
 }
 
 export interface ArrivalPoint {

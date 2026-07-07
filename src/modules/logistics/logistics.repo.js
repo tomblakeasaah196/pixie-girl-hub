@@ -65,7 +65,7 @@ async function createCourier({ client, brand, row }) {
         supports_pod, pod_fee_pct, default_packaging, display_order,
         contact_person, contact_phone, payment_terms_notes, preferred_pickup_location, internal_rating, internal_notes)
      VALUES ($1,$2,$3,COALESCE($4,'manual'),$5,$6,COALESCE($7,true),COALESCE($8,false),COALESCE($9,false),
-             COALESCE($10,'{NG}'),COALESCE($11,'{}')::jsonb,COALESCE($12,false),$13,$14,COALESCE($15,0),
+             COALESCE($10,'{NG}')::text[],COALESCE($11,'{}')::jsonb,COALESCE($12,false),$13,$14,COALESCE($15,0),
              $16,$17,$18,$19,$20,$21) RETURNING *`,
     [
       row.courier_key,

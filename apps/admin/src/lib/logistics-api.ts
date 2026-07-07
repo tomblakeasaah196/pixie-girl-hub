@@ -42,6 +42,13 @@ export type DeliveryStatus =
   | "damaged"
   | "cancelled";
 
+export interface CourierRateCard {
+  flat?: number;
+  per_kg?: number;
+  city_multipliers?: Record<string, number>;
+  [k: string]: unknown;
+}
+
 export interface Courier {
   courier_id: string;
   courier_key: string;
@@ -51,7 +58,38 @@ export interface Courier {
   is_active: boolean;
   supports_pod?: boolean;
   service_countries?: string[];
+  serves_local?: boolean;
+  serves_nationwide?: boolean;
+  serves_international?: boolean;
+  rate_card?: CourierRateCard | null;
+  default_packaging?: string | null;
   display_order?: number;
+  // Manual-agency profile
+  contact_person?: string | null;
+  contact_phone?: string | null;
+  payment_terms_notes?: string | null;
+  preferred_pickup_location?: string | null;
+  internal_rating?: number | null;
+  internal_notes?: string | null;
+}
+
+export interface CourierInput {
+  courier_key?: string; // required on create, omitted on update
+  display_name: string;
+  description?: string;
+  serves_local?: boolean;
+  serves_nationwide?: boolean;
+  serves_international?: boolean;
+  rate_card?: CourierRateCard;
+  default_packaging?: string;
+  display_order?: number;
+  contact_person?: string;
+  contact_phone?: string;
+  payment_terms_notes?: string;
+  preferred_pickup_location?: string;
+  internal_rating?: number;
+  internal_notes?: string;
+  is_active?: boolean;
 }
 
 export interface DeliveryAddress {
@@ -125,11 +163,15 @@ export interface Delivery {
   package_count?: number | null;
   declared_value_ngn?: number | null;
   expected_delivery_at?: string | null;
+  scheduled_pickup_at?: string | null;
   booked_at?: string | null;
   picked_up_at?: string | null;
   delivered_at?: string | null;
   returned_at?: string | null;
   cancelled_at?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  driver_confirmation_token?: string | null;
   created_at: string;
   updated_at: string;
   // Joined from the originating sales order (list endpoint only).
@@ -169,6 +211,28 @@ export function useCouriers() {
     queryKey: ["logistics", "couriers", brand],
     queryFn: () => api.get<Courier[]>("/logistics/couriers"),
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useCreateCourier() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (body: CourierInput) =>
+      api.post<Courier>("/logistics/couriers", body),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["logistics", "couriers", brand] }),
+  });
+}
+
+export function useUpdateCourier() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (args: { id: string; patch: Partial<CourierInput> }) =>
+      api.patch<Courier>(`/logistics/couriers/${args.id}`, args.patch),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["logistics", "couriers", brand] }),
   });
 }
 
@@ -243,19 +307,38 @@ function invalidateDelivery(qc: ReturnType<typeof useQueryClient>, brand: string
   qc.invalidateQueries({ queryKey: ["logistics", "delivery", brand] });
 }
 
+export interface BookDeliveryInput {
+  id: string;
+  courier_id?: string;
+  courier_fee_ngn?: number;
+  courier_tracking_ref?: string;
+  courier_tracking_url?: string;
+  expected_delivery_at?: string;
+  scheduled_pickup_at?: string;
+  driver_name?: string;
+  driver_phone?: string;
+}
+
 export function useBookDelivery() {
   const qc = useQueryClient();
   const brand = useBrand();
   return useMutation({
-    mutationFn: (args: {
-      id: string;
-      courier_tracking_ref?: string;
-      courier_tracking_url?: string;
-      expected_delivery_at?: string;
-    }) => {
+    mutationFn: (args: BookDeliveryInput) => {
       const { id, ...body } = args;
       return api.post<Delivery>(`/logistics/deliveries/${id}/book`, body);
     },
+    onSuccess: () => invalidateDelivery(qc, brand),
+  });
+}
+
+export function useNotifyDelivered() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<{ sent: boolean; reason?: string }>(
+        `/logistics/deliveries/${id}/notify-delivered`,
+      ),
     onSuccess: () => invalidateDelivery(qc, brand),
   });
 }

@@ -11,6 +11,32 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-07 — Backfill pickup orders' `order_type` (V2.2 §6.4 / §6.10)
+
+**Source:** Sales/Logistics count discrepancy audit (2026-07-07). Paid
+pickup orders were showing as "DELIVERY" on the Sales list and never
+appearing on the Logistics queue. Root cause: both public checkouts
+(`storefront.service.js`, `campaigns.public.service.js`) hardcoded
+`order_type = 'dispatch'` even when the buyer chose pickup; the pickup
+flag lived only inside `internal_notes.fulfilment_type`. The logistics
+auto-create subscriber correctly skipped these (no
+`delivery_address_snapshot`), but the Sales UI reads `order_type`
+directly and rendered the "Delivery" pill from the enum mapping.
+
+**Files (new):** `000305_business_backfill_pickup_order_type.sql`.
+
+**What:** Walks `pixiegirl` + `faitlynhair` schemas and moves any
+`sales_orders` row still tagged `order_type = 'dispatch'` with
+`internal_notes.fulfilment_type = 'pickup'` (and no delivery address
+snapshot) to `order_type = 'collection'` — a value the existing CHECK
+already allows and the frontend already maps to "Pick-up". Guarded so
+non-JSON / null `internal_notes` never raise a cast error; idempotent
+(only rewrites `dispatch` rows).
+
+**Companion code fix** (not a migration): the two checkouts now write
+`order_type: isPickup ? 'collection' : 'dispatch'`, so no future
+pickup order carries the wrong label.
+
 ## 2026-07-07 — Attendance clock controls (dedupe + clock-out location + IP)
 
 **Source:** Clock-in audit (2026-07-07). Three gaps found on the top-bar

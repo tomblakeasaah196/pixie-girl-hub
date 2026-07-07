@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, MessageCircle, Phone, ChevronRight } from "lucide-react";
-import { Button, Pill, Skeleton } from "@/components/ui/primitives";
-import { useContacts } from "../hooks";
-import { NewDealModal } from "../shared/NewDealModal";
-import { ContactDetailDrawer } from "@/pages/contacts/ContactDetailDrawer";
+import {
+  Search,
+  Plus,
+  MessageCircle,
+  Phone,
+  ChevronRight,
+  ChevronDown,
+} from "lucide-react";
+import { Button, Pill, Skeleton, MoneyText } from "@/components/ui/primitives";
+import { useCrmClients } from "../hooks";
 import { ContactFormModal } from "@/pages/contacts/ContactFormModal";
-import type { Contact } from "@/pages/contacts/types";
-import type { ClientSegment } from "../types";
+import type { ClientChip, ClientSort, CrmClient } from "../types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -35,30 +39,56 @@ function initials(name: string) {
     .join("");
 }
 
-const SEGMENT_OPTIONS: { key: ClientSegment; label: string }[] = [
-  { key: "all", label: "All" },
+function clientName(c: CrmClient) {
+  return (
+    c.display_name ||
+    [c.first_name, c.last_name].filter(Boolean).join(" ") ||
+    c.email ||
+    "Client"
+  );
+}
+
+function relTime(iso: string | null) {
+  if (!iso) return null;
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "1mo ago" : `${months}mo ago`;
+}
+
+const CHIPS: { key: ClientChip | "all"; label: string }[] = [
+  { key: "all", label: "All clients" },
   { key: "vip", label: "VIP" },
+  { key: "big_spender", label: "Big spenders" },
   { key: "new", label: "New" },
-  { key: "regular", label: "Regular" },
-  { key: "high_risk", label: "At risk" },
+  { key: "win_back", label: "Win back" },
+  { key: "birthdays_soon", label: "Birthdays soon" },
 ];
 
-// ── Contact row ───────────────────────────────────────────────────────────
+const SORTS: { key: ClientSort; label: string }[] = [
+  { key: "recent", label: "Recently active" },
+  { key: "top_spend", label: "Top spend" },
+  { key: "newest", label: "Newest" },
+  { key: "oldest", label: "Longest clients" },
+  { key: "name", label: "Name A–Z" },
+];
 
-function ClientRow({
-  contact,
-  onOpen,
-  onNewDeal,
-}: {
-  contact: Contact;
-  onOpen: () => void;
-  onNewDeal: () => void;
-}) {
-  const PRIORITY_TONE = {
-    vip: "accent",
-    regular: "neutral",
-    new: "info",
-  } as const;
+const CHURN_TONE = {
+  low: "success",
+  medium: "warn",
+  high: "warn",
+  critical: "danger",
+} as const;
+
+// ── Client row ────────────────────────────────────────────────────────────
+
+function ClientRow({ client, onOpen }: { client: CrmClient; onOpen: () => void }) {
+  const name = clientName(client);
+  const isNew =
+    Date.now() - new Date(client.created_at).getTime() < 30 * 86_400_000;
+  const spend = parseFloat(client.lifetime_spend_ngn || "0");
 
   return (
     <div
@@ -68,69 +98,82 @@ function ClientRow({
       {/* Avatar */}
       <div
         className="w-10 h-10 rounded-full grid place-items-center text-sm font-semibold text-white font-display flex-shrink-0"
-        style={{ background: avatarColor(contact.display_name) }}
+        style={{ background: avatarColor(name) }}
       >
-        {initials(contact.display_name)}
+        {initials(name)}
       </div>
 
-      {/* Info */}
+      {/* Identity */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium text-text-primary truncate">
-            {contact.display_name}
+            {name}
           </span>
-          <Pill tone={PRIORITY_TONE[contact.priority_level]} dot={false}>
-            {contact.priority_level}
-          </Pill>
+          {client.priority_level === "vip" && (
+            <Pill tone="accent" dot={false}>
+              VIP
+            </Pill>
+          )}
+          {isNew && (
+            <Pill tone="info" dot>
+              NEW
+            </Pill>
+          )}
+          {(client.churn_risk_band === "high" ||
+            client.churn_risk_band === "critical") && (
+            <Pill tone={CHURN_TONE[client.churn_risk_band]} dot={false}>
+              {client.churn_risk_band === "critical" ? "At risk!" : "At risk"}
+            </Pill>
+          )}
         </div>
         <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-faint">
-          {contact.primary_phone && (
-            <span className="font-mono">{contact.primary_phone}</span>
-          )}
-          {contact.email && !contact.primary_phone && (
-            <span>{contact.email}</span>
-          )}
-          {contact.source && (
-            <span className="capitalize">
-              {contact.source.replace(/_/g, " ")}
+          {client.orders_count === 0 ? (
+            <span>No purchases yet</span>
+          ) : (
+            <span>
+              {client.orders_count} purchase
+              {client.orders_count === 1 ? "" : "s"}
+              {client.last_order_at && ` · last ${relTime(client.last_order_at)}`}
             </span>
+          )}
+          {client.loyalty_points > 0 && (
+            <span>· {client.loyalty_points.toLocaleString()} pts</span>
           )}
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Lifetime spend */}
+      <div className="flex flex-col items-end flex-shrink-0">
+        <span className="text-[12.5px] font-mono text-text-primary tabular-nums">
+          <MoneyText ngn={spend} />
+        </span>
+        <span className="text-[10px] text-text-faint">lifetime</span>
+      </div>
+
+      {/* Quick actions */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {contact.whatsapp_number && (
-          <a
-            href={`https://wa.me/${contact.whatsapp_number.replace(/\D/g, "")}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="w-8 h-8 grid place-items-center rounded-[9px] bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
-          >
-            <MessageCircle className="w-3.5 h-3.5" />
-          </a>
+        {client.primary_phone && (
+          <>
+            <a
+              href={`https://wa.me/${client.primary_phone.replace(/\D/g, "")}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="w-8 h-8 grid place-items-center rounded-[9px] bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
+              title="WhatsApp"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+            </a>
+            <a
+              href={`tel:${client.primary_phone}`}
+              onClick={(e) => e.stopPropagation()}
+              className="w-8 h-8 grid place-items-center rounded-[9px] bg-text-primary/[0.08] text-text-muted hover:text-text-primary transition-colors"
+              title="Call"
+            >
+              <Phone className="w-3.5 h-3.5" />
+            </a>
+          </>
         )}
-        {contact.primary_phone && !contact.whatsapp_number && (
-          <a
-            href={`tel:${contact.primary_phone}`}
-            onClick={(e) => e.stopPropagation()}
-            className="w-8 h-8 grid place-items-center rounded-[9px] bg-text-primary/[0.08] text-text-muted hover:text-text-primary transition-colors"
-          >
-            <Phone className="w-3.5 h-3.5" />
-          </a>
-        )}
-        <button
-          type="button"
-          title="New deal"
-          onClick={(e) => {
-            e.stopPropagation();
-            onNewDeal();
-          }}
-          className="w-8 h-8 grid place-items-center rounded-[9px] bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
         <ChevronRight className="w-4 h-4 text-text-faint" />
       </div>
     </div>
@@ -142,35 +185,25 @@ function ClientRow({
 export function ClientsTab() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [segment, setSegment] = useState<ClientSegment>("all");
+  const [chip, setChip] = useState<ClientChip | "all">("all");
+  const [sort, setSort] = useState<ClientSort>("recent");
   const [page, setPage] = useState(1);
-  const [openContactId, setOpenContactId] = useState<string | null>(null);
-  const [newDealFor, setNewDealFor] = useState<Contact | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const priorityFilter =
-    segment === "vip"
-      ? "vip"
-      : segment === "new"
-        ? "new"
-        : segment === "regular"
-          ? "regular"
-          : undefined;
-
-  const { data, isLoading } = useContacts({
+  const { data, isLoading, isError, refetch } = useCrmClients({
     q: search || undefined,
-    priority_level: priorityFilter,
-    contact_type: "customer",
+    chip: chip === "all" ? undefined : chip,
+    sort,
     page,
     page_size: 20,
   });
 
-  const contacts = data?.data ?? [];
+  const clients = data?.data ?? [];
   const meta = data?.meta;
 
   return (
     <div>
-      {/* Search + actions */}
+      {/* Search + sort + add */}
       <div className="flex gap-2 mb-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
@@ -181,9 +214,27 @@ export function ClientsTab() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search clients…"
+            placeholder="Find a client — name, phone, email…"
             className="w-full h-[38px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
+        </div>
+        <div className="relative">
+          <select
+            value={sort}
+            onChange={(e) => {
+              setSort(e.target.value as ClientSort);
+              setPage(1);
+            }}
+            className="h-[38px] pl-3 pr-8 rounded-[11px] bg-text-primary/[0.04] border border-line text-[12.5px] text-text-primary appearance-none focus:outline-none focus:border-accent/40 transition-colors cursor-pointer"
+            aria-label="Sort clients"
+          >
+            {SORTS.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
         </div>
         <Button
           variant="primary"
@@ -195,19 +246,19 @@ export function ClientsTab() {
         </Button>
       </div>
 
-      {/* Segment filter */}
-      <div className="flex gap-1 p-0.5 rounded-[10px] bg-text-primary/[0.04] border hairline mb-4 w-fit">
-        {SEGMENT_OPTIONS.map(({ key, label }) => (
+      {/* Preset chips (same cut-offs as the backend segment presets) */}
+      <div className="flex gap-1 p-0.5 rounded-[10px] bg-text-primary/[0.04] border hairline mb-4 w-fit max-w-full overflow-x-auto">
+        {CHIPS.map(({ key, label }) => (
           <button
             key={key}
             type="button"
             onClick={() => {
-              setSegment(key);
+              setChip(key);
               setPage(1);
             }}
             className={[
-              "px-3 h-[28px] rounded-[8px] text-[11.5px] font-semibold transition-all",
-              segment === key
+              "px-3 h-[28px] rounded-[8px] text-[11.5px] font-semibold whitespace-nowrap transition-all",
+              chip === key
                 ? "bg-accent-deep text-[#F4E9D9]"
                 : "text-text-muted hover:text-text-primary",
             ].join(" ")}
@@ -224,7 +275,16 @@ export function ClientsTab() {
             <Skeleton key={i} className="h-[66px] rounded-[13px]" />
           ))}
         </div>
-      ) : contacts.length === 0 ? (
+      ) : isError ? (
+        <div className="py-12 text-center">
+          <div className="text-text-faint text-[13px] mb-3">
+            Couldn't load clients.
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : clients.length === 0 ? (
         <div className="py-12 text-center">
           <div className="text-text-faint text-[13px]">
             No clients match this filter
@@ -240,12 +300,11 @@ export function ClientsTab() {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {contacts.map((c) => (
+          {clients.map((c) => (
             <ClientRow
               key={c.contact_id}
-              contact={c}
-              onOpen={() => setOpenContactId(c.contact_id)}
-              onNewDeal={() => setNewDealFor(c)}
+              client={c}
+              onOpen={() => navigate(`/crm/clients/${c.contact_id}`)}
             />
           ))}
         </div>
@@ -275,22 +334,6 @@ export function ClientsTab() {
             Next
           </Button>
         </div>
-      )}
-
-      {/* Contact detail drawer */}
-      <ContactDetailDrawer
-        contactId={openContactId}
-        onClose={() => setOpenContactId(null)}
-      />
-
-      {/* New deal modal */}
-      {newDealFor && (
-        <NewDealModal
-          contactId={newDealFor.contact_id}
-          contactName={newDealFor.display_name}
-          onClose={() => setNewDealFor(null)}
-          onCreated={(id) => navigate(`/crm/deals/${id}`)}
-        />
       )}
 
       {/* Create contact modal */}

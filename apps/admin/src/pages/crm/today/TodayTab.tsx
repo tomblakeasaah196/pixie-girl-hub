@@ -4,21 +4,31 @@ import {
   Heart,
   Star,
   Calendar,
-  Users,
-  AlertTriangle,
   Sparkles,
-  MessageCircle,
-  Phone,
+  UserPlus,
+  RotateCcw,
+  Crown,
+  BellRing,
   ChevronRight,
-  Clock,
+  Loader2,
 } from "lucide-react";
 import { Button, Pill, Skeleton, MoneyText } from "@/components/ui/primitives";
+import { toast } from "@/stores/toast";
+import { toastReport } from "@/lib/error-report";
 import {
   useTodayMilestones,
-  useTodayNewContacts,
-  useTodayStaleDeals,
+  useCrmToday,
   useCrmKpis,
+  useTriggerWinBack,
 } from "../hooks";
+import type {
+  TodayBuckets,
+  TodayCelebrateItem,
+  TodayWelcomeItem,
+  TodayWinBackItem,
+  TodayTopItem,
+  TodayFollowUpItem,
+} from "../types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -30,6 +40,10 @@ const AVATAR_COLORS = [
   "#5aa0a8",
   "#a8785a",
 ];
+
+function nameOf(item: { display_name: string | null; first_name: string | null }) {
+  return item.display_name || item.first_name || "Client";
+}
 
 function nameInitials(name: string) {
   return name
@@ -113,122 +127,255 @@ function KpiStrip() {
   );
 }
 
-// ── Section container ─────────────────────────────────────────────────────
+// ── Outreach bucket card ──────────────────────────────────────────────────
 
-function Section({
+function BucketCard({
   icon: Icon,
   title,
+  subtitle,
   count,
   iconColor,
-  children,
   isEmpty,
-  emptyText,
+  children,
 }: {
   icon: typeof Cake;
   title: string;
-  count?: number;
+  subtitle: string;
+  count: number;
   iconColor: string;
-  children: React.ReactNode;
-  isEmpty?: boolean;
-  emptyText?: string;
+  isEmpty: boolean;
+  children?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-3">
+    <div className="p-3.5 rounded-[14px] bg-text-primary/[0.03] border hairline flex flex-col min-h-[150px]">
+      <div className="flex items-start gap-2.5 mb-3">
         <div
-          className="w-6 h-6 rounded-full grid place-items-center flex-shrink-0"
-          style={{ backgroundColor: `${iconColor}22`, color: iconColor }}
+          className="w-8 h-8 rounded-[10px] grid place-items-center flex-shrink-0"
+          style={{ backgroundColor: `${iconColor}1e`, color: iconColor }}
         >
-          <Icon className="w-3 h-3" />
+          <Icon className="w-4 h-4" />
         </div>
-        <span className="text-[13px] font-semibold text-text-primary">
-          {title}
+        <div className="flex-1 min-w-0">
+          <div className="micro text-text-muted">{title}</div>
+          <div className="text-[10.5px] text-text-faint truncate">
+            {subtitle}
+          </div>
+        </div>
+        <span className="font-display text-xl tabular-nums text-text-primary leading-none">
+          {count}
         </span>
-        {count !== undefined && (
-          <span className="ml-auto text-[11px] text-text-faint">
-            {count} total
-          </span>
-        )}
       </div>
       {isEmpty ? (
-        <div className="py-4 text-center text-[12px] text-text-faint">
-          {emptyText}
+        <div className="flex-1 grid place-items-center text-[11.5px] italic text-text-faint py-3">
+          Nothing waiting — all caught up.
         </div>
       ) : (
-        children
+        <div className="flex flex-col gap-1.5">{children}</div>
       )}
     </div>
   );
 }
 
-// ── Contact row (reusable) ────────────────────────────────────────────────
-
-function ContactRow({
-  contactId: _contactId,
+function BucketRow({
   name,
-  priority,
-  phone,
-  whatsapp,
   meta,
+  trailing,
   onClick,
 }: {
-  contactId: string;
   name: string;
-  priority: string;
-  phone?: string | null;
-  whatsapp?: string | null;
   meta?: React.ReactNode;
+  trailing?: React.ReactNode;
   onClick: () => void;
 }) {
   return (
     <div
       onClick={onClick}
-      className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.03] border hairline hover:bg-text-primary/[0.06] transition-colors cursor-pointer group"
+      className="flex items-center gap-2.5 p-2 rounded-[10px] hover:bg-text-primary/[0.05] transition-colors cursor-pointer group"
     >
       <div
-        className="w-9 h-9 rounded-full grid place-items-center text-[12px] font-semibold text-white font-display flex-shrink-0"
+        className="w-7 h-7 rounded-full grid place-items-center text-[10px] font-semibold text-white font-display flex-shrink-0"
         style={{ background: avatarColor(name) }}
       >
         {nameInitials(name)}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-medium text-text-primary truncate">
-            {name}
-          </span>
-          {priority === "vip" && (
-            <Pill tone="accent" dot={false}>
-              VIP
-            </Pill>
-          )}
+        <div className="text-[12px] font-medium text-text-primary truncate">
+          {name}
         </div>
         {meta && (
-          <div className="text-[11px] text-text-faint mt-0.5">{meta}</div>
+          <div className="text-[10.5px] text-text-faint truncate">{meta}</div>
         )}
       </div>
-      <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        {whatsapp && (
-          <a
-            href={`https://wa.me/${whatsapp.replace(/\D/g, "")}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="w-7 h-7 grid place-items-center rounded-[8px] bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
-          >
-            <MessageCircle className="w-3.5 h-3.5" />
-          </a>
-        )}
-        {phone && !whatsapp && (
-          <a
-            href={`tel:${phone}`}
-            onClick={(e) => e.stopPropagation()}
-            className="w-7 h-7 grid place-items-center rounded-[8px] bg-text-primary/[0.08] text-text-muted hover:text-text-primary transition-colors"
-          >
-            <Phone className="w-3.5 h-3.5" />
-          </a>
-        )}
-        <ChevronRight className="w-4 h-4 text-text-faint" />
-      </div>
+      {trailing}
+      <ChevronRight className="w-3.5 h-3.5 text-text-faint opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+    </div>
+  );
+}
+
+// ── Bucket grid (the Orika-style "who to reach out to" row) ──────────────
+
+const PREVIEW = 3;
+
+function BucketGrid({ data }: { data: TodayBuckets }) {
+  const navigate = useNavigate();
+  const winBack = useTriggerWinBack();
+
+  const openClient = (id: string) => navigate(`/crm/clients/${id}`);
+
+  function fireWinBack(item: TodayWinBackItem) {
+    winBack.mutate(item.contact_id, {
+      onSuccess: ({ enrolled }) => {
+        if (enrolled > 0) {
+          toast.success(
+            `${nameOf(item)} enrolled in ${enrolled} win-back ${enrolled === 1 ? "journey" : "journeys"}.`,
+          );
+        } else {
+          toast.error("No active win-back strategy", {
+            description:
+              "Activate one in Retention → Strategies, then try again.",
+          });
+        }
+      },
+      onError: (err) => toastReport("CRM → Today", "Trigger win-back", err),
+    });
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-6">
+      <BucketCard
+        icon={Cake}
+        title="To celebrate"
+        subtitle="Birthdays this week"
+        count={data.to_celebrate.total}
+        iconColor="#d4a853"
+        isEmpty={data.to_celebrate.items.length === 0}
+      >
+        {data.to_celebrate.items.slice(0, PREVIEW).map((c: TodayCelebrateItem) => (
+          <BucketRow
+            key={c.contact_id}
+            name={nameOf(c)}
+            meta={
+              <>
+                🎂{" "}
+                {new Date(c.date_of_birth).toLocaleDateString(undefined, {
+                  day: "numeric",
+                  month: "short",
+                })}
+              </>
+            }
+            onClick={() => openClient(c.contact_id)}
+          />
+        ))}
+      </BucketCard>
+
+      <BucketCard
+        icon={UserPlus}
+        title="To welcome"
+        subtitle="New clients, every source"
+        count={data.to_welcome.total}
+        iconColor="#8b9d77"
+        isEmpty={data.to_welcome.items.length === 0}
+      >
+        {data.to_welcome.items.slice(0, PREVIEW).map((c: TodayWelcomeItem) => (
+          <BucketRow
+            key={c.contact_id}
+            name={nameOf(c)}
+            meta={
+              <>
+                joined {relTime(c.created_at)}
+                {c.source && ` · via ${c.source.replace(/_/g, " ")}`}
+              </>
+            }
+            onClick={() => openClient(c.contact_id)}
+          />
+        ))}
+      </BucketCard>
+
+      <BucketCard
+        icon={RotateCcw}
+        title="To win back"
+        subtitle="Gone quiet — call them"
+        count={data.to_win_back.total}
+        iconColor="#e5544e"
+        isEmpty={data.to_win_back.items.length === 0}
+      >
+        {data.to_win_back.items.slice(0, PREVIEW).map((c: TodayWinBackItem) => (
+          <BucketRow
+            key={c.contact_id}
+            name={nameOf(c)}
+            meta={
+              c.days_since_last_order != null
+                ? `${c.days_since_last_order}d silent`
+                : "at risk"
+            }
+            trailing={
+              <button
+                type="button"
+                title="Trigger win-back journey"
+                disabled={winBack.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fireWinBack(c);
+                }}
+                className="px-2 h-[24px] rounded-[7px] text-[10px] font-semibold bg-accent/10 text-accent hover:bg-accent/20 transition-colors flex-shrink-0 disabled:opacity-50"
+              >
+                {winBack.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  "Win back"
+                )}
+              </button>
+            }
+            onClick={() => openClient(c.contact_id)}
+          />
+        ))}
+      </BucketCard>
+
+      <BucketCard
+        icon={Crown}
+        title="Top this month"
+        subtitle="Deserve extra attention"
+        count={data.top_this_month.total}
+        iconColor="#9c7ad9"
+        isEmpty={data.top_this_month.items.length === 0}
+      >
+        {data.top_this_month.items.slice(0, PREVIEW).map((c: TodayTopItem) => (
+          <BucketRow
+            key={c.contact_id}
+            name={nameOf(c)}
+            meta={
+              <span className="font-mono">
+                <MoneyText ngn={parseFloat(c.spend_this_month_ngn)} /> ·{" "}
+                {c.orders_this_month} order{c.orders_this_month === 1 ? "" : "s"}
+              </span>
+            }
+            onClick={() => openClient(c.contact_id)}
+          />
+        ))}
+      </BucketCard>
+
+      <BucketCard
+        icon={BellRing}
+        title="Follow-ups"
+        subtitle="Quiet deals need a nudge"
+        count={data.follow_ups.total}
+        iconColor="#c9a24b"
+        isEmpty={data.follow_ups.items.length === 0}
+      >
+        {data.follow_ups.items.slice(0, PREVIEW).map((d: TodayFollowUpItem) => (
+          <BucketRow
+            key={d.deal_id}
+            name={d.title}
+            meta={
+              <>
+                {d.display_name ?? d.deal_number} · quiet since{" "}
+                {relTime(d.quiet_since)}
+              </>
+            }
+            onClick={() => navigate(`/crm/deals/${d.deal_id}`)}
+          />
+        ))}
+      </BucketCard>
     </div>
   );
 }
@@ -253,209 +400,99 @@ const EVENT_LABELS: Record<string, string> = {
 
 export function TodayTab() {
   const navigate = useNavigate();
-  const { data: milestones = [], isLoading: loadMilestones } =
-    useTodayMilestones();
-  const { data: newContacts = [], isLoading: loadNew } = useTodayNewContacts();
-  const { data: staleDeals = [], isLoading: loadStale } =
-    useTodayStaleDeals(14);
+  const { data: today, isLoading, isError, refetch } = useCrmToday();
+  const { data: milestones = [] } = useTodayMilestones();
 
   const todayMs = milestones.filter((m) => m.days_until === 0);
-  const upcomingMs = milestones.filter((m) => m.days_until > 0);
-
-  function openContact(id: string) {
-    navigate(`/contacts?open=${id}`);
-  }
 
   return (
     <div className="animate-fade-in">
       <KpiStrip />
 
-      {/* Today's milestones */}
+      {/* Who to reach out to */}
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles className="w-3.5 h-3.5 text-accent" />
+        <span className="micro text-text-muted">
+          Today — who to reach out to
+        </span>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-6">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-[150px] rounded-[14px]" />
+          ))}
+        </div>
+      ) : isError ? (
+        <div className="p-6 rounded-[14px] bg-text-primary/[0.03] border hairline text-center mb-6">
+          <p className="text-[12.5px] text-text-muted mb-3">
+            Couldn't load today's outreach buckets.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : today ? (
+        <BucketGrid data={today} />
+      ) : null}
+
+      {/* Today's milestones (richer event types than birthdays) */}
       {todayMs.length > 0 && (
-        <Section
-          icon={Cake}
-          title="Today 🎉"
-          iconColor="#d4a853"
-          count={todayMs.length}
-        >
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-full grid place-items-center bg-warn/15 text-warn">
+              <Cake className="w-3 h-3" />
+            </div>
+            <span className="text-[13px] font-semibold text-text-primary">
+              Today 🎉
+            </span>
+          </div>
           <div className="flex flex-col gap-2">
             {todayMs.map((m) => {
               const EventIcon = EVENT_ICONS[m.event_type] ?? Calendar;
               return (
-                <ContactRow
+                <div
                   key={`${m.contact_id}-${m.event_date}`}
-                  contactId={m.contact_id}
-                  name={m.display_name}
-                  priority={m.priority_level}
-                  whatsapp={m.whatsapp_number}
-                  phone={m.primary_phone}
-                  meta={
-                    <span className="flex items-center gap-1">
+                  onClick={() => navigate(`/crm/clients/${m.contact_id}`)}
+                  className="flex items-center gap-3 p-3 rounded-[12px] bg-text-primary/[0.03] border hairline hover:bg-text-primary/[0.06] transition-colors cursor-pointer"
+                >
+                  <div
+                    className="w-9 h-9 rounded-full grid place-items-center text-[12px] font-semibold text-white font-display flex-shrink-0"
+                    style={{ background: avatarColor(m.display_name) }}
+                  >
+                    {nameInitials(m.display_name)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-medium text-text-primary truncate">
+                        {m.display_name}
+                      </span>
+                      {m.priority_level === "vip" && (
+                        <Pill tone="accent" dot={false}>
+                          VIP
+                        </Pill>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-text-faint mt-0.5 flex items-center gap-1">
                       <EventIcon className="w-3 h-3" />
                       {EVENT_LABELS[m.event_type] ?? m.event_type}
-                    </span>
-                  }
-                  onClick={() => openContact(m.contact_id)}
-                />
-              );
-            })}
-          </div>
-        </Section>
-      )}
-
-      {/* Upcoming milestones */}
-      <Section
-        icon={Calendar}
-        title="Upcoming milestones"
-        iconColor="#9c7ad9"
-        count={upcomingMs.length}
-        isEmpty={!loadMilestones && upcomingMs.length === 0}
-        emptyText="No milestones in the next 7 days"
-      >
-        {loadMilestones ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-[54px] rounded-[12px] mb-2" />
-          ))
-        ) : (
-          <div className="flex flex-col gap-2">
-            {upcomingMs.slice(0, 8).map((m) => {
-              const EventIcon = EVENT_ICONS[m.event_type] ?? Calendar;
-              const daysLabel =
-                m.days_until === 1 ? "Tomorrow" : `In ${m.days_until} days`;
-              return (
-                <ContactRow
-                  key={`${m.contact_id}-${m.event_date}`}
-                  contactId={m.contact_id}
-                  name={m.display_name}
-                  priority={m.priority_level}
-                  whatsapp={m.whatsapp_number}
-                  phone={m.primary_phone}
-                  meta={
-                    <span className="flex items-center gap-1">
-                      <EventIcon className="w-3 h-3" />
-                      {EVENT_LABELS[m.event_type]} · {daysLabel}
-                    </span>
-                  }
-                  onClick={() => openContact(m.contact_id)}
-                />
-              );
-            })}
-          </div>
-        )}
-        {upcomingMs.length > 8 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2 w-full justify-center"
-            onClick={() => navigate("/contacts/milestones")}
-          >
-            View all {upcomingMs.length} milestones
-          </Button>
-        )}
-      </Section>
-
-      {/* New contacts to welcome */}
-      <Section
-        icon={Users}
-        title="New contacts to welcome"
-        iconColor="#8b9d77"
-        count={newContacts.length}
-        isEmpty={!loadNew && newContacts.length === 0}
-        emptyText="No new contacts in the last 7 days"
-      >
-        {loadNew ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-[54px] rounded-[12px] mb-2" />
-          ))
-        ) : (
-          <div className="flex flex-col gap-2">
-            {newContacts.slice(0, 8).map((c) => (
-              <ContactRow
-                key={c.contact_id}
-                contactId={c.contact_id}
-                name={c.display_name}
-                priority={c.priority_level}
-                whatsapp={c.whatsapp_number}
-                phone={c.primary_phone}
-                meta={
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    Joined {relTime(c.created_at)}
-                    {c.source && ` · ${c.source.replace(/_/g, " ")}`}
-                  </span>
-                }
-                onClick={() => openContact(c.contact_id)}
-              />
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {/* Stale deals */}
-      <Section
-        icon={AlertTriangle}
-        title="Stale deals — needs attention"
-        iconColor="#d4a853"
-        count={staleDeals.length}
-        isEmpty={!loadStale && staleDeals.length === 0}
-        emptyText="No stale deals — all deals have recent activity!"
-      >
-        {loadStale ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-[60px] rounded-[12px] mb-2" />
-          ))
-        ) : (
-          <div className="flex flex-col gap-2">
-            {staleDeals.slice(0, 8).map((d) => {
-              const daysSince = d.last_activity_at
-                ? Math.floor(
-                    (Date.now() - new Date(d.last_activity_at).getTime()) /
-                      86_400_000,
-                  )
-                : null;
-              return (
-                <div
-                  key={d.deal_id}
-                  onClick={() => navigate(`/crm/deals/${d.deal_id}`)}
-                  className="flex items-center gap-3 p-3 rounded-[12px] bg-warn/[0.04] border border-warn/20 hover:bg-warn/[0.08] transition-colors cursor-pointer group"
-                >
-                  <AlertTriangle className="w-4 h-4 text-warn flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium text-text-primary truncate">
-                      {d.title}
-                    </div>
-                    <div className="text-[11px] text-text-faint mt-0.5">
-                      {d.deal_number}
-                      {d.contact_name && ` · ${d.contact_name}`}
-                      {d.current_stage_name && ` · ${d.current_stage_name}`}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    {d.expected_value_ngn && (
-                      <span className="text-[11px] font-mono text-text-muted">
-                        <MoneyText ngn={parseFloat(d.expected_value_ngn)} />
-                      </span>
-                    )}
-                    {daysSince !== null && (
-                      <Pill tone="warn" dot={false}>
-                        {daysSince}d idle
-                      </Pill>
-                    )}
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <ChevronRight className="w-4 h-4 text-text-faint" />
                 </div>
               );
             })}
           </div>
-        )}
-      </Section>
+        </div>
+      )}
 
       {/* AI tip */}
       <div className="flex items-start gap-2 p-3 rounded-[12px] bg-accent/[0.05] border border-accent/15 mt-2">
         <Sparkles className="w-3.5 h-3.5 text-accent mt-0.5 flex-shrink-0" />
         <p className="text-[11.5px] text-accent/80 leading-relaxed">
-          Open any deal to get Praxis AI deal summaries, next-action
-          suggestions, and win-back message drafts.
+          Open any client to see their full 360 — purchases, loyalty, churn
+          risk — or any deal for Praxis AI summaries and next-action
+          suggestions.
         </p>
       </div>
     </div>

@@ -21,6 +21,7 @@ import {
 } from "./hooks";
 import { PARTNER_STATUS_META, DEFAULT_RUBRIC } from "./constants";
 import type { ApplicationRow } from "./types";
+import { formatDate } from "@/lib/format";
 
 function ScoreBar({ score, max }: { score: number; max: number }) {
   const pct = max > 0 ? Math.min(100, (score / max) * 100) : 0;
@@ -177,7 +178,7 @@ function ApplicationDrawer({
       onClose={onClose}
       wide
       title={a ? a.display_name : "Application"}
-      subtitle={a ? `${a.partner_code} · applied ${new Date(a.application_received_at).toLocaleDateString()}` : undefined}
+      subtitle={a ? `${a.partner_code} · applied ${formatDate(a.application_received_at)}` : undefined}
     >
       {app.isLoading && (
         <div className="space-y-3">
@@ -499,7 +500,7 @@ export function ApplicationsPanel({
       header: "Applied",
       render: (p) => (
         <span className="text-[12.5px] tabular-nums">
-          {new Date(p.application_received_at).toLocaleDateString()}
+          {formatDate(p.application_received_at)}
         </span>
       ),
     },

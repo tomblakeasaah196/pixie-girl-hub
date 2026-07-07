@@ -126,6 +126,21 @@ const activityCreate = z
   })
   .strict();
 
+const dealProductBase = z
+  .object({
+    product_id: z.string().uuid().optional(),
+    variant_id: z.string().uuid().optional(),
+    custom_description: z.string().max(500).optional(),
+    quantity: z.coerce.number().int().min(1).optional(),
+    unit_price_ngn: money.optional(),
+    display_order: z.coerce.number().int().min(0).optional(),
+  })
+  .strict();
+const dealProductCreate = dealProductBase.refine(
+  (v) => v.product_id || v.variant_id || v.custom_description,
+  { message: "product_id, variant_id or custom_description is required" },
+);
+
 const noteCreate = z
   .object({
     body: z.string().min(1).max(8000),
@@ -197,6 +212,8 @@ module.exports = {
   validateMoveStage: mw(moveStage),
   validateSetStatus: mw(setStatus),
   validateActivityCreate: mw(activityCreate),
+  validateDealProductCreate: mw(dealProductCreate),
+  validateDealProductUpdate: mw(dealProductBase.partial()),
   validateNoteCreate: mw(noteCreate),
   validatePreferencesUpsert: mw(preferencesUpsert),
   validateMeasurementCreate: mw(measurementCreate),

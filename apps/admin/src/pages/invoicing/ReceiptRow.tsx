@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/controls";
 import { useSendReceipt, useReceiptDelivery } from "./hooks";
 import { DeliveryPanel } from "./DeliveryPanel";
 import type { Receipt } from "./types";
+import { formatDate } from "@/lib/format";
 
 const SEND_OPTIONS = [
   { value: "email", label: "Email" },
@@ -79,7 +80,7 @@ export function ReceiptRow({
         <div className="text-right shrink-0">
           <MoneyText ngn={Number(receipt.amount_ngn)} />
           <div className="text-[10px] text-text-faint">
-            {new Date(receipt.issued_at).toLocaleDateString()}
+            {formatDate(receipt.issued_at)}
           </div>
         </div>
       </div>

@@ -33,7 +33,7 @@ import {
 import { DeniedState, ErrorState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
-import { money, moneyCompact } from "@/lib/format";
+import { money, moneyCompact, formatDate } from "@/lib/format";
 import { toastReport } from "@/lib/error-report";
 import {
   useCouponList,
@@ -273,7 +273,7 @@ export function SpecialCodesPage() {
 
               {c.valid_to && (
                 <div className="text-[11px] text-text-faint">
-                  Expires {new Date(c.valid_to).toLocaleDateString()}
+                  Expires {formatDate(c.valid_to)}
                 </div>
               )}
 

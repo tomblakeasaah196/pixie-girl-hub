@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { formatDate } from "@/lib/format";
 import {
   Plus,
   Loader2,
@@ -999,7 +1000,7 @@ export function CampaignSaleSection({ campaign }: { campaign: EmailCampaign }) {
       ) : (
         <p className="text-[12px] text-text-faint">
           {md.discount ? `Up to ${md.discount}% off` : "No sale details"}
-          {md.sale_ends_at && ` · ends ${new Date(md.sale_ends_at).toLocaleDateString()}`}
+          {md.sale_ends_at && ` · ends ${formatDate(md.sale_ends_at)}`}
           {" · "}locked once the campaign leaves draft.
         </p>
       )}

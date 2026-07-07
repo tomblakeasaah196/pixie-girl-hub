@@ -236,6 +236,14 @@ BEGIN
            fully_paid_at,
            CASE WHEN v_paid >= v_total THEN v_now ELSE NULL END
          ),
+         -- paid_at mirrors fully_paid_at so reports (sales-report.export.js)
+         -- and downstream queries have a populated timestamp. Kept as a
+         -- separate column because it's indexed and referenced across the
+         -- codebase.
+         paid_at          = COALESCE(
+           paid_at,
+           CASE WHEN v_paid >= v_total THEN v_now ELSE NULL END
+         ),
          updated_at       = v_now
    WHERE order_id = v_order_id;
 

@@ -11,6 +11,7 @@ import {
   useConvertQuotation,
 } from "./hooks";
 import { QUOTE_STATUS, SALES_CHANNELS } from "./constants";
+import { formatDateTime, formatDate } from "@/lib/format";
 import type { SalesChannel, QuotationSendInput } from "./types";
 
 const SEND_OPTIONS: {
@@ -97,14 +98,14 @@ export function QuoteDetail({
                 <div>
                   <div className="micro">Created</div>
                   <div className="text-[13px] mt-1">
-                    {new Date(quote.created_at).toLocaleString()}
+                    {formatDateTime(quote.created_at)}
                   </div>
                 </div>
                 <div>
                   <div className="micro">Valid Until</div>
                   <div className="text-[13px] mt-1">
                     {quote.valid_until
-                      ? new Date(quote.valid_until).toLocaleDateString()
+                      ? formatDate(quote.valid_until)
                       : "—"}
                   </div>
                 </div>

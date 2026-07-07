@@ -10,6 +10,7 @@ import { Button, Pill, MoneyText } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorState, ConfirmDialog, Select } from "@/components/ui/controls";
 import { useToast } from "@/lib/toast";
+import { formatDateTime, formatDate } from "@/lib/format";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -32,7 +33,7 @@ function holdState(a: Assignment): { label: string; tone: "success" | "warn" | "
     return { label: "Window lapsed — payable", tone: "success" };
   if (a.payable_at)
     return {
-      label: `On hold to ${new Date(a.payable_at).toLocaleDateString()}`,
+      label: `On hold to ${formatDate(a.payable_at)}`,
       tone: "warn",
     };
   return { label: "On hold", tone: "warn" };
@@ -242,11 +243,11 @@ function AssignmentDrawer({
           <div className="glass rounded-xl p-4 grid grid-cols-2 gap-3 text-[13px]">
             <div>
               <div className="micro">Offered</div>
-              <div className="tabular-nums">{new Date(a.offered_at).toLocaleString()}</div>
+              <div className="tabular-nums">{formatDateTime(a.offered_at)}</div>
             </div>
             <div>
               <div className="micro">Offer expires</div>
-              <div className="tabular-nums">{new Date(a.offer_expires_at).toLocaleString()}</div>
+              <div className="tabular-nums">{formatDateTime(a.offer_expires_at)}</div>
             </div>
             <div>
               <div className="micro">Payout snapshot</div>
@@ -514,7 +515,7 @@ export function AssignmentsPanel() {
       header: "Opened",
       render: (a) => (
         <span className="tabular-nums text-[12px]">
-          {new Date(a.created_at).toLocaleDateString()}
+          {formatDate(a.created_at)}
         </span>
       ),
     },

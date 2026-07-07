@@ -1,4 +1,5 @@
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { formatDate } from "@/lib/format";
 import { useState } from "react";
 import { KeyRound, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
@@ -82,7 +83,7 @@ export function IntegrationSecretsPage() {
       header: "Updated",
       render: (r) => (
         <span className="text-text-muted">
-          {r.updated_at ? new Date(r.updated_at).toLocaleDateString() : "—"}
+          {r.updated_at ? formatDate(r.updated_at) : "—"}
         </span>
       ),
     },

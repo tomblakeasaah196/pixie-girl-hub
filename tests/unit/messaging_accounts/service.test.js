@@ -99,12 +99,16 @@ describe("messaging_accounts.service", () => {
       access_token_enc: "enc:EAA-token",
     });
     axios.get.mockResolvedValue({
-      data: { id: "PHONE1", name: "Pixie Girl Care" },
+      data: { id: "PHONE1", verified_name: "Pixie Girl Care" },
     });
     const r = await service.testAccount({ id: "id-1" });
     expect(axios.get).toHaveBeenCalledTimes(1);
     const call = axios.get.mock.calls[0];
     expect(call[0]).toContain("https://graph.facebook.com/v21.0/PHONE1");
+    // WhatsApp phone-number nodes have no `name` field — requesting it
+    // 400s, so the ping must ask for verified_name instead.
+    expect(call[0]).toContain("fields=id,verified_name");
+    expect(call[0]).not.toContain("fields=id,name");
     expect(call[1].headers.Authorization).toBe("Bearer EAA-token");
     expect(r).toEqual({
       ok: true,

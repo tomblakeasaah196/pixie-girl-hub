@@ -24,6 +24,7 @@ import { Modal } from "@/components/ui/Modal";
 import { ErrorState } from "@/components/ui/controls";
 import { useSecurityStats, type SecurityEvent } from "@/lib/iam";
 import { cn } from "@/lib/cn";
+import { formatDateTime } from "@/lib/format";
 
 /* ── HealthCard ────────────────────────────────────────────── */
 function HealthCard({
@@ -273,7 +274,7 @@ export function IamSecurityPage() {
                       </span>
                     </div>
                     <div className="text-[11px] text-text-faint mt-0.5">
-                      {new Date(evt.occurred_at).toLocaleString()}
+                      {formatDateTime(evt.occurred_at)}
                       {evt.ip_address && ` · ${evt.ip_address}`}
                     </div>
                   </div>

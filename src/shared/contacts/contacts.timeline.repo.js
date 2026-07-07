@@ -227,6 +227,7 @@ async function summary({ brand, contact_id }) {
     "pos_transactions",
     "crm_activities",
     "service_jobs",
+    "churn_risk_scores",
   ]);
   const actParts = [];
   if (has("sales_orders"))
@@ -257,6 +258,17 @@ async function summary({ brand, contact_id }) {
     ? `(SELECT max(occurred) FROM (${actParts.join(" UNION ALL ")}) a)`
     : "NULL::timestamptz";
 
+  // Latest un-superseded churn score (computed by the nightly
+  // churn-risk-scoring sweep). Guarded like the other optional brand tables.
+  const churnSql = has("churn_risk_scores")
+    ? `(SELECT risk_score FROM ${t(brand, "churn_risk_scores")}
+         WHERE contact_id = $1 AND superseded_at IS NULL
+         ORDER BY computed_at DESC LIMIT 1) AS churn_risk_score,
+       (SELECT risk_band FROM ${t(brand, "churn_risk_scores")}
+         WHERE contact_id = $1 AND superseded_at IS NULL
+         ORDER BY computed_at DESC LIMIT 1) AS churn_risk_band,`
+    : `NULL::smallint AS churn_risk_score, NULL::text AS churn_risk_band,`;
+
   const { rows } = await query(
     `SELECT
        (SELECT count(*)::int FROM ${t(brand, "sales_orders")} WHERE contact_id = $1)
@@ -272,6 +284,7 @@ async function summary({ brand, contact_id }) {
          WHERE customer_contact_id = $1) AS service_jobs_count,
        (SELECT COALESCE(current_balance,0) FROM shared.customer_loyalty_state
          WHERE contact_id = $1 AND business = $2) AS loyalty_balance,
+       ${churnSql}
        ${lastActivitySql} AS last_activity_at`,
     [contact_id, brand],
   );

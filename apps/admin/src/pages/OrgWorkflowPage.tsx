@@ -38,6 +38,7 @@ import { OrgGraph } from "@/components/hub/OrgGraph";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
 import { toastReport } from "@/lib/error-report";
+import { formatDateTime, formatDate } from "@/lib/format";
 import {
   orgApi,
   type OrgUnit,
@@ -2151,12 +2152,12 @@ function ApprovalDrawer({
     {
       state: "done" as const,
       title: `Submitted by ${inst.initiated_by.name}`,
-      detail: new Date(inst.initiated_at).toLocaleString(),
+      detail: formatDateTime(inst.initiated_at),
     },
     ...decisions.map((d) => ({
       state: "done" as const,
       title: `Stage ${d.stage}: ${d.action.replace("_", " ")} by ${d.actor_name ?? ""}`,
-      detail: `${new Date(d.decided_at).toLocaleString()}${d.notes ? ` · "${d.notes}"` : ""}`,
+      detail: `${formatDateTime(d.decided_at)}${d.notes ? ` · "${d.notes}"` : ""}`,
     })),
     ...(inst.status === "pending"
       ? [
@@ -2166,7 +2167,7 @@ function ApprovalDrawer({
             detail: inst.requires_ceo
               ? "Requires CEO"
               : inst.stage_timeout_at
-                ? `Deadline: ${new Date(inst.stage_timeout_at).toLocaleString()}`
+                ? `Deadline: ${formatDateTime(inst.stage_timeout_at)}`
                 : "",
           },
         ]
@@ -2179,9 +2180,7 @@ function ApprovalDrawer({
                 : inst.status === "rejected"
                   ? "Rejected"
                   : "Cancelled",
-            detail: inst.completed_at
-              ? new Date(inst.completed_at).toLocaleString()
-              : "",
+            detail: inst.completed_at ? formatDateTime(inst.completed_at) : "",
           },
         ]),
   ];
@@ -2355,7 +2354,7 @@ function PendingTab({ canAct }: { canAct: boolean }) {
         <div>
           <div className="text-[12px]">{w.initiated_by.name}</div>
           <div className="text-[10px] text-[rgb(var(--text-faint))]">
-            {new Date(w.initiated_at).toLocaleDateString()}
+            {formatDate(w.initiated_at)}
           </div>
         </div>
       ),

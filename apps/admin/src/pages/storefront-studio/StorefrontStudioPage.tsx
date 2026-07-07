@@ -59,6 +59,7 @@ import {
 } from "@/lib/storefront-studio";
 import { toast } from "@/stores/toast";
 import { describeError } from "@/lib/error-report";
+import { formatDateTime } from "@/lib/format";
 import { ContentTab } from "./ContentTab";
 
 /**
@@ -2062,7 +2063,7 @@ function RevisionsTab() {
             {revs.map((r) => (
               <tr key={r.revision_id} className="border-b border-line">
                 <td className="py-2 text-text-primary">
-                  {new Date(r.published_at).toLocaleString()}
+                  {formatDateTime(r.published_at)}
                 </td>
                 <td className="capitalize text-text-primary">{r.entity_type}</td>
                 <td className="text-right">

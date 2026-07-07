@@ -32,6 +32,7 @@ import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
 import type { OrderPayment } from "./types";
 
@@ -75,12 +76,8 @@ const JOB_TERMINAL = new Set([
 ]);
 const DELIVERY_TERMINAL = new Set(["delivered"]);
 
-function fmtDate(iso?: string | null) {
-  return iso ? new Date(iso).toLocaleDateString() : null;
-}
-function fmtDateTime(iso?: string | null) {
-  return iso ? new Date(iso).toLocaleString() : null;
-}
+const fmtDate = (iso?: string | null) => (iso ? formatDate(iso) : null);
+const fmtDateTime = (iso?: string | null) => (iso ? formatDateTime(iso) : null);
 
 export function OrderDetail({
   orderId,
@@ -337,11 +334,11 @@ export function OrderDetail({
                         {invoice.first_viewed_at ? (
                           <span className="inline-flex items-center gap-1 ml-1 text-success normal-case">
                             <Eye className="w-3 h-3" />
-                            opened {new Date(invoice.first_viewed_at).toLocaleDateString()}
+                            opened {formatDate(invoice.first_viewed_at)}
                           </span>
                         ) : invoice.sent_at ? (
                           <span className="ml-1 normal-case">
-                            · sent {new Date(invoice.sent_at).toLocaleDateString()}
+                            · sent {formatDate(invoice.sent_at)}
                           </span>
                         ) : null}
                       </div>
@@ -446,7 +443,7 @@ export function OrderDetail({
                 <div>
                   <div className="micro">Created</div>
                   <div className="text-[13px] mt-1">
-                    {new Date(order.created_at).toLocaleString()}
+                    {formatDateTime(order.created_at)}
                   </div>
                 </div>
                 <div>
@@ -564,7 +561,7 @@ export function OrderDetail({
                       <div className="text-right">
                         <MoneyText ngn={Number(p.amount_ngn)} />
                         <div className="text-[10px] text-text-faint">
-                          {new Date(p.captured_at).toLocaleDateString()}
+                          {formatDate(p.captured_at)}
                         </div>
                       </div>
                     </div>
@@ -791,7 +788,7 @@ export function OrderDetail({
                         <div className="text-right shrink-0">
                           <MoneyText ngn={Number(o.total_ngn)} />
                           <div className="text-[10px] text-text-faint">
-                            {new Date(o.created_at).toLocaleDateString()}
+                            {formatDate(o.created_at)}
                           </div>
                         </div>
                       </button>
@@ -812,7 +809,7 @@ export function OrderDetail({
                       <div>
                         <div className="font-semibold">{ev.label}</div>
                         <div className="text-text-faint">
-                          {new Date(ev.occurred_at).toLocaleString()}
+                          {formatDateTime(ev.occurred_at)}
                         </div>
                       </div>
                     </div>

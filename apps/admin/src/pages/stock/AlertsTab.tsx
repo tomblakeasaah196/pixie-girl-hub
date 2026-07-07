@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { formatDate } from "@/lib/format";
 import { CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { ErrorState, Select } from "@/components/ui/controls";
@@ -115,7 +116,7 @@ export default function AlertsTab() {
       header: "Detected",
       render: (r) => (
         <span className="text-[12px] text-text-faint tabular-nums">
-          {new Date(r.detected_at).toLocaleDateString()}
+          {formatDate(r.detected_at)}
         </span>
       ),
     },

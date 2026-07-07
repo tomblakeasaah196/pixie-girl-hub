@@ -23,7 +23,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
-import { money } from "@/lib/format";
+import { money, formatDateTime } from "@/lib/format";
 import {
   Button,
   Card,
@@ -434,7 +434,7 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
               <Meta label="POD expected" value={money(d.pod_amount_expected_ngn ?? 0)} />
             )}
             {d.expected_delivery_at && (
-              <Meta label="ETA" value={new Date(d.expected_delivery_at).toLocaleString()} />
+              <Meta label="ETA" value={formatDateTime(d.expected_delivery_at)} />
             )}
           </dl>
 
@@ -455,7 +455,7 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
                     <Clock className="w-3 h-3 text-text-faint" />
                     <span className="font-medium">{STATUS_META[h.to_status]?.label ?? h.to_status}</span>
                     {h.occurred_at && (
-                      <span className="text-text-faint">{new Date(h.occurred_at).toLocaleString()}</span>
+                      <span className="text-text-faint">{formatDateTime(h.occurred_at)}</span>
                     )}
                   </div>
                 ))}

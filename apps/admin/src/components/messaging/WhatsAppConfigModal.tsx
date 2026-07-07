@@ -34,6 +34,7 @@ import {
   type RevealableField,
   type SecretReveal,
 } from "@/lib/messaging-accounts-api";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * Full-fat integration config for the messaging portal. Opens from
@@ -476,8 +477,7 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
         {account?.secrets_last_rotated_at && (
           <span className="text-[11px] text-text-faint inline-flex items-center gap-1">
             <History className="w-3 h-3" />
-            Last rotated{" "}
-            {new Date(account.secrets_last_rotated_at).toLocaleString()}
+            Last rotated {formatDateTime(account.secrets_last_rotated_at)}
           </span>
         )}
       </div>
@@ -767,7 +767,7 @@ function RevealHistory({ accountId }: { accountId: string }) {
               </span>
             </span>
             <span className="text-text-faint shrink-0">
-              {new Date(r.revealed_at).toLocaleString()}
+              {formatDateTime(r.revealed_at)}
             </span>
           </li>
         ))}

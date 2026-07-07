@@ -32,10 +32,24 @@ const line = (sym, name, detail) =>
 const checks = [
   [
     "Email (SMTP)",
-    () =>
-      has("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD")
-        ? [PASS, env.SMTP_HOST]
-        : [NO, "set SMTP_HOST / SMTP_USER / SMTP_PASSWORD"],
+    () => {
+      const host = String(env.SMTP_HOST || "").trim();
+      const port = Number(env.SMTP_PORT || 587);
+      const isLocal = /^(localhost|127\.0\.0\.1|::1)$/i.test(host);
+      if (!host) return [NO, "set SMTP_HOST / SMTP_USER / SMTP_PASSWORD"];
+      // Placeholder-shaped config (localhost / port 25 / no auth) accepts mail
+      // locally but does NOT deliver to real inboxes on a prod host. This is
+      // env-only — run `npm run smtp:doctor` for the live connect + send test.
+      if (isLocal || port === 25)
+        return [
+          WARN,
+          `${host}:${port} looks like a local/dev relay — won't deliver to ` +
+            "customers in prod. Point at a real relay; verify with `npm run smtp:doctor`",
+        ];
+      if (!has("SMTP_USER", "SMTP_PASSWORD"))
+        return [WARN, `${host} set but no SMTP_USER/PASSWORD — a public relay will reject it`];
+      return [PASS, `${host}:${port} — verify delivery with \`npm run smtp:doctor\``];
+    },
   ],
   [
     "WhatsApp (Meta Cloud)",

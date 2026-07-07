@@ -198,6 +198,10 @@ const schema = z.object({
   // SMTP
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
+  // Implicit TLS from the first byte (port 465). Leave false for a 587 relay —
+  // the transport still upgrades to STARTTLS there (see email.service). Only a
+  // loopback dev relay (MailHog/sendmail) sends plaintext.
+  SMTP_SECURE: zBool(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM_EMAIL: z.string().email().optional(),

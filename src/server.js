@@ -57,6 +57,13 @@ async function bootstrap() {
   // of silently 503-ing every AI feature at request time.
   require("./services/gemini.service").checkConfigAtBoot();
 
+  // ── SMTP config sanity (non-fatal) ─────────────────────
+  // Warns loudly if the SMTP relay is placeholder-shaped (localhost / port 25 /
+  // no auth), so a dev default left in production screams here instead of
+  // silently dropping every transactional email. `npm run smtp:doctor` does
+  // the live connect + test send.
+  require("./services/email.service").checkConfigAtBoot();
+
   // ── GeoIP local database ───────────────────────────────
   // Non-fatal: the server starts fine without the mmdb file; geo lookups
   // return null and the currency middleware falls back to the default (USD).

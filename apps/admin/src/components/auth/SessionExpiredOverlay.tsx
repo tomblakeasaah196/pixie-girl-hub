@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Hash, KeyRound, Loader2, Lock } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -134,7 +135,11 @@ export function SessionExpiredOverlay() {
   const inputCls =
     "w-full bg-text-primary/[0.04] border border-line/60 rounded-xl py-3 pl-11 pr-4 text-sm font-medium text-text-primary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/60 transition-all placeholder:text-text-faint";
 
-  return (
+  // Portalled to document.body — it must render outside #root, since
+  // body.session-locked applies `filter: blur(...)` to #root and CSS
+  // filters blur their entire subtree with no way for a descendant to
+  // opt out (that previously blurred this sign-in card too).
+  return createPortal(
     <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-bg/60" />
       <div
@@ -294,6 +299,7 @@ export function SessionExpiredOverlay() {
           Not you? Sign out
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

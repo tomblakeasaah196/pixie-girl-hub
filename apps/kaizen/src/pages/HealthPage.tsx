@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { healthCurrent, healthHistory } from "@/lib/api";
 import type { HealthComponent, HealthStatus, HealthComponentName } from "@/lib/types";
-import { Card, StatusPill, Spinner, EmptyState } from "@/components/ui";
+import { StatusPill, Spinner, EmptyState } from "@/components/ui";
 import { Sparkline } from "@/components/charts";
 
 function statusTone(s: HealthStatus) {

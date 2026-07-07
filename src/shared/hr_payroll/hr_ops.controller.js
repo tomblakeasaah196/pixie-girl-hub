@@ -141,6 +141,10 @@ async function listAttendanceDays(req, res) {
   res.json({ data: await repo.listAttendanceDays({ brand: req.brand, filters: req.query }) });
 }
 
+async function getLiveAttendance(req, res) {
+  res.json(await service.getLiveAttendance({ brand: req.brand }));
+}
+
 async function listTargets(req, res) {
   res.json(await service.listTargets({ brand: req.brand, filters: req.query }));
 }
@@ -204,6 +208,7 @@ module.exports = {
   raiseQuery,
   resolveQuery,
   listAttendanceDays,
+  getLiveAttendance,
   listTargets,
   setTarget,
   updateTargetProgress,

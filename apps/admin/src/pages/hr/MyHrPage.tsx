@@ -57,6 +57,7 @@ import {
   statusTone,
 } from "./hr-shared";
 import { OnboardingCard } from "./OnboardingCard";
+import { MyDevicesSection } from "./devices";
 
 function TargetCountdown({ t }: { t: PerformanceTarget }) {
   const done = t.status === "achieved";
@@ -511,6 +512,9 @@ export default function MyHrPage() {
               )}
             </div>
           </div>
+
+          {/* My devices — enrol the phone/laptop you clock in with */}
+          <MyDevicesSection />
 
           {/* Attendance this month */}
           <div>

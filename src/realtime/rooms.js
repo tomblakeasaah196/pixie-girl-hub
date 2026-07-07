@@ -29,6 +29,12 @@ const ROOMS = {
     `brand:${brand}:shade_session:${sessionId}`,
   approvals: (brand) => `brand:${brand}:approvals`,
   insights: (brand) => `brand:${brand}:insights`,
+  // Live attendance — a clock-in/out pushes a ready-to-render row here so the
+  // Attendance tab updates in real time (no waiting for the nightly reconcile).
+  attendance: (brand) => `brand:${brand}:attendance`,
+  // HR device-binding feed — enroll/remove/unknown-device flags fan out here
+  // so the HR & Staff "Devices" view updates live.
+  hr_devices: (brand) => `brand:${brand}:hr_devices`,
 
   // User-scoped push channels
   user_notifications: (userId) => `user:${userId}:notifications`,

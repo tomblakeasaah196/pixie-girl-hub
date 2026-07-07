@@ -95,6 +95,11 @@ async function initSocketIo(httpServer) {
   } = require("../realtime/shade-finder-realtime");
   registerShadeFinderRealtime();
 
+  const {
+    registerAttendanceRealtime,
+  } = require("../realtime/attendance-realtime");
+  registerAttendanceRealtime();
+
   logger.info("socket.io initialised with redis adapter");
   return io;
 }

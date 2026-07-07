@@ -101,8 +101,8 @@ async function insertClockEvent({ client, data }) {
        (profile_id, event_type, latitude, longitude, accuracy_m,
         device_fingerprint, device_user_agent, ip_address,
         matched_geofence_id, distance_m, accepted, rejection_reason, occurred_at,
-        is_offsite, formatted_address)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, COALESCE($13, now()),$14,$15)
+        is_offsite, formatted_address, device_recognized, device_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, COALESCE($13, now()),$14,$15,$16,$17)
      RETURNING *`,
     [
       data.profile_id,
@@ -120,6 +120,8 @@ async function insertClockEvent({ client, data }) {
       data.occurred_at ?? null,
       data.is_offsite ?? false,
       data.formatted_address ?? null,
+      data.device_recognized ?? null,
+      data.device_id ?? null,
     ],
   );
   return rows[0];

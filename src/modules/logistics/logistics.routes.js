@@ -119,6 +119,11 @@ router.get(
   can("view"),
   controller.listWebhookEvents,
 );
+router.post(
+  "/deliveries/:id/notify-delivered",
+  can("edit"),
+  controller.notifyDelivered,
+);
 
 // ── Pay-on-delivery collections ──────────────────────────
 router.get("/pod-collections", can("view"), controller.listPodCollections);

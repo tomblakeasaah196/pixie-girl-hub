@@ -17,6 +17,7 @@
 const outbox = require("../../shared/outbox/outbox");
 const salesRepo = require("../sales/sales.repo");
 const service = require("./logistics.service");
+const events = require("./logistics.events");
 const { logger } = require("../../config/logger");
 
 async function autoDelivery({ brand, order_id }) {
@@ -32,6 +33,15 @@ async function autoDelivery({ brand, order_id }) {
   }
 }
 
+// Auto-send the customer delivered-confirmation email the moment a delivery
+// reaches 'delivered' — fired identically whether staff advanced the status
+// or a driver self-confirmed via the public link (both paths emit the same
+// event). Best-effort: sendDeliveredEmail swallows its own errors.
+async function onDeliveryStatus({ brand, delivery_id, status }) {
+  if (status !== "delivered") return;
+  await service.sendDeliveredEmail({ brand, delivery_id });
+}
+
 let registered = false;
 
 function register() {
@@ -40,8 +50,9 @@ function register() {
   // Prepaid-only: a dispatch order enters the queue ONLY once it is paid.
   // (No `order.confirmed` subscription — see the file header.)
   outbox.register("order.paid", "logistics", autoDelivery);
+  events.on("delivery.status", onDeliveryStatus);
   logger.info(
-    "logistics subscribers registered (outbox order.paid → dispatch delivery)",
+    "logistics subscribers registered (outbox order.paid → dispatch delivery; delivery.status → delivered email)",
   );
 }
 

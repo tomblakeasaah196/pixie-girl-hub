@@ -382,6 +382,32 @@ export const getCurrencies = (ctx?: ApiContext) =>
 export const trackOrder = (token: string, ctx?: ApiContext) =>
   api.get<unknown>(`/api/public/order-timeline/${token}`, ctx);
 
+// --- Driver delivery confirmation (no auth, token-scoped) ---
+export interface DriverDelivery {
+  delivery_id: string;
+  delivery_number: string;
+  status: string;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  recipient_name_snapshot?: string | null;
+  recipient_phone_snapshot?: string | null;
+  delivery_address_snapshot?: Record<string, unknown> | null;
+  delivery_instructions?: string | null;
+  scheduled_pickup_at?: string | null;
+  expected_delivery_at?: string | null;
+  delivered_at?: string | null;
+  courier_name?: string | null;
+}
+
+export const getDriverDelivery = (token: string, ctx?: ApiContext) =>
+  api.get<DriverDelivery>(`/api/public/tracking/driver/${token}`, ctx);
+
+export const confirmDriverDelivery = (
+  token: string,
+  form: FormData,
+  ctx?: ApiContext,
+) => api.postForm<unknown>(`/api/public/tracking/driver/${token}/confirm`, form, ctx);
+
 // --- Helpers ---
 export function unwrap<T>(r: T | { data: T }): T {
   return r && typeof r === "object" && "data" in (r as object)

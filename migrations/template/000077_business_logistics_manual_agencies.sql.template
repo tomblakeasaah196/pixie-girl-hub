@@ -1,0 +1,45 @@
+-- ============================================================
+-- TEMPLATE 000077 — Logistics: manual-agency booking support
+-- Pixie Girl Hub · JBS Praxis
+--
+-- Adds the fields needed to move courier booking to a fully manual
+-- workflow: agency contact/commercial details on couriers, and
+-- driver + scheduled-pickup + driver-confirmation-link fields on
+-- deliveries. ALTER-only file (no CREATE TABLE), so no sentinel —
+-- `db:repair` re-attempts it on every run; every statement is
+-- IF NOT EXISTS / idempotent so re-runs are harmless no-ops.
+-- ============================================================
+
+-- ── couriers: agency contact + commercial profile ───────────
+ALTER TABLE {{BUSINESS}}.couriers
+  ADD COLUMN IF NOT EXISTS contact_person            TEXT,
+  ADD COLUMN IF NOT EXISTS contact_phone              TEXT,
+  ADD COLUMN IF NOT EXISTS payment_terms_notes        TEXT,
+  ADD COLUMN IF NOT EXISTS preferred_pickup_location  TEXT,
+  ADD COLUMN IF NOT EXISTS internal_rating            SMALLINT
+                          CHECK (internal_rating BETWEEN 1 AND 5),
+  ADD COLUMN IF NOT EXISTS internal_notes             TEXT;
+
+-- ── deliveries: manual booking + driver-confirmation link ───
+ALTER TABLE {{BUSINESS}}.deliveries
+  ADD COLUMN IF NOT EXISTS driver_name                TEXT,
+  ADD COLUMN IF NOT EXISTS driver_phone                TEXT,
+  ADD COLUMN IF NOT EXISTS scheduled_pickup_at        TIMESTAMPTZ,
+  -- Separate from public_tracking_token: that one is customer-facing and
+  -- read-only. This one is handed only to the driver and authorises the
+  -- one write action (self-service delivery confirmation) a driver can do.
+  ADD COLUMN IF NOT EXISTS driver_confirmation_token  TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+     WHERE schemaname = '{{BUSINESS}}'
+       AND indexname = 'idx_{{BUSINESS}}_deliveries_driver_token'
+  ) THEN
+    EXECUTE format(
+      'CREATE UNIQUE INDEX idx_%I_deliveries_driver_token ON %I.deliveries (driver_confirmation_token) WHERE driver_confirmation_token IS NOT NULL',
+      '{{BUSINESS}}', '{{BUSINESS}}'
+    );
+  END IF;
+END $$;

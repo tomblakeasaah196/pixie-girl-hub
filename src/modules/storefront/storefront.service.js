@@ -703,7 +703,7 @@ async function checkout({ brand, cart_id, input = {} }) {
     input: {
       contact_id: contact.contact_id,
       sales_channel: "storefront",
-      order_type: "dispatch",
+      order_type: isPickup ? "collection" : "dispatch",
       lines: orderLines,
       shipping_fee_ngn: shippingFeeNgn,
       coupon_code: input.coupon_code || null,

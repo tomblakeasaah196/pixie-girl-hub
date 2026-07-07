@@ -7,6 +7,7 @@ import { FormGrid, Field } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
+import { formatDateTime, formatDate } from "@/lib/format";
 import {
   useInvoice,
   useInvoicePdf,
@@ -249,11 +250,11 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                 </div>
                 <div>
                   <div className="micro">Issue Date</div>
-                  <div className="text-[13px] mt-1">{new Date(invoice.issue_date).toLocaleDateString()}</div>
+                  <div className="text-[13px] mt-1">{formatDate(invoice.issue_date)}</div>
                 </div>
                 <div>
                   <div className="micro">Due Date</div>
-                  <div className="text-[13px] mt-1">{new Date(invoice.due_date).toLocaleDateString()}</div>
+                  <div className="text-[13px] mt-1">{formatDate(invoice.due_date)}</div>
                 </div>
                 <div>
                   <div className="micro">Payment Terms</div>
@@ -329,7 +330,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                         <div className="font-semibold"><MoneyText ngn={Number(p.amount_applied_ngn)} /></div>
                         {p.notes && <div className="text-[11px] text-text-faint">{p.notes}</div>}
                       </div>
-                      <div className="text-[10px] text-text-faint">{new Date(p.applied_at).toLocaleDateString()}</div>
+                      <div className="text-[10px] text-text-faint">{formatDate(p.applied_at)}</div>
                     </div>
                   ))}
                 </div>
@@ -395,7 +396,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                       <div key={r.reminder_id} className="flex items-center justify-between text-[13px] p-2 rounded-lg bg-text-primary/[0.02]">
                         <div>
                           <div className="font-semibold capitalize">{r.reminder_type.replace(/_/g, " ")} · {r.channel}</div>
-                          <div className="text-[11px] text-text-faint">{new Date(r.scheduled_for).toLocaleString()}</div>
+                          <div className="text-[11px] text-text-faint">{formatDateTime(r.scheduled_for)}</div>
                         </div>
                         <div className="flex items-center gap-2">
                           {meta && <Pill tone={meta.tone}>{meta.label}</Pill>}

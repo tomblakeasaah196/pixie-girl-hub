@@ -12,6 +12,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { formatDateTime, formatDate } from "@/lib/format";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
@@ -367,12 +368,8 @@ function SessionsDrawer({
                   </div>
                   <div className="text-[11px] text-text-faint space-y-0.5 pl-6">
                     {s.ip_address && <div>IP: {s.ip_address}</div>}
-                    <div>
-                      Created: {new Date(s.created_at).toLocaleString()}
-                    </div>
-                    <div>
-                      Last seen: {new Date(s.last_seen_at).toLocaleString()}
-                    </div>
+                    <div>Created: {formatDateTime(s.created_at)}</div>
+                    <div>Last seen: {formatDateTime(s.last_seen_at)}</div>
                   </div>
                 </div>
                 <button
@@ -661,7 +658,7 @@ export function IamUsersPage() {
       render: (r) =>
         r.last_login_at ? (
           <span className="text-[12px] text-text-muted">
-            {new Date(r.last_login_at).toLocaleDateString()}
+            {formatDate(r.last_login_at)}
           </span>
         ) : (
           <span className="text-text-faint">--</span>

@@ -19,6 +19,7 @@ import {
   useDeleteReport,
   type ScheduledReport,
 } from "@/lib/settings";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * Settings → Scheduled reports. List of reports that run on a schedule or
@@ -163,7 +164,7 @@ export function ScheduledReportsPage() {
       header: "Next run",
       render: (r) => (
         <span className="text-text-muted">
-          {r.next_run_at ? new Date(r.next_run_at).toLocaleString() : "—"}
+          {formatDateTime(r.next_run_at)}
         </span>
       ),
     },

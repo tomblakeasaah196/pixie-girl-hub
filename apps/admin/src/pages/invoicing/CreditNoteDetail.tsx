@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "@/lib/format";
 import { CheckCircle } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
@@ -89,7 +90,7 @@ export function CreditNoteDetail({ creditNoteId, onClose }: { creditNoteId: stri
                 </div>
                 <div>
                   <div className="micro">Issue Date</div>
-                  <div className="text-[13px] mt-1">{new Date(note.issue_date).toLocaleDateString()}</div>
+                  <div className="text-[13px] mt-1">{formatDate(note.issue_date)}</div>
                 </div>
                 <div>
                   <div className="micro">Reason Category</div>

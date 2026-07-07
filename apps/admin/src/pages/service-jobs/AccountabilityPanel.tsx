@@ -1,4 +1,5 @@
 import { ShieldCheck, AlertTriangle, PackageCheck } from "lucide-react";
+import { formatDate } from "@/lib/format";
 import {
   Card,
   KpiTile,
@@ -92,7 +93,7 @@ export function AccountabilityPanel() {
                   </td>
                   <td className="px-4 py-2">{w.stylist_name ?? "—"}</td>
                   <td className="px-4 py-2 text-text-muted">
-                    {new Date(w.out_at).toLocaleDateString()}
+                    {formatDate(w.out_at)}
                   </td>
                   <td className="px-4 py-2 text-right">
                     <Pill tone="danger">{w.days_out}d — check</Pill>

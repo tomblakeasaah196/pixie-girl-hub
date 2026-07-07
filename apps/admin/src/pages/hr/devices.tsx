@@ -48,6 +48,7 @@ import {
   type LivePunch,
 } from "@/lib/hr-api";
 import { useNotify, errMsg, clockTime, SectionTitle } from "./hr-shared";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 // ── device type presentation ───────────────────────────────
 function DeviceIcon({ type, className }: { type: DeviceType; className?: string }) {
@@ -479,7 +480,7 @@ export function MyDevicesSection() {
                       {isThis && <Pill tone="success">This device</Pill>}
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11px] text-text-faint">
-                      <span>Enrolled {new Date(d.enrolled_at).toLocaleDateString()}</span>
+                      <span>Enrolled {formatDate(d.enrolled_at)}</span>
                       {d.last_seen_at && <span>Last used {clockTime(d.last_seen_at)}</span>}
                       {d.last_ip && (
                         <span className="inline-flex items-center gap-1">
@@ -619,12 +620,7 @@ export function DevicesTab() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-text-primary">{c.display_name || "Staff"}</span>
                     <span className="text-[10px] text-text-faint">
-                      {new Date(c.created_at).toLocaleString([], {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
+                      {formatDateTime(c.created_at)}
                     </span>
                   </div>
                   <div className={cn("mt-0.5", flagged ? "text-danger" : "text-text-muted")}>

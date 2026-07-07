@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "@/lib/format";
 import { FileText, Plus, Search } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText, Button } from "@/components/ui/primitives";
@@ -50,7 +51,7 @@ const columns: Column<Quotation>[] = [
     render: (q) =>
       q.valid_until ? (
         <span className="text-[12px] text-text-muted">
-          {new Date(q.valid_until).toLocaleDateString()}
+          {formatDate(q.valid_until)}
         </span>
       ) : (
         <span className="text-[12px] text-text-faint">—</span>
@@ -62,7 +63,7 @@ const columns: Column<Quotation>[] = [
     width: "110px",
     render: (q) => (
       <span className="text-[12px] text-text-muted">
-        {new Date(q.created_at).toLocaleDateString()}
+        {formatDate(q.created_at)}
       </span>
     ),
   },

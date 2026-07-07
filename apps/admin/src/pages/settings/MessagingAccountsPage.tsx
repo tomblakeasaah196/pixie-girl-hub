@@ -22,6 +22,7 @@ import { useActiveBusiness } from "@/stores/business";
 import { Card } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
 import { toastReport } from "@/lib/error-report";
+import { formatDateTime } from "@/lib/format";
 import {
   messagingAccountsApi,
   PLATFORM_META,
@@ -288,7 +289,7 @@ function AccountRow({
           </code>
           {account.last_inbound_at && (
             <p className="text-[11px] text-text-faint mt-1">
-              Last inbound: {new Date(account.last_inbound_at).toLocaleString()}
+              Last inbound: {formatDateTime(account.last_inbound_at)}
             </p>
           )}
         </div>

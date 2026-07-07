@@ -19,7 +19,7 @@ import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useActiveBusiness } from "@/stores/business";
 import { useAuthStore } from "@/stores/auth";
-import { money, moneyCompact } from "@/lib/format";
+import { money, moneyCompact, formatDateTime } from "@/lib/format";
 import {
   Button,
   Card,
@@ -230,7 +230,7 @@ function EmailTab() {
                 </div>
                 <p className="text-[11.5px] text-text-faint mt-0.5">
                   {c.campaign_type ?? "one_off"}
-                  {c.scheduled_for && ` · scheduled ${new Date(c.scheduled_for).toLocaleString()}`}
+                  {c.scheduled_for && ` · scheduled ${formatDateTime(c.scheduled_for)}`}
                 </p>
               </div>
               <Mail className="w-4 h-4 text-text-faint shrink-0" />

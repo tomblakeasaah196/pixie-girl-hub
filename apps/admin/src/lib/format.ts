@@ -36,3 +36,48 @@ export function hexToTriplet(hex: string): string {
   const h = hex.replace("#", "");
   return `${parseInt(h.slice(0, 2), 16)} ${parseInt(h.slice(2, 4), 16)} ${parseInt(h.slice(4, 6), 16)}`;
 }
+
+/* ── Date / time formatting ───────────────────────────────────────────── */
+/**
+ * Canonical human-friendly timestamp format across the admin app.
+ * Renders a machine ISO string (e.g. "2026-07-06T23:00:00.000Z") as
+ * "19:17, 07/04/2026" — 24-hour local time, then day/month/year.
+ * Returns "—" for null/undefined/invalid values.
+ */
+export function formatDateTime(value: string | number | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return "—";
+  return `${hhmm(d)}, ${ddmmyyyy(d)}`;
+}
+
+/** "07/04/2026" — date only, DD/MM/YYYY. */
+export function formatDate(value: string | number | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return "—";
+  return ddmmyyyy(d);
+}
+
+/** "19:17" — 24-hour local time only. */
+export function formatTime(value: string | number | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return "—";
+  return hhmm(d);
+}
+
+function toDate(value: string | number | Date | null | undefined): Date | null {
+  if (value == null || value === "") return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+function hhmm(d: Date): string {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function ddmmyyyy(d: Date): string {
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+}

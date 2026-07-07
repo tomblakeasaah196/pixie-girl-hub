@@ -24,6 +24,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { toastReport } from "@/lib/error-report";
+import { formatDateTime } from "@/lib/format";
 import {
   Button,
   Card,
@@ -442,11 +443,11 @@ function PraxisSidebar({
         <div className="space-y-2 text-[12.5px]">
           <Row
             label="Starts"
-            value={new Date(campaign.starts_at).toLocaleString()}
+            value={formatDateTime(campaign.starts_at)}
           />
           <Row
             label="Ends"
-            value={new Date(campaign.ends_at).toLocaleString()}
+            value={formatDateTime(campaign.ends_at)}
           />
           <Row
             label="Visitors"

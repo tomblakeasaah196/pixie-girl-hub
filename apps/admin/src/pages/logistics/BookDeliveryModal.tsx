@@ -13,7 +13,7 @@ import { ArrowLeft, CheckCircle2, Loader2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
-import { money } from "@/lib/format";
+import { money, formatDateTime } from "@/lib/format";
 import { toastReport } from "@/lib/error-report";
 import {
   useBookDelivery,
@@ -222,8 +222,8 @@ export function BookDeliveryModal({
             <Review label="Agreed fee" value={fee ? money(Number(fee)) : "—"} />
             <Review label="Tracking ref" value={trackingRef || "—"} />
             <Review label="Tracking URL" value={trackingUrl || "—"} />
-            <Review label="Pickup time" value={pickupAt ? new Date(pickupAt).toLocaleString() : "—"} />
-            <Review label="Expected delivery" value={etaAt ? new Date(etaAt).toLocaleString() : "—"} />
+            <Review label="Pickup time" value={pickupAt ? formatDateTime(pickupAt) : "—"} />
+            <Review label="Expected delivery" value={etaAt ? formatDateTime(etaAt) : "—"} />
             <Review label="Driver" value={driverName ? `${driverName}${driverPhone ? ` · ${driverPhone}` : ""}` : "—"} />
           </div>
         </div>

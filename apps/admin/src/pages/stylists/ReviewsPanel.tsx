@@ -14,6 +14,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useToast } from "@/lib/toast";
 import { useVerifiedReviews, useReviewVisibilityMutation } from "./hooks";
 import type { VerifiedReview } from "./types";
+import { formatDate } from "@/lib/format";
 
 export function ReviewsPanel() {
   const can = useAuthStore((s) => s.can);
@@ -56,7 +57,7 @@ export function ReviewsPanel() {
       header: "Received",
       render: (r) => (
         <span className="tabular-nums text-[12px]">
-          {new Date(r.reviewed_at).toLocaleDateString()}
+          {formatDate(r.reviewed_at)}
         </span>
       ),
     },

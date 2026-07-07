@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "@/lib/format";
 import { useSearchParams } from "react-router-dom";
 import { FileText, Search, Plus } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -36,7 +37,7 @@ const columns: Column<Invoice>[] = [
     key: "due",
     header: "Due",
     width: "110px",
-    render: (i) => <span className="text-[12px] text-text-muted">{new Date(i.due_date).toLocaleDateString()}</span>,
+    render: (i) => <span className="text-[12px] text-text-muted">{formatDate(i.due_date)}</span>,
   },
   {
     key: "total",

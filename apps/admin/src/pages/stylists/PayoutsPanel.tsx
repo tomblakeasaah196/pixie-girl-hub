@@ -14,6 +14,7 @@ import { ErrorState, ConfirmDialog, Select } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAuthStore } from "@/stores/auth";
 import { useToast } from "@/lib/toast";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { usePayouts, usePayout, usePayoutMutations, usePartners } from "./hooks";
 import { PAYOUT_STATUS_META } from "./constants";
 import type { Payout } from "./types";
@@ -26,9 +27,7 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 /** Period columns come back as timestamps; render the calendar day. */
-function fmtDay(v: string): string {
-  return new Date(v).toLocaleDateString();
-}
+const fmtDay = formatDate;
 
 function GenerateDrawer({ onClose }: { onClose: () => void }) {
   const toast = useToast("Stylists → Generate payouts");
@@ -248,7 +247,7 @@ function PayoutDrawer({
           </section>
           {p.status === "paid" && (
             <p className="text-[12px] text-text-muted">
-              Paid {p.paid_at && new Date(p.paid_at).toLocaleString()}
+              Paid {p.paid_at && formatDateTime(p.paid_at)}
               {p.paystack_transfer_code && (
                 <> · ref <span className="font-mono">{p.paystack_transfer_code}</span></>
               )}

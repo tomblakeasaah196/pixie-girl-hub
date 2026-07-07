@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { ConfirmDialog, ErrorState } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
+import { formatDateTime } from "@/lib/format";
 import {
   useAllSessions,
   useMySessions,
@@ -38,10 +39,7 @@ function parseDevice(ua: string | null, label: string | null): string {
   return os ? `${browser} on ${os}` : browser;
 }
 
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "--";
-  return new Date(iso).toLocaleString();
-}
+const fmtDate = formatDateTime;
 
 // ────────────────────────────────────────────────────────────
 // Page

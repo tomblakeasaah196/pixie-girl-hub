@@ -11,6 +11,7 @@ import type { Tone } from "@/components/ui/primitives";
 import { Select, Toggle, ErrorState } from "@/components/ui/controls";
 import { TextInput } from "@/components/ui/Form";
 import { cn } from "@/lib/cn";
+import { formatDateTime } from "@/lib/format";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import {
   useAuditLog,
@@ -134,7 +135,7 @@ function AuditRow({
       >
         <div className="flex-1 min-w-0 flex items-center gap-3">
           <span className="text-[12px] text-text-faint tabular-nums w-[140px] shrink-0">
-            {new Date(entry.occurred_at).toLocaleString()}
+            {formatDateTime(entry.occurred_at)}
           </span>
           <span className="text-[13px] font-medium truncate w-[120px] shrink-0">
             {entry.user_name}

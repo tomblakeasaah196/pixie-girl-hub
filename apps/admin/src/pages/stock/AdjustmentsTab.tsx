@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { formatDate } from "@/lib/format";
 import {
   ClipboardCheck,
   Plus,
@@ -232,7 +233,7 @@ export default function AdjustmentsTab() {
       header: "Created",
       render: (r) => (
         <span className="text-[12px] text-text-faint tabular-nums">
-          {new Date(r.created_at).toLocaleDateString()}
+          {formatDate(r.created_at)}
         </span>
       ),
     },

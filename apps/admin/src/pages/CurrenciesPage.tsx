@@ -21,6 +21,7 @@ import {
   type Currency,
   type FxRate,
 } from "@/lib/settings";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * Settings → Currencies & FX. Two sections: the currency registry
@@ -375,7 +376,7 @@ function FxSection() {
       header: "Valid at",
       render: (r) => (
         <span className="text-text-muted">
-          {new Date(r.valid_at).toLocaleString()}
+          {formatDateTime(r.valid_at)}
         </span>
       ),
     },

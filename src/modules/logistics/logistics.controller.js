@@ -126,6 +126,10 @@ const listWebhookEvents = async (req, res) =>
       delivery_id: req.params.id,
     }),
   });
+const notifyDelivered = async (req, res) =>
+  res.json({
+    data: await service.notifyDelivered({ ...base(req), id: req.params.id }),
+  });
 
 // ── courier webhook ingest ───────────────────────────────
 const ingestCourierEvent = async (req, res) =>
@@ -190,6 +194,18 @@ const reconcilePodCollection = async (req, res) =>
 // ── public tracking (no auth) ────────────────────────────
 const trackPublic = async (req, res) =>
   res.json({ data: await service.trackPublic({ token: req.params.token }) });
+const driverView = async (req, res) =>
+  res.json({ data: await service.driverView({ token: req.params.token }) });
+const driverConfirm = async (req, res) =>
+  res.json({
+    data: await service.driverConfirm({
+      token: req.params.token,
+      file: req.file,
+      reported_lat: req.body.reported_lat,
+      reported_lng: req.body.reported_lng,
+      notes: req.body.notes,
+    }),
+  });
 
 module.exports = {
   listCouriers,
@@ -206,6 +222,7 @@ module.exports = {
   recordAttempt,
   recordProof,
   listWebhookEvents,
+  notifyDelivered,
   ingestCourierEvent,
   listPodCollections,
   getPodCollection,
@@ -214,4 +231,6 @@ module.exports = {
   remitPodCollection,
   reconcilePodCollection,
   trackPublic,
+  driverView,
+  driverConfirm,
 };

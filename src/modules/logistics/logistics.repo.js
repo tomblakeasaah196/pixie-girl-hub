@@ -259,6 +259,30 @@ async function getDelivery({ client, brand, id }) {
   );
   return { ...rows[0], items, attempts, history, proofs };
 }
+/** Minimal order + customer-contact read for the delivered-confirmation email. */
+async function getOrderForEmail({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `SELECT so.order_id, so.order_number, c.display_name AS contact_name, c.email AS contact_email
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+      WHERE so.order_id = $1`,
+    [order_id],
+  );
+  return rows[0] || null;
+}
+async function getDeliveryByDriverToken({ client, brand, token }) {
+  const { rows } = await ex(client)(
+    `SELECT d.delivery_id, d.delivery_number, d.status, d.driver_name, d.driver_phone,
+            d.recipient_name_snapshot, d.recipient_phone_snapshot, d.delivery_address_snapshot,
+            d.delivery_instructions, d.scheduled_pickup_at, d.expected_delivery_at, d.delivered_at,
+            c.display_name AS courier_name
+       FROM ${t(brand, "deliveries")} d
+       LEFT JOIN ${t(brand, "couriers")} c ON c.courier_id = d.courier_id
+      WHERE d.driver_confirmation_token = $1`,
+    [token],
+  );
+  return rows[0] || null;
+}
 async function getDeliveryByToken({ client, brand, token }) {
   const { rows } = await ex(client)(
     `SELECT delivery_id, delivery_number, status, courier_id, courier_tracking_ref, courier_tracking_url,
@@ -565,6 +589,8 @@ module.exports = {
   addDeliveryItem,
   getDelivery,
   getDeliveryByToken,
+  getDeliveryByDriverToken,
+  getOrderForEmail,
   listDeliveries,
   setDeliveryStatus,
   updateDelivery,

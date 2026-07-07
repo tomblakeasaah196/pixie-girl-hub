@@ -21,6 +21,9 @@ const { ACCOUNTS } = require("../accounting/posting-map");
 const brandDocs = require("../../services/pdf.brand-docs");
 const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
+const documentsService = require("../../shared/documents/documents.service");
+const emailService = require("../../services/email.service");
+const { logger } = require("../../config/logger");
 const repo = require("./logistics.repo");
 const events = require("./logistics.events");
 const salesService = require("../sales/sales.service");
@@ -847,6 +850,212 @@ async function trackPublic({ token }) {
   throw new NotFoundError("Tracking reference not found");
 }
 
+// Statuses a driver can no longer act on — the link is a one-shot confirmation,
+// not a general status editor.
+const DRIVER_TERMINAL = new Set([
+  "delivered",
+  "returned_to_sender",
+  "cancelled",
+  "lost",
+  "damaged",
+]);
+
+/** Public driver view (no auth) — what the driver sees before confirming. */
+async function driverView({ token }) {
+  for (const brand of ["pixiegirl", "faitlynhair"]) {
+    const result = await repo.getDeliveryByDriverToken({
+      client: null,
+      brand,
+      token,
+    });
+    if (result) return { ...result, brand };
+  }
+  throw new NotFoundError("Delivery link not found");
+}
+
+/**
+ * Public driver self-confirmation (no auth, token-scoped). A photo is
+ * mandatory (decision: drivers submit photo + optional signature + GPS, no
+ * bare "delivered" tap). Reuses the same attempt/proof/state-history tables
+ * a staff-recorded attempt would use, tagged changed_by_source
+ * 'courier_portal' so it's distinguishable in the audit trail from a staff
+ * click. Emits the same 'delivery.status' event a staff advance would, so
+ * the client-confirmation email (subscriber) fires identically either way.
+ */
+async function driverConfirm({ token, file, reported_lat, reported_lng, notes }) {
+  let brand = null;
+  let delivery = null;
+  for (const b of ["pixiegirl", "faitlynhair"]) {
+    const found = await repo.getDeliveryByDriverToken({
+      client: null,
+      brand: b,
+      token,
+    });
+    if (found) {
+      brand = b;
+      delivery = found;
+      break;
+    }
+  }
+  if (!delivery) throw new NotFoundError("Delivery link not found");
+  if (DRIVER_TERMINAL.has(delivery.status))
+    throw new ConflictError(`This delivery is already '${delivery.status}'`);
+  if (!file) throw new ValidationError("A delivery photo is required to confirm");
+
+  return transaction(async (client) => {
+    const doc = await documentsService.store({
+      brand,
+      user_id: null,
+      buffer: file.buffer,
+      filename: file.originalname,
+      mime_type: file.mimetype,
+      document_type: "delivery_proof",
+      title: `Delivery proof - ${delivery.delivery_number}`,
+      reference_type: "delivery",
+      reference_id: delivery.delivery_id,
+      client,
+    });
+    const attempt_number = await repo.incrementAttemptCount({
+      client,
+      brand,
+      id: delivery.delivery_id,
+    });
+    const attempt = await repo.addAttempt({
+      client,
+      brand,
+      attempt: {
+        delivery_id: delivery.delivery_id,
+        attempt_number,
+        attempted_at: new Date().toISOString(),
+        outcome: "delivered",
+        rider_name: delivery.driver_name || null,
+        rider_phone: delivery.driver_phone || null,
+        reported_lat: reported_lat ?? null,
+        reported_lng: reported_lng ?? null,
+      },
+    });
+    await repo.addProof({
+      client,
+      brand,
+      proof: {
+        delivery_id: delivery.delivery_id,
+        delivery_attempt_id: attempt.attempt_id,
+        proof_type: "photo_at_door",
+        document_id: doc.document_id,
+        notes: notes || null,
+      },
+    });
+    await repo.setDeliveryStatus({
+      client,
+      brand,
+      id: delivery.delivery_id,
+      status: "delivered",
+      extra: { delivered_at: new Date().toISOString() },
+    });
+    await repo.addStateHistory({
+      client,
+      brand,
+      h: {
+        delivery_id: delivery.delivery_id,
+        from_status: delivery.status,
+        to_status: "delivered",
+        changed_by_source: "courier_portal",
+        notes: notes || "Driver self-confirmed via public delivery link",
+      },
+    });
+    await A(
+      brand,
+      null,
+      "logistics.delivery.driver_confirm",
+      "delivery",
+      delivery.delivery_id,
+      { via: "driver_link" },
+      null,
+    );
+    events.emit("delivery.status", {
+      brand,
+      delivery_id: delivery.delivery_id,
+      status: "delivered",
+    });
+    return repo.getDelivery({ client, brand, id: delivery.delivery_id });
+  });
+}
+
+function deliveredEmailHtml({ firstName, orderNumber, deliveredAtText }) {
+  return `
+  <div style="font-family:Montserrat,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#1c1c1c;">
+    <h2 style="font-family:Georgia,'Playfair Display',serif;color:#690909;margin:0 0 16px;">Delivered!</h2>
+    <p style="font-size:15px;line-height:1.6;">Hi ${firstName}, your order <strong>${orderNumber}</strong> was delivered on ${deliveredAtText}.</p>
+    <p style="font-size:15px;line-height:1.6;">If you did not receive this order, please reply to this email right away so we can look into it.</p>
+  </div>`;
+}
+
+/**
+ * Best-effort delivered-confirmation email to the customer. Used both by the
+ * auto-send subscriber (fires on every 'delivered' transition, staff- or
+ * driver-confirmed alike) and by the manual "send now" action staff can
+ * trigger from the delivery detail screen. Never throws — a notification
+ * failure must not block or reverse the delivery itself.
+ */
+async function sendDeliveredEmail({ brand, delivery_id }) {
+  try {
+    const delivery = await repo.getDelivery({ client: null, brand, id: delivery_id });
+    if (!delivery || !delivery.order_id)
+      return { sent: false, reason: "no_linked_order" };
+    const order = await repo.getOrderForEmail({
+      client: null,
+      brand,
+      order_id: delivery.order_id,
+    });
+    if (!order || !order.contact_email)
+      return { sent: false, reason: "no_customer_email" };
+    const firstName =
+      String(order.contact_name || "").trim().split(/\s+/)[0] || "there";
+    const deliveredAtText = delivery.delivered_at
+      ? new Date(delivery.delivered_at).toLocaleString("en-NG", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : "just now";
+    await emailService.send({
+      to: order.contact_email,
+      subject: `Delivered: order ${order.order_number}`,
+      html: deliveredEmailHtml({
+        firstName,
+        orderNumber: order.order_number,
+        deliveredAtText,
+      }),
+      brand,
+    });
+    return { sent: true };
+  } catch (err) {
+    logger.error(
+      { err: err.message, brand, delivery_id },
+      "logistics: delivered-confirmation email failed",
+    );
+    return { sent: false, reason: "send_failed" };
+  }
+}
+
+/** Manual "send now" — staff-triggered resend of the delivered-confirmation email. */
+async function notifyDelivered({ brand, user, request_id, id }) {
+  const delivery = await repo.getDelivery({ client: null, brand, id });
+  if (!delivery) throw new NotFoundError("Delivery not found");
+  if (delivery.status !== "delivered")
+    throw new ConflictError("Delivery is not yet marked delivered");
+  const result = await sendDeliveredEmail({ brand, delivery_id: id });
+  await A(
+    brand,
+    user?.user_id,
+    "logistics.delivery.notify_delivered",
+    "delivery",
+    id,
+    result,
+    request_id,
+  );
+  return result;
+}
+
 /**
  * Render a delivery letter / waybill PDF for a delivery (X-1) and persist it via
  * the Documents gateway. Generated at packing/dispatch time; the document is
@@ -966,4 +1175,8 @@ module.exports = {
   reconcilePodCollection,
   trackByToken,
   trackPublic,
+  driverView,
+  driverConfirm,
+  sendDeliveredEmail,
+  notifyDelivered,
 };

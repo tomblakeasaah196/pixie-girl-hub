@@ -168,6 +168,14 @@ const proof = z
   })
   .strict();
 
+const driverConfirm = z
+  .object({
+    reported_lat: lat.optional(),
+    reported_lng: lng.optional(),
+    notes: z.string().max(500).optional(),
+  })
+  .strict();
+
 const webhookIngest = z
   .object({
     courier_id: z.string().uuid(),
@@ -222,6 +230,7 @@ module.exports = {
   validateDeliveryCancel: mw(deliveryCancel),
   validateAttempt: mw(attempt),
   validateProof: mw(proof),
+  validateDriverConfirm: mw(driverConfirm),
   validateWebhookIngest: mw(webhookIngest),
   validatePodCreate: mw(podCreate),
   validatePodCollected: mw(podCollected),

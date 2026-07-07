@@ -1036,7 +1036,7 @@ function TasksKanban({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search tasks..."
-            className="w-full h-[36px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[12px] text-text-primary outline-none focus:border-accent/50 transition-colors"
+            className="w-full h-[36px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[12px] text-text-primary outline-none focus:border-accent/50 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       </div>
@@ -1131,7 +1131,7 @@ function TaskListMobile({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search tasks..."
-            className="w-full h-[36px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[12px] text-text-primary outline-none focus:border-accent/50 transition-colors"
+            className="w-full h-[36px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[12px] text-text-primary outline-none focus:border-accent/50 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       </div>

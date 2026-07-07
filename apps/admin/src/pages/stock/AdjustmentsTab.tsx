@@ -35,6 +35,7 @@ import {
   InfoBanner,
   Pagination,
   TableSkeleton,
+  ProductsSummary,
 } from "./parts";
 
 /* ─── Constants ─── */
@@ -181,6 +182,11 @@ export default function AdjustmentsTab() {
       ),
     },
     {
+      key: "products",
+      header: "Products",
+      render: (r) => <ProductsSummary lines={r.lines ?? []} />,
+    },
+    {
       key: "location_id",
       header: "Location",
       render: (r) => (
@@ -269,6 +275,7 @@ export default function AdjustmentsTab() {
                   >
                     {adj.adjustment_type.replace(/_/g, " ")}
                   </Pill>
+                  <ProductsSummary lines={adj.lines ?? []} />
                   <span className="text-[12px] text-text-muted truncate">
                     {locationMap[adj.location_id] ?? adj.location_id}
                   </span>
@@ -760,6 +767,26 @@ function WriteoffDrawer({
     [locations],
   );
 
+  /* variants on hand at the chosen location — picked by product name, not ID */
+  const levelsQ = useStockLevels({
+    location_id: locationId || undefined,
+    page_size: 500,
+  });
+  const levels: StockLevel[] = Array.isArray(levelsQ.data)
+    ? levelsQ.data
+    : ((levelsQ.data as any)?.data ?? []);
+
+  const variantOptions = useMemo(
+    () => [
+      { value: "", label: locationId ? "Select product" : "Pick a location first" },
+      ...levels.map((lv) => ({
+        value: lv.variant_id,
+        label: `${lv.variant_name ?? "Unnamed product"} · ${lv.sku ?? lv.variant_id.slice(0, 8)}`,
+      })),
+    ],
+    [levels, locationId],
+  );
+
   const reasonOptions = [
     { value: "", label: "Select reason" },
     ...WRITEOFF_REASONS.map((r) => ({ value: r.value, label: r.label })),
@@ -847,7 +874,10 @@ function WriteoffDrawer({
           <FieldLabel>Location</FieldLabel>
           <Select
             value={locationId}
-            onChange={setLocationId}
+            onChange={(v) => {
+              setLocationId(v);
+              setLines((prev) => prev.map((l) => ({ ...l, variant_id: "" })));
+            }}
             options={locationOptions}
           />
         </div>
@@ -865,10 +895,11 @@ function WriteoffDrawer({
               className="flex items-start gap-3 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line"
             >
               <div className="flex-1 space-y-2">
-                <TextInput
+                <Select
                   value={line.variant_id}
                   onChange={(v) => updateLine(idx, { variant_id: v })}
-                  placeholder="Variant ID"
+                  disabled={!locationId}
+                  options={variantOptions}
                 />
                 <div className="flex gap-2">
                   <div className="w-[100px]">

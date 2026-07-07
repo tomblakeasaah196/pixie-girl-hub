@@ -24,8 +24,11 @@ const appraisalRepo = require("./appraisal.repo");
 const rewardsRepo = require("./rewards.repo");
 const hrService = require("./hr.service");
 const attendanceRepo = require("../attendance/attendance.repo");
+const devicesRepo = require("./devices.repo");
 const calc = require("./lateness.calc");
 const geo = require("../attendance/geo.calc");
+const { evaluateClockTransition } = require("./clock.guard");
+const { evaluateDeviceRecognition } = require("./device.guard");
 const events = require("./hr.events");
 const { reverseGeocode } = require("../../services/geoapify.service");
 const { audit } = require("../../middleware/audit");
@@ -392,6 +395,32 @@ async function bumpTargetProgress({ brand, userId, metric, delta }) {
   return row;
 }
 
+/**
+ * Quality-gated recompute of a staffer's service-job targets for a period.
+ * Sets `styles_completed` / `services_completed` to an absolute count (of jobs
+ * that passed the quality gate), so re-firing on completion or a later QC
+ * rating is idempotent and only quality-passing work counts. Emits
+ * target_achieved on a fresh crossing.
+ */
+async function recomputeServiceTargets({ brand, userId, year, month, count }) {
+  if (!userId) return;
+  const profileId = await repo.profileIdForUser({ brand, userId });
+  if (!profileId) return;
+  for (const metric of ["styles_completed", "services_completed"]) {
+    const row = await repo.setActiveTargetValue({
+      brand, profileId, metric, value: count, year, month,
+    });
+    if (!row) continue;
+    events.emit("target_progress", { brand, target_id: row.target_id, status: row.status });
+    if (
+      Number(row.prev_value) < Number(row.target_value) &&
+      Number(row.current_value) >= Number(row.target_value)
+    ) {
+      events.emit("target_achieved", { brand, target_id: row.target_id });
+    }
+  }
+}
+
 async function removeTarget({ brand, user, request_id, id }) {
   await transaction(async (client) => {
     const before = await repo.findTarget({ client, brand, id });
@@ -478,6 +507,14 @@ async function reconcileDay({ brand, user, date }) {
         clock &&
         clock.is_offsite === true;
 
+      // Same gating for the clock-out point (captured on every punch now).
+      const clockOutOffsite =
+        settings.geofence_enabled &&
+        wd.working &&
+        wd.mode === "on_site" &&
+        clockOut &&
+        clockOut.is_offsite === true;
+
       // Early departure / last-out (audit H3): only meaningful on a worked day.
       const earlyLeaveMinutes =
         wd.working && clockOut
@@ -512,6 +549,14 @@ async function reconcileDay({ brand, user, date }) {
           clock_in_lng: clock ? clock.longitude : null,
           last_clock_out_at: clockOut ? clockOut.occurred_at : null,
           early_leave_minutes: earlyLeaveMinutes,
+          clock_out_address: clockOut ? clockOut.formatted_address : null,
+          clock_out_lat: clockOut ? clockOut.latitude : null,
+          clock_out_lng: clockOut ? clockOut.longitude : null,
+          clock_out_is_offsite: Boolean(clockOutOffsite),
+          clock_out_distance_m: clockOut ? clockOut.distance_m : null,
+          clock_in_ip: clock ? clock.ip_address : null,
+          clock_out_ip: clockOut ? clockOut.ip_address : null,
+          clock_in_device_recognized: clock ? clock.device_recognized : null,
         },
       });
 
@@ -733,8 +778,11 @@ async function getMyToday({ brand, user }) {
 
 /**
  * Self clock-in / clock-out from the top-bar widget. Records the coordinates
- * + IP as evidence; flags (does not reject) an off-site point; blocks only
- * when location is missing on an on-site day where it's required.
+ * + IP as evidence; flags (does not reject) an off-site point. Location is
+ * MANDATORY for both clock-in and clock-out — a punch without it is refused
+ * (refusing on clock-in leaves no record, so reconcile marks the day absent).
+ * Enforces one accepted clock-in + one clock-out per day (clock-out must
+ * follow a clock-in), closing the double clock-in gap.
  *
  * The stored address label is derived server-side from the coordinates via
  * Geoapify (audit H7 — replaces the flaky client-side Google geocode). The
@@ -761,15 +809,59 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       input.latitude !== null && input.latitude !== undefined &&
       input.longitude !== null && input.longitude !== undefined;
 
-    if (
-      !hasPoint &&
-      settings.geofence_enabled &&
-      settings.geofence_required_on_site &&
-      mode.mode === "on_site"
-    ) {
+    // Location is MANDATORY for BOTH clock-in and clock-out — a punch is never
+    // recorded without it. Refusing location on a clock-in means no clock-in
+    // exists, so reconcile marks the day absent (the meeting rule). The widget
+    // shows the matching toast; this is the server-side hard gate.
+    if (!hasPoint) {
       throw new ValidationError(
-        "Location is required to clock in on an on-site day. Please enable location access.",
+        input.event_type === "clock_out"
+          ? "Confirm your location to clock out. Enable location access on your device and try again."
+          : "Confirm your location to clock in. Enable location access on your device and try again — without it you can't clock in and the day will be marked absent.",
       );
+    }
+
+    // One accepted clock-in and one accepted clock-out per day, with clock-out
+    // required to follow a clock-in (closes the double clock-in gap). The DB
+    // partial unique index (000303) backstops the concurrent double-tap race.
+    const todayEvents = await repo.todayClockEvents({
+      client,
+      profileId: profile.profile_id,
+    });
+    const transition = evaluateClockTransition({
+      todayEvents,
+      eventType: input.event_type,
+    });
+    if (!transition.allowed) {
+      throw new ConflictError(transition.message);
+    }
+
+    // Device binding (000304): FLAG — never block — a punch from an
+    // un-enrolled device. The CEO is exempt (recognized = null). An employee
+    // who hasn't enrolled any device yet is neutral (null) so we don't
+    // red-flag the whole rollout; once they have devices, a punch whose
+    // fingerprint is outside that set is the buddy-punch signal (false).
+    let deviceRecognized = null;
+    let matchedDeviceId = null;
+    if (!user.is_ceo) {
+      const enrolledCount = await devicesRepo.countActive({
+        client,
+        profileId: profile.profile_id,
+      });
+      const match =
+        enrolledCount > 0 && input.device_fingerprint
+          ? await devicesRepo.findActiveByFingerprint({
+              client,
+              profileId: profile.profile_id,
+              fingerprint: input.device_fingerprint,
+            })
+          : null;
+      deviceRecognized = evaluateDeviceRecognition({
+        isCeo: user.is_ceo,
+        enrolledCount,
+        hasMatch: Boolean(match),
+      });
+      matchedDeviceId = match ? match.device_id : null;
     }
 
     let decision = { is_offsite: false, matched_geofence_id: null, distance_m: null, reason: null };
@@ -783,26 +875,83 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       });
     }
 
-    const event = await attendanceRepo.insertClockEvent({
-      client,
-      data: {
-        profile_id: profile.profile_id,
-        event_type: input.event_type,
-        latitude: hasPoint ? input.latitude : null,
-        longitude: hasPoint ? input.longitude : null,
-        accuracy_m: input.accuracy_m ?? null,
-        device_fingerprint: input.device_fingerprint ?? null,
-        device_user_agent: requestMeta.user_agent ?? null,
-        ip_address: requestMeta.ip_address ?? null,
-        matched_geofence_id: decision.matched_geofence_id,
-        distance_m: decision.distance_m,
-        accepted: true, // recorded; off-site is flagged, not rejected
-        rejection_reason: decision.reason,
-        is_offsite: decision.is_offsite,
-        formatted_address: addressLabel,
-        occurred_at: null,
-      },
-    });
+    let event;
+    try {
+      event = await attendanceRepo.insertClockEvent({
+        client,
+        data: {
+          profile_id: profile.profile_id,
+          event_type: input.event_type,
+          latitude: hasPoint ? input.latitude : null,
+          longitude: hasPoint ? input.longitude : null,
+          accuracy_m: input.accuracy_m ?? null,
+          device_fingerprint: input.device_fingerprint ?? null,
+          device_user_agent: requestMeta.user_agent ?? null,
+          ip_address: requestMeta.ip_address ?? null,
+          matched_geofence_id: decision.matched_geofence_id,
+          distance_m: decision.distance_m,
+          accepted: true, // recorded; off-site is flagged, not rejected
+          rejection_reason: decision.reason,
+          is_offsite: decision.is_offsite,
+          formatted_address: addressLabel,
+          device_recognized: deviceRecognized,
+          device_id: matchedDeviceId,
+          occurred_at: null,
+        },
+      });
+    } catch (err) {
+      // 000303 partial unique index fired: a concurrent punch beat this one to
+      // the same day + type. Present it as the same conflict the guard raises.
+      if (err && err.code === "23505") {
+        throw new ConflictError(
+          input.event_type === "clock_out"
+            ? "You've already clocked out today."
+            : "You've already clocked in today.",
+        );
+      }
+      throw err;
+    }
+
+    // Device-binding side-effects. A recognised device gets its last-seen
+    // bumped; an UNKNOWN device on a clock-in raises an 'unknown_device' HR
+    // query and writes the change feed so it surfaces red on attendance and
+    // reaches HR & Staff. Only clock-in raises the query (one accepted
+    // clock-in per day → naturally de-duped); clock-out still records the flag.
+    if (deviceRecognized === true && matchedDeviceId) {
+      await devicesRepo.touchDevice({
+        client,
+        deviceId: matchedDeviceId,
+        ip: requestMeta.ip_address,
+      });
+    } else if (deviceRecognized === false && input.event_type === "clock_in") {
+      await repo.createQuery({
+        client,
+        brand,
+        input: {
+          profile_id: profile.profile_id,
+          query_type: "unknown_device",
+          severity: "high",
+          subject: `Clock-in from an unrecognised device on ${todayStr()}`,
+          details:
+            `You clocked in on ${todayStr()} from a device that isn't enrolled ` +
+            `for attendance. If this was you, enrol the device in My HR → My ` +
+            `devices. If it wasn't, tell HR immediately — someone may have ` +
+            `clocked in as you.`,
+          source: "auto",
+        },
+      });
+      await devicesRepo.logChange({
+        client,
+        business: profile.business,
+        profileId: profile.profile_id,
+        deviceId: null,
+        action: "flagged_unknown",
+        label: null,
+        fingerprint: input.device_fingerprint ?? null,
+        actorUserId: user.user_id,
+        note: `Clock-in from an unrecognised device on ${todayStr()}`,
+      });
+    }
 
     // Immediate lateness feedback on clock-in (server time is authoritative).
     let lateMinutes = 0;
@@ -822,8 +971,26 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       });
     }
 
+    // Real-time attendance: carry a compact, ready-to-render row so the
+    // Attendance tab updates the instant someone punches — no waiting for the
+    // nightly reconcile (which now only settles the books at 21:00 Lagos).
+    // device_recognized === false drives the red unknown-device marker.
     events.emit("clock_event", {
-      brand, event_id: event.event_id, is_offsite: decision.is_offsite,
+      brand,
+      event_id: event.event_id,
+      is_offsite: decision.is_offsite,
+      live_row: {
+        profile_id: profile.profile_id,
+        display_name: profile.display_name || null,
+        event_type: event.event_type,
+        occurred_at: event.occurred_at,
+        is_offsite: decision.is_offsite,
+        distance_m: decision.distance_m,
+        address: event.formatted_address,
+        device_recognized: deviceRecognized,
+        late_minutes: lateMinutes,
+        status: lateMinutes > 0 ? "late" : "present",
+      },
     });
     return {
       event_id: event.event_id,
@@ -832,6 +999,7 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       is_offsite: decision.is_offsite,
       distance_m: decision.distance_m,
       address: event.formatted_address,
+      device_recognized: deviceRecognized,
       late_minutes: lateMinutes,
       status: lateMinutes > 0 ? "late" : "present",
     };
@@ -845,6 +1013,11 @@ async function getOverview({ brand }) {
     await repo.listAttendanceDays({ brand, filters: { is_late: true } })
   ).filter((d) => !d.justified).slice(0, 50);
   return { counts, pending_justifications };
+}
+
+/** Today's accepted punches, live-feed seed for the Attendance tab (000304). */
+async function getLiveAttendance({ brand }) {
+  return { data: await repo.liveTodayPunches({ brand }) };
 }
 
 // ── Analytics (HR dashboard) ───────────────────────────────
@@ -877,6 +1050,43 @@ async function getAnalytics({ brand, year, month }) {
       achieved: Number(a.achieved_targets || 0),
     },
     earned_mtd_ngn: Number(a.earned_mtd_ngn || 0),
+  };
+}
+
+/** Month-over-month HR trends (headcount, hires, attrition, punctuality, cost). */
+async function getAnalyticsTrends({ brand, months }) {
+  const n = Math.min(24, Math.max(3, Number(months) || 12));
+  const rows = await repo.analyticsTrends({ brand, months: n });
+  return {
+    months: n,
+    series: rows.map((r) => ({
+      year: Number(r.year),
+      month: Number(r.month),
+      label: `${String(r.month).padStart(2, "0")}/${String(r.year).slice(2)}`,
+      headcount: Number(r.headcount || 0),
+      new_hires: Number(r.new_hires || 0),
+      attrition: Number(r.attrition || 0),
+      punctuality_pct: Number(r.punctuality_pct || 0),
+      payroll_ngn: Number(r.payroll_ngn || 0),
+    })),
+  };
+}
+
+/** Staff whose probation ends within `days` days — for the HR watch-list. */
+async function getProbationEndingSoon({ brand, days }) {
+  const d = Math.min(120, Math.max(1, Number(days) || 30));
+  const rows = await repo.probationEndingSoon({ brand, days: d });
+  return {
+    days: d,
+    items: rows.map((r) => ({
+      profile_id: r.profile_id,
+      user_id: r.user_id,
+      display_name: r.display_name,
+      job_title: r.job_title,
+      probation_status: r.probation_status,
+      probation_end_date: r.probation_end_date,
+      days_left: Number(r.days_left),
+    })),
   };
 }
 
@@ -914,6 +1124,29 @@ async function getMyHr({ brand, user }) {
     payrollRepo.listCommissions({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
     payrollRepo.listBonuses({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
   ]);
+  // Onboarding pack (§3.7): the brand checklist ticked per employee, plus the
+  // SOP articles, own documents and handy links — always available on My HR.
+  const [onboardDone, helpArticles, ownDocs] = await Promise.all([
+    repo.onboardingProgress({ brand, profileId: profile.profile_id }),
+    repo.onboardingHelpArticles({}).catch(() => []),
+    repo.ownDocumentsForProfile({ brand, profileId: profile.profile_id }).catch(() => []),
+  ]);
+  const checklist = Array.isArray(settings.onboarding_checklist)
+    ? settings.onboarding_checklist
+    : [];
+  const onboarding = {
+    welcome: settings.onboarding_welcome || null,
+    items: checklist.map((it) => ({
+      key: it.key,
+      label: it.label,
+      completed: onboardDone.has(it.key),
+    })),
+    done: checklist.filter((it) => onboardDone.has(it.key)).length,
+    total: checklist.length,
+    help_articles: helpArticles,
+    documents: ownDocs,
+    links: Array.isArray(settings.onboarding_links) ? settings.onboarding_links : [],
+  };
   // Own reward grants (self-service, not permission-gated — the motivational
   // "my rewards" card, §3 reward system).
   const rewards = await rewardsRepo
@@ -988,7 +1221,22 @@ async function getMyHr({ brand, user }) {
     payslips: payslips.data,
     accruals,
     rewards,
+    onboarding,
   };
+}
+
+/** Tick / untick one of my onboarding checklist items (self-service). */
+async function toggleOnboardingItem({ brand, user, item_key, completed }) {
+  return transaction(async (client) => {
+    const profile = await repo.profileForUser({ client, brand, userId: user.user_id });
+    if (!profile) throw new NotFoundError("Staff profile");
+    await repo.setOnboardingItem({
+      client, brand, profileId: profile.profile_id, item_key,
+      completed: completed !== false, userId: user.user_id,
+    });
+    events.emit("onboarding_item", { brand, profile_id: profile.profile_id, item_key });
+    return { item_key, completed: completed !== false };
+  });
 }
 
 // ── Employee 360 (HR dossier — audit H4) ───────────────────
@@ -1049,9 +1297,18 @@ async function getEmployee360({ brand, user, profileId }) {
   const tenureDays = startDate
     ? Math.max(0, Math.floor((Date.now() - new Date(`${startDate}T00:00:00Z`).getTime()) / 86400000))
     : null;
+  // Onboarding completion (§3.7) — how far this hire is through the checklist.
+  const onboardChecklist = Array.isArray(settings.onboarding_checklist)
+    ? settings.onboarding_checklist
+    : [];
+  const onboardDone = await repo.onboardingDoneCount({ brand, profileId }).catch(() => 0);
 
   return {
     profile,
+    onboarding: {
+      done: Math.min(onboardDone, onboardChecklist.length),
+      total: onboardChecklist.length,
+    },
     insights: {
       ...attInsights,
       tenure_days: tenureDays,
@@ -1106,6 +1363,7 @@ module.exports = {
   setTarget,
   updateTargetProgress,
   bumpTargetProgress,
+  recomputeServiceTargets,
   removeTarget,
   reconcileDay,
   reconcilePeriod,
@@ -1115,7 +1373,11 @@ module.exports = {
   getMyToday,
   selfClock,
   getOverview,
+  getLiveAttendance,
   getAnalytics,
+  getAnalyticsTrends,
+  getProbationEndingSoon,
   getMyHr,
+  toggleOnboardingItem,
   getEmployee360,
 };

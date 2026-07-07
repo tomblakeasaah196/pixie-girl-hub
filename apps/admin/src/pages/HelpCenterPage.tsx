@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useAuthStore } from "@/stores/auth";
 import {
   HelpCircle,
+  PencilLine,
   Search,
   Sparkles,
   MessageSquare,
@@ -11,6 +13,33 @@ import {
   Wallet,
   ShieldCheck,
   BookOpen,
+  LayoutDashboard,
+  Users,
+  Scissors,
+  CalendarDays,
+  Boxes,
+  Truck,
+  Factory,
+  Store,
+  Contact,
+  Lightbulb,
+  Megaphone,
+  MapPin,
+  GitBranch,
+  Heart,
+  Mail,
+  Share2,
+  Bell,
+  FolderArchive,
+  Palette,
+  Gauge,
+  Receipt,
+  Tag,
+  FileText,
+  UserCog,
+  ArrowLeftRight,
+  Globe,
+  Settings,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
@@ -24,6 +53,9 @@ import { helpApi, type HelpArticleSummary } from "@/lib/help-api";
  * CEO sees here and what Praxis cites are the same source of truth.
  */
 
+// Maps the `icon` name stored on shared.help_categories to a Lucide
+// component. Keep this in step with the icons chosen in the help-content
+// seed migrations (000214 onward) so no category silently falls back.
 const ICONS: Record<string, typeof HelpCircle> = {
   Sparkles,
   MessageSquare,
@@ -33,11 +65,39 @@ const ICONS: Record<string, typeof HelpCircle> = {
   ShieldCheck,
   BookOpen,
   HelpCircle,
+  LayoutDashboard,
+  Users,
+  Scissors,
+  CalendarDays,
+  Boxes,
+  Truck,
+  Factory,
+  Store,
+  Contact,
+  Lightbulb,
+  Megaphone,
+  MapPin,
+  GitBranch,
+  Heart,
+  Mail,
+  Share2,
+  Bell,
+  FolderArchive,
+  Palette,
+  Gauge,
+  Receipt,
+  Tag,
+  FileText,
+  UserCog,
+  ArrowLeftRight,
+  Globe,
+  Settings,
 };
 
 export function HelpCenterPage() {
   useBreadcrumbs([{ label: "Help Center" }]);
   const [q, setQ] = useState("");
+  const canEdit = useAuthStore((s) => s.can)("help_center", "edit");
 
   const categoriesQ = useQuery({
     queryKey: ["help", "categories"],
@@ -71,6 +131,14 @@ export function HelpCenterPage() {
             Guides, FAQs, and the &ldquo;why&rdquo; behind how the Hub runs.
           </p>
         </div>
+        {canEdit && (
+          <Link
+            to="/help/editor"
+            className="ml-auto inline-flex items-center gap-1.5 text-[12.5px] font-medium px-3 py-1.5 rounded-lg bg-panel-2 border hairline hover:border-accent/40 text-text-muted hover:text-text-primary"
+          >
+            <PencilLine className="w-3.5 h-3.5" /> Manage
+          </Link>
+        )}
       </div>
 
       <div className="relative mt-5">
@@ -80,7 +148,7 @@ export function HelpCenterPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search guides — e.g. 'WhatsApp', 'costs', 'layaway'…"
-          className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-panel-2 border hairline text-[13.5px] focus:outline-none focus:border-accent/40"
+          className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-panel-2 border hairline text-[13.5px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
 

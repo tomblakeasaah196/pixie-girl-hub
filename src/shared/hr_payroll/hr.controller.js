@@ -181,6 +181,29 @@ const appraisalH = {
         input: req.body,
       }),
     }),
+  autoScore: async (req, res) =>
+    res.json({
+      data: await appraisal.autoScoreCycle({
+        ...ctx(req),
+        cycle_id: req.params.cycleId,
+        only_user_id: req.body ? req.body.user_id : undefined,
+        trigger: "manual",
+      }),
+    }),
+  calibrate: async (req, res) =>
+    res.json({
+      data: await appraisal.calibrateScore({
+        ...ctx(req),
+        cycle_id: req.params.cycleId,
+        score_id: req.params.scoreId,
+        raw_score: req.body.raw_score,
+        reason: req.body.reason,
+      }),
+    }),
+  exportPdf: async (req, res) =>
+    res.json({
+      data: await appraisal.exportReviewPdf({ ...ctx(req), id: req.params.id }),
+    }),
 };
 
 module.exports = {

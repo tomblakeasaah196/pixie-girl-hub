@@ -111,10 +111,61 @@ async function request<T>(
     : (payload as T));
 }
 
+async function postForm<T>(path: string, form: FormData, ctx: ApiContext = {}): Promise<T> {
+  const brand = ctx.brand ?? (typeof window !== "undefined" ? clientBrand() : undefined);
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "X-Brand-Context": brand ?? "pixiegirl",
+    ...ctx.headers,
+  };
+  // No Content-Type — the browser sets the multipart boundary.
+  if (ctx.cookie) headers["Cookie"] = ctx.cookie;
+  if (authToken && typeof window !== "undefined")
+    headers["Authorization"] = `Bearer ${authToken}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl()}${path}`, {
+      method: "POST",
+      headers,
+      body: form,
+      credentials: "include",
+      signal: ctx.signal,
+    });
+  } catch {
+    throw makeError("NETWORK", 0, "We couldn't reach the store. Check your connection and retry.");
+  }
+
+  let json: unknown = null;
+  const text = await res.text();
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+  }
+
+  if (!res.ok) {
+    const err = (json as { error?: { code?: string; userMessage?: string; message?: string } })?.error;
+    throw makeError(
+      err?.code ?? `HTTP_${res.status}`,
+      res.status,
+      err?.userMessage ?? err?.message ?? "Something went wrong. Please try again.",
+    );
+  }
+
+  const payload = json as { data?: T } | T;
+  return (payload && typeof payload === "object" && "data" in (payload as object)
+    ? (payload as { data: T }).data
+    : (payload as T));
+}
+
 export const api = {
   get: <T>(path: string, ctx?: ApiContext) => request<T>("GET", path, undefined, ctx),
   post: <T>(path: string, body?: unknown, ctx?: ApiContext) => request<T>("POST", path, body, ctx),
   patch: <T>(path: string, body?: unknown, ctx?: ApiContext) => request<T>("PATCH", path, body, ctx),
   put: <T>(path: string, body?: unknown, ctx?: ApiContext) => request<T>("PUT", path, body, ctx),
   delete: <T>(path: string, ctx?: ApiContext) => request<T>("DELETE", path, undefined, ctx),
+  postForm,
 };

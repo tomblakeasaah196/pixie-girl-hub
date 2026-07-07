@@ -4,6 +4,27 @@ import { ChevronLeft, Sparkles, ExternalLink } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { helpApi } from "@/lib/help-api";
 import { Markdown } from "@/components/help/Markdown";
+import { MODULE_BY_KEY } from "@/lib/modules";
+
+/**
+ * An article's `related_module` is the module identity the content is about.
+ * Most values are frontend module keys; a few legacy seeds use a different
+ * name than the module key (e.g. Praxis Insights was seeded as `ai_insights`,
+ * attendance content lives under HR). Resolve to the real route + label so the
+ * "open module" chip always lands somewhere correct — including modules whose
+ * route differs from their key (service_jobs → /service-jobs, campaigns →
+ * /sales-campaigns, retail → /retail-partners).
+ */
+const RELATED_MODULE_ALIAS: Record<string, string> = {
+  ai_insights: "insights",
+  attendance: "hr",
+};
+
+function resolveRelatedModule(related: string): { to: string; label: string } {
+  const key = RELATED_MODULE_ALIAS[related] ?? related;
+  const mod = MODULE_BY_KEY[key];
+  return { to: mod?.route ?? `/${related}`, label: mod?.label ?? related };
+}
 
 export function HelpArticlePage() {
   const { slug = "" } = useParams<{ slug: string }>();
@@ -80,14 +101,18 @@ export function HelpArticlePage() {
             For {a.audience}
           </span>
         )}
-        {a.related_module && (
-          <Link
-            to={`/${a.related_module === "smartcomm" ? "smartcomm" : a.related_module}`}
-            className="uppercase tracking-widest border hairline rounded-full px-2 py-[1px] hover:border-accent/40 inline-flex items-center gap-1"
-          >
-            {a.related_module} <ExternalLink className="w-3 h-3" />
-          </Link>
-        )}
+        {a.related_module &&
+          (() => {
+            const { to, label } = resolveRelatedModule(a.related_module);
+            return (
+              <Link
+                to={to}
+                className="uppercase tracking-widest border hairline rounded-full px-2 py-[1px] hover:border-accent/40 inline-flex items-center gap-1"
+              >
+                {label} <ExternalLink className="w-3 h-3" />
+              </Link>
+            );
+          })()}
         <span className="ml-auto">
           Updated {new Date(a.updated_at).toLocaleDateString()}
         </span>

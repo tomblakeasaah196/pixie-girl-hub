@@ -9,6 +9,7 @@ import {
   type PlaceAddress,
 } from "@/components/ui/AddressAutocomplete";
 import { useCreateAddress } from "./hooks";
+import { toastReport } from "@/lib/error-report";
 import type { AddressType, AddressCreateInput } from "./types";
 import { DIAL_CODES } from "./ContactFormModal";
 
@@ -130,6 +131,7 @@ export function AddressFormModal({ contactId, onClose }: Props) {
       await createMut.mutateAsync(input);
       onClose();
     } catch (err: unknown) {
+      toastReport("Contacts → Address", "Save address", err);
       setError(err instanceof Error ? err.message : "Failed to save address.");
     }
   };

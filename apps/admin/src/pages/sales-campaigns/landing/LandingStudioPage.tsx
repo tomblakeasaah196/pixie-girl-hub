@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBusinessStore } from "@/stores/business";
+import { toastReport } from "@/lib/error-report";
 import {
   useLandingStudio,
   useSaveLandingDraft,
@@ -212,6 +213,7 @@ export function LandingStudioPage() {
       setCampaignDirty(false);
       flash("Draft saved");
     } catch (e) {
+      toastReport("Sales Campaigns → Landing Studio", "Save draft", e);
       flash(e instanceof Error ? e.message : "Couldn't save — please try again");
     }
   }
@@ -224,6 +226,7 @@ export function LandingStudioPage() {
       setDirty(false);
       flash("Published live");
     } catch (e) {
+      toastReport("Sales Campaigns → Landing Studio", "Publish", e);
       flash(e instanceof Error ? e.message : "Couldn't publish — please try again");
     }
   }
@@ -639,8 +642,8 @@ function BrandEditor({
         {config.pillars.map((p, i) => (
           <div key={i} className="rounded-[10px] border hairline p-2.5 space-y-1.5">
             <div className="flex gap-2">
-              <input value={p.numeral} onChange={(e) => update((d) => { d.pillars[i].numeral = e.target.value; })} className="w-12 input-sm" />
-              <input value={p.title} onChange={(e) => update((d) => { d.pillars[i].title = e.target.value; })} className="flex-1 input-sm" placeholder="Title" />
+              <input value={p.numeral} onChange={(e) => update((d) => { d.pillars[i].numeral = e.target.value; })} className="w-12 input-sm" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
+              <input value={p.title} onChange={(e) => update((d) => { d.pillars[i].title = e.target.value; })} className="flex-1 input-sm" placeholder="Title" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
             </div>
             <textarea value={p.body} onChange={(e) => update((d) => { d.pillars[i].body = e.target.value; })} rows={2} className="w-full input-sm" placeholder="Body" />
           </div>
@@ -650,8 +653,8 @@ function BrandEditor({
       <Section title="Socials">
         {config.socials.map((s, i) => (
           <div key={i} className="flex gap-1.5 items-center">
-            <input value={s.platform} onChange={(e) => update((d) => { d.socials[i].platform = e.target.value; })} className="w-24 input-sm" placeholder="platform" />
-            <input value={s.href} onChange={(e) => update((d) => { d.socials[i].href = e.target.value; })} className="flex-1 input-sm" placeholder="https://…" />
+            <input value={s.platform} onChange={(e) => update((d) => { d.socials[i].platform = e.target.value; })} className="w-24 input-sm" placeholder="platform" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
+            <input value={s.href} onChange={(e) => update((d) => { d.socials[i].href = e.target.value; })} className="flex-1 input-sm" placeholder="https://…" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
             <button onClick={() => update((d) => { d.socials.splice(i, 1); })} className="text-text-faint hover:text-danger p-1"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
@@ -976,7 +979,7 @@ function CampaignEditor({
                       updateBlock("why_buy", (pp) => ({ ...pp, items: next }));
                     }}
                     className="input-sm w-full"
-                    placeholder="Pillar title"
+                    placeholder="Pillar title" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                   <textarea
                     value={item.body}
@@ -1025,7 +1028,7 @@ function CampaignEditor({
                       updateBlock("shipping_returns", (pp) => ({ ...pp, cards: next }));
                     }}
                     className="input-sm w-full"
-                    placeholder="Title"
+                    placeholder="Title" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                   <input
                     value={card.subtitle}
@@ -1034,7 +1037,7 @@ function CampaignEditor({
                       updateBlock("shipping_returns", (pp) => ({ ...pp, cards: next }));
                     }}
                     className="input-sm w-full"
-                    placeholder="Subtitle"
+                    placeholder="Subtitle" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                 </div>
               ))}
@@ -1077,7 +1080,7 @@ function CampaignEditor({
                       updateBlock("faq", (pp) => ({ ...pp, items: next }));
                     }}
                     className="input-sm w-full"
-                    placeholder="Question"
+                    placeholder="Question" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                   <textarea
                     value={item.a}
@@ -1247,7 +1250,7 @@ function FounderQuotesEditor({
               updateBlock("founder_quote", (pp) => ({ ...pp, quotes: next }));
             }}
             className="input-sm w-full"
-            placeholder="Attribution — e.g. Faith, founder"
+            placeholder="Attribution — e.g. Faith, founder" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       ))}
@@ -1283,7 +1286,7 @@ function Text({ label, value, onChange }: { label: string; value: string; onChan
   return (
     <label className="block">
       <span className="micro block mb-1">{label}</span>
-      <input value={value} onChange={(e) => onChange(e.target.value)} className="input-sm w-full" />
+      <input value={value} onChange={(e) => onChange(e.target.value)} className="input-sm w-full" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
     </label>
   );
 }
@@ -1301,7 +1304,7 @@ function Num({ label, value, onChange }: { label: string; value: number; onChang
   return (
     <label className="block">
       <span className="micro block mb-1">{label}</span>
-      <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value) || 0)} className="input-sm w-full tabular-nums" />
+      <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value) || 0)} className="input-sm w-full tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
     </label>
   );
 }
@@ -1386,7 +1389,7 @@ function FontPicker({
               const url = e.target.value;
               onChange({ family: googleFamilyFromUrl(url) || value.family, source: "custom", cssUrl: url });
             }}
-            className="input-sm w-full font-mono text-[11px]"
+            className="input-sm w-full font-mono text-[11px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           {value.family ? (
             <p className="text-[11px] text-text-faint">
@@ -1457,7 +1460,7 @@ function Color({ label, value, onChange }: { label: string; value: string; onCha
       <span className="micro block mb-1">{label}</span>
       <div className="flex items-center gap-1.5">
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="w-8 h-8 rounded-[8px] border hairline bg-transparent cursor-pointer" />
-        <input value={value} onChange={(e) => onChange(e.target.value)} className="input-sm flex-1 font-mono uppercase" />
+        <input value={value} onChange={(e) => onChange(e.target.value)} className="input-sm flex-1 font-mono uppercase" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
       </div>
     </label>
   );
@@ -1480,7 +1483,7 @@ function Tint({ label, value, suggest, onChange }: { label: string; value: strin
       {on && (
         <div className="flex items-center gap-1.5 mt-1">
           <input type="color" value={value || suggest} onChange={(e) => onChange(e.target.value)} className="w-8 h-8 rounded-[8px] border hairline bg-transparent cursor-pointer" />
-          <input value={value || ""} onChange={(e) => onChange(e.target.value || null)} className="input-sm flex-1 font-mono uppercase" />
+          <input value={value || ""} onChange={(e) => onChange(e.target.value || null)} className="input-sm flex-1 font-mono uppercase" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </div>
       )}
     </div>
@@ -1510,6 +1513,7 @@ function Img({ label, value, onChange }: { label: string; value: string | null; 
     try {
       onChange(await run((onProgress) => uploadLandingImage(file, onProgress)));
     } catch (e) {
+      toastReport("Sales Campaigns → Landing Studio", "Upload image", e);
       setErr(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setBusy(false);
@@ -1531,7 +1535,7 @@ function Img({ label, value, onChange }: { label: string; value: string | null; 
             </button>
             {value && <button type="button" onClick={() => onChange(null)} className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-[9px] border hairline text-[12px] font-semibold text-text-faint hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>}
           </div>
-          <input type="url" value={value ?? ""} placeholder="…or paste a URL" onChange={(e) => onChange(e.target.value || null)} className="input-sm w-full" />
+          <input type="url" value={value ?? ""} placeholder="…or paste a URL" onChange={(e) => onChange(e.target.value || null)} className="input-sm w-full" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           <UploadProgress value={progress} />
           {err && <p className="text-[11px] text-danger">{err}</p>}
         </div>
@@ -1555,6 +1559,7 @@ function OgImageField({ value, onChange }: { value: string | null; onChange: (v:
         await run((onProgress) => uploadLandingOgBanner(file, onProgress)),
       );
     } catch (e) {
+      toastReport("Sales Campaigns → Landing Studio", "Build share image", e);
       setErr(e instanceof Error ? e.message : "Couldn't build the share image");
     } finally {
       setBusy(false);

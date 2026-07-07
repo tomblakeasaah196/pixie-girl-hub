@@ -35,7 +35,6 @@ const SALE_CHANNELS = [
 
 const staffCreateSchema = z.object({
   contact_id: uuid,
-  employee_number: z.string().min(1).max(40),
   job_title: z.string().min(1).max(120),
   employment_type: z.enum(["full_time", "part_time", "contract", "intern"]),
   start_date: dateStr,
@@ -79,7 +78,7 @@ const staffCreateSchema = z.object({
   work_grace_minutes: z.number().int().min(0).max(240).optional(),
 });
 const staffUpdateSchema = staffCreateSchema
-  .omit({ contact_id: true, employee_number: true })
+  .omit({ contact_id: true })
   .partial()
   .refine((o) => Object.keys(o).length > 0, "No fields to update");
 
@@ -252,6 +251,14 @@ const reviewAcknowledgeSchema = z.object({
   employee_response: z.string().max(5000).optional(),
   employee_disagreement: z.string().max(5000).optional(),
 });
+const autoScoreSchema = z.object({
+  // Optional: restrict the run to one staff member.
+  user_id: uuid.optional(),
+});
+const calibrateSchema = z.object({
+  raw_score: z.coerce.number(),
+  reason: z.string().max(2000).optional(),
+});
 
 function make(schema) {
   return (req, _res, next) => {
@@ -285,6 +292,8 @@ module.exports = {
     reviewContent: make(reviewContentSchema),
     reviewAdvance: make(reviewAdvanceSchema),
     reviewAcknowledge: make(reviewAcknowledgeSchema),
+    autoScore: make(autoScoreSchema),
+    calibrate: make(calibrateSchema),
   },
   schemas: {
     staffCreateSchema,

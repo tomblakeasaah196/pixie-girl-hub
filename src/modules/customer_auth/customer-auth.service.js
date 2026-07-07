@@ -13,6 +13,7 @@ const jwt = require("jsonwebtoken");
 const repo = require("./customer-auth.repo");
 const { config } = require("../../config/env");
 const { AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
 // Required as `emailService` (the register/login params are named `email`).
 const emailService = require("../../services/email.service");
 
@@ -54,8 +55,13 @@ async function sendVerifyEmail({ brand, contact }) {
       text: `Hi ${name}, confirm your email: ${link}`,
       html: `<p>Hi ${name},</p><p>Please confirm your email address to finish setting up your account.</p><p><a href="${link}">Confirm my email</a></p><p>This link expires in 24 hours.</p>`,
     });
-  } catch {
-    // Email failures must never block registration.
+  } catch (err) {
+    // Email failures must never block registration — but they must be visible.
+    // A silent swallow here is how a broken SMTP relay goes unnoticed for months.
+    logger.error(
+      { err: err.message, brand, contact_id: contact?.contact_id },
+      "customer verify-email send failed",
+    );
   }
 }
 
@@ -250,8 +256,11 @@ async function forgotPassword({ brand, email }) {
         });
       }
     }
-  } catch {
-    // Never leak failures on the forgot path.
+  } catch (err) {
+    // The RESPONSE stays uniform (don't reveal whether the email exists), but
+    // the failure itself must be logged — otherwise a broken SMTP relay means
+    // no customer can ever reset their password and nobody finds out.
+    logger.error({ err: err.message, brand }, "password-reset email send failed");
   }
   return { ok: true };
 }

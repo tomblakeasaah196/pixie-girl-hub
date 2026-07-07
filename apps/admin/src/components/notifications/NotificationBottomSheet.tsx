@@ -97,7 +97,11 @@ export function NotificationBottomSheet({ onClose }: Props) {
         aria-label="Notifications"
         className={cn(
           "fixed bottom-0 left-0 right-0 z-[91]",
-          "dropglass rounded-t-[22px] max-h-[82vh] flex flex-col",
+          // `h-[85dvh]` gives the sheet a concrete height (not just a cap), so
+          // the inner `flex-1` scroll region can compute its space. Without a
+          // definite height, the body collapsed and only the footer button was
+          // visible — the "View all notifications" bug.
+          "dropglass rounded-t-[22px] h-[85dvh] max-h-[85dvh] flex flex-col",
           "animate-[slide-up_0.25s_ease-out]",
           "safe-area-bottom",
         )}
@@ -140,8 +144,10 @@ export function NotificationBottomSheet({ onClose }: Props) {
           </div>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Body — `min-h-0` is required so the flex child can shrink below
+            its content and let `overflow-y-auto` scroll instead of pushing
+            the footer off screen. */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {isLoading ? (
             <div className="space-y-3 p-5">
               {[1, 2, 3].map((i) => (

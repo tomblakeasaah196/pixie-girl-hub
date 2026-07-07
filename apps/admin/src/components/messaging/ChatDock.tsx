@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronLeft, Maximize2, X } from "lucide-react";
+import { ChevronLeft, Maximize2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useChatDockStore } from "@/stores/chat-dock";
 import { useAuthStore } from "@/stores/auth";
@@ -8,6 +8,7 @@ import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useInboxRealtime } from "@/hooks/useSmartcomm";
 import { ChannelList } from "./ChannelList";
 import { MessageThread } from "./MessageThread";
+import { NewChatModal } from "./NewChatModal";
 
 /**
  * ChatDock — right-edge glass drawer from the FloatingLauncher.
@@ -25,6 +26,8 @@ export function ChatDock() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const ref = useRef<HTMLDivElement>(null);
+  const [newChat, setNewChat] = useState<null | "chat" | "group">(null);
+  const newChatOpen = newChat !== null;
   useInboxRealtime(user?.id);
 
   // Hide on the full /smartcomm page (would be a duplicate).
@@ -36,11 +39,13 @@ export function ChatDock() {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
+      if (newChatOpen) return; // let the modal own the key
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       closeDock();
     }
     function onClick(e: PointerEvent) {
+      if (newChatOpen) return; // portal modal sits outside the dock DOM
       const t = e.target as HTMLElement | null;
       if (!t || ref.current?.contains(t)) return;
       if (t.closest("[data-chat-dock-keep]")) return;
@@ -52,7 +57,7 @@ export function ChatDock() {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onClick);
     };
-  }, [open, closeDock]);
+  }, [open, closeDock, newChatOpen]);
 
   if (!isDesktop || !open) return null;
 
@@ -84,6 +89,15 @@ export function ChatDock() {
           </button>
         )}
         <p className="flex-1 truncate font-display text-[14px]">Messages</p>
+        {!channelId && (
+          <button
+            onClick={() => setNewChat("chat")}
+            title="New conversation"
+            className="text-text-muted hover:text-text-primary"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        )}
         <button
           onClick={expand}
           title="Open full Messaging"
@@ -109,10 +123,20 @@ export function ChatDock() {
           <ChannelList
             activeChannelId={null}
             onSelect={(c) => setChannel(c.channel_id)}
+            onNewChannel={(mode) => setNewChat(mode ?? "chat")}
             compact
           />
         )}
       </div>
+      <NewChatModal
+        open={newChatOpen}
+        initialMode={newChat ?? "chat"}
+        onClose={() => setNewChat(null)}
+        onStarted={(id) => {
+          setNewChat(null);
+          setChannel(id);
+        }}
+      />
     </aside>
   );
 }

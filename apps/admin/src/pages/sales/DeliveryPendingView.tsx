@@ -70,7 +70,7 @@ function SetFeeModal({
             onChange={(e) => setFee(e.target.value)}
             placeholder="e.g. 3500"
             autoFocus
-            className="w-full h-[42px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[14px] outline-none focus:border-accent/50"
+            className="w-full h-[42px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[14px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <div className="flex gap-2 justify-end pt-1">
@@ -240,7 +240,7 @@ export function DeliveryPendingView() {
                     setSearch(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                  className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </div>
             }

@@ -34,6 +34,14 @@ async function respondToQuery(req, res) {
 async function getMyToday(req, res) {
   res.json({ data: await service.getMyToday({ brand: req.brand, user: req.user }) });
 }
+async function toggleOnboardingItem(req, res) {
+  res.json({
+    data: await service.toggleOnboardingItem({
+      brand: req.brand, user: req.user,
+      item_key: req.body.item_key, completed: req.body.completed,
+    }),
+  });
+}
 async function selfClock(req, res) {
   res.status(201).json({
     data: await service.selfClock({
@@ -65,6 +73,22 @@ async function getAnalytics(req, res) {
       brand: req.brand,
       year: req.query.year,
       month: req.query.month,
+    }),
+  });
+}
+async function getAnalyticsTrends(req, res) {
+  res.json({
+    data: await service.getAnalyticsTrends({
+      brand: req.brand,
+      months: req.query.months,
+    }),
+  });
+}
+async function getProbationEndingSoon(req, res) {
+  res.json({
+    data: await service.getProbationEndingSoon({
+      brand: req.brand,
+      days: req.query.days,
     }),
   });
 }
@@ -117,6 +141,10 @@ async function listAttendanceDays(req, res) {
   res.json({ data: await repo.listAttendanceDays({ brand: req.brand, filters: req.query }) });
 }
 
+async function getLiveAttendance(req, res) {
+  res.json(await service.getLiveAttendance({ brand: req.brand }));
+}
+
 async function listTargets(req, res) {
   res.json(await service.listTargets({ brand: req.brand, filters: req.query }));
 }
@@ -163,10 +191,13 @@ module.exports = {
   requestLeave,
   respondToQuery,
   getMyToday,
+  toggleOnboardingItem,
   selfClock,
   getOverview,
   getEmployee360,
   getAnalytics,
+  getAnalyticsTrends,
+  getProbationEndingSoon,
   reconcile,
   reconcilePeriod,
   applyLapsedOffsite,
@@ -177,6 +208,7 @@ module.exports = {
   raiseQuery,
   resolveQuery,
   listAttendanceDays,
+  getLiveAttendance,
   listTargets,
   setTarget,
   updateTargetProgress,

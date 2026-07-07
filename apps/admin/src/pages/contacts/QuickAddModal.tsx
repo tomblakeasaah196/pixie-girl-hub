@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
 import { useCreateContact } from "./hooks";
+import { toastReport } from "@/lib/error-report";
 import { DIAL_CODES } from "./ContactFormModal";
 import type { ContactType, ContactCreateInput } from "./types";
 
@@ -64,6 +65,7 @@ export function QuickAddModal({
       onSuccess?.(created.contact_id);
       onClose();
     } catch (err: unknown) {
+      toastReport("Contacts → Quick add", "Create contact", err);
       setError(
         err instanceof Error ? err.message : "Failed to create contact.",
       );

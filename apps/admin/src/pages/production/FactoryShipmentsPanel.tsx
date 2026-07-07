@@ -542,7 +542,7 @@ function CreateShipmentDrawer({
             value={form.courier}
             onChange={(e) => setF("courier", e.target.value)}
             placeholder={t("courierPlaceholder")}
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 
@@ -552,7 +552,7 @@ function CreateShipmentDrawer({
             value={form.tracking_number}
             onChange={(e) => setF("tracking_number", e.target.value)}
             placeholder={t("trackingPlaceholder")}
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 
@@ -622,7 +622,7 @@ function CreateShipmentDrawer({
                         setItem(i, "sku_description", e.target.value)
                       }
                       placeholder={t("courierPlaceholder")}
-                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </Field>
                   <Field label={t("qty")}>
@@ -633,7 +633,7 @@ function CreateShipmentDrawer({
                       onChange={(e) =>
                         setItem(i, "quantity_shipped", e.target.value)
                       }
-                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
+                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </Field>
                   <Field label={t("unitPrice")}>
@@ -646,7 +646,7 @@ function CreateShipmentDrawer({
                         setItem(i, "unit_price_base", e.target.value)
                       }
                       placeholder="0.00"
-                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
+                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </Field>
                   {items.length > 1 && (

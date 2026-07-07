@@ -54,7 +54,7 @@ function SuggestDrawer({
     city: city || undefined,
     country_code: country || undefined,
   });
-  const toast = useToast();
+  const toast = useToast("Stylists → Suggest stylists");
   const { addOffers } = useAssignmentMutations(assignmentId);
   const [picked, setPicked] = useState<string[]>([]);
   const topN = suggest.data?.offer_top_n ?? 3;
@@ -72,13 +72,13 @@ function SuggestDrawer({
             className="input h-9 w-40"
             placeholder="Customer city"
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => setCity(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <input
             className="input h-9 w-20 font-mono uppercase"
             maxLength={3}
             value={country}
-            onChange={(e) => setCountry(e.target.value.toUpperCase())}
+            onChange={(e) => setCountry(e.target.value.toUpperCase())} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
 
@@ -204,7 +204,7 @@ function AssignmentDrawer({
   onClose: () => void;
 }) {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Assignment");
   const detail = useAssignment(assignmentId);
   const m = useAssignmentMutations(assignmentId);
   const [suggesting, setSuggesting] = useState(false);

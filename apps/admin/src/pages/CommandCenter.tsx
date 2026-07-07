@@ -5,17 +5,20 @@
  *   1. Hero: greeting + "craft today" headline + live clock card (business chip)
  *   2. Role KPI strip (3 cards, configurable via /dashboards/configs; role-default fallback)
  *   3. Quick Actions bar (permission-gated shortcuts)
- *   4. AI Insights alert bar (dismissible; links to /insights)
- *   5. AI Briefing widget (latest Praxis narrative → "Open in Praxis" link)
- *   6. App grid (drag/pin — from AppGrid component)
- *   7. Recent activity (my-feed audit trail, last 24 h — real endpoint)
- *   8. System notifications (recent, with mark-read)
+ *   4. Praxis Insights card — the single AI surface: shows urgent + open counts
+ *      with top module offenders; two deep links: "Open in Praxis" (prefills
+ *      composer asking for detail on the specific insights) and "View" (→ /insights)
+ *   5. App grid (drag/pin — from AppGrid component)
+ *   6. My activity (my-feed audit trail, paginated 10/page, up to 30 rows — lets
+ *      the user spot activity that wasn't theirs and rotate password fast)
+ *
+ * Notifications live in the bell + dedicated module; they are deliberately not
+ * duplicated on the home page.
  *
  * Live data from:
  *   GET /dashboards/overview
  *   GET /insights/summary
- *   GET /audit/my-feed
- *   GET /notifications + /unread-count
+ *   GET /audit/my-feed?page=1..3
  *
  * Follows canon §6 Definition of Done: 4 states, permission-aware, entity scope,
  * MoneyText, tokens only, mobile-first.
@@ -35,9 +38,8 @@ import {
   CheckCircle2,
   Bell,
   X,
-  ExternalLink,
-  ShieldAlert,
-  MessageSquare,
+  ChevronLeft,
+  ChevronRight,
   TrendingUp,
   Clock,
   PackageCheck,
@@ -53,19 +55,15 @@ import {
   KpiTile,
   Skeleton,
   EmptyState,
-  Pill,
 } from "@/components/ui/primitives";
 import {
   useDashboardOverview,
   useInsightSummary,
   useMyAuditFeed,
-  useRecentNotifications,
-  useMarkNotificationRead,
-  useMarkAllRead,
   urgentCount,
   openCount,
   type AuditFeedEntry,
-  type AppNotification,
+  type InsightSummary,
 } from "@/hooks/useCommandCenter";
 import { money } from "@/lib/format";
 import {
@@ -108,22 +106,6 @@ const AUDIT_TONE: Record<string, string> = {
   delete: "bg-danger/[0.14] text-danger",
   approve: "bg-accent/[0.14] text-accent-glow",
   export: "bg-warn/[0.14] text-warn",
-};
-
-const NOTIF_ICON: Record<string, typeof Bell> = {
-  invoice: FileText,
-  stock: Boxes,
-  logistics: Truck,
-  payment: CheckCircle2,
-  approval: ShieldAlert,
-  message: MessageSquare,
-};
-
-const NOTIF_PRIORITY_TONE: Record<string, string> = {
-  urgent: "bg-danger/[0.14] text-danger",
-  high: "bg-warn/[0.14] text-warn",
-  normal: "bg-info/[0.14] text-info",
-  low: "bg-text-primary/[0.06] text-text-muted",
 };
 
 /** Insight module → nav module key, where the two differ (identity otherwise).
@@ -344,8 +326,16 @@ function QuickActions({ can }: { can: (m: string, a: string) => boolean }) {
   );
 }
 
-/** Dismissible alert bar for urgent AI insights. */
-function InsightsAlertBar({
+/**
+ * Consolidated Praxis card — replaces the twin briefing + insights bars. Shows
+ * urgent + open counts with the top-3 module offenders, and offers two deep
+ * links:
+ *   • Open in Praxis → prefills the composer with a specific "tell me more
+ *     about these urgent insights" prompt (via router state initialText).
+ *   • View → jumps to the /insights list.
+ * Dismissible; stacks vertically on mobile so both CTAs stay hit-target-sized.
+ */
+function PraxisInsightsCard({
   summary,
 }: {
   summary: ReturnType<typeof useInsightSummary>;
@@ -359,122 +349,77 @@ function InsightsAlertBar({
   const open = openCount(summary.data);
   if (urgent === 0 && open === 0) return null;
 
-  // Top offenders by urgent count — tells the CEO WHERE before they click.
   const topModules = Object.entries(summary.data ?? {})
     .filter(([, c]) => (c?.urgent ?? 0) > 0)
     .sort((a, b) => b[1].urgent - a[1].urgent)
     .slice(0, 3);
 
+  const otherOpen = Math.max(0, open - urgent);
+  const prefill = buildPraxisPrefill(summary.data, urgent, open);
+
   return (
-    <div className="flex items-center gap-3 rounded-[14px] p-[12px_16px] mb-5 border border-warn/30 bg-warn/[0.08] animate-rise-in">
-      <AlertTriangle className="w-4 h-4 text-warn shrink-0" />
-      <span className="text-[13px] text-warn flex-1">
-        {urgent > 0 && (
-          <>
-            <b>{urgent} urgent</b> insight{urgent !== 1 ? "s" : ""} need
-            {urgent === 1 ? "s" : ""} attention
-          </>
-        )}
-        {urgent > 0 && open > urgent && " · "}
-        {open > urgent && (
-          <span className="opacity-75">{open - urgent} other open</span>
-        )}
-        {topModules.length > 0 && (
-          <span className="block text-[11.5px] opacity-75 mt-0.5">
-            {topModules
-              .map(([m, c]) => `${moduleLabel(m)} ${c.urgent}`)
-              .join(" · ")}
-          </span>
-        )}
-      </span>
-      <button
-        onClick={() => navigate("/insights")}
-        className="text-[12px] text-warn underline underline-offset-2 flex items-center gap-1"
-      >
-        View <ArrowRight className="w-3 h-3" />
-      </button>
+    <div className="glass rounded-[var(--radius)] p-4 md:p-[18px_20px] mb-5 border border-warn/25 bg-warn/[0.06] animate-rise-in relative overflow-hidden">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-6 -top-8 w-[120px] h-[120px] rounded-full opacity-25 blur-[26px]"
+        style={{
+          background:
+            "radial-gradient(circle, rgb(var(--warn)/0.55), transparent 70%)",
+        }}
+      />
       <button
         onClick={() => setDismissed(true)}
-        className="text-warn/50 hover:text-warn transition-colors"
+        aria-label="Dismiss"
+        className="no-min-h absolute top-2.5 right-2.5 p-1 rounded-md text-warn/60 hover:text-warn transition-colors"
       >
         <X className="w-3.5 h-3.5" />
       </button>
-    </div>
-  );
-}
 
-/** AI Briefing glass widget — shows latest_briefing + link to Praxis. */
-function BriefingWidget({
-  overview,
-}: {
-  overview: ReturnType<typeof useDashboardOverview>;
-}) {
-  const navigate = useNavigate();
-  const [expanded, setExpanded] = useState(false);
-
-  if (overview.isLoading) {
-    return (
-      <div className="glass rounded-[var(--radius)] p-5 mb-6 space-y-2">
-        <Skeleton className="w-32 h-3" />
-        <Skeleton className="w-full h-4" />
-        <Skeleton className="w-3/4 h-4" />
-      </div>
-    );
-  }
-
-  const briefing = overview.data?.latest_briefing;
-  if (!briefing) return null;
-
-  const preview = briefing.briefing_text.slice(0, 180);
-  const hasMore = briefing.briefing_text.length > 180;
-  const text = expanded || !hasMore ? briefing.briefing_text : preview + "…";
-
-  return (
-    <div className="glass rounded-[var(--radius)] p-5 mb-6 animate-rise-in relative overflow-hidden">
-      {/* Subtle accent glow */}
-      <span
-        className="pointer-events-none absolute -right-8 -top-8 w-[120px] h-[120px] rounded-full opacity-30 blur-[28px]"
-        style={{
-          background:
-            "radial-gradient(circle, rgb(var(--accent-glow)/0.5), transparent 70%)",
-        }}
-      />
-      <div className="relative">
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="w-4 h-4 text-accent-glow" />
-          <span className="micro text-accent-glow">Praxis Briefing</span>
-          {briefing.insight_count > 0 && (
-            <Pill tone="accent" dot={false}>
-              {briefing.insight_count} insights
-            </Pill>
-          )}
-          {!briefing.read_at && (
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-glow ml-auto shrink-0" />
-          )}
+      <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:gap-4 pr-6 md:pr-0">
+        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+          <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="text-[13.5px] text-warn leading-snug">
+              {urgent > 0 ? (
+                <>
+                  <b>{urgent} urgent</b> insight{urgent !== 1 ? "s" : ""} need
+                  {urgent === 1 ? "s" : ""} attention
+                </>
+              ) : (
+                <>
+                  <b>{open}</b> open insight{open !== 1 ? "s" : ""}
+                </>
+              )}
+              {urgent > 0 && otherOpen > 0 && (
+                <span className="opacity-75"> · {otherOpen} other open</span>
+              )}
+            </div>
+            {topModules.length > 0 && (
+              <div className="text-[11.5px] text-warn/70 mt-1 truncate">
+                {topModules
+                  .map(([m, c]) => `${moduleLabel(m)} ${c.urgent}`)
+                  .join(" · ")}
+              </div>
+            )}
+          </div>
         </div>
-        <p className="text-[13.5px] text-text-muted leading-relaxed">{text}</p>
-        <div className="flex items-center gap-3 mt-3">
-          {hasMore && (
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="text-[12px] text-accent-glow hover:underline"
-            >
-              {expanded ? "Show less" : "Read more"}
-            </button>
-          )}
+
+        <div className="flex items-center gap-2 shrink-0 md:ml-auto">
           <button
             onClick={() =>
-              navigate("/praxis", {
-                state: {
-                  briefing_id: briefing.briefing_id,
-                  context: briefing.briefing_text,
-                },
-              })
+              navigate("/praxis", { state: { initialText: prefill } })
             }
-            className="ml-auto inline-flex items-center gap-1.5 text-[12px] font-semibold
-              text-accent-glow hover:text-accent transition-colors"
+            className="no-min-h inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] text-[12px] font-semibold
+              bg-accent-deep text-[#F4E9D9] hover:bg-accent transition-colors shadow-[0_4px_14px_rgb(var(--accent-deep)/0.4)]"
           >
-            Open in Praxis <ExternalLink className="w-3 h-3" />
+            <Sparkles className="w-3.5 h-3.5" /> Open in Praxis
+          </button>
+          <button
+            onClick={() => navigate("/insights")}
+            className="no-min-h inline-flex items-center gap-1 h-9 px-3 rounded-[10px] text-[12px] font-semibold
+              border border-warn/40 text-warn hover:bg-warn/10 transition-colors"
+          >
+            View <ArrowRight className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -482,9 +427,42 @@ function BriefingWidget({
   );
 }
 
-/** Recent activity — the caller's own audit trail (last 24 h). */
-function ActivityFeed({ feed }: { feed: ReturnType<typeof useMyAuditFeed> }) {
-  if (feed.isLoading) {
+/** Builds the "tell me more" prompt sent as initialText to /praxis. */
+function buildPraxisPrefill(
+  summary: InsightSummary | undefined,
+  urgent: number,
+  open: number,
+): string {
+  if (!summary) return "Tell me more about my open insights.";
+  const top = Object.entries(summary)
+    .filter(([, c]) => (c?.urgent ?? 0) > 0)
+    .sort((a, b) => b[1].urgent - a[1].urgent)
+    .slice(0, 3)
+    .map(([m, c]) => `${moduleLabel(m)} (${c.urgent})`);
+  const focus = top.length ? ` — focus on ${top.join(", ")}` : "";
+  const scope =
+    urgent > 0
+      ? `the ${urgent} urgent insight${urgent !== 1 ? "s" : ""}`
+      : `my ${open} open insight${open !== 1 ? "s" : ""}`;
+  return `Give me more detail on ${scope}${focus}. What are the root causes, which records are affected, and what should I do first?`;
+}
+
+
+/**
+ * Recent activity — the caller's own audit trail, paginated 10/page. Up to 3
+ * pages (30 rows total) so the user can spot activity that wasn't theirs and
+ * change their password immediately if something looks off.
+ */
+function ActivityFeed({
+  feed,
+  page,
+  setPage,
+}: {
+  feed: ReturnType<typeof useMyAuditFeed>;
+  page: number;
+  setPage: (p: number) => void;
+}) {
+  if (feed.isLoading && !feed.data) {
     return (
       <Card className="overflow-hidden">
         {[0, 1, 2].map((i) => (
@@ -522,18 +500,16 @@ function ActivityFeed({ feed }: { feed: ReturnType<typeof useMyAuditFeed> }) {
   }
 
   const entries = feed.data?.data ?? [];
-  const window = feed.data?.window;
+  const total = feed.data?.total ?? entries.length;
+  const pageSize = feed.data?.page_size ?? 10;
+  const pageCount = Math.max(1, Math.min(3, Math.ceil(total / pageSize)));
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && page === 1) {
     return (
       <EmptyState
         icon={<Clock className="w-7 h-7" />}
         title="No activity yet"
-        message={
-          window === "24h"
-            ? "Nothing logged in the last 24 hours."
-            : "Your actions will appear here."
-        }
+        message="Actions you take on the Hub will appear here."
       />
     );
   }
@@ -568,100 +544,27 @@ function ActivityFeed({ feed }: { feed: ReturnType<typeof useMyAuditFeed> }) {
           </div>
         );
       })}
-    </Card>
-  );
-}
-
-/** Recent system notifications (unread/all). */
-function NotificationsFeed({
-  notifs,
-}: {
-  notifs: ReturnType<typeof useRecentNotifications>;
-}) {
-  const markRead = useMarkNotificationRead();
-  const markAll = useMarkAllRead();
-
-  if (notifs.isLoading) {
-    return (
-      <Card className="overflow-hidden">
-        {[0, 1].map((i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0"
-          >
-            <Skeleton
-              className="w-[38px] h-[38px] rounded-[11px] shrink-0"
-              style={{ height: 38 }}
-            />
-            <div className="flex-1 space-y-1.5">
-              <Skeleton className="w-3/4 h-3" />
-              <Skeleton className="w-1/2 h-2.5" />
-            </div>
-          </div>
-        ))}
-      </Card>
-    );
-  }
-
-  if (notifs.isError) return null; // graceful degradation — notifications are non-critical
-
-  const items: AppNotification[] =
-    (notifs.data as { data?: AppNotification[] })?.data ?? [];
-  const unread = items.filter((n) => !n.is_read);
-
-  if (items.length === 0) return null;
-
-  return (
-    <Card className="overflow-hidden">
-      {unread.length > 1 && (
-        <div className="flex items-center justify-end px-4 pt-3">
+      {pageCount > 1 && (
+        <div className="flex items-center justify-between px-4 py-2.5 border-t hairline bg-text-primary/[0.02]">
           <button
-            onClick={() => markAll.mutate()}
-            className="text-[11px] text-accent-glow hover:underline"
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1 || feed.isFetching}
+            className="no-min-h inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-[12px] text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] disabled:opacity-40 disabled:pointer-events-none transition-colors"
           >
-            Mark all read
+            <ChevronLeft className="w-3.5 h-3.5" /> Prev
+          </button>
+          <div className="text-[11px] text-text-faint tabular-nums">
+            Page {page} of {pageCount}
+          </div>
+          <button
+            onClick={() => setPage(Math.min(pageCount, page + 1))}
+            disabled={page >= pageCount || feed.isFetching}
+            className="no-min-h inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-[12px] text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          >
+            Next <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
-      {items.slice(0, 5).map((n) => {
-        const type =
-          Object.keys(NOTIF_ICON).find((k) => n.type?.includes(k)) ?? "message";
-        const Icon = NOTIF_ICON[type] ?? Bell;
-        const tone = NOTIF_PRIORITY_TONE[n.priority] ?? NOTIF_PRIORITY_TONE.low;
-        return (
-          <div
-            key={n.notification_id}
-            onClick={() => !n.is_read && markRead.mutate(n.notification_id)}
-            className={`flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0 cursor-pointer transition-colors ${
-              n.is_read ? "opacity-60" : "hover:bg-text-primary/[0.03]"
-            }`}
-          >
-            <span
-              className={`w-[38px] h-[38px] rounded-[11px] grid place-items-center shrink-0 ${tone}`}
-            >
-              <Icon className="w-[17px] h-[17px]" />
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-text-primary truncate">
-                {n.title}
-              </div>
-              {n.body && (
-                <div className="text-[11px] text-text-faint truncate">
-                  {n.body}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col items-end gap-1.5">
-              <span className="text-[11px] text-text-faint tabular-nums whitespace-nowrap">
-                {fmtRelative(n.created_at)}
-              </span>
-              {!n.is_read && (
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-glow" />
-              )}
-            </div>
-          </div>
-        );
-      })}
     </Card>
   );
 }
@@ -738,8 +641,8 @@ export function CommandCenter() {
   // Data
   const overview = useDashboardOverview();
   const insights = useInsightSummary();
-  const myFeed = useMyAuditFeed();
-  const notifs = useRecentNotifications();
+  const [activityPage, setActivityPage] = useState(1);
+  const myFeed = useMyAuditFeed(activityPage);
 
   // Urgent-insight badges for the App Grid: one per module tile (mapped to its
   // nav key) plus the total on the Insights tile itself.
@@ -869,12 +772,11 @@ export function CommandCenter() {
       {/* ── Quick Actions ──────────────────────────────────────────────── */}
       <QuickActions can={can} />
 
-      {/* ── Reordered sections: on mobile App Grid moves above AI ────── */}
+      {/* ── Reordered sections: on mobile App Grid moves above the AI card ─ */}
       <div className="flex flex-col">
-        {/* AI sections — pushed below app grid on mobile */}
+        {/* Single Praxis Insights card (replaces the twin briefing + alert) */}
         <div className="max-md:order-2">
-          {canSeeDashboard && <InsightsAlertBar summary={insights} />}
-          {canSeeDashboard && <BriefingWidget overview={overview} />}
+          {canSeeDashboard && <PraxisInsightsCard summary={insights} />}
         </div>
 
         {/* App grid — promoted to first on mobile */}
@@ -883,24 +785,24 @@ export function CommandCenter() {
           <AppGrid badges={insightBadges} />
         </div>
 
-        {/* Activity + Notifications — last on mobile */}
+        {/* My activity — paginated (10/page, up to 3 pages). Notifications live
+            in the bell + dedicated module, so they no longer show here. */}
         <div className="max-md:order-3">
           <SectionHead
             title="My activity"
             action={
               myFeed.data?.window === "24h" ? (
                 <span className="micro text-text-faint">Last 24 hours</span>
-              ) : null
+              ) : (
+                <span className="micro text-text-faint">Latest actions</span>
+              )
             }
           />
-          <ActivityFeed feed={myFeed} />
-
-          {(notifs.data as { data?: AppNotification[] })?.data?.length ? (
-            <>
-              <SectionHead title="Notifications" />
-              <NotificationsFeed notifs={notifs} />
-            </>
-          ) : null}
+          <ActivityFeed
+            feed={myFeed}
+            page={activityPage}
+            setPage={setActivityPage}
+          />
         </div>
       </div>
     </div>

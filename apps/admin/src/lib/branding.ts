@@ -79,6 +79,8 @@ export interface LoginConfig {
   region_messages?: Record<string, LoginRegionMessage>;
   toggles?: LoginToggles;
   background?: { style?: "mesh" | "image"; image_url?: string | null };
+  /** Caption line under the app name on the boot/login splash. */
+  splash?: { subline?: string };
 }
 
 export interface PlatformBranding {
@@ -201,8 +203,14 @@ export function useSaveBusinessBranding() {
 //    cold load (API unreachable) still renders a complete, on-brand
 //    login screen. The DB seed (migration 000209) is the source of truth.
 export const LOGIN_CONFIG_FALLBACK: Required<
-  Pick<LoginConfig, "hero" | "quotes" | "standards" | "toggles" | "background">
+  Pick<
+    LoginConfig,
+    "hero" | "quotes" | "standards" | "toggles" | "background" | "splash"
+  >
 > & { region_messages: Record<string, LoginRegionMessage> } = {
+  splash: {
+    subline: "Your command center",
+  },
   hero: {
     eyebrow: "PIXIE GIRL HUB",
     headline: "Where beauty becomes an operation.",
@@ -279,6 +287,7 @@ export function useLoginConfig(): LoginConfig {
       ...LOGIN_CONFIG_FALLBACK.background,
       ...(cfg.background ?? {}),
     },
+    splash: { ...LOGIN_CONFIG_FALLBACK.splash, ...(cfg.splash ?? {}) },
   };
 }
 

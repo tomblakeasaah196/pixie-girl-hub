@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
+import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import { useAuthStore } from "@/stores/auth";
 import {
   useStockTransfers,
@@ -32,6 +33,8 @@ import {
   TextInput,
   InfoBanner,
   Pagination,
+  ProductCell,
+  ProductsSummary,
 } from "./parts";
 
 const PAGE_SIZE = 25;
@@ -209,19 +212,18 @@ function CreateTransferDrawer({
           <div className="flex flex-col gap-3 mt-1">
             {lines.map((line, idx) => (
               <div key={idx} className="flex items-end gap-2">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   {idx === 0 && (
                     <span className="block text-[11px] text-text-faint mb-1">
-                      Variant ID
+                      Product / Variant
                     </span>
                   )}
-                  <TextInput
+                  <VariantPicker
                     value={line.variant_id}
-                    onChange={(v) => updateLine(idx, { variant_id: v })}
-                    placeholder="UUID"
+                    onChange={(id) => updateLine(idx, { variant_id: id })}
                   />
                 </div>
-                <div className="w-[100px]">
+                <div className="w-[100px] shrink-0">
                   {idx === 0 && (
                     <span className="block text-[11px] text-text-faint mb-1">
                       Qty
@@ -319,7 +321,7 @@ function ReceiveModal({
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="text-left text-text-faint text-[11px] uppercase tracking-wide">
-                  <th className="px-3 py-2 border-b hairline">Variant</th>
+                  <th className="px-3 py-2 border-b hairline">Product</th>
                   <th className="px-3 py-2 border-b hairline text-right">
                     Dispatched
                   </th>
@@ -334,8 +336,8 @@ function ReceiveModal({
                     key={line.line_id}
                     className="border-b hairline last:border-0"
                   >
-                    <td className="px-3 py-2 font-mono text-text-primary">
-                      {line.variant_id.slice(0, 8)}
+                    <td className="px-3 py-2">
+                      <ProductCell line={line} variantId={line.variant_id} />
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-muted">
                       {line.qty_dispatched}
@@ -419,7 +421,7 @@ function ViewTransferModal({
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="text-left text-text-faint text-[11px] uppercase tracking-wide">
-                  <th className="px-3 py-2 border-b hairline">Variant</th>
+                  <th className="px-3 py-2 border-b hairline">Product</th>
                   <th className="px-3 py-2 border-b hairline text-right">
                     Dispatched
                   </th>
@@ -437,8 +439,8 @@ function ViewTransferModal({
                     key={line.line_id}
                     className="border-b hairline last:border-0"
                   >
-                    <td className="px-3 py-2 font-mono text-text-primary">
-                      {line.variant_id.slice(0, 8)}
+                    <td className="px-3 py-2">
+                      <ProductCell line={line} variantId={line.variant_id} />
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-muted">
                       {line.qty_dispatched}
@@ -522,6 +524,11 @@ export default function TransfersTab() {
         ),
       },
       {
+        key: "products",
+        header: "Products",
+        render: (r) => <ProductsSummary lines={r.lines ?? []} />,
+      },
+      {
         key: "route",
         header: "From / To",
         render: (r) => (
@@ -545,7 +552,7 @@ export default function TransfersTab() {
         align: "right",
         render: (r) => (
           <span className="text-[13px] tabular-nums text-text-muted">
-            {r.lines.length}
+            {(r.lines ?? []).length}
           </span>
         ),
       },

@@ -97,6 +97,16 @@ export interface AttendanceDay {
   clock_in_lng: number | null;
   last_clock_out_at: string | null;
   early_leave_minutes: number;
+  clock_out_address: string | null;
+  clock_out_lat: number | null;
+  clock_out_lng: number | null;
+  clock_out_is_offsite: boolean;
+  clock_out_distance_m: number | null;
+  clock_in_ip: string | null;
+  clock_out_ip: string | null;
+  // true = clock-in came from an enrolled device; false = unknown device
+  // (flagged red, never blocked); null = not applicable (CEO / not enrolled).
+  clock_in_device_recognized: boolean | null;
 }
 
 export interface ArrivalPoint {
@@ -143,6 +153,7 @@ export interface HrContract {
   effective_to: string | null;
   gross_salary: number;
   document_id: string | null;
+  signature_status?: string | null;
 }
 
 export interface MyHr {
@@ -182,6 +193,17 @@ export interface MyHr {
     bonuses: BonusRow[];
   };
   rewards: RewardGrant[];
+  onboarding: Onboarding;
+}
+
+export interface Onboarding {
+  welcome: string | null;
+  items: { key: string; label: string; completed: boolean }[];
+  done: number;
+  total: number;
+  help_articles: { article_id: string; slug: string; title: string; summary: string | null }[];
+  documents: { document_id: string; title: string | null; document_type: string; created_at: string }[];
+  links: { label: string; url: string }[];
 }
 
 /** Full (masked) staff profile as returned by GET /hr/employees/:id. */
@@ -218,6 +240,7 @@ export interface StaffProfile {
 
 export interface Employee360 {
   profile: StaffProfile;
+  onboarding?: { done: number; total: number };
   insights: AttendanceInsights & {
     tenure_days: number | null;
     target_attainment_pct: number | null;
@@ -276,6 +299,8 @@ export interface HrSettings {
   payout_provider: "nomba" | "flutterwave" | "manual";
   payout_pin_set: boolean;
   onboarding_checklist: { key: string; label: string }[];
+  onboarding_links: { label: string; url: string }[];
+  onboarding_welcome: string | null;
 }
 
 interface ListEnvelope<T> {
@@ -315,8 +340,61 @@ export interface ClockResult {
   is_offsite: boolean;
   distance_m: number | null;
   address: string | null;
+  device_recognized: boolean | null;
   late_minutes: number;
   status: "late" | "present";
+}
+
+// ── Device binding (000304) ────────────────────────────────
+export type DeviceType = "mobile" | "laptop" | "desktop" | "tablet" | "other";
+
+export interface StaffDevice {
+  device_id: string;
+  device_fingerprint?: string;
+  device_label: string;
+  device_type: DeviceType;
+  enrolled_at: string;
+  last_seen_at: string | null;
+  last_ip: string | null;
+  is_active: boolean;
+}
+
+export interface MyDevices {
+  data: StaffDevice[];
+  max_devices: number | null; // null = uncapped (CEO)
+  can_add: boolean;
+}
+
+export interface OtpChallenge {
+  sent_to: string; // masked email
+  expires_in: number;
+}
+
+export interface EmployeeDevices {
+  profile_id: string;
+  display_name: string | null;
+  job_title: string | null;
+  business: string;
+  devices: {
+    device_id: string;
+    device_label: string;
+    device_type: DeviceType;
+    enrolled_at: string;
+    last_seen_at: string | null;
+    last_ip: string | null;
+  }[];
+  active_count: number;
+}
+
+export interface DeviceChange {
+  log_id: string;
+  action: "enrolled" | "removed" | "replaced" | "flagged_unknown";
+  device_label: string | null;
+  note: string | null;
+  created_at: string;
+  profile_id: string;
+  display_name: string | null;
+  actor_name: string | null;
 }
 
 export interface Geofence {
@@ -333,6 +411,8 @@ export interface Geofence {
 
 // ── Self-service ───────────────────────────────────────────
 export const getMyHr = () => api.get<MyHr>("/hr/me");
+export const toggleOnboardingItem = (item_key: string, completed: boolean) =>
+  api.post<{ item_key: string; completed: boolean }>("/hr/me/onboarding", { item_key, completed });
 
 export const requestLeave = (body: {
   leave_type: string;
@@ -353,10 +433,57 @@ export const clock = (body: {
   longitude?: number | null;
   accuracy_m?: number | null;
   address?: string;
+  device_fingerprint?: string;
 }) => api.post<ClockResult>("/hr/me/clock", body);
+
+// ── Device binding — self-service (My HR) ──────────────────
+export const getMyDevices = () => api.get<MyDevices>("/hr/me/devices");
+export const startDeviceEnroll = (body: {
+  device_label: string;
+  device_type?: DeviceType;
+  device_fingerprint: string;
+}) => api.post<OtpChallenge>("/hr/me/devices/enroll/start", body);
+export const verifyDeviceEnroll = (otp: string) =>
+  api.post<StaffDevice>("/hr/me/devices/enroll/verify", { otp });
+export const startDeviceRemove = (deviceId: string) =>
+  api.post<OtpChallenge>(`/hr/me/devices/${deviceId}/remove/start`);
+export const verifyDeviceRemove = (deviceId: string, otp: string) =>
+  api.post<{ removed: boolean; device_id: string }>(
+    `/hr/me/devices/${deviceId}/remove/verify`,
+    { otp },
+  );
+
+// ── Device binding — HR & Staff ────────────────────────────
+export const listAllDevices = () =>
+  api
+    .get<ListEnvelope<EmployeeDevices>>("/hr/devices")
+    .then((r) => asList<EmployeeDevices>(r));
+export const listDeviceChanges = (limit = 50) =>
+  api
+    .get<ListEnvelope<DeviceChange>>(`/hr/devices/changes?limit=${limit}`)
+    .then((r) => asList<DeviceChange>(r));
+
+// ── Live attendance (000304) — the shape of a socket punch + seed rows ──
+export interface LivePunch {
+  event_id: string;
+  profile_id: string;
+  display_name: string | null;
+  event_type: "clock_in" | "clock_out";
+  occurred_at: string;
+  is_offsite: boolean;
+  distance_m: number | null;
+  address: string | null;
+  device_recognized: boolean | null;
+  late_minutes?: number;
+  status?: "late" | "present";
+}
 
 // ── Management ─────────────────────────────────────────────
 export const getOverview = () => api.get<HrOverview>("/hr/overview");
+export const listLiveAttendance = () =>
+  api
+    .get<ListEnvelope<LivePunch>>("/hr/attendance/live")
+    .then((r) => asList<LivePunch>(r));
 
 export interface HrAnalytics {
   period: { year: number; month: number };
@@ -375,6 +502,37 @@ export interface HrAnalytics {
   targets: { active: number; achieved: number };
   earned_mtd_ngn: number;
 }
+export interface HrTrendPoint {
+  year: number;
+  month: number;
+  label: string;
+  headcount: number;
+  new_hires: number;
+  attrition: number;
+  punctuality_pct: number;
+  payroll_ngn: number;
+}
+export interface HrTrends {
+  months: number;
+  series: HrTrendPoint[];
+}
+export const getAnalyticsTrends = (months = 12) =>
+  api.get<HrTrends>(`/hr/analytics/trends?months=${months}`);
+
+export interface ProbationItem {
+  profile_id: string;
+  user_id: string | null;
+  display_name: string;
+  job_title: string;
+  probation_status: string;
+  probation_end_date: string;
+  days_left: number;
+}
+export const getProbationEndingSoon = (days = 30) =>
+  api.get<{ days: number; items: ProbationItem[] }>(
+    `/hr/probation/ending-soon?days=${days}`,
+  );
+
 export const getAnalytics = (params: { year?: number; month?: number } = {}) =>
   api.get<HrAnalytics>(
     `/hr/analytics${qs({
@@ -614,6 +772,8 @@ export const createPerfCycle = (body: {
   starts_on: string;
   ends_on: string;
 }) => api.post<PerfCycle>("/hr/performance-cycles", body);
+export const updatePerfCycle = (id: string, body: { status?: string; cycle_name?: string; notes?: string }) =>
+  api.patch<PerfCycle>(`/hr/performance-cycles/${id}`, body);
 export const kpiWeightSummary = () =>
   api.get<KpiWeightSummary>("/hr/kpi-definitions/weight-summary");
 export const listPerfReviews = (params: Record<string, string> = {}) =>
@@ -625,18 +785,97 @@ export interface KpiDef {
   kpi_id: string;
   kpi_key: string;
   display_name: string;
+  description?: string | null;
   weight_pct: number;
   min_score: number;
   max_score: number;
+  score_source?: ScoreSource;
+  auto_score_config?: Record<string, unknown> | null;
+  display_order?: number;
+  is_active?: boolean;
+}
+export interface KpiDefInput {
+  kpi_key: string;
+  display_name: string;
+  description?: string;
+  weight_pct: number;
+  min_score?: number;
+  max_score?: number;
+  score_source?: ScoreSource;
+  auto_score_config?: Record<string, unknown> | null;
+  display_order?: number;
+  is_active?: boolean;
 }
 export const listKpiDefinitions = () =>
   api.get<KpiDef[]>("/hr/kpi-definitions");
+export const createKpiDefinition = (body: KpiDefInput) =>
+  api.post<KpiDef>("/hr/kpi-definitions", body);
+export const updateKpiDefinition = (id: string, body: Partial<KpiDefInput>) =>
+  api.patch<KpiDef>(`/hr/kpi-definitions/${id}`, body);
+export const deleteKpiDefinition = (id: string) =>
+  api.delete(`/hr/kpi-definitions/${id}`);
+export const exportReviewPdf = (reviewId: string) =>
+  api.post<{ document_id: string; title: string }>(
+    `/hr/performance-reviews/${reviewId}/pdf`,
+  );
 export const scoreStaff = (
   cycleId: string,
   body: { user_id: string; scores: { kpi_id: string; raw_score: number; comments?: string }[] },
 ) => api.post(`/hr/performance-cycles/${cycleId}/scores`, body);
 export const generatePerfReview = (cycleId: string, user_id: string) =>
   api.post<PerfReview>(`/hr/performance-cycles/${cycleId}/reviews`, { user_id });
+
+// ── Appraisal auto-scoring (PR-B) ──────────────────────────
+export type ScoreSource =
+  | "manual"
+  | "customer_ratings"
+  | "sales_data"
+  | "crm_data"
+  | "service_job_ratings"
+  | "clock_in_data"
+  | "custom";
+
+export interface PerfScore {
+  score_id: string;
+  cycle_id: string;
+  user_id: string;
+  kpi_id: string;
+  kpi_name: string;
+  kpi_key: string;
+  raw_score: number;
+  weight_pct_snapshot: number;
+  weighted_score: number;
+  score_source: ScoreSource;
+  evidence: Record<string, unknown> | null;
+  is_calibrated: boolean;
+  pre_calibration_score: number | null;
+  last_auto_scored_at: string | null;
+  last_auto_score_status: "ok" | "no_data" | "error" | "skipped" | null;
+}
+
+export interface AutoScoreResult {
+  scored: number;
+  no_data: number;
+  skipped: number;
+  kpis: number;
+  staff: number;
+}
+
+export const listPerfScores = (cycleId: string, userId?: string) =>
+  api.get<PerfScore[]>(
+    `/hr/performance-cycles/${cycleId}/scores${userId ? `?user_id=${userId}` : ""}`,
+  );
+export const autoScoreCycle = (cycleId: string, body: { user_id?: string } = {}) =>
+  api.post<AutoScoreResult>(`/hr/performance-cycles/${cycleId}/auto-score`, body);
+export const calibratePerfScore = (
+  cycleId: string,
+  scoreId: string,
+  body: { raw_score: number; reason?: string },
+) =>
+  api.post<PerfScore>(
+    `/hr/performance-cycles/${cycleId}/scores/${scoreId}/calibrate`,
+    body,
+  );
 
 // ── Rewards (meeting §3 reward system) ─────────────────────
 export type RewardMetric =

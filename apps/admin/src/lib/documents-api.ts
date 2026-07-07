@@ -129,6 +129,11 @@ export function useDeleteDocument() {
 /** Authenticated blob download — streams the file with the access token +
  *  brand header, then triggers a browser save. (The api JSON helpers can't do
  *  binary, so this is a focused fetch.) */
+/** Download a stored document by id (when only the id + a name are on hand). */
+export async function downloadDocumentById(document_id: string, name?: string | null): Promise<void> {
+  await downloadDocument({ document_id, title: name ?? null, document_number: "" } as DocumentRow);
+}
+
 export async function downloadDocument(doc: DocumentRow): Promise<void> {
   const token = getAccessToken();
   const headers: Record<string, string> = {};

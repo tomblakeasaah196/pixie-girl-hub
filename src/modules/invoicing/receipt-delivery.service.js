@@ -130,7 +130,7 @@ async function dispatchReceipt({ brand, receipt, channel = "email" }) {
       }
       const body = buildReceiptWhatsApp({ brandTokens, receipt, viewUrl });
       try {
-        const res = await whatsapp.sendText({ to, body });
+        const res = await whatsapp.sendText({ brand, to, body });
         await record({
           brand,
           receipt,

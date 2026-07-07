@@ -29,6 +29,7 @@ function mediaUrl(filePath) {
  *
  *   filters: business, channel_type, external_platform, status,
  *            assigned_to_me, q (text search across name + preview),
+ *            internal_only (external_platform IS NULL — team/DM chats),
  *            include_archived (default false)
  */
 async function listChannelsForUser({
@@ -36,6 +37,7 @@ async function listChannelsForUser({
   brand,
   channel_type,
   external_platform,
+  internal_only,
   status,
   assigned_to_me,
   q,
@@ -55,7 +57,9 @@ async function listChannelsForUser({
     where.push(`c.channel_type = $${i++}`);
     params.push(channel_type);
   }
-  if (external_platform) {
+  if (internal_only) {
+    where.push("c.external_platform IS NULL");
+  } else if (external_platform) {
     where.push(`c.external_platform = $${i++}`);
     params.push(external_platform);
   }
@@ -73,6 +77,9 @@ async function listChannelsForUser({
   }
 
   // Pinned channels float to the top.
+  // peer_* fields resolve the counterpart the row should render as its
+  // name/avatar/phone — the other user on a 1:1 DM, or the customer on a
+  // customer_thread — so the inbox can label rows without a second fetch.
   const sql = `
     SELECT
       c.channel_id,
@@ -85,6 +92,7 @@ async function listChannelsForUser({
       c.assigned_to,
       c.assigned_at,
       c.wa_window_expires_at,
+      c.ig_window_expires_at,
       c.metadata,
       c.is_archived,
       c.last_message_at,
@@ -103,9 +111,39 @@ async function listChannelsForUser({
            AND m.is_deleted = false
            AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
            AND (m.sender_user_id IS DISTINCT FROM cm.user_id)
-      ) AS unread_count
+      ) AS unread_count,
+      peer.display_name  AS peer_display_name,
+      peer.avatar_url    AS peer_avatar_url,
+      peer.phone         AS peer_phone,
+      peer.whatsapp_number AS peer_whatsapp_number,
+      peer.email         AS peer_email,
+      peer.contact_id    AS peer_contact_id,
+      peer.user_id       AS peer_user_id
     FROM shared.channel_members cm
     JOIN shared.message_channels c ON c.channel_id = cm.channel_id
+    LEFT JOIN LATERAL (
+      SELECT
+        COALESCE(u.display_name, con.display_name) AS display_name,
+        u.avatar_url,
+        COALESCE(con.primary_phone, u.phone)       AS phone,
+        con.whatsapp_number,
+        con.email,
+        m2.contact_id,
+        m2.user_id
+      FROM shared.channel_members m2
+      LEFT JOIN shared.users    u   ON u.user_id     = m2.user_id
+      LEFT JOIN shared.contacts con ON con.contact_id = m2.contact_id
+      WHERE m2.channel_id = c.channel_id
+        AND (
+          (c.channel_type = 'direct'
+             AND m2.user_id IS NOT NULL
+             AND m2.user_id <> cm.user_id)
+          OR (c.channel_type = 'customer_thread'
+             AND m2.contact_id IS NOT NULL)
+        )
+      ORDER BY m2.joined_at
+      LIMIT 1
+    ) AS peer ON TRUE
     WHERE ${where.join(" AND ")}
     ORDER BY cm.is_pinned DESC,
              COALESCE(c.last_message_at, c.created_at) DESC
@@ -247,6 +285,8 @@ async function removeMember({ channel_id, member_id }) {
 async function listMembers({ channel_id }) {
   const { rows } = await query(
     `SELECT cm.*, u.display_name AS user_display_name,
+            u.avatar_url AS user_avatar_url,
+            u.phone      AS user_phone,
             con.display_name AS contact_display_name,
             con.primary_phone, con.whatsapp_number, con.email
        FROM shared.channel_members cm

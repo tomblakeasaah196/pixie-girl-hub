@@ -77,14 +77,20 @@ export function Field({
 
 export function TextInput({
   className,
+  autoComplete,
   ...rest
 }: InputHTMLAttributes<HTMLInputElement>) {
+  const suppress = autoComplete ?? "off";
   return (
     <input
       className={cn(
         "w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none transition-colors focus:border-accent/50",
         className,
       )}
+      autoComplete={suppress}
+      data-lpignore={suppress === "off" ? "true" : undefined}
+      data-1p-ignore={suppress === "off" ? "" : undefined}
+      data-form-type={suppress === "off" ? "other" : undefined}
       {...rest}
     />
   );
@@ -93,8 +99,10 @@ export function TextInput({
 export function TextArea({
   className,
   rows = 3,
+  autoComplete,
   ...rest
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const suppress = autoComplete ?? "off";
   return (
     <textarea
       rows={rows}
@@ -102,6 +110,10 @@ export function TextArea({
         "w-full px-[13px] py-[10px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] leading-[1.55] outline-none transition-colors focus:border-accent/50 resize-y",
         className,
       )}
+      autoComplete={suppress}
+      data-lpignore={suppress === "off" ? "true" : undefined}
+      data-1p-ignore={suppress === "off" ? "" : undefined}
+      data-form-type={suppress === "off" ? "other" : undefined}
       {...rest}
     />
   );

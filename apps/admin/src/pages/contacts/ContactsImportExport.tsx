@@ -8,6 +8,7 @@ import {
   Truck,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import { Button } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/controls";
@@ -94,6 +95,7 @@ export function ContactsImportExport({
       setResult(res);
       onImported?.();
     } catch (err) {
+      toastReport("Contacts → Import/export", "Import contacts", err);
       setError(err instanceof Error ? err.message : "Import failed.");
     } finally {
       setBusy(null);

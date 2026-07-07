@@ -16,6 +16,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
+import { toastReport } from "@/lib/error-report";
 import { Select } from "@/components/ui/controls";
 import {
   aiGovernanceApi,
@@ -341,8 +342,10 @@ function VendorEditor({
       }
     },
     onSuccess: onSaved,
-    onError: (e) =>
-      setErr(e instanceof Error ? e.message : "Couldn’t save vendor."),
+    onError: (e) => {
+      toastReport("AI Control → Models & vendors", "Save vendor", e);
+      setErr(e instanceof Error ? e.message : "Couldn’t save vendor.");
+    },
   });
 
   return (
@@ -777,7 +780,7 @@ function FieldText({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40 disabled:opacity-60"
+        className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40 disabled:opacity-60" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
     </label>
   );
@@ -799,7 +802,7 @@ function FieldNumber({
         step="0.0001"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40 tabular-nums"
+        className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40 tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
     </label>
   );

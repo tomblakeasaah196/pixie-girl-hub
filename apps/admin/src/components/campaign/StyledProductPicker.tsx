@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/cn";
 import { Button, MoneyText, Pill } from "@/components/ui/primitives";
 import { useStyledProducts, type StyledProduct } from "@/lib/catalogue";
+import { toastReport } from "@/lib/error-report";
 
 const PAGE_SIZE = 100;
 
@@ -84,6 +85,7 @@ export function StyledProductPicker({
       await onAdd(Array.from(selected.values()));
       onClose();
     } catch (e: unknown) {
+      toastReport("Campaigns → Product picker", "Add selected products", e);
       setError(
         (e as Error)?.message ||
           "Couldn't add the selected products. Nothing was saved — please try again.",
@@ -104,7 +106,7 @@ export function StyledProductPicker({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search styled products by name, code…"
-            className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+            className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <div className="flex items-center gap-2 text-[12px]">

@@ -228,7 +228,7 @@ function CreateShadeModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Icy Grey"
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Short description" hint="optional">
@@ -236,7 +236,7 @@ function CreateShadeModal({
             value={shortDesc}
             onChange={(e) => setShortDesc(e.target.value)}
             placeholder="A cool ashen grey."
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         {name.trim() && (
@@ -365,7 +365,7 @@ function ShadeEditorModal({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={inputCls}
+              className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field label="Display order" hint="lower shows first">
@@ -377,7 +377,7 @@ function ShadeEditorModal({
           <input
             value={shortDesc}
             onChange={(e) => setShortDesc(e.target.value)}
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Long description" hint="how to blend it · shown on the shade page">
@@ -402,7 +402,7 @@ function ShadeEditorModal({
             <input
               value={metaTitle}
               onChange={(e) => setMetaTitle(e.target.value)}
-              className={inputCls}
+              className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field
@@ -412,7 +412,7 @@ function ShadeEditorModal({
             <input
               value={metaDesc}
               onChange={(e) => setMetaDesc(e.target.value)}
-              className={inputCls}
+              className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>

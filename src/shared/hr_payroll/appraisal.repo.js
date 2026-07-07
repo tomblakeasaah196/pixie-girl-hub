@@ -79,6 +79,95 @@ async function listScores({ brand, cycle_id, user_id }) {
   return rows;
 }
 
+// ── Auto-scoring ───────────────────────────────────────────
+/** Cycles currently accepting scores — the nightly auto-score sweep's worklist. */
+async function activeScorableCycles({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT cycle_id, cycle_name, starts_on, ends_on, status
+       FROM ${t(brand, "performance_cycles")}
+      WHERE status IN ('open','scoring','calibration')`,
+  );
+  return rows;
+}
+
+/** Active KPIs whose score is derived from data (score_source <> 'manual'). */
+async function listAutoKpis({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "performance_kpi_definitions")}
+      WHERE is_active = true AND score_source <> 'manual'
+      ORDER BY display_order, display_name`,
+  );
+  return rows;
+}
+
+/**
+ * Write (or refresh) an auto-derived score, stamping the auto-score health
+ * fields. A manager-calibrated score (is_calibrated) is preserved: the
+ * ON CONFLICT WHERE clause skips the update, and the function returns null so
+ * the caller counts it as "skipped".
+ */
+async function upsertAutoScore({ client, brand, s }) {
+  const tbl = t(brand, "performance_scores");
+  const { rows } = await ex(client)(
+    `INSERT INTO ${tbl}
+       (cycle_id, user_id, kpi_id, raw_score, weight_pct_snapshot, score_source,
+        evidence, scored_by, scored_at, last_auto_scored_at,
+        last_auto_score_attempt_at, last_auto_score_status, last_auto_score_error)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb, NULL, now(), now(), now(), 'ok', NULL)
+     ON CONFLICT (cycle_id, user_id, kpi_id) DO UPDATE
+       SET raw_score = EXCLUDED.raw_score,
+           weight_pct_snapshot = EXCLUDED.weight_pct_snapshot,
+           score_source = EXCLUDED.score_source,
+           evidence = EXCLUDED.evidence,
+           scored_at = now(),
+           last_auto_scored_at = now(),
+           last_auto_score_attempt_at = now(),
+           last_auto_score_status = 'ok',
+           last_auto_score_error = NULL
+       WHERE ${tbl}.is_calibrated = false
+     RETURNING *`,
+    [
+      s.cycle_id,
+      s.user_id,
+      s.kpi_id,
+      s.raw_score,
+      s.weight_pct_snapshot,
+      s.score_source,
+      s.evidence ? JSON.stringify(s.evidence) : null,
+    ],
+  );
+  return rows[0] || null;
+}
+
+/** Record an auto-score attempt on an existing row (used for the no_data case). */
+async function markAutoAttempt({ client, brand, cycle_id, user_id, kpi_id, status }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "performance_scores")}
+        SET last_auto_score_attempt_at = now(), last_auto_score_status = $4
+      WHERE cycle_id = $1 AND user_id = $2 AND kpi_id = $3
+      RETURNING score_id`,
+    [cycle_id, user_id, kpi_id, status],
+  );
+  return rows[0] || null;
+}
+
+/** Manager calibration: override a score, keeping an audit trail of the original. */
+async function calibrateScore({ client, brand, score_id, raw_score, reason, scored_by }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "performance_scores")}
+        SET pre_calibration_score = COALESCE(pre_calibration_score, raw_score),
+            raw_score = $2,
+            is_calibrated = true,
+            calibration_reason = $3,
+            scored_by = $4,
+            scored_at = now()
+      WHERE score_id = $1
+      RETURNING *`,
+    [score_id, raw_score, reason || null, scored_by || null],
+  );
+  return rows[0] || null;
+}
+
 // Overall = SUM(weighted_score) for a user in a cycle — computed exactly in
 // Postgres numeric (no JS float). Returns { overall, kpi_count }.
 async function overallForUser({ client, brand, cycle_id, user_id }) {
@@ -196,6 +285,11 @@ module.exports = {
   upsertScore,
   listScores,
   overallForUser,
+  activeScorableCycles,
+  listAutoKpis,
+  upsertAutoScore,
+  markAutoAttempt,
+  calibrateScore,
   upsertReview,
   getReview,
   listReviews,

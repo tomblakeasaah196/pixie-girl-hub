@@ -431,7 +431,7 @@ function ServiceModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Wig Revamp"
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Short description" hint="card tagline">
@@ -439,7 +439,7 @@ function ServiceModal({
             value={shortDesc}
             onChange={(e) => setShortDesc(e.target.value)}
             placeholder="Refresh, wash and restyle your unit"
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">
@@ -474,14 +474,14 @@ function ServiceModal({
               value={tags}
               onChange={(e) => setTags(e.target.value)}
               placeholder="revamp, styling"
-              className={inputCls}
+              className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field label="Category" hint="optional">
             <input
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className={inputCls}
+              className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>
@@ -506,7 +506,7 @@ function ServiceModal({
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="https://…"
-                className={inputCls}
+                className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <div className="flex items-center gap-2">
                 <Button

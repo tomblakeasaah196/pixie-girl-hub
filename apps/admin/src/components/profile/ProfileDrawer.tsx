@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import { initials } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -94,6 +95,7 @@ function EditableField({
       await onSave(val);
       setEditing(false);
     } catch (e) {
+      toastReport("Account → Profile", "Save profile field", e);
       setErr(e instanceof Error ? e.message : "Could not save.");
     } finally {
       setSaving(false);
@@ -199,6 +201,7 @@ function EmailField({
       await requestEmailChange(password, newEmail);
       setStage("otp");
     } catch (e) {
+      toastReport("Account → Profile", "Send email-change code", e);
       setErr(e instanceof Error ? e.message : "Could not send code.");
     } finally {
       setLoading(false);
@@ -311,7 +314,7 @@ function EmailField({
             }
             placeholder="000000"
             onKeyDown={(e) => e.key === "Enter" && otp.length === 6 && verify()}
-            className="w-full h-9 bg-text-primary/[0.05] border border-line/60 rounded-lg px-3 text-center text-[18px] font-mono tracking-[0.4em] placeholder:tracking-normal placeholder:text-[13px] focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all"
+            className="w-full h-9 bg-text-primary/[0.05] border border-line/60 rounded-lg px-3 text-center text-[18px] font-mono tracking-[0.4em] placeholder:tracking-normal placeholder:text-[13px] focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           {err && <p className="text-[11px] text-danger">{err}</p>}
           <div className="flex gap-2">

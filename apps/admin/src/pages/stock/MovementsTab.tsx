@@ -4,6 +4,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/primitives";
 import { ErrorState, Select, NumberField } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
+import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import { useAuthStore } from "@/stores/auth";
 import {
   useStockMovements,
@@ -18,6 +19,7 @@ import {
   TextInput,
   InfoBanner,
   Pagination,
+  ProductCell,
 } from "./parts";
 
 /* ── movement type options for filter + form ───────────────────────── */
@@ -77,6 +79,7 @@ function exportCsv(rows: StockMovement[], locationMap: Map<string, string>) {
   const header = [
     "Date",
     "Type",
+    "Product",
     "SKU",
     "Variant",
     "Location",
@@ -87,6 +90,7 @@ function exportCsv(rows: StockMovement[], locationMap: Map<string, string>) {
   const lines = rows.map((r) => [
     fmtDate(r.performed_at),
     r.movement_type,
+    r.product_name ?? "",
     r.sku ?? "",
     r.variant_name ?? "",
     locationMap.get(r.location_id) ?? r.location_id,
@@ -170,12 +174,10 @@ function LogMovementModal({
           />
         </div>
         <div>
-          <FieldLabel>Variant ID</FieldLabel>
-          <TextInput
+          <FieldLabel>Product</FieldLabel>
+          <VariantPicker
             value={variantId}
-            onChange={setVariantId}
-            placeholder="UUID of the variant"
-            required
+            onChange={(id) => setVariantId(id)}
           />
         </div>
         <div>
@@ -298,10 +300,12 @@ export default function MovementsTab() {
       rows = rows.filter((r) => {
         const sku = r.sku ?? "";
         const variantName = r.variant_name ?? "";
+        const productName = r.product_name ?? "";
         const ref = r.notes ?? r.reference_id ?? "";
         return (
           sku.toLowerCase().includes(q) ||
           variantName.toLowerCase().includes(q) ||
+          productName.toLowerCase().includes(q) ||
           ref.toLowerCase().includes(q)
         );
       });
@@ -338,23 +342,10 @@ export default function MovementsTab() {
       },
       {
         key: "product",
-        header: "Product / Variant",
-        render: (r) => {
-          const sku = r.sku ?? "";
-          const variantName = r.variant_name ?? "";
-          return (
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[13px] text-text-primary font-medium truncate max-w-[220px]">
-                {variantName || r.variant_id.slice(0, 8)}
-              </span>
-              {sku && (
-                <span className="text-[11px] text-text-faint font-mono">
-                  {sku}
-                </span>
-              )}
-            </div>
-          );
-        },
+        header: "Product",
+        render: (r) => (
+          <ProductCell line={r} variantId={r.variant_id} className="max-w-[240px]" />
+        ),
       },
       {
         key: "location",

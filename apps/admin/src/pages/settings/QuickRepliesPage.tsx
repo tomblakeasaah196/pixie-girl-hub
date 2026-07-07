@@ -361,7 +361,7 @@ function EditorPanel({
               }
               disabled={!isNew}
               placeholder="welcome"
-              className="bg-transparent flex-1 text-[13.5px] focus:outline-none disabled:opacity-60"
+              className="bg-transparent flex-1 text-[13.5px] focus:outline-none disabled:opacity-60" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           {!isNew && (
@@ -378,7 +378,7 @@ function EditorPanel({
             value={draft.title}
             onChange={(e) => onChange({ ...draft, title: e.target.value })}
             placeholder="Friendly welcome"
-            className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40"
+            className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </label>
         <label className="block">

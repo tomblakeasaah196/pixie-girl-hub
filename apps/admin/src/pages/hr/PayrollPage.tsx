@@ -66,7 +66,7 @@ function PayPinModal({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Payroll: PIN");
   const [pin, setPin] = useState("");
   const mut = useMutation({
     mutationFn: () => payPayrollRun(run!.run_id, pin),
@@ -135,7 +135,7 @@ function ReconcileGuardModal({
   onDone: () => void;
 }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Payroll: reconcile");
   const one = useMutation({
     mutationFn: (date: string) => reconcileDay(date),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["hr"] }),
@@ -189,7 +189,7 @@ function ReconcileGuardModal({
 
 function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Payroll: run detail");
   const can = useAuthStore((s) => s.can);
   const [payRun, setPayRun] = useState<PayrollRun | null>(null);
   const [unreconciled, setUnreconciled] = useState<UnreconciledInfo | null>(null);
@@ -331,7 +331,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
 
 function CreateRunModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Payroll: new run");
   const now = new Date();
   const [form, setForm] = useState({
     pay_month: now.getMonth() + 1,
@@ -364,7 +364,7 @@ function CreateRunModal({ open, onClose }: { open: boolean; onClose: () => void 
         </label>
         <label className="text-xs text-text-muted">Year
           <input type="number" value={form.pay_year} onChange={(e) => setForm({ ...form, pay_year: Number(e.target.value) })}
-            className="mt-1 w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+            className="mt-1 w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </label>
         <label className="text-xs text-text-muted">Period start
           <input type="date" value={form.period_start} onChange={(e) => setForm({ ...form, period_start: e.target.value })}

@@ -5,6 +5,7 @@ import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ErrorState, ConfirmDialog, Select, NumberField } from "@/components/ui/controls";
 import { FormGrid, Field } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
 import {
   useInvoice,
@@ -47,6 +48,10 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
 
   const toast = useToastStore();
   const fireToast = (title: string, body: string, priority: "normal" | "high" = "normal") => {
+    if (priority === "high") {
+      toastReport("Invoicing → Invoice", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",
@@ -222,7 +227,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                       value={payNotes}
                       onChange={(e) => setPayNotes(e.target.value)}
                       placeholder="Payment note"
-                      className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                      className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </Field>
                 </FormGrid>

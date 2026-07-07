@@ -11,6 +11,201 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-07 — Attendance clock controls (dedupe + clock-out location + IP)
+
+**Source:** Clock-in audit (2026-07-07). Three gaps found on the top-bar
+clock widget → `POST /hr/me/clock` (`selfClock`): (1) the append-only
+`staff_clock_events` log had no per-day uniqueness, so a double-tap / direct
+API call could record two `clock_in` rows for one day; (2) clock-out location
+was captured on the raw event but never persisted to the reconciled day ledger;
+(3) the in/out IP was captured on the raw event but never surfaced.
+
+**Files (new):** `000303_shared_attendance_clock_controls.sql`.
+
+**What:**
+- `staff_clock_events.occurred_on` (Africa/Lagos calendar day, trigger-
+  maintained) + a partial unique index on
+  `(profile_id, occurred_on, event_type) WHERE accepted = true`, created
+  defensively so pre-existing historical duplicates never break the deploy.
+  This backstops the new service-layer guard (one accepted clock-in + one
+  clock-out per day; clock-out must follow a clock-in).
+- `attendance_days` gains `clock_out_{address,lat,lng,is_offsite,distance_m}`
+  and `clock_{in,out}_ip`, populated by the reconciler from the first
+  clock-in / last clock-out events, and shown in the attendance tables.
+
+**Note:** location is now mandatory for BOTH clock-in and clock-out (enforced
+in `selfClock`); refusing location on clock-in records nothing, so reconcile
+marks the day absent. IP is audit evidence only — office WiFi NATs everyone.
+
+## 2026-07-06 — Help Center content: Grow & System modules + in-app editor (PR3 of 3)
+
+**Source:** Help Center completeness pass — final batch, plus the DB-driven
+in-app Help Editor (the "add the editor" follow-up noted in the module README).
+
+**Files (new):** `000288_shared_help_social.sql`,
+`000289_shared_help_marketing.sql`, `000290_shared_help_praxis.sql`,
+`000291_shared_help_settings.sql`, `000292_shared_help_iam_security.sql`,
+`000293_shared_help_documents.sql`, `000294_shared_help_ai_control.sql`,
+`000295_shared_help_storefront_studio.sql`,
+`000296_shared_help_notifications.sql`, `000297_shared_help_help_center.sql`,
+`000298_shared_help_getting_started.sql`,
+`000299_shared_help_praxis_mirror_pr3.sql`.
+
+**What:** Seeds **42 articles across 11 Grow + System modules** (Social,
+Marketing, Praxis AI, Settings, IAM & Security, Documents, AI Control,
+Storefront Studio, Notifications, Help Center, Getting Started). This fills the
+last previously-empty seeded categories — `praxis`, `security` and
+`getting-started` — so the Help Center landing has **no empty categories left**.
+`000299` re-runs the generic `ai_knowledge_chunks` mirror for the PR3 set.
+
+**No schema change:** the in-app Help Editor (help_center create/edit/delete
+endpoints + admin editor page) reuses the existing `help_articles` /
+`help_categories` / `ai_knowledge_chunks` tables and the `help_center`
+permission grants seeded in 000214 — no migration needed. Article writes resync
+`ai_knowledge_chunks` live, so Praxis is grounded the moment content is saved.
+
+**Count:** No table created or dropped — rows only. Shared (**177**) and
+per-brand table counts are unchanged.
+
+---
+
+## 2026-07-06 — Help Center content: Finance & People modules (PR2 of 3)
+
+**Source:** Help Center completeness pass — same full guide sets (overview +
+task how-tos + FAQ), grounded in shipped routes/services/pages (built-and-wired
+only).
+
+**Files (new):** `000275_shared_help_invoicing.sql`,
+`000276_shared_help_accounting.sql`, `000277_shared_help_expenses.sql`,
+`000278_shared_help_pricing.sql`, `000279_shared_help_cash_requests.sql`,
+`000280_shared_help_my_hr.sql`, `000281_shared_help_hr.sql`,
+`000282_shared_help_payroll.sql`, `000283_shared_help_performance.sql`,
+`000284_shared_help_contacts.sql`, `000285_shared_help_retention.sql`,
+`000286_shared_help_org_workflow.sql`,
+`000287_shared_help_praxis_mirror_pr2.sql`.
+
+**What:** Seeds **54 articles across 12 Finance + People modules** (Invoicing,
+Accounting, Expenses, Pricing, Cash Requests, My HR, HR & Staff, Payroll,
+Performance, Contacts, Retention, Org & Workflow). Accounting populates the
+existing (previously-empty) `finance` category; the rest add their own
+categories. HR cross-links to the existing `attendance` category (000235)
+rather than duplicating it. All inserts idempotent (`ON CONFLICT (slug) DO
+NOTHING`). `000287` re-runs the generic `ai_knowledge_chunks` mirror so the PR2
+articles are grounded for Praxis (the one-time 000274 sweep couldn't see them).
+
+**Count:** No table created or dropped — rows only. Shared (**177**) and
+per-brand table counts are unchanged.
+
+---
+
+## 2026-07-06 — Help Center content: Run & Operate modules (PR1 of 3)
+
+**Source:** Help Center completeness pass — every module gets a full guide set
+(overview + task how-tos + FAQ), written in plain English and grounded in the
+shipped routes/services/pages (built-and-wired only, no spec-ahead content).
+
+**Files (new):** `000262_shared_help_dashboard.sql`,
+`000263_shared_help_sales.sql`, `000264_shared_help_crm.sql`,
+`000265_shared_help_stylist_studio.sql`, `000266_shared_help_workspace.sql`,
+`000267_shared_help_stock.sql`, `000268_shared_help_catalogue.sql`,
+`000269_shared_help_logistics.sql`, `000270_shared_help_purchasing.sql`,
+`000271_shared_help_production.sql`, `000272_shared_help_retail_partners.sql`,
+`000273_shared_help_stylists.sql`, `000274_shared_help_praxis_mirror.sql`.
+
+**What:** Seeds `shared.help_categories` / `shared.help_articles` with **59
+articles across 12 Run + Operate modules** (Dashboard, Sales, CRM, Stylist
+Studio, Workspace, Stock, Catalogue, Logistics, Purchasing, Production, Retail
+Partners, Stylists). Reuses the existing `sales` and `catalogue` categories;
+adds ten new categories. All inserts are idempotent (`ON CONFLICT (slug) DO
+NOTHING`). `000274` re-runs the generic `ai_knowledge_chunks` mirror from
+000214 so **every** active, `praxis_indexed` help article is grounded for
+Praxis — this self-heals the previously-unmirrored attendance (000235) and
+insights (000258) sets, which the one-time 000214 sweep never captured.
+
+**Count:** No table created or dropped — rows only. Shared (**177**) and
+per-brand table counts are unchanged.
+
+---
+
+## 2026-07-06 — Appraisal auto-scoring: brand-schema parity
+
+**Source:** HR system audit follow-up (PR-B) — auto-populate appraisal KPI
+scores from real HR data (attendance, sales targets, service-job quality,
+customer ratings).
+
+**Files:** `000261_shared_appraisal_autoscore.sql` (new).
+
+**What:** The per-brand appraisal tables (`performance_scores`,
+`performance_kpi_definitions`) live in the template and already carry the
+auto-score fields (`auto_score_config`, `evidence`, the auto-score health
+columns, and the calibration columns). This migration idempotently brings any
+existing brand schema up to parity — `ADD COLUMN IF NOT EXISTS` for those
+fields — and reconciles the `score_source` CHECK on both tables to the full
+source list (`manual`, `customer_ratings`, `sales_data`, `crm_data`,
+`service_job_ratings`, `clock_in_data`, `custom`) plus the
+`last_auto_score_status` CHECK (`ok`/`no_data`/`error`/`skipped`/NULL), so the
+auto-score engine can write on any brand regardless of when it was provisioned.
+
+**Count:** No table created or dropped — columns/constraints only — so the
+shared (**177**) and per-brand table counts are unchanged.
+
+---
+
+## 2026-07-05 — Signer page: PIN-protected signature on file
+
+**Source:** HR system audit follow-up — the public signer page (`/sign/:token`)
+the e-signature backend was missing a frontend for.
+
+**Files:** `000260_shared_esign_signer_pin.sql` (new).
+
+**What:** Adds `shared.signer_signatures` — a reusable "signature on file"
+protected by an argon2 PIN and keyed by the signer's email (works for staff,
+contacts, and external signers). The model: anyone can sign, but to *store* a
+signature (so it isn't re-drawn on every future document) you set a PIN; later
+documents only need the PIN and the saved signature is applied. Also adds
+`signature_request_signers.signature_data_url` (the drawn signature captured
+inline as a base64 PNG) and `.verification_code` (a short, human-verifiable code
+derived from the tamper-evident `audit_hash`, printed on the document and
+resolvable on the public verify page). The `signer_signed_consistency` CHECK is
+relaxed to accept an inline data-URL signature as proof (the original required a
+media `captured_signature_path`).
+
+**Count:** `scripts/verify-schema.js` shared count 175 → **177**: +1 for
+`signer_signatures` (this migration) and +1 correcting `staff_onboarding_progress`
+(000259), whose table was added without a matching count bump. (The AI-insight
+frequency migration below is a duplicate `000259` number — established precedent
+for pairs touching unrelated tables — and is column-only, so it doesn't affect
+the count.)
+
+---
+
+## 2026-07-05 — AI Insights: honour the per-module frequency cadence
+
+**Source:** Praxis Insights follow-up (V2.2 §6.31) — make the AI Control
+Frequency control actually do something.
+
+**Files:** `000259_shared_ai_insight_frequency.sql` (new).
+
+**What:** Adds a nullable `last_swept_at TIMESTAMPTZ` column to
+`shared.ai_insight_modules`. The AI Control matrix already stored a `frequency`
+per module (realtime/daily/weekly/off), but the 30-minute cron sweep ignored it
+and re-scanned every enabled module on every tick — so setting a module to
+"weekly" to cut spend had no effect. The sweep now records when it last ran a
+module (`repo.markSwept`) and the cron path only scans modules whose cadence is
+due (`repo.dueModules`): realtime → every tick, daily → once/24h, weekly →
+once/7d, off → never auto-run. The manual "Run scan" button is unchanged — it
+still scans every enabled module immediately.
+
+**Why:** The Frequency dropdown was a no-op, which read as "insights don't
+work" when a lone module was enabled and nothing surfaced. Honouring the
+cadence makes the spend control real and the behaviour predictable.
+
+**Verify:** Column add only — no new table, so it doesn't change the shared
+table count. NULL `last_swept_at` = never swept = due on the next tick, so
+enabled modules keep scanning after deploy with no backfill.
+
+---
+
 ## 2026-07-05 — AI Insights: legacy cleanup + briefing refs unlock + Help Center guide
 
 **Source:** Praxis Insights Wave 4 (V2.2 §6.30/§6.31) — finish the unified-store
@@ -44,6 +239,21 @@ answer insights questions from this content. Idempotent (`ON CONFLICT (slug)
 DO NOTHING`).
 
 ---
+
+## 2026-07-05 — HR onboarding pack
+
+**Source:** Meeting transcript §3.7 + HR coverage audit (deferred item A), PR-A.
+
+**Files:** `000259_shared_hr_onboarding.sql` (new, shared).
+
+**What / why:** `shared.staff_onboarding_progress` (per-employee completion of
+each brand onboarding-checklist item, unique-keyed on `(profile_id,
+item_key)`), plus `hr_settings.onboarding_links` (JSONB — HR-maintained handy
+links) and `hr_settings.onboarding_welcome` (welcome note). Surfaces the
+existing `onboarding_checklist` as a ticked, per-employee "Getting started"
+card on My HR (always available), with SOP articles (Help Center tag
+`onboarding`), the employee's own documents, and contracts + signature status.
+Idempotent.
 
 ## 2026-07-05 — HR rewards engine
 

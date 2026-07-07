@@ -166,9 +166,19 @@ work as 6 PRs.
   **Messaging × HR** (H6, M6): find-or-create 1:1 DM
   (`POST /smartcomm/channels/direct`), a new-conversation employee search, and
   `?dm_user=` deep links behind the "Message" buttons on the 360.
-- **Deferred (post-PR3, non-blocking):** onboarding first-login pack +
-  auto-provision into a brand channel; appraisal auto-population from
-  Sales/CRM/Jobs; P2/P3 query batching.
+- **PR-A (onboarding pack, deferred item A)** — a My HR "Getting started"
+  card (always available): the brand `onboarding_checklist` ticked per
+  employee (`staff_onboarding_progress`), a welcome note, SOP articles (Help
+  Center tag `onboarding`), the employee's own documents, handy links
+  (`hr_settings.onboarding_links`), and contracts with signature status +
+  View. HR Settings gains an onboarding editor; Employee 360 shows a
+  completion tile. Migration 000259. **Note:** the in-app *signer* page is
+  still a separate follow-up — HR sends contracts for e-signature from the
+  Documents module (backend + admin send-flow already exist); employees sign
+  via the emailed token link.
+- **Deferred (still open, non-blocking):** in-app e-signature *signer* page;
+  new-hire auto-provision into a brand channel; appraisal auto-population from
+  Sales/CRM/Jobs (PR-B tackles the scoring seam); P2/P3 query batching.
 
 ## 6. Revamp plan — "full connection & deep linking"
 

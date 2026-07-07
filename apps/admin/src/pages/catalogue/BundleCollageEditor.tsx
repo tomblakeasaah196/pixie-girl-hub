@@ -129,7 +129,7 @@ export function BundleCollageEditor({ bundleId }: { bundleId: string }) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={`${pieces || 3}-Piece Collection`}
-          className={inputCls}
+          className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </Field>
       <Field label="Eyebrow" hint="blank → brand default">
@@ -137,7 +137,7 @@ export function BundleCollageEditor({ bundleId }: { bundleId: string }) {
           value={eyebrow}
           onChange={(e) => setEyebrow(e.target.value)}
           placeholder="Pixie Girl · Bundle"
-          className={inputCls}
+          className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </Field>
 

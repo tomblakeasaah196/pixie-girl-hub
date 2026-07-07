@@ -761,9 +761,81 @@ async function overdueOutWigs({ brand, threshold_days }) {
   return rows;
 }
 
+/**
+ * Return staff who can be assigned service jobs — anyone with a Stylist-flavoured
+ * job title in the active brand. Includes a live open-jobs count (pending or
+ * in_progress or assigned or on_hold) and an on-leave-today flag so the picker
+ * can show workload + availability without a second round-trip.
+ *
+ * We deliberately match on job_title text (no is_stylist column added) because
+ * the meeting notes described stylists as a job-title concept, not a separate
+ * role. Match is case-insensitive on "stylist" so both "Senior Stylist" and
+ * "Trainee Stylist" qualify.
+ */
+async function listAssignableStylists({ brand }) {
+  const { rows } = await query(
+    `WITH open_jobs AS (
+       SELECT assigned_staff_user_id AS user_id, COUNT(*) AS n
+         FROM ${t(brand, "service_jobs")}
+        WHERE assigned_staff_user_id IS NOT NULL
+          AND status IN ('assigned','in_progress','on_hold','rework')
+        GROUP BY assigned_staff_user_id
+     )
+     SELECT
+       u.user_id,
+       COALESCE(NULLIF(TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')), ''), u.email) AS full_name,
+       u.avatar_url,
+       sp.job_title,
+       COALESCE(oj.n, 0)::int AS open_jobs_count,
+       EXISTS (
+         SELECT 1
+           FROM shared.leave_requests lr
+          WHERE lr.profile_id = sp.profile_id
+            AND lr.status = 'approved'
+            AND CURRENT_DATE BETWEEN lr.start_date AND lr.end_date
+       ) AS on_leave_today
+       FROM shared.staff_profiles sp
+       JOIN shared.users u ON u.staff_profile_id = sp.profile_id
+       JOIN shared.contacts c ON c.contact_id = sp.contact_id
+       LEFT JOIN open_jobs oj ON oj.user_id = u.user_id
+      WHERE sp.business = $1
+        AND sp.is_deleted = false
+        AND sp.end_date IS NULL
+        AND sp.job_title ILIKE '%stylist%'
+      ORDER BY on_leave_today ASC, open_jobs_count ASC, full_name ASC`,
+    [brand],
+  );
+  return rows;
+}
+
+/**
+ * Count a staffer's done, quality-passing jobs in a month — the quality-gated
+ * numerator for the `styles_completed` / `services_completed` target progress.
+ */
+async function countCompletedQualityForUser({ client, brand, userId, year, month, minQuality }) {
+  const run = client ? client.query.bind(client) : query;
+  const from = `${year}-${String(month).padStart(2, "0")}-01`;
+  const to =
+    month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const { rows } = await run(
+    `SELECT count(*)::int AS n
+       FROM ${t(brand, "service_jobs")}
+      WHERE assigned_staff_user_id = $1
+        AND completed_at IS NOT NULL
+        AND quality_rating IS NOT NULL AND quality_rating >= $2
+        AND completed_at >= $3 AND completed_at < $4`,
+    [userId, minQuality, from, to],
+  );
+  return rows[0] ? rows[0].n : 0;
+}
+
 module.exports = {
   nextNumber,
+  countCompletedQualityForUser,
   listServiceTypes,
+  listAssignableStylists,
   getDefaultServiceType,
   findServiceType,
   createServiceType,

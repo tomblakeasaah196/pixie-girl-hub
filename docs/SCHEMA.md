@@ -46,10 +46,12 @@ See `migrations/CHANGELOG.md` for the full evolution history.
 
 Every numbered document (invoices, sales orders, etc.) uses `shared.document_numbering` for atomic sequence allocation. The DB function `<brand>.fn_next_document_number('invoice')` does `SELECT FOR UPDATE` → returns the next number → increments — preventing duplicates under concurrency.
 
-37 document type sequences per brand, e.g.:
+38 document type sequences per brand, e.g.:
 
 - `PXG-INV-0001`, `PXG-SO-0001`, `PXG-PO-0001`, ...
 - `FLH-INV-0001`, `FLH-SO-0001`, `FLH-PO-0001`, ...
+
+`shared.staff_profiles.employee_number` (`TEXT NOT NULL UNIQUE`) is allocated the same way at HR onboarding time (`document_type = 'employee'`, e.g. `PXG-EMP-0001`) — it is server-generated and chronological, never client-supplied.
 
 ## Triggers (per-brand template/000034)
 

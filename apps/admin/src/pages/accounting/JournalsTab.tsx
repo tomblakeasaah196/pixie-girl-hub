@@ -20,6 +20,7 @@ import {
   useReverseJournal,
 } from "./hooks";
 import type { JournalEntry, ManualJournalLineInput } from "./types";
+import { toastReport } from "@/lib/error-report";
 
 const STATUS_TONE: Record<string, Tone> = {
   posted: "success",
@@ -218,8 +219,10 @@ function ManualJournalDrawer({ opening, onClose }: { opening: boolean; onClose: 
       { input: { description, posting_date: postingDate, lines: payload }, opening },
       {
         onSuccess: onClose,
-        onError: (e: unknown) =>
-          setError(e instanceof Error ? e.message : "The journal was rejected."),
+        onError: (e: unknown) => {
+          toastReport("Accounting → Journals", "Create journal", e);
+          setError(e instanceof Error ? e.message : "The journal was rejected.");
+        },
       },
     );
   };
@@ -253,7 +256,7 @@ function ManualJournalDrawer({ opening, onClose }: { opening: boolean; onClose: 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[12px] font-semibold text-text-muted mb-1.5">Description</label>
-            <input className={inputCls} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <input className={inputCls} value={description} onChange={(e) => setDescription(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           </div>
           <div>
             <label className="block text-[12px] font-semibold text-text-muted mb-1.5">Posting date</label>
@@ -275,7 +278,7 @@ function ManualJournalDrawer({ opening, onClose }: { opening: boolean; onClose: 
                 inputMode="decimal"
                 placeholder="0.00"
                 value={l.amount}
-                onChange={(e) => setLine(i, { amount: e.target.value.replace(/[^\d.]/g, "") })}
+                onChange={(e) => setLine(i, { amount: e.target.value.replace(/[^\d.]/g, "") })} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <button
                 className="text-text-faint hover:text-danger disabled:opacity-30"

@@ -38,7 +38,10 @@ const pool = new Pool({
 //   - Insights legacy cleanup (000257_shared_ai_insights_cleanup): −7 shared
 //     tables (the per-category ai_insight_* tables from 000012, superseded by
 //     the unified store) → shared 182 − 7 = 175.
-const EXPECTED_SHARED = 175;
+//   - HR onboarding (000259_shared_hr_onboarding): +1 (staff_onboarding_progress).
+//   - Signer page (000260_shared_esign_signer_pin): +1 (signer_signatures).
+//     175 + 1 + 1 = 177.
+const EXPECTED_SHARED = 177;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

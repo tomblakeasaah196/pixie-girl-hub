@@ -31,7 +31,7 @@ function fmtDay(v: string): string {
 }
 
 function GenerateDrawer({ onClose }: { onClose: () => void }) {
-  const toast = useToast();
+  const toast = useToast("Stylists → Generate payouts");
   const partners = usePartners({ status: "certified" });
   const { generate } = usePayoutMutations();
   const [stylistId, setStylistId] = useState("");
@@ -127,7 +127,7 @@ function PayoutDrawer({
   onClose: () => void;
 }) {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Payout");
   const detail = usePayout(payoutId);
   const m = usePayoutMutations();
   const [paying, setPaying] = useState(false);
@@ -273,7 +273,7 @@ function PayoutDrawer({
               className="input w-full font-mono"
               placeholder="Transfer reference (e.g. TRF-…)"
               value={transferCode}
-              onChange={(e) => setTransferCode(e.target.value)}
+              onChange={(e) => setTransferCode(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
         }

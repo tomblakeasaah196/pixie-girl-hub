@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
+import { toastReport } from "@/lib/error-report";
 import {
   Button,
   Card,
@@ -678,6 +679,7 @@ function BriefStep({
       setSavedAt(Date.now());
       if (advance) onNext?.();
     } catch (e: unknown) {
+      toastReport("Sales Campaigns → Campaign builder", "Save brief", e);
       setError(
         (e as Error)?.message ||
           "Couldn't save the brief. Check the highlighted fields and try again.",
@@ -696,7 +698,7 @@ function BriefStep({
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={!canEdit}
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field
@@ -712,7 +714,7 @@ function BriefStep({
               onChange={(e) => setSlug(cleanSlugInput(e.target.value))}
               disabled={!canEdit}
               spellCheck={false}
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50 font-mono"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50 font-mono" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>
@@ -764,7 +766,7 @@ function BriefStep({
               disabled={!canEdit}
               inputMode="decimal"
               placeholder="1310"
-              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-50"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
             <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
               NGN
@@ -820,7 +822,7 @@ function BriefStep({
               onChange={(e) => setDiscountValue(e.target.value)}
               disabled={!canEdit || !discountType}
               placeholder={discountType ? "" : "—"}
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] font-mono tabular-nums disabled:opacity-40"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] font-mono tabular-nums disabled:opacity-40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>
@@ -1001,7 +1003,7 @@ function BriefStep({
                   onChange={(e) => setExitCode(e.target.value)}
                   disabled={!canEdit}
                   placeholder="STAY10"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] disabled:opacity-50"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
               <Field label="Exit-intent ₦ off">
@@ -1022,7 +1024,7 @@ function BriefStep({
                   onChange={(e) => setExitTitle(e.target.value)}
                   disabled={!canEdit}
                   placeholder="Wait — a small gift before you go."
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
               <Field
@@ -1047,7 +1049,7 @@ function BriefStep({
                   onChange={(e) => setExitButton(e.target.value)}
                   disabled={!canEdit}
                   placeholder="Copy code & keep shopping"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
             </>
@@ -1389,6 +1391,7 @@ function BundlesStep({
     try {
       await importBundle.mutateAsync(offerId);
     } catch (e) {
+      toastReport("Sales Campaigns → Campaign builder", "Import bundle", e);
       describeError(
         e,
         "Couldn't import that bundle. Please try again.",
@@ -2194,7 +2197,7 @@ function PositionLadderEditor({
                   value={lbl}
                   onChange={(e) => setLbl(e.target.value)}
                   placeholder={`${ordinal(Number(pos) || 1)} wig discount`}
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
             </div>
@@ -2294,7 +2297,7 @@ function StackingBonusEditor({
               onChange={(e) => setLabel(e.target.value)}
               disabled={!canEdit}
               placeholder="You unlocked ₦120,000 off!"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
         </div>
@@ -2416,7 +2419,7 @@ function BulkTierEditor({
                   value={lbl}
                   onChange={(e) => setLbl(e.target.value)}
                   placeholder={`${qty || "N"}+ = factory rate`}
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
               </Field>
             </div>
@@ -2533,7 +2536,7 @@ function TierEditor({
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder={`Buy ${qty || "N"} save ${money(Number(discount) || 0)}`}
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </Field>
           </div>
@@ -2695,7 +2698,7 @@ function UpsellEditor({
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Add 1 more bundle"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field
@@ -2706,7 +2709,7 @@ function UpsellEditor({
               value={subline}
               onChange={(e) => setSubline(e.target.value)}
               placeholder="and save an extra ₦100,000"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <div className="flex justify-end">

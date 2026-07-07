@@ -171,7 +171,7 @@ async function dispatchInvoice({ brand, invoice, channel = "email" }) {
       }
       const body = buildInvoiceWhatsApp({ brandTokens, invoice, viewUrl });
       try {
-        const res = await whatsapp.sendText({ to, body });
+        const res = await whatsapp.sendText({ brand, to, body });
         await record({
           brand,
           invoice,

@@ -56,6 +56,62 @@ async function analytics({ client, brand, year, month }) {
   return rows[0];
 }
 
+/**
+ * Month-over-month HR trends for the last `months` months: headcount (active at
+ * month-end), new hires, attrition (leavers), punctuality %, and payroll cost
+ * (summed daily earnings). One row per month, oldest first.
+ */
+async function analyticsTrends({ client, brand, months = 12 }) {
+  const { rows } = await exec(client)(
+    `WITH m AS (
+       SELECT (date_trunc('month', CURRENT_DATE) - make_interval(months => gs))::date AS ms
+         FROM generate_series($2 - 1, 0, -1) AS gs
+     )
+     SELECT
+       date_part('year', ms)::int AS year,
+       date_part('month', ms)::int AS month,
+       (SELECT count(*) FROM shared.staff_profiles sp
+          WHERE sp.business = $1 AND sp.is_deleted = false
+            AND sp.start_date <= (ms + interval '1 month' - interval '1 day')
+            AND (sp.end_date IS NULL OR sp.end_date > (ms + interval '1 month' - interval '1 day')))::int AS headcount,
+       (SELECT count(*) FROM shared.staff_profiles sp
+          WHERE sp.business = $1 AND sp.is_deleted = false
+            AND sp.start_date >= ms AND sp.start_date < ms + interval '1 month')::int AS new_hires,
+       (SELECT count(*) FROM shared.staff_profiles sp
+          WHERE sp.business = $1
+            AND sp.end_date >= ms AND sp.end_date < ms + interval '1 month')::int AS attrition,
+       (SELECT COALESCE(ROUND(100.0 * count(*) FILTER (WHERE status = 'present' AND is_late = false)
+              / NULLIF(count(*) FILTER (WHERE status IN ('present','late')), 0), 1), 0)
+          FROM shared.attendance_days ad
+         WHERE ad.business = $1 AND ad.work_date >= ms AND ad.work_date < ms + interval '1 month')::numeric AS punctuality_pct,
+       (SELECT COALESCE(SUM(earned_ngn), 0) FROM shared.staff_earnings_daily e
+         WHERE e.business = $1 AND e.work_date >= ms AND e.work_date < ms + interval '1 month')::numeric AS payroll_ngn
+     FROM m ORDER BY ms`,
+    [brand, months],
+  );
+  return rows;
+}
+
+/** Staff on active probation whose probation ends within `days` days. */
+async function probationEndingSoon({ client, brand, days = 30 }) {
+  const { rows } = await exec(client)(
+    `SELECT sp.profile_id, sp.job_title, sp.probation_status, sp.probation_end_date,
+            sp.start_date, c.display_name,
+            (sp.probation_end_date - CURRENT_DATE)::int AS days_left,
+            (SELECT u.user_id FROM shared.users u WHERE u.staff_profile_id = sp.profile_id
+              ORDER BY u.is_active DESC LIMIT 1) AS user_id
+       FROM shared.staff_profiles sp
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE sp.business = $1 AND sp.is_deleted = false
+        AND sp.probation_status IN ('active','pending','extended')
+        AND sp.probation_end_date IS NOT NULL
+        AND sp.probation_end_date <= CURRENT_DATE + make_interval(days => $2)
+      ORDER BY sp.probation_end_date ASC`,
+    [brand, days],
+  );
+  return rows;
+}
+
 // ── identity ───────────────────────────────────────────────
 /** Resolve the staff profile linked to a user, if visible to the brand. */
 async function profileForUser({ client, brand, userId }) {
@@ -142,9 +198,11 @@ async function updateSettings({ client, brand, patch }) {
     "payout_require_pin",
     "payout_provider",
     "onboarding_checklist",
+    "onboarding_links",
+    "onboarding_welcome",
     "contract_template_doc_id",
   ];
-  const jsonb = new Set(["lateness_tiers", "onboarding_checklist"]);
+  const jsonb = new Set(["lateness_tiers", "onboarding_checklist", "onboarding_links"]);
   const arr = new Set(["working_days"]);
   const sets = [];
   const params = [brand];
@@ -383,8 +441,12 @@ async function upsertAttendanceDay({ client, brand, input }) {
         first_clock_in_at, minutes_late, is_late, daily_rate_ngn,
         deduction_pct, deduction_ngn, clock_event_id, leave_id, reconciled_by,
         is_offsite, offsite_distance_m, clock_in_address, clock_in_lat, clock_in_lng,
-        last_clock_out_at, early_leave_minutes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        last_clock_out_at, early_leave_minutes,
+        clock_out_address, clock_out_lat, clock_out_lng, clock_out_is_offsite,
+        clock_out_distance_m, clock_in_ip, clock_out_ip,
+        clock_in_device_recognized)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+             $22,$23,$24,$25,$26,$27,$28,$29)
      ON CONFLICT (profile_id, work_date) DO UPDATE SET
         status = EXCLUDED.status,
         expected_start_time = EXCLUDED.expected_start_time,
@@ -404,7 +466,15 @@ async function upsertAttendanceDay({ client, brand, input }) {
         clock_in_lat = EXCLUDED.clock_in_lat,
         clock_in_lng = EXCLUDED.clock_in_lng,
         last_clock_out_at = EXCLUDED.last_clock_out_at,
-        early_leave_minutes = EXCLUDED.early_leave_minutes
+        early_leave_minutes = EXCLUDED.early_leave_minutes,
+        clock_out_address = EXCLUDED.clock_out_address,
+        clock_out_lat = EXCLUDED.clock_out_lat,
+        clock_out_lng = EXCLUDED.clock_out_lng,
+        clock_out_is_offsite = EXCLUDED.clock_out_is_offsite,
+        clock_out_distance_m = EXCLUDED.clock_out_distance_m,
+        clock_in_ip = EXCLUDED.clock_in_ip,
+        clock_out_ip = EXCLUDED.clock_out_ip,
+        clock_in_device_recognized = EXCLUDED.clock_in_device_recognized
      RETURNING *`,
     [
       brand,
@@ -428,6 +498,14 @@ async function upsertAttendanceDay({ client, brand, input }) {
       input.clock_in_lng ?? null,
       input.last_clock_out_at || null,
       input.early_leave_minutes || 0,
+      input.clock_out_address || null,
+      input.clock_out_lat ?? null,
+      input.clock_out_lng ?? null,
+      input.clock_out_is_offsite || false,
+      input.clock_out_distance_m ?? null,
+      input.clock_in_ip || null,
+      input.clock_out_ip || null,
+      input.clock_in_device_recognized ?? null,
     ],
   );
   return rows[0];
@@ -678,13 +756,42 @@ async function incrementActiveTarget({ client, brand, profileId, metric, delta, 
   return rows[0] || null;
 }
 
+/**
+ * Set an active target's current_value to an absolute number (idempotent —
+ * used by the quality-gated recompute path). Returns the row plus prev_value so
+ * the caller can detect a fresh goal crossing.
+ */
+async function setActiveTargetValue({ client, brand, profileId, metric, value, year, month }) {
+  const { rows } = await exec(client)(
+    `WITH cur AS (
+       SELECT target_id, current_value AS prev_value
+         FROM shared.performance_targets
+        WHERE business = $1 AND profile_id = $2 AND metric = $3
+          AND period_year = $5 AND period_month = $6
+          AND status IN ('active','achieved'))
+     UPDATE shared.performance_targets p
+        SET current_value = $4,
+            last_progress_at = now(),
+            status = CASE WHEN $4 >= p.target_value AND p.status = 'active'
+                          THEN 'achieved' ELSE p.status END,
+            achieved_at = CASE WHEN $4 >= p.target_value AND p.achieved_at IS NULL
+                               THEN now() ELSE p.achieved_at END
+       FROM cur
+      WHERE p.target_id = cur.target_id
+      RETURNING p.*, cur.prev_value`,
+    [brand, profileId, metric, value, year, month],
+  );
+  return rows[0] || null;
+}
+
 // ── reconcile inputs (clock-ins + approved leave for a date) ──
 /** First accepted clock-in per profile on a date, for all brand staff. */
 async function firstClockInsForDate({ client, profileIds, dateStr }) {
   if (!profileIds.length) return {};
   const { rows } = await exec(client)(
     `SELECT DISTINCT ON (profile_id) profile_id, event_id, occurred_at,
-            is_offsite, distance_m, formatted_address, latitude, longitude
+            is_offsite, distance_m, formatted_address, latitude, longitude,
+            ip_address, device_recognized
        FROM shared.staff_clock_events
       WHERE profile_id = ANY($1::uuid[])
         AND event_type = 'clock_in' AND accepted = true
@@ -695,6 +802,30 @@ async function firstClockInsForDate({ client, profileIds, dateStr }) {
   const map = {};
   for (const r of rows) map[r.profile_id] = r;
   return map;
+}
+
+/**
+ * Today's accepted punches for the whole brand, newest first — the live
+ * attendance feed seed (000304). Same shape the socket `attendance:punch`
+ * event carries so the tab can merge them without a second mapping.
+ */
+async function liveTodayPunches({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT e.event_id, e.profile_id, c.display_name,
+            e.event_type, e.occurred_at, e.is_offsite, e.distance_m,
+            e.formatted_address AS address, e.device_recognized
+       FROM shared.staff_clock_events e
+       JOIN shared.staff_profiles sp ON sp.profile_id = e.profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE ${VISIBLE}
+        AND e.accepted = true
+        AND (e.occurred_at AT TIME ZONE 'Africa/Lagos')::date
+            = (now() AT TIME ZONE 'Africa/Lagos')::date
+      ORDER BY e.occurred_at DESC
+      LIMIT 200`,
+    [brand],
+  );
+  return rows;
 }
 
 /** Today's clock events for one profile, newest first (My HR clock widget). */
@@ -789,7 +920,9 @@ async function approvedLeaveForDate({ client, profileIds, dateStr }) {
 async function lastClockOutsForDate({ client, profileIds, dateStr }) {
   if (!profileIds.length) return {};
   const { rows } = await exec(client)(
-    `SELECT DISTINCT ON (profile_id) profile_id, event_id, occurred_at
+    `SELECT DISTINCT ON (profile_id) profile_id, event_id, occurred_at,
+            is_offsite, distance_m, formatted_address, latitude, longitude,
+            ip_address
        FROM shared.staff_clock_events
       WHERE profile_id = ANY($1::uuid[])
         AND event_type = 'clock_out' AND accepted = true
@@ -844,19 +977,88 @@ async function tasksForUser({ client, brand, userId }) {
 }
 
 async function contractsForProfile({ client, profileId }) {
+  // Left-join the latest signature-request status per contract document so the
+  // onboarding card can show "awaiting signature" / "signed".
   const { rows } = await exec(client)(
-    `SELECT contract_id, contract_type, effective_from, effective_to,
-            gross_salary, document_id
-       FROM shared.staff_contracts
-      WHERE profile_id = $1
-      ORDER BY effective_from DESC`,
+    `SELECT sc.contract_id, sc.contract_type, sc.effective_from, sc.effective_to,
+            sc.gross_salary, sc.document_id,
+            (SELECT sr.status FROM shared.signature_requests sr
+              WHERE sr.document_id = sc.document_id
+              ORDER BY sr.created_at DESC LIMIT 1) AS signature_status
+       FROM shared.staff_contracts sc
+      WHERE sc.profile_id = $1
+      ORDER BY sc.effective_from DESC`,
     [profileId],
+  );
+  return rows;
+}
+
+// ── Onboarding (meeting §3.7) ──────────────────────────────
+/** Set of onboarding item_keys this employee has completed. */
+async function onboardingProgress({ client, brand, profileId }) {
+  const { rows } = await exec(client)(
+    `SELECT item_key FROM shared.staff_onboarding_progress
+      WHERE business = $1 AND profile_id = $2 AND completed = true`,
+    [brand, profileId],
+  );
+  return new Set(rows.map((r) => r.item_key));
+}
+
+/** Tick / untick one onboarding checklist item for an employee. */
+async function setOnboardingItem({ client, brand, profileId, item_key, completed, userId }) {
+  await exec(client)(
+    `INSERT INTO shared.staff_onboarding_progress
+       (business, profile_id, item_key, completed, completed_at, completed_by)
+     VALUES ($1,$2,$3,$4, now(), $5)
+     ON CONFLICT (profile_id, item_key) DO UPDATE SET
+        completed = EXCLUDED.completed,
+        completed_at = now(),
+        completed_by = EXCLUDED.completed_by`,
+    [brand, profileId, item_key, completed !== false, userId || null],
+  );
+}
+
+/** How many onboarding items an employee has done (for HR completion view). */
+async function onboardingDoneCount({ client, brand, profileId }) {
+  const { rows } = await exec(client)(
+    `SELECT count(*)::int AS done FROM shared.staff_onboarding_progress
+      WHERE business = $1 AND profile_id = $2 AND completed = true`,
+    [brand, profileId],
+  );
+  return Number(rows[0].done || 0);
+}
+
+/** Active Help Center articles tagged 'onboarding' (SOP source). */
+async function onboardingHelpArticles({ client }) {
+  const { rows } = await exec(client)(
+    `SELECT article_id, slug, title, summary
+       FROM shared.help_articles
+      WHERE is_active = true AND 'onboarding' = ANY(tags)
+      ORDER BY sort_order ASC, title ASC
+      LIMIT 25`,
+    [],
+  );
+  return rows;
+}
+
+/** Documents attached to the employee's own record (contracts, NDA, policies). */
+async function ownDocumentsForProfile({ client, brand, profileId }) {
+  const { rows } = await exec(client)(
+    `SELECT document_id, title, document_type, created_at
+       FROM shared.documents
+      WHERE business = $1 AND reference_type = 'staff_profile'
+        AND reference_id = $2 AND is_deleted = false
+      ORDER BY created_at DESC
+      LIMIT 50`,
+    [brand, profileId],
   );
   return rows;
 }
 
 module.exports = {
   analytics,
+  analyticsTrends,
+  probationEndingSoon,
   profileForUser,
   profileById,
   activeStaff,
@@ -876,6 +1078,11 @@ module.exports = {
   upsertAttendanceDay,
   linkDayQuery,
   justifyDay,
+  onboardingProgress,
+  setOnboardingItem,
+  onboardingDoneCount,
+  onboardingHelpArticles,
+  ownDocumentsForProfile,
   listAttendanceDays,
   reconciledDatesInRange,
   upsertEarningsDay,
@@ -885,6 +1092,7 @@ module.exports = {
   createTarget,
   updateTargetProgress,
   incrementActiveTarget,
+  setActiveTargetValue,
   profileIdForUser,
   deleteTarget,
   overviewCounts,
@@ -892,6 +1100,7 @@ module.exports = {
   lastClockOutsForDate,
   approvedLeaveForDate,
   todayClockEvents,
+  liveTodayPunches,
   markDayAbsent,
   lapsedOffsiteQueries,
   dueReminderQueries,

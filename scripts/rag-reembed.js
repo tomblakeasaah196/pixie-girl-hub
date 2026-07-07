@@ -13,7 +13,14 @@
  * With none configured it exits cleanly (RAG stays dormant; Praxis still runs,
  * it just retrieves no context).
  *
- *   npm run rag:reembed
+ *   npm run rag:reembed              # (re)embed the whole active corpus
+ *   npm run rag:reembed:missing      # backfill only rows lacking a current-
+ *                                    # model vector (fast one-shot after
+ *                                    # adding content, e.g. the Help Center)
+ *
+ * `--missing` embeds only sources with no active embedding for the CURRENT
+ * embedding model — the efficient "fill the gaps" pass. Without it, every
+ * active source is re-embedded (use after switching embedding models).
  */
 
 require("dotenv").config();
@@ -41,14 +48,32 @@ async function main() {
     );
     return;
   }
+  const missingOnly = process.argv.includes("--missing");
+  const model = embeddings.model();
   // eslint-disable-next-line no-console
-  console.log(`Embedding model: ${embeddings.model()}`);
+  console.log(
+    `Embedding model: ${model}${missingOnly ? " · mode: missing-only (backfill)" : " · mode: full re-embed"}`,
+  );
+
+  // When --missing, skip any source that already has an active embedding for
+  // this model — so the pass only fills gaps (e.g. freshly-seeded Help chunks).
+  const notEmbedded = (table, idCol) =>
+    missingOnly
+      ? `AND NOT EXISTS (
+           SELECT 1 FROM shared.ai_embeddings e
+            WHERE e.source_table = '${table}'
+              AND e.source_id = ${idCol}
+              AND e.embedding_model = $1
+              AND e.is_active = true)`
+      : "";
 
   // 1) Knowledge chunks — the PD/SOP/training/entity-context corpus.
   const { rows: chunks } = await query(
     `SELECT chunk_id, business, content, required_permissions, sensitivity
-       FROM shared.ai_knowledge_chunks
-      WHERE is_active = true`,
+       FROM shared.ai_knowledge_chunks c
+      WHERE is_active = true
+        ${notEmbedded("ai_knowledge_chunks", "c.chunk_id")}`,
+    missingOnly ? [model] : [],
   );
   let nChunks = 0;
   let nFailed = 0;
@@ -75,8 +100,10 @@ async function main() {
   // 2) Action catalogue — so Praxis can match "what can I do" by description.
   const { rows: actions } = await query(
     `SELECT action_id, title, description, required_permission
-       FROM shared.ai_action_catalogue
-      WHERE is_active = true AND ai_enabled = true`,
+       FROM shared.ai_action_catalogue a
+      WHERE is_active = true AND ai_enabled = true
+        ${notEmbedded("ai_action_catalogue", "a.action_id")}`,
+    missingOnly ? [model] : [],
   );
   let nActions = 0;
   for (const a of actions) {

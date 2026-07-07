@@ -55,6 +55,12 @@ router.post(
 router.get("/accountability", can("view"), c.getAccountability);
 router.get("/accountability/ledger", can("view"), c.listCustodyLedger);
 
+// ── Assignable stylists (drawer picker) ────────────────────
+// Feeds the "Assign to" chooser on the job drawer. Read-only, no pagination
+// (stylist bench is small); the picker uses this to swap the old "→ Assigned"
+// button for a real staff selection that fires the DB task trigger + push.
+router.get("/stylists", can("view"), c.listAssignableStylists);
+
 // ── Jobs ───────────────────────────────────────────────────
 router.get("/", can("view"), c.listJobs);
 router.post("/", can("create"), v.validateJobCreate, c.createJob);

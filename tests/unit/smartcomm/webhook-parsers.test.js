@@ -101,6 +101,69 @@ describe("smartcomm webhook parsers", () => {
     expect(events[0].body).toBe("Hello!");
   });
 
+  test("parseMetaInstagram routes a story mention as ig_story_mention", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_42" },
+              message: {
+                mid: "m.story",
+                attachments: [
+                  {
+                    type: "story_mention",
+                    payload: { url: "https://scontent.example/story.jpg" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0].message_type).toBe("ig_story_mention");
+    expect(events[0].metadata).toMatchObject({
+      story_url: "https://scontent.example/story.jpg",
+    });
+  });
+
+  test("parseMetaInstagram routes a reply-to-story as ig_story_reply", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_7" },
+              message: {
+                mid: "m.reply",
+                text: "Love this!",
+                reply_to: {
+                  story: {
+                    id: "story_abc",
+                    url: "https://scontent.example/our-story.jpg",
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0].message_type).toBe("ig_story_reply");
+    expect(events[0].body).toBe("Love this!");
+    expect(events[0].metadata).toMatchObject({
+      story_id: "story_abc",
+      story_url: "https://scontent.example/our-story.jpg",
+    });
+  });
+
   test("parseCloudflareEmail strips HTML when text is absent", () => {
     const payload = {
       to: "support@pixiegirl.ng",

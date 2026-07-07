@@ -152,6 +152,21 @@ export function assignStaff(id: string, assigned_staff_user_id: string) {
   });
 }
 
+// Options for the drawer's stylist picker: staff whose job_title contains
+// "stylist" in the current brand, with live workload + leave state. Backed
+// by GET /service-jobs/stylists; small list (no pagination).
+export interface AssignableStylist {
+  user_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  job_title: string;
+  open_jobs_count: number;
+  on_leave_today: boolean;
+}
+export function listAssignableStylists() {
+  return api.get<AssignableStylist[]>(`${BASE}/stylists`);
+}
+
 export function recordOutcome(
   id: string,
   input: {

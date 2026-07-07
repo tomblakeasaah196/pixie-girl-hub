@@ -45,7 +45,7 @@ const REWARD_TYPES: { value: RewardType; label: string }[] = [
 
 function RuleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Rewards: rule");
   const [form, setForm] = useState({
     name: "First at work",
     metric: "first_in_days" as RewardMetric,
@@ -86,7 +86,7 @@ function RuleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
       }>
       <div className="space-y-3">
         <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-          placeholder="Rule name" className={input} />
+          placeholder="Rule name" className={input} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         <div className="grid grid-cols-2 gap-3">
           <select value={form.metric} onChange={(e) => setForm({ ...form, metric: e.target.value as RewardMetric })} className={input}>
             {METRICS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -99,7 +99,7 @@ function RuleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
         <label className="block text-xs text-text-muted">
           Threshold (per month)
           <input type="number" value={form.threshold}
-            onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })} className={`mt-1 ${input}`} />
+            onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })} className={`mt-1 ${input}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </label>
         <div className="grid grid-cols-2 gap-3">
           <select value={form.reward_type} onChange={(e) => setForm({ ...form, reward_type: e.target.value as RewardType })} className={input}>
@@ -107,7 +107,7 @@ function RuleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           </select>
           <input type="number" value={form.reward_value}
             onChange={(e) => setForm({ ...form, reward_value: Number(e.target.value) })}
-            placeholder="Reward value" className={input} />
+            placeholder="Reward value" className={input} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </div>
         <p className="text-xs text-text-faint">
           {form.reward_type === "salary_increase_pct"
@@ -158,7 +158,7 @@ function Leaderboard() {
 
 function GrantsPanel() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Rewards: grants");
   const { data, isLoading } = useQuery({
     queryKey: ["hr", "rewards", "grants"],
     queryFn: () => listRewardGrants(),
@@ -209,7 +209,7 @@ function GrantsPanel() {
 
 export function RewardsTab() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Rewards");
   const [ruleOpen, setRuleOpen] = useState(false);
   const { data: rules, isLoading } = useQuery({
     queryKey: ["hr", "rewards", "rules"],

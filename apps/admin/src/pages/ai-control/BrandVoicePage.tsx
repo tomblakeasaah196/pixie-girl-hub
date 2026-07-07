@@ -278,7 +278,7 @@ export function BrandVoicePage() {
                     set("sample_transcripts", arr);
                   }}
                   placeholder="Label (e.g. 'Returns enquiry')"
-                  className="flex-1 bg-transparent text-[12.5px] focus:outline-none placeholder:text-text-faint"
+                  className="flex-1 bg-transparent text-[12.5px] focus:outline-none placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 <button
                   onClick={() => {
@@ -399,7 +399,7 @@ function Field({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40"
+          className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       )}
     </label>
@@ -474,7 +474,7 @@ function ListEditor({
               ? "e.g. Greet by first name"
               : "e.g. Never promise specific delivery dates"
           }
-          className="flex-1 rounded-lg bg-panel-2 border hairline px-2.5 py-1.5 text-[12.5px] focus:outline-none focus:border-accent/40"
+          className="flex-1 rounded-lg bg-panel-2 border hairline px-2.5 py-1.5 text-[12.5px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         <button
           onClick={add}

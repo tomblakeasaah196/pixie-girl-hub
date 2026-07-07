@@ -98,25 +98,55 @@ async function forRecord({ brand, table_name, record_id }) {
 }
 
 /**
- * Self-scoped feed: the authenticated user's own actions in the last 24 hours,
- * across all sensitivity levels (they produced these rows). Returns at most
- * `limit` entries newest-first; strips is_sensitive flag (the actor can see
- * their own actions, but the sensitivity metadata is irrelevant here).
+ * Self-scoped feed: the authenticated user's own actions, newest-first, so a
+ * user can spot activity that wasn't theirs and rotate credentials fast. The
+ * feed is paginated (default 10/page, hard cap of 30 rows across pages) so the
+ * dashboard can show three pages of recent activity without dumping the full
+ * trail. `window` reflects whether page 1 fits inside the last 24 h; older
+ * pages always report "all_time".
  */
-async function myFeed({ brand, user_id, from, limit = 20 }) {
+async function myFeed({ brand, user_id, page = 1, page_size = 10, max_total = 30 }) {
+  const safePageSize = Math.max(1, Math.min(page_size, max_total));
+  const safePage = Math.max(1, page);
+  const offset = (safePage - 1) * safePageSize;
+  const remaining = Math.max(0, max_total - offset);
+  const limit = Math.min(safePageSize, remaining);
+  if (limit === 0) {
+    return {
+      data: [],
+      window: "all_time",
+      page: safePage,
+      page_size: safePageSize,
+      total: max_total,
+    };
+  }
+  const { rows: countRows } = await query(
+    `SELECT count(*)::int AS total
+       FROM (
+         SELECT 1 FROM shared.audit_log
+          WHERE business = $1 AND user_id = $2
+          ORDER BY occurred_at DESC
+          LIMIT $3
+       ) t`,
+    [brand, user_id, max_total],
+  );
+  const total = countRows[0]?.total ?? 0;
   const { rows } = await query(
     `SELECT log_id, occurred_at, module, action, table_name, record_id,
             metadata
        FROM shared.audit_log
       WHERE business = $1
         AND user_id  = $2
-        AND occurred_at >= $3
       ORDER BY occurred_at DESC
-      LIMIT $4`,
-    [brand, user_id, from, limit],
+      LIMIT $3 OFFSET $4`,
+    [brand, user_id, limit, offset],
   );
-  const window = rows.length > 0 ? "24h" : "all_time";
-  return { data: rows, window };
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const window =
+    safePage === 1 && rows.length > 0 && new Date(rows[0].occurred_at).getTime() >= cutoff
+      ? "24h"
+      : "all_time";
+  return { data: rows, window, page: safePage, page_size: safePageSize, total };
 }
 
 module.exports = { list, getById, forRecord, myFeed };

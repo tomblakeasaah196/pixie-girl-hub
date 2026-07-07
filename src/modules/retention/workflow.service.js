@@ -191,7 +191,11 @@ async function runAction({ brand, rule, execution }) {
     case "send_whatsapp": {
       if (!contact || !contact.phone)
         return { status: "suppressed", failure_reason: "no contact phone" };
-      await whatsapp.sendText({ to: contact.phone, body: cfg.body || "" });
+      await whatsapp.sendText({
+        brand,
+        to: contact.phone,
+        body: cfg.body || "",
+      });
       return { status: "completed", result_summary: { whatsapp_sent: true } };
     }
     case "notify_team": {

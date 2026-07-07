@@ -8,6 +8,7 @@ import { ProductPicker } from "@/components/catalogue/ProductPicker";
 import { resolvePick, type ProductHit } from "@/lib/product-search";
 import { useCreateQuotation } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import * as salesApi from "./api";
 import { FULFILMENT_OPTIONS } from "./constants";
 import type { FulfilmentType, QuotationCreateInput } from "./types";
@@ -42,6 +43,10 @@ export function QuoteFormModal({
     type = "order",
     priority: "normal" | "high" = "normal",
   ) => {
+    if (priority === "high") {
+      toastReport("Sales → Quotation", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",
@@ -240,7 +245,7 @@ export function QuoteFormModal({
                 placeholder="Search customer…"
                 value={contactSearch}
                 onChange={(e) => handleContactSearch(e.target.value)}
-                className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               {contactHits.length > 0 && (
                 <div className="absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] dropglass py-1 max-h-[200px] overflow-y-auto">

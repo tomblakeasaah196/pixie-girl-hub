@@ -224,6 +224,18 @@ select:-webkit-autofill {
   transition: background-color 9999s ease-in-out 0s;
 }
 
+/* Search boxes use type="search" so Chromium won't offer the saved login
+   email as an autofill suggestion. WebKit then paints its own clear (×)
+   button + magnifier glyph, which collides with our own Search icon and
+   padding — strip them so a search input looks identical to a text input. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 @keyframes slide-in-right {
   from {
     opacity: 0;
@@ -519,16 +531,17 @@ select:-webkit-autofill {
   animation: splash-pulse 2s ease-in-out infinite;
 }
 
-@keyframes boot-bar {
-  0% {
-    transform: translateX(-120%);
-  }
-  100% {
-    transform: translateX(280%);
-  }
+/* Determinate boot-splash progress bar: width is driven inline (0–100%),
+   this just eases each step so the fill doesn't visibly jump. */
+.boot-bar-fill {
+  transition: width 200ms linear;
 }
-.animate-boot-bar {
-  animation: boot-bar 1.1s ease-in-out infinite;
+
+/* Session-expired lock: blur + dim the app behind the reauth overlay. */
+body.session-locked #root {
+  filter: blur(6px) brightness(0.7);
+  pointer-events: none;
+  user-select: none;
 }
 
 @keyframes app-in {

@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   Clock,
@@ -32,7 +32,8 @@ import { DeniedState } from "@/components/ui/controls";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { money } from "@/lib/format";
-import { getEmployee360, payslipPdf } from "@/lib/hr-api";
+import { getEmployee360, payslipPdf, updateStaff } from "@/lib/hr-api";
+import { Modal } from "@/components/ui/Modal";
 import { downloadDocument } from "@/lib/documents-api";
 import {
   StatCard,
@@ -60,9 +61,10 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 export default function EmployeeProfilePage() {
   const { profileId = "" } = useParams();
   const navigate = useNavigate();
-  const notify = useNotify();
+  const notify = useNotify("HR → Employee profile");
   const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState("overview");
+  const [termsOpen, setTermsOpen] = useState(false);
   useBreadcrumbs([{ label: "HR & Staff", href: "/hr" }, { label: "Employee" }]);
 
   const allowed = can("hr_payroll", "view");
@@ -163,6 +165,10 @@ export default function EmployeeProfilePage() {
         <StatCard label="Tenure (days)" value={ins.tenure_days ?? "—"} />
         <StatCard label="Quality" value={ins.quality_score != null ? ins.quality_score.toFixed(1) : "—"}
           tone="accent" />
+        {data.onboarding && data.onboarding.total > 0 && (
+          <StatCard label="Onboarding" value={`${data.onboarding.done}/${data.onboarding.total}`}
+            tone={data.onboarding.done >= data.onboarding.total ? "success" : "warn"} />
+        )}
       </div>
 
       {/* Earliest / latest — the boss's ask */}
@@ -230,7 +236,12 @@ export default function EmployeeProfilePage() {
             <InfoRow label="Statutory tax" value={p.statutory_exempt ? "Exempt" : "Standard"} />
           </Card>
           <Card className="p-5">
-            <SectionTitle icon={<ShieldAlert className="h-4 w-4 text-accent-glow" />}>Terms & probation</SectionTitle>
+            <div className="flex items-center justify-between">
+              <SectionTitle icon={<ShieldAlert className="h-4 w-4 text-accent-glow" />}>Terms & probation</SectionTitle>
+              {can("hr_payroll", "edit") && (
+                <Button size="sm" variant="ghost" onClick={() => setTermsOpen(true)}>Manage</Button>
+              )}
+            </div>
             <InfoRow
               label="Probation"
               value={
@@ -427,6 +438,109 @@ export default function EmployeeProfilePage() {
       <p className="text-center text-[11px] text-text-faint">
         Attendance figures are month-to-date. <Link to="/hr" className="hover:underline">Back to HR &amp; Staff</Link>
       </p>
+
+      {termsOpen && (
+        <TermsEditModal profileId={profileId} profile={p} onClose={() => setTermsOpen(false)} />
+      )}
     </div>
+  );
+}
+
+interface TermsProfile {
+  probation_status?: string;
+  probation_start_date?: string | null;
+  probation_end_date?: string | null;
+  probation_outcome?: string | null;
+  non_solicit_months?: number | null;
+  annual_leave_days_entitled?: number;
+  annual_leave_days_remaining?: number;
+}
+
+function TermsEditModal({
+  profileId,
+  profile,
+  onClose,
+}: {
+  profileId: string;
+  profile: TermsProfile;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const notify = useNotify("HR → Employee: terms");
+  const [form, setForm] = useState({
+    probation_status: profile.probation_status ?? "not_applicable",
+    probation_start_date: profile.probation_start_date ?? "",
+    probation_end_date: profile.probation_end_date ?? "",
+    non_solicit_months: profile.non_solicit_months != null ? String(profile.non_solicit_months) : "",
+    annual_leave_days_entitled: profile.annual_leave_days_entitled != null ? String(profile.annual_leave_days_entitled) : "",
+    annual_leave_days_remaining: profile.annual_leave_days_remaining != null ? String(profile.annual_leave_days_remaining) : "",
+  });
+
+  const save = useMutation({
+    mutationFn: () => {
+      const patch: Record<string, unknown> = {
+        probation_status: form.probation_status,
+        probation_start_date: form.probation_start_date || null,
+        probation_end_date: form.probation_end_date || null,
+      };
+      if (form.non_solicit_months !== "") patch.non_solicit_months = Number(form.non_solicit_months);
+      if (form.annual_leave_days_entitled !== "") patch.annual_leave_days_entitled = Number(form.annual_leave_days_entitled);
+      if (form.annual_leave_days_remaining !== "") patch.annual_leave_days_remaining = Number(form.annual_leave_days_remaining);
+      return updateStaff(profileId, patch);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hr", "employee-360", profileId] });
+      notify("Terms updated");
+      onClose();
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  const cls = "w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary";
+  return (
+    <Modal open onClose={onClose} title="Manage terms & probation"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }>
+      <div className="space-y-3">
+        <label className="block text-xs text-text-muted">Probation status
+          <select value={form.probation_status} className={cls}
+            onChange={(e) => setForm({ ...form, probation_status: e.target.value })}>
+            {["not_applicable", "pending", "active", "passed", "failed", "extended"].map((s) => (
+              <option key={s} value={s}>{s.replace("_", " ")}</option>
+            ))}
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-xs text-text-muted">Probation start
+            <input type="date" value={form.probation_start_date} className={cls}
+              onChange={(e) => setForm({ ...form, probation_start_date: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">Probation end
+            <input type="date" value={form.probation_end_date} className={cls}
+              onChange={(e) => setForm({ ...form, probation_end_date: e.target.value })} />
+          </label>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="block text-xs text-text-muted">Non-solicit (months)
+            <input type="number" value={form.non_solicit_months} className={cls}
+              onChange={(e) => setForm({ ...form, non_solicit_months: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">Leave entitled
+            <input type="number" value={form.annual_leave_days_entitled} className={cls}
+              onChange={(e) => setForm({ ...form, annual_leave_days_entitled: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">Leave remaining
+            <input type="number" value={form.annual_leave_days_remaining} className={cls}
+              onChange={(e) => setForm({ ...form, annual_leave_days_remaining: e.target.value })} />
+          </label>
+        </div>
+      </div>
+    </Modal>
   );
 }

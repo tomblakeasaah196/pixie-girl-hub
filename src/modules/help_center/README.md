@@ -18,23 +18,49 @@ sources for cost-strategy questions. One table satisfies all three.
 
 - `shared.help_categories`
 - `shared.help_articles`
-- `shared.ai_knowledge_chunks` (mirrored from help_articles by the
-  seed in migration 000214 and going forward by the upsert path
-  once we add the editor).
+- `shared.ai_knowledge_chunks` — mirrored from help_articles. Seeded in
+  bulk by the `*_shared_help_praxis_mirror*` migrations, and kept in step
+  **live** by the editor: every article create/update/retire calls
+  `repo.resyncArticleChunk`, which **upserts the chunk in place** (stable
+  `chunk_id`) for `help_article:<slug>`. A retired or de-indexed article
+  leaves no chunk, so Praxis stops citing it immediately.
+- `shared.ai_embeddings` — the RAG vectors Praxis actually searches, keyed
+  by `source_id = chunk_id`. On save the service enqueues the shared
+  `ai-embed` worker to (re)embed the chunk (best-effort; the worker no-ops
+  when no embeddings provider is configured). On retire, the chunk's
+  embedding is deleted. Keeping `chunk_id` stable across edits is why the
+  embedding upserts the same row instead of orphaning a stale copy.
+  Backfill existing chunks with `npm run rag:reembed:missing`.
 
 ## Files
 
-| File                        | Purpose                 |
-| --------------------------- | ----------------------- |
-| `help-center.routes.js`     | Express router          |
-| `help-center.controller.js` | HTTP handlers           |
-| `help-center.service.js`    | List + get + view-count |
-| `help-center.repo.js`       | Parameterised SQL       |
+| File                        | Purpose                                  |
+| --------------------------- | ---------------------------------------- |
+| `help-center.routes.js`     | Express router (read + editor)           |
+| `help-center.controller.js` | HTTP handlers                            |
+| `help-center.service.js`    | List/get/view-count + editor + AI resync |
+| `help-center.repo.js`       | Parameterised SQL + chunk resync         |
+| `help-center.validator.js`  | Zod schemas for the editor writes        |
 
 ## Endpoints
+
+Read (`help_center:view`):
 
 | Method | Path                                         |
 | ------ | -------------------------------------------- |
 | GET    | `/api/v1/help/categories`                    |
 | GET    | `/api/v1/help/articles?module=&category=&q=` |
 | GET    | `/api/v1/help/articles/:slug`                |
+
+Editor (in-app Help Editor at `/help/editor`):
+
+| Method | Path                             | Permission          |
+| ------ | -------------------------------- | ------------------- |
+| GET    | `/api/v1/help/admin/articles`    | `help_center:edit`  |
+| GET    | `/api/v1/help/admin/articles/:id`| `help_center:edit`  |
+| GET    | `/api/v1/help/admin/categories`  | `help_center:edit`  |
+| POST   | `/api/v1/help/articles`          | `help_center:create`|
+| PATCH  | `/api/v1/help/articles/:id`      | `help_center:edit`  |
+| DELETE | `/api/v1/help/articles/:id`      | `help_center:delete` (soft retire) |
+| POST   | `/api/v1/help/categories`        | `help_center:create`|
+| PATCH  | `/api/v1/help/categories/:id`    | `help_center:edit`  |

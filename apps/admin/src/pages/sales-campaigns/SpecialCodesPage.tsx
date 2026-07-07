@@ -34,6 +34,7 @@ import { DeniedState, ErrorState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
 import { money, moneyCompact } from "@/lib/format";
+import { toastReport } from "@/lib/error-report";
 import {
   useCouponList,
   useCreateCoupon,
@@ -108,6 +109,7 @@ export function SpecialCodesPage() {
       await del.mutateAsync(toDelete.coupon_id);
       setToDelete(null);
     } catch (e: unknown) {
+      toastReport("Sales Campaigns → Special codes", "Delete code", e);
       setDeleteError((e as Error)?.message || "Couldn't delete this code.");
     }
   }
@@ -409,6 +411,9 @@ function CreateCodeModal({
     } catch (e: unknown) {
       const msg = (e as Error)?.message || "Couldn't create this code.";
       // The engine returns 409 COUPON_EXISTS for a duplicate code.
+      if (!/exist/i.test(msg)) {
+        toastReport("Sales Campaigns → Special codes", "Create code", e);
+      }
       setError(
         /exist/i.test(msg)
           ? "That code already exists — pick a different one."
@@ -427,7 +432,7 @@ function CreateCodeModal({
             placeholder="VVIP-AMARA"
             required
             autoFocus
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[14px] tracking-wide uppercase"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[14px] tracking-wide uppercase" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Discount amount" hint="Flat ₦ taken off the order">
@@ -443,7 +448,7 @@ function CreateCodeModal({
               inputMode="decimal"
               placeholder="20000"
               required
-              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
         </Field>
@@ -452,7 +457,7 @@ function CreateCodeModal({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Amara — loyal client"
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Expires" hint="Optional · leave blank for no expiry">

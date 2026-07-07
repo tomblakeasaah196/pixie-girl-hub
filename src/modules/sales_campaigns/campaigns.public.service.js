@@ -1249,10 +1249,12 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     request_id: input.client_idempotency_key,
     input: {
       contact_id: contact.contact_id,
-      // 'storefront' = an online store sale (the public sale landing is the
-      // brand's storefront). 'campaign_landing' is not a valid channel per the
-      // sales_orders.sales_channel CHECK constraint.
-      sales_channel: "storefront",
+      // Sales Campaign Landing checkouts are a distinct channel from the
+      // storefront (V2.2 §6.4 · migration 000288 added 'sales_campaign' to
+      // the CHECK constraint). Attribution + revenue-by-channel reports rely
+      // on this: /storefront ≠ /landing, even when the same customer and
+      // basket flow through both.
+      sales_channel: "sales_campaign",
       order_type: "dispatch",
       sales_campaign_id: campaign.campaign_id,
       campaign_slug: campaign.slug,

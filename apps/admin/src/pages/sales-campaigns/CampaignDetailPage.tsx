@@ -27,6 +27,7 @@ import {
 import { DeniedState, ErrorState } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import type { AppNotification } from "@/lib/notifications-api";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
@@ -391,15 +392,12 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
             );
           }
         },
-        onError: () => {
-          toast.add(
-            toastNotif(
-              "Could not compute VIP gifts",
-              "Something went wrong while computing the top spenders. Please try again.",
-              "high",
-            ),
-          );
-        },
+        onError: (err) =>
+          toastReport(
+            "Sales Campaigns → VIP gifts",
+            "Could not compute VIP gifts",
+            err,
+          ),
       },
     );
   }
@@ -564,7 +562,7 @@ function PraxisPanel({ campaignId }: { campaignId: string }) {
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="Which bundle sold most yesterday?"
-            className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+            className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <Button
             variant="primary"

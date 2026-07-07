@@ -271,6 +271,36 @@ async function acknowledgeReview({ brand, user, request_id, id, input }) {
   return r;
 }
 
+// ── Auto-scoring + PDF ─────────────────────────────────────
+const { autoScoreCycle } = require("./appraisal.autoscore");
+const { exportReviewPdf } = require("./appraisal.review-pdf");
+
+/**
+ * Manager calibration of a (usually auto-derived) score. Records the override
+ * with an audit trail; is_calibrated then shields the score from auto-refresh.
+ */
+async function calibrateScore({ brand, user, request_id, cycle_id, score_id, raw_score, reason }) {
+  const row = await repo.calibrateScore({
+    brand,
+    score_id,
+    raw_score,
+    reason,
+    scored_by: user ? user.user_id : null,
+  });
+  if (!row) throw new NotFoundError("Performance score");
+  await A(
+    brand,
+    user,
+    "hr_payroll.appraisal.calibrate",
+    "performance_score",
+    score_id,
+    { cycle_id, raw_score },
+    request_id,
+  );
+  events.emit("appraisal_score_calibrated", { brand, cycle_id, score_id });
+  return row;
+}
+
 module.exports = {
   ratingBand,
   scoreStaff,
@@ -281,4 +311,7 @@ module.exports = {
   updateReviewContent,
   advanceReview,
   acknowledgeReview,
+  autoScoreCycle,
+  calibrateScore,
+  exportReviewPdf,
 };

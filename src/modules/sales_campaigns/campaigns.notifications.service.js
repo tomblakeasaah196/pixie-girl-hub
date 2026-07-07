@@ -54,6 +54,7 @@ async function fireGoLiveBlast({ brand, campaign_id }) {
       }
       if (wantsWa) {
         await whatsapp.sendText({
+          brand,
           to: s.phone,
           body: `🔥 ${campaign.name} is LIVE! Shop now: ${url}`,
         });

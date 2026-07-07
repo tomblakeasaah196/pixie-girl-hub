@@ -13,6 +13,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { toastReport } from "@/lib/error-report";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Button } from "@/components/ui/primitives";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
@@ -134,7 +135,6 @@ export function EmployeeOnboardingPage() {
 
   // ── Employment ──────────────────────────────────────────
   const [business, setBusiness] = useState(activeKey);
-  const [employeeNumber, setEmployeeNumber] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [department, setDepartment] = useState("");
   const [employmentType, setEmploymentType] = useState("full_time");
@@ -195,7 +195,6 @@ export function EmployeeOnboardingPage() {
     }
     if (step === 1) {
       if (!business) return "Pick a primary business.";
-      if (!employeeNumber.trim()) return "Employee number is required.";
       if (!jobTitle.trim()) return "Job title is required.";
       if (!startDate) return "Start date is required.";
     }
@@ -240,7 +239,6 @@ export function EmployeeOnboardingPage() {
       // 2. Create the HR employee profile (incl. work schedule).
       const profile = await api.post<StaffProfileResult>("/hr/employees", {
         contact_id: contactId,
-        employee_number: employeeNumber.trim(),
         job_title: jobTitle.trim(),
         employment_type: employmentType,
         start_date: startDate,
@@ -288,6 +286,7 @@ export function EmployeeOnboardingPage() {
         credentials,
       });
     } catch (e) {
+      toastReport("Contacts → Employee onboarding", "Onboard employee", e);
       setError(
         e instanceof Error ? e.message : "Could not onboard. Please try again.",
       );
@@ -407,13 +406,6 @@ export function EmployeeOnboardingPage() {
                       value: b.key,
                       label: b.name,
                     }))}
-                  />
-                </Field>
-                <Field label="Employee number *">
-                  <TextInput
-                    value={employeeNumber}
-                    onChange={(e) => setEmployeeNumber(e.target.value)}
-                    placeholder="e.g. PXG-0007"
                   />
                 </Field>
                 <Field label="Job title *">
@@ -910,7 +902,7 @@ function ContactPicker({
             setQ(e.target.value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => setOpen(true)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
       {open && q.trim().length >= 2 && results.length > 0 && (

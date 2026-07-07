@@ -9,6 +9,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useAddBundleToCampaign, type Campaign } from "@/lib/campaigns";
+import { toastReport } from "@/lib/error-report";
 import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
 import { cn } from "@/lib/cn";
 import {
@@ -363,6 +364,7 @@ function BundleEditorModal({
           setTimeout(() => setCampaignFeedback(null), 3000);
         },
         onError: (err) => {
+          toastReport("Catalogue → Bundles", "Add to campaign", err);
           setCampaignFeedback(
             err instanceof Error ? err.message : "Could not add to campaign.",
           );
@@ -512,7 +514,7 @@ function BundleEditorModal({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
         <Field label="Description" hint="shown on the storefront — optional">
@@ -815,7 +817,7 @@ function CreateBundleModal({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={inputCls}
+            className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </Field>
 
@@ -938,7 +940,7 @@ function CreateBundleModal({
                   value={c.quantity}
                   onChange={(e) => setQty(c.styled_id, Number(e.target.value))}
                   className="w-14 h-8 px-2 rounded-[8px] bg-text-primary/[0.05] border border-line text-text-primary text-[12px] text-center outline-none focus:border-accent/50"
-                  aria-label="Quantity"
+                  aria-label="Quantity" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                 />
                 <button
                   onClick={() => removeComponent(c.styled_id)}

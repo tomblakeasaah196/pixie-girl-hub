@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Archive,
   ListChecks,
@@ -109,7 +110,7 @@ function ConversationList({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search conversations"
-            className="w-full h-9 pl-9 pr-3 rounded-xl bg-text-primary/[0.04] border border-line text-[12.5px] outline-none focus:border-accent/45 no-min-h"
+            className="w-full h-9 pl-9 pr-3 rounded-xl bg-text-primary/[0.04] border border-line text-[12.5px] outline-none focus:border-accent/45 no-min-h" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
       </div>
@@ -480,6 +481,8 @@ export default function PraxisPage() {
   const can = useAuthStore((s) => s.can);
   const { conversationId, setConversation } = usePraxisDockStore();
   const isDesktop = useIsDesktop();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<RailTab>("pending");
   const [railOpen, setRailOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
@@ -487,6 +490,22 @@ export default function PraxisPage() {
   const [mobileRail, setMobileRail] = useState(false);
   const pending = usePendingActions("proposed");
   usePraxisRealtime();
+
+  // A caller can deep-link into Praxis with a prefilled composer via nav state,
+  // e.g. from the dashboard Insights CTA. We consume it once, park it in local
+  // state, open a fresh conversation, then wipe the history entry so a page
+  // refresh doesn't re-prefill.
+  const [initialText, setInitialText] = useState<string | undefined>(() => {
+    const s = location.state as { initialText?: string } | null;
+    return s?.initialText;
+  });
+  useEffect(() => {
+    if (initialText !== undefined) {
+      setConversation(null);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!can("praxis_ai", "view")) {
     return (
@@ -580,8 +599,12 @@ export default function PraxisPage() {
           <div className="flex-1 min-h-0">
             <PraxisConversation
               conversationId={conversationId}
-              onConversationCreated={setConversation}
+              onConversationCreated={(id) => {
+                setConversation(id);
+                if (initialText) setInitialText(undefined);
+              }}
               variant="page"
+              initialText={initialText}
             />
           </div>
         </div>

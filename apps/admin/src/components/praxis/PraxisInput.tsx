@@ -6,7 +6,7 @@
  * final transcript sends as a voice-mode turn.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Mic, Square } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
@@ -16,6 +16,7 @@ export function PraxisInput({
   onSend,
   autoFocus,
   placeholder = "Ask Praxis anything…",
+  initialText,
 }: {
   disabled?: boolean;
   onSend: (input: {
@@ -25,10 +26,21 @@ export function PraxisInput({
   }) => void;
   autoFocus?: boolean;
   placeholder?: string;
+  initialText?: string;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText ?? "");
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (initialText && taRef.current) {
+      const ta = taRef.current;
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 168)}px`;
+      const end = ta.value.length;
+      ta.setSelectionRange(end, end);
+    }
+  }, [initialText]);
 
   const { supported, listening, interim, start, stop } = useSpeechInput({
     onFinal: (transcript) => {

@@ -54,9 +54,14 @@ import {
   listStaff,
   generateContract,
   type HrSettings,
+  getAnalyticsTrends,
+  getProbationEndingSoon,
+  type HrTrendPoint,
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
+import { OnboardingSettings } from "./OnboardingSettings";
 import { RewardsTab } from "./RewardsTab";
+import { DevicesTab, LiveAttendanceStrip, UnknownDeviceFlag } from "./devices";
 import {
   StatCard,
   SectionTitle,
@@ -72,7 +77,7 @@ import {
 // ── Leave inbox ────────────────────────────────────────────
 function LeaveInbox() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: leave inbox");
   const { data, isLoading } = useQuery({
     queryKey: ["hr", "leave", "pending"],
     queryFn: () => listLeave({ status: "pending" }),
@@ -124,7 +129,7 @@ function LeaveInbox() {
 // ── Queries panel (with waive/uphold) ──────────────────────
 function QueriesPanel() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: queries");
   const { data, isLoading } = useQuery({
     queryKey: ["hr", "queries", "open"],
     queryFn: () => listQueries({ open: "true" }),
@@ -180,7 +185,7 @@ function QueriesPanel() {
 // ── Raise-query modal ──────────────────────────────────────
 function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: raise query");
   const { data: staff } = useQuery({
     queryKey: ["hr", "staff", "for-query"],
     queryFn: () => listStaff({ page_size: "200" }),
@@ -228,7 +233,7 @@ function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void
         </div>
         <input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}
           placeholder="Subject"
-          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         <textarea value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })}
           rows={4} placeholder="Describe what needs explaining…"
           className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
@@ -240,7 +245,7 @@ function RaiseQueryModal({ open, onClose }: { open: boolean; onClose: () => void
 // ── Set-target modal ───────────────────────────────────────
 function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: set target");
   const now = new Date();
   const { data: staff } = useQuery({
     queryKey: ["hr", "staff", "for-target"],
@@ -298,11 +303,11 @@ function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void 
           <input type="number" value={form.target_value}
             onChange={(e) => setForm({ ...form, target_value: Number(e.target.value) })}
             placeholder="Target"
-            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </div>
         <input value={form.metric_label} onChange={(e) => setForm({ ...form, metric_label: e.target.value })}
           placeholder="Label shown to employee"
-          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         <div className="grid grid-cols-2 gap-3">
           <select value={form.reward_type} onChange={(e) => setForm({ ...form, reward_type: e.target.value })}
             className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary">
@@ -313,7 +318,7 @@ function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void 
           <input type="number" value={form.reward_value}
             onChange={(e) => setForm({ ...form, reward_value: Number(e.target.value) })}
             placeholder="Reward"
-            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" />
+            className="rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
         </div>
         <p className="text-xs text-text-faint">
           Progress is auto-counted from {form.source === "sales" ? "Sales" : "Operations"} as work
@@ -326,7 +331,7 @@ function SetTargetModal({ open, onClose }: { open: boolean; onClose: () => void 
 
 // ── Generate-contract modal ────────────────────────────────
 function GenerateContractModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: contract");
   const { data: staff } = useQuery({
     queryKey: ["hr", "staff", "for-contract"],
     queryFn: () => listStaff({ page_size: "200" }),
@@ -389,7 +394,7 @@ function GenerateContractModal({ open, onClose }: { open: boolean; onClose: () =
 // ── Settings tab ───────────────────────────────────────────
 function SettingsTab() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: settings");
   const { data, isLoading } = useQuery({ queryKey: ["hr", "settings"], queryFn: getSettings });
   const [pin, setPin] = useState("");
   const save = useMutation({
@@ -525,7 +530,7 @@ function SettingsTab() {
             Cash-advance recovery cap (% of net per run)
             <input type="number" min={0} max={100} defaultValue={data.advance_recovery_cap_pct}
               onBlur={(e) => save.mutate({ advance_recovery_cap_pct: Number(e.target.value) })}
-              className="mt-1 w-24 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+              className="mt-1 w-24 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
             <span className="ml-2 text-[11px] text-text-faint">remainder rolls to next month</span>
           </label>
           <label className="block text-xs font-medium text-text-muted">
@@ -559,10 +564,12 @@ function SettingsTab() {
           Leave needing CEO approval (days)
           <input type="number" min={0} max={60} defaultValue={data.leave_escalation_days}
             onBlur={(e) => save.mutate({ leave_escalation_days: Number(e.target.value) })}
-            className="ml-2 w-20 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" />
+            className="ml-2 w-20 rounded-xl border border-line bg-text-primary/[0.04] p-2 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
           <span className="ml-2 text-[11px] text-text-faint">0 = HR/managers can approve any length</span>
         </label>
       </Card>
+
+      <OnboardingSettings settings={data} />
     </div>
   );
 }
@@ -570,7 +577,7 @@ function SettingsTab() {
 // ── Attendance tab ─────────────────────────────────────────
 function AttendanceTab() {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: attendance");
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = today.slice(0, 8) + "01";
   const [from, setFrom] = useState(today);
@@ -604,6 +611,9 @@ function AttendanceTab() {
 
   return (
     <div className="space-y-3">
+      {/* Real-time today feed — updates the instant anyone punches. */}
+      <LiveAttendanceStrip />
+
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-[11px] text-text-muted">
@@ -658,6 +668,7 @@ function AttendanceTab() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {d.clock_in_device_recognized === false && <UnknownDeviceFlag />}
                 {d.is_offsite && (
                   <span className="text-xs text-warn">
                     off-site{d.offsite_distance_m ? ` ${Math.round(Number(d.offsite_distance_m))}m` : ""}
@@ -746,7 +757,7 @@ function DirectoryTab() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search employees by name, role or number…"
-        className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary"
+        className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
       {isLoading ? (
         <Skeleton className="h-40 rounded-[var(--radius)]" />
@@ -798,7 +809,7 @@ function AnalyticsTab() {
         {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
       </select>
       <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))}
-        className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-2 text-xs text-text-primary" />
+        className="w-20 rounded-lg border border-line bg-text-primary/[0.04] p-2 text-xs text-text-primary" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
     </div>
   );
   if (isLoading || !data) {
@@ -834,6 +845,93 @@ function AnalyticsTab() {
         Month-to-date for the current brand. Run “Reconcile today” (or the nightly sweep)
         to keep attendance figures current.
       </p>
+
+      <TrendsSection />
+      <ProbationWatchlist />
+    </div>
+  );
+}
+
+/** Tiny inline sparkline bars — no chart dependency. */
+function Sparkbars({ points, color = "accent" }: { points: number[]; color?: "accent" | "success" | "danger" | "warn" }) {
+  const max = Math.max(1, ...points);
+  const bg = { accent: "bg-accent", success: "bg-success", danger: "bg-danger", warn: "bg-warn" }[color];
+  return (
+    <div className="flex h-10 items-end gap-[3px]">
+      {points.map((p, i) => (
+        <div key={i} className={`w-full ${bg} rounded-sm opacity-80`}
+          style={{ height: `${Math.max(6, (p / max) * 100)}%` }} title={String(p)} />
+      ))}
+    </div>
+  );
+}
+
+function TrendCard({ title, series, pick, value, color }: {
+  title: string; series: HrTrendPoint[]; pick: (p: HrTrendPoint) => number; value: string; color?: "accent" | "success" | "danger" | "warn";
+}) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs uppercase tracking-wide text-text-faint">{title}</span>
+        <span className="font-mono text-sm text-text-primary">{value}</span>
+      </div>
+      <div className="mt-2"><Sparkbars points={series.map(pick)} color={color} /></div>
+      <div className="mt-1 flex justify-between text-[10px] text-text-faint">
+        <span>{series[0]?.label}</span><span>{series[series.length - 1]?.label}</span>
+      </div>
+    </Card>
+  );
+}
+
+function TrendsSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["hr", "analytics", "trends"],
+    queryFn: () => getAnalyticsTrends(12),
+  });
+  if (isLoading) return <Skeleton className="h-40 rounded-[var(--radius)]" />;
+  const s = data?.series ?? [];
+  if (!s.length) return null;
+  const last = s[s.length - 1];
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold text-text-primary">12-month trends</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <TrendCard title="Headcount" series={s} pick={(p) => p.headcount} value={String(last.headcount)} />
+        <TrendCard title="New hires" series={s} pick={(p) => p.new_hires} value={String(last.new_hires)} color="success" />
+        <TrendCard title="Attrition" series={s} pick={(p) => p.attrition} value={String(last.attrition)} color="danger" />
+        <TrendCard title="Punctuality %" series={s} pick={(p) => p.punctuality_pct} value={`${last.punctuality_pct}%`} color="warn" />
+        <TrendCard title="Payroll cost (₦)" series={s} pick={(p) => p.payroll_ngn} value={money(last.payroll_ngn)} />
+      </div>
+      <p className="mt-1 text-[10px] text-text-faint">
+        Attrition = leavers that month. Payroll cost = summed daily earnings. Hover a bar for its value.
+      </p>
+    </div>
+  );
+}
+
+function ProbationWatchlist() {
+  const { data } = useQuery({
+    queryKey: ["hr", "probation", "ending-soon"],
+    queryFn: () => getProbationEndingSoon(30),
+  });
+  const items = data?.items ?? [];
+  if (!items.length) return null;
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold text-text-primary">Probation ending soon (30 days)</div>
+      <div className="space-y-2">
+        {items.map((p) => (
+          <Card key={p.profile_id} className="flex items-center justify-between gap-3 p-3">
+            <div>
+              <div className="text-sm text-text-primary">{p.display_name}</div>
+              <div className="text-xs text-text-muted">{p.job_title} · ends {p.probation_end_date}</div>
+            </div>
+            <Pill tone={p.days_left <= 7 ? "warn" : "info"}>
+              {p.days_left <= 0 ? "due" : `${p.days_left}d left`}
+            </Pill>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -843,7 +941,7 @@ export default function HrStaffPage() {
   useBreadcrumbs([{ label: "HR & Staff" }]);
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → Staff: analytics");
   const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState("overview");
   const [raiseOpen, setRaiseOpen] = useState(false);
@@ -930,6 +1028,7 @@ export default function HrStaffPage() {
           { key: "directory", label: "Directory" },
           { key: "leave", label: "Leave", badge: c?.pending_leave || undefined },
           { key: "attendance", label: "Attendance" },
+          { key: "devices", label: "Devices" },
           { key: "queries", label: "Queries", badge: c?.open_queries || undefined },
           { key: "targets", label: "Targets" },
           { key: "rewards", label: "Rewards" },
@@ -978,6 +1077,7 @@ export default function HrStaffPage() {
           <AttendanceTab />
         </div>
       )}
+      {tab === "devices" && <DevicesTab />}
       {tab === "queries" && (
         <div className="space-y-3">
           <div className="flex justify-end">

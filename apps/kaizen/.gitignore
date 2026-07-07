@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+
+# Compiled config artifacts emitted by `tsc -b` — the .ts is the source of
+# truth; the generated .js/.d.ts must never be committed (they drift).
+vite.config.js
+vite.config.d.ts
+*.tsbuildinfo
+*.local
+.vite
+.env
+.env.*
+!.env.example

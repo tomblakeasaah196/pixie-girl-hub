@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import { api } from "@/lib/api";
+import { toastReport } from "@/lib/error-report";
 import { useUploadProgress } from "@/lib/use-upload";
 
 interface ImportRow {
@@ -73,6 +74,7 @@ export function ImportExportControls({
       setResult(res);
       onImported?.();
     } catch (err) {
+      toastReport("Catalogue → Import/export", "Import file", err);
       setError(err instanceof Error ? err.message : "Import failed.");
     } finally {
       setBusy(null);

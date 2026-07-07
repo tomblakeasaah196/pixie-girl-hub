@@ -5,6 +5,7 @@ import { Button, Card, MoneyText } from "@/components/ui/primitives";
 import { NumberField, Select } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput, FormSection } from "@/components/ui/Form";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { useCreateCreditNote } from "./hooks";
 import { listInvoices } from "./api";
 import { CREDIT_NOTE_REASON_OPTIONS } from "./constants";
@@ -54,6 +55,10 @@ export function CreditNoteCreateDrawer({
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
 
   const fireToast = (title: string, body: string, priority: "normal" | "high" = "normal") => {
+    if (priority === "high") {
+      toastReport("Invoicing → New credit note", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",
@@ -187,7 +192,7 @@ export function CreditNoteCreateDrawer({
                 placeholder="Search by invoice number…"
                 value={invoiceSearch}
                 onChange={(e) => searchInvoices(e.target.value)}
-                className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               {invoiceResults.length > 0 && (
                 <div className="absolute z-40 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] dropglass overflow-hidden py-1 max-h-[240px] overflow-y-auto">

@@ -56,6 +56,8 @@ import {
   errMsg,
   statusTone,
 } from "./hr-shared";
+import { OnboardingCard } from "./OnboardingCard";
+import { MyDevicesSection } from "./devices";
 
 function TargetCountdown({ t }: { t: PerformanceTarget }) {
   const done = t.status === "achieved";
@@ -98,7 +100,7 @@ function RespondModal({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → My HR: respond to query");
   const [text, setText] = useState("");
   const mut = useMutation({
     mutationFn: () => respondToQuery(query!.query_id, text),
@@ -156,7 +158,7 @@ function RespondModal({
 
 function RequestLeaveModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const notify = useNotify();
+  const notify = useNotify("HR → My HR: request leave");
   const [form, setForm] = useState({
     leave_type: "annual",
     start_date: "",
@@ -254,7 +256,7 @@ function RequestLeaveModal({ open, onClose }: { open: boolean; onClose: () => vo
 
 export default function MyHrPage() {
   useBreadcrumbs([{ label: "My HR" }]);
-  const notify = useNotify();
+  const notify = useNotify("HR → My HR");
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [respondQuery, setRespondQuery] = useState<HrQuery | null>(null);
 
@@ -304,6 +306,9 @@ export default function MyHrPage() {
         </div>
       ) : (
         <>
+          {/* Getting started (onboarding pack — always available) */}
+          <OnboardingCard onboarding={data.onboarding} contracts={data.contracts} />
+
           {/* Earnings tracker hero */}
           {data.earnings.tracker_enabled && (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -507,6 +512,9 @@ export default function MyHrPage() {
               )}
             </div>
           </div>
+
+          {/* My devices — enrol the phone/laptop you clock in with */}
+          <MyDevicesSection />
 
           {/* Attendance this month */}
           <div>

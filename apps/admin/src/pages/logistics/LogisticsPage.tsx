@@ -16,6 +16,9 @@ import {
   Trash2,
   Scissors,
   ExternalLink,
+  Copy,
+  Mail,
+  Camera,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
@@ -35,11 +38,11 @@ import {
   useDelivery,
   useCouriers,
   useCreateDelivery,
-  useBookDelivery,
   useAdvanceDelivery,
   useCancelDelivery,
   useRecordAttempt,
   useRecordProof,
+  useNotifyDelivered,
   STATUS_META,
   FLOW,
   ADVANCE_STATES,
@@ -49,7 +52,10 @@ import {
   type DeliveryItem,
 } from "@/lib/logistics-api";
 import { searchContacts } from "@/pages/sales/api";
+import { api } from "@/lib/api";
 import { ShippingRatesTab } from "./ShippingRates";
+import { AgenciesTab } from "./Agencies";
+import { BookDeliveryModal } from "./BookDeliveryModal";
 
 /**
  * Logistics (`/logistics`) — dispatch queue, tracking and proof of delivery.
@@ -84,7 +90,7 @@ const STUDIO_IN_PROGRESS = new Set([
   "rework",
 ]);
 
-type Tab = "queue" | "active" | "delivered" | "issues" | "all" | "rates";
+type Tab = "queue" | "active" | "delivered" | "issues" | "all" | "rates" | "agencies";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "queue", label: "Queue" },
@@ -92,8 +98,11 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "delivered", label: "Delivered" },
   { key: "issues", label: "Issues" },
   { key: "all", label: "All" },
+  { key: "agencies", label: "Agencies" },
   { key: "rates", label: "Shipping Rates" },
 ];
+
+const NON_LIST_TABS = new Set<Tab>(["rates", "agencies"]);
 
 export function LogisticsPage() {
   useBreadcrumbs([{ label: "Logistics" }]);
@@ -116,7 +125,7 @@ export function LogisticsPage() {
   }, [all]);
 
   const rows = useMemo(() => {
-    if (tab === "all" || tab === "rates") return all;
+    if (tab === "all" || NON_LIST_TABS.has(tab)) return all;
     const set = new Set(TAB_STATUSES[tab]);
     return all.filter((d) => set.has(d.status));
   }, [all, tab]);
@@ -128,7 +137,7 @@ export function LogisticsPage() {
   return (
     <div className="max-w-[1180px] space-y-5">
       <ModuleInsights module="logistics" />
-      {tab !== "rates" && (
+      {!NON_LIST_TABS.has(tab) && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center flex-1 min-w-[220px] max-w-md rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">
             <Search className="w-4 h-4 text-text-faint" />
@@ -136,7 +145,7 @@ export function LogisticsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search deliveries (number, recipient)…"
-              className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none"
+              className="w-full bg-transparent px-2 h-[42px] text-[13px] outline-none" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -161,7 +170,7 @@ export function LogisticsPage() {
             }`}
           >
             {t.label}
-            {t.key !== "all" && t.key !== "rates" && counts[t.key] > 0 && (
+            {t.key !== "all" && !NON_LIST_TABS.has(t.key) && counts[t.key] > 0 && (
               <span className="text-[10.5px] rounded-full bg-accent/[0.15] text-accent-glow px-1.5 py-px">
                 {counts[t.key]}
               </span>
@@ -172,6 +181,8 @@ export function LogisticsPage() {
 
       {tab === "rates" ? (
         <ShippingRatesTab />
+      ) : tab === "agencies" ? (
+        <AgenciesTab />
       ) : deliveriesQ.isLoading ? (
         <Card className="p-4 space-y-3">
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} style={{ height: 52 }} />)}
@@ -274,11 +285,15 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
   const { can } = useAuthStore();
   const navigate = useNavigate();
   const detailQ = useDelivery(id);
-  const book = useBookDelivery();
   const advance = useAdvanceDelivery();
   const cancel = useCancelDelivery();
   const attempt = useRecordAttempt();
   const proof = useRecordProof();
+  const notifyDelivered = useNotifyDelivered();
+  const [booking, setBooking] = useState(false);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const proofInputRef = useRef<HTMLInputElement>(null);
 
   const d = detailQ.data;
   const canEdit = can("logistics", "edit");
@@ -289,7 +304,34 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
   const canRecordAttempt = nextStates.includes("attempted_failed");
   const canCancelNow = canCancel && nextStates.includes("cancelled");
   const busy =
-    book.isPending || advance.isPending || cancel.isPending || attempt.isPending || proof.isPending;
+    advance.isPending || cancel.isPending || attempt.isPending || proof.isPending || uploadingProof;
+
+  const driverLink = d?.driver_confirmation_token
+    ? `${import.meta.env.VITE_STOREFRONT_URL || ""}/deliver/${d.driver_confirmation_token}`
+    : null;
+
+  async function copyDriverLink() {
+    if (!driverLink) return;
+    await navigator.clipboard.writeText(driverLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }
+
+  async function uploadProof(file: File) {
+    if (!d) return;
+    setUploadingProof(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("document_type", "delivery_proof");
+      form.append("reference_type", "delivery");
+      form.append("reference_id", d.delivery_id);
+      const doc = await api.postForm<{ document_id: string }>("/documents", form);
+      await proof.mutateAsync({ id, proof_type: "photo_at_door", document_id: doc.document_id });
+    } finally {
+      setUploadingProof(false);
+    }
+  }
 
   return (
     <Drawer
@@ -421,6 +463,46 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
             </div>
           )}
 
+          {/* Driver self-confirmation link — only meaningful once booked */}
+          {driverLink && d.status !== "queued" && d.status !== "cancelled" && (
+            <div className="rounded-xl border border-line p-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[12.5px] font-medium">Driver confirmation link</div>
+                <div className="text-[11px] text-text-faint truncate">
+                  Share with the driver — they confirm delivery with a photo, no login.
+                </div>
+              </div>
+              <Button size="sm" variant="secondary" icon={<Copy className="w-3.5 h-3.5" />} onClick={copyDriverLink}>
+                {linkCopied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          )}
+
+          {/* Delivered-confirmation email — auto-sent, but staff can resend */}
+          {d.status === "delivered" && canEdit && (
+            <div className="rounded-xl border border-line p-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[12.5px] font-medium">Delivered-confirmation email</div>
+                <div className="text-[11px] text-text-faint truncate">
+                  {notifyDelivered.data
+                    ? notifyDelivered.data.sent
+                      ? "Sent."
+                      : `Not sent (${notifyDelivered.data.reason ?? "no email on file"}).`
+                    : "Sent automatically when marked delivered."}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={notifyDelivered.isPending}
+                icon={notifyDelivered.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                onClick={() => notifyDelivered.mutate(id)}
+              >
+                Send now
+              </Button>
+            </div>
+          )}
+
           {/* Actions */}
           {canEdit && (
             <div className="space-y-2 pt-2 border-t border-line">
@@ -430,10 +512,10 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
                 <Button
                   variant="primary"
                   disabled={busy}
-                  onClick={() => book.mutate({ id })}
-                  icon={book.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />}
+                  onClick={() => setBooking(true)}
+                  icon={<Truck className="w-4 h-4" />}
                 >
-                  Book with courier
+                  Book delivery
                 </Button>
               )}
 
@@ -469,14 +551,26 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
               )}
 
               <div className="flex flex-wrap gap-2">
+                <input
+                  ref={proofInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadProof(file);
+                    e.target.value = "";
+                  }}
+                />
                 <Button
                   size="sm"
                   variant="secondary"
                   disabled={busy}
-                  onClick={() => proof.mutate({ id, proof_type: "signature" })}
-                  icon={<CheckCircle2 className="w-4 h-4" />}
+                  onClick={() => proofInputRef.current?.click()}
+                  icon={uploadingProof ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
                 >
-                  Add proof
+                  Upload proof photo
                 </Button>
                 {canCancelNow && (
                   <Button
@@ -497,6 +591,7 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
           )}
         </div>
       )}
+      {booking && d && <BookDeliveryModal delivery={d} onClose={() => setBooking(false)} />}
     </Drawer>
   );
 }
@@ -707,7 +802,7 @@ function CreateDeliveryDrawer({ onClose }: { onClose: () => void }) {
                   setItems((arr) => arr.map((x, j) => (j === i ? { ...x, quantity: e.target.value.replace(/[^0-9]/g, "") } : x)))
                 }
                 className="w-16 h-[42px] px-2 text-center rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] outline-none focus:border-accent/50 tabular-nums"
-                placeholder="1"
+                placeholder="1" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               {items.length > 1 && (
                 <button
@@ -787,7 +882,7 @@ function Input({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 ${mono ? "font-mono text-[12px]" : ""}`}
+      className={`w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 ${mono ? "font-mono text-[12px]" : ""}`} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
     />
   );
 }

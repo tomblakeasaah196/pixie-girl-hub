@@ -198,6 +198,10 @@ const schema = z.object({
   // SMTP
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
+  // Implicit TLS from the first byte (port 465). Leave false for a 587 relay —
+  // the transport still upgrades to STARTTLS there (see email.service). Only a
+  // loopback dev relay (MailHog/sendmail) sends plaintext.
+  SMTP_SECURE: zBool(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM_EMAIL: z.string().email().optional(),
@@ -352,6 +356,17 @@ const schema = z.object({
   CRON_LAYAWAY_ABANDONMENT_CHECK: z.string().default("0 2 * * *"),
   CRON_FX_RATE_REFRESH: z.string().default("0 6 * * *"),
   CRON_LOW_STOCK_ALERTS: z.string().default("0 8,14 * * *"),
+
+  // ── Kaizen (maintenance/ops console) ─────────────────────────────────────
+  // All optional/defaulted so the main app boots even when Kaizen isn't wired.
+  // The Kaizen auth service fails fast (with a clear message) on the login path
+  // if KAIZEN_JWT_SECRET is missing — it never affects the rest of the API.
+  KAIZEN_JWT_SECRET: z.string().optional(),
+  KAIZEN_ACCESS_TTL: z.string().default("30m"),
+  KAIZEN_REFRESH_TTL_DAYS: z.coerce.number().int().positive().default(14),
+  KAIZEN_INVITE_TTL_HOURS: z.coerce.number().int().positive().default(72),
+  KAIZEN_BASE_URL: z.string().url().default("http://localhost:5174"),
+  KAIZEN_COOKIE_DOMAIN: z.string().optional(),
 });
 
 let _config = null;

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Pin, BellOff, Plus } from "lucide-react";
+import { Search, Pin, BellOff, Plus, Settings2 } from "lucide-react";
 import {
   fmtRelativeTime,
   getAvatarColour,
@@ -13,20 +13,24 @@ import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
 import type { Channel, ExternalPlatform } from "@/lib/smartcomm-types";
 import { PlatformPill } from "./PlatformPill";
+import { WhatsAppConfigModal } from "./WhatsAppConfigModal";
 
 interface Props {
   activeChannelId?: string | null;
   onSelect: (channel: Channel) => void;
-  onNewChannel?: () => void;
+  /** The Groups empty state passes "group" so the modal opens straight into
+   *  multi-select. Header + In-house CTA leave it undefined ("chat" default). */
+  onNewChannel?: (mode?: "chat" | "group") => void;
   /** Compact = drawer; default = full page. */
   compact?: boolean;
 }
 
-type Tab = "all" | "unread" | "groups" | "wa" | "ig" | "email";
+type Tab = "all" | "unread" | "inhouse" | "groups" | "wa" | "ig" | "email";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
+  { key: "inhouse", label: "In-house" },
   { key: "groups", label: "Groups" },
   { key: "wa", label: "WhatsApp" },
   { key: "ig", label: "Instagram" },
@@ -38,6 +42,8 @@ function paramsForTab(tab: Tab): {
   platform?: "internal" | ExternalPlatform;
 } {
   switch (tab) {
+    case "inhouse":
+      return { platform: "internal" };
     case "groups":
       return { channel_type: "group" };
     case "wa":
@@ -58,10 +64,21 @@ export function ChannelList({
   compact,
 }: Props) {
   const user = useAuthStore((s) => s.user);
+  const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
+  const [configOpen, setConfigOpen] = useState(false);
+  // Autofill shield: Chrome never writes into a readOnly input, so the search
+  // stays readOnly until the user actually focuses it. Belt-and-braces on top
+  // of not mounting hidden password fields — holds even if a future modal
+  // reintroduces one.
+  const [searchArmed, setSearchArmed] = useState(false);
   const params = paramsForTab(tab);
   const { data, isLoading } = useChannels({ ...params, q: q || undefined });
+
+  // RBAC — the gear icon is invisible to users without messaging_accounts.
+  // edit (or CEO / super-admin, which resolve to "*" in the auth store).
+  const canConfigureIntegrations = can("messaging_accounts", "edit");
 
   const channels = (data ?? []).filter((c) =>
     tab === "unread" ? (c.unread_count ?? 0) > 0 : true,
@@ -83,27 +100,57 @@ export function ChannelList({
             </span>
           )}
         </div>
-        {onNewChannel && (
-          <button
-            onClick={onNewChannel}
-            className="text-text-muted hover:text-text-primary"
-            title="New conversation"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {canConfigureIntegrations && (
+            <button
+              onClick={() => setConfigOpen(true)}
+              className="text-text-muted hover:text-accent-glow transition-colors"
+              title="Messaging integrations (WhatsApp, Instagram, …)"
+              aria-label="Messaging integrations"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          )}
+          {onNewChannel && (
+            <button
+              onClick={() => onNewChannel(tab === "groups" ? "group" : "chat")}
+              className="text-text-muted hover:text-text-primary"
+              title={tab === "groups" ? "New group" : "New conversation"}
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Mount the config modal ONLY while it is open. The Modal primitive
+          keeps its children in the DOM when closed (hidden via CSS for the
+          animation), so an always-mounted vault means invisible
+          type="password" inputs sit on the page the moment the inbox loads.
+          Chrome then classifies "search input + password input" as a login
+          form and autofills the saved login email into the search box —
+          ignoring autocomplete="off". No password field in the DOM, no bait. */}
+      {canConfigureIntegrations && configOpen && (
+        <WhatsAppConfigModal open onClose={() => setConfigOpen(false)} />
+      )}
 
       {/* Search */}
       <div className="px-3 py-2">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
           <input
-            type="text"
+            type="search"
+            name="conversation-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search conversations…"
-            className="w-full pl-8 pr-3 py-2 rounded-xl bg-panel-2 border hairline text-[12.5px] focus:outline-none focus:border-accent/40 placeholder:text-text-faint"
+            readOnly={!searchArmed}
+            onFocus={() => setSearchArmed(true)}
+            className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 placeholder:text-text-faint"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
         </div>
       </div>
@@ -138,8 +185,34 @@ export function ChannelList({
             ))}
           </div>
         ) : channels.length === 0 ? (
-          <div className="py-12 text-center text-[12.5px] text-text-faint">
-            {tab === "unread" ? "All caught up 🎉" : "No conversations yet"}
+          <div className="py-12 px-4 text-center text-[12.5px] text-text-faint space-y-3">
+            <p>
+              {tab === "unread"
+                ? "All caught up."
+                : tab === "inhouse"
+                  ? "No in-house chats yet."
+                  : tab === "groups"
+                    ? "No groups yet — start one with your team."
+                    : "No conversations yet"}
+            </p>
+            {tab === "inhouse" && onNewChannel && (
+              <button
+                onClick={() => onNewChannel("chat")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/[0.08] px-3 py-1.5 text-[11.5px] font-medium text-accent-glow hover:bg-accent/[0.14]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Message a colleague
+              </button>
+            )}
+            {tab === "groups" && onNewChannel && (
+              <button
+                onClick={() => onNewChannel("group")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/[0.08] px-3 py-1.5 text-[11.5px] font-medium text-accent-glow hover:bg-accent/[0.14]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                New group
+              </button>
+            )}
           </div>
         ) : (
           <div className="px-2 pb-3 space-y-px">
@@ -191,12 +264,20 @@ function ChannelRow({
       )}
     >
       <div className="relative shrink-0">
-        <div
-          className="grid place-items-center w-10 h-10 rounded-full text-[12px] font-semibold text-white"
-          style={{ backgroundColor: getAvatarColour(name) }}
-        >
-          {getInitials(name)}
-        </div>
+        {channel.peer_avatar_url ? (
+          <img
+            src={channel.peer_avatar_url}
+            alt=""
+            className="w-10 h-10 rounded-full object-cover"
+          />
+        ) : (
+          <div
+            className="grid place-items-center w-10 h-10 rounded-full text-[12px] font-semibold text-white"
+            style={{ backgroundColor: getAvatarColour(name) }}
+          >
+            {getInitials(name)}
+          </div>
+        )}
         {platform !== "internal" && (
           <span className="absolute -bottom-0.5 -right-0.5">
             <PlatformPill platform={platform} />

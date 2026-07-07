@@ -29,6 +29,7 @@ import {
 import { useAddStyledToCampaign, type Campaign } from "@/lib/campaigns";
 import { CampaignPickerDropdown } from "@/components/campaign/CampaignPickerDropdown";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 import { AvailabilityPill, StyledStatusBadge } from "./parts";
 import { BaseProductPicker } from "./BaseProductPicker";
 import { StyledVariantsManager } from "./StyledVariantsManager";
@@ -99,7 +100,7 @@ function StyledCreate() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Bardot Bob — Bridal Edit"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </Field>
           <Field
@@ -310,24 +311,7 @@ function StyledEditor({
         });
       },
       onError: (err) =>
-        toast.add({
-          notification_id: crypto.randomUUID(),
-          user_id: "",
-          business: null,
-          type: "catalogue",
-          priority: "high",
-          title: "Could not save",
-          body:
-            err instanceof Error
-              ? err.message
-              : "Something went wrong saving your changes.",
-          reference_type: null,
-          reference_id: null,
-          action_url: null,
-          is_read: false,
-          read_at: null,
-          created_at: new Date().toISOString(),
-        }),
+        toastReport("Catalogue → Styled product", "Could not save", err),
     });
   };
 
@@ -340,6 +324,11 @@ function StyledEditor({
           setTimeout(() => setCampaignFeedback(null), 3000);
         },
         onError: (err) => {
+          toastReport(
+            "Catalogue → Styled product",
+            "Could not add to campaign",
+            err,
+          );
           setCampaignFeedback(
             err instanceof Error ? err.message : "Could not add to campaign.",
           );
@@ -433,7 +422,7 @@ function StyledEditor({
                 value={name}
                 disabled={!canEdit}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 disabled:opacity-60"
+                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 disabled:opacity-60" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </Field>
             <Field label="Short description" hint="storefront teaser">

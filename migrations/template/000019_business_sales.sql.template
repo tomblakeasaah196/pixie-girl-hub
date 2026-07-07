@@ -131,7 +131,8 @@ CREATE TABLE {{BUSINESS}}.sales_orders (
                         CHECK (sales_channel IN ('storefront','pos','woocommerce','instagram',
                                                  'whatsapp','wholesale','partner','stylist_routed',
                                                  'subscription','phone','event','public_form',
-                                                 'facebook','tiktok','intercompany')),
+                                                 'facebook','tiktok','intercompany',
+                                                 'sales_campaign','walk_in')),
   -- Type: walk-in vs dispatch — drives logistics routing.
   -- 'walk_in' = customer takes the product immediately, no delivery.
   -- 'dispatch' = needs delivery (Chowdeck/GIGL/DHL).

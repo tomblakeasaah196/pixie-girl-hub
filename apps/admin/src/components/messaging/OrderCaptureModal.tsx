@@ -11,8 +11,10 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { toastReport } from "@/lib/error-report";
 import { smartcommApi } from "@/lib/smartcomm-api";
 import { useBaseProducts } from "@/lib/catalogue";
+import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
 import type { Channel } from "@/lib/smartcomm-types";
 
 interface Props {
@@ -107,11 +109,12 @@ export function OrderCaptureModal({
           qty: i.qty,
           note: i.note,
         })),
-        sales_channel: platform === "internal" ? "whatsapp" : platform,
+        sales_channel: resolveMessagingSalesChannel(platform),
         notes: notes || undefined,
       });
       setGeneratedUrl(r.url);
     } catch (e: unknown) {
+      toastReport("Messaging → Order capture", "Create order link", e);
       setError(
         e instanceof Error
           ? e.message
@@ -170,7 +173,7 @@ export function OrderCaptureModal({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search products by name or code…"
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-panel-2 border hairline text-[13px] focus:outline-none focus:border-accent/40"
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-panel-2 border hairline text-[13px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
           {search && (
@@ -253,7 +256,7 @@ export function OrderCaptureModal({
                     value={i.note ?? ""}
                     onChange={(e) => setNote(i.product_id, e.target.value)}
                     placeholder="Note for this item (colour, custom style…)"
-                    className="w-full mt-1.5 bg-transparent border-t hairline pt-1.5 text-[11.5px] focus:outline-none placeholder:text-text-faint"
+                    className="w-full mt-1.5 bg-transparent border-t hairline pt-1.5 text-[11.5px] focus:outline-none placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />
                 </div>
               ))}
@@ -270,7 +273,7 @@ export function OrderCaptureModal({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="e.g. priority shipping requested"
-            className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[12.5px] focus:outline-none focus:border-accent/40"
+            className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[12.5px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </label>
 

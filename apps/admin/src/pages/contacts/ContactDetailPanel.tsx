@@ -20,6 +20,7 @@ import {
   type Tone,
 } from "@/components/ui/primitives";
 import { StaticMapImage } from "@/components/ui/AddressAutocomplete";
+import { toastReport } from "@/lib/error-report";
 import {
   useContact,
   useContactSummary,
@@ -1071,14 +1072,14 @@ function ProgrammeTab({ contact }: { contact: Contact }) {
             className={INPUT_CLS}
             placeholder="City (e.g. Lagos)"
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => setCity(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
           <input
             className={INPUT_CLS + " w-[110px] shrink-0"}
             placeholder="Country"
             value={country}
             onChange={(e) => setCountry(e.target.value.toUpperCase())}
-            maxLength={3}
+            maxLength={3} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </div>
         <Button
@@ -1096,6 +1097,7 @@ function ProgrammeTab({ contact }: { contact: Contact }) {
                 city: city.trim(),
               });
             } catch (e) {
+              toastReport("Contacts → Contact detail", "Enrol stylist", e);
               setErr(e instanceof Error ? e.message : "Could not enrol stylist.");
             }
           }}
@@ -1298,6 +1300,7 @@ function AmbassadorTab({ contact }: { contact: Contact }) {
           : {}),
       });
     } catch (e) {
+      toastReport("Contacts → Contact detail", "Save ambassador", e);
       setErr(e instanceof Error ? e.message : "Could not save ambassador.");
     }
   };
@@ -1337,7 +1340,7 @@ function AmbassadorTab({ contact }: { contact: Contact }) {
             max={100}
             placeholder="e.g. 10"
             value={commission}
-            onChange={(e) => setCommission(e.target.value)}
+            onChange={(e) => setCommission(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </label>
         <label className="block">
@@ -1346,7 +1349,7 @@ function AmbassadorTab({ contact }: { contact: Contact }) {
             className={INPUT_CLS}
             placeholder="amara.style"
             value={instagram}
-            onChange={(e) => setInstagram(e.target.value.replace(/^@+/, ""))}
+            onChange={(e) => setInstagram(e.target.value.replace(/^@+/, ""))} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
         </label>
       </div>

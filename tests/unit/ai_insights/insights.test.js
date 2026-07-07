@@ -166,18 +166,34 @@ describe("registry — Wave-3 fan-out detectors", () => {
 });
 
 describe("registry — Wave-3 batch 2 detectors", () => {
-  test("sales/fulfillment_delayed: paid+undispatched escalates by age", async () => {
+  test("sales/fulfillment_delayed: paid+undispatched maps to a finding", async () => {
     repo.fulfillmentDelayedOrders.mockResolvedValue([
       { order_id: "o-1", order_number: "PXG-SO-1", contact_id: "c-1", total_ngn: "90000.00", status: "paid", age_days: 15 },
     ]);
     const [f] = await det("sales", "fulfillment_delayed").run({ brand: "pixiegirl" });
     expect(f).toMatchObject({
       module: "sales",
-      severity: "critical", // >= 14d
+      severity: "critical", // >= 10d
       amount_ngn: "90000.00",
       drill_route: "/sales/orders/o-1",
       suppression_key: "fulfil:o-1",
     });
+  });
+
+  // A paid order sitting undispatched is customer-facing, so it escalates
+  // fast: the 6-day-old orders that prompted this fix now read as HIGH.
+  test.each([
+    [4, "medium"],
+    [5, "high"],
+    [6, "high"],
+    [9, "high"],
+    [10, "critical"],
+  ])("sales/fulfillment_delayed: %id undispatched → %s", async (days, severity) => {
+    repo.fulfillmentDelayedOrders.mockResolvedValue([
+      { order_id: "o", order_number: "PXG-SO-9", contact_id: "c", total_ngn: "1.00", status: "paid", age_days: days },
+    ]);
+    const [f] = await det("sales", "fulfillment_delayed").run({ brand: "pixiegirl" });
+    expect(f.severity).toBe(severity);
   });
 
   test("crm/deal_stalled: >=30d in stage → high", async () => {
@@ -414,6 +430,50 @@ describe("registry — Wave-3 batch 5 detectors (final 6 modules)", () => {
   });
 });
 
+describe("service.runDetectorSweep — frequency cadence (cron vs manual)", () => {
+  test("cron trigger scans only frequency-due modules and stamps them swept", async () => {
+    repo.dueModules.mockResolvedValue(["invoicing"]);
+    repo.overdueInvoices.mockResolvedValue([
+      { invoice_id: "inv-1", customer_contact_id: "c", net_due_ngn: "1.00", days_overdue: 5 },
+    ]);
+    repo.raise.mockResolvedValue(null);
+    repo.autoResolveStale.mockResolvedValue(0);
+
+    const res = await service.runDetectorSweep({ trigger: "cron" });
+
+    // Cron respects the cadence (dueModules), never the full enabled set.
+    expect(repo.dueModules).toHaveBeenCalled();
+    expect(repo.enabledModules).not.toHaveBeenCalled();
+    // Scanned modules get their cadence clock advanced.
+    expect(repo.markSwept).toHaveBeenCalledWith(["invoicing"]);
+    expect(res.by_module).toEqual({ invoicing: 2 });
+    expect(res.modules_scanned).toBe(1);
+  });
+
+  test("manual trigger scans every enabled module regardless of frequency", async () => {
+    repo.enabledModules.mockResolvedValue(["catalogue"]);
+    repo.unbuyableProducts.mockResolvedValue([]); // clean → 0 findings
+    repo.autoResolveStale.mockResolvedValue(0);
+
+    const res = await service.runDetectorSweep({ trigger: "manual" });
+
+    expect(repo.enabledModules).toHaveBeenCalled();
+    expect(repo.dueModules).not.toHaveBeenCalled();
+    expect(repo.markSwept).toHaveBeenCalledWith(["catalogue"]);
+    expect(res.findings).toBe(0);
+    expect(res.modules_scanned).toBe(1);
+  });
+
+  test("default trigger is manual (enabled set, not the cadence set)", async () => {
+    repo.enabledModules.mockResolvedValue([]);
+    await service.runDetectorSweep();
+    expect(repo.enabledModules).toHaveBeenCalled();
+    expect(repo.dueModules).not.toHaveBeenCalled();
+    // Nothing to scan → no cadence stamp.
+    expect(repo.markSwept).not.toHaveBeenCalled();
+  });
+});
+
 describe("service.raise — legacy category adapter", () => {
   test("stock category maps to module stock / detector reorder_point", async () => {
     repo.raise.mockResolvedValue(undefined);
@@ -458,7 +518,9 @@ describe("service.runDetectorSweep — gated by AI Control matrix", () => {
     const result = await service.runDetectorSweep();
 
     // invoicing is brand-scoped → ran once per brand (2 brands) → 2 findings.
-    expect(result).toEqual({ invoicing: 2 });
+    expect(result.by_module).toEqual({ invoicing: 2 });
+    expect(result.findings).toBe(2);
+    expect(result.modules_scanned).toBe(1);
     expect(repo.raise).toHaveBeenCalledTimes(2);
     // Disabled modules' source reads never fired.
     expect(repo.staleIntercompany).not.toHaveBeenCalled();
@@ -469,7 +531,9 @@ describe("service.runDetectorSweep — gated by AI Control matrix", () => {
   test("no enabled modules → empty result, nothing raised", async () => {
     repo.enabledModules.mockResolvedValue([]);
     const result = await service.runDetectorSweep();
-    expect(result).toEqual({});
+    expect(result.by_module).toEqual({});
+    expect(result.findings).toBe(0);
+    expect(result.modules_scanned).toBe(0);
     expect(repo.raise).not.toHaveBeenCalled();
   });
 

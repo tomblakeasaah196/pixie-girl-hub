@@ -132,7 +132,7 @@ export function JobWorkPanel({
                   setChem("");
                 }
               }}
-              placeholder="Add a chemical used (e.g. Toner 6.1) + Enter"
+              placeholder="Add a chemical used (e.g. Toner 6.1) + Enter" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
             <Button
               size="sm"
@@ -202,7 +202,7 @@ export function JobWorkPanel({
                 className={inputCls}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Add a note for the stylist…"
+                placeholder="Add a note for the stylist…" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <Button
                 size="sm"
@@ -220,7 +220,7 @@ export function JobWorkPanel({
                 className={inputCls}
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
-                placeholder="Paste an inspiration link (YouTube/IG)…"
+                placeholder="Paste an inspiration link (YouTube/IG)…" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <Button
                 size="sm"

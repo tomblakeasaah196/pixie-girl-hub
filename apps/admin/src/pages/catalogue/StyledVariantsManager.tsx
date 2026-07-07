@@ -185,7 +185,7 @@ function ColoursCard({
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && add()}
                 placeholder="Colour name (e.g. Dark Copper)"
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </div>
             <div className="w-[140px]">
@@ -421,7 +421,7 @@ function ColourRow({
               value={igUrl}
               onChange={(e) => setIgUrl(e.target.value)}
               placeholder="Paste a YouTube / Instagram / TikTok / video URL…"
-              className="flex-1 h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+              className="flex-1 h-[40px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
             <Button
               size="sm"
@@ -457,7 +457,7 @@ function ColourRow({
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 placeholder="Colour name"
-                className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
             </div>
             {(editName !== colour.name ||

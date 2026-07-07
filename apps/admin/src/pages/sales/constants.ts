@@ -36,22 +36,66 @@ export const QUOTE_STATUS: Record<QuoteStatus, StatusMeta> = {
   cancelled: { label: "Cancelled", tone: "danger" },
 };
 
-export const SALES_CHANNELS: { value: SalesChannel; label: string }[] = [
-  { value: "instagram", label: "Instagram" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "phone", label: "Phone" },
-  { value: "storefront", label: "Website" },
-  { value: "facebook", label: "Facebook" },
-  { value: "tiktok", label: "TikTok" },
-  { value: "event", label: "Event" },
-  { value: "public_form", label: "Public Form" },
-  { value: "wholesale", label: "Wholesale" },
-  { value: "partner", label: "Partner" },
-  { value: "stylist_routed", label: "Stylist" },
-  { value: "subscription", label: "Subscription" },
-  { value: "intercompany", label: "Intercompany" },
-  { value: "woocommerce", label: "WooCommerce" },
+// Approved channels shown in the picker, grouped Digital vs Physical (V2.2 §6.4).
+// The full historical enum still exists on the backend so older orders keep
+// their tag in reports — see SALES_CHANNEL_LABELS below for a lookup used to
+// render legacy tags in read-only views.
+export type SalesChannelGroup = "digital" | "physical";
+export const SALES_CHANNEL_GROUPS: {
+  key: SalesChannelGroup;
+  label: string;
+  channels: { value: SalesChannel; label: string }[];
+}[] = [
+  {
+    key: "digital",
+    label: "Digital",
+    channels: [
+      { value: "whatsapp", label: "WhatsApp" },
+      { value: "instagram", label: "Instagram" },
+      { value: "storefront", label: "Website" },
+      { value: "sales_campaign", label: "Sales Campaign" },
+    ],
+  },
+  {
+    key: "physical",
+    label: "Physical",
+    channels: [
+      { value: "walk_in", label: "Walk-in" },
+      { value: "event", label: "Event" },
+    ],
+  },
 ];
+
+// Flat picker list (backwards-compat for existing callers that iterate a
+// single array — the grouped version drives the Quick Sale UI).
+export const SALES_CHANNELS: { value: SalesChannel; label: string }[] =
+  SALES_CHANNEL_GROUPS.flatMap((g) => g.channels);
+
+// Legacy channel labels — used only for rendering historical orders whose
+// channel was pruned from the picker. Fresh sales can no longer pick these.
+export const SALES_CHANNEL_LEGACY_LABELS: Partial<Record<SalesChannel, string>> =
+  {
+    phone: "Phone",
+    facebook: "Facebook",
+    tiktok: "TikTok",
+    public_form: "Public Form",
+    wholesale: "Wholesale",
+    partner: "Partner",
+    stylist_routed: "Stylist",
+    subscription: "Subscription",
+    intercompany: "Intercompany",
+    woocommerce: "WooCommerce",
+    pos: "POS",
+  };
+
+/** Friendly channel label — approved + legacy in one lookup. */
+export function salesChannelLabel(value: SalesChannel | string): string {
+  const active = SALES_CHANNELS.find((c) => c.value === value);
+  if (active) return active.label;
+  const legacy = SALES_CHANNEL_LEGACY_LABELS[value as SalesChannel];
+  if (legacy) return legacy;
+  return String(value).replace(/_/g, " ");
+}
 
 export const FULFILMENT_OPTIONS = [
   { value: "walk_in", label: "Walk-in (Pickup)" },

@@ -63,12 +63,24 @@ const config: Config = {
           "0%": { backgroundPosition: "100% 0" },
           "100%": { backgroundPosition: "-100% 0" },
         },
+        // First-load "I can be dragged" hint for the floating launcher — a
+        // playful bounce-and-tilt that draws the eye without being disruptive.
+        "fab-dance": {
+          "0%, 100%": { transform: "translateY(0) rotate(0deg)" },
+          "10%": { transform: "translateY(-7px) rotate(-8deg)" },
+          "20%": { transform: "translateY(0) rotate(0deg)" },
+          "32%": { transform: "translateY(-7px) rotate(8deg)" },
+          "44%": { transform: "translateY(0) rotate(0deg)" },
+          "56%": { transform: "translateY(-4px) rotate(-5deg)" },
+          "68%": { transform: "translateY(0) rotate(0deg)" },
+        },
       },
       animation: {
         "tile-in": "tile-in .5s cubic-bezier(.16,1,.3,1) backwards",
         "fade-in": "fade-in .3s ease-out",
         shimmer: "shimmer 1.4s infinite",
         "sheet-slide-up": "sheet-slide-up .3s cubic-bezier(.16,1,.3,1)",
+        "fab-dance": "fab-dance 1.5s ease-in-out 2",
       },
     },
   },

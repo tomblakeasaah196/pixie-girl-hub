@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Clock, MapPin, LogOut, Loader2, AlertTriangle } from "lucide-react";
+import { Clock, MapPin, LogOut, Loader2, AlertTriangle, Check } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { getMyToday, clock as clockApi } from "@/lib/hr-api";
 import { captureGeo } from "@/lib/geo-capture";
+import { getDeviceFingerprint } from "@/lib/device-fingerprint";
 import { useToastStore } from "@/components/notifications/NotificationToast";
+import { toastReport } from "@/lib/error-report";
 
 /**
  * Top-bar clock in/out (canon §3.2). Captures the device location + reverse-
@@ -36,7 +38,11 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
     return () => clearInterval(id);
   }, [data?.clocked_in, data?.clocked_in_at]);
 
-  const notify = (title: string, body = "", priority: "low" | "normal" | "high" = "normal") =>
+  const notify = (title: string, body = "", priority: "low" | "normal" | "high" = "normal") => {
+    if (priority === "high") {
+      toastReport("HR → Clock in/out", title, body || "Something went wrong.");
+      return;
+    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",
@@ -52,13 +58,20 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
       read_at: null,
       created_at: new Date().toISOString(),
     });
+  };
 
   const punch = useMutation({
     mutationFn: async (event_type: "clock_in" | "clock_out") => {
       const geo = await captureGeo();
-      if (geo.denied && data?.geofence_required && event_type === "clock_in") {
+      // Location is mandatory for BOTH clock-in and clock-out — a punch is
+      // never recorded without it. Refusing on clock-in means the day is
+      // marked absent (no clock-in exists to reconcile).
+      const noFix = geo.denied || geo.latitude == null || geo.longitude == null;
+      if (noFix) {
         throw new Error(
-          "Location is required to clock in on an on-site day. Enable location access and try again.",
+          event_type === "clock_out"
+            ? "Confirm your location to clock out. Enable location access on your device and try again."
+            : "Confirm your location to clock in. Enable location access on your device and try again — without it you'll be marked absent for the day.",
         );
       }
       return clockApi({
@@ -67,11 +80,18 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
         longitude: geo.longitude,
         accuracy_m: geo.accuracy_m,
         address: geo.address,
+        device_fingerprint: getDeviceFingerprint(),
       });
     },
     onSuccess: (rec) => {
       qc.invalidateQueries({ queryKey: ["hr", "me"] });
-      if (rec.event_type === "clock_out") {
+      if (rec.device_recognized === false) {
+        notify(
+          "Clocked in — unrecognised device",
+          "This device isn't enrolled for attendance, so this clock-in is flagged for HR. Enrol it in My HR → My devices.",
+          "high",
+        );
+      } else if (rec.event_type === "clock_out") {
         notify("Clocked out", "Have a good one.");
       } else if (rec.is_offsite) {
         notify(
@@ -85,7 +105,17 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
         notify("Clocked in", rec.address || "Have a great day.");
       }
     },
-    onError: (e) => notify("Clock-in failed", e instanceof Error ? e.message : "", "high"),
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : "";
+      // Location prompts and "already clocked" conflicts are expected user
+      // states — surface them as a normal toast, not the report-to-admin path.
+      const benign = /location|already clocked/i.test(msg);
+      notify(
+        benign ? "Confirm your location" : "Clock in/out failed",
+        msg,
+        benign ? "normal" : "high",
+      );
+    },
   });
 
   // A 404 means this account isn't linked to a staff profile — render nothing.
@@ -138,6 +168,20 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
         )}
         <span className="font-mono tabular-nums">{hhmmss}</span>
       </button>
+    );
+  }
+
+  // Already clocked in AND out today — one cycle per day, so lock the control
+  // to a "Done" state rather than inviting a second clock-in.
+  if (data.clocked_out) {
+    return (
+      <span
+        title="You've clocked in and out today"
+        className="inline-flex items-center gap-2 h-[38px] px-[13px] rounded-[11px] border border-success/40 bg-success/10 font-semibold text-xs text-success"
+      >
+        <Check className="w-[15px]" />
+        {!compact && <span>Done for today</span>}
+      </span>
     );
   }
 

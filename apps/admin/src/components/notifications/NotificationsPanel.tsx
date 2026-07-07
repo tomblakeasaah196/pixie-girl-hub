@@ -137,7 +137,7 @@ export function NotificationsPanel({ onClose }: Props) {
   const markAll = useMarkAllRead();
 
   const all = data?.data ?? [];
-  const unreadCount = data?.total ? all.filter((n) => !n.is_read).length : 0;
+  const unreadCount = all.filter((n) => !n.is_read).length;
   const today = all.filter((n) => isToday(n.created_at));
   const earlier = all.filter((n) => !isToday(n.created_at));
 

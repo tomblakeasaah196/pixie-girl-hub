@@ -850,7 +850,7 @@ function BlockSection({
             >
               <input
                 placeholder="you@email.com"
-                className="flex-1 h-[52px] px-5 rounded-full bg-bg/60 border border-line outline-none focus:border-accent/60 text-[14px]"
+                className="flex-1 h-[52px] px-5 rounded-full bg-bg/60 border border-line outline-none focus:border-accent/60 text-[14px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <button className="h-[52px] px-7 rounded-full bg-accent text-[#F4E9D9] font-semibold whitespace-nowrap">
                 {captureButton}

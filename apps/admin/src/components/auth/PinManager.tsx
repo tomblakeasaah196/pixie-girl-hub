@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import { checkPin } from "@/lib/password";
 import {
   getPinStatus,
@@ -155,6 +156,7 @@ export function PinManager({
       setHasPin(true);
       setPinEnabledLocally(true);
     } catch (e) {
+      toastReport("Account → PIN", "Save PIN", e);
       setError(e instanceof Error ? e.message : "Could not save PIN.");
     } finally {
       setLoading(false);
@@ -170,6 +172,7 @@ export function PinManager({
       setHasPin(false);
       setPinEnabledLocally(false);
     } catch (e) {
+      toastReport("Account → PIN", "Remove PIN", e);
       setError(e instanceof Error ? e.message : "Could not remove PIN.");
     } finally {
       setLoading(false);

@@ -186,6 +186,147 @@ async function countSigners({ client, request_id }) {
   return rows[0];
 }
 
+// ── Signature on file (PIN-protected, email-keyed) ────────
+/** Fetch a signer's saved signature profile by email (or null). */
+async function getSignerSignatureByEmail({ client, email }) {
+  if (!email) return null;
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.signer_signatures WHERE signer_email = $1`,
+    [email],
+  );
+  return rows[0] || null;
+}
+/** Create or replace a signer's saved signature + PIN, keyed by email. */
+async function upsertSignerSignature({
+  client,
+  email,
+  user_id,
+  signature_data_url,
+  pin_hash,
+}) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.signer_signatures
+       (signer_email, user_id, signature_data_url, pin_hash, pin_set_at, pin_failed_count)
+     VALUES ($1,$2,$3,$4, now(), 0)
+     ON CONFLICT (signer_email) DO UPDATE
+        SET user_id = COALESCE(EXCLUDED.user_id, shared.signer_signatures.user_id),
+            signature_data_url = EXCLUDED.signature_data_url,
+            pin_hash = EXCLUDED.pin_hash,
+            pin_set_at = now(),
+            pin_failed_count = 0,
+            pin_locked_until = NULL
+     RETURNING *`,
+    [email, user_id || null, signature_data_url, pin_hash],
+  );
+  return rows[0];
+}
+/** Record a failed PIN attempt; lock the saved signature for a cool-off at 5 strikes. */
+async function recordSignerPinFail({ client, email }) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.signer_signatures
+        SET pin_failed_count = pin_failed_count + 1,
+            pin_locked_until = CASE WHEN pin_failed_count + 1 >= 5
+                                    THEN now() + interval '15 minutes'
+                                    ELSE pin_locked_until END
+      WHERE signer_email = $1
+      RETURNING pin_failed_count, pin_locked_until`,
+    [email],
+  );
+  return rows[0] || null;
+}
+/** Record a successful PIN use; clear the strike counter + lock, stamp last_used_at. */
+async function recordSignerPinSuccess({ client, email }) {
+  await ex(client)(
+    `UPDATE shared.signer_signatures
+        SET pin_failed_count = 0,
+            pin_locked_until = NULL,
+            last_used_at = now()
+      WHERE signer_email = $1`,
+    [email],
+  );
+}
+// ── Reminders + expiry ─────────────────────────────────────
+/** Pending signers whose turn it is and who are due a reminder email. */
+async function dueForReminder({ client, gapHours = 48 }) {
+  const { rows } = await ex(client)(
+    `SELECT s.signer_id, s.signing_token, s.display_name_snapshot, s.display_email_snapshot,
+            s.reminder_count, r.request_id, r.business, r.subject, r.expires_at
+       FROM shared.signature_request_signers s
+       JOIN shared.signature_requests r ON r.request_id = s.request_id
+      WHERE s.status IN ('sent','viewed')
+        AND r.status IN ('sent','partially_signed')
+        AND (s.signing_token_expires_at IS NULL OR s.signing_token_expires_at > now())
+        AND (r.expires_at IS NULL OR r.expires_at > now())
+        AND (s.last_reminder_sent_at IS NULL
+             OR s.last_reminder_sent_at < now() - make_interval(hours => $1))
+        AND s.display_email_snapshot IS NOT NULL
+        AND s.display_email_snapshot <> ''
+      ORDER BY r.created_at
+      LIMIT 500`,
+    [gapHours],
+  );
+  return rows;
+}
+
+/** Stamp a reminder as sent (bumps the count for cadence + display). */
+async function markReminded({ client, signer_id }) {
+  await ex(client)(
+    `UPDATE shared.signature_request_signers
+        SET last_reminder_sent_at = now(), reminder_count = reminder_count + 1
+      WHERE signer_id = $1`,
+    [signer_id],
+  );
+}
+
+/** Requests that have passed their expiry and are still awaiting signatures. */
+async function overdueRequests({ client }) {
+  const { rows } = await ex(client)(
+    `SELECT r.request_id, r.business, r.subject, r.created_by, r.expires_at,
+            u.email AS creator_email, u.display_name AS creator_name
+       FROM shared.signature_requests r
+       LEFT JOIN shared.users u ON u.user_id = r.created_by
+      WHERE r.status IN ('draft','sent','partially_signed')
+        AND r.expires_at IS NOT NULL
+        AND r.expires_at < now()
+      ORDER BY r.expires_at
+      LIMIT 500`,
+  );
+  return rows;
+}
+
+/** Mark a request and its unsigned signers expired. */
+async function expireRequest({ client, request_id }) {
+  await ex(client)(
+    `UPDATE shared.signature_requests SET status = 'expired' WHERE request_id = $1`,
+    [request_id],
+  );
+  await ex(client)(
+    `UPDATE shared.signature_request_signers SET status = 'expired'
+      WHERE request_id = $1 AND status IN ('pending','sent','viewed')`,
+    [request_id],
+  );
+}
+
+/** Link the generated signed document to the request. */
+async function setSignedDocument({ client, request_id, document_id }) {
+  await ex(client)(
+    `UPDATE shared.signature_requests SET signed_document_id = $2 WHERE request_id = $1`,
+    [request_id, document_id],
+  );
+}
+/** Resolve a signer row by its public verification code (for the verify page). */
+async function getSignerByVerificationCode({ client, code }) {
+  const { rows } = await ex(client)(
+    `SELECT s.*, r.business, r.document_id, r.subject, r.request_type
+       FROM shared.signature_request_signers s
+       JOIN shared.signature_requests r ON r.request_id = s.request_id
+      WHERE s.verification_code = $1
+      LIMIT 1`,
+    [code],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   createRequest,
   addSigner,
@@ -198,4 +339,14 @@ module.exports = {
   lastAuditHash,
   addAuditEvent,
   countSigners,
+  getSignerSignatureByEmail,
+  upsertSignerSignature,
+  recordSignerPinFail,
+  recordSignerPinSuccess,
+  getSignerByVerificationCode,
+  setSignedDocument,
+  dueForReminder,
+  markReminded,
+  overdueRequests,
+  expireRequest,
 };

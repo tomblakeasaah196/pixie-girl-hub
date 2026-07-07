@@ -19,7 +19,9 @@ import {
   type ProductHit,
 } from "@/lib/product-search";
 import { smartcommApi } from "@/lib/smartcomm-api";
+import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
+import { toastReport } from "@/lib/error-report";
 import type { ProductCard, Channel } from "@/lib/smartcomm-types";
 
 // The in-chat picker offers services too (the ERP-wide PRODUCT_KINDS does not).
@@ -163,7 +165,7 @@ export function CataloguePickerModal({
           qty: c.qty,
           price_ngn: c.price != null ? String(c.price) : undefined,
         })),
-        sales_channel: channel.external_platform ?? undefined,
+        sales_channel: resolveMessagingSalesChannel(channel.external_platform),
       });
       return r.url;
     } catch {
@@ -193,6 +195,7 @@ export function CataloguePickerModal({
       onSent();
       onClose();
     } catch (e: unknown) {
+      toastReport("Messaging → Catalogue picker", "Send catalogue", e);
       setError(e instanceof Error ? e.message : "Could not send catalogue");
     } finally {
       setBusy(false);
@@ -273,7 +276,7 @@ export function CataloguePickerModal({
               ? "Find a service (revamp, install, repair…)"
               : "Find a product (min 2 chars)…"
           }
-          className="w-full bg-transparent py-2 text-[12.5px] focus:outline-none placeholder:text-text-faint"
+          className="w-full bg-transparent py-2 text-[12.5px] focus:outline-none placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
         {loading && (
           <Loader2 className="w-3.5 h-3.5 animate-spin text-text-faint" />

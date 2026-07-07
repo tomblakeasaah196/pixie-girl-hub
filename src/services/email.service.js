@@ -40,6 +40,39 @@ function brandSmtp(brand) {
   };
 }
 
+/**
+ * Nodemailer options for the default (non-brand) relay.
+ *
+ * TLS matters: hardcoding plaintext (the old `ignoreTLS: true`) meant that even
+ * after SMTP_HOST was pointed at a real relay, credentials went in the clear and
+ * providers that mandate STARTTLS on 587 rejected the connection. So:
+ *   • loopback dev relay (MailHog/Mailpit/sendmail on localhost) → plaintext, no TLS
+ *   • port 465 or SMTP_SECURE=true                                → implicit TLS
+ *   • anything else (e.g. a real relay on 587)                    → require STARTTLS
+ */
+function defaultTransportOptions() {
+  const host = config.SMTP_HOST;
+  const port = config.SMTP_PORT;
+  const isLocal = /^(localhost|127\.0\.0\.1|::1)$/i.test(
+    String(host || "").trim(),
+  );
+  const secure = config.SMTP_SECURE || port === 465;
+  const opts = {
+    host,
+    port,
+    secure,
+    auth: config.SMTP_USER
+      ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD }
+      : undefined,
+  };
+  if (isLocal) {
+    opts.ignoreTLS = true; // no cert on a loopback relay — don't try STARTTLS
+  } else if (!secure) {
+    opts.requireTLS = true; // real relay on 587 → never submit in cleartext
+  }
+  return opts;
+}
+
 function getTransporter(brand) {
   const bs = brandSmtp(brand);
   const cacheKey = bs ? `brand:${brand}` : "global";
@@ -52,15 +85,7 @@ function getTransporter(brand) {
         secure: bs.secure,
         auth: bs.user ? { user: bs.user, pass: bs.pass } : undefined,
       })
-    : nodemailer.createTransport({
-        host: config.SMTP_HOST,
-        port: config.SMTP_PORT,
-        secure: false,
-        ignoreTLS: true,
-        auth: config.SMTP_USER
-          ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD }
-          : undefined,
-      });
+    : nodemailer.createTransport(defaultTransportOptions());
   transporters.set(cacheKey, t);
   return t;
 }
@@ -131,4 +156,74 @@ async function send({
   });
 }
 
-module.exports = { send };
+/**
+ * Point out — at BOOT, non-fatally — an SMTP config that cannot plausibly
+ * deliver to real customers, so a placeholder relay screams here instead of
+ * silently swallowing every transactional email at send time (which is exactly
+ * how "are clients even getting our mail?" goes unnoticed for months).
+ *
+ * Zero network: this only inspects the config shape. `smtp:doctor` does the
+ * live connect + test send. Warnings only in staging/production — a dev box
+ * on localhost:25 (MailHog etc.) is legitimate and shouldn't nag.
+ */
+function checkConfigAtBoot() {
+  const prod = ["production", "staging"].includes(config.NODE_ENV);
+  const host = config.SMTP_HOST;
+  const port = config.SMTP_PORT;
+  const hasAuth = Boolean(config.SMTP_USER && config.SMTP_PASSWORD);
+  const problems = [];
+
+  if (!host) {
+    problems.push("SMTP_HOST is not set — every outbound email will fail.");
+  } else if (/^(localhost|127\.0\.0\.1|::1)$/i.test(String(host).trim())) {
+    problems.push(
+      `SMTP_HOST is '${host}' — mail is handed to a LOCAL mail server that ` +
+        "usually doesn't exist on an app host (→ ECONNREFUSED). Point SMTP_* " +
+        "at a real relay (e.g. Zoho/Google/SendGrid/Mailgun/SES).",
+    );
+  }
+  if (port === 25) {
+    problems.push(
+      "SMTP_PORT is 25 — most cloud/VPS hosts block outbound port 25 and " +
+        "unauthenticated port-25 mail is widely rejected. Use 587 (STARTTLS) " +
+        "or 465 (TLS) with credentials.",
+    );
+  }
+  if (host && !/^(localhost|127\.0\.0\.1|::1)$/i.test(String(host).trim()) && !hasAuth) {
+    problems.push(
+      "SMTP_USER/SMTP_PASSWORD are blank — a public relay will reject " +
+        "unauthenticated submission.",
+    );
+  }
+
+  if (problems.length && prod) {
+    logger.warn(
+      { host, port, hasAuth, problems },
+      "⚠ SMTP looks misconfigured — outbound email is unlikely to be delivered. " +
+        "Run `npm run smtp:doctor` to confirm.",
+    );
+  } else if (problems.length) {
+    logger.info(
+      { host, port, hasAuth },
+      "SMTP config is dev-shaped (localhost/port25/no-auth) — fine locally; " +
+        "must be a real relay in staging/production.",
+    );
+  }
+  return { ok: problems.length === 0, problems };
+}
+
+/**
+ * Live connectivity check — opens the SMTP connection and (when auth is set)
+ * authenticates, WITHOUT sending. Used by `smtp:doctor`. Resolves
+ * { ok, error } instead of throwing so callers can report cleanly.
+ */
+async function verifyConnection(brand) {
+  try {
+    await getTransporter(brand).verify();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message, code: err.code };
+  }
+}
+
+module.exports = { send, checkConfigAtBoot, verifyConnection };

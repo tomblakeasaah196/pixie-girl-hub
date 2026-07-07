@@ -229,6 +229,34 @@ async function narrationModules() {
   );
   return rows.map((r) => r.module);
 }
+/**
+ * Modules whose AUTOMATIC (cron) sweep is due right now, per their frequency:
+ *   realtime → every tick · daily → once/24h · weekly → once/7d · off → never.
+ * NULL last_swept_at (never scanned) is always due. The manual Run-scan path
+ * uses `enabledModules` instead, so it always covers every enabled module.
+ */
+async function dueModules() {
+  const { rows } = await query(
+    `SELECT module FROM shared.ai_insight_modules
+      WHERE insights_enabled = true
+        AND frequency <> 'off'
+        AND (last_swept_at IS NULL
+             OR frequency = 'realtime'
+             OR (frequency = 'daily'  AND last_swept_at < now() - interval '1 day')
+             OR (frequency = 'weekly' AND last_swept_at < now() - interval '7 days'))`,
+  );
+  return rows.map((r) => r.module);
+}
+/** Stamp last_swept_at = now() for the modules a sweep just scanned (clean or not). */
+async function markSwept(modules) {
+  if (!modules || modules.length === 0) return 0;
+  const { rowCount } = await query(
+    `UPDATE shared.ai_insight_modules SET last_swept_at = now()
+      WHERE module = ANY($1::text[])`,
+    [modules],
+  );
+  return rowCount;
+}
 async function updateModule({ module, fields, updated_by }) {
   const allowed = ["insights_enabled", "narration_enabled", "frequency"];
   const sets = [];
@@ -380,15 +408,20 @@ async function unsettledAdvances({ brand, limit = 500 }) {
 }
 
 // Sales: orders paid but not yet dispatched for too long (fulfilment delay).
+// Clock basis = COALESCE(paid_at, placed_at, created_at): `placed_at` (and
+// often `paid_at`) is NULL for storefront + sales-campaign checkouts — nothing
+// stamps it — so keying on bare `placed_at` silently matched ZERO orders. The
+// whole app already reads order dates as COALESCE(placed_at, created_at)
+// (sales list, dashboards, retention); this detector now does the same, with
+// paid_at preferred as the true "became actionable" moment.
 async function fulfillmentDelayedOrders({ brand, limit = 500 }) {
   const { rows } = await query(
     `SELECT order_id, order_number, contact_id, total_ngn, status,
-            (EXTRACT(EPOCH FROM (now() - placed_at)) / 86400)::int AS age_days
+            (EXTRACT(EPOCH FROM (now() - COALESCE(paid_at, placed_at, created_at))) / 86400)::int AS age_days
        FROM ${t(brand, "sales_orders")}
       WHERE status IN ('paid','awaiting_dispatch','ready_for_dispatch')
-        AND placed_at IS NOT NULL
-        AND placed_at < now() - interval '3 days'
-      ORDER BY placed_at ASC LIMIT $1`,
+        AND COALESCE(paid_at, placed_at, created_at) < now() - interval '3 days'
+      ORDER BY COALESCE(paid_at, placed_at, created_at) ASC LIMIT $1`,
     [limit],
   );
   return rows;
@@ -535,6 +568,8 @@ module.exports = {
   getModule,
   enabledModules,
   narrationModules,
+  dueModules,
+  markSwept,
   updateModule,
   overdueInvoices,
   staleIntercompany,

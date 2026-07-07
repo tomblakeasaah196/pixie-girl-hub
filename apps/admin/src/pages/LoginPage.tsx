@@ -23,7 +23,7 @@ import { BootSplash } from "@/components/auth/BootSplash";
  */
 export function LoginPage() {
   const navigate = useNavigate();
-  const { data: branding } = useBranding();
+  const branding = useBranding();
   const cfg = useLoginConfig();
   const theme = useUiStore((s) => s.theme);
   const toggleTheme = useUiStore((s) => s.toggleTheme);
@@ -43,21 +43,18 @@ export function LoginPage() {
     navigate(multi ? "/select-entity" : "/", { replace: true });
   }, [status, user, navigate]);
 
-  const platform = branding?.platform;
+  const platform = branding.data?.platform;
   const productName = platform?.product_name ?? "Pixie Hub";
   const businesses = useMemo(
-    () => (branding?.businesses ?? []).filter(Boolean),
-    [branding],
+    () => (branding.data?.businesses ?? []).filter(Boolean),
+    [branding.data],
   );
   const t = cfg.toggles ?? {};
 
-  // Splash on first paint (DB-toggleable).
-  const [splash, setSplash] = useState(t.splash !== false);
-  useEffect(() => {
-    if (!splash) return;
-    const id = setTimeout(() => setSplash(false), 1500);
-    return () => clearTimeout(id);
-  }, [splash]);
+  // Splash on first paint (DB-toggleable). Holds for its own minimum
+  // duration even if the branding fetch resolves instantly.
+  const splashEnabled = t.splash !== false;
+  const [splashDone, setSplashDone] = useState(!splashEnabled);
 
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -101,7 +98,14 @@ export function LoginPage() {
   const hero = cfg.hero ?? {};
   const geoMsg = geo.data;
 
-  if (splash) return <BootSplash />;
+  if (!splashDone) {
+    return (
+      <BootSplash
+        ready={!branding.isLoading}
+        onDone={() => setSplashDone(true)}
+      />
+    );
+  }
 
   const bg = cfg.background ?? {};
   const showImage = bg.style === "image" && !!bg.image_url;

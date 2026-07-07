@@ -33,7 +33,7 @@ function ConfigCard({ title, children }: { title: string; children: React.ReactN
 
 export function ProgrammePanel() {
   const can = useAuthStore((s) => s.can);
-  const toast = useToast();
+  const toast = useToast("Stylists → Programme");
   const config = useProgrammeConfig();
   const tiers = useTiers();
   const questions = useQuestions();
@@ -284,7 +284,7 @@ export function ProgrammePanel() {
                             onError: (err) =>
                               toast.error("Update failed", (err as Error).message),
                           });
-                      }}
+                      }} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </div>
                   <div>
@@ -304,7 +304,7 @@ export function ProgrammePanel() {
                             onError: (err) =>
                               toast.error("Update failed", (err as Error).message),
                           });
-                      }}
+                      }} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                     />
                   </div>
                 </div>
@@ -356,7 +356,7 @@ export function ProgrammePanel() {
                 className="input flex-1"
                 placeholder="New question…"
                 value={newQuestion}
-                onChange={(e) => setNewQuestion(e.target.value)}
+                onChange={(e) => setNewQuestion(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
               />
               <Button
                 size="sm"

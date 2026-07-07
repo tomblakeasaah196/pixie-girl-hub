@@ -69,3 +69,4 @@ tmp/
 .claude/
 client folder for hub-system/hub-system.zip
 dump.rdb
+docs/ai.md

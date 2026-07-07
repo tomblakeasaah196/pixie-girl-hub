@@ -21,8 +21,8 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { to: "/", label: "Overview", icon: LayoutDashboard },
   { to: "/errors", label: "Errors", icon: Bug, soon: true, phase: "Phase 1" },
-  { to: "/health", label: "Health", icon: Activity, soon: true, phase: "Phase 2" },
-  { to: "/performance", label: "Performance", icon: Gauge, soon: true, phase: "Phase 2" },
+  { to: "/health", label: "Health", icon: Activity },
+  { to: "/performance", label: "Performance", icon: Gauge },
   { to: "/backups", label: "Backups", icon: DatabaseBackup, soon: true, phase: "Phase 3" },
   { to: "/alerts", label: "Alerts", icon: BellRing, soon: true, phase: "Phase 5" },
   { to: "/operators", label: "Operators", icon: Users },

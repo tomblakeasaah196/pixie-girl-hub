@@ -19,6 +19,8 @@ const { kaizenAuthMiddleware } = require("./auth/kaizen-auth.middleware");
 const authController = require("./auth/kaizen-auth.controller");
 const operatorsController = require("./operators/operators.controller");
 const errorsController = require("./errors/errors.controller");
+const healthController = require("./health/health.controller");
+const perfController = require("./perf/perf.controller");
 
 const START_TIME = Date.now();
 
@@ -40,6 +42,8 @@ function mountKaizen(app) {
 
   r.use("/operators", operatorsController.router);
   r.use("/errors", errorsController.router);
+  r.use("/health", healthController.router);
+  r.use("/perf", perfController.router);
 
   // Lightweight system summary for the Overview screen.
   r.get("/system/summary", async (req, res) => {

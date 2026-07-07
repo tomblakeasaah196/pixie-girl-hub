@@ -199,6 +199,13 @@ async function startWorkers() {
     perInstance: true,
   });
   scheduleCron("ugc-ingestion", "*/10 * * * *", runUgcIngestionSweep);
+
+  // ── Kaizen (maintenance console) ─────────────────────────
+  scheduleCron(
+    "kaizen-health-tick",
+    "* * * * *",
+    require("./schedulers/kaizen-health-tick").run,
+  );
   scheduleCron(
     "daily-ai-briefing",
     config.CRON_DAILY_AI_BRIEFING,

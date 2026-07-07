@@ -242,3 +242,23 @@ export async function downloadErrorExport(f: ErrorFilters) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+// ── Health & Performance (Phase 2) ───────────────────────
+export async function healthCurrent() {
+  const r = await api<{ data: import("@/lib/types").HealthCurrent }>("/health/current");
+  return r.data;
+}
+
+export async function healthHistory(component: string, hours = 24) {
+  const r = await api<{ data: import("@/lib/types").HealthHistoryPoint[] }>(
+    `/health/history?component=${encodeURIComponent(component)}&hours=${hours}`,
+  );
+  return r.data;
+}
+
+export async function perfSummary(hours = 24) {
+  const r = await api<{ data: import("@/lib/types").PerfSummary }>(
+    `/perf/summary?hours=${hours}`,
+  );
+  return r.data;
+}

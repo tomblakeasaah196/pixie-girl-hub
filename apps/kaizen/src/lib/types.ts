@@ -107,3 +107,55 @@ export interface ErrorFilters {
   page?: number;
   page_size?: number;
 }
+
+// ── Health & Performance (Phase 2) ───────────────────────
+export type HealthStatus = "ok" | "degraded" | "down" | "unknown";
+export type HealthComponentName =
+  | "db"
+  | "redis"
+  | "queue"
+  | "disk"
+  | "memory"
+  | "cpu"
+  | "backup"
+  | "restore_drill";
+
+export interface HealthComponent {
+  component: HealthComponentName;
+  status: HealthStatus;
+  latency_ms: number | null;
+  detail: Record<string, unknown>;
+}
+
+export interface HealthCurrent {
+  overall: HealthStatus;
+  captured_at: string;
+  components: HealthComponent[];
+}
+
+export interface HealthHistoryPoint {
+  captured_at: string;
+  status: HealthStatus;
+  latency_ms: number | null;
+  detail: Record<string, unknown>;
+}
+
+export interface SlowRoute {
+  route_pattern: string;
+  method: string;
+  req_count: number;
+  err_count: number;
+  p95_ms: number | null;
+  max_ms: number | null;
+}
+
+export interface PerfSummary {
+  hours: number;
+  total_requests: number;
+  total_errors: number;
+  error_rate_pct: number;
+  throughput_per_min: number;
+  p95_ms: number | null;
+  max_ms: number | null;
+  slow_routes: SlowRoute[];
+}

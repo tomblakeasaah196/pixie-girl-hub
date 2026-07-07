@@ -166,9 +166,30 @@ const webhooksRouter = require("../modules/business_setup/webhooks.routes");
 
 function mountRoutes(app) {
   // ── Health & system ────────────────────────────────────
-  app.get("/health", (_req, res) =>
-    res.json({ ok: true, ts: new Date().toISOString() }),
-  );
+  app.get("/health", async (req, res) => {
+    // Default: cheap liveness probe for the load balancer.
+    if (!req.query.deep) {
+      return res.json({ ok: true, ts: new Date().toISOString() });
+    }
+    // ?deep=1: shallow db + redis booleans (no secrets, no internals leaked).
+    let db = false;
+    let redis = false;
+    try {
+      const { query } = require("../config/database");
+      await query("SELECT 1");
+      db = true;
+    } catch {
+      /* db down */
+    }
+    try {
+      const { getClient } = require("../config/redis");
+      redis = (await getClient().ping()) === "PONG";
+    } catch {
+      /* redis down */
+    }
+    const ok = db && redis;
+    res.status(ok ? 200 : 503).json({ ok, db, redis, ts: new Date().toISOString() });
+  });
   app.get("/version", (_req, res) =>
     res.json({
       version: require("../../package.json").version,

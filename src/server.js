@@ -33,6 +33,10 @@ const { mountRoutes } = require("./routes");
 const { startWorkers, stopWorkers } = require("./jobs/worker");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 const { captureError } = require("./modules/kaizen/errors/errors.capture");
+const {
+  perfMiddleware,
+  startAutoFlush: startPerfFlush,
+} = require("./modules/kaizen/perf/perf.middleware");
 const geoip = require("./services/geoip");
 
 async function bootstrap() {
@@ -73,6 +77,9 @@ async function bootstrap() {
   // ── Build Express app ──────────────────────────────────
   const app = express();
   applyGlobalMiddleware(app);
+  // Kaizen perf timing — after global middleware (request-id), before routers.
+  app.use(perfMiddleware);
+  startPerfFlush();
   mountRoutes(app);
 
   // ── ERP frontend (Vite + React build) ────────────────────

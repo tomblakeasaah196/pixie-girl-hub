@@ -2,29 +2,23 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   Server,
-  Cpu,
   Clock,
   GitCommitHorizontal,
   ArrowRight,
+  Bug,
+  Gauge,
+  Activity,
 } from "lucide-react";
-import { systemSummary } from "@/lib/api";
+import { systemSummary, healthCurrent, perfSummary, listErrors } from "@/lib/api";
+import type { HealthStatus } from "@/lib/types";
 import { useAuth } from "@/stores/auth";
 import { Card, StatusPill, Spinner } from "@/components/ui";
 import { NAV } from "@/components/nav";
 import { cx } from "@/lib/cx";
 
-function useBackendHealth() {
-  return useQuery({
-    queryKey: ["health"],
-    queryFn: async () => {
-      const res = await fetch("/health");
-      if (!res.ok) throw new Error("unhealthy");
-      return (await res.json()) as { ok: boolean; ts: string };
-    },
-    refetchInterval: 30_000,
-  });
+function statusTone(s: HealthStatus) {
+  return s === "ok" ? "green" : s === "degraded" ? "amber" : s === "down" ? "red" : "neutral";
 }
-
 function fmtUptime(s: number) {
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
@@ -51,9 +45,7 @@ function Tile({
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-xs font-semibold uppercase tracking-wider text-fog-400">
-          {label}
-        </div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-fog-400">{label}</div>
         <div className="truncate font-mono text-sm text-fog-100">{value}</div>
       </div>
       {tone && <div className="ml-auto">{tone}</div>}
@@ -63,10 +55,25 @@ function Tile({
 
 export function OverviewPage() {
   const operator = useAuth((s) => s.operator);
-  const health = useBackendHealth();
+
   const summary = useQuery({
-    queryKey: ["system", "summary"],
+    queryKey: ["kaizen", "system", "summary"],
     queryFn: systemSummary,
+    refetchInterval: 30_000,
+  });
+  const health = useQuery({
+    queryKey: ["kaizen", "health", "current"],
+    queryFn: healthCurrent,
+    refetchInterval: 30_000,
+  });
+  const perf = useQuery({
+    queryKey: ["kaizen", "perf", "summary", 24],
+    queryFn: () => perfSummary(24),
+    refetchInterval: 60_000,
+  });
+  const openErrors = useQuery({
+    queryKey: ["kaizen", "errors", "open-count"],
+    queryFn: () => listErrors({ status: "open", page: 1, page_size: 1 }),
     refetchInterval: 30_000,
   });
 
@@ -83,33 +90,76 @@ export function OverviewPage() {
         </p>
       </div>
 
-      {/* Status tiles */}
+      {/* Headline tiles */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Tile
           icon={<Server className="h-5 w-5" />}
-          label="Backend API"
-          value={
-            health.isLoading
-              ? "checking…"
-              : health.isSuccess
-                ? "responding"
-                : "unreachable"
-          }
+          label="System"
+          value={health.data ? `overall ${health.data.overall}` : "checking…"}
           tone={
             health.isLoading ? (
               <Spinner className="h-4 w-4 text-fog-400" />
-            ) : health.isSuccess ? (
-              <StatusPill tone="green">Online</StatusPill>
+            ) : health.data ? (
+              <StatusPill tone={statusTone(health.data.overall)}>
+                {health.data.overall}
+              </StatusPill>
             ) : (
-              <StatusPill tone="red">Down</StatusPill>
+              <StatusPill tone="red">down</StatusPill>
             )
           }
         />
         <Tile
-          icon={<Cpu className="h-5 w-5" />}
-          label="Node"
-          value={summary.data?.node ?? "—"}
+          icon={<Bug className="h-5 w-5" />}
+          label="Open errors"
+          value={openErrors.data ? String(openErrors.data.pagination.total) : "—"}
+          tone={
+            openErrors.data ? (
+              <StatusPill tone={openErrors.data.pagination.total > 0 ? "amber" : "green"}>
+                {openErrors.data.pagination.total > 0 ? "attention" : "clear"}
+              </StatusPill>
+            ) : null
+          }
         />
+        <Tile
+          icon={<Gauge className="h-5 w-5" />}
+          label="p95 (24h)"
+          value={perf.data?.p95_ms != null ? `${perf.data.p95_ms} ms` : "—"}
+        />
+        <Tile
+          icon={<Activity className="h-5 w-5" />}
+          label="Error rate (24h)"
+          value={perf.data ? `${perf.data.error_rate_pct}%` : "—"}
+        />
+      </div>
+
+      {/* Health component chips */}
+      <Card
+        title="System health"
+        action={
+          <Link to="/health" className="text-xs text-fog-400 hover:text-fog-200">
+            View details →
+          </Link>
+        }
+      >
+        {health.isLoading ? (
+          <div className="flex justify-center py-6">
+            <Spinner className="h-5 w-5 text-fog-400" />
+          </div>
+        ) : health.data ? (
+          <div className="flex flex-wrap gap-2">
+            {health.data.components.map((c) => (
+              <StatusPill key={c.component} tone={statusTone(c.status)}>
+                {c.component}: {c.status}
+              </StatusPill>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-signal-red">Health probes unreachable.</p>
+        )}
+      </Card>
+
+      {/* Meta tiles */}
+      <div className="grid gap-4 sm:grid-cols-3">
         <Tile
           icon={<Clock className="h-5 w-5" />}
           label="API uptime"
@@ -127,39 +177,39 @@ export function OverviewPage() {
             ) : null
           }
         />
+        <Tile
+          icon={<Server className="h-5 w-5" />}
+          label="Node"
+          value={summary.data?.node ?? "—"}
+        />
       </div>
 
-      {/* Roadmap of coming modules */}
-      <Card
-        title="Monitoring modules"
-        action={
-          <span className="text-xs text-fog-400">
-            Phase 0 skeleton — modules land per the rollout plan
-          </span>
-        }
-      >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {soon.map(({ to, label, icon: Icon, phase }) => (
-            <Link
-              key={to}
-              to={to}
-              className={cx(
-                "group flex items-center gap-3 rounded-xl border border-line/60 bg-ink-800/50 p-4",
-                "transition-colors hover:border-amber/40 hover:bg-ink-700/50",
-              )}
-            >
-              <div className="grid h-10 w-10 place-items-center rounded-lg bg-ink-700/70 text-fog-300 group-hover:text-amber">
-                <Icon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-fog-100">{label}</div>
-                <div className="text-xs text-fog-400">{phase}</div>
-              </div>
-              <ArrowRight className="h-4 w-4 text-fog-400 opacity-0 transition-opacity group-hover:opacity-100" />
-            </Link>
-          ))}
-        </div>
-      </Card>
+      {/* Remaining coming-soon modules */}
+      {soon.length > 0 && (
+        <Card title="Coming soon">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {soon.map(({ to, label, icon: Icon, phase }) => (
+              <Link
+                key={to}
+                to={to}
+                className={cx(
+                  "group flex items-center gap-3 rounded-xl border border-line/60 bg-ink-800/50 p-4",
+                  "transition-colors hover:border-amber/40 hover:bg-ink-700/50",
+                )}
+              >
+                <div className="grid h-10 w-10 place-items-center rounded-lg bg-ink-700/70 text-fog-300 group-hover:text-amber">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-fog-100">{label}</div>
+                  <div className="text-xs text-fog-400">{phase}</div>
+                </div>
+                <ArrowRight className="h-4 w-4 text-fog-400 opacity-0 transition-opacity group-hover:opacity-100" />
+              </Link>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

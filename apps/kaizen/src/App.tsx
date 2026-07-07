@@ -12,6 +12,8 @@ import { OverviewPage } from "@/pages/OverviewPage";
 import { OperatorsPage } from "@/pages/OperatorsPage";
 import { ErrorsPage } from "@/pages/ErrorsPage";
 import { ErrorDetailPage } from "@/pages/ErrorDetailPage";
+import { HealthPage } from "@/pages/HealthPage";
+import { PerformancePage } from "@/pages/PerformancePage";
 import { ComingSoonPage } from "@/pages/ComingSoonPage";
 
 function BootGate({ children }: { children: React.ReactNode }) {
@@ -59,8 +61,8 @@ export default function App() {
               <Route path="/operators" element={<OperatorsPage />} />
               <Route path="/errors" element={<ErrorsPage />} />
               <Route path="/errors/:id" element={<ErrorDetailPage />} />
-              <Route path="/health" element={<ComingSoonPage />} />
-              <Route path="/performance" element={<ComingSoonPage />} />
+              <Route path="/health" element={<HealthPage />} />
+              <Route path="/performance" element={<PerformancePage />} />
               <Route path="/backups" element={<ComingSoonPage />} />
               <Route path="/alerts" element={<ComingSoonPage />} />
               <Route path="/settings" element={<ComingSoonPage />} />

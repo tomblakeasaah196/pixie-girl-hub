@@ -11,6 +11,43 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-07 — Stamp `sales_orders.paid_at` on payment + backfill (V2.2 §6.2)
+
+**Source:** Sales/Logistics audit follow-up (2026-07-07). The `paid_at`
+column has always existed on `sales_orders` (template 000019 declares it,
+template 000033 indexes it, `sales-report.export.js` reads it as "Paid
+At"), but nothing ever wrote to it — the trigger stamped `fully_paid_at`
+only. Reports rendered "Paid At" as always null; downstream queries that
+filtered on `paid_at` silently returned zero rows (that's how the
+Sales-vs-Logistics discrepancy audit hit a wall earlier).
+
+**Files (new):** `000306_business_paid_at_stamp_and_backfill.sql`.
+**Files (edited):** `template/000034_business_triggers.sql.template`.
+
+**What:**
+- Trigger `fn_sales_order_recompute_paid` now stamps `paid_at` alongside
+  `fully_paid_at` (COALESCE-guarded, sticky). Template updated for future
+  brand bootstraps; the migration `CREATE OR REPLACE`s the function in
+  both already-provisioned brand schemas.
+- Existing rows: `paid_at := fully_paid_at` wherever `paid_at IS NULL AND
+  fully_paid_at IS NOT NULL`. Idempotent.
+
+## 2026-07-07 — Sales KPI defaults to MTD when no window is given (V2.2 §6.20)
+
+**Source:** Same audit. Sales dashboard tiles ("Orders MTD", "Revenue
+MTD") were showing all-time totals because the frontend called
+`/dashboards/kpis/sales` with no `from`/`to`, and the repo silently
+appended no date filter (the field name was `orders_mtd` regardless).
+
+**Files (edited):** `src/modules/dashboards/dashboards.repo.js` — code
+change only, no schema migration.
+
+**What:** `salesKpis` now defaults to the Africa/Lagos current calendar
+month when the caller doesn't supply a window. Boundaries computed in
+SQL (`date_trunc('month', now() AT TIME ZONE 'Africa/Lagos')`) so no
+clock drift between the API host and PG. Explicit `from`/`to` still
+override.
+
 ## 2026-07-07 — Backfill pickup orders' `order_type` (V2.2 §6.4 / §6.10)
 
 **Source:** Sales/Logistics count discrepancy audit (2026-07-07). Paid

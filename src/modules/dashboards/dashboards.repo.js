@@ -12,18 +12,17 @@ const { query } = require("../../config/database");
 const { t } = require("../../config/brands");
 
 // ── Sales KPIs ─────────────────────────────────────────────
+// Response fields are named *_mtd; when the caller doesn't provide a window
+// we default to the current calendar month (Africa/Lagos) so the "Orders MTD"
+// label the UI shows matches what's being counted. Prior behaviour silently
+// returned all-time totals under an MTD label. Boundaries are computed in
+// SQL to sidestep server-vs-DB clock drift.
 async function salesKpis({ brand, from, to }) {
   const params = [];
-  let range = "";
-  let i = 1;
-  if (from) {
-    range += ` AND COALESCE(placed_at, created_at) >= $${i++}`;
-    params.push(from);
-  }
-  if (to) {
-    range += ` AND COALESCE(placed_at, created_at) <= $${i++}`;
-    params.push(to);
-  }
+  const fromExpr = from
+    ? `$${params.push(from)}::timestamptz`
+    : "date_trunc('month', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos'";
+  const toExpr = to ? `$${params.push(to)}::timestamptz` : "now()";
   const { rows } = await query(
     `SELECT
         count(*) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed'))::int AS orders_mtd,
@@ -34,7 +33,7 @@ async function salesKpis({ brand, from, to }) {
           / NULLIF(count(*) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed')), 0)
         , 2), 0)::text AS avg_order_value
        FROM ${t(brand, "sales_orders")}
-      WHERE true ${range}`,
+      WHERE COALESCE(placed_at, created_at) BETWEEN ${fromExpr} AND ${toExpr}`,
     params,
   );
   // Open quotations (awaiting customer action).

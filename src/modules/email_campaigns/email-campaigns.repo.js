@@ -16,7 +16,9 @@ const { t } = require("../../config/brands");
  * shared.contacts (alias `a`). Pushes bound params onto `params` and returns
  * the clause strings. Honoured keys:
  *   contact_ids, contact_type[], priority_level[], source[], tag_names[],
- *   min_lifetime_spend, purchased_within_days, birthday_within_days.
+ *   min_lifetime_spend, purchased_within_days, birthday_within_days,
+ *   lapsed_days (bought before, nothing in N days — win-back audiences),
+ *   created_within_days (contact record created in the last N days).
  * Spend/recency read the brand's sales_orders. Unknown keys are ignored.
  */
 function audienceClauses({ filter = {}, brand, alias = "a", params }) {
@@ -70,6 +72,32 @@ function audienceClauses({ filter = {}, brand, alias = "a", params }) {
                 WHERE o.contact_id = ${alias}.contact_id
                   AND o.status NOT IN ('draft','cancelled')
                   AND o.created_at >= now() - ($${i} || ' days')::interval)`,
+    );
+  }
+  if (
+    filter.lapsed_days !== null &&
+    filter.lapsed_days !== undefined &&
+    Number(filter.lapsed_days) > 0
+  ) {
+    const i = add(String(Number(filter.lapsed_days)));
+    out.push(
+      `EXISTS (SELECT 1 FROM ${t(brand, "sales_orders")} o
+                WHERE o.contact_id = ${alias}.contact_id
+                  AND o.status NOT IN ('draft','cancelled'))
+       AND NOT EXISTS (SELECT 1 FROM ${t(brand, "sales_orders")} o
+                WHERE o.contact_id = ${alias}.contact_id
+                  AND o.status NOT IN ('draft','cancelled')
+                  AND o.created_at >= now() - ($${i} || ' days')::interval)`,
+    );
+  }
+  if (
+    filter.created_within_days !== null &&
+    filter.created_within_days !== undefined &&
+    Number(filter.created_within_days) > 0
+  ) {
+    const i = add(String(Number(filter.created_within_days)));
+    out.push(
+      `${alias}.created_at >= now() - ($${i} || ' days')::interval`,
     );
   }
   if (
@@ -533,6 +561,7 @@ async function emailableContacts({ brand, filter = {} }) {
 }
 
 module.exports = {
+  audienceClauses,
   nextNumber,
   listTemplates,
   getTemplate,

@@ -7,6 +7,7 @@
 
 const repo = require("./crm.repo");
 const events = require("./crm.events");
+const strategyEngine = require("../retention/strategy.engine");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -152,6 +153,7 @@ async function getDeal({ brand, scope, user, id }) {
     throw new NotFoundError("Deal");
   d.activities = await repo.listActivities({ brand, deal_id: id });
   d.notes = await repo.listNotes({ brand, deal_id: id });
+  d.products = await repo.listDealProducts({ brand, deal_id: id });
   return d;
 }
 async function createDeal({ brand, user, request_id, input }) {
@@ -173,6 +175,15 @@ async function createDeal({ brand, user, request_id, input }) {
       brand,
       input,
       user_id: user.user_id,
+    });
+    // Append-only stage trail starts with the deal itself (from = none).
+    await repo.addStageHistory({
+      client,
+      brand,
+      deal_id: d.deal_id,
+      from_stage_id: null,
+      to_stage_id: d.current_stage_id,
+      moved_by: user.user_id,
     });
     await A(
       brand,
@@ -220,6 +231,23 @@ async function moveStage({ brand, user, request_id, id, stage_id }) {
       );
     }
     const d = await repo.moveStage({ client, brand, id, stage_id });
+    const minutes = deal.stage_entered_at
+      ? Math.max(
+          0,
+          Math.round(
+            (Date.now() - new Date(deal.stage_entered_at).getTime()) / 60_000,
+          ),
+        )
+      : null;
+    await repo.addStageHistory({
+      client,
+      brand,
+      deal_id: id,
+      from_stage_id: deal.current_stage_id,
+      to_stage_id: stage_id,
+      moved_by: user.user_id,
+      time_in_previous_stage_minutes: minutes,
+    });
     await A(
       brand,
       user.user_id,
@@ -324,6 +352,176 @@ async function ensureDeal({ brand, id }) {
   if (!d) throw new NotFoundError("Deal");
   return d;
 }
+
+// Stage history (read side; writes happen in createDeal/moveStage)
+async function listStageHistory({ brand, id }) {
+  await ensureDeal({ brand, id });
+  return repo.listStageHistory({ brand, deal_id: id });
+}
+
+// ── Deal products (anticipated line items) ────────────────
+async function listDealProducts({ brand, id }) {
+  await ensureDeal({ brand, id });
+  return repo.listDealProducts({ brand, deal_id: id });
+}
+async function addDealProduct({ brand, user, request_id, id, input }) {
+  await ensureDeal({ brand, id });
+  const dp = await repo.addDealProduct({ brand, deal_id: id, input });
+  await A(
+    brand,
+    user.user_id,
+    "crm.deal_product.add",
+    "crm_deal",
+    id,
+    dp,
+    request_id,
+  );
+  return dp;
+}
+async function updateDealProduct({
+  brand,
+  user,
+  request_id,
+  id,
+  deal_product_id,
+  patch,
+}) {
+  await ensureDeal({ brand, id });
+  const dp = await repo.updateDealProduct({
+    brand,
+    deal_id: id,
+    deal_product_id,
+    patch,
+  });
+  if (!dp) throw new NotFoundError("Deal product");
+  await A(
+    brand,
+    user.user_id,
+    "crm.deal_product.update",
+    "crm_deal",
+    id,
+    dp,
+    request_id,
+  );
+  return dp;
+}
+async function deleteDealProduct({
+  brand,
+  user,
+  request_id,
+  id,
+  deal_product_id,
+}) {
+  await ensureDeal({ brand, id });
+  const ok = await repo.deleteDealProduct({
+    brand,
+    deal_id: id,
+    deal_product_id,
+  });
+  if (!ok) throw new NotFoundError("Deal product");
+  await A(
+    brand,
+    user.user_id,
+    "crm.deal_product.delete",
+    "crm_deal",
+    id,
+    { deal_product_id },
+    request_id,
+  );
+}
+
+// ── Contact-level activities (log a call/WhatsApp/email on the 360) ──
+async function ensureContact({ brand, contact_id }) {
+  if (!(await repo.contactExists({ brand, contact_id })))
+    throw new NotFoundError("Contact");
+}
+async function listContactActivities({ brand, contact_id }) {
+  await ensureContact({ brand, contact_id });
+  return repo.listContactActivities({ brand, contact_id });
+}
+async function addContactActivity({
+  brand,
+  user,
+  request_id,
+  contact_id,
+  input,
+}) {
+  await ensureContact({ brand, contact_id });
+  const a = await repo.addActivity({
+    brand,
+    input: { ...input, contact_id },
+    user_id: user.user_id,
+  });
+  events.emit("contact.activity", { brand, contact_id });
+  await A(
+    brand,
+    user.user_id,
+    "crm.activity.create",
+    "contact",
+    contact_id,
+    a,
+    request_id,
+  );
+  return a;
+}
+
+// ── One-click win-back ────────────────────────────────────
+// Enrols the contact into every ACTIVE retention strategy listening on the
+// `win_back` trigger (Module 6.23). enrolled=0 means none is live — the UI
+// should point the user at Retention → Strategies to activate one.
+async function triggerWinBack({ brand, user, request_id, contact_id }) {
+  await ensureContact({ brand, contact_id });
+  const { enrolled } = await strategyEngine.trigger({
+    brand,
+    trigger_type: "win_back",
+    contact_id,
+    source_table: "crm_win_back",
+    source_id: contact_id,
+    event: { manual: true, triggered_by: user.user_id },
+  });
+  if (enrolled > 0) {
+    await repo.stampChurnWorkflowTriggered({ brand, contact_id });
+    await repo.addActivity({
+      brand,
+      input: {
+        contact_id,
+        activity_type: "system_note",
+        direction: "internal",
+        subject: "Win-back journey triggered",
+        body: `Enrolled in ${enrolled} win-back ${enrolled === 1 ? "strategy" : "strategies"}.`,
+      },
+      user_id: user.user_id,
+    });
+  }
+  await A(
+    brand,
+    user.user_id,
+    "crm.winback.trigger",
+    "contact",
+    contact_id,
+    { enrolled },
+    request_id,
+  );
+  events.emit("churn.win_back_triggered", { brand, contact_id, enrolled });
+  return { enrolled };
+}
+
+// ── Clients, Today buckets, reports (read-only aggregates) ──
+function listClients({ brand, filters, sort, page, page_size }) {
+  const offset = (page - 1) * page_size;
+  return repo.listClients({ brand, filters, sort, page, page_size, offset });
+}
+const todayBuckets = ({ brand }) => repo.todayBuckets({ brand });
+function reportLtv({ brand, page, page_size }) {
+  const offset = (page - 1) * page_size;
+  return repo.reportLtv({ brand, page, page_size, offset });
+}
+const reportCohorts = ({ brand, months }) =>
+  repo.reportCohorts({ brand, months });
+const reportWinLoss = ({ brand, months }) =>
+  repo.reportWinLoss({ brand, months });
+const reportVelocity = ({ brand }) => repo.reportVelocity({ brand });
+const reportForecast = ({ brand }) => repo.reportForecast({ brand });
 
 // ── Customer profile: preferences / measurements / churn ──
 async function getPreferences({ brand, contact_id }) {
@@ -487,6 +685,21 @@ async function kpis({ brand }) {
 
 module.exports = {
   kpis,
+  listStageHistory,
+  listDealProducts,
+  addDealProduct,
+  updateDealProduct,
+  deleteDealProduct,
+  listContactActivities,
+  addContactActivity,
+  triggerWinBack,
+  listClients,
+  todayBuckets,
+  reportLtv,
+  reportCohorts,
+  reportWinLoss,
+  reportVelocity,
+  reportForecast,
   listPipelines,
   createPipeline,
   updatePipeline,

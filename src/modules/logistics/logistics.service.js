@@ -136,6 +136,10 @@ async function createDelivery({ brand, user, request_id, input }) {
     const token =
       input.public_tracking_token ||
       crypto.randomBytes(16).toString("base64url");
+    // Deliberately distinct from public_tracking_token (customer-facing,
+    // read-only) — this one is handed only to the driver and authorises the
+    // one write action (self-service delivery confirmation) a driver can do.
+    const driverToken = crypto.randomBytes(16).toString("base64url");
     const delivery = await repo.createDelivery({
       client,
       brand,
@@ -143,6 +147,7 @@ async function createDelivery({ brand, user, request_id, input }) {
         ...input,
         delivery_number,
         public_tracking_token: token,
+        driver_confirmation_token: driverToken,
         created_by: user?.user_id,
       },
     });
@@ -261,6 +266,10 @@ async function bookDelivery({ brand, user, request_id, id, input }) {
           input?.courier_tracking_url ?? delivery.courier_tracking_url,
         expected_delivery_at:
           input?.expected_delivery_at ?? delivery.expected_delivery_at,
+        driver_name: input?.driver_name ?? delivery.driver_name,
+        driver_phone: input?.driver_phone ?? delivery.driver_phone,
+        scheduled_pickup_at:
+          input?.scheduled_pickup_at ?? delivery.scheduled_pickup_at,
       },
     });
     await repo.addStateHistory({

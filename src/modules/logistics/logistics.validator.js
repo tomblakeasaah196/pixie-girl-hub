@@ -30,6 +30,12 @@ const courierCreate = z
     pod_fee_pct: z.coerce.number().min(0).max(100).optional(),
     default_packaging: z.string().max(60).optional(),
     display_order: z.coerce.number().int().optional(),
+    contact_person: z.string().max(160).optional(),
+    contact_phone: z.string().max(40).optional(),
+    payment_terms_notes: z.string().max(500).optional(),
+    preferred_pickup_location: z.string().max(300).optional(),
+    internal_rating: z.coerce.number().int().min(1).max(5).optional(),
+    internal_notes: z.string().max(1000).optional(),
   })
   .strict();
 const courierUpdate = courierCreate
@@ -83,6 +89,9 @@ const deliveryCreate = z
     weight_g: z.coerce.number().int().nonnegative().optional(),
     package_count: z.coerce.number().int().positive().optional(),
     declared_value_ngn: money.nonnegative().optional(),
+    driver_name: z.string().max(120).optional(),
+    driver_phone: z.string().max(40).optional(),
+    scheduled_pickup_at: z.string().datetime().optional(),
     items: z.array(deliveryItem).optional(),
   })
   .strict();
@@ -91,6 +100,9 @@ const deliveryBook = z
     courier_tracking_ref: z.string().max(120).optional(),
     courier_tracking_url: z.string().max(300).optional(),
     expected_delivery_at: z.string().datetime().optional(),
+    driver_name: z.string().max(120).optional(),
+    driver_phone: z.string().max(40).optional(),
+    scheduled_pickup_at: z.string().datetime().optional(),
   })
   .strict();
 const deliveryAdvance = z

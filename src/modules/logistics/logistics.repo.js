@@ -49,6 +49,12 @@ const COURIER_COLS = [
   "default_packaging",
   "is_active",
   "display_order",
+  "contact_person",
+  "contact_phone",
+  "payment_terms_notes",
+  "preferred_pickup_location",
+  "internal_rating",
+  "internal_notes",
 ];
 const COURIER_JSONB = new Set(["rate_card"]);
 async function createCourier({ client, brand, row }) {
@@ -56,9 +62,11 @@ async function createCourier({ client, brand, row }) {
     `INSERT INTO ${t(brand, "couriers")}
        (courier_key, display_name, description, integration_type, api_endpoint, webhook_secret,
         serves_local, serves_nationwide, serves_international, service_countries, rate_card,
-        supports_pod, pod_fee_pct, default_packaging, display_order)
+        supports_pod, pod_fee_pct, default_packaging, display_order,
+        contact_person, contact_phone, payment_terms_notes, preferred_pickup_location, internal_rating, internal_notes)
      VALUES ($1,$2,$3,COALESCE($4,'manual'),$5,$6,COALESCE($7,true),COALESCE($8,false),COALESCE($9,false),
-             COALESCE($10,'{NG}'),COALESCE($11,'{}')::jsonb,COALESCE($12,false),$13,$14,COALESCE($15,0)) RETURNING *`,
+             COALESCE($10,'{NG}'),COALESCE($11,'{}')::jsonb,COALESCE($12,false),$13,$14,COALESCE($15,0),
+             $16,$17,$18,$19,$20,$21) RETURNING *`,
     [
       row.courier_key,
       row.display_name,
@@ -75,6 +83,12 @@ async function createCourier({ client, brand, row }) {
       row.pod_fee_pct ?? null,
       row.default_packaging || null,
       row.display_order ?? null,
+      row.contact_person || null,
+      row.contact_phone || null,
+      row.payment_terms_notes || null,
+      row.preferred_pickup_location || null,
+      row.internal_rating ?? null,
+      row.internal_notes || null,
     ],
   );
   return rows[0];
@@ -150,8 +164,10 @@ async function createDelivery({ client, brand, row }) {
        (delivery_number, order_id, delivery_type, reference_type, reference_id, courier_id, courier_tracking_ref, courier_tracking_url,
         from_location_id, recipient_contact_id, recipient_name_snapshot, recipient_phone_snapshot, recipient_whatsapp_snapshot,
         delivery_address_snapshot, delivery_instructions, courier_fee_ngn, is_pay_on_delivery, pod_amount_expected_ngn,
-        weight_g, package_count, declared_value_ngn, public_tracking_token, created_by)
-     VALUES ($1,$2,COALESCE($3,'sales_order'),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,COALESCE($16,0),COALESCE($17,false),$18,$19,COALESCE($20,1),$21,$22,$23)
+        weight_g, package_count, declared_value_ngn, public_tracking_token, created_by,
+        driver_name, driver_phone, scheduled_pickup_at, driver_confirmation_token)
+     VALUES ($1,$2,COALESCE($3,'sales_order'),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,COALESCE($16,0),COALESCE($17,false),$18,$19,COALESCE($20,1),$21,$22,$23,
+             $24,$25,$26,$27)
      RETURNING *`,
     [
       row.delivery_number,
@@ -177,6 +193,10 @@ async function createDelivery({ client, brand, row }) {
       row.declared_value_ngn ?? null,
       row.public_tracking_token || null,
       row.created_by || null,
+      row.driver_name || null,
+      row.driver_phone || null,
+      row.scheduled_pickup_at || null,
+      row.driver_confirmation_token || null,
     ],
   );
   return rows[0];

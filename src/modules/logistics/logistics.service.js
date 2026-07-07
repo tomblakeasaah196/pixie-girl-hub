@@ -256,6 +256,14 @@ async function bookDelivery({ brand, user, request_id, id, input }) {
     if (!delivery) throw new NotFoundError("Delivery not found");
     if (delivery.status !== "queued")
       throw new ConflictError(`Cannot book a '${delivery.status}' delivery`);
+    if (input?.courier_id && input.courier_id !== delivery.courier_id) {
+      const courier = await repo.getCourier({
+        client,
+        brand,
+        id: input.courier_id,
+      });
+      if (!courier) throw new NotFoundError("Courier not found");
+    }
     const updated = await repo.setDeliveryStatus({
       client,
       brand,
@@ -263,6 +271,8 @@ async function bookDelivery({ brand, user, request_id, id, input }) {
       status: "booked",
       extra: {
         booked_at: new Date().toISOString(),
+        courier_id: input?.courier_id ?? delivery.courier_id,
+        courier_fee_ngn: input?.courier_fee_ngn ?? delivery.courier_fee_ngn,
         courier_tracking_ref:
           input?.courier_tracking_ref ?? delivery.courier_tracking_ref,
         courier_tracking_url:

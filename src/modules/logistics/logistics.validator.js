@@ -97,6 +97,8 @@ const deliveryCreate = z
   .strict();
 const deliveryBook = z
   .object({
+    courier_id: z.string().uuid().optional(),
+    courier_fee_ngn: money.nonnegative().optional(),
     courier_tracking_ref: z.string().max(120).optional(),
     courier_tracking_url: z.string().max(300).optional(),
     expected_delivery_at: z.string().datetime().optional(),

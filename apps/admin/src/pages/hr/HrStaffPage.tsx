@@ -61,6 +61,7 @@ import {
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
 import { OnboardingSettings } from "./OnboardingSettings";
 import { RewardsTab } from "./RewardsTab";
+import { DevicesTab, LiveAttendanceStrip, UnknownDeviceFlag } from "./devices";
 import {
   StatCard,
   SectionTitle,
@@ -610,6 +611,9 @@ function AttendanceTab() {
 
   return (
     <div className="space-y-3">
+      {/* Real-time today feed — updates the instant anyone punches. */}
+      <LiveAttendanceStrip />
+
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-[11px] text-text-muted">
@@ -664,6 +668,7 @@ function AttendanceTab() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {d.clock_in_device_recognized === false && <UnknownDeviceFlag />}
                 {d.is_offsite && (
                   <span className="text-xs text-warn">
                     off-site{d.offsite_distance_m ? ` ${Math.round(Number(d.offsite_distance_m))}m` : ""}
@@ -1023,6 +1028,7 @@ export default function HrStaffPage() {
           { key: "directory", label: "Directory" },
           { key: "leave", label: "Leave", badge: c?.pending_leave || undefined },
           { key: "attendance", label: "Attendance" },
+          { key: "devices", label: "Devices" },
           { key: "queries", label: "Queries", badge: c?.open_queries || undefined },
           { key: "targets", label: "Targets" },
           { key: "rewards", label: "Rewards" },
@@ -1071,6 +1077,7 @@ export default function HrStaffPage() {
           <AttendanceTab />
         </div>
       )}
+      {tab === "devices" && <DevicesTab />}
       {tab === "queries" && (
         <div className="space-y-3">
           <div className="flex justify-end">

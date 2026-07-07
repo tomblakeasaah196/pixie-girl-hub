@@ -49,6 +49,14 @@ export function getSocket(): Socket {
   socket.on("insights:changed", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:insights:changed", { detail }));
   });
+  // Live attendance punch (brand:{brand}:attendance — device binding 000304).
+  socket.on("attendance:punch", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:attendance:punch", { detail }));
+  });
+  // Device enrol/remove/flag (brand:{brand}:hr_devices).
+  socket.on("device:changed", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:device:changed", { detail }));
+  });
 
   return socket;
 }
@@ -63,6 +71,8 @@ export const rooms = {
   brandSmartcomm: (brand: string) => `brand:${brand}:smartcomm`,
   userAiPending: (userId: string) => `user:${userId}:ai_pending`,
   insights: (brand: string) => `brand:${brand}:insights`,
+  attendance: (brand: string) => `brand:${brand}:attendance`,
+  hrDevices: (brand: string) => `brand:${brand}:hr_devices`,
 };
 
 /** Join a Socket.io room (idempotent on the server). */

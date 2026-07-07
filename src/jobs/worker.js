@@ -225,8 +225,11 @@ async function startWorkers() {
     runPendingActionExpirySweep,
   );
   scheduleCron("layaway-reminders", "*/30 * * * *", runLayawayReminders);
-  // Nightly HR attendance: reconcile + query reminders + lapsed off-site (23:30 Lagos).
-  scheduleCron("hr-attendance-sweep", "30 23 * * *", runHrAttendanceSweep);
+  // Nightly HR attendance: reconcile + query reminders + lapsed off-site.
+  // 21:00 Africa/Lagos — attendance is now live all day (Socket.io pushes
+  // every punch to the Attendance tab), so this only settles the books at
+  // day's end rather than being the thing anyone waits on.
+  scheduleCron("hr-attendance-sweep", "0 21 * * *", runHrAttendanceSweep);
   scheduleCron("hr-appraisal-autoscore", "30 2 * * *", runAppraisalAutoScore);
   scheduleCron("esign-reminder-sweep", "0 9 * * *", runEsignReminderSweep);
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
@@ -321,6 +324,7 @@ async function startWorkers() {
   require("../realtime/campaign-realtime").registerCampaignRealtime();
   require("../realtime/praxis-realtime").registerPraxisRealtime();
   require("../realtime/insights-realtime").registerInsightsRealtime();
+  require("../realtime/attendance-realtime").registerAttendanceRealtime();
   require("../modules/smartcomm/smartcomm.realtime"); // self-registers, guarded
 
   outboxTimer = setInterval(() => {

@@ -443,9 +443,10 @@ async function upsertAttendanceDay({ client, brand, input }) {
         is_offsite, offsite_distance_m, clock_in_address, clock_in_lat, clock_in_lng,
         last_clock_out_at, early_leave_minutes,
         clock_out_address, clock_out_lat, clock_out_lng, clock_out_is_offsite,
-        clock_out_distance_m, clock_in_ip, clock_out_ip)
+        clock_out_distance_m, clock_in_ip, clock_out_ip,
+        clock_in_device_recognized)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-             $22,$23,$24,$25,$26,$27,$28)
+             $22,$23,$24,$25,$26,$27,$28,$29)
      ON CONFLICT (profile_id, work_date) DO UPDATE SET
         status = EXCLUDED.status,
         expected_start_time = EXCLUDED.expected_start_time,
@@ -472,7 +473,8 @@ async function upsertAttendanceDay({ client, brand, input }) {
         clock_out_is_offsite = EXCLUDED.clock_out_is_offsite,
         clock_out_distance_m = EXCLUDED.clock_out_distance_m,
         clock_in_ip = EXCLUDED.clock_in_ip,
-        clock_out_ip = EXCLUDED.clock_out_ip
+        clock_out_ip = EXCLUDED.clock_out_ip,
+        clock_in_device_recognized = EXCLUDED.clock_in_device_recognized
      RETURNING *`,
     [
       brand,
@@ -503,6 +505,7 @@ async function upsertAttendanceDay({ client, brand, input }) {
       input.clock_out_distance_m ?? null,
       input.clock_in_ip || null,
       input.clock_out_ip || null,
+      input.clock_in_device_recognized ?? null,
     ],
   );
   return rows[0];
@@ -788,7 +791,7 @@ async function firstClockInsForDate({ client, profileIds, dateStr }) {
   const { rows } = await exec(client)(
     `SELECT DISTINCT ON (profile_id) profile_id, event_id, occurred_at,
             is_offsite, distance_m, formatted_address, latitude, longitude,
-            ip_address
+            ip_address, device_recognized
        FROM shared.staff_clock_events
       WHERE profile_id = ANY($1::uuid[])
         AND event_type = 'clock_in' AND accepted = true
@@ -799,6 +802,30 @@ async function firstClockInsForDate({ client, profileIds, dateStr }) {
   const map = {};
   for (const r of rows) map[r.profile_id] = r;
   return map;
+}
+
+/**
+ * Today's accepted punches for the whole brand, newest first — the live
+ * attendance feed seed (000304). Same shape the socket `attendance:punch`
+ * event carries so the tab can merge them without a second mapping.
+ */
+async function liveTodayPunches({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT e.event_id, e.profile_id, c.display_name,
+            e.event_type, e.occurred_at, e.is_offsite, e.distance_m,
+            e.formatted_address AS address, e.device_recognized
+       FROM shared.staff_clock_events e
+       JOIN shared.staff_profiles sp ON sp.profile_id = e.profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE ${VISIBLE}
+        AND e.accepted = true
+        AND (e.occurred_at AT TIME ZONE 'Africa/Lagos')::date
+            = (now() AT TIME ZONE 'Africa/Lagos')::date
+      ORDER BY e.occurred_at DESC
+      LIMIT 200`,
+    [brand],
+  );
+  return rows;
 }
 
 /** Today's clock events for one profile, newest first (My HR clock widget). */
@@ -1073,6 +1100,7 @@ module.exports = {
   lastClockOutsForDate,
   approvedLeaveForDate,
   todayClockEvents,
+  liveTodayPunches,
   markDayAbsent,
   lapsedOffsiteQueries,
   dueReminderQueries,

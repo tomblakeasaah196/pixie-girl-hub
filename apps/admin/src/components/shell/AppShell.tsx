@@ -8,6 +8,7 @@ import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { BreadcrumbStrip } from "./BreadcrumbStrip";
 import { PageTransition } from "./PageTransition";
+import { RouteErrorBoundary } from "@/components/common/ErrorBoundary";
 import { PullToRefresh } from "./PullToRefresh";
 import { AppMenuFab } from "./AppMenuFab";
 import { FloatingLauncher } from "./FloatingLauncher";
@@ -70,7 +71,11 @@ export function AppShell() {
             no-op below the desktop tier. */}
         <div className="mx-auto w-full max-w-[var(--content-max)] p-[26px_34px_120px] max-md:p-[20px_16px_96px]">
           <PageTransition>
-            <Outlet />
+            {/* One screen crashing must not take down the shell — the sidebar
+                and top bar stay usable and the boundary resets on nav. */}
+            <RouteErrorBoundary>
+              <Outlet />
+            </RouteErrorBoundary>
           </PageTransition>
         </div>
       </PullToRefresh>

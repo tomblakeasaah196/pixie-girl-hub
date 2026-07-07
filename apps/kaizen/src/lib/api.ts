@@ -4,6 +4,9 @@ import type {
   OperatorRow,
   SystemSummary,
   InviteResult,
+  ErrorListResponse,
+  ErrorDetailResponse,
+  ErrorFilters,
 } from "@/lib/types";
 
 const BASE = "/api/v1/kaizen";
@@ -48,7 +51,8 @@ async function parseError(res: Response): Promise<ApiError> {
 async function rawFetch(path: string, init: RequestInit): Promise<Response> {
   const token = useAuth.getState().accessToken;
   const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
+  if (!headers.has("Content-Type") && init.body)
+    headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return fetch(`${BASE}${path}`, {
     ...init,
@@ -166,4 +170,75 @@ export async function disableOperator(id: string) {
 export async function systemSummary() {
   const r = await api<{ data: SystemSummary }>("/system/summary");
   return r.data;
+}
+
+// ── Errors (Phase 1) ─────────────────────────────────────
+function errorQuery(f: ErrorFilters): string {
+  const p = new URLSearchParams();
+  if (f.status) p.set("status", f.status);
+  if (f.severity) p.set("severity", f.severity);
+  if (f.source) p.set("source", f.source);
+  if (f.q) p.set("q", f.q);
+  if (f.page) p.set("page", String(f.page));
+  if (f.page_size) p.set("page_size", String(f.page_size));
+  const s = p.toString();
+  return s ? `?${s}` : "";
+}
+
+export async function listErrors(f: ErrorFilters) {
+  return api<ErrorListResponse>(`/errors${errorQuery(f)}`);
+}
+
+export async function getErrorDetail(
+  groupId: string,
+  occPage = 1,
+  occPageSize = 30,
+) {
+  return api<ErrorDetailResponse>(
+    `/errors/${groupId}?occ_page=${occPage}&occ_page_size=${occPageSize}`,
+  );
+}
+
+export async function resolveErrors(groupIds: string[], note?: string) {
+  return api<{ data: { group_id: string; status: string }[] }>(
+    "/errors/resolve",
+    { method: "POST", body: JSON.stringify({ group_ids: groupIds, note }) },
+  );
+}
+
+export async function ignoreErrors(groupIds: string[]) {
+  return api<{ data: { group_id: string; status: string }[] }>(
+    "/errors/ignore",
+    { method: "POST", body: JSON.stringify({ group_ids: groupIds }) },
+  );
+}
+
+export async function reopenErrors(groupIds: string[]) {
+  return api<{ data: { group_id: string; status: string }[] }>(
+    "/errors/reopen",
+    { method: "POST", body: JSON.stringify({ group_ids: groupIds }) },
+  );
+}
+
+/** Fetch the Markdown export (auth-required) and trigger a browser download. */
+export async function downloadErrorExport(f: ErrorFilters) {
+  const res = await rawFetch(`/errors/export${errorQuery(f)}`, {});
+  if (res.status === 401) {
+    const ok = await tryRefresh();
+    if (!ok) {
+      useAuth.getState().clear();
+      throw await parseError(res);
+    }
+    return downloadErrorExport(f);
+  }
+  if (!res.ok) throw await parseError(res);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `kaizen-errors-${new Date().toISOString().slice(0, 10)}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }

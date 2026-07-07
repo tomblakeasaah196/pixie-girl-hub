@@ -367,6 +367,11 @@ const schema = z.object({
   KAIZEN_INVITE_TTL_HOURS: z.coerce.number().int().positive().default(72),
   KAIZEN_BASE_URL: z.string().url().default("http://localhost:5174"),
   KAIZEN_COOKIE_DOMAIN: z.string().optional(),
+  // Phase 1 — frontend error ingest. When KAIZEN_INGEST_KEY is unset the ingest
+  // endpoint returns 503 (disabled); client apps then simply don't report.
+  KAIZEN_INGEST_KEY: z.string().optional(),
+  KAIZEN_INGEST_ALLOWED_ORIGINS: z.string().optional(), // comma-separated
+  KAIZEN_CAPTURE_4XX: zBool(false), // capture 4xx as errors too (noisy — off by default)
 });
 
 let _config = null;

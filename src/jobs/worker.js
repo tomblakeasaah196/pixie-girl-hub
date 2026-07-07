@@ -37,6 +37,9 @@ const { logger } = require("../config/logger");
 const { getClient: getRedisClient } = require("../config/redis");
 const { refreshBrands } = require("../config/brands");
 const { withCronLock } = require("./cron-lock");
+const {
+  captureError,
+} = require("../modules/kaizen/errors/errors.capture");
 
 const queueNames = [
   "media-processing",
@@ -89,9 +92,16 @@ async function startWorkers() {
 
   for (const [name, processor] of Object.entries(handlers)) {
     const worker = new Worker(name, processor, { connection, concurrency: 4 });
-    worker.on("failed", (job, err) =>
-      logger.error({ queue: name, jobId: job?.id, err }, "job failed"),
-    );
+    worker.on("failed", (job, err) => {
+      logger.error({ queue: name, jobId: job?.id, err }, "job failed");
+      // Report to Kaizen (grouped) — fire-and-forget, never throws.
+      captureError(err, null, {
+        source: "worker",
+        code: `JOB_${job?.name || name}`,
+        severity: "error",
+        context: { queue: name, jobId: job?.id, job_name: job?.name },
+      });
+    });
     worker.on("completed", (job) =>
       logger.debug({ queue: name, jobId: job?.id }, "job completed"),
     );

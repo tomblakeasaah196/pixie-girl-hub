@@ -32,6 +32,7 @@ const { applyGlobalMiddleware } = require("./middleware");
 const { mountRoutes } = require("./routes");
 const { startWorkers, stopWorkers } = require("./jobs/worker");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
+const { captureError } = require("./modules/kaizen/errors/errors.capture");
 const geoip = require("./services/geoip");
 
 async function bootstrap() {
@@ -218,10 +219,20 @@ async function bootstrap() {
   // Exit non-zero so process managers (pm2/systemd/k8s) restart and surface it.
   process.on("uncaughtException", (err) => {
     logger.fatal({ err }, "uncaught exception");
+    captureError(err, null, {
+      source: "backend",
+      code: "UNCAUGHT_EXCEPTION",
+      severity: "critical",
+    });
     shutdown("uncaughtException", 1);
   });
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ reason }, "unhandled rejection");
+    captureError(reason, null, {
+      source: "backend",
+      code: "UNHANDLED_REJECTION",
+      severity: "critical",
+    });
     shutdown("unhandledRejection", 1);
   });
 }

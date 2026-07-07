@@ -18,6 +18,7 @@ const express = require("express");
 const { kaizenAuthMiddleware } = require("./auth/kaizen-auth.middleware");
 const authController = require("./auth/kaizen-auth.controller");
 const operatorsController = require("./operators/operators.controller");
+const errorsController = require("./errors/errors.controller");
 
 const START_TIME = Date.now();
 
@@ -29,10 +30,16 @@ function mountKaizen(app) {
   //  internally.)
   r.use("/auth", authController.router);
 
+  // Public frontend error ingest (guarded by a static key + origin allowlist +
+  // rate limit inside the router, NOT by the operator JWT — client apps call it
+  // from other origins). Mounted BEFORE the operator gate below.
+  r.use("/ingest", errorsController.ingestRouter);
+
   // Everything below requires an active operator.
   r.use(kaizenAuthMiddleware);
 
   r.use("/operators", operatorsController.router);
+  r.use("/errors", errorsController.router);
 
   // Lightweight system summary for the Overview screen.
   r.get("/system/summary", async (req, res) => {

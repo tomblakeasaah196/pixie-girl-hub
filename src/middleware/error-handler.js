@@ -14,6 +14,8 @@ const { ZodError } = require("zod");
 const { logger } = require("../config/logger");
 const { AppError } = require("../utils/errors");
 const { getSupportContact, supportSentence } = require("../config/support");
+// Kaizen error capture — fire-and-forget, never awaited, never throws.
+const { captureError } = require("../modules/kaizen/errors/errors.capture");
 
 function notFoundHandler(req, res) {
   res.status(404).json({
@@ -166,6 +168,9 @@ function errorHandler(err, req, res, _next) {
   // Fallthrough — unexpected. Still never a dead-end: apologise, invite a
   // retry, and hand the caller a reference (request id) they can quote.
   logger.error({ err, request_id }, "unhandled error");
+  // Report the 500 to Kaizen (grouped + PII-redacted). Fire-and-forget: this
+  // never blocks or breaks the response below.
+  captureError(err, req, { source: "backend", httpStatus: 500 });
   // The "your card was not charged" reassurance + buyer support contact only
   // make sense on the public buyer flow (the checkout POST). Showing them for
   // an admin 500 — e.g. saving a campaign in the Landing Studio — is confusing

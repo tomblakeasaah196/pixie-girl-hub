@@ -8,6 +8,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * Public Order Capture consumer (`/order/capture/:token`).
@@ -359,7 +360,7 @@ export function OrderCapturePublic() {
           <ShieldCheck className="w-3.5 h-3.5 mt-[1px] shrink-0" />
           <span>
             Secured by a one-time link bound to this conversation. Expires{" "}
-            {new Date(ctx.expires_at).toLocaleString()}.
+            {formatDateTime(ctx.expires_at)}.
           </span>
         </div>
       </form>

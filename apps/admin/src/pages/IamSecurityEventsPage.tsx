@@ -4,6 +4,7 @@ import { Activity } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Select, ErrorState } from "@/components/ui/controls";
+import { formatDateTime } from "@/lib/format";
 import { useSecurityEvents, type SecurityEvent } from "@/lib/iam";
 
 /* ── Helpers ──────────────────────────────────────────────── */
@@ -45,7 +46,7 @@ const columns: Column<SecurityEvent>[] = [
     width: "160px",
     render: (r) => (
       <span className="text-[12px] text-text-muted tabular-nums">
-        {new Date(r.occurred_at).toLocaleString()}
+        {formatDateTime(r.occurred_at)}
       </span>
     ),
   },

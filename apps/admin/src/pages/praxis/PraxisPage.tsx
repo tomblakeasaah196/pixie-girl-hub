@@ -51,6 +51,7 @@ import {
 import { usePraxisDockStore } from "@/stores/praxis-dock";
 import { useAuthStore } from "@/stores/auth";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
+import { formatDate } from "@/lib/format";
 
 type RailTab = "pending" | "trace" | "abilities";
 
@@ -67,7 +68,7 @@ function formatWhen(iso?: string | null): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(t).toLocaleDateString();
+  return formatDate(t);
 }
 
 /* ── History rail ─────────────────────────────────────────────────────── */

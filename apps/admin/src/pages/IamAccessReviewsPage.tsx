@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "@/lib/format";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import {
   ClipboardCheck,
@@ -222,9 +223,9 @@ function ReviewRow({
           </Pill>
         </div>
         <div className="flex items-center gap-4 mt-2 text-[12px] text-text-muted">
-          <span>Initiated {new Date(r.initiated_at).toLocaleDateString()}</span>
+          <span>Initiated {formatDate(r.initiated_at)}</span>
           {r.due_date && (
-            <span>Due {new Date(r.due_date).toLocaleDateString()}</span>
+            <span>Due {formatDate(r.due_date)}</span>
           )}
           {totalEntries > 0 && (
             <span className="flex items-center gap-2">

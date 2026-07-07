@@ -38,6 +38,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import { useUploadProgress } from "@/lib/use-upload";
+import { formatDateTime, formatDate } from "@/lib/format";
 import {
   useDocuments,
   useUploadDocument,
@@ -210,7 +211,7 @@ function VaultTab() {
                   <TagChips tags={d.tags} />
                 </button>
                 <span className="text-[11px] text-text-faint hidden sm:block">
-                  {new Date(d.created_at).toLocaleDateString()}
+                  {formatDate(d.created_at)}
                 </span>
                 <button
                   onClick={() => downloadDocument(d).catch(() => alert("Download failed"))}
@@ -441,7 +442,7 @@ function DocumentPreview({ doc, onClose }: { doc: DocumentRow; onClose: () => vo
           <Meta label="MIME" value={doc.mime_type} mono />
           <Meta label="Size" value={fileSize(doc.file_size_bytes)} />
           {doc.reference_type && <Meta label="Linked to" value={`${doc.reference_type}`} />}
-          <Meta label="Uploaded" value={new Date(doc.created_at).toLocaleString()} />
+          <Meta label="Uploaded" value={formatDateTime(doc.created_at)} />
         </dl>
         {doc.tags && doc.tags.length > 0 && (
           <div>
@@ -558,7 +559,7 @@ function SignaturesTab() {
                 </div>
                 <div className="text-[11.5px] text-text-faint">
                   {REQUEST_TYPE_LABEL[r.request_type] ?? r.request_type}
-                  {r.expires_at && ` · expires ${new Date(r.expires_at).toLocaleDateString()}`}
+                  {r.expires_at && ` · expires ${formatDate(r.expires_at)}`}
                 </div>
               </div>
               <PenLine className="w-4 h-4 text-text-faint shrink-0" />
@@ -770,7 +771,7 @@ function SignatureDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   <div key={i} className="flex items-center gap-2 text-[11.5px] text-text-muted">
                     <Clock className="w-3 h-3 text-text-faint" />
                     <span className="font-medium">{e.event_type}</span>
-                    <span className="text-text-faint">{new Date(e.occurred_at).toLocaleString()}</span>
+                    <span className="text-text-faint">{formatDateTime(e.occurred_at)}</span>
                   </div>
                 ))}
               </div>

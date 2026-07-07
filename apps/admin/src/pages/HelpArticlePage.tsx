@@ -1,4 +1,5 @@
 import { Link, useParams } from "react-router-dom";
+import { formatDate } from "@/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, Sparkles, ExternalLink } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -114,7 +115,7 @@ export function HelpArticlePage() {
             );
           })()}
         <span className="ml-auto">
-          Updated {new Date(a.updated_at).toLocaleDateString()}
+          Updated {formatDate(a.updated_at)}
         </span>
       </div>
 

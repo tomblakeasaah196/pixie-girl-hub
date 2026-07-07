@@ -61,6 +61,7 @@ import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
 import type { OrderPayment } from "./types";
 import { useJobReferences } from "@/pages/service-jobs/hooks";
@@ -103,12 +104,8 @@ const JOB_TERMINAL = new Set([
 ]);
 const DELIVERY_TERMINAL = new Set(["delivered"]);
 
-function fmtDate(iso?: string | null) {
-  return iso ? new Date(iso).toLocaleDateString() : null;
-}
-function fmtDateTime(iso?: string | null) {
-  return iso ? new Date(iso).toLocaleString() : null;
-}
+const fmtDate = (iso?: string | null) => (iso ? formatDate(iso) : null);
+const fmtDateTime = (iso?: string | null) => (iso ? formatDateTime(iso) : null);
 function channelIcon(ch: string) {
   if (ch === "email") return <Mail className="w-3.5 h-3.5" />;
   if (ch === "whatsapp") return <MessageCircle className="w-3.5 h-3.5" />;
@@ -774,7 +771,7 @@ export function OrderDetailPage() {
                       ) : invoice.sent_at ? (
                         <span className="ml-1 normal-case">
                           · sent{" "}
-                          {new Date(invoice.sent_at).toLocaleDateString()}
+                          {formatDate(invoice.sent_at)}
                         </span>
                       ) : null}
                     </div>
@@ -841,7 +838,7 @@ export function OrderDetailPage() {
                   <div>
                     <div className="micro">Created</div>
                     <div className="text-[13px] mt-1">
-                      {new Date(order.created_at).toLocaleString()}
+                      {formatDateTime(order.created_at)}
                     </div>
                   </div>
                   <div>
@@ -971,7 +968,7 @@ export function OrderDetailPage() {
                         <div className="text-right">
                           <MoneyText ngn={Number(p.amount_ngn)} />
                           <div className="text-[10px] text-text-faint">
-                            {new Date(p.captured_at).toLocaleDateString()}
+                            {formatDate(p.captured_at)}
                           </div>
                         </div>
                       </div>
@@ -1253,7 +1250,7 @@ export function OrderDetailPage() {
                         <div>
                           <div className="font-semibold">{ev.label}</div>
                           <div className="text-text-faint">
-                            {new Date(ev.occurred_at).toLocaleString()}
+                            {formatDateTime(ev.occurred_at)}
                           </div>
                         </div>
                       </div>
@@ -1294,7 +1291,7 @@ export function OrderDetailPage() {
                           </div>
                           <div className="text-text-faint">{e.sub}</div>
                           <div className="text-text-faint text-[10px]">
-                            {new Date(e.when).toLocaleString()}
+                            {formatDateTime(e.when)}
                           </div>
                         </div>
                       </div>
@@ -1412,7 +1409,7 @@ export function OrderDetailPage() {
                           <div className="text-right shrink-0">
                             <MoneyText ngn={Number(o.total_ngn)} />
                             <div className="text-[10px] text-text-faint">
-                              {new Date(o.created_at).toLocaleDateString()}
+                              {formatDate(o.created_at)}
                             </div>
                           </div>
                         </button>

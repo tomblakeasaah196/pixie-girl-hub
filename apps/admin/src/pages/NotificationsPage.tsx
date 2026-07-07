@@ -36,6 +36,7 @@ import {
 } from "@/lib/notifications-api";
 import { Card, Button, EmptyState } from "@/components/ui/primitives";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { formatDate } from "@/lib/format";
 
 // ── Filter categories ─────────────────────────────────────────────────────────
 
@@ -115,7 +116,7 @@ function relTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 // ── Row ───────────────────────────────────────────────────────────────────────

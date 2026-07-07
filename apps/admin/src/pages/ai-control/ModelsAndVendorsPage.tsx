@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatDate } from "@/lib/format";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   KeyRound,
@@ -166,7 +167,7 @@ export function ModelsAndVendorsPage() {
                         {row.last_rotated_at && (
                           <span>
                             · rotated{" "}
-                            {new Date(row.last_rotated_at).toLocaleDateString()}
+                            {formatDate(row.last_rotated_at)}
                           </span>
                         )}
                       </div>

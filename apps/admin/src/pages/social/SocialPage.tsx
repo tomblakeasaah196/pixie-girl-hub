@@ -54,6 +54,7 @@ import {
   type PostType,
   type SocialAccount,
 } from "@/lib/social-api";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * Social Media Management (`/social`, canon §6.14).
@@ -216,10 +217,10 @@ function PostsTab({
             </p>
             <p className="mt-1 text-[11.5px] text-text-faint">
               {p.scheduled_for
-                ? `Scheduled ${new Date(p.scheduled_for).toLocaleString()}`
+                ? `Scheduled ${formatDateTime(p.scheduled_for)}`
                 : p.published_at
-                  ? `Published ${new Date(p.published_at).toLocaleString()}`
-                  : `Created ${new Date(p.created_at).toLocaleDateString()}`}
+                  ? `Published ${formatDateTime(p.published_at)}`
+                  : `Created ${formatDateTime(p.created_at)}`}
             </p>
           </div>
           {p.media_urls?.[0] && (
@@ -733,7 +734,7 @@ function PostDetail({ post, onClose }: { post: SocialPost; onClose: () => void }
           <Pill tone={STATUS_TONE[post.status]}>{STATUS_LABEL[post.status] ?? post.status}</Pill>
           {post.scheduled_for && (
             <span className="text-[11.5px] text-text-faint">
-              {new Date(post.scheduled_for).toLocaleString()}
+              {formatDateTime(post.scheduled_for)}
             </span>
           )}
         </div>

@@ -1,4 +1,5 @@
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { formatDate } from "@/lib/format";
 import { useState } from "react";
 import { FileSignature, Plus, Star, Trash2 } from "lucide-react";
 import { Button, Card, Pill, EmptyState } from "@/components/ui/primitives";
@@ -113,7 +114,7 @@ export function DocumentTemplatesPage() {
     {
       key: "updated_at",
       header: "Updated",
-      render: (r) => new Date(r.updated_at).toLocaleDateString(),
+      render: (r) => formatDate(r.updated_at),
       width: "120px",
     },
     {

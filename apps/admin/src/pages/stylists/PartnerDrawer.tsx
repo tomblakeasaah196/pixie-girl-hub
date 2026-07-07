@@ -18,6 +18,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useToast } from "@/lib/toast";
 import { usePartner, usePartnerMutations, useTiers } from "./hooks";
 import { PARTNER_STATUS_META } from "./constants";
+import { formatDate } from "@/lib/format";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -83,7 +84,7 @@ export function PartnerDrawer({
             </Pill>
             {onProbation && (
               <Pill tone="warn" dot={false}>
-                Probation to {new Date(p.probation_ends_at!).toLocaleDateString()}
+                Probation to {formatDate(p.probation_ends_at!)}
               </Pill>
             )}
             {badgeLive ? (
@@ -109,7 +110,7 @@ export function PartnerDrawer({
             </Row>
             <Row label="Contract">
               {p.contract_signed_at
-                ? `Signed ${new Date(p.contract_signed_at).toLocaleDateString()}`
+                ? `Signed ${formatDate(p.contract_signed_at)}`
                 : p.contract_document_id
                   ? "Sent — awaiting signature"
                   : "Not generated"}
@@ -227,8 +228,8 @@ export function PartnerDrawer({
                       {c.revoked_at && <Pill tone="danger" dot={false}>Revoked</Pill>}
                     </div>
                     <div className="text-[11.5px] text-text-faint tabular-nums">
-                      {new Date(c.awarded_at).toLocaleDateString()} →{" "}
-                      {new Date(c.expires_at).toLocaleDateString()}
+                      {formatDate(c.awarded_at)} →{" "}
+                      {formatDate(c.expires_at)}
                       {c.assessment_score != null && ` · score ${Number(c.assessment_score)}`}
                     </div>
                   </div>

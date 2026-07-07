@@ -12,6 +12,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useAttributions, usePartners } from "./hooks";
 import { ATTRIBUTION_STATUS_META } from "./constants";
 import type { Attribution } from "./types";
+import { formatDate } from "@/lib/format";
 
 export function ReferralsPanel() {
   const [status, setStatus] = useState("");
@@ -74,7 +75,7 @@ export function ReferralsPanel() {
       header: "Attributed",
       render: (r) => (
         <span className="tabular-nums text-[12px]">
-          {new Date(r.created_at).toLocaleDateString()}
+          {formatDate(r.created_at)}
         </span>
       ),
     },

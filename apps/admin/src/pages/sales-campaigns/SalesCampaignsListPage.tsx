@@ -25,7 +25,7 @@ import {
 import { DeniedState, ErrorState, Select } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
-import { moneyCompact } from "@/lib/format";
+import { moneyCompact, formatDate } from "@/lib/format";
 import {
   useCampaignList,
   useCreateCampaign,
@@ -335,10 +335,10 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             <div>
               <div className="flex justify-between text-[11px] text-text-faint mb-1">
                 <span className="font-mono">
-                  {new Date(starts).toLocaleDateString()}
+                  {formatDate(starts)}
                 </span>
                 <span className="font-mono">
-                  {new Date(ends).toLocaleDateString()}
+                  {formatDate(ends)}
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-text-primary/10 overflow-hidden">

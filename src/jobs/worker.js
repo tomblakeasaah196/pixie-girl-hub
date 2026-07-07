@@ -181,6 +181,12 @@ async function startWorkers() {
     runStylistOfferSweep,
     runStylistCertificationSweep,
   } = require("./schedulers/stylist-programme-sweep");
+  const {
+    runChurnRiskScoring,
+  } = require("./schedulers/churn-risk-scoring");
+  const {
+    runSegmentPresetRefresh,
+  } = require("./schedulers/segment-presets");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart. Per-instance: it refreshes
@@ -247,6 +253,10 @@ async function startWorkers() {
     "30 2 * * *",
     runRetentionStrategyScan,
   );
+  // CRM: nightly churn-risk recency scoring (02:45) feeds the Win-back
+  // buckets + contact-360 churn pill; segment presets + counts at 04:00.
+  scheduleCron("churn-risk-scoring", "45 2 * * *", runChurnRiskScoring);
+  scheduleCron("segment-presets", "0 4 * * *", runSegmentPresetRefresh);
   // nightly ad-spend sync (pull metrics from ad networks)
   scheduleCron("ad-spend-sync", "0 2 * * *", runAdSpendSync);
   scheduleCron("subscription-billing", "0 3 * * *", runSubscriptionBilling);

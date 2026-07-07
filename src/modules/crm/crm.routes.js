@@ -15,6 +15,17 @@ const can = (a) => requirePermission("crm", a);
 // Dashboard KPIs (literal — before any :id route)
 router.get("/kpis", can("view"), c.kpis);
 
+// Clients (contacts + commercial roll-up) and the Today outreach buckets
+router.get("/clients", can("view"), c.listClients);
+router.get("/today", can("view"), c.today);
+
+// Reports (BI: LTV ranking, cohort retention, win/loss, velocity, forecast)
+router.get("/reports/ltv", can("view"), c.reportLtv);
+router.get("/reports/cohorts", can("view"), c.reportCohorts);
+router.get("/reports/win-loss", can("view"), c.reportWinLoss);
+router.get("/reports/velocity", can("view"), c.reportVelocity);
+router.get("/reports/forecast", can("view"), c.reportForecast);
+
 // Pipelines + stages
 router.get("/pipelines", can("view"), c.listPipelines);
 router.post(
@@ -53,6 +64,27 @@ router.patch("/deals/:id", can("edit"), v.validateDealUpdate, c.updateDeal);
 router.post("/deals/:id/move", can("edit"), v.validateMoveStage, c.moveStage);
 router.post("/deals/:id/status", can("edit"), v.validateSetStatus, c.setStatus);
 router.delete("/deals/:id", can("delete"), c.deleteDeal);
+
+// Stage history (append-only trail) + anticipated line items
+router.get("/deals/:id/history", can("view"), c.listStageHistory);
+router.get("/deals/:id/products", can("view"), c.listDealProducts);
+router.post(
+  "/deals/:id/products",
+  can("edit"),
+  v.validateDealProductCreate,
+  c.addDealProduct,
+);
+router.patch(
+  "/deals/:id/products/:dealProductId",
+  can("edit"),
+  v.validateDealProductUpdate,
+  c.updateDealProduct,
+);
+router.delete(
+  "/deals/:id/products/:dealProductId",
+  can("delete"),
+  c.deleteDealProduct,
+);
 
 // Activities + notes
 router.get("/deals/:id/activities", can("view"), c.listActivities);
@@ -95,6 +127,20 @@ router.delete(
   can("delete"),
   c.deleteMeasurement,
 );
+// Contact-level activity log (calls/WhatsApp/emails on the 360 timeline)
+router.get(
+  "/customers/:contactId/activities",
+  can("view"),
+  c.listContactActivities,
+);
+router.post(
+  "/customers/:contactId/activities",
+  can("edit"),
+  v.validateActivityCreate,
+  c.addContactActivity,
+);
+// One-click win-back → retention strategy engine (`win_back` trigger)
+router.post("/customers/:contactId/win-back", can("edit"), c.triggerWinBack);
 router.get("/customers/:contactId/churn", can("view"), c.listChurnScores);
 router.post(
   "/customers/:contactId/churn",

@@ -217,8 +217,120 @@ const recordChurnScore = async (req, res) =>
 const kpis = async (req, res) =>
   res.json({ data: await service.kpis({ brand: req.brand }) });
 
+// Stage history + deal products
+const listStageHistory = async (req, res) =>
+  res.json({
+    data: await service.listStageHistory({ brand: req.brand, id: req.params.id }),
+  });
+const listDealProducts = async (req, res) =>
+  res.json({
+    data: await service.listDealProducts({ brand: req.brand, id: req.params.id }),
+  });
+const addDealProduct = async (req, res) =>
+  res.status(201).json({
+    data: await service.addDealProduct({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+const updateDealProduct = async (req, res) =>
+  res.json({
+    data: await service.updateDealProduct({
+      ...base(req),
+      id: req.params.id,
+      deal_product_id: req.params.dealProductId,
+      patch: req.body,
+    }),
+  });
+const deleteDealProduct = async (req, res) => {
+  await service.deleteDealProduct({
+    ...base(req),
+    id: req.params.id,
+    deal_product_id: req.params.dealProductId,
+  });
+  res.status(204).end();
+};
+
+// Contact-level activities + win-back
+const listContactActivities = async (req, res) =>
+  res.json({
+    data: await service.listContactActivities({
+      brand: req.brand,
+      contact_id: req.params.contactId,
+    }),
+  });
+const addContactActivity = async (req, res) =>
+  res.status(201).json({
+    data: await service.addContactActivity({
+      ...base(req),
+      contact_id: req.params.contactId,
+      input: req.body,
+    }),
+  });
+const triggerWinBack = async (req, res) =>
+  res.json({
+    data: await service.triggerWinBack({
+      ...base(req),
+      contact_id: req.params.contactId,
+    }),
+  });
+
+// Clients, Today, reports
+async function listClients(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  res.json(
+    await service.listClients({
+      brand: req.brand,
+      filters: { q: req.query.q, chip: req.query.chip },
+      sort: req.query.sort,
+      page,
+      page_size,
+    }),
+  );
+}
+const today = async (req, res) =>
+  res.json({ data: await service.todayBuckets({ brand: req.brand }) });
+async function reportLtv(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  res.json(await service.reportLtv({ brand: req.brand, page, page_size }));
+}
+const reportCohorts = async (req, res) =>
+  res.json({
+    data: await service.reportCohorts({
+      brand: req.brand,
+      months: req.query.months,
+    }),
+  });
+const reportWinLoss = async (req, res) =>
+  res.json({
+    data: await service.reportWinLoss({
+      brand: req.brand,
+      months: req.query.months,
+    }),
+  });
+const reportVelocity = async (req, res) =>
+  res.json({ data: await service.reportVelocity({ brand: req.brand }) });
+const reportForecast = async (req, res) =>
+  res.json({ data: await service.reportForecast({ brand: req.brand }) });
+
 module.exports = {
   kpis,
+  listStageHistory,
+  listDealProducts,
+  addDealProduct,
+  updateDealProduct,
+  deleteDealProduct,
+  listContactActivities,
+  addContactActivity,
+  triggerWinBack,
+  listClients,
+  today,
+  reportLtv,
+  reportCohorts,
+  reportWinLoss,
+  reportVelocity,
+  reportForecast,
   listPipelines,
   createPipeline,
   updatePipeline,

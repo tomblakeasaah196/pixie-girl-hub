@@ -65,7 +65,7 @@ const schema = z.object({
 
   // Auth
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
-  JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
+  JWT_ACCESS_EXPIRES_IN: z.string().default("45m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("14d"),
   SESSION_SECRET: z.string().min(32),
   COOKIE_SECURE: zBool(false),

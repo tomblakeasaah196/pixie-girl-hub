@@ -100,7 +100,7 @@ async function issueTokens(user) {
     },
     access_token,
     refresh_token,
-    expires_in: 15 * 60,
+    expires_in: 45 * 60,
   };
 }
 const resetTtlSec = () => (config.PASSWORD_RESET_TTL_MIN || 30) * 60;
@@ -357,7 +357,7 @@ async function refresh({ refresh_token }) {
   return {
     access_token,
     refresh_token: new_refresh_token,
-    expires_in: 15 * 60,
+    expires_in: 45 * 60,
   };
 }
 

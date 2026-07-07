@@ -20,6 +20,7 @@ const documentsEvents = require("./documents.events");
 const { logger } = require("../../config/logger");
 const { config } = require("../../config/env");
 const emailService = require("../../services/email.service");
+const { enqueue } = require("../../jobs/queue");
 const { audit } = require("../../middleware/audit");
 const {
   NotFoundError,
@@ -144,7 +145,7 @@ async function createRequest({ brand, user, request_id, input }) {
 
 /** Move a draft to 'sent' — emails go out to the first step (sequential) or all (parallel). */
 async function sendRequest({ brand, user, request_id, id }) {
-  return withTransaction(async (client) => {
+  const { request, invites } = await withTransaction(async (client) => {
     const req = await repo.getRequest({ client, brand, id });
     if (!req) throw new NotFoundError("Signature request not found");
     if (req.status !== "draft")
@@ -177,8 +178,73 @@ async function sendRequest({ brand, user, request_id, id }) {
       target_type: "signature_request",
       target_id: id,
     });
-    return repo.getRequest({ client, brand, id });
+    // Carry the just-activated signers out of the transaction so their
+    // invitation emails are dispatched only AFTER the 'sent' state commits.
+    const inviteList = activate.map((s) => ({
+      signer_id: s.signer_id,
+      contact_id: s.contact_id,
+      token: s.signing_token,
+      email: s.display_email_snapshot,
+      name: s.display_name_snapshot,
+    }));
+    return {
+      request: await repo.getRequest({ client, brand, id }),
+      invites: inviteList,
+    };
   });
+
+  // Post-commit: put the signing link in front of each activated signer. This
+  // is THE email the whole flow exists for. Dispatched via the durable
+  // email-send queue (retries + auto-logged to shared.outbound_comms_log), so a
+  // signer never silently gets nothing, and staff can see whether it went.
+  // Non-fatal: a mail/queue outage must not unwind a committed 'sent' state —
+  // the daily reminder sweep re-nudges anyone who slips through.
+  await sendSigningInvites({ request, invites });
+  return request;
+}
+
+/** Enqueue a "please sign this" email to each freshly-activated signer. */
+async function sendSigningInvites({ request, invites: signers }) {
+  for (const s of signers) {
+    if (!s.email) {
+      logger.warn(
+        { signer_id: s.signer_id, request_id: request.request_id },
+        "esign: signer has no email on file — cannot send signing invite",
+      );
+      continue;
+    }
+    const link = signLink(s.token);
+    const subject = `Please sign: "${request.subject}"`;
+    const intro = request.message
+      ? `<p>${escHtml(request.message)}</p>`
+      : "";
+    const expiresLine = request.expires_at
+      ? `<p>Please sign by ${new Date(request.expires_at).toDateString()}.</p>`
+      : "";
+    try {
+      await enqueue("email-send", "esign-invite", {
+        brand: request.business,
+        to: s.email,
+        subject,
+        html: `<p>Hi ${escHtml(s.name || "there")},</p>
+               <p>You've been asked to sign <b>${escHtml(request.subject)}</b>.</p>
+               ${intro}
+               <p><a href="${link}">Open and sign the document</a></p>
+               ${expiresLine}`,
+        text: `You've been asked to sign "${request.subject}". Open and sign: ${link}`,
+        contact_id: s.contact_id,
+        event_key: "signature.request_sent",
+        reference_type: "signature_request",
+        reference_id: request.request_id,
+      });
+    } catch (err) {
+      // Redis/queue down — record loudly; the reminder sweep is the backstop.
+      logger.error(
+        { err: err.message, signer_id: s.signer_id, request_id: request.request_id },
+        "esign: failed to enqueue signing invite email",
+      );
+    }
+  }
 }
 
 /** Record a signature for the signer identified by token (external) — public-facing. */

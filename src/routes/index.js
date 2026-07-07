@@ -55,6 +55,9 @@ const smartcommRouter = require("../modules/smartcomm/smartcomm.routes");
 const calendarRouter = require("../shared/calendar/calendar.routes");
 const tasksRouter = require("../shared/tasks/tasks.routes");
 const dashboardsRouter = require("../modules/dashboards/dashboards.routes");
+// Kaizen — JBS Praxis maintenance/ops console. Self-authenticating (its own
+// operator identity + JWT); mounted outside the brand-scoped `api` router.
+const { mountKaizen } = require("../modules/kaizen/kaizen.routes");
 const businessSetupRouter = require("../modules/business_setup/business-setup.routes");
 const platformSettingsRouter = require("../modules/platform_settings/platform-settings.routes");
 const settingsRouter = require("../modules/settings/settings.routes");
@@ -304,6 +307,9 @@ function mountRoutes(app) {
 
   // ── Stylist portal (separate JWT class; self-authenticating) ──
   app.use("/api/v1/stylist-portal", stylistPortalRouter);
+
+  // ── Kaizen ops console (separate operator identity; self-authenticating) ──
+  mountKaizen(app);
 
   // ── Protected API surface ──────────────────────────────
   // All routes below require an authenticated user and a brand context.

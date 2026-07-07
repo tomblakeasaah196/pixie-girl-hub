@@ -294,4 +294,19 @@ jobs:
               exit 1
             fi
 
+            # ── Kaizen ops console (static SPA served by nginx) ────
+            # Build apps/kaizen/dist so nginx can serve it at
+            # kaizen.pixiegirlglobal.com (vhost: ops/kaizen/nginx-kaizen.conf).
+            # It's a static SPA — no PM2 process, so no reload/health check here.
+            # Placed LAST on purpose: the core ERP + brand sites are already
+            # deployed and health-checked above, so a Kaizen build hiccup can
+            # never interrupt them. The subdomain only goes live once the
+            # Cloudflare record + nginx vhost + KAIZEN_JWT_SECRET are set on the
+            # box (see ops/kaizen/README.md); until then this build is harmless.
+            echo "--- Building Kaizen ops console (apps/kaizen/dist)"
+            cd apps/kaizen
+            npm install
+            npm run build
+            cd ../..
+
             echo "Production deploy complete ✓"

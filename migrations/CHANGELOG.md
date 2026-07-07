@@ -11,6 +11,32 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-07 — Attendance clock controls (dedupe + clock-out location + IP)
+
+**Source:** Clock-in audit (2026-07-07). Three gaps found on the top-bar
+clock widget → `POST /hr/me/clock` (`selfClock`): (1) the append-only
+`staff_clock_events` log had no per-day uniqueness, so a double-tap / direct
+API call could record two `clock_in` rows for one day; (2) clock-out location
+was captured on the raw event but never persisted to the reconciled day ledger;
+(3) the in/out IP was captured on the raw event but never surfaced.
+
+**Files (new):** `000303_shared_attendance_clock_controls.sql`.
+
+**What:**
+- `staff_clock_events.occurred_on` (Africa/Lagos calendar day, trigger-
+  maintained) + a partial unique index on
+  `(profile_id, occurred_on, event_type) WHERE accepted = true`, created
+  defensively so pre-existing historical duplicates never break the deploy.
+  This backstops the new service-layer guard (one accepted clock-in + one
+  clock-out per day; clock-out must follow a clock-in).
+- `attendance_days` gains `clock_out_{address,lat,lng,is_offsite,distance_m}`
+  and `clock_{in,out}_ip`, populated by the reconciler from the first
+  clock-in / last clock-out events, and shown in the attendance tables.
+
+**Note:** location is now mandatory for BOTH clock-in and clock-out (enforced
+in `selfClock`); refusing location on clock-in records nothing, so reconcile
+marks the day absent. IP is audit evidence only — office WiFi NATs everyone.
+
 ## 2026-07-06 — Help Center content: Grow & System modules + in-app editor (PR3 of 3)
 
 **Source:** Help Center completeness pass — final batch, plus the DB-driven

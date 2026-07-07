@@ -26,6 +26,7 @@ const hrService = require("./hr.service");
 const attendanceRepo = require("../attendance/attendance.repo");
 const calc = require("./lateness.calc");
 const geo = require("../attendance/geo.calc");
+const { evaluateClockTransition } = require("./clock.guard");
 const events = require("./hr.events");
 const { reverseGeocode } = require("../../services/geoapify.service");
 const { audit } = require("../../middleware/audit");
@@ -504,6 +505,14 @@ async function reconcileDay({ brand, user, date }) {
         clock &&
         clock.is_offsite === true;
 
+      // Same gating for the clock-out point (captured on every punch now).
+      const clockOutOffsite =
+        settings.geofence_enabled &&
+        wd.working &&
+        wd.mode === "on_site" &&
+        clockOut &&
+        clockOut.is_offsite === true;
+
       // Early departure / last-out (audit H3): only meaningful on a worked day.
       const earlyLeaveMinutes =
         wd.working && clockOut
@@ -538,6 +547,13 @@ async function reconcileDay({ brand, user, date }) {
           clock_in_lng: clock ? clock.longitude : null,
           last_clock_out_at: clockOut ? clockOut.occurred_at : null,
           early_leave_minutes: earlyLeaveMinutes,
+          clock_out_address: clockOut ? clockOut.formatted_address : null,
+          clock_out_lat: clockOut ? clockOut.latitude : null,
+          clock_out_lng: clockOut ? clockOut.longitude : null,
+          clock_out_is_offsite: Boolean(clockOutOffsite),
+          clock_out_distance_m: clockOut ? clockOut.distance_m : null,
+          clock_in_ip: clock ? clock.ip_address : null,
+          clock_out_ip: clockOut ? clockOut.ip_address : null,
         },
       });
 
@@ -759,8 +775,11 @@ async function getMyToday({ brand, user }) {
 
 /**
  * Self clock-in / clock-out from the top-bar widget. Records the coordinates
- * + IP as evidence; flags (does not reject) an off-site point; blocks only
- * when location is missing on an on-site day where it's required.
+ * + IP as evidence; flags (does not reject) an off-site point. Location is
+ * MANDATORY for both clock-in and clock-out — a punch without it is refused
+ * (refusing on clock-in leaves no record, so reconcile marks the day absent).
+ * Enforces one accepted clock-in + one clock-out per day (clock-out must
+ * follow a clock-in), closing the double clock-in gap.
  *
  * The stored address label is derived server-side from the coordinates via
  * Geoapify (audit H7 — replaces the flaky client-side Google geocode). The
@@ -787,15 +806,31 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       input.latitude !== null && input.latitude !== undefined &&
       input.longitude !== null && input.longitude !== undefined;
 
-    if (
-      !hasPoint &&
-      settings.geofence_enabled &&
-      settings.geofence_required_on_site &&
-      mode.mode === "on_site"
-    ) {
+    // Location is MANDATORY for BOTH clock-in and clock-out — a punch is never
+    // recorded without it. Refusing location on a clock-in means no clock-in
+    // exists, so reconcile marks the day absent (the meeting rule). The widget
+    // shows the matching toast; this is the server-side hard gate.
+    if (!hasPoint) {
       throw new ValidationError(
-        "Location is required to clock in on an on-site day. Please enable location access.",
+        input.event_type === "clock_out"
+          ? "Confirm your location to clock out. Enable location access on your device and try again."
+          : "Confirm your location to clock in. Enable location access on your device and try again — without it you can't clock in and the day will be marked absent.",
       );
+    }
+
+    // One accepted clock-in and one accepted clock-out per day, with clock-out
+    // required to follow a clock-in (closes the double clock-in gap). The DB
+    // partial unique index (000303) backstops the concurrent double-tap race.
+    const todayEvents = await repo.todayClockEvents({
+      client,
+      profileId: profile.profile_id,
+    });
+    const transition = evaluateClockTransition({
+      todayEvents,
+      eventType: input.event_type,
+    });
+    if (!transition.allowed) {
+      throw new ConflictError(transition.message);
     }
 
     let decision = { is_offsite: false, matched_geofence_id: null, distance_m: null, reason: null };
@@ -809,26 +844,40 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       });
     }
 
-    const event = await attendanceRepo.insertClockEvent({
-      client,
-      data: {
-        profile_id: profile.profile_id,
-        event_type: input.event_type,
-        latitude: hasPoint ? input.latitude : null,
-        longitude: hasPoint ? input.longitude : null,
-        accuracy_m: input.accuracy_m ?? null,
-        device_fingerprint: input.device_fingerprint ?? null,
-        device_user_agent: requestMeta.user_agent ?? null,
-        ip_address: requestMeta.ip_address ?? null,
-        matched_geofence_id: decision.matched_geofence_id,
-        distance_m: decision.distance_m,
-        accepted: true, // recorded; off-site is flagged, not rejected
-        rejection_reason: decision.reason,
-        is_offsite: decision.is_offsite,
-        formatted_address: addressLabel,
-        occurred_at: null,
-      },
-    });
+    let event;
+    try {
+      event = await attendanceRepo.insertClockEvent({
+        client,
+        data: {
+          profile_id: profile.profile_id,
+          event_type: input.event_type,
+          latitude: hasPoint ? input.latitude : null,
+          longitude: hasPoint ? input.longitude : null,
+          accuracy_m: input.accuracy_m ?? null,
+          device_fingerprint: input.device_fingerprint ?? null,
+          device_user_agent: requestMeta.user_agent ?? null,
+          ip_address: requestMeta.ip_address ?? null,
+          matched_geofence_id: decision.matched_geofence_id,
+          distance_m: decision.distance_m,
+          accepted: true, // recorded; off-site is flagged, not rejected
+          rejection_reason: decision.reason,
+          is_offsite: decision.is_offsite,
+          formatted_address: addressLabel,
+          occurred_at: null,
+        },
+      });
+    } catch (err) {
+      // 000303 partial unique index fired: a concurrent punch beat this one to
+      // the same day + type. Present it as the same conflict the guard raises.
+      if (err && err.code === "23505") {
+        throw new ConflictError(
+          input.event_type === "clock_out"
+            ? "You've already clocked out today."
+            : "You've already clocked in today.",
+        );
+      }
+      throw err;
+    }
 
     // Immediate lateness feedback on clock-in (server time is authoritative).
     let lateMinutes = 0;

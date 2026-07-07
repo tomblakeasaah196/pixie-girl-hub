@@ -39,11 +39,13 @@ export function PraxisConversation({
   onConversationCreated,
   autoFocus,
   variant = "page",
+  initialText,
 }: {
   conversationId: string | null;
   onConversationCreated: (id: string) => void;
   autoFocus?: boolean;
   variant?: "drawer" | "page";
+  initialText?: string;
 }) {
   const qc = useQueryClient();
   const detail = useConversation(conversationId);
@@ -184,7 +186,12 @@ export function PraxisConversation({
         )}
       >
         <div className={col}>
-          <PraxisInput disabled={thinking} onSend={send} autoFocus={autoFocus} />
+          <PraxisInput
+            disabled={thinking}
+            onSend={send}
+            autoFocus={autoFocus}
+            initialText={initialText}
+          />
           <p className="mt-2 px-2 text-center text-[10.5px] text-text-faint">
             Praxis acts with your permissions only — writes always ask first.
           </p>

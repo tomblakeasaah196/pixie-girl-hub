@@ -119,18 +119,27 @@ export function useUnreadCount() {
   });
 }
 
-/** The caller's own actions in the last 24 h. */
-export function useMyAuditFeed() {
+/**
+ * The caller's own actions, paginated (10/page, up to 3 pages = 30 total).
+ * Feeds the "My activity" card on the dashboard so the user can spot
+ * activity they don't recognise (someone else logged in? rotate password).
+ */
+export function useMyAuditFeed(page = 1) {
   const biz = useBusinessStore((s) => s.activeKey);
   return useQuery({
-    queryKey: ["audit", "my-feed", biz],
+    queryKey: ["audit", "my-feed", biz, page],
     queryFn: () =>
-      api.get<{ data: AuditFeedEntry[]; window: "24h" | "all_time" }>(
-        "/audit/my-feed",
-      ),
+      api.get<{
+        data: AuditFeedEntry[];
+        window: "24h" | "all_time";
+        page: number;
+        page_size: number;
+        total: number;
+      }>(`/audit/my-feed?page=${page}`),
     staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
+    refetchInterval: page === 1 ? 60 * 1000 : false,
     retry: 1,
+    placeholderData: (prev) => prev,
   });
 }
 

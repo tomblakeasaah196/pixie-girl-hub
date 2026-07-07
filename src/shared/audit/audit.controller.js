@@ -44,16 +44,19 @@ async function forRecord(req, res) {
 }
 
 /**
- * The caller's own audit trail for the last 24 hours.
- * No extra permission required — every authenticated user can see their own actions.
+ * The caller's own audit trail. Paginated 10/page, capped at 3 pages (30 rows
+ * total). No extra permission required — every authenticated user can see
+ * their own actions, and the dashboard uses this to spot activity that wasn't
+ * theirs so they can rotate credentials.
  */
 async function myFeed(req, res) {
-  const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const page = Math.max(1, Number.parseInt(req.query.page ?? "1", 10) || 1);
   const result = await service.myFeed({
     brand: req.brand,
     user_id: req.user.user_id,
-    from,
-    limit: 20,
+    page,
+    page_size: 10,
+    max_total: 30,
   });
   res.json(result);
 }

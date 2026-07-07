@@ -1255,7 +1255,7 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       // on this: /storefront ≠ /landing, even when the same customer and
       // basket flow through both.
       sales_channel: "sales_campaign",
-      order_type: "dispatch",
+      order_type: isPickup ? "collection" : "dispatch",
       sales_campaign_id: campaign.campaign_id,
       campaign_slug: campaign.slug,
       lines: orderLines,

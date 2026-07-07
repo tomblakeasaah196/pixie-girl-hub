@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0c10" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Kaizen · Ops Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Montserrat:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body { margin: 0; background: #0a0c10; }
+      #splash {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: radial-gradient(ellipse 60% 50% at 50% 30%, rgba(245,166,35,0.10), transparent 70%), #0a0c10;
+      }
+      #splash-mark {
+        width: 46px; height: 46px; border-radius: 12px;
+        background: linear-gradient(135deg, #f5a623, #e5484d);
+        box-shadow: 0 0 28px rgba(245,166,35,0.45);
+        animation: pulse 1.8s ease-in-out infinite;
+      }
+      #splash-name {
+        margin-top: 18px; font-family: "Playfair Display", serif; font-size: 22px;
+        font-weight: 600; color: #e6edf3; letter-spacing: 0.02em;
+      }
+      #splash-name span { color: #f5a623; }
+      #splash-tag {
+        margin-top: 6px; font-family: "Montserrat", sans-serif; font-size: 10px;
+        font-weight: 600; text-transform: uppercase; letter-spacing: 0.24em; color: #6b7887;
+      }
+      @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: .85; } }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <div id="splash-mark"></div>
+      <div id="splash-name">Kai<span>zen</span></div>
+      <div id="splash-tag">Continuous Improvement</div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

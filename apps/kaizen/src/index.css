@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0a0c10;
+  color: #e6edf3;
+  font-family: "Montserrat", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric / monospace figures */
+.font-mono {
+  font-feature-settings: "tnum" 1;
+}
+
+@layer components {
+  .glass {
+    @apply bg-ink-850/80 border border-line/70 backdrop-blur-xl shadow-glass;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-amber text-ink-950 hover:bg-amber-soft;
+  }
+  .btn-ghost {
+    @apply btn bg-ink-700/60 text-fog-100 hover:bg-ink-600;
+  }
+  .btn-danger {
+    @apply btn bg-signal-red/90 text-white hover:bg-signal-red;
+  }
+  .input {
+    @apply w-full rounded-lg bg-ink-900 border border-line px-3 py-2 text-sm text-fog-100
+           placeholder:text-fog-400 outline-none focus:border-amber/70 focus:ring-1 focus:ring-amber/40;
+  }
+  .label {
+    @apply block text-xs font-semibold uppercase tracking-wider text-fog-300 mb-1.5;
+  }
+  .card {
+    @apply glass rounded-2xl p-5;
+  }
+}

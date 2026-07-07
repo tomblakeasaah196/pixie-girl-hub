@@ -38,7 +38,7 @@ export function useCrmKpis() {
   });
 }
 
-// ── Today feed ────────────────────────────────────────────────────────────
+// ── Today feed (server-computed buckets) ──────────────────────────────────
 
 export function useTodayMilestones() {
   const biz = useBiz();
@@ -49,21 +49,111 @@ export function useTodayMilestones() {
   });
 }
 
-export function useTodayNewContacts() {
+export function useCrmToday() {
   const biz = useBiz();
   return useQuery({
-    queryKey: ["crm", biz, "today-new"],
-    queryFn: () => crmApi.getTodayNewContacts(7),
+    queryKey: ["crm", biz, "today"],
+    queryFn: crmApi.getCrmToday,
     staleTime: 5 * 60_000,
   });
 }
 
-export function useTodayStaleDeals(staleDays = 14) {
+// ── Clients (contacts + commercial roll-up) ───────────────────────────────
+
+export function useCrmClients(params: crmApi.CrmClientsParams) {
   const biz = useBiz();
   return useQuery({
-    queryKey: ["crm", biz, "today-stale", staleDays],
-    queryFn: () => crmApi.getTodayStaleDeals(staleDays),
+    queryKey: ["crm", biz, "clients", params],
+    queryFn: () => crmApi.listCrmClients(params),
+    placeholderData: keepPreviousData,
+  });
+}
+
+// ── Contact-level activity log + win-back ─────────────────────────────────
+
+export function useContactCrmActivities(contactId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["crm", biz, "contact-activities", contactId],
+    queryFn: () => crmApi.listContactCrmActivities(contactId!),
+    enabled: !!contactId,
+  });
+}
+
+export function useLogContactActivity(contactId: string) {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof crmApi.addContactCrmActivity>[1]) =>
+      crmApi.addContactCrmActivity(contactId, input),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["crm", biz, "contact-activities", contactId],
+      });
+      qc.invalidateQueries({ queryKey: ["contacts", biz] });
+    },
+  });
+}
+
+export function useTriggerWinBack() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: (contactId: string) => crmApi.triggerWinBack(contactId),
+    onSuccess: (_res, contactId) => {
+      qc.invalidateQueries({ queryKey: ["crm", biz, "today"] });
+      qc.invalidateQueries({
+        queryKey: ["crm", biz, "contact-activities", contactId],
+      });
+    },
+  });
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────
+
+export function useReportLtv(page = 1, pageSize = 25) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["crm", biz, "report-ltv", page, pageSize],
+    queryFn: () => crmApi.getReportLtv({ page, page_size: pageSize }),
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useReportCohorts(months = 12) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["crm", biz, "report-cohorts", months],
+    queryFn: () => crmApi.getReportCohorts(months),
+    staleTime: 10 * 60_000,
+  });
+}
+
+export function useReportWinLoss(months = 12) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["crm", biz, "report-winloss", months],
+    queryFn: () => crmApi.getReportWinLoss(months),
+    staleTime: 10 * 60_000,
+  });
+}
+
+export function useReportVelocity() {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["crm", biz, "report-velocity"],
+    queryFn: crmApi.getReportVelocity,
+    staleTime: 10 * 60_000,
+  });
+}
+
+export function useReportForecast() {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["crm", biz, "report-forecast"],
+    queryFn: crmApi.getReportForecast,
+    staleTime: 10 * 60_000,
   });
 }
 

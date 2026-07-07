@@ -9,6 +9,7 @@ import { EmployeeOnboardingPage } from "@/pages/contacts/EmployeeOnboardingPage"
 import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
 import { ContactTagsPage } from "@/pages/ContactTagsPage";
 import { CrmPage } from "@/pages/crm/CrmPage";
+import { ClientProfilePage } from "@/pages/crm/clients/ClientProfilePage";
 import { SalesPage } from "@/pages/sales/SalesPage";
 import { OrderDetailPage } from "@/pages/sales/OrderDetailPage";
 import { DashboardPage } from "@/pages/dashboard/DashboardPage";
@@ -450,6 +451,7 @@ export const router = createBrowserRouter(
               ),
             },
             { path: "crm", element: <CrmPage /> },
+            { path: "crm/clients/:contactId", element: <ClientProfilePage /> },
             { path: "crm/deals/:id", element: <DealDetailPage /> },
             {
               path: "expenses",

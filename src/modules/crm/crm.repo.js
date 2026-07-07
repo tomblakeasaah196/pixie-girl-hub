@@ -625,6 +625,7 @@ const CLIENT_SORTS = {
   recent: "COALESCE(o.last_order_at, c.created_at) DESC",
   top_spend: "COALESCE(o.lifetime_spend_ngn, 0) DESC",
   newest: "c.created_at DESC",
+  oldest: "c.created_at ASC", // "longest clients" — earliest on the books first
   name: "COALESCE(c.display_name, c.first_name) ASC",
 };
 

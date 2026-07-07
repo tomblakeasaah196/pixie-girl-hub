@@ -5,6 +5,17 @@ import type {
   AiNextActionsResult,
   AiActivityDraft,
   AiChurnExplainer,
+  CrmClient,
+  ClientChip,
+  ClientSort,
+  TodayBuckets,
+  LtvRow,
+  CohortCell,
+  WinLossReport,
+  VelocityReport,
+  ForecastReport,
+  PaginatedResponse,
+  CrmActivity,
 } from "./types";
 import type { PipelineStage, Deal } from "@/pages/contacts/types";
 
@@ -50,41 +61,69 @@ export const getCrmKpis = async (): Promise<CrmKpiRaw> => {
   };
 };
 
-// ── Today feed aggregation ────────────────────────────────────────────────
-// Composed on the frontend from multiple fast endpoints.
+function qs(params: object) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") q.set(k, String(v));
+  }
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
 
-export const getTodayNewContacts = (days = 7) =>
-  contactsApi.listContacts({ page_size: 20, page: 1 }).then((r) =>
-    r.data.filter((c) => {
-      const created = new Date(c.created_at).getTime();
-      const cutoff = Date.now() - days * 86_400_000;
-      return created >= cutoff;
-    }),
-  );
+// ── Today buckets (server-computed — GET /crm/today) ──────────────────────
 
-export const getTodayStaleDeals = (staleDays = 14) =>
-  contactsApi.listDeals({ status: "open", page_size: 100 }).then((r) =>
-    r.data
-      .filter((d) => {
-        if (!d.last_activity_at) return true;
-        const last = new Date(d.last_activity_at).getTime();
-        return Date.now() - last > staleDays * 86_400_000;
-      })
-      .slice(0, 20),
-  );
+export const getCrmToday = () =>
+  api.get<TodayBuckets>("/crm/today");
 
-export const getTodayLapsedContacts = () =>
-  contactsApi
-    .listContacts({ priority_level: "vip", page_size: 50 })
-    .then((r) =>
-      r.data
-        .filter(
-          (c) =>
-            (c as unknown as { churn_risk_band?: string }).churn_risk_band ===
-            "high",
-        )
-        .slice(0, 20),
-    );
+// ── Clients (contacts + commercial roll-up — GET /crm/clients) ────────────
+
+export interface CrmClientsParams {
+  q?: string;
+  chip?: ClientChip;
+  sort?: ClientSort;
+  page?: number;
+  page_size?: number;
+}
+
+export const listCrmClients = (params: CrmClientsParams = {}) =>
+  api.get<PaginatedResponse<CrmClient>>(`/crm/clients${qs(params)}`);
+
+// ── Contact-level activity log + one-click win-back ───────────────────────
+
+export const listContactCrmActivities = (contactId: string) =>
+  api.get<CrmActivity[]>(`/crm/customers/${contactId}/activities`);
+
+export const addContactCrmActivity = (
+  contactId: string,
+  input: {
+    activity_type: string;
+    direction?: string;
+    subject?: string;
+    body?: string;
+    outcome?: string;
+    duration_minutes?: number;
+  },
+) => api.post<CrmActivity>(`/crm/customers/${contactId}/activities`, input);
+
+export const triggerWinBack = (contactId: string) =>
+  api.post<{ enrolled: number }>(`/crm/customers/${contactId}/win-back`, {});
+
+// ── Reports (GET /crm/reports/*) ──────────────────────────────────────────
+
+export const getReportLtv = (params: { page?: number; page_size?: number } = {}) =>
+  api.get<PaginatedResponse<LtvRow>>(`/crm/reports/ltv${qs(params)}`);
+
+export const getReportCohorts = (months = 12) =>
+  api.get<CohortCell[]>(`/crm/reports/cohorts${qs({ months })}`);
+
+export const getReportWinLoss = (months = 12) =>
+  api.get<WinLossReport>(`/crm/reports/win-loss${qs({ months })}`);
+
+export const getReportVelocity = () =>
+  api.get<VelocityReport>("/crm/reports/velocity");
+
+export const getReportForecast = () =>
+  api.get<ForecastReport>("/crm/reports/forecast");
 
 // ── Deal management (thin wrappers for explicit CRM context) ──────────────
 

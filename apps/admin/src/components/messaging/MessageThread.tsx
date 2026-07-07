@@ -311,7 +311,6 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         const file = list[i];
         const form = new FormData();
         form.append("file", file);
-        form.append("business", businessKey ?? "shared");
         form.append("document_type", "message_attachment");
         form.append("title", file.name);
         const { document_id } = await runUpload((onProgress) =>

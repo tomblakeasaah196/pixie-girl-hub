@@ -308,8 +308,16 @@ async function receive(source, { rawBody, headers, ip }) {
     }
   }
   // Nomba uses `event_type`; Stripe/others use `type`; Paystack uses `event`.
+  // Meta (WhatsApp/Instagram) payloads carry NONE of those — only a top-level
+  // `object` ("whatsapp_business_account" / "instagram"). webhook_log.event_type
+  // is NOT NULL, so without a fallback every Meta delivery 400s on insert
+  // (23502 → MISSING_VALUE) before it can be logged or processed.
   const event_type =
-    payload.event || payload.type || payload.event_type || null;
+    payload.event ||
+    payload.type ||
+    payload.event_type ||
+    payload.object ||
+    "unknown";
   const external_id = extractExternalId(source, payload);
 
   // Verifier exists and the signature is invalid → reject, log for audit.

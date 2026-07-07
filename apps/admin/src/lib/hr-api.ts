@@ -104,6 +104,9 @@ export interface AttendanceDay {
   clock_out_distance_m: number | null;
   clock_in_ip: string | null;
   clock_out_ip: string | null;
+  // true = clock-in came from an enrolled device; false = unknown device
+  // (flagged red, never blocked); null = not applicable (CEO / not enrolled).
+  clock_in_device_recognized: boolean | null;
 }
 
 export interface ArrivalPoint {
@@ -337,8 +340,61 @@ export interface ClockResult {
   is_offsite: boolean;
   distance_m: number | null;
   address: string | null;
+  device_recognized: boolean | null;
   late_minutes: number;
   status: "late" | "present";
+}
+
+// ── Device binding (000304) ────────────────────────────────
+export type DeviceType = "mobile" | "laptop" | "desktop" | "tablet" | "other";
+
+export interface StaffDevice {
+  device_id: string;
+  device_fingerprint?: string;
+  device_label: string;
+  device_type: DeviceType;
+  enrolled_at: string;
+  last_seen_at: string | null;
+  last_ip: string | null;
+  is_active: boolean;
+}
+
+export interface MyDevices {
+  data: StaffDevice[];
+  max_devices: number | null; // null = uncapped (CEO)
+  can_add: boolean;
+}
+
+export interface OtpChallenge {
+  sent_to: string; // masked email
+  expires_in: number;
+}
+
+export interface EmployeeDevices {
+  profile_id: string;
+  display_name: string | null;
+  job_title: string | null;
+  business: string;
+  devices: {
+    device_id: string;
+    device_label: string;
+    device_type: DeviceType;
+    enrolled_at: string;
+    last_seen_at: string | null;
+    last_ip: string | null;
+  }[];
+  active_count: number;
+}
+
+export interface DeviceChange {
+  log_id: string;
+  action: "enrolled" | "removed" | "replaced" | "flagged_unknown";
+  device_label: string | null;
+  note: string | null;
+  created_at: string;
+  profile_id: string;
+  display_name: string | null;
+  actor_name: string | null;
 }
 
 export interface Geofence {
@@ -377,10 +433,57 @@ export const clock = (body: {
   longitude?: number | null;
   accuracy_m?: number | null;
   address?: string;
+  device_fingerprint?: string;
 }) => api.post<ClockResult>("/hr/me/clock", body);
+
+// ── Device binding — self-service (My HR) ──────────────────
+export const getMyDevices = () => api.get<MyDevices>("/hr/me/devices");
+export const startDeviceEnroll = (body: {
+  device_label: string;
+  device_type?: DeviceType;
+  device_fingerprint: string;
+}) => api.post<OtpChallenge>("/hr/me/devices/enroll/start", body);
+export const verifyDeviceEnroll = (otp: string) =>
+  api.post<StaffDevice>("/hr/me/devices/enroll/verify", { otp });
+export const startDeviceRemove = (deviceId: string) =>
+  api.post<OtpChallenge>(`/hr/me/devices/${deviceId}/remove/start`);
+export const verifyDeviceRemove = (deviceId: string, otp: string) =>
+  api.post<{ removed: boolean; device_id: string }>(
+    `/hr/me/devices/${deviceId}/remove/verify`,
+    { otp },
+  );
+
+// ── Device binding — HR & Staff ────────────────────────────
+export const listAllDevices = () =>
+  api
+    .get<ListEnvelope<EmployeeDevices>>("/hr/devices")
+    .then((r) => asList<EmployeeDevices>(r));
+export const listDeviceChanges = (limit = 50) =>
+  api
+    .get<ListEnvelope<DeviceChange>>(`/hr/devices/changes?limit=${limit}`)
+    .then((r) => asList<DeviceChange>(r));
+
+// ── Live attendance (000304) — the shape of a socket punch + seed rows ──
+export interface LivePunch {
+  event_id: string;
+  profile_id: string;
+  display_name: string | null;
+  event_type: "clock_in" | "clock_out";
+  occurred_at: string;
+  is_offsite: boolean;
+  distance_m: number | null;
+  address: string | null;
+  device_recognized: boolean | null;
+  late_minutes?: number;
+  status?: "late" | "present";
+}
 
 // ── Management ─────────────────────────────────────────────
 export const getOverview = () => api.get<HrOverview>("/hr/overview");
+export const listLiveAttendance = () =>
+  api
+    .get<ListEnvelope<LivePunch>>("/hr/attendance/live")
+    .then((r) => asList<LivePunch>(r));
 
 export interface HrAnalytics {
   period: { year: number; month: number };

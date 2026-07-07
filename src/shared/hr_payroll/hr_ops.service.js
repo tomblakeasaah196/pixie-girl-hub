@@ -1015,6 +1015,11 @@ async function getOverview({ brand }) {
   return { counts, pending_justifications };
 }
 
+/** Today's accepted punches, live-feed seed for the Attendance tab (000304). */
+async function getLiveAttendance({ brand }) {
+  return { data: await repo.liveTodayPunches({ brand }) };
+}
+
 // ── Analytics (HR dashboard) ───────────────────────────────
 async function getAnalytics({ brand, year, month }) {
   const now = new Date();
@@ -1368,6 +1373,7 @@ module.exports = {
   getMyToday,
   selfClock,
   getOverview,
+  getLiveAttendance,
   getAnalytics,
   getAnalyticsTrends,
   getProbationEndingSoon,

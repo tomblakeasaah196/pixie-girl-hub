@@ -49,6 +49,7 @@ router.post("/attendance/reconcile", P("edit"), v.reconcile, c.reconcile);
 router.post("/attendance/reconcile-period", P("edit"), v.reconcilePeriod, c.reconcilePeriod);
 router.post("/attendance/apply-lapsed-offsite", P("edit"), c.applyLapsedOffsite);
 router.get("/attendance-days", P("view"), c.listAttendanceDays);
+router.get("/attendance/live", P("view"), c.getLiveAttendance);
 
 // ── Device binding (HR & Staff) — every employee + change feed ──
 router.get("/devices", P("view"), dc.listAllDevices);

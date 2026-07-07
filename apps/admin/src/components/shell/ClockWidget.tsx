@@ -4,6 +4,7 @@ import { Clock, MapPin, LogOut, Loader2, AlertTriangle, Check } from "lucide-rea
 import { cn } from "@/lib/cn";
 import { getMyToday, clock as clockApi } from "@/lib/hr-api";
 import { captureGeo } from "@/lib/geo-capture";
+import { getDeviceFingerprint } from "@/lib/device-fingerprint";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 
@@ -79,11 +80,18 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
         longitude: geo.longitude,
         accuracy_m: geo.accuracy_m,
         address: geo.address,
+        device_fingerprint: getDeviceFingerprint(),
       });
     },
     onSuccess: (rec) => {
       qc.invalidateQueries({ queryKey: ["hr", "me"] });
-      if (rec.event_type === "clock_out") {
+      if (rec.device_recognized === false) {
+        notify(
+          "Clocked in — unrecognised device",
+          "This device isn't enrolled for attendance, so this clock-in is flagged for HR. Enrol it in My HR → My devices.",
+          "high",
+        );
+      } else if (rec.event_type === "clock_out") {
         notify("Clocked out", "Have a good one.");
       } else if (rec.is_offsite) {
         notify(

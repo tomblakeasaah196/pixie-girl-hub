@@ -804,6 +804,30 @@ async function firstClockInsForDate({ client, profileIds, dateStr }) {
   return map;
 }
 
+/**
+ * Today's accepted punches for the whole brand, newest first — the live
+ * attendance feed seed (000304). Same shape the socket `attendance:punch`
+ * event carries so the tab can merge them without a second mapping.
+ */
+async function liveTodayPunches({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT e.event_id, e.profile_id, c.display_name,
+            e.event_type, e.occurred_at, e.is_offsite, e.distance_m,
+            e.formatted_address AS address, e.device_recognized
+       FROM shared.staff_clock_events e
+       JOIN shared.staff_profiles sp ON sp.profile_id = e.profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE ${VISIBLE}
+        AND e.accepted = true
+        AND (e.occurred_at AT TIME ZONE 'Africa/Lagos')::date
+            = (now() AT TIME ZONE 'Africa/Lagos')::date
+      ORDER BY e.occurred_at DESC
+      LIMIT 200`,
+    [brand],
+  );
+  return rows;
+}
+
 /** Today's clock events for one profile, newest first (My HR clock widget). */
 async function todayClockEvents({ client, profileId }) {
   const { rows } = await exec(client)(
@@ -1076,6 +1100,7 @@ module.exports = {
   lastClockOutsForDate,
   approvedLeaveForDate,
   todayClockEvents,
+  liveTodayPunches,
   markDayAbsent,
   lapsedOffsiteQueries,
   dueReminderQueries,

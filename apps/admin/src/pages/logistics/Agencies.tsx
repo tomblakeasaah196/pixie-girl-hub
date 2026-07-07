@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/primitives";
 import { ErrorState, Toggle } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
+import { toastReport } from "@/lib/error-report";
 import {
   useCouriers,
   useCreateCourier,
@@ -203,9 +204,21 @@ function AgencyFormModal({
       internal_notes: notes.trim() || undefined,
     };
     if (isEdit && courier) {
-      update.mutate({ id: courier.courier_id, patch: { ...body, is_active: active } }, { onSuccess: onClose });
+      update.mutate(
+        { id: courier.courier_id, patch: { ...body, is_active: active } },
+        {
+          onSuccess: onClose,
+          onError: (e) => toastReport("Logistics → Agencies", "Save agency", e),
+        },
+      );
     } else {
-      create.mutate({ ...body, courier_key: key.trim() }, { onSuccess: onClose });
+      create.mutate(
+        { ...body, courier_key: key.trim() },
+        {
+          onSuccess: onClose,
+          onError: (e) => toastReport("Logistics → Agencies", "Add agency", e),
+        },
+      );
     }
   }
 

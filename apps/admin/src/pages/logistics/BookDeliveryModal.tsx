@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { money } from "@/lib/format";
+import { toastReport } from "@/lib/error-report";
 import {
   useBookDelivery,
   useCouriers,
@@ -73,7 +74,10 @@ export function BookDeliveryModal({
         driver_name: driverName.trim() || undefined,
         driver_phone: driverPhone.trim() || undefined,
       },
-      { onSuccess: onClose },
+      {
+        onSuccess: onClose,
+        onError: (e) => toastReport("Logistics → Booking", "Book delivery", e),
+      },
     );
   }
 
